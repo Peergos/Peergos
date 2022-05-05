@@ -2,7 +2,6 @@ package peergos.shared.user.fs;
 import java.util.function.*;
 import java.util.logging.*;
 
-import jsinterop.annotations.*;
 import peergos.shared.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
@@ -36,8 +35,7 @@ public class FileUploader implements AutoCloseable {
     private final byte[] firstLocation;
     private final Optional<Bat> firstBat;
 
-    @JsConstructor
-    public FileUploader(String name, String mimeType, AsyncReader fileData,
+    public FileUploader(String name, AsyncReader fileData,
                         int offsetHi, int offsetLow, int lengthHi, int lengthLow,
                         SymmetricKey baseKey,
                         SymmetricKey dataKey,
@@ -49,13 +47,7 @@ public class FileUploader implements AutoCloseable {
                         byte[] firstLocation,
                         Optional<Bat> firstBat) {
         long length = (lengthLow & 0xFFFFFFFFL) + ((lengthHi & 0xFFFFFFFFL) << 32);
-        if (fileProperties == null) {
-            LocalDateTime timestamp = LocalDateTime.now();
-            this.props = new FileProperties(name, false, false, mimeType, length, timestamp, timestamp,
-                    false, Optional.empty(), Optional.empty());
-        } else {
-            this.props = fileProperties;
-        }
+        this.props = fileProperties;
         if (baseKey == null) baseKey = SymmetricKey.random();
 
         long offset = (offsetLow & 0xFFFFFFFFL) + ((offsetHi & 0xFFFFFFFFL) << 32);
@@ -76,11 +68,11 @@ public class FileUploader implements AutoCloseable {
         this.firstBat = firstBat;
     }
 
-    public FileUploader(String name, String mimeType, AsyncReader fileData, long offset, long length,
+    public FileUploader(String name, AsyncReader fileData, long offset, long length,
                         SymmetricKey baseKey, SymmetricKey dataKey, Location parentLocation, Optional<Bat> parentBat,
                         SymmetricKey parentparentKey, ProgressConsumer<Long> monitor, FileProperties fileProperties,
                         byte[] firstLocation, Optional<Bat> firstBat) {
-        this(name, mimeType, fileData, (int)(offset >> 32), (int) offset, (int) (length >> 32), (int) length,
+        this(name, fileData, (int)(offset >> 32), (int) offset, (int) (length >> 32), (int) length,
                 baseKey, dataKey, parentLocation, parentBat, parentparentKey, monitor, fileProperties, firstLocation, firstBat);
     }
 
@@ -141,26 +133,40 @@ public class FileUploader implements AutoCloseable {
                                               Optional<BatId> mirrorBat,
                                               SafeRandom random,
                                               Hasher hasher) {
-        long t1 = System.currentTimeMillis();
+        return uploadFrom(current, c, network, 0, owner, writer, mirrorBat, random, hasher);
+    }
 
-        AsyncUploadQueue queue = new AsyncUploadQueue();
-        List<Integer> input = IntStream.range(0, (int) nchunks).mapToObj(i -> Integer.valueOf(i)).collect(Collectors.toList());
-        CompletableFuture<Snapshot> res = new CompletableFuture<>();
-        Futures.reduceAll(input, true,
-                (p, i) -> runAsync(() -> encryptChunk(i, owner, writer, mirrorBat, MaybeMultihash.empty(), random, hasher, network.isJavascript())
-                                .thenCompose(queue::add)),
-                (a, b) -> b)
-                .exceptionally(res::completeExceptionally);
-        Futures.reduceAll(input, current,
-                (s, i) -> queue.poll().thenCompose(chunk -> uploadChunk(s, c, chunk, writer, network, monitor)),
-                (a, b) -> b)
-                .thenApply(x -> {
-                    LOG.info("File encryption, upload took: " +(System.currentTimeMillis()-t1) + " mS");
-                    return x;
-                }).thenApply(res::complete)
-                .exceptionally(res::completeExceptionally);
+    public CompletableFuture<Snapshot> uploadFrom(Snapshot current,
+                                                  Committer c,
+                                                  NetworkAccess network,
+                                                  int startChunkIndex,
+                                                  PublicKeyHash owner,
+                                                  SigningPrivateKeyAndPublicHash writer,
+                                                  Optional<BatId> mirrorBat,
+                                                  SafeRandom random,
+                                                  Hasher hasher) {
+        return reader.seek(startChunkIndex * Chunk.MAX_SIZE).thenCompose(seeked -> {
+            long t1 = System.currentTimeMillis();
 
-        return res;
+            AsyncUploadQueue queue = new AsyncUploadQueue();
+            List<Integer> input = IntStream.range(startChunkIndex, (int) nchunks).mapToObj(i -> Integer.valueOf(i)).collect(Collectors.toList());
+            CompletableFuture<Snapshot> res = new CompletableFuture<>();
+            Futures.reduceAll(input, true,
+                            (p, i) -> runAsync(() -> encryptChunk(i, owner, writer, mirrorBat, MaybeMultihash.empty(), random, hasher, network.isJavascript())
+                                    .thenCompose(queue::add)),
+                            (a, b) -> b)
+                    .exceptionally(res::completeExceptionally);
+            Futures.reduceAll(input, current,
+                            (s, i) -> queue.poll().thenCompose(chunk -> uploadChunk(s, c, chunk, writer, network, monitor)),
+                            (a, b) -> b)
+                    .thenApply(x -> {
+                        LOG.info("File encryption, upload took: " + (System.currentTimeMillis() - t1) + " mS");
+                        return x;
+                    }).thenApply(res::complete)
+                    .exceptionally(res::completeExceptionally);
+
+            return res;
+        });
     }
 
     private static class ChunkUpload {

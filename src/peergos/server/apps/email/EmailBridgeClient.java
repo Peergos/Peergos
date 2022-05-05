@@ -114,7 +114,7 @@ public class EmailBridgeClient {
             byte[] rawCipherText = encryptEmail(m).serialize();
             return inbox.getUpdated(s, context.network).join()
                     .uploadFileSection(s, c, m.id + ".cbor", AsyncReader.build(rawCipherText), false, 0,
-                            rawCipherText.length, Optional.empty(), true, true,
+                            rawCipherText.length, Optional.empty(), false, true, true,
                             context.network, context.crypto, x -> {}, context.crypto.random.randomBytes(32),
                             Optional.empty(), Optional.of(Bat.random(context.crypto.random)), inbox.mirrorBatId());
         }).join();

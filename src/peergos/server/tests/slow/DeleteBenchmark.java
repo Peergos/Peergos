@@ -67,11 +67,11 @@ public class DeleteBenchmark {
         random.nextBytes(data);
 
         List<FileWrapper.FileUploadProperties> files = names.stream()
-                .map(n -> new FileWrapper.FileUploadProperties(n, AsyncReader.build(data), 0, data.length, false, x -> {}))
+                .map(n -> new FileWrapper.FileUploadProperties(n, AsyncReader.build(data), 0, data.length, false, false, x -> {}))
                 .collect(Collectors.toList());
         String dirName = "folder";
         userRoot.uploadSubtree(Stream.of(new FileWrapper.FolderUploadProperties(Arrays.asList(dirName), files)),
-                userRoot.mirrorBatId(), context.network, crypto, context.getTransactionService(), () -> true).join();
+                userRoot.mirrorBatId(), context.network, crypto, context.getTransactionService(), f -> Futures.of(false), () -> true).join();
         Path dirPath = PathUtil.get(username, dirName);
         FileWrapper folder = context.getByPath(dirPath).join().get();
 

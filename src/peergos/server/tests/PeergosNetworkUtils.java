@@ -863,7 +863,7 @@ public class PeergosNetworkUtils {
         FileWrapper sharedDir = shareeUploader.getByPath(path).join().get();
         String shareeFilename = "a-new-file.png";
         sharedDir.uploadFileJS(shareeFilename, AsyncReader.build(data), 0, data.length,
-                false, false, shareeUploader.mirrorBatId(), shareeUploader.network, crypto, x -> {}, shareeUploader.getTransactionService()).join();
+                false, shareeUploader.mirrorBatId(), shareeUploader.network, crypto, x -> {}, shareeUploader.getTransactionService(), f -> Futures.of(false)).join();
         FileWrapper newFile = shareeUploader.getByPath(path + "/" + shareeFilename).join().get();
         Assert.assertTrue(newFile.mirrorBatId().equals(sharer.mirrorBatId()));
 
@@ -991,7 +991,7 @@ public class PeergosNetworkUtils {
         UserContext shareeUploader = shareeUsers.get(0);
         FileWrapper sharedDir = shareeUploader.getByPath(subdirPath).join().get();
         sharedDir.uploadFileJS("a-new-file.png", AsyncReader.build(data), 0, data.length,
-                false, false, sharedDir.mirrorBatId(), shareeUploader.network, crypto, x -> {}, shareeUploader.getTransactionService()).join();
+                false, sharedDir.mirrorBatId(), shareeUploader.network, crypto, x -> {}, shareeUploader.getTransactionService(), f -> Futures.of(false)).join();
 
         Set<String> childNames = sharer.getByPath(dirPath).join().get().getChildren(crypto.hasher, sharer.network).join()
                 .stream()
@@ -1317,7 +1317,7 @@ public class PeergosNetworkUtils {
         UserContext shareeUploader = shareeUsers.get(0);
         FileWrapper sharedDir = shareeUploader.getByPath(subdirPath).join().get();
         sharedDir.uploadFileJS("a-new-file.png", AsyncReader.build(data), 0, data.length,
-                false, false, sharedDir.mirrorBatId(), shareeUploader.network, crypto, x -> {}, shareeUploader.getTransactionService()).join();
+                false, sharedDir.mirrorBatId(), shareeUploader.network, crypto, x -> {}, shareeUploader.getTransactionService(), f -> Futures.of(false)).join();
 
         // check 'a' can see the shared directory
         FileWrapper sharedFolder = a.getByPath(sharer.username + "/" + folderName).join()

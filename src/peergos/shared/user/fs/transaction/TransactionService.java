@@ -4,7 +4,7 @@ import jsinterop.annotations.JsMethod;
 import peergos.shared.*;
 import peergos.shared.crypto.*;
 import peergos.shared.user.*;
-import peergos.shared.util.Futures;
+import peergos.shared.util.*;
 
 import java.util.List;
 import java.util.Set;
@@ -17,7 +17,12 @@ public interface TransactionService {
     SigningPrivateKeyAndPublicHash getSigner();
 
     @JsMethod
-    CompletableFuture<Snapshot> open(Snapshot version, Committer committer, Transaction transaction);
+    /**
+     *  Open a transaction or return an existing matching transaction
+     */
+    CompletableFuture<Either<Snapshot, FileUploadTransaction>> open(Snapshot version,
+                                                                    Committer committer,
+                                                                    Transaction transaction);
 
     @JsMethod
     CompletableFuture<Snapshot> close(Snapshot version, Committer committer, Transaction transaction);

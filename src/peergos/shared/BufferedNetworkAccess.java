@@ -31,6 +31,7 @@ public class BufferedNetworkAccess extends NetworkAccess {
     private final PublicKeyHash owner;
     private final Supplier<Boolean> commitWatcher;
     private final ContentAddressedStorage blocks;
+    private boolean safeToCommit = true;
 
     private BufferedNetworkAccess(BufferedStorage blockBuffer,
                                   BufferedPointers mutableBuffer,
@@ -98,8 +99,22 @@ public class BufferedNetworkAccess extends NetworkAccess {
         return blockBuffer.totalSize();
     }
 
+    public BufferedNetworkAccess disableCommits() {
+        safeToCommit = false;
+        return this;
+    }
+
+    public BufferedNetworkAccess enableCommits() {
+        safeToCommit = true;
+        return this;
+    }
+
+    public boolean isFull() {
+        return bufferedSize() >= bufferSize;
+    }
+
     private CompletableFuture<Boolean> maybeCommit() {
-        if (bufferedSize() >= bufferSize)
+        if (safeToCommit && isFull())
             return commit();
         return Futures.of(true);
     }

@@ -8,7 +8,7 @@ public enum Command {
     help("Show this help."),
     exit("Disconnect."),
     get("Download a file.", "get remote-path <local path>", Argument.REMOTE_FILE, Argument.LOCAL_FILE),
-    put("Upload a file.", "put local-path <remote-path>", Argument.LOCAL_FILE, Argument.REMOTE_FILE),
+    put("Upload a file or folder.", "put local-path <remote-path> <skip-existing=true/false>", Argument.LOCAL_FILE, Argument.REMOTE_FILE, Argument.SKIP_EXISTING),
     ls("List contents of a remote directory.", "ls <path>", Argument.REMOTE_FILE),
     rm("Remove a remote-file.", "rm remote-path", Argument.REMOTE_FILE),
     space("Show used remote space."),
@@ -24,24 +24,31 @@ public enum Command {
     bye("Disconnect.");
 
     public final String description, example;
-    public final Argument firstArg, secondArg;
+    public final Argument firstArg, secondArg, thirdArg;
 
-    Command(String description, String example, Argument firstArg, Argument secondArg) {
+    Command(String description, String example, Argument firstArg, Argument secondArg, Argument thirdArg) {
         if (firstArg == null && secondArg != null)
+            throw new IllegalArgumentException();
+        if (secondArg == null && thirdArg != null)
             throw new IllegalArgumentException();
 
         this.description = description;
         this.example = example;
         this.firstArg = firstArg;
         this.secondArg = secondArg;
+        this.thirdArg = thirdArg;
+    }
+
+    Command(String description, String example, Argument firstArg, Argument secondArg) {
+        this(description, example, firstArg, secondArg, null);
     }
 
     Command(String description, String example, Argument firstArg) {
-        this(description, example, firstArg,null);
+        this(description, example, firstArg,null, null);
     }
 
     Command(String description, String example) {
-        this(description, example, null,null);
+        this(description, example, null,null, null);
     }
 
     Command(String description) {
@@ -69,17 +76,18 @@ public enum Command {
         }
     }
 
-    public static enum Argument {
+    public enum Argument {
         REMOTE_FILE,
         REMOTE_DIR,
         LOCAL_FILE,
+        SKIP_EXISTING,
         USERNAME,
         FOLLOWER,
         PENDING_FOLLOW_REQUEST,
         PROCESS_FOLLOW_REQUEST;
     }
 
-    public static enum ProcessFollowRequestAction  {
+    public enum ProcessFollowRequestAction  {
         accept,
         accept_and_reciprocate("accept-and-reciprocate"),
         reject;
@@ -110,6 +118,4 @@ public enum Command {
             return alternative == null ? name() : alternative;
         }
     }
-
-
 }

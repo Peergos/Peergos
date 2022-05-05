@@ -22,6 +22,10 @@ class ParsedCommand {
         return arguments.size() > 1;
     }
 
+    public boolean hasThirdArgument() {
+        return arguments.size() > 2;
+    }
+
     public String firstArgument() {
         if (arguments.size() < 1)
             throw new IllegalStateException("Specifed command " + line + " requires an argument");
@@ -32,6 +36,12 @@ class ParsedCommand {
         if (arguments.size() < 2)
             throw new IllegalStateException("Specifed command " + line + " requires a second argument");
         return arguments.get(1);
+    }
+
+    public String thirdArgument() {
+        if (arguments.size() < 3)
+            throw new IllegalStateException("Specifed command " + line + " requires a third argument");
+        return arguments.get(2);
     }
 
     @Override

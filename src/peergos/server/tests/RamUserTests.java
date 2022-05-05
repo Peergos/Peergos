@@ -4,6 +4,7 @@ import org.junit.*;
 import org.junit.runner.*;
 import org.junit.runners.*;
 import peergos.server.*;
+import peergos.server.tests.util.*;
 import peergos.server.util.*;
 import peergos.shared.*;
 import peergos.shared.social.*;
@@ -94,20 +95,6 @@ public class RamUserTests extends UserTests {
         publicGateway.shutdown();
     }
 
-    private static class NonClosingTransactionService extends TransactionServiceImpl {
-
-        public NonClosingTransactionService(NetworkAccess network,
-                                            Crypto crypto,
-                                            FileWrapper transactionsDir) {
-            super(network, crypto, transactionsDir);
-        }
-
-        @Override
-        public CompletableFuture<Snapshot> close(Snapshot version, Committer committer, Transaction transaction) {
-            return Futures.of(version);
-        }
-    }
-
     @Test
     public void cleanupFailedUploads() throws Exception {
         String username = generateUsername();
@@ -121,13 +108,13 @@ public class RamUserTests extends UserTests {
         FileWrapper txnDir = context.getByPath(Paths.get(username, UserContext.TRANSACTIONS_DIR_NAME)).join().get();
         TransactionService txns = new NonClosingTransactionService(network, crypto, txnDir);
         try {
-            FileWrapper.FileUploadProperties fileUpload = new FileWrapper.FileUploadProperties("somefile", thrower, 0, size, false, x -> {});
+            FileWrapper.FileUploadProperties fileUpload = new FileWrapper.FileUploadProperties("somefile", thrower, 0, size, false, false, x -> {});
             FileWrapper.FolderUploadProperties dirUploads = new FileWrapper.FolderUploadProperties(Arrays.asList(username), Arrays.asList(fileUpload));
-            userRoot.uploadSubtree(Stream.of(dirUploads), context.mirrorBatId(), network, crypto, txns, () -> true).join();
+            userRoot.uploadSubtree(Stream.of(dirUploads), context.mirrorBatId(), network, crypto, txns, f -> Futures.of(false), () -> true).join();
         } catch (Exception e) {}
         try {
-            context.getUserRoot().join().uploadFileJS("anotherfile", thrower, 0, size, false, false,
-                    context.mirrorBatId(), network, crypto, x -> {}, txns).join();
+            context.getUserRoot().join().uploadFileJS("anotherfile", thrower, 0, size, false,
+                    context.mirrorBatId(), network, crypto, x -> {}, txns, f -> Futures.of(false)).join();
         } catch (Exception e) {}
         long usageAfterFail = context.getSpaceUsage().join();
         if (usageAfterFail <= size / 2) { // give server a chance to recalculate usage

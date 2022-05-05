@@ -7,6 +7,7 @@ import peergos.server.crypto.asymmetric.curve25519.*;
 import peergos.server.crypto.hash.*;
 import peergos.server.crypto.random.*;
 import peergos.server.crypto.symmetric.*;
+import peergos.server.tests.util.*;
 import peergos.server.util.*;
 
 import org.junit.*;
@@ -562,12 +563,12 @@ public abstract class UserTests {
                         e.getValue()
                                 .stream()
                                 .map(f -> new FileWrapper.FileUploadProperties(f.getKey().get(f.getKey().size() - 1),
-                                        AsyncReader.build(f.getValue()), 0, f.getValue().length, false, x -> {}))
+                                        AsyncReader.build(f.getValue()), 0, f.getValue().length, false, false, x -> {}))
                                 .collect(Collectors.toList())));
 
         int priorChildren = userRoot.getChildren(crypto.hasher, network).join().size();
 
-        userRoot.uploadSubtree(byFolder, Optional.empty(), network, crypto, context.getTransactionService(), () -> true).join();
+        userRoot.uploadSubtree(byFolder, Optional.empty(), network, crypto, context.getTransactionService(), f -> Futures.of(false), () -> true).join();
 
         userRoot = context.getUserRoot().join();
         int postChildren = userRoot.getChildren(crypto.hasher, network).join().size();
@@ -582,6 +583,34 @@ public abstract class UserTests {
     }
 
     @Test
+    public void resumeFailedUploads() {
+        String username = generateUsername();
+        String password = "terriblepassword";
+        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
+
+        String filename = "somefile";
+        int size = 30*1024*1024;
+        byte[] data = new byte[size];
+        random.nextBytes(data);
+        AsyncReader thrower = new ThrowingStream(data, size/2);
+        FileWrapper txnDir = context.getByPath(Paths.get(username, UserContext.TRANSACTIONS_DIR_NAME)).join().get();
+        TransactionService txns = new NonClosingTransactionService(network, crypto, txnDir);
+        String subdir = "dir";
+        try {
+            FileWrapper.FileUploadProperties fileUpload = new FileWrapper.FileUploadProperties(filename, thrower, 0, size, false, false, x -> {});
+            FileWrapper.FolderUploadProperties dirUploads = new FileWrapper.FolderUploadProperties(Arrays.asList(subdir), Arrays.asList(fileUpload));
+            context.getUserRoot().join().uploadSubtree(Stream.of(dirUploads), context.mirrorBatId(), network, crypto, txns, f -> Futures.of(false), () -> true).join();
+        } catch (Exception e) {}
+        FileWrapper home = context.getUserRoot().join();
+        Set<Transaction> open = context.getTransactionService().getOpenTransactions(home.version).join();
+        Assert.assertTrue(open.size() > 0);
+        // Now try again, with confirmation from the user to resume upload
+        FileWrapper parent = context.getByPath(Paths.get(username, subdir)).join().get();
+        parent.uploadFileJS(filename, AsyncReader.build(data), 0, size, false, context.mirrorBatId(), network, crypto, x -> {}, txns, f -> Futures.of(true)).join();
+        checkFileContents(data, context.getByPath(Paths.get(username, subdir, filename)).join().get(), context);
+    }
+
+    @Test
     public void concurrentUploadSucceeds() {
         String username = generateUsername();
         String password = "test";
@@ -591,14 +620,14 @@ public abstract class UserTests {
 
         String filename = "file1.bin";
         byte[] data = randomData(6*1024*1024);
-        userRoot.uploadFileJS(filename, new AsyncReader.ArrayBacked(data), 0,data.length, false, false,
-                userRoot.mirrorBatId(), network, crypto, l -> {}, context.getTransactionService()).join();
+        userRoot.uploadFileJS(filename, new AsyncReader.ArrayBacked(data), 0,data.length, false,
+                userRoot.mirrorBatId(), network, crypto, l -> {}, context.getTransactionService(), f -> Futures.of(false)).join();
         checkFileContents(data, context.getUserRoot().join().getDescendentByPath(filename, crypto.hasher, context.network).join().get(), context);
 
         String file2name = "file2.bin";
         byte[] data2 = randomData(6*1024*1024);
-        userRootCopy.uploadFileJS(file2name, new AsyncReader.ArrayBacked(data2), 0,data2.length, false, false,
-                userRootCopy.mirrorBatId(), network, crypto, l -> {}, context.getTransactionService()).join();
+        userRootCopy.uploadFileJS(file2name, new AsyncReader.ArrayBacked(data2), 0,data2.length, false,
+                userRootCopy.mirrorBatId(), network, crypto, l -> {}, context.getTransactionService(), f -> Futures.of(false)).join();
         checkFileContents(data2, context.getUserRoot().join().getDescendentByPath(file2name, crypto.hasher, context.network).join().get(), context);
     }
 
@@ -891,12 +920,12 @@ public abstract class UserTests {
 
         TransactionService transactions = context.getTransactionService();
         try {
-            userRoot.uploadFileJS(filename, throwingReader, 0, data.length, false, false,
-                    userRoot.mirrorBatId(), context.network, context.crypto, l -> {}, transactions).join();
+            userRoot.uploadFileJS(filename, throwingReader, 0, data.length, false,
+                    userRoot.mirrorBatId(), context.network, context.crypto, l -> {}, transactions, f -> Futures.of(false)).join();
         } catch (Exception e) {}
 
-        userRoot.uploadFileJS(filename, AsyncReader.build(data), 0, data.length, false, false,
-                userRoot.mirrorBatId(), context.network, context.crypto, l -> {}, transactions).join();
+        userRoot.uploadFileJS(filename, AsyncReader.build(data), 0, data.length, false,
+                userRoot.mirrorBatId(), context.network, context.crypto, l -> {}, transactions, f -> Futures.of(true)).join();
     }
 
     @Test
@@ -1339,7 +1368,7 @@ public abstract class UserTests {
 
         byte[] newData = "Some dataaa".getBytes();
         dirThroughLink.get().uploadFileJS("anoterfile", AsyncReader.build(newData), 0, newData.length,
-                false, false, dirThroughLink.get().mirrorBatId(), linkContext.network, linkContext.crypto, x -> {}, null).join();
+                false, dirThroughLink.get().mirrorBatId(), linkContext.network, linkContext.crypto, x -> {}, null, f -> Futures.of(false)).join();
     }
 
     @Test

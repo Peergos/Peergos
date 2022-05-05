@@ -156,7 +156,7 @@ public interface AsyncReader extends AutoCloseable {
         public CompletableFuture<AsyncReader> seekJS(int high32, int low32) {
             if (high32 != 0)
                 throw new IllegalArgumentException("Cannot have arrays larger than 4GiB!");
-            index += low32;
+            index = low32;
             return CompletableFuture.completedFuture(this);
         }
 

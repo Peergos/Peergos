@@ -4,6 +4,7 @@ import peergos.server.simulation.AccessControl;
 import peergos.server.simulation.FileSystem;
 import peergos.server.simulation.Stat;
 import peergos.shared.user.fs.*;
+import peergos.shared.user.fs.transaction.*;
 import peergos.shared.util.*;
 
 import java.io.File;
@@ -18,8 +19,8 @@ import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.*;
-import java.util.function.BiConsumer;
-import java.util.function.Consumer;
+import java.util.concurrent.*;
+import java.util.function.*;
 import java.util.stream.*;
 
 public class NativeFileSystemImpl implements FileSystem {
@@ -91,7 +92,7 @@ public class NativeFileSystemImpl implements FileSystem {
     }
 
     @Override
-    public void writeSubtree(Path path, Stream<FileWrapper.FolderUploadProperties> folders) {
+    public void writeSubtree(Path path, Stream<FileWrapper.FolderUploadProperties> folders, Function<FileUploadTransaction, CompletableFuture<Boolean>> resumeFile) {
         throw new IllegalStateException("Unimplemented!");
     }
 

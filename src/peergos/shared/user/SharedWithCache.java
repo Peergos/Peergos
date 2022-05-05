@@ -199,7 +199,7 @@ public class SharedWithCache {
                             byte[] raw = empty.serialize();
                             // upload or replace file
                             return parent.uploadFileSection(parent.version, committer, DIR_CACHE_FILENAME, AsyncReader.build(raw), false, 0, raw.length,
-                                    Optional.empty(), true, true, network, crypto, x -> {},
+                                    Optional.empty(), false, true, true, network, crypto, x -> {},
                                     crypto.random.randomBytes(32), Optional.empty(), Optional.of(Bat.random(crypto.random)), parent.mirrorBatId())
                                     .thenCompose(s -> parent.getUpdated(s, network)
                                             .thenCompose(updatedParent -> updatedParent.getChild(DIR_CACHE_FILENAME, crypto.hasher, network)))
