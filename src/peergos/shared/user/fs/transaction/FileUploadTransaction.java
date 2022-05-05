@@ -117,7 +117,7 @@ public class FileUploadTransaction implements Transaction {
     }
 
     public LocalDateTime startTime() {
-        return LocalDateTime.ofEpochSecond(startTimeEpochMillis / 1000, (int)(startTimeEpochMillis % 1000)* 1_0000_000, ZoneOffset.UTC);
+        return LocalDateTime.ofEpochSecond(startTimeEpochMillis / 1000, (int)(startTimeEpochMillis % 1000)* 1_000_000, ZoneOffset.UTC);
     }
 
     public WritableAbsoluteCapability writeCap() {

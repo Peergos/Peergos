@@ -582,7 +582,6 @@ public abstract class UserTests {
         }
     }
 
-    @Ignore
     @Test
     public void resumeFailedUploads() {
         String username = generateUsername();
@@ -606,8 +605,8 @@ public abstract class UserTests {
         Set<Transaction> open = context.getTransactionService().getOpenTransactions(home.version).join();
         Assert.assertTrue(open.size() > 0);
         // Now try again, with confirmation from the user to resume upload
-        context.getByPath(Paths.get(username, subdir)).join().get()
-                .uploadFileJS(filename, AsyncReader.build(data), 0, size, false, context.mirrorBatId(), network, crypto, x -> {}, txns, f -> Futures.of(true)).join();
+        FileWrapper parent = context.getByPath(Paths.get(username, subdir)).join().get();
+        parent.uploadFileJS(filename, AsyncReader.build(data), 0, size, false, context.mirrorBatId(), network, crypto, x -> {}, txns, f -> Futures.of(true)).join();
         checkFileContents(data, context.getByPath(Paths.get(username, subdir, filename)).join().get(), context);
     }
 

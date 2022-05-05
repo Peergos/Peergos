@@ -54,7 +54,7 @@ public class TransactionServiceImpl implements TransactionService {
                                 crypto, VOID_PROGRESS, crypto.random.randomBytes(32), Optional.empty(), Optional.of(Bat.random(crypto.random)), dir.mirrorBatId())
                                 .thenApply(Either::a),
                         t -> {
-                            if (!(t instanceof FileExistsException))
+                            if (!(Exceptions.getRootCause(t) instanceof FileExistsException))
                                 throw new RuntimeException(t);
                             return dir.getChild(transaction.name(), crypto.hasher, networkAccess)
                                     .thenCompose(fopt -> read(version, fopt.get()))
@@ -63,7 +63,7 @@ public class TransactionServiceImpl implements TransactionService {
                                         if (txn instanceof FileUploadTransaction) {
                                             return Either.b((FileUploadTransaction) txn);
                                         }
-                                        throw new RuntimeException(t);
+                                        throw new RuntimeException(Exceptions.getRootCause(t));
                                     });
                         }));
     }
