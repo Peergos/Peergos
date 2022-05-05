@@ -56,7 +56,7 @@ public class PeergosFileSystemImpl implements FileSystem {
         String fileName = path.getFileName().toString();
         ProgressConsumer<Long> pc  = l -> progressConsumer.accept(l);
         FileWrapper fileWrapper = directory.uploadFileJS(fileName, resetableFileInputStream, (int)(data.length >> 32), (int) data.length,
-                true, true, userContext.mirrorBatId(), userContext.network, userContext.crypto, pc, userContext.getTransactionService(), f -> Futures.of(false)).join();
+                true, userContext.mirrorBatId(), userContext.network, userContext.crypto, pc, userContext.getTransactionService(), f -> Futures.of(false)).join();
     }
 
     @Override

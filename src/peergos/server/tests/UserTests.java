@@ -607,8 +607,7 @@ public abstract class UserTests {
         Assert.assertTrue(open.size() > 0);
         // Now try again, with confirmation from the user to resume upload
         context.getByPath(Paths.get(username, subdir)).join().get()
-                .uploadFileJS(filename, AsyncReader.build(data), 0, size, false, false,
-                        context.mirrorBatId(), network, crypto, x -> {}, txns, f -> Futures.of(true)).join();
+                .uploadFileJS(filename, AsyncReader.build(data), 0, size, false, context.mirrorBatId(), network, crypto, x -> {}, txns, f -> Futures.of(true)).join();
         checkFileContents(data, context.getByPath(Paths.get(username, subdir, filename)).join().get(), context);
     }
 
@@ -622,13 +621,13 @@ public abstract class UserTests {
 
         String filename = "file1.bin";
         byte[] data = randomData(6*1024*1024);
-        userRoot.uploadFileJS(filename, new AsyncReader.ArrayBacked(data), 0,data.length, false, false,
+        userRoot.uploadFileJS(filename, new AsyncReader.ArrayBacked(data), 0,data.length, false,
                 userRoot.mirrorBatId(), network, crypto, l -> {}, context.getTransactionService(), f -> Futures.of(false)).join();
         checkFileContents(data, context.getUserRoot().join().getDescendentByPath(filename, crypto.hasher, context.network).join().get(), context);
 
         String file2name = "file2.bin";
         byte[] data2 = randomData(6*1024*1024);
-        userRootCopy.uploadFileJS(file2name, new AsyncReader.ArrayBacked(data2), 0,data2.length, false, false,
+        userRootCopy.uploadFileJS(file2name, new AsyncReader.ArrayBacked(data2), 0,data2.length, false,
                 userRootCopy.mirrorBatId(), network, crypto, l -> {}, context.getTransactionService(), f -> Futures.of(false)).join();
         checkFileContents(data2, context.getUserRoot().join().getDescendentByPath(file2name, crypto.hasher, context.network).join().get(), context);
     }
@@ -922,11 +921,11 @@ public abstract class UserTests {
 
         TransactionService transactions = context.getTransactionService();
         try {
-            userRoot.uploadFileJS(filename, throwingReader, 0, data.length, false, false,
+            userRoot.uploadFileJS(filename, throwingReader, 0, data.length, false,
                     userRoot.mirrorBatId(), context.network, context.crypto, l -> {}, transactions, f -> Futures.of(false)).join();
         } catch (Exception e) {}
 
-        userRoot.uploadFileJS(filename, AsyncReader.build(data), 0, data.length, false, false,
+        userRoot.uploadFileJS(filename, AsyncReader.build(data), 0, data.length, false,
                 userRoot.mirrorBatId(), context.network, context.crypto, l -> {}, transactions, f -> Futures.of(true)).join();
     }
 
@@ -1370,7 +1369,7 @@ public abstract class UserTests {
 
         byte[] newData = "Some dataaa".getBytes();
         dirThroughLink.get().uploadFileJS("anoterfile", AsyncReader.build(newData), 0, newData.length,
-                false, false, dirThroughLink.get().mirrorBatId(), linkContext.network, linkContext.crypto, x -> {}, null, f -> Futures.of(false)).join();
+                false, dirThroughLink.get().mirrorBatId(), linkContext.network, linkContext.crypto, x -> {}, null, f -> Futures.of(false)).join();
     }
 
     @Test

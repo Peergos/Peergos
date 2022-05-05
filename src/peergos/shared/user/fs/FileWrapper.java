@@ -558,7 +558,6 @@ public class FileWrapper {
                                                        int lengthHi,
                                                        int lengthLow,
                                                        boolean overwriteExisting,
-                                                       boolean truncateExisting,
                                                        Optional<BatId> mirrorBat,
                                                        NetworkAccess network,
                                                        Crypto crypto,

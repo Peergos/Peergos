@@ -113,7 +113,7 @@ public class RamUserTests extends UserTests {
             userRoot.uploadSubtree(Stream.of(dirUploads), context.mirrorBatId(), network, crypto, txns, f -> Futures.of(false), () -> true).join();
         } catch (Exception e) {}
         try {
-            context.getUserRoot().join().uploadFileJS("anotherfile", thrower, 0, size, false, false,
+            context.getUserRoot().join().uploadFileJS("anotherfile", thrower, 0, size, false,
                     context.mirrorBatId(), network, crypto, x -> {}, txns, f -> Futures.of(false)).join();
         } catch (Exception e) {}
         long usageAfterFail = context.getSpaceUsage().join();
