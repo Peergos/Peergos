@@ -576,7 +576,7 @@ public class FileWrapper {
                                                                                               Committer c,
                                                                                               NetworkAccess network,
                                                                                               Crypto crypto) {
-        RelativeCapability fromParent = new RelativeCapability(Optional.empty(), txn.getFirstLocation().getMapKey(), txn.firstBat, txn.baseKey, Optional.empty());
+        RelativeCapability fromParent = writableFilePointer().relativise(txn.writeCap());
         FileProperties props = txn.props;
         // first find how many chunks were already uploaded, then seek reader to that offset and continue
         return findFirstAbsentChunkIndex(0, txn.streamSecret(), txn.getFirstLocation(), s, network, crypto)
@@ -792,7 +792,8 @@ public class FileWrapper {
                             // (nothing to resume or cleanup later in case of failure)
                             if (f.length <= Chunk.MAX_SIZE || transactions == null) // small files or writable public links
                                 return parent.uploadFileSection(p.left, c, f.filename, f.fileData, Optional.empty(), false, 0, f.length,
-                                                Optional.empty(), Optional.empty(), f.skipExisting, f.overwriteExisting, true, network.disableCommits(), crypto, f.monitor,
+                                                Optional.empty(), Optional.empty(), Optional.empty(), f.skipExisting,
+                                                f.overwriteExisting, true, network.disableCommits(), crypto, f.monitor,
                                                 crypto.random.randomBytes(32), Optional.empty(), Optional.of(Bat.random(crypto.random)), mirrorBat)
                                         .thenApply(pair -> new Pair<>(pair.left, Stream.concat(p.right.stream(), pair.right.stream()).collect(Collectors.toList())))
                                         .thenCompose(r -> {
@@ -810,7 +811,7 @@ public class FileWrapper {
                                         now, now, false, Optional.empty(), Optional.of(crypto.random.randomBytes(32)));
                                 return Transaction.buildFileUploadTransaction(toParent.resolve(f.filename).toString(), f.length,
                                         props, props.streamSecret.get(), SymmetricKey.random(), SymmetricKey.random(),
-                                        parent.signingPair(), new Location(parent.owner(), parent.writer(),
+                                        SymmetricKey.random(), parent.signingPair(), new Location(parent.owner(), parent.writer(),
                                                 crypto.random.randomBytes(32)), Optional.of(Bat.random(crypto.random)), crypto.hasher);
                             }).thenCompose(txn -> transactions.open(p.left, c, txn)
                                             .thenCompose(r -> {
@@ -819,7 +820,12 @@ public class FileWrapper {
                                                             .thenCompose(resume -> {
                                                                 if (resume) {
                                                                     toClose.add(r.b());
-                                                                    return parent.resumeUpload(r.b(), f.fileData, f.monitor, p.left, c, network, crypto);
+                                                                    return parent.resumeUpload(r.b(), f.fileData, f.monitor, p.left, c, network, crypto)
+                                                                            .thenCompose(res -> f.fileData.reset().thenCompose(resetAgain ->
+                                                                                            parent.generateThumbnailAndUpdate(res.left, c, r.b().writeCap(), f.filename, resetAgain,
+                                                                                                    network, false, r.b().props.mimeType,
+                                                                                                    f.length, r.b().startTime(), r.b().startTime(), Optional.of(r.b().streamSecret())))
+                                                                                    .thenApply(s -> new Pair<>(s, res.right)));
                                                                 }
                                                                 return transactions.close(p.left, c, r.b())
                                                                         .thenCompose(s2 -> transactions.open(s2, c, txn))
@@ -828,7 +834,7 @@ public class FileWrapper {
                                                                                 throw new IllegalStateException("Error uploading file - concurrent upload of same file?");
                                                                             toClose.add(txn);
                                                                             return f.fileData.reset().thenCompose(reset -> parent.uploadFileSection(r2.a(), c, f.filename, reset, Optional.empty(),
-                                                                                    false, 0, f.length, Optional.of(txn.baseKey), Optional.of(txn.dataKey),
+                                                                                    false, 0, f.length, Optional.of(txn.baseKey), Optional.of(txn.dataKey), Optional.of(txn.writeKey),
                                                                                     f.skipExisting, f.overwriteExisting, true,
                                                                                     network, crypto, f.monitor, txn.firstMapKey(),
                                                                                     Optional.of(txn.streamSecret()), txn.firstBat, mirrorBat));
@@ -836,7 +842,7 @@ public class FileWrapper {
                                                             }).thenApply(pair -> new Pair<>(pair.left, Stream.concat(p.right.stream(), pair.right.stream()).collect(Collectors.toList())));
                                                 toClose.add(txn);
                                                 return f.fileData.reset().thenCompose(reset -> parent.uploadFileSection(r.a(), c, f.filename, f.fileData, Optional.empty(), false,
-                                                                0, f.length, Optional.of(txn.baseKey), Optional.of(txn.dataKey), f.skipExisting, f.overwriteExisting, true,
+                                                                0, f.length, Optional.of(txn.baseKey), Optional.of(txn.dataKey), Optional.of(txn.writeKey),f.skipExisting, f.overwriteExisting, true,
                                                                 network, crypto, f.monitor, txn.firstMapKey(), Optional.of(txn.streamSecret()), txn.firstBat, mirrorBat))
                                                         .thenApply(pair -> new Pair<>(pair.left, Stream.concat(p.right.stream(), pair.right.stream()).collect(Collectors.toList())));
                                             })
@@ -1102,7 +1108,7 @@ public class FileWrapper {
                                                          Optional<Bat> firstBat,
                                                          Optional<BatId> requestedMirrorBat) {
         return uploadFileSection(initialVersion, committer, filename, fileData, Optional.empty(), isHidden, startIndex, endIndex,
-                baseKey, Optional.empty(), skipExisting, overwriteExisting, truncateExisting, network, crypto, monitor, firstChunkMapKey, streamSecret, firstBat, requestedMirrorBat)
+                baseKey, Optional.empty(), Optional.empty(), skipExisting, overwriteExisting, truncateExisting, network, crypto, monitor, firstChunkMapKey, streamSecret, firstBat, requestedMirrorBat)
                 .thenCompose(p -> getUpdated(p.left, network)
                         .thenCompose(latest -> p.right.isEmpty() ?
                                 Futures.of(p.left) :
@@ -1120,6 +1126,7 @@ public class FileWrapper {
             long endIndex,
             Optional<SymmetricKey> requestedBaseKey,
             Optional<SymmetricKey> requestedDataKey,
+            Optional<SymmetricKey> requestedWriteKey,
             boolean skipExisting,
             boolean overwriteExisting,
             boolean truncateExisting,
@@ -1182,7 +1189,7 @@ public class FileWrapper {
                                                 // TODO if startIndex > 0 prepend with a zero section
                                                 throw new IllegalStateException("Unimplemented!");
                                             }
-                                            SymmetricKey fileWriteKey = SymmetricKey.random();
+                                            SymmetricKey fileWriteKey = requestedWriteKey.orElseGet(SymmetricKey::random);
                                             SymmetricKey fileKey = requestedBaseKey.orElseGet(SymmetricKey::random);
                                             SymmetricKey dataKey = requestedDataKey.orElseGet(SymmetricKey::random);
                                             SymmetricKey rootRKey = latest.pointer.capability.rBaseKey;
@@ -1678,7 +1685,7 @@ public class FileWrapper {
                         getInputStream(snapshot.get(writer()).props, network, crypto, x -> {})
                                 .thenCompose(stream -> target.uploadFileSection(snapshot, committer,
                                                 getName(), stream, existingThumbnail, false, 0, getSize(),
-                                                Optional.empty(), Optional.empty(), false, false, false, network, crypto, x -> {},
+                                                Optional.empty(), Optional.empty(), Optional.empty(), false, false, false, network, crypto, x -> {},
                                                 crypto.random.randomBytes(32), Optional.empty(),
                                                 Optional.of(Bat.random(crypto.random)), target.mirrorBatId())
                                         .thenCompose(p -> p.right.isEmpty() ?

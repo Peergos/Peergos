@@ -45,12 +45,13 @@ public interface Transaction extends Cborable {
                                                                                byte[] streamSecret,
                                                                                SymmetricKey baseKey,
                                                                                SymmetricKey dataKey,
+                                                                               SymmetricKey writeKey,
                                                                                SigningPrivateKeyAndPublicHash writer,
                                                                                Location firstChunkLocation,
                                                                                Optional<Bat> firstBat,
                                                                                Hasher h) {
         return h.hash(path.getBytes(), true)
                 .thenApply(cid -> new FileUploadTransaction(System.currentTimeMillis(), path, cid.toString(), props, writer,
-                        firstChunkLocation, firstBat, fileSize, baseKey, dataKey, streamSecret));
+                        firstChunkLocation, firstBat, fileSize, baseKey, dataKey, writeKey, streamSecret));
     }
 }

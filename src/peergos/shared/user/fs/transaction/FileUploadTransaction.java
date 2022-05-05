@@ -13,6 +13,7 @@ import peergos.shared.user.fs.*;
 import peergos.shared.util.*;
 
 import java.nio.file.*;
+import java.time.*;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.stream.*;
@@ -25,7 +26,7 @@ public class FileUploadTransaction implements Transaction {
     private final Location firstChunk;
     public final FileProperties props;
     public final Optional<Bat> firstBat;
-    public final SymmetricKey baseKey, dataKey;
+    public final SymmetricKey baseKey, dataKey, writeKey;
     private final long size;
     private final byte[] streamSecret;
 
@@ -39,6 +40,7 @@ public class FileUploadTransaction implements Transaction {
                                  long size,
                                  SymmetricKey baseKey,
                                  SymmetricKey dataKey,
+                                 SymmetricKey writeKey,
                                  byte[] streamSecret) {
         this.startTimeEpochMillis = startTimeEpochMillis;
         this.path = path;
@@ -50,6 +52,7 @@ public class FileUploadTransaction implements Transaction {
         this.size = size;
         this.baseKey = baseKey;
         this.dataKey = dataKey;
+        this.writeKey = writeKey;
         this.streamSecret = streamSecret;
         this.owner = firstChunk.owner;
     }
@@ -109,6 +112,14 @@ public class FileUploadTransaction implements Transaction {
         return startTimeEpochMillis;
     }
 
+    public LocalDateTime startTime() {
+        return LocalDateTime.ofEpochSecond(startTimeEpochMillis / 1000, (int)(startTimeEpochMillis % 1000)* 1_0000_000, ZoneOffset.UTC);
+    }
+
+    public WritableAbsoluteCapability writeCap() {
+        return new WritableAbsoluteCapability(owner, writer.publicKeyHash, firstMapKey(), firstBat, baseKey, writeKey);
+    }
+
     @Override
     public CborObject toCbor() {
         Map<String, Cborable> map = new HashMap<>();
@@ -119,6 +130,7 @@ public class FileUploadTransaction implements Transaction {
         map.put("writer", writer);
         map.put("baseKey", baseKey);
         map.put("dataKey", dataKey);
+        map.put("writeKey", writeKey);
         map.put("props", props);
         firstBat.ifPresent(b -> map.put("firstBat", b));
         map.put("mapKey", new CborObject.CborByteArray(firstChunk.getMapKey()));
@@ -156,6 +168,7 @@ public class FileUploadTransaction implements Transaction {
                     size,
                     null,
                     null,
+                    null,
                     streamSecrets);
 
         return new FileUploadTransaction(
@@ -169,6 +182,7 @@ public class FileUploadTransaction implements Transaction {
                 size,
                 map.getObject("baseKey", SymmetricKey::fromCbor),
                 map.getObject("dataKey", SymmetricKey::fromCbor),
+                map.getObject("writeKey", SymmetricKey::fromCbor),
                 streamSecrets);
     }
 }
