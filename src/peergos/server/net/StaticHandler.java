@@ -125,6 +125,16 @@ public abstract class StaticHandler implements HttpHandler
                         "img-src 'self' " + this.host + " data: blob:;" +
                         "object-src 'none';"
                 );
+
+            // Enable COEP, CORP, COOP
+            /*
+            httpExchange.getResponseHeaders().set("Cross-Origin-Embedder-Policy", "require-corp");
+            httpExchange.getResponseHeaders().set("Cross-Origin-Resource-Policy", "same-origin");
+            httpExchange.getResponseHeaders().set("Cross-Origin-Opener-Policy", "same-origin");
+             */
+            // Request same site, cross origin isolation
+            httpExchange.getResponseHeaders().set("Origin-Agent-Cluster", "?1");
+
             // Don't let anyone to load main Peergos site in an iframe (legacy header)
             if (!isSubdomain)
                 httpExchange.getResponseHeaders().set("x-frame-options", "sameorigin");
