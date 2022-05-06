@@ -34,6 +34,7 @@ import java.util.stream.*;
  *
  */
 public class FileWrapper {
+    public static final long THUMBNAIL_PROGRESS_OFFSET = 20*1024;
 	private static final Logger LOG = Logger.getGlobal();
 
     private final static int THUMBNAIL_SIZE = 400;
@@ -824,7 +825,7 @@ public class FileWrapper {
                                                                             .thenCompose(res -> f.fileData.reset().thenCompose(resetAgain ->
                                                                                             parent.generateThumbnailAndUpdate(res.left, c, r.b().writeCap(), f.filename, resetAgain,
                                                                                                     network, false, r.b().props.mimeType,
-                                                                                                    f.length, r.b().startTime(), r.b().startTime(), Optional.of(r.b().streamSecret())))
+                                                                                                    f.length, r.b().startTime(), r.b().startTime(), Optional.of(r.b().streamSecret()), f.monitor))
                                                                                     .thenApply(s -> new Pair<>(s, res.right)));
                                                                 }
                                                                 return transactions.close(p.left, c, r.b())
@@ -1223,7 +1224,7 @@ public class FileWrapper {
                                                                 .thenCompose(cwd -> fileData.reset().thenCompose(resetAgain ->
                                                                         generateThumbnailAndUpdate(cwd, committer, fileWriteCap, filename, resetAgain,
                                                                                 network, isHidden, mimeType,
-                                                                                endIndex, timestamp, timestamp, actualStreamSecret)))
+                                                                                endIndex, timestamp, timestamp, actualStreamSecret, monitor)))
                                                                 .thenApply(s -> new Pair<>(s, Optional.of(new NamedRelativeCapability(filename, writableFilePointer().relativise(fileWriteCap)))));
                                                     }));
                                         })
@@ -1244,15 +1245,17 @@ public class FileWrapper {
         ).thenApply(p -> p.right);
     }
     
-    private CompletableFuture<Snapshot> recalculateThumbnail(Snapshot snapshot, Committer committer, String filename, AsyncReader fileData
-             , boolean isHidden, long fileSize, LocalDateTime createdDateTime, NetworkAccess network, WritableAbsoluteCapability fileWriteCap, Optional<byte[]> streamSecret
+    private CompletableFuture<Snapshot> recalculateThumbnail(Snapshot snapshot, Committer committer, String filename,
+                                                             AsyncReader fileData, boolean isHidden, long fileSize,
+                                                             LocalDateTime createdDateTime, NetworkAccess network,
+                                                             WritableAbsoluteCapability fileWriteCap, Optional<byte[]> streamSecret
     ) {
         return fileData.reset()
                 .thenCompose(fileData2 -> calculateMimeType(fileData2, fileSize, filename)
                         .thenCompose(mimeType -> fileData.reset()
                                 .thenCompose(resetAgain ->
                                     generateThumbnailAndUpdate(snapshot, committer, fileWriteCap, filename, resetAgain,
-                                            network, isHidden, mimeType, fileSize, LocalDateTime.now(), createdDateTime, streamSecret))));
+                                            network, isHidden, mimeType, fileSize, LocalDateTime.now(), createdDateTime, streamSecret, x -> {}))));
     }
 
     private CompletableFuture<Snapshot> generateThumbnailAndUpdate(Snapshot base,
@@ -1266,7 +1269,8 @@ public class FileWrapper {
                                                                    long fileSize,
                                                                    LocalDateTime updatedDateTime,
                                                                    LocalDateTime createdDateTime,
-                                                                   Optional<byte[]> streamSecret) {
+                                                                   Optional<byte[]> streamSecret,
+                                                                   ProgressConsumer<Long> monitor) {
         return network.getFile(base, cap, getChildsEntryWriter(), ownername).thenCompose(fileOpt -> {
             if (fileOpt.get().props.thumbnail.isEmpty()) {
                 return generateThumbnail(network, fileData, (int) Math.min(fileSize, Integer.MAX_VALUE), fileName, mimeType)
@@ -1281,6 +1285,9 @@ public class FileWrapper {
             } else {
                 return Futures.of(base);
             }
+        }).thenApply(s -> {
+            monitor.accept(THUMBNAIL_PROGRESS_OFFSET);
+            return s;
         });
     }
 
