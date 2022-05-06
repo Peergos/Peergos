@@ -34,7 +34,7 @@ import java.util.concurrent.*;
 public class UserService {
 	private static final Logger LOG = Logging.LOG();
 
-    public static final Version CURRENT_VERSION = Version.parse("0.9.1");
+    public static final Version CURRENT_VERSION = Version.parse("0.9.2");
     public static final String UI_URL = "/";
 
     private static void initTLS() {
