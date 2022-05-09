@@ -272,16 +272,19 @@ public class CLI implements Runnable {
 
         Path remotePath = resolvedRemotePath(cmd.firstArgument()).toAbsolutePath().normalize();
 
-        Stat stat = null;
+        Stat stat;
         try {
             stat = peergosFileSystem.stat(remotePath);
         } catch (Exception ex) {
             throw new IllegalStateException("Could not find remote specified remote path '" + remotePath + "'", ex);
         }
 
-        // TODO
-        if (stat.fileProperties().isDirectory)
-            throw new IllegalStateException("Cannot remove directory '" + remotePath + "': directory removal not yet supported");
+        if (stat.fileProperties().isDirectory) {
+            System.out.println("Delete directory and all contents of " + remotePath + " (Y/N)");
+            String res = System.console().readLine().toLowerCase();
+            if (! res.equals("y"))
+                return "Aborting delete";
+        }
 
         peergosFileSystem.delete(remotePath);
         return "Deleted " + remotePath;

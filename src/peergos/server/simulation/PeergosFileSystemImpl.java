@@ -1,7 +1,6 @@
 package peergos.server.simulation;
 
 import peergos.shared.social.FollowRequestWithCipherText;
-import peergos.shared.storage.auth.*;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
 import peergos.shared.user.fs.transaction.*;
@@ -36,7 +35,7 @@ public class PeergosFileSystemImpl implements FileSystem {
         return res.get();
     }
 
-    private FileWrapper getDirectory(Path path) {
+    private FileWrapper getParent(Path path) {
         return getPath(path.getParent());
     }
 
@@ -51,7 +50,7 @@ public class PeergosFileSystemImpl implements FileSystem {
 
     @Override
     public void write(Path path, byte[] data, Consumer<Long> progressConsumer) {
-        FileWrapper directory = getDirectory(path);
+        FileWrapper directory = getParent(path);
         AsyncReader resetableFileInputStream = new AsyncReader.ArrayBacked(data);
         String fileName = path.getFileName().toString();
         ProgressConsumer<Long> pc  = l -> progressConsumer.accept(l);
@@ -74,7 +73,7 @@ public class PeergosFileSystemImpl implements FileSystem {
 
     @Override
     public void delete(Path path) {
-        FileWrapper directory = getDirectory(path);
+        FileWrapper directory = getParent(path);
         FileWrapper updatedParent = getPath(path).remove(directory, path, userContext).join();
     }
 
@@ -145,7 +144,7 @@ public class PeergosFileSystemImpl implements FileSystem {
 
     @Override
     public void mkdir(Path path) {
-        getDirectory(path).mkdir(path.getFileName().toString(),
+        getParent(path).mkdir(path.getFileName().toString(),
                 userContext.network,
                 false,
                 userContext.mirrorBatId(),
