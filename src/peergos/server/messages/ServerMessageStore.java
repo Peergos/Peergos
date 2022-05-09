@@ -11,6 +11,7 @@ import peergos.shared.user.*;
 import peergos.shared.util.*;
 
 import java.sql.*;
+import java.time.*;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.function.*;
@@ -21,6 +22,7 @@ public class ServerMessageStore implements ServerMessager {
     private static final Logger LOG = Logging.LOG();
 
     private static final String SELECT = "SELECT id, type, sent, body, priorid, dismissed FROM messages WHERE username = ?;";
+    private static final String SELECT_AFTER = "SELECT username, id, type, sent, body, priorid, dismissed FROM messages WHERE sent >= ?;";
     private static final String ADD = "INSERT INTO messages (username, sent, type, body, priorid) VALUES(?, ?, ?, ?, ?);";
     private static final String DISMISS = "UPDATE messages SET dismissed = true WHERE id = ? AND username = ?;";
     private static final String COUNT = "SELECT COUNT (username) FROM messages where username = ? AND sent > ?;";
@@ -102,13 +104,35 @@ public class ServerMessageStore implements ServerMessager {
         return Futures.of(true);
     }
 
+    public List<Pair<String, ServerMessage>> getMessagesAfter(LocalDateTime after) {
+        try (Connection conn = getConnection();
+             PreparedStatement select = conn.prepareStatement(SELECT_AFTER)) {
+            select.clearParameters();
+            select.setLong(1, after.toEpochSecond(ZoneOffset.UTC)* 1_000);
+            List<Pair<String, ServerMessage>> msgs = new ArrayList<>();
+            ResultSet res = select.executeQuery();
+            while (res.next()) {
+                String username = res.getString(1);
+                boolean dismissed = res.getBoolean(7);
+                long priorIdRaw = res.getLong(6);
+                Optional<Long> priorId = priorIdRaw == -1L ? Optional.empty() : Optional.of(priorIdRaw);
+                msgs.add(new Pair<>(username, new ServerMessage(res.getLong(2), ServerMessage.Type.byValue(res.getInt(3)),
+                        res.getLong(4), res.getString(5), priorId, dismissed)));
+            }
+            return msgs;
+        } catch (SQLException sqe) {
+            LOG.log(Level.WARNING, sqe.getMessage(), sqe);
+            throw new IllegalStateException(sqe);
+        }
+    }
+
     public List<ServerMessage> getMessages(String username) {
         try (Connection conn = getConnection();
-             PreparedStatement insert = conn.prepareStatement(SELECT)) {
-            insert.clearParameters();
-            insert.setString(1, username);
+             PreparedStatement select = conn.prepareStatement(SELECT)) {
+            select.clearParameters();
+            select.setString(1, username);
             List<ServerMessage> msgs = new ArrayList<>();
-            ResultSet res = insert.executeQuery();
+            ResultSet res = select.executeQuery();
             while (res.next()) {
                 boolean dismissed = res.getBoolean(6);
                 long priorIdRaw = res.getLong(5);

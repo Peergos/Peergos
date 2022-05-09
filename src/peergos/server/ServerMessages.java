@@ -118,10 +118,23 @@ public class ServerMessages extends Builder {
     }
 
     public static final Command<Boolean> NEW = new Command<>("new",
-            "Show new messages from users of this server",
+            "Show new or recent messages from users of this server",
             a -> {
                 ServerMessageStore store = new ServerMessageStore(getDBConnector(a, "server-messages-sql-file"),
                         getSqlCommands(a), null, null);
+
+                if (a.hasArg("after")) {
+                    List<Pair<String, ServerMessage>> after = store.getMessagesAfter(LocalDate.parse(a.getArg("after")).atStartOfDay());
+                    for (Pair<String, ServerMessage> p : after) {
+                        ServerMessage msg = p.right;
+                        System.out.println("==================================================");
+                        System.out.println("User: " + p.left);
+                        System.out.println(msg.summary());
+                        System.out.println(msg.contents);
+                    }
+                    return true;
+                }
+
                 QuotaAdmin quotas = buildQuotaStore(a);
 
                 List<String> usernames = quotas.getLocalUsernames();
@@ -144,6 +157,7 @@ public class ServerMessages extends Builder {
                 return true;
             },
             Arrays.asList(
+                    new Command.Arg("after", "The date after which to show messages from (YYYY-MM-DD)", false),
                     new Command.Arg("server-messages-sql-file", "The filename for the server messages datastore", true, "server-messages.sql")
             )
     );
