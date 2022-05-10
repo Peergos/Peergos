@@ -127,11 +127,10 @@ public abstract class StaticHandler implements HttpHandler
                 );
 
             // Enable COEP, CORP, COOP
-            /*
             httpExchange.getResponseHeaders().set("Cross-Origin-Embedder-Policy", "require-corp");
-            httpExchange.getResponseHeaders().set("Cross-Origin-Resource-Policy", "same-origin");
+            httpExchange.getResponseHeaders().set("Cross-Origin-Resource-Policy", isSubdomain ? "cross-origin" : "same-origin");
             httpExchange.getResponseHeaders().set("Cross-Origin-Opener-Policy", "same-origin");
-             */
+
             // Request same site, cross origin isolation
             httpExchange.getResponseHeaders().set("Origin-Agent-Cluster", "?1");
 
