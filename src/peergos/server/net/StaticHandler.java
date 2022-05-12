@@ -34,8 +34,12 @@ public abstract class StaticHandler implements HttpHandler
         this.frameDomains = frameDomains;
         this.appsubdomains = appSubdomains;
         this.appDomains = appSubdomains.stream()
-                .collect(Collectors.toMap(s -> s + "." + host.domain + host.port.map(p -> ":" + p).orElse(""), s -> s));
+                .collect(Collectors.toMap(s -> s + domainSuffix(), s -> s));
         this.isGzip = isGzip;
+    }
+
+    private String domainSuffix() {
+        return "." + host.domain + host.port.map(p -> ":" + p).orElse("");
     }
 
     public abstract Asset getAsset(String resourcePath) throws IOException;
@@ -96,10 +100,10 @@ public abstract class StaticHandler implements HttpHandler
             }
 
             String reqHost = httpExchange.getRequestHeaders().get("Host").stream().findFirst().orElse("");
-            boolean isSubdomain = appDomains.containsKey(reqHost);
+            boolean isSubdomain = reqHost.substring(reqHost.indexOf(".")).equals(domainSuffix());
             Logging.LOG().info("Req host: " + reqHost);
-            // subdomains and only subdomains can access apps/ files
-            String app = appDomains.get(reqHost);
+            String app = appDomains.getOrDefault(reqHost, "sandbox");
+            // only allow app-specific subdomain to access app-specific assets folder, or sandbox for generated subdomains
             if (isSubdomain ^ path.startsWith("apps/" + app)) {
                 System.err.println("404 FileNotFound: " + path);
                 httpExchange.sendResponseHeaders(404, 0);

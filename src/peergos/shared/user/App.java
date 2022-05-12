@@ -1,18 +1,17 @@
 package peergos.shared.user;
 
 import jsinterop.annotations.JsMethod;
-import peergos.shared.storage.auth.*;
+import peergos.shared.crypto.hash.*;
+import peergos.shared.io.ipfs.multibase.binary.*;
 import peergos.shared.user.app.*;
 import peergos.shared.user.fs.AsyncReader;
 import peergos.shared.user.fs.FileWrapper;
 import peergos.shared.util.*;
 
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 /** This is the trusted implementation of the API that will be presented to a sandboxed application in Peergos.
  *
@@ -45,6 +44,12 @@ public class App implements StoreAppData {
 
     public static Path getDataDir(String appName, String username) {
         return PathUtil.get(username, APPS_DIR_NAME, appName, DATA_DIR_NAME);
+    }
+
+    @JsMethod
+    public static CompletableFuture<String> getAppSubdomain(String path, Hasher h) {
+        return h.bareHash(PathUtil.get(path).toString().getBytes())
+                .thenApply(m -> new Base32().encodeAsString(m.toBytes()));
     }
 
     @JsMethod
