@@ -2,7 +2,7 @@ package peergos.shared.user;
 
 import jsinterop.annotations.JsMethod;
 import peergos.shared.crypto.hash.*;
-import peergos.shared.io.ipfs.multibase.binary.*;
+import peergos.shared.io.ipfs.multibase.*;
 import peergos.shared.user.app.*;
 import peergos.shared.user.fs.AsyncReader;
 import peergos.shared.user.fs.FileWrapper;
@@ -49,7 +49,7 @@ public class App implements StoreAppData {
     @JsMethod
     public static CompletableFuture<String> getAppSubdomain(String path, Hasher h) {
         return h.bareHash(PathUtil.get(path).toString().getBytes())
-                .thenApply(m -> new Base32().encodeAsString(m.toBytes()));
+                .thenApply(m -> Multibase.encode(Multibase.Base.Base32, m.toBytes()));
     }
 
     @JsMethod
