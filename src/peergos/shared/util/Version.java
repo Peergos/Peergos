@@ -1,5 +1,8 @@
 package peergos.shared.util;
 
+import jsinterop.annotations.JsType;
+
+@JsType
 public class Version implements Comparable<Version> {
 
     public final int major, minor, patch;
