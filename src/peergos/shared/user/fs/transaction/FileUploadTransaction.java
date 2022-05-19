@@ -7,6 +7,7 @@ import peergos.shared.cbor.Cborable;
 import peergos.shared.crypto.SigningPrivateKeyAndPublicHash;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.crypto.symmetric.*;
+import peergos.shared.storage.*;
 import peergos.shared.storage.auth.*;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
@@ -82,7 +83,8 @@ public class FileUploadTransaction implements Transaction {
     }
 
     private CompletableFuture<Snapshot> clear(Snapshot version, Committer committer, NetworkAccess networkAccess, Location location) {
-        return networkAccess.deleteChunkIfPresent(version, committer, location.owner, writer, location.getMapKey());
+        return IpfsTransaction.call(owner,
+                tid -> networkAccess.deleteChunkIfPresent(version, committer, location.owner, writer, location.getMapKey(), tid), networkAccess.dhtClient);
     }
 
     public CompletableFuture<Snapshot> clear(Snapshot version, Committer committer, NetworkAccess network, Hasher h) {

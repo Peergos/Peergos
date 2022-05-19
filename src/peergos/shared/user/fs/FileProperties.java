@@ -126,7 +126,7 @@ public class FileProperties implements Cborable {
         return (int) (size >> 32);
     }
 
-    public int getNumberOfChunks() {
+    public int chunkCount() {
         return FileWrapper.getNumberOfChunks(size);
     }
 

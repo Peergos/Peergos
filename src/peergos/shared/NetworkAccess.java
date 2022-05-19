@@ -568,15 +568,14 @@ public class NetworkAccess {
                                                             Committer committer,
                                                             PublicKeyHash owner,
                                                             SigningPrivateKeyAndPublicHash writer,
-                                                            byte[] mapKey) {
+                                                            byte[] mapKey,
+                                                            TransactionId tid) {
         CommittedWriterData version = current.get(writer);
         return tree.get(version.props, owner, writer.publicKeyHash, mapKey)
                 .thenCompose(valueHash ->
                         ! valueHash.isPresent() ? CompletableFuture.completedFuture(current) :
-                                IpfsTransaction.call(owner,
-                                        tid -> tree.remove(version.props, owner, writer, mapKey, valueHash, tid)
-                                                .thenCompose(wd -> committer.commit(owner, writer, wd, version, tid)),
-                                        dhtClient))
+                                tree.remove(version.props, owner, writer, mapKey, valueHash, tid)
+                                        .thenCompose(wd -> committer.commit(owner, writer, wd, version, tid)))
                 .thenApply(committed -> current.withVersion(writer.publicKeyHash, committed.get(writer)));
     }
 

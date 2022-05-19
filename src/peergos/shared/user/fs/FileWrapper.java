@@ -1820,23 +1820,28 @@ public class FileWrapper {
                             if (! mOpt.isPresent()) {
                                 return CompletableFuture.completedFuture(current);
                             }
-                            SigningPrivateKeyAndPublicHash ourSigner = mOpt.get()
+                            CryptreeNode chunk = mOpt.get();
+                            SigningPrivateKeyAndPublicHash ourSigner = chunk
                                     .getSigner(currentCap.rBaseKey, currentCap.wBaseKey.get(), Optional.of(signer));
-                            return network.deleteChunk(current, committer, mOpt.get(), currentCap.owner,
-                                    currentCap.getMapKey(), ourSigner, tid)
-                                    .thenCompose(deletedVersion -> {
-                                        CryptreeNode chunk = mOpt.get();
-                                        Optional<byte[]> streamSecret = chunk.getProperties(chunk
-                                                .getParentKey(currentCap.rBaseKey)).streamSecret;
-                                        return chunk.getNextChunkLocation(currentCap.rBaseKey, streamSecret,
-                                                currentCap.getMapKey(), currentCap.bat, hasher).thenCompose(nextChunkMapKeyAndBat ->
-                                                deleteAllChunks(currentCap.withMapKey(nextChunkMapKeyAndBat.left, nextChunkMapKeyAndBat.right), signer, tid, hasher,
-                                                        network, deletedVersion, committer));
-                                    })
+                            FileProperties props = chunk.getProperties(chunk
+                                    .getParentKey(currentCap.rBaseKey));
+                            Optional<byte[]> streamSecret = props.streamSecret;
+
+                            boolean normalFile = ! chunk.isDirectory() && streamSecret.isPresent();
+                            return (normalFile ?
+                                    deleteFile(chunk, props, currentCap, ourSigner, tid, hasher, network, current, committer) :
+                                    network.deleteChunk(current, committer, chunk, currentCap.owner,
+                                                    currentCap.getMapKey(), ourSigner, tid)
+                                            .thenCompose(deletedVersion -> {
+                                                return chunk.getNextChunkLocation(currentCap.rBaseKey, streamSecret,
+                                                        currentCap.getMapKey(), currentCap.bat, hasher).thenCompose(nextChunkMapKeyAndBat ->
+                                                        deleteAllChunks(currentCap.withMapKey(nextChunkMapKeyAndBat.left, nextChunkMapKeyAndBat.right), signer, tid, hasher,
+                                                                network, deletedVersion, committer));
+                                            }))
                                     .thenCompose(updatedVersion -> {
-                                        if (! mOpt.get().isDirectory())
+                                        if (! chunk.isDirectory())
                                             return CompletableFuture.completedFuture(updatedVersion);
-                                        return mOpt.get().getDirectChildrenCapabilities(currentCap, updatedVersion, network).thenCompose(childCaps ->
+                                        return chunk.getDirectChildrenCapabilities(currentCap, updatedVersion, network).thenCompose(childCaps ->
                                                 Futures.reduceAll(childCaps,
                                                         updatedVersion,
                                                         (v, cap) -> deleteAllChunks((WritableAbsoluteCapability) cap.cap, signer,
@@ -1845,6 +1850,33 @@ public class FileWrapper {
                                     })
                                     .thenCompose(s -> removeSigningKey(currentCap.writer, signer, currentCap.owner, network, s, committer));
                         }));
+    }
+
+    private static CompletableFuture<Snapshot> deleteFile(CryptreeNode meta,
+                                                          FileProperties props,
+                                                          WritableAbsoluteCapability currentCap,
+                                                          SigningPrivateKeyAndPublicHash ourSigner,
+                                                          TransactionId tid,
+                                                          Hasher hasher,
+                                                          NetworkAccess network,
+                                                          Snapshot current,
+                                                          Committer c) {
+        return getAllChunkLocations(currentCap.getMapKey(), props.streamSecret.get(), props.chunkCount(), hasher)
+                .thenCompose(labels -> Futures.reduceAll(labels.stream(), current,
+                        (v, m) -> network.deleteChunkIfPresent(v, c, currentCap.owner, ourSigner, m, tid),
+                        (a,b) -> b));
+    }
+
+    private static CompletableFuture<List<byte[]>> getAllChunkLocations(byte[] first, byte[] streamSecret, int nChunks, Hasher h) {
+        List<byte[]> res = new ArrayList<>(nChunks);
+        res.add(first);
+        return Futures.reduceAll(IntStream.range(1, nChunks).mapToObj(i -> i), res,
+                (labels, i) -> FileProperties.calculateNextMapKey(streamSecret, labels.get(labels.size() - 1), Optional.empty(), h)
+                        .thenApply(next -> {
+                            labels.add(next.left);
+                            return labels;
+                        }),
+                (a, b) -> b);
     }
 
     /**
@@ -1860,10 +1892,11 @@ public class FileWrapper {
         if (! pointer.capability.isWritable())
             return Futures.errored(new IllegalStateException("Cannot delete file without write access to it"));
 
-        BufferedNetworkAccess buffered = BufferedNetworkAccess.build(network, 5 * 1024 * 1024, owner(), () -> true, network.hasher);
+        BufferedNetworkAccess buffered = BufferedNetworkAccess.build(network, 50 * 1024 * 1024, owner(), () -> true, network.hasher);
 
         boolean writableParent = parent.isWritable();
         parent.setModified();
+        buffered.disableCommits();
         return buffered.synchronizer.applyComplexUpdate(owner(), signingPair(),
                 (version, c) -> {
                     Committer condenser = buffered.buildCommitter(c);
