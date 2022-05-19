@@ -1862,9 +1862,7 @@ public class FileWrapper {
                                                           Snapshot current,
                                                           Committer c) {
         return getAllChunkLocations(currentCap.getMapKey(), props.streamSecret.get(), props.chunkCount(), hasher)
-                .thenCompose(labels -> Futures.reduceAll(labels.stream(), current,
-                        (v, m) -> network.deleteChunkIfPresent(v, c, currentCap.owner, ourSigner, m, tid),
-                        (a,b) -> b));
+                .thenCompose(labels -> network.deleteAllChunksIfPresent(current, c, currentCap.owner, ourSigner, labels, tid));
     }
 
     private static CompletableFuture<List<byte[]>> getAllChunkLocations(byte[] first, byte[] streamSecret, int nChunks, Hasher h) {

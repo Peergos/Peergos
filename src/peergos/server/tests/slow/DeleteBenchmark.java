@@ -81,8 +81,9 @@ public class DeleteBenchmark {
         System.err.printf("DELETE("+names.size()+") duration: %d mS\n", duration);
     }
 
-    // DELETE_FILE(200) duration: 7445 mS
-    // DELETE_FILE(200) duration: 3058 mS
+    // DELETE_FILE(200) duration: 7445 mS old
+    // DELETE_FILE(200) duration: 3058 mS new
+    // DELETE_FILE(200) duration: 4058 mS parallel new
     @Test
     public void deleteLargeFile() throws Exception {
         String username = generateUsername();
