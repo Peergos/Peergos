@@ -524,7 +524,7 @@ public class FileWrapper {
                                         return CompletableFuture.completedFuture(snapshot);
                                     return IpfsTransaction.call(owner(), tid ->
                                                     deleteAllChunks(writableFilePointer().withMapKey(endMapKey.left, endMapKey.right),
-                                                            signingPair(), tid, crypto.hasher, network, snapshot, committer),
+                                                            signingPair(), false, tid, crypto.hasher, network, snapshot, committer),
                                             network.dhtClient);
                                 }).thenCompose(deleted -> pointer.fileAccess.updateProperties(deleted, committer, writableFilePointer(),
                                         entryWriter, props.withSize(startOfLastChunk), network).thenCompose(resized ->
@@ -1748,7 +1748,7 @@ public class FileWrapper {
                                         parent.signingPair(),
                                         getPointer(),
                                         newRetrievedCapability, network, random, hasher))
-                        .thenCompose(updatedParentVersion -> deleteAllChunks(cap, signingPair(), tid, hasher, network,
+                        .thenCompose(updatedParentVersion -> deleteAllChunks(cap, signingPair(), true, tid, hasher, network,
                                 updatedParentVersion, committer)),
                 network.dhtClient)
         ).thenCompose(finalVersion -> parent.getUpdated(finalVersion, network)
@@ -1809,6 +1809,7 @@ public class FileWrapper {
 
     public static CompletableFuture<Snapshot> deleteAllChunks(WritableAbsoluteCapability currentCap,
                                                               SigningPrivateKeyAndPublicHash signer,
+                                                              boolean isFirstChunk,
                                                               TransactionId tid,
                                                               Hasher hasher,
                                                               NetworkAccess network,
@@ -1827,7 +1828,7 @@ public class FileWrapper {
                                     .getParentKey(currentCap.rBaseKey));
                             Optional<byte[]> streamSecret = props.streamSecret;
 
-                            boolean normalFile = ! chunk.isDirectory() && streamSecret.isPresent();
+                            boolean normalFile = ! chunk.isDirectory() && streamSecret.isPresent() && isFirstChunk;
                             return (normalFile ?
                                     deleteFile(chunk, props, currentCap, ourSigner, tid, hasher, network, current, committer) :
                                     network.deleteChunk(current, committer, chunk, currentCap.owner,
@@ -1835,7 +1836,7 @@ public class FileWrapper {
                                             .thenCompose(deletedVersion -> {
                                                 return chunk.getNextChunkLocation(currentCap.rBaseKey, streamSecret,
                                                         currentCap.getMapKey(), currentCap.bat, hasher).thenCompose(nextChunkMapKeyAndBat ->
-                                                        deleteAllChunks(currentCap.withMapKey(nextChunkMapKeyAndBat.left, nextChunkMapKeyAndBat.right), signer, tid, hasher,
+                                                        deleteAllChunks(currentCap.withMapKey(nextChunkMapKeyAndBat.left, nextChunkMapKeyAndBat.right), signer, false, tid, hasher,
                                                                 network, deletedVersion, committer));
                                             }))
                                     .thenCompose(updatedVersion -> {
@@ -1845,7 +1846,7 @@ public class FileWrapper {
                                                 Futures.reduceAll(childCaps,
                                                         updatedVersion,
                                                         (v, cap) -> deleteAllChunks((WritableAbsoluteCapability) cap.cap, signer,
-                                                                tid, hasher, network, v, committer),
+                                                                true, tid, hasher, network, v, committer),
                                                         (x, y) -> y));
                                     })
                                     .thenCompose(s -> removeSigningKey(currentCap.writer, signer, currentCap.owner, network, s, committer));
@@ -1910,7 +1911,7 @@ public class FileWrapper {
                                                     writableFilePointer(),
                                             writableParent ?
                                                     parent.signingPair() :
-                                                    signingPair(), tid, hasher, buffered, v, condenser), buffered.dhtClient)
+                                                    signingPair(), true, tid, hasher, buffered, v, condenser), buffered.dhtClient)
                                     .thenCompose(s -> userContext.isSecretLink() ? Futures.of(s) :
                     userContext.sharedWithCache.clearSharedWith(ourPath, s, condenser, buffered)))
                             .thenCompose(res -> buffered.commit().thenApply(b -> res));
