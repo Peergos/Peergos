@@ -522,9 +522,10 @@ public class FileWrapper {
                                 return seekedOriginal.readIntoArray(lastChunk, 0, lastChunk.length).thenCompose(read -> {
                                     if (newSize <= Chunk.MAX_SIZE)
                                         return CompletableFuture.completedFuture(snapshot);
+                                    int currentChunk = (int) (newSize / Chunk.MAX_SIZE);
                                     return IpfsTransaction.call(owner(), tid ->
-                                                    deleteAllChunks(writableFilePointer().withMapKey(endMapKey.left, endMapKey.right),
-                                                            signingPair(), false, tid, crypto.hasher, network, snapshot, committer),
+                                                    deleteFileChunks(props.streamSecret.get(), props.chunkCount() - currentChunk, writableFilePointer().withMapKey(endMapKey.left, endMapKey.right),
+                                                            signingPair(), tid, crypto.hasher, network, snapshot, committer),
                                             network.dhtClient);
                                 }).thenCompose(deleted -> pointer.fileAccess.updateProperties(deleted, committer, writableFilePointer(),
                                         entryWriter, props.withSize(startOfLastChunk), network).thenCompose(resized ->
@@ -1748,7 +1749,7 @@ public class FileWrapper {
                                         parent.signingPair(),
                                         getPointer(),
                                         newRetrievedCapability, network, random, hasher))
-                        .thenCompose(updatedParentVersion -> deleteAllChunks(cap, signingPair(), true, tid, hasher, network,
+                        .thenCompose(updatedParentVersion -> deleteAllChunks(cap, signingPair(), tid, hasher, network,
                                 updatedParentVersion, committer)),
                 network.dhtClient)
         ).thenCompose(finalVersion -> parent.getUpdated(finalVersion, network)
@@ -1809,7 +1810,6 @@ public class FileWrapper {
 
     public static CompletableFuture<Snapshot> deleteAllChunks(WritableAbsoluteCapability currentCap,
                                                               SigningPrivateKeyAndPublicHash signer,
-                                                              boolean isFirstChunk,
                                                               TransactionId tid,
                                                               Hasher hasher,
                                                               NetworkAccess network,
@@ -1828,15 +1828,15 @@ public class FileWrapper {
                                     .getParentKey(currentCap.rBaseKey));
                             Optional<byte[]> streamSecret = props.streamSecret;
 
-                            boolean normalFile = ! chunk.isDirectory() && streamSecret.isPresent() && isFirstChunk;
+                            boolean normalFile = ! chunk.isDirectory() && streamSecret.isPresent();
                             return (normalFile ?
-                                    deleteFile(chunk, props, currentCap, ourSigner, tid, hasher, network, current, committer) :
+                                    deleteFileChunks(props.streamSecret.get(), props.chunkCount(), currentCap, ourSigner, tid, hasher, network, current, committer) :
                                     network.deleteChunk(current, committer, chunk, currentCap.owner,
                                                     currentCap.getMapKey(), ourSigner, tid)
                                             .thenCompose(deletedVersion -> {
                                                 return chunk.getNextChunkLocation(currentCap.rBaseKey, streamSecret,
                                                         currentCap.getMapKey(), currentCap.bat, hasher).thenCompose(nextChunkMapKeyAndBat ->
-                                                        deleteAllChunks(currentCap.withMapKey(nextChunkMapKeyAndBat.left, nextChunkMapKeyAndBat.right), signer, false, tid, hasher,
+                                                        deleteAllChunks(currentCap.withMapKey(nextChunkMapKeyAndBat.left, nextChunkMapKeyAndBat.right), signer, tid, hasher,
                                                                 network, deletedVersion, committer));
                                             }))
                                     .thenCompose(updatedVersion -> {
@@ -1846,24 +1846,24 @@ public class FileWrapper {
                                                 Futures.reduceAll(childCaps,
                                                         updatedVersion,
                                                         (v, cap) -> deleteAllChunks((WritableAbsoluteCapability) cap.cap, signer,
-                                                                true, tid, hasher, network, v, committer),
+                                                                tid, hasher, network, v, committer),
                                                         (x, y) -> y));
                                     })
                                     .thenCompose(s -> removeSigningKey(currentCap.writer, signer, currentCap.owner, network, s, committer));
                         }));
     }
 
-    private static CompletableFuture<Snapshot> deleteFile(CryptreeNode meta,
-                                                          FileProperties props,
-                                                          WritableAbsoluteCapability currentCap,
-                                                          SigningPrivateKeyAndPublicHash ourSigner,
-                                                          TransactionId tid,
-                                                          Hasher hasher,
-                                                          NetworkAccess network,
-                                                          Snapshot current,
-                                                          Committer c) {
-        return getAllChunkLocations(currentCap.getMapKey(), props.streamSecret.get(), props.chunkCount(), hasher)
-                .thenCompose(labels -> network.deleteAllChunksIfPresent(current, c, currentCap.owner, ourSigner, labels, tid));
+    private static CompletableFuture<Snapshot> deleteFileChunks(byte[] streamSecret,
+                                                                int nChunks,
+                                                                WritableAbsoluteCapability startCap,
+                                                                SigningPrivateKeyAndPublicHash ourSigner,
+                                                                TransactionId tid,
+                                                                Hasher hasher,
+                                                                NetworkAccess network,
+                                                                Snapshot current,
+                                                                Committer c) {
+        return getAllChunkLocations(startCap.getMapKey(), streamSecret, nChunks, hasher)
+                .thenCompose(labels -> network.deleteAllChunksIfPresent(current, c, startCap.owner, ourSigner, labels, tid));
     }
 
     private static CompletableFuture<List<byte[]>> getAllChunkLocations(byte[] first, byte[] streamSecret, int nChunks, Hasher h) {
@@ -1911,7 +1911,7 @@ public class FileWrapper {
                                                     writableFilePointer(),
                                             writableParent ?
                                                     parent.signingPair() :
-                                                    signingPair(), true, tid, hasher, buffered, v, condenser), buffered.dhtClient)
+                                                    signingPair(), tid, hasher, buffered, v, condenser), buffered.dhtClient)
                                     .thenCompose(s -> userContext.isSecretLink() ? Futures.of(s) :
                     userContext.sharedWithCache.clearSharedWith(ourPath, s, condenser, buffered)))
                             .thenCompose(res -> buffered.commit().thenApply(b -> res));

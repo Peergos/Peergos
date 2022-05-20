@@ -1495,7 +1495,7 @@ public class UserContext {
                                                 tid -> FileWrapper.deleteAllChunks(
                                                         file.writableFilePointer(),
                                                         file.signingPair(),
-                                                        true, tid, crypto.hasher, network, s, c), network.dhtClient))
+                                                        tid, crypto.hasher, network, s, c), network.dhtClient))
                                         .thenCompose(s -> rotateSigners ?
                                                 CryptreeNode.deAuthoriseSigner(owner, parentSigner, file.writer(),
                                                         network, s, c) :
