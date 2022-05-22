@@ -81,6 +81,31 @@ public class DeleteBenchmark {
         System.err.printf("DELETE("+names.size()+") duration: %d mS\n", duration);
     }
 
+    // DELETE_FILE(200) duration: 7445 mS old
+    // DELETE_FILE(200) duration: 3058 mS new
+    // DELETE_FILE(200) duration: 4058 mS parallel new
+    @Test
+    public void deleteLargeFile() throws Exception {
+        String username = generateUsername();
+        String password = "test01";
+        UserContext context = ensureSignedUp(username, password, network, crypto);
+        FileWrapper userRoot = context.getUserRoot().get();
+        int size = 200*1024*1024;
+        byte[] data = new byte[size];
+        random.nextBytes(data);
+
+        String filename = "file.bin";
+        userRoot.uploadFileJS(filename, AsyncReader.build(data), 0, size, false,
+                userRoot.mirrorBatId(), context.network, crypto, x -> {}, context.getTransactionService(), f -> Futures.of(false)).join();
+        Path filePath = PathUtil.get(username, filename);
+        FileWrapper file = context.getByPath(filePath).join().get();
+
+        long start = System.currentTimeMillis();
+        file.remove(context.getUserRoot().join(), filePath, context).join();
+        long duration = System.currentTimeMillis() - start;
+        System.err.printf("DELETE_FILE("+(size/1024/1024)+") duration: %d mS\n", duration);
+    }
+
     private static String randomString() {
         return UUID.randomUUID().toString();
     }

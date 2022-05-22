@@ -1,8 +1,10 @@
 package peergos.shared.storage;
 
+import peergos.shared.cbor.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.io.ipfs.multihash.*;
+import peergos.shared.storage.auth.*;
 import peergos.shared.util.*;
 
 import java.util.*;
@@ -46,6 +48,24 @@ public class CommittableStorage extends DelegatingStorage {
     @Override
     public ContentAddressedStorage directToOrigin() {
         return new CommittableStorage(target.directToOrigin());
+    }
+
+    @Override
+    public CompletableFuture<Optional<CborObject>> get(Cid hash, Optional<BatWithId> bat) {
+        for (PutArgs put : pending) {
+            if (put.expected.equals(hash))
+                return Futures.of(Optional.of(CborObject.fromByteArray(put.block)));
+        }
+        return target.get(hash, bat);
+    }
+
+    @Override
+    public CompletableFuture<Optional<byte[]>> getRaw(Cid hash, Optional<BatWithId> bat) {
+        for (PutArgs put : pending) {
+            if (put.expected.equals(hash))
+                return Futures.of(Optional.of(put.block));
+        }
+        return target.getRaw(hash, bat);
     }
 
     @Override

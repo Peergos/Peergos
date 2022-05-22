@@ -568,15 +568,35 @@ public class NetworkAccess {
                                                             Committer committer,
                                                             PublicKeyHash owner,
                                                             SigningPrivateKeyAndPublicHash writer,
-                                                            byte[] mapKey) {
+                                                            byte[] mapKey,
+                                                            TransactionId tid) {
         CommittedWriterData version = current.get(writer);
         return tree.get(version.props, owner, writer.publicKeyHash, mapKey)
                 .thenCompose(valueHash ->
                         ! valueHash.isPresent() ? CompletableFuture.completedFuture(current) :
-                                IpfsTransaction.call(owner,
-                                        tid -> tree.remove(version.props, owner, writer, mapKey, valueHash, tid)
-                                                .thenCompose(wd -> committer.commit(owner, writer, wd, version, tid)),
-                                        dhtClient))
+                                tree.remove(version.props, owner, writer, mapKey, valueHash, tid)
+                                        .thenCompose(wd -> committer.commit(owner, writer, wd, version, tid)))
+                .thenApply(committed -> current.withVersion(writer.publicKeyHash, committed.get(writer)));
+    }
+
+    public CompletableFuture<Snapshot> deleteAllChunksIfPresent(Snapshot current,
+                                                                Committer committer,
+                                                                PublicKeyHash owner,
+                                                                SigningPrivateKeyAndPublicHash writer,
+                                                                List<byte[]> mapKeys,
+                                                                TransactionId tid) {
+        CommittedWriterData version = current.get(writer);
+        List<CompletableFuture<Pair<byte[], MaybeMultihash>>> withValues = mapKeys.stream()
+                .parallel()
+                .map(mapKey -> tree.get(version.props, owner, writer.publicKeyHash, mapKey)
+                        .thenApply(valueHash -> new Pair<>(mapKey, valueHash)))
+                .collect(Collectors.toList());
+        return Futures.reduceAll(withValues, version.props,
+                        (wd, f) -> f.thenCompose(p -> p.right.isPresent() ?
+                                tree.remove(wd, owner, writer, p.left, p.right, tid) :
+                                Futures.of(wd)),
+                        (a, b) -> b)
+                .thenCompose(wd -> committer.commit(owner, writer, wd, version, tid))
                 .thenApply(committed -> current.withVersion(writer.publicKeyHash, committed.get(writer)));
     }
 
