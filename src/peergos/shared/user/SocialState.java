@@ -16,6 +16,7 @@ public class SocialState {
     public final Set<String> pendingOutgoing;
     public final Map<String, FileWrapper> followerRoots;
     public final Set<FileWrapper> followingRoots;
+    public final Set<String> blocked;
     public final Map<String, FriendAnnotation> friendAnnotations;
     public final Map<String, String> uidToGroupName, groupNameToUid;
 
@@ -24,6 +25,7 @@ public class SocialState {
                        Set<String> actualFollowers,
                        Map<String, FileWrapper> followerRoots,
                        Set<FileWrapper> followingRoots,
+                       Set<String> blocked,
                        Map<String, FriendAnnotation> friendAnnotations,
                        Map<String, String> uidToGroupName) {
         this.pendingIncoming = pendingIncoming;
@@ -36,6 +38,7 @@ public class SocialState {
         TreeSet<FileWrapper> sortedByName = new TreeSet<>((a, b) -> a.getName().compareTo(b.getName()));
         sortedByName.addAll(followingRoots);
         this.followingRoots = sortedByName;
+        this.blocked = blocked;
         this.friendAnnotations = friendAnnotations;
         this.uidToGroupName = uidToGroupName;
         this.groupNameToUid = uidToGroupName.entrySet()

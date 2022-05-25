@@ -1229,12 +1229,13 @@ public class UserContext {
                         .thenCompose(pendingOutgoing -> getFollowerRoots(pendingOutgoing.pendingOutgoingFollowRequests)
                                 .thenCompose(followerRoots -> getFriendRoots().thenCompose(
                                         followingRoots -> getFollowerNames().thenCompose(
-                                                followers -> getFriendAnnotations().thenCompose(
-                                                        annotations -> getGroupNameMappings().thenApply(
-                                                                groups -> new SocialState(pendingIncoming,
-                                                                        pendingOutgoing.pendingOutgoingFollowRequests,
-                                                                        followers, followerRoots, followingRoots,
-                                                                        annotations, groups.uidToGroupName))))))));
+                                                followers -> getBlocked().thenCompose(
+                                                        blocked -> getFriendAnnotations().thenCompose(
+                                                                annotations -> getGroupNameMappings().thenApply(
+                                                                        groups -> new SocialState(pendingIncoming,
+                                                                                pendingOutgoing.pendingOutgoingFollowRequests,
+                                                                                followers, followerRoots, followingRoots,
+                                                                                blocked, annotations, groups.uidToGroupName)))))))));
     }
 
     @JsMethod
@@ -2228,15 +2229,27 @@ public class UserContext {
                 });
     }
 
+    public CompletableFuture<Set<String>> getBlocked() {
+        return getUserRoot()
+                .thenCompose(home -> home.getChild(BLOCKED_USERNAMES_FILE, crypto.hasher, network))
+                .thenCompose(this::getBlocked);
+    }
+
+    private CompletableFuture<Set<String>> getBlocked(Optional<FileWrapper> blockedUsernamesFile) {
+        return blockedUsernamesFile.isEmpty() ?
+                Futures.of(Collections.emptySet()) :
+                blockedUsernamesFile.get().getInputStream(network, crypto, x -> {})
+                        .thenCompose(in -> Serialize.readFully(in, blockedUsernamesFile.get().getSize()))
+                        .thenApply(data -> new HashSet<>(Arrays.asList(new String(data).split("\n"))));
+    }
+
     @JsMethod
     public CompletableFuture<Boolean> unblock(String username) {
         return getUserRoot()
                 .thenCompose(home -> home.getChild(BLOCKED_USERNAMES_FILE, crypto.hasher, network)
                         .thenCompose(bopt -> bopt.isEmpty() ?
                                 Futures.of(true) :
-                                bopt.get().getInputStream(network, crypto, x -> {})
-                                        .thenCompose(in -> Serialize.readFully(in, bopt.get().getSize()))
-                                        .thenApply(data -> new HashSet<>(Arrays.asList(new String(data).split("\n"))))
+                                getBlocked(bopt)
                                         .thenCompose(all -> {
                                             byte[] updated = all.stream()
                                                     .filter(u -> !u.equals(username))
