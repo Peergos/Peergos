@@ -2225,6 +2225,10 @@ public class PeergosNetworkUtils {
 
         Optional<FileWrapper> dirForNewFriend = newFriend.getByPath(dirToShare1).join();
         Assert.assertTrue(dirForNewFriend.isPresent());
+
+        UserContext oldFriend = shareeUsers.get(1);
+        Optional<FileWrapper> dirForOldFriend = oldFriend.getByPath(dirToShare1).join();
+        Assert.assertTrue(dirForOldFriend.isPresent());
     }
 
     public static void groupSharingToFollowers(NetworkAccess network, Random random) {

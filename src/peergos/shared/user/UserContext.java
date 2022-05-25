@@ -2032,6 +2032,43 @@ public class UserContext {
                 .exceptionally(Futures::logAndThrow);
     }
 
+    private CompletableFuture<TrieNode> buildFileTree(TrieNode ourRoot,
+                                                      FileWrapper homeDir,
+                                                      Predicate<String> includeUser,
+                                                      NetworkAccess network,
+                                                      Crypto crypto) {
+        return time(() -> getFriendsEntryPoints(homeDir), "Get friend's entry points")
+                .thenCompose(friendEntries -> homeDir.getChild(CapabilityStore.CAPABILITY_CACHE_DIR, crypto.hasher, network)
+                        .thenCompose(copt -> {
+                            List<EntryPoint> friendsOnly = friendEntries.stream()
+                                    .filter(e -> includeUser.test(e.ownerName))
+                                    .collect(Collectors.toList());
+
+                            List<CompletableFuture<Optional<FriendSourcedTrieNode>>> friendNodes = friendsOnly.stream()
+                                    .parallel()
+                                    .map(e -> FriendSourcedTrieNode.build(capCache, e,
+                                            (c, o) -> addFriendGroupCap(c, o), network, crypto))
+                                    .collect(Collectors.toList());
+                            return Futures.reduceAll(friendNodes, ourRoot,
+                                    (t, e) -> e.thenApply(fromUser -> fromUser.map(userEntrie -> t.putNode(userEntrie.ownerName, userEntrie))
+                                            .orElse(t)).exceptionally(ex -> t),
+                                    (a, b) -> a);
+                        })).thenCompose(root -> getFriendsGroupCaps(homeDir)
+                        .thenApply(groups -> { // now add the groups from each friend
+                            Set<String> friendNames = root.getChildNames()
+                                    .stream()
+                                    .filter(includeUser)
+                                    .collect(Collectors.toSet());
+                            for (String friendName : friendNames) {
+                                FriendSourcedTrieNode friend = (FriendSourcedTrieNode) root.getChildNode(friendName);
+                                for (EntryPoint group : groups.left.getFriends(friendName)) {
+                                    friend.addGroup(group);
+                                }
+                            }
+                            return root;
+                        }));
+    }
+
     /**
      * @return TrieNode for root of filesystem
      */
@@ -2039,39 +2076,10 @@ public class UserContext {
                                                        String ourName,
                                                        NetworkAccess network,
                                                        Crypto crypto) {
-        // need to to retrieve all the entry points of our friends and any of their groups
+        // need to retrieve all the entry points of our friends and any of their groups
         return ourRoot.getByPath(ourName, crypto.hasher, network)
                         .thenApply(Optional::get)
-                .thenCompose(homeDir -> time(() -> getFriendsEntryPoints(homeDir), "Get friend's entry points")
-                        .thenCompose(friendEntries -> homeDir.getChild(CapabilityStore.CAPABILITY_CACHE_DIR, crypto.hasher, network)
-                                .thenCompose(copt -> {
-                                    List<EntryPoint> friendsOnly = friendEntries.stream()
-                                            .filter(e -> !e.ownerName.equals(ourName))
-                                            .collect(Collectors.toList());
-
-                                    List<CompletableFuture<Optional<FriendSourcedTrieNode>>> friendNodes = friendsOnly.stream()
-                                            .parallel()
-                                            .map(e -> FriendSourcedTrieNode.build(capCache, e,
-                                                    (c, o) -> addFriendGroupCap(c, o), network, crypto))
-                                            .collect(Collectors.toList());
-                                    return Futures.reduceAll(friendNodes, ourRoot,
-                                            (t, e) -> e.thenApply(fromUser -> fromUser.map(userEntrie -> t.putNode(userEntrie.ownerName, userEntrie))
-                                                    .orElse(t)).exceptionally(ex -> t),
-                                            (a, b) -> a);
-                                })).thenCompose(root -> getFriendsGroupCaps(homeDir)
-                                .thenApply(groups -> { // now add the groups from each friend
-                                    Set<String> friendNames = root.getChildNames()
-                                            .stream()
-                                            .filter(n -> !n.equals(ourName))
-                                            .collect(Collectors.toSet());
-                                    for (String friendName : friendNames) {
-                                        FriendSourcedTrieNode friend = (FriendSourcedTrieNode) root.getChildNode(friendName);
-                                        for (EntryPoint group : groups.left.getFriends(friendName)) {
-                                            friend.addGroup(group);
-                                        }
-                                    }
-                                    return root;
-                                })))
+                .thenCompose(homeDir -> buildFileTree(ourRoot, homeDir, n -> ! n.equals(ourName), network, crypto))
                 .exceptionally(Futures::logAndThrow);
     }
 
@@ -2218,6 +2226,33 @@ public class UserContext {
                     entrie = entrie.removeEntry("/" + friendName + "/");
                     return true;
                 });
+    }
+
+    @JsMethod
+    public CompletableFuture<Boolean> unblock(String username) {
+        return getUserRoot()
+                .thenCompose(home -> home.getChild(BLOCKED_USERNAMES_FILE, crypto.hasher, network)
+                        .thenCompose(bopt -> bopt.isEmpty() ?
+                                Futures.of(true) :
+                                bopt.get().getInputStream(network, crypto, x -> {})
+                                        .thenCompose(in -> Serialize.readFully(in, bopt.get().getSize()))
+                                        .thenApply(data -> new HashSet<>(Arrays.asList(new String(data).split("\n"))))
+                                        .thenCompose(all -> {
+                                            byte[] updated = all.stream()
+                                                    .filter(u -> !u.equals(username))
+                                                    .sorted()
+                                                    .map(u -> u + "\n")
+                                                    .collect(Collectors.joining())
+                                                    .getBytes();
+
+                                            return bopt.get().overwriteFile(AsyncReader.build(updated), updated.length, network, crypto, x -> {})
+                                                    .thenApply(x -> true);
+                                        })
+                        )).thenCompose(x -> getUserRoot()
+                        .thenCompose(home -> buildFileTree(entrie, home, n -> n.equals(username), network, crypto)).thenApply(updated -> {
+                            this.entrie = updated;
+                            return true;
+                        }));
     }
 
     public CompletableFuture<Optional<String>> getGroupUid(String groupName) {
