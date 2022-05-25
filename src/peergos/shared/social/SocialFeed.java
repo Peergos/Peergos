@@ -233,17 +233,19 @@ public class SocialFeed {
      */
     @JsMethod
     public synchronized CompletableFuture<SocialFeed> update() {
+        BufferedNetworkAccess buffered = BufferedNetworkAccess.build(network, 10 * 1024 * 1024, context.signer.publicKeyHash, () -> true, network.hasher);
         return context.getFollowingNodes()
                 .thenCompose(friends -> Futures.combineAll(friends.stream()
                         .parallel()
-                        .map(this::getFriendUpdate)
+                        .map(friend -> getFriendUpdate(friend, buffered))
                         .collect(Collectors.toList())))
-                .thenCompose(updates -> mergeUpdates(updates.stream()
+                .thenCompose(updates -> buffered.commit()
+                        .thenCompose(x -> mergeUpdates(updates.stream()
                         .flatMap(Optional::stream)
-                        .collect(Collectors.toList())));
+                        .collect(Collectors.toList()))));
     }
 
-    private CompletableFuture<Optional<Triple<String, ProcessedCaps, CapsDiff>>> getFriendUpdate(FriendSourcedTrieNode friend) {
+    private CompletableFuture<Optional<Triple<String, ProcessedCaps, CapsDiff>>> getFriendUpdate(FriendSourcedTrieNode friend, NetworkAccess network) {
         ProcessedCaps current = currentCapBytesProcessed.getOrDefault(friend.ownerName, ProcessedCaps.empty());
         return friend.updateIncludingGroups(network)
                 .thenCompose(x -> friend.getCaps(current, network))
