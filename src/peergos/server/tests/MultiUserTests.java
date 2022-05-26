@@ -1361,8 +1361,9 @@ public class MultiUserTests {
 
     @Test
     public void unfollow() {
-        UserContext u1 = PeergosNetworkUtils.ensureSignedUp(random(), random(), network, crypto);
-        UserContext u2 = PeergosNetworkUtils.ensureSignedUp(random(), random(), network, crypto);
+        String pw = "pw";
+        UserContext u1 = PeergosNetworkUtils.ensureSignedUp(random(), pw, network, crypto);
+        UserContext u2 = PeergosNetworkUtils.ensureSignedUp(random(), pw, network, crypto);
         u2.sendFollowRequest(u1.username, SymmetricKey.random()).join();
         List<FollowRequestWithCipherText> u1Requests = u1.processFollowRequests().join();
         u1.sendReplyFollowRequest(u1Requests.get(0), true, true).join();
@@ -1381,6 +1382,17 @@ public class MultiUserTests {
 
         Optional<FileWrapper> u1Tou2 = u2.getByPath("/" + u1.username).join();
         assertTrue("u2 can still see u1's root", u1Tou2.isPresent());
+
+        // now re-follow to become friends again
+        u1.sendInitialFollowRequest(u2.username).join();
+        u1.unblock(u2.username).join();
+        u2.processFollowRequests().join();
+
+        Optional<FileWrapper> u1Tou2again = u2.getByPath("/" + u1.username).join();
+        assertTrue("u2 can still see u1's root", u1Tou2again.isPresent());
+
+        Optional<FileWrapper> u2Tou1again = u1.getByPath("/" + u2.username).join();
+        assertTrue("u1 can see u2's root again", u2Tou1again.isPresent());
     }
 
     @Test
