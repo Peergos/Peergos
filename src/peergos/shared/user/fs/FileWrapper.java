@@ -626,6 +626,23 @@ public class FileWrapper {
                         .thenCompose(c -> f.getUpdated(f.version.mergeAndOverwriteWith(c.version), network)));
     }
 
+    public CompletableFuture<Snapshot> uploadOrReplaceFile(String filename,
+                                                           AsyncReader fileData,
+                                                           long length,
+                                                           boolean isHidden,
+                                                           Snapshot s,
+                                                           Committer c,
+                                                           NetworkAccess network,
+                                                           Crypto crypto,
+                                                           ProgressConsumer<Long> monitor,
+                                                           byte[] firstChunkMapKey,
+                                                           Optional<Bat> firstChunkBat,
+                                                           Optional<BatId> mirrorBat) {
+        return uploadFileSection(s, c, filename, fileData, isHidden, 0, length,
+                Optional.empty(), false, true, true, network, crypto,
+                monitor, firstChunkMapKey, Optional.empty(), firstChunkBat, mirrorBat);
+    }
+
     public CompletableFuture<FileWrapper> uploadAndReturnFile(String filename,
                                                               AsyncReader fileData,
                                                               long length,

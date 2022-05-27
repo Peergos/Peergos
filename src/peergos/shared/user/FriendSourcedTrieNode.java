@@ -19,12 +19,12 @@ public class FriendSourcedTrieNode implements TrieNode {
     private final EntryPoint sharedDir;
     private final Crypto crypto;
     private final List<EntryPoint> groups;
-    private BiFunction<CapabilityWithPath, String, CompletableFuture<Boolean>> groupAdder;
+    private GroupAdder groupAdder;
 
     public FriendSourcedTrieNode(IncomingCapCache cache,
                                  String ownerName,
                                  EntryPoint sharedDir,
-                                 BiFunction<CapabilityWithPath, String, CompletableFuture<Boolean>> groupAdder,
+                                 GroupAdder groupAdder,
                                  Crypto crypto) {
         this.cache = cache;
         this.ownerName = ownerName;
@@ -32,6 +32,10 @@ public class FriendSourcedTrieNode implements TrieNode {
         this.crypto = crypto;
         this.groups = new ArrayList<>();
         this.groupAdder = groupAdder;
+    }
+
+    public interface GroupAdder {
+        CompletableFuture<Snapshot> add(CapabilityWithPath cap, String owner, NetworkAccess network, Snapshot s, Committer c);
     }
 
     public synchronized void addGroup(EntryPoint group) {
@@ -48,7 +52,7 @@ public class FriendSourcedTrieNode implements TrieNode {
 
     public static CompletableFuture<Optional<FriendSourcedTrieNode>> build(IncomingCapCache cache,
                                                                            EntryPoint e,
-                                                                           BiFunction<CapabilityWithPath, String, CompletableFuture<Boolean>> groupAdder,
+                                                                           GroupAdder groupAdder,
                                                                            NetworkAccess network,
                                                                            Crypto crypto) {
         return Futures.of(Optional.of(new FriendSourcedTrieNode(cache, e.ownerName, e, groupAdder, crypto)));
@@ -60,9 +64,11 @@ public class FriendSourcedTrieNode implements TrieNode {
      * @param network
      * @return Any new capabilities from the friend and the previously processed size of caps in bytes
      */
-    public synchronized CompletableFuture<CapsDiff> ensureUptodate(Crypto crypto,
-                                                                   NetworkAccess network) {
-        return cache.ensureFriendUptodate(ownerName, sharedDir, groups, network);
+    public synchronized CompletableFuture<Pair<Snapshot, CapsDiff>> ensureUptodate(Snapshot s,
+                                                                                   Committer c,
+                                                                                   Crypto crypto,
+                                                                                   NetworkAccess network) {
+        return cache.ensureFriendUptodate(ownerName, sharedDir, groups, s, c, network);
     }
 
     public synchronized CompletableFuture<CapsDiff> getCaps(ProcessedCaps current,
@@ -91,20 +97,21 @@ public class FriendSourcedTrieNode implements TrieNode {
         return file.withTrieNode(new ExternalTrieNode(path, this));
     }
 
-    public CompletableFuture<Boolean> updateIncludingGroups(NetworkAccess network) {
-        return ensureUptodate(crypto, network)
-                .thenCompose(x -> {
-                    List<CapabilityWithPath> newGroups = x.getNewCaps().stream()
-                            .filter(c -> c.path.startsWith("/" + ownerName + "/" + UserContext.SHARED_DIR_NAME))
+    public CompletableFuture<Pair<Snapshot, CapsDiff>> updateIncludingGroups(Snapshot s,
+                                                                             Committer c,
+                                                                             NetworkAccess network) {
+        return ensureUptodate(s, c, crypto, network)
+                .thenCompose(p -> {
+                    List<CapabilityWithPath> newGroups = p.right.getNewCaps().stream()
+                            .filter(cap -> cap.path.startsWith("/" + ownerName + "/" + UserContext.SHARED_DIR_NAME))
                             .collect(Collectors.toList());
                     for (CapabilityWithPath groupCap : newGroups) {
                         addGroup(new EntryPoint(groupCap.cap, ownerName));
                     }
                     if (newGroups.isEmpty())
-                        return Futures.of(true);
-                    return Futures.reduceAll(newGroups, true, (b, c) -> groupAdder.apply(c, ownerName), (a, b) -> b)
-                            .thenCompose(y -> ensureUptodate(crypto, network))
-                            .thenApply(z -> true);
+                        return Futures.of(p);
+                    return Futures.reduceAll(newGroups, p.left, (b, cap) -> groupAdder.add(cap, ownerName, network, b, c), (a, b) -> b)
+                            .thenCompose(res -> ensureUptodate(res, c, crypto, network));
                 });
     }
 
@@ -117,7 +124,7 @@ public class FriendSourcedTrieNode implements TrieNode {
             return getFriendRoot(network)
                     .thenApply(opt -> opt.map(f -> f.withTrieNode(this)));
         Path file = PathUtil.get(ownerName + path);
-        return updateIncludingGroups(network)
+        return network.synchronizer.applyComplexUpdate(cache.owner(), cache.signingPair(), (v, c) -> updateIncludingGroups(v, c, network).thenApply(p -> p.left))
                 .thenCompose(y -> cache.getByPath(file, cache.getVersion(), hasher, network))
                 .thenApply(opt -> opt.map(f -> convert(f, path)));
     }
@@ -148,7 +155,7 @@ public class FriendSourcedTrieNode implements TrieNode {
                                                                         NetworkAccess network) {
         FileProperties.ensureValidPath(path);
         Path dir = PathUtil.get(ownerName + path);
-        return updateIncludingGroups(network)
+        return network.synchronizer.applyComplexUpdate(cache.owner(), cache.signingPair(), (v, c) -> updateIncludingGroups(v, c, network).thenApply(p -> p.left))
                 .thenCompose(x -> cache.getChildren(dir, cache.getVersion(), hasher, network))
                 .thenApply(children -> children.stream()
                         .map(f -> convert(f, canonicalise(path) + "/" + f.getName()))

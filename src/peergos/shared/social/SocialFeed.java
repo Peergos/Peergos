@@ -3,6 +3,7 @@ package peergos.shared.social;
 import jsinterop.annotations.*;
 import peergos.shared.*;
 import peergos.shared.cbor.*;
+import peergos.shared.crypto.hash.*;
 import peergos.shared.display.*;
 import peergos.shared.storage.auth.*;
 import peergos.shared.user.*;
@@ -233,27 +234,39 @@ public class SocialFeed {
      */
     @JsMethod
     public synchronized CompletableFuture<SocialFeed> update() {
-        BufferedNetworkAccess buffered = BufferedNetworkAccess.build(network, 10 * 1024 * 1024, context.signer.publicKeyHash, () -> true, network.hasher);
-        return context.getFollowingNodes()
-                .thenCompose(friends -> Futures.combineAll(friends.stream()
-                        .parallel()
-                        .map(friend -> getFriendUpdate(friend, buffered))
-                        .collect(Collectors.toList())))
-                .thenCompose(updates -> buffered.commit()
-                        .thenCompose(x -> mergeUpdates(updates.stream()
-                        .flatMap(Optional::stream)
-                        .collect(Collectors.toList()))));
+        PublicKeyHash owner = context.signer.publicKeyHash;
+        BufferedNetworkAccess buffered = BufferedNetworkAccess.build(network, 10 * 1024 * 1024, owner, () -> true, network.hasher);
+        return buffered.synchronizer.applyComplexComputation(owner, dataDir.signingPair(),
+                (s, c) -> {
+                    Committer condenser = buffered.buildCommitter(c);
+                    return context.getFollowingNodes()
+                            .thenCompose(friends -> Futures.reduceAll(friends.stream(), new Pair<>(s, Stream.<Update>empty()),
+                                    (p, friend) -> getFriendUpdate(friend, p.left, condenser, buffered)
+                                            .thenApply(res -> new Pair<>(res.left, Stream.concat(p.right, res.right.stream()))),
+                                    (a, b) -> b));
+                }
+        ).thenCompose(updates -> buffered.commit()
+                .thenCompose(x -> mergeUpdates(updates.right.collect(Collectors.toList()))));
     }
 
-    private CompletableFuture<Optional<Triple<String, ProcessedCaps, CapsDiff>>> getFriendUpdate(FriendSourcedTrieNode friend, NetworkAccess network) {
+    private static class Update extends Triple<String, ProcessedCaps, CapsDiff> {
+        public Update(String left, ProcessedCaps middle, CapsDiff right) {
+            super(left, middle, right);
+        }
+    }
+
+    private CompletableFuture<Pair<Snapshot, Optional<Update>>> getFriendUpdate(FriendSourcedTrieNode friend,
+                                                                                Snapshot s,
+                                                                                Committer c,
+                                                                                NetworkAccess network) {
         ProcessedCaps current = currentCapBytesProcessed.getOrDefault(friend.ownerName, ProcessedCaps.empty());
-        return friend.updateIncludingGroups(network)
-                .thenCompose(x -> friend.getCaps(current, network))
-                .thenApply(diff -> {
-                    if (diff.isEmpty())
-                        return Optional.empty();
-                    return Optional.of(new Triple<>(friend.ownerName, current, diff));
-                });
+        return friend.updateIncludingGroups(s, c, network)
+                .thenCompose(p -> friend.getCaps(current, network)
+                        .thenApply(diff -> {
+                            if (diff.isEmpty())
+                                return new Pair<>(p.left, Optional.empty());
+                            return new Pair<>(p.left, Optional.of(new Update(friend.ownerName, current, diff)));
+                        }));
     }
 
     private synchronized CompletableFuture<SocialFeed> mergeUpdates(Collection<Triple<String, ProcessedCaps, CapsDiff>> updates) {
@@ -267,18 +280,6 @@ public class SocialFeed {
                     .forEach(forFeed::add);
         }
         return addToFeed(forFeed);
-    }
-
-    private synchronized CompletableFuture<SocialFeed> updateFriend(FriendSourcedTrieNode friend, NetworkAccess network) {
-        ProcessedCaps current = currentCapBytesProcessed.getOrDefault(friend.ownerName, ProcessedCaps.empty());
-        return friend.updateIncludingGroups(network)
-                .thenCompose(x -> friend.getCaps(current, network))
-                .thenCompose(diff -> {
-                    if (diff.isEmpty())
-                        return Futures.of(this);
-
-                    return addToFriend(friend.ownerName, current, diff);
-                });
     }
 
     private CompletableFuture<List<Pair<SharedItem, FileWrapper>>> mergeInComments(List<SharedItem> shared) {

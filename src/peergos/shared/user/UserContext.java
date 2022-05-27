@@ -2048,13 +2048,13 @@ public class UserContext {
                             List<CompletableFuture<Optional<FriendSourcedTrieNode>>> friendNodes = friendsOnly.stream()
                                     .parallel()
                                     .map(e -> FriendSourcedTrieNode.build(capCache, e,
-                                            (c, o) -> addFriendGroupCap(c, o), network, crypto))
+                                            (cap, o, n, s, c) -> addFriendGroupCap(cap, o, n, s, c), network, crypto))
                                     .collect(Collectors.toList());
                             return Futures.reduceAll(friendNodes, ourRoot,
                                     (t, e) -> e.thenApply(fromUser -> fromUser.map(userEntrie -> t.putNode(userEntrie.ownerName, userEntrie))
                                             .orElse(t)).exceptionally(ex -> t),
                                     (a, b) -> a);
-                        })).thenCompose(root -> getFriendsGroupCaps(homeDir)
+                        })).thenCompose(root -> getFriendsGroupCaps(homeDir, homeDir.version, network)
                         .thenApply(groups -> { // now add the groups from each friend
                             Set<String> friendNames = root.getChildNames()
                                     .stream()
@@ -2122,30 +2122,33 @@ public class UserContext {
                 });
     }
 
-    private CompletableFuture<Pair<FriendsGroups, Optional<FileWrapper>>> getFriendsGroupCaps(FileWrapper homeDir) {
+    private CompletableFuture<Pair<FriendsGroups, Optional<FileWrapper>>> getFriendsGroupCaps(FileWrapper homeDir,
+                                                                                              Snapshot s,
+                                                                                              NetworkAccess network) {
         return homeDir.getChild(ENTRY_POINTS_FROM_FRIENDS_GROUPS_FILENAME, crypto.hasher, network)
-                .thenCompose(fopt -> fopt.map(f -> f.getInputStream(network, crypto, x -> {})
+                .thenCompose(fopt -> fopt.map(f -> f.getInputStream(s.get(f.writer()).props, network, crypto, x -> {})
                         .thenCompose(reader -> Serialize.parse(reader, f.getSize(), FriendsGroups::fromCbor))
                         .thenApply(g -> new Pair<>(g, fopt)))
                         .orElse(CompletableFuture.completedFuture(new Pair<>(FriendsGroups.empty(), Optional.empty()))));
     }
 
-    public CompletableFuture<Boolean> addFriendGroupCap(CapabilityWithPath group, String owner) {
-        return getUserRoot()
-                .thenCompose(home -> getFriendsGroupCaps(home)
+    public CompletableFuture<Snapshot> addFriendGroupCap(CapabilityWithPath group,
+                                                         String owner,
+                                                         NetworkAccess network,
+                                                         Snapshot s,
+                                                         Committer c) {
+        return entrie.getByPath("/" + username, s, crypto.hasher, network).thenApply(Optional::get)
+                .thenCompose(home -> getFriendsGroupCaps(home, s, network)
                         .thenCompose(p -> {
                             FriendsGroups updated = p.left.addGroup(group, owner);
                             byte[] raw = updated.serialize();
                             AsyncReader reader = AsyncReader.build(raw);
                             if (p.right.isPresent())
-                                return p.right.get().overwriteFile(reader, raw.length, network, crypto, x -> {});
+                                return p.right.get().overwriteFile(reader, raw.length, network, crypto, x -> {}, s, c);
 
-                            return home.uploadFileSection(ENTRY_POINTS_FROM_FRIENDS_GROUPS_FILENAME, reader, true,
-                                    0, raw.length, Optional.empty(), false, network, crypto, x -> {},
-                                    crypto.random.randomBytes(RelativeCapability.MAP_KEY_LENGTH),
-                                    Optional.empty(),
-                                    Optional.of(Bat.random(crypto.random)), mirrorBatId());
-                        })).thenApply(x -> true);
+                            return home.uploadOrReplaceFile(ENTRY_POINTS_FROM_FRIENDS_GROUPS_FILENAME, reader, raw.length, true, s, c, network, crypto, x -> {},
+                                    crypto.random.randomBytes(RelativeCapability.MAP_KEY_LENGTH), Optional.of(Bat.random(crypto.random)), mirrorBatId());
+                        }));
     }
 
     private static CompletableFuture<TrieNode> addRetrievedEntryPointToTrie(String ourName,
