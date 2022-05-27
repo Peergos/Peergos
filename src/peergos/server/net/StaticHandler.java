@@ -103,7 +103,7 @@ public abstract class StaticHandler implements HttpHandler
             boolean isSubdomain = reqHost.contains(".") && reqHost.substring(reqHost.indexOf(".")).equals(domainSuffix());
             Logging.LOG().info("Req host: " + reqHost + ", isSub: " + isSubdomain + ", path: " + path);
             String app = appDomains.getOrDefault(reqHost, "sandbox");
-            if (app.equals("sandbox")) // serve sandbox assets from sandbox sub dir for root path
+            if (isSubdomain && app.equals("sandbox")) // serve sandbox assets from sandbox sub dir for root path
                 path = "apps/sandbox" + (path.startsWith("/") ? "" : "/") + path;
             // only allow app-specific subdomain to access app-specific assets folder, or sandbox for generated subdomains
             if (isSubdomain ^ path.startsWith("apps/" + app)) {
