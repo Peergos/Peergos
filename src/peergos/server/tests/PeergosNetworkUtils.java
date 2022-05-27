@@ -1144,8 +1144,7 @@ public class PeergosNetworkUtils {
 
 
         Path fileToShare = PathUtil.get(sharer.username, folderName, filename);
-        sharer.shareReadAccessWith(fileToShare
-                , Collections.singleton(a.username)).join();
+        sharer.shareReadAccessWith(fileToShare, Collections.singleton(a.username)).join();
 
         // check 'a' can see the shared file
         FileWrapper sharedFolder = a.getByPath(sharer.username + "/" + folderName + "/" + filename).join()
