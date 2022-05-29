@@ -2203,7 +2203,7 @@ public class PeergosNetworkUtils {
         Optional<FileWrapper> dirViaGetChild = home.get().getChild(dirName, sharer.crypto.hasher, sharer.network).join();
         Assert.assertTrue(dirViaGetChild.isPresent());
 
-        Set<FileWrapper> children = home.get().getChildren(sharer.crypto.hasher, sharer.network).join();
+        Set<FileWrapper> children = home.get().getChildren(sharer.crypto.hasher, friend.network).join();
         Assert.assertTrue(children.size() > 1);
 
         // remove friend, which should rotate all keys of things shared with the friends group
