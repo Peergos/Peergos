@@ -264,7 +264,7 @@ public class SocialFeed {
                 .thenCompose(p -> friend.getCaps(current, network)
                         .thenApply(diff -> {
                             if (diff.isEmpty())
-                                return new Pair<>(p.left, Optional.empty());
+                                return new Pair<>(p.left, Optional.<Update>empty());
                             return new Pair<>(p.left, Optional.of(new Update(friend.ownerName, current, diff)));
                         }));
     }
