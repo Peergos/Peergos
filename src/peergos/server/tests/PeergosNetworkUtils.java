@@ -1144,8 +1144,7 @@ public class PeergosNetworkUtils {
 
 
         Path fileToShare = PathUtil.get(sharer.username, folderName, filename);
-        sharer.shareReadAccessWith(fileToShare
-                , Collections.singleton(a.username)).join();
+        sharer.shareReadAccessWith(fileToShare, Collections.singleton(a.username)).join();
 
         // check 'a' can see the shared file
         FileWrapper sharedFolder = a.getByPath(sharer.username + "/" + folderName + "/" + filename).join()
@@ -1156,7 +1155,7 @@ public class PeergosNetworkUtils {
         sharer.unShareReadAccess(fileToShare, a.username).join();
         // check 'a' can't see the shared directory
         FileWrapper unsharedLocation = a.getByPath(sharer.username).join().get();
-        Set<FileWrapper> children = unsharedLocation.getChildren(crypto.hasher, sharer.network).join();
+        Set<FileWrapper> children = unsharedLocation.getChildren(crypto.hasher, a.network).join();
         Assert.assertTrue("a can't see unshared folder", children.stream().filter(c -> c.getName().equals(folderName)).findFirst().isEmpty());
     }
 
@@ -1205,11 +1204,11 @@ public class PeergosNetworkUtils {
         sharer.getByPath(dirPath).join().get().remove(sharer.getUserRoot().join(), dirPath, sharer).join();
         // check 'a' can't see the shared directory
         FileWrapper unsharedLocation = a.getByPath(sharer.username).join().get();
-        Set<FileWrapper> children = unsharedLocation.getChildren(crypto.hasher, sharer.network).join();
+        Set<FileWrapper> children = unsharedLocation.getChildren(crypto.hasher, a.network).join();
         Assert.assertTrue("a can't see unshared folder", children.stream().filter(c -> c.getName().equals(folderName)).findFirst().isEmpty());
     }
 
-    public static void grantAndRevokeWriteThenReadAccessToFolder(NetworkAccess network, Random random) throws IOException {
+    public static void grantAndRevokeWriteThenReadAccessToFolder(NetworkAccess network, Random random) {
         CryptreeNode.setMaxChildLinkPerBlob(10);
 
         String password = "notagoodone";
@@ -1241,23 +1240,20 @@ public class PeergosNetworkUtils {
 
         // check 'a' can't see the shared directory
         FileWrapper unsharedLocation = a.getByPath(sharer.username).join().get();
-        Set<FileWrapper> children = unsharedLocation.getChildren(crypto.hasher, sharer.network).join();
+        Set<FileWrapper> children = unsharedLocation.getChildren(crypto.hasher, a.network).join();
         Assert.assertTrue("a can't see unshared folder", children.stream().filter(c -> c.getName().equals(folderName)).findFirst().isEmpty());
 
-
-        sharer.shareReadAccessWith(dirPath
-                , Collections.singleton(a.username)).join();
+        sharer.shareReadAccessWith(dirPath, Collections.singleton(a.username)).join();
 
         // check 'a' can see the shared file
         sharedFolder = a.getByPath(sharer.username + "/" + folderName).join()
                 .orElseThrow(() -> new AssertionError("shared folder is present after sharing"));
         Assert.assertEquals(sharedFolder.getFileProperties().name, folderName);
 
-
         sharer.unShareReadAccess(dirPath, a.username).join();
         // check 'a' can't see the shared directory
         unsharedLocation = a.getByPath(sharer.username).join().get();
-        children = unsharedLocation.getChildren(crypto.hasher, sharer.network).join();
+        children = unsharedLocation.getChildren(crypto.hasher, a.network).join();
         Assert.assertTrue("a can't see unshared folder", children.stream().filter(c -> c.getName().equals(folderName)).findFirst().isEmpty());
     }
 
@@ -2207,7 +2203,7 @@ public class PeergosNetworkUtils {
         Optional<FileWrapper> dirViaGetChild = home.get().getChild(dirName, sharer.crypto.hasher, sharer.network).join();
         Assert.assertTrue(dirViaGetChild.isPresent());
 
-        Set<FileWrapper> children = home.get().getChildren(sharer.crypto.hasher, sharer.network).join();
+        Set<FileWrapper> children = home.get().getChildren(sharer.crypto.hasher, friend.network).join();
         Assert.assertTrue(children.size() > 1);
 
         // remove friend, which should rotate all keys of things shared with the friends group

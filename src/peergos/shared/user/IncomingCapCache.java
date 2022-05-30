@@ -2,6 +2,7 @@ package peergos.shared.user;
 
 import peergos.shared.*;
 import peergos.shared.cbor.*;
+import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.inode.*;
 import peergos.shared.social.*;
@@ -47,6 +48,14 @@ public class IncomingCapCache {
     public static CompletableFuture<IncomingCapCache> build(FileWrapper cacheRoot, Crypto crypto, NetworkAccess network) {
         return cacheRoot.getOrMkdirs(PathUtil.get(WORLD_ROOT_NAME), network, true, cacheRoot.getPointer().fileAccess.mirrorBatId(), crypto)
                 .thenApply(worldRoot -> new IncomingCapCache(cacheRoot, worldRoot, crypto));
+    }
+
+    public PublicKeyHash owner() {
+        return worldRoot.owner();
+    }
+
+    public SigningPrivateKeyAndPublicHash signingPair() {
+        return worldRoot.signingPair();
     }
 
     public static class ChildElement implements Cborable {
@@ -367,10 +376,12 @@ public class IncomingCapCache {
         return worldRoot.version;
     }
 
-    public synchronized CompletableFuture<CapsDiff> ensureFriendUptodate(String friend,
-                                                                         EntryPoint sharedDir,
-                                                                         List<EntryPoint> groups,
-                                                                         NetworkAccess network) {
+    public synchronized CompletableFuture<Pair<Snapshot, CapsDiff>> ensureFriendUptodate(String friend,
+                                                                                         EntryPoint sharedDir,
+                                                                                         List<EntryPoint> groups,
+                                                                                         Snapshot s,
+                                                                                         Committer c,
+                                                                                         NetworkAccess network) {
         // if the friend's mutable pointer hasn't changed since our last update we can short circuit early
         PublicKeyHash owner = sharedDir.pointer.owner;
         PublicKeyHash writer = sharedDir.pointer.writer;
@@ -383,20 +394,20 @@ public class IncomingCapCache {
                     boolean equal = cached != null && Arrays.equals(current, cached.left);
                     if (equal) {
                         if (cached.right.groupDiffs.size() == groups.size())
-                            return Futures.of(cached.right);
+                            return Futures.of(new Pair<>(s, cached.right));
                     }
 
-                    return getAndUpdateRoot(network)
-                            .thenCompose(root -> root.getDescendentByPath(friend + FRIEND_STATE_SUFFIX, hasher, network)
+                    return getAndUpdateRoot(s, network)
+                            .thenCompose(root -> root.getDescendentByPath(friend + FRIEND_STATE_SUFFIX, s, hasher, network)
                                     .thenCompose(stateOpt -> {
                                         if (stateOpt.isEmpty())
                                             return Futures.of(ProcessedCaps.empty());
                                         return Serialize.readFully(stateOpt.get(), crypto, network)
                                                 .thenApply(arr -> ProcessedCaps.fromCbor(CborObject.fromByteArray(arr)));
                                     }))
-                            .thenCompose(currentState -> ensureUptodate(friend, sharedDir, groups, currentState, crypto, network))
+                            .thenCompose(currentState -> ensureUptodate(friend, sharedDir, groups, currentState, s, c, crypto, network))
                             .thenApply(res -> {
-                                pointerCache.put(writer, new Pair<>(latestPointer.get(), res.flatten()));
+                                pointerCache.put(writer, new Pair<>(latestPointer.get(), res.right.flatten()));
                                 return res;
                             });
                 });
@@ -428,7 +439,7 @@ public class IncomingCapCache {
                                                                NetworkAccess network,
                                                                Crypto crypto) {
         return NetworkAccess.getLatestEntryPoint(sharingDir, network)
-                .thenCompose(sharedDir ->retrieveNewCaps(sharedDir, current.readCapBytes, current.writeCapBytes, network, crypto))
+                .thenCompose(sharedDir -> retrieveNewCaps(sharedDir, current.readCapBytes, current.writeCapBytes, network, crypto))
                 .exceptionally(t -> {
                     // we might have been removed from a group or similar
                     t.printStackTrace();
@@ -462,17 +473,19 @@ public class IncomingCapCache {
                 .thenApply(newCaps -> new CapsDiff(readCapBytes, writeCapBytes, newCaps, Collections.emptyMap()));
     }
 
-    private synchronized CompletableFuture<CapsDiff> ensureUptodate(String friend,
-                                                                    EntryPoint originalSharedDir,
-                                                                    List<EntryPoint> groups,
-                                                                    ProcessedCaps current,
-                                                                    Crypto crypto,
-                                                                    NetworkAccess network) {
+    private synchronized CompletableFuture<Pair<Snapshot, CapsDiff>> ensureUptodate(String friend,
+                                                                                    EntryPoint originalSharedDir,
+                                                                                    List<EntryPoint> groups,
+                                                                                    ProcessedCaps current,
+                                                                                    Snapshot s,
+                                                                                    Committer c,
+                                                                                    Crypto crypto,
+                                                                                    NetworkAccess network) {
         // check there are no new capabilities in the friend's shared directory, or any of their groups
         return getCapsFrom(friend, originalSharedDir, groups, current, network)
-                .thenCompose(diff -> addNewCapsToMirror(friend, current, diff, network))
-                .thenCompose(diff -> getAndUpdateWorldRoot(network)
-                        .thenApply(y -> diff));
+                .thenCompose(diff -> addNewCapsToMirror(friend, current, diff, s, c, network))
+                .thenCompose(p -> getAndUpdateWorldRoot(p.left, network)
+                        .thenApply(y -> p));
     }
 
     private static synchronized CompletableFuture<CapabilitiesFromUser> getWritableCaps(FileWrapper sharedDir,
@@ -488,50 +501,56 @@ public class IncomingCapCache {
                 });
     }
 
-    private CompletableFuture<CapsDiff> addNewCapsToMirror(String friend,
-                                                           ProcessedCaps current,
-                                                           CapsDiff diff,
-                                                           NetworkAccess network) {
+    private CompletableFuture<Pair<Snapshot, CapsDiff>> addNewCapsToMirror(String friend,
+                                                                           ProcessedCaps current,
+                                                                           CapsDiff diff,
+                                                                           Snapshot s,
+                                                                           Committer c,
+                                                                           NetworkAccess network) {
         if (diff.isEmpty())
-            return Futures.of(diff);
+            return Futures.of(new Pair<>(s, diff));
 
         List<CapabilityWithPath> all = diff.getNewCaps();
         // Add all new caps to mirror tree
-        return Futures.reduceAll(all, worldRoot, (r, c) -> addCapToMirror(friend, r, c, crypto, network), (a, b) -> b)
-                .thenCompose(updatedWorldRoot -> {
-                    this.worldRoot = updatedWorldRoot;
+        return worldRoot.getUpdated(s, network)
+                .thenCompose(updatedWorldRoot -> Futures.reduceAll(all, updatedWorldRoot,
+                        (r, cap) -> addCapToMirror(friend, r, cap, r.version, c, crypto, network),
+                        (a, b) -> b))
+                .thenCompose(updatedRoot -> {
+                    this.worldRoot = updatedRoot;
                     // Commit our position in the friend's cap stream
                     ProcessedCaps updated = current.add(diff);
                     byte[] raw = updated.serialize();
                     AsyncReader reader = AsyncReader.build(raw);
-                    return getAndUpdateRoot(network)
+                    return getAndUpdateRoot(updatedRoot.version, network)
                             .thenCompose(root -> root.uploadOrReplaceFile(friend + FRIEND_STATE_SUFFIX, reader, raw.length,
-                                    network, crypto, x -> {
-                                    }, crypto.random.randomBytes(RelativeCapability.MAP_KEY_LENGTH),
+                                    false, updatedRoot.version, c, network, crypto, x -> {}, crypto.random.randomBytes(RelativeCapability.MAP_KEY_LENGTH),
                                     Optional.of(Bat.random(crypto.random)),
                                     root.mirrorBatId()))
-                            .thenApply(x -> diff);
+                            .thenApply(v -> new Pair<>(v, diff));
                 });
     }
 
     private static CompletableFuture<FileWrapper> addCapToMirror(String friend,
                                                                  FileWrapper root,
                                                                  CapabilityWithPath cap,
+                                                                 Snapshot s,
+                                                                 Committer c,
                                                                  Crypto crypto,
                                                                  NetworkAccess network) {
         Path fullPath = PathUtil.get(cap.path);
         Path parentPath = fullPath.getParent();
         String owner = fullPath.getName(0).toString();
         String filename = fullPath.getFileName().toString();
-        return root.getUpdated(network)
-                .thenCompose(freshRoot -> freshRoot.getOrMkdirs(parentPath, network, false, root.mirrorBatId(), crypto))
-                .thenCompose(parent -> parent.getChild(DIR_STATE, crypto.hasher, network)
+        return root.getUpdated(s, network)
+                .thenCompose(freshRoot -> freshRoot.getOrMkdirs(PathUtil.components(parentPath), false, root.mirrorBatId(), network, crypto, s, c))
+                .thenCompose(p -> p.right.getChild(p.left, DIR_STATE, network)
                         .thenCompose(capsOpt -> {
                             if (capsOpt.isEmpty()) {
                                 CapsInDirectory single = CapsInDirectory.of(filename, cap.cap, friend);
                                 byte[] raw = single.serialize();
                                 AsyncReader reader = AsyncReader.build(raw);
-                                return parent.uploadOrReplaceFile(DIR_STATE, reader, raw.length, network, crypto,
+                                return p.right.uploadOrReplaceFile(DIR_STATE, reader, raw.length, false, p.left, c, network, crypto,
                                         x -> {}, crypto.random.randomBytes(RelativeCapability.MAP_KEY_LENGTH),
                                         Optional.of(Bat.random(crypto.random)), root.mirrorBatId());
                             }
@@ -542,21 +561,21 @@ public class IncomingCapCache {
                                     .thenCompose(updated -> {
                                         byte[] raw = updated.serialize();
                                         AsyncReader reader = AsyncReader.build(raw);
-                                        return capsOpt.get().overwriteFile(reader, raw.length, network, crypto, x -> {});
+                                        return capsOpt.get().overwriteFile(reader, raw.length, network, crypto, x -> {}, p.left, c);
                                     });
                         })
-                ).thenCompose(x -> root.getUpdated(network));
+                ).thenCompose(v -> root.getUpdated(v, network));
     }
 
-    private synchronized CompletableFuture<FileWrapper> getAndUpdateWorldRoot(NetworkAccess network) {
-        return worldRoot.getUpdated(network).thenApply(updated -> {
+    private synchronized CompletableFuture<FileWrapper> getAndUpdateWorldRoot(Snapshot s, NetworkAccess network) {
+        return worldRoot.getUpdated(s, network).thenApply(updated -> {
             this.worldRoot = updated;
             return updated;
         });
     }
 
-    private synchronized CompletableFuture<FileWrapper> getAndUpdateRoot(NetworkAccess network) {
-        return cacheRoot.getUpdated(network).thenApply(updated -> {
+    private synchronized CompletableFuture<FileWrapper> getAndUpdateRoot(Snapshot s, NetworkAccess network) {
+        return cacheRoot.getUpdated(s, network).thenApply(updated -> {
             this.cacheRoot = updated;
             return updated;
         });

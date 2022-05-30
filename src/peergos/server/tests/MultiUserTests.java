@@ -176,7 +176,7 @@ public class MultiUserTests {
     }
 
     @Test
-    public void grantAndRevokeWriteThenReadAccessToFolder() throws IOException {
+    public void grantAndRevokeWriteThenReadAccessToFolder() {
         PeergosNetworkUtils.grantAndRevokeWriteThenReadAccessToFolder(network, random);
     }
 
