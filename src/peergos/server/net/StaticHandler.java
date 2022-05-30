@@ -68,6 +68,14 @@ public abstract class StaticHandler implements HttpHandler
             if (path.length() == 0)
                 path = "index.html";
 
+            String reqHost = httpExchange.getRequestHeaders().get("Host").stream().findFirst().orElse("");
+            boolean isSubdomain = reqHost.contains(".") && reqHost.substring(reqHost.indexOf(".")).equals(domainSuffix());
+            Logging.LOG().info("Req host: " + reqHost + ", isSub: " + isSubdomain + ", path: " + path);
+            String app = appDomains.getOrDefault(reqHost, "sandbox");
+            if (isSubdomain && app.equals("sandbox")) { // serve sandbox assets from sandbox sub dir for root path
+                path = "apps/sandbox" + (path.startsWith("/") ? "" : "/") + path;
+            }
+
             boolean isRoot = path.equals("index.html");
             Asset res = getAsset(path);
 
@@ -99,12 +107,6 @@ public abstract class StaticHandler implements HttpHandler
                 httpExchange.getResponseHeaders().set("ETag", res.hash);
             }
 
-            String reqHost = httpExchange.getRequestHeaders().get("Host").stream().findFirst().orElse("");
-            boolean isSubdomain = reqHost.contains(".") && reqHost.substring(reqHost.indexOf(".")).equals(domainSuffix());
-            Logging.LOG().info("Req host: " + reqHost + ", isSub: " + isSubdomain + ", path: " + path);
-            String app = appDomains.getOrDefault(reqHost, "sandbox");
-            if (isSubdomain && app.equals("sandbox")) // serve sandbox assets from sandbox sub dir for root path
-                path = "apps/sandbox" + (path.startsWith("/") ? "" : "/") + path;
             // only allow app-specific subdomain to access app-specific assets folder, or sandbox for generated subdomains
             if (isSubdomain ^ path.startsWith("apps/" + app)) {
                 System.err.println("404 FileNotFound: " + path);
