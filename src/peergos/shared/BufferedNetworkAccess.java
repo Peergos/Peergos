@@ -51,9 +51,10 @@ public class BufferedNetworkAccess extends NetworkAccess {
                                   ServerMessager serverMessager,
                                   Hasher hasher,
                                   List<String> usernames,
+                                  CryptreeCache cache,
                                   boolean isJavascript) {
         super(coreNode, account, social, blockBuffer, batCave, mutable, tree, synchronizer, instanceAdmin, spaceUsage,
-                serverMessager, hasher, usernames, isJavascript);
+                serverMessager, hasher, usernames, cache, isJavascript);
         this.blockBuffer = blockBuffer;
         this.pointerBuffer = mutableBuffer;
         this.bufferSize = bufferSize;
@@ -161,6 +162,6 @@ public class BufferedNetworkAccess extends NetworkAccess {
         MutableTree tree = new MutableTreeImpl(mutableBuffer, blockBuffer, h, synchronizer);
         return new BufferedNetworkAccess(blockBuffer, mutableBuffer, bufferSize, owner, commitWatcher, base.coreNode, base.account, base.social,
                 base.dhtClient, base.batCave, mutableBuffer, tree, synchronizer, base.instanceAdmin,
-                base.spaceUsage, base.serverMessager, base.hasher, base.usernames, base.isJavascript());
+                base.spaceUsage, base.serverMessager, base.hasher, base.usernames, base.cache, base.isJavascript());
     }
 }
