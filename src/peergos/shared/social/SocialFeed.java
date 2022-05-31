@@ -323,32 +323,37 @@ public class SocialFeed {
     }
 
     private synchronized CompletableFuture<Snapshot> appendToFeedAndCommitState(byte[] data, int records) {
-            return network.synchronizer.applyComplexUpdate(dataDir.owner(), dataDir.signingPair(),
-                    (s, c) -> dataDir.getUpdated(s, network).thenCompose(updated ->
-                            updated.getChild(FEED_FILE, crypto.hasher, network).thenCompose(feedOpt -> {
+        PublicKeyHash owner = context.signer.publicKeyHash;
+        // use a buffered network to make this atomic across multiple files
+        BufferedNetworkAccess buffered = BufferedNetworkAccess.build(network, 10 * 1024 * 1024, owner, () -> true, network.hasher);
+        return buffered.synchronizer.applyComplexUpdate(dataDir.owner(), dataDir.signingPair(),
+                (s, c) -> {
+                    Committer condenser = buffered.buildCommitter(c);
+                    return dataDir.getUpdated(s, buffered).thenCompose(updated ->
+                            updated.getChild(FEED_FILE, crypto.hasher, buffered).thenCompose(feedOpt -> {
                                 if (feedOpt.isEmpty())
-                                    return updated.uploadFileSection(updated.version, c, FEED_FILE, AsyncReader.build(data),
+                                    return updated.uploadFileSection(updated.version, condenser, FEED_FILE, AsyncReader.build(data),
                                             false, 0, data.length, Optional.empty(), false, false,
-                                            false, network, crypto, x -> {},
+                                            false, buffered, crypto, x -> {},
                                             crypto.random.randomBytes(RelativeCapability.MAP_KEY_LENGTH),
                                             Optional.empty(),  Optional.of(Bat.random(crypto.random)), updated.mirrorBatId());
                                 if (feedOpt.get().getSize() != feedSizeBytes)
                                     throw new IllegalStateException("Feed size incorrect!");
-                                return feedOpt.get().append(data, network, crypto, c, x -> {});
+                                return feedOpt.get().append(data, buffered, crypto, condenser, x -> {});
                             })).thenCompose(s2 -> {
                         feedSizeRecords += records;
                         feedSizeBytes += data.length;
                         byte[] raw = new FeedState(lastSeenIndex, feedSizeRecords, feedSizeBytes, currentCapBytesProcessed).serialize();
-                        return stateFile.overwriteFile(AsyncReader.build(raw), raw.length, network, crypto, x -> {}, s2, c);
-                    })
-            ).thenCompose(s -> this.dataDir.getUpdated(s, network).thenApply(u -> {
-                this.dataDir = u;
-                return true;
-                    }).thenCompose(x -> this.stateFile.getUpdated(s, network).thenApply(us -> {
-                this.stateFile = us;
-                return s;
-                    }))
-            );
+                        return stateFile.overwriteFile(AsyncReader.build(raw), raw.length, buffered, crypto, x -> {}, s2, condenser);
+                    }).thenCompose(v -> buffered.commit().thenApply(b -> v));
+                }).thenCompose(s -> this.dataDir.getUpdated(s, network).thenApply(u -> {
+                    this.dataDir = u;
+                    return true;
+                }).thenCompose(x -> this.stateFile.getUpdated(s, network).thenApply(us -> {
+                    this.stateFile = us;
+                    return s;
+                }))
+        );
     }
 
     private CompletableFuture<Boolean> ensureFeedUptodate() {
