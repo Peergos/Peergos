@@ -45,7 +45,7 @@ public class NetworkAccess {
 
     @JsProperty
     public final List<String> usernames;
-    private final CryptreeCache cache;
+    public final CryptreeCache cache;
     private final LocalDateTime creationTime;
     private final boolean isJavascript;
 
