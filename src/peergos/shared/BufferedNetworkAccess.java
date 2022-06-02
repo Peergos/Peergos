@@ -30,6 +30,7 @@ public class BufferedNetworkAccess extends NetworkAccess {
     private Committer targetCommitter;
     private final PublicKeyHash owner;
     private final Supplier<Boolean> commitWatcher;
+    private final WriteSynchronizer source;
     private final ContentAddressedStorage blocks;
     private boolean safeToCommit = true;
 
@@ -52,7 +53,8 @@ public class BufferedNetworkAccess extends NetworkAccess {
                                   Hasher hasher,
                                   List<String> usernames,
                                   CryptreeCache cache,
-                                  boolean isJavascript) {
+                                  boolean isJavascript,
+                                  WriteSynchronizer source) {
         super(coreNode, account, social, blockBuffer, batCave, mutable, tree, synchronizer, instanceAdmin, spaceUsage,
                 serverMessager, hasher, usernames, cache, isJavascript);
         this.blockBuffer = blockBuffer;
@@ -60,6 +62,7 @@ public class BufferedNetworkAccess extends NetworkAccess {
         this.bufferSize = bufferSize;
         this.owner = owner;
         this.commitWatcher = commitWatcher;
+        this.source = source;
         this.blocks = dhtClient;
     }
 
@@ -147,6 +150,7 @@ public class BufferedNetworkAccess extends NetworkAccess {
                             pointerBuffer.clear();
                             writers.clear();
                             writerUpdates.clear();
+                            source.clear();
                             return commitWatcher.get();
                         }));
     }
@@ -162,6 +166,6 @@ public class BufferedNetworkAccess extends NetworkAccess {
         MutableTree tree = new MutableTreeImpl(mutableBuffer, blockBuffer, h, synchronizer);
         return new BufferedNetworkAccess(blockBuffer, mutableBuffer, bufferSize, owner, commitWatcher, base.coreNode, base.account, base.social,
                 base.dhtClient, base.batCave, mutableBuffer, tree, synchronizer, base.instanceAdmin,
-                base.spaceUsage, base.serverMessager, base.hasher, base.usernames, base.cache, base.isJavascript());
+                base.spaceUsage, base.serverMessager, base.hasher, base.usernames, base.cache, base.isJavascript(), base.synchronizer);
     }
 }
