@@ -61,12 +61,16 @@ public abstract class UserTests {
             Path peergosDir = Files.createTempDirectory("peergos");
             Random r = new Random();
             int port = 9000 + r.nextInt(8000);
+            int allowPort = 9000 + r.nextInt(8000);
+            int proxyPort = 9000 + r.nextInt(8000);
             int gatewayPort = 9000 + r.nextInt(8000);
             int ipfsApiPort = 9000 + r.nextInt(50_000);
             int ipfsGatewayPort = 9000 + r.nextInt(50_000);
             int ipfsSwarmPort = 9000 + r.nextInt(50_000);
             return Args.parse(new String[]{
                     "-port", Integer.toString(port),
+                    "-allow-target", "/ip4/127.0.0.1/tcp/" + allowPort,
+                    "-proxy-target", "/ip4/127.0.0.1/tcp/" + proxyPort,
                     "-gateway-port", Integer.toString(gatewayPort),
                     "-ipfs-api-address", "/ip4/127.0.0.1/tcp/" + ipfsApiPort,
                     "-ipfs-gateway-address", "/ip4/127.0.0.1/tcp/" + ipfsGatewayPort,
