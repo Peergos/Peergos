@@ -3,6 +3,7 @@ package peergos.shared.user;
 import jsinterop.annotations.JsMethod;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.multibase.*;
+import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.user.app.*;
 import peergos.shared.user.fs.AsyncReader;
 import peergos.shared.user.fs.FileWrapper;
@@ -11,7 +12,7 @@ import peergos.shared.util.*;
 import java.nio.file.Path;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
-import java.util.stream.Collectors;
+import java.util.stream.*;
 
 /** This is the trusted implementation of the API that will be presented to a sandboxed application in Peergos.
  *
@@ -49,6 +50,15 @@ public class App implements StoreAppData {
     @JsMethod
     public static CompletableFuture<String> getAppSubdomain(String path, Hasher h) {
         return h.bareHash(PathUtil.get(path).toString().getBytes())
+                .thenApply(m -> Multibase.encode(Multibase.Base.Base32, m.toBytes()));
+    }
+
+    @JsMethod
+    public static CompletableFuture<String> getAppSubdomainWithAnonymityClass(String appRootPath, String anonymityClass, Hasher h) {
+        CompletableFuture<Multihash> root = h.bareHash(PathUtil.get(appRootPath).toString().getBytes());
+        CompletableFuture<Multihash> anonClass = h.bareHash(PathUtil.get(anonymityClass).toString().getBytes());
+        return Futures.combineAllInOrder(Stream.of(root, anonClass).collect(Collectors.toList()))
+                .thenCompose(both -> h.bareHash(ArrayOps.concat(both.get(0).getHash(), both.get(1).getHash())))
                 .thenApply(m -> Multibase.encode(Multibase.Base.Base32, m.toBytes()));
     }
 
