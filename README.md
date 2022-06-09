@@ -299,6 +299,25 @@ Sub commands:
 	verify: Verify an identity link post from another service.
 ```
 
+FUSE (native folder mounting of Peergos)
+--------
+You can mount your Peergos space with the following command
+```
+>> java -Djava.library.path=native-lib -jar Peergos.jar fuse -peergos-url https://peergos.net -username $username -password $password
+```
+
+### MacOS FUSE prerequisites
+Install osxfuse with
+```
+>> brew install --cask osxfuse
+```
+
+### Windows FUSE prerequisites
+Install winfsp with
+```
+>> choco install winfsp
+```
+
 Mirror
 --------
 To mirror all of your data on another server first run the following command (on any instance):
