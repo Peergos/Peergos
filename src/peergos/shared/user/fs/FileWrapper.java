@@ -626,6 +626,19 @@ public class FileWrapper {
                         Futures.of(currentIndex));
     }
 
+    @JsMethod
+    public CompletableFuture<FileWrapper> uploadOrReplaceFile(String filename,
+                                                              AsyncReader fileData,
+                                                              int fileSizeHi,
+                                                              int fileSizeLow,
+                                                              NetworkAccess network,
+                                                              Crypto crypto,
+                                                              ProgressConsumer<Long> monitor) {
+        long fileSize = (fileSizeLow & 0xFFFFFFFFL) + ((fileSizeHi & 0xFFFFFFFFL) << 32);
+        return uploadOrReplaceFile(filename, fileData, fileSize, network, crypto, monitor,
+                crypto.random.randomBytes(32), Optional.of(Bat.random(crypto.random)), mirrorBatId());
+    }
+
     public CompletableFuture<FileWrapper> uploadOrReplaceFile(String filename,
                                                               AsyncReader fileData,
                                                               long length,
@@ -1384,7 +1397,6 @@ public class FileWrapper {
                 });
     }
 
-    @JsMethod
     public CompletableFuture<FileWrapper> appendToChild(String filename,
                                                         long expectedSize,
                                                         byte[] fileData,
