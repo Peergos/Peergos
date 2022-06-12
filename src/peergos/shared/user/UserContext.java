@@ -1948,8 +1948,7 @@ public class UserContext {
                                     .thenCompose(x -> getGroupUid(SocialState.FRIENDS_GROUP_NAME)
                                             .thenCompose(friendsUidOpt -> shareReadAccessWith(PathUtil.get(username,
                                                     SHARED_DIR_NAME, friendsUidOpt.get()), Collections.singleton(theirName))))
-                                    .thenCompose(x -> NetworkAccess.getLatestEntryPoint(entry, network)
-                                            .thenCompose(r -> addToStatic.apply(trie.put(r.getPath(), r.entry), p.withEntryPoint(r.entry))))
+                                    .thenCompose(x -> addToStatic.apply(trie, p.withEntryPoint(entry)))
                                     .exceptionally(t -> trie);
                         }
                     };

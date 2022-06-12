@@ -1243,6 +1243,50 @@ public class MultiUserTests {
     }
 
     @Test
+    public void friendshipRestoration() throws Exception {
+        UserContext a = PeergosNetworkUtils.ensureSignedUp("a-" + random(), "password", network, crypto);
+        UserContext b = PeergosNetworkUtils.ensureSignedUp("b-" + random(), "password", network, crypto);
+        b.sendFollowRequest(a.username, SymmetricKey.random()).get();
+        List<FollowRequestWithCipherText> aRequests = a.processFollowRequests().get();
+        a.sendReplyFollowRequest(aRequests.get(0), true, true).get();
+        b.processFollowRequests().join();
+        a.processFollowRequests().join();
+        assertTrue(a.getSocialState().join().getFriends().contains(b.username));
+        assertTrue(b.getSocialState().join().getFriends().contains(a.username));
+
+        a.unfollow(b.username).join();
+        SocialState aState = a.getSocialState().join();
+        assertTrue(aState.getFriends().isEmpty());
+        assertTrue(aState.getFollowing().isEmpty());
+        assertTrue(aState.getFollowers().contains(b.username));
+
+        // unfollow is local only - b still thinks they are friends
+        assertTrue(b.getSocialState().join().getFriends().contains(a.username));
+
+        a.unblock(b.username).join();
+        assertTrue(a.getSocialState().join().getFriends().contains(b.username));
+
+        // now remove as follower, then reunite
+        a.removeFollower(b.username).join();
+        aState = a.getSocialState().join();
+        assertTrue(aState.getFriends().isEmpty());
+        assertTrue(aState.getFollowing().contains(b.username));
+        assertTrue(aState.getFollowers().isEmpty());
+
+        SocialState bState = b.getSocialState().join();
+        assertTrue(bState.getFriends().isEmpty());
+        assertTrue(bState.getFollowing().isEmpty());
+        assertTrue(bState.getFollowers().contains(a.username));
+
+        b.sendInitialFollowRequest(a.username).join();
+        aRequests = a.processFollowRequests().get();
+        a.sendReplyFollowRequest(aRequests.get(0), true, true).get();
+        b.processFollowRequests().join();
+        assertTrue(a.getSocialState().join().getFriends().contains(b.username));
+        assertTrue(b.getSocialState().join().getFriends().contains(a.username));
+    }
+
+    @Test
     public void concurrentMutualFollowRequests() throws Exception {
         UserContext a = PeergosNetworkUtils.ensureSignedUp(random(), random(), network, crypto);
         UserContext b = PeergosNetworkUtils.ensureSignedUp(random(), random(), network, crypto);
