@@ -385,11 +385,8 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         try {
             PresignedUrl headUrl = S3Request.preSignHead(folder + hashToKey(hash), Optional.of(60),
                     S3AdminRequests.asAwsDate(ZonedDateTime.now()), host, region, accessKeyId, secretKey, useHttps, hasher).join();
-            Map<String, List<String>> headRes = HttpUtil.head(headUrl)
-                    .entrySet()
-                    .stream()
-                    .collect(Collectors.toMap(e -> e.getKey().toLowerCase(), e -> e.getValue()));
-            long size = Long.parseLong(headRes.get("content-length").get(0));
+            Map<String, List<String>> headRes = HttpUtil.head(headUrl);
+            long size = Long.parseLong(headRes.get("Content-Length").get(0));
             return Futures.of(Optional.of((int)size));
         } catch (IOException e) {
             String msg = e.getMessage();
