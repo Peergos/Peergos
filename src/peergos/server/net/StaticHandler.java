@@ -129,6 +129,7 @@ public abstract class StaticHandler implements HttpHandler
                         "prefetch-src 'self' " + this.host + ";" + // prefetch can be used to leak data via DNS
                         "connect-src 'self' " + this.host +
                         (isSubdomain ? "" : blockstoreDomain.stream().map(d -> " https://" + d).collect(Collectors.joining())) + ";" +
+                        "webrtc 'block';" +
                         "media-src 'self' " + this.host + " blob:;" +
                         "img-src 'self' " + this.host + " data: blob:;" +
                         "object-src 'none';"
