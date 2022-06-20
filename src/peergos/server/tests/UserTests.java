@@ -615,6 +615,55 @@ public abstract class UserTests {
     }
 
     @Test
+    public void replaceFileBulkUpload() {
+        String username = generateUsername();
+        String password = "terriblepassword";
+        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
+
+        String filename = "somefile.txt";
+        int size = 1000;
+        byte[] data = new byte[size];
+        random.nextBytes(data);
+        AsyncReader reader = new AsyncReader.ArrayBacked(data);
+        FileWrapper txnDir = context.getByPath(Paths.get(username, UserContext.TRANSACTIONS_DIR_NAME)).join().get();
+        TransactionService txns = new NonClosingTransactionService(network, crypto, txnDir);
+        String subdir = "dir";
+        long[] monitorVal = new long[1];
+        ProgressConsumer<Long> monitor = val -> {
+            monitorVal[0] = val;
+        };
+        try {
+            FileWrapper.FileUploadProperties fileUpload = new FileWrapper.FileUploadProperties(filename, reader, 0, size, false, false, monitor);
+            FileWrapper.FolderUploadProperties dirUploads = new FileWrapper.FolderUploadProperties(Arrays.asList(subdir), Arrays.asList(fileUpload));
+            context.getUserRoot().join().uploadSubtree(Stream.of(dirUploads), context.mirrorBatId(), network, crypto, txns, f -> Futures.of(false), () -> true).join();
+        } catch (Exception e) {
+        }
+        long[] monitorUploadJSVal = new long[1];
+        ProgressConsumer<Long> monitorUploadJS = val -> {
+            monitorUploadJSVal[0] = val;
+        };
+        FileWrapper parent = context.getByPath(Paths.get(username, subdir)).join().get();
+        parent.uploadFileJS(filename, AsyncReader.build(data), 0, size, true, context.mirrorBatId(), network, crypto, monitorUploadJS, txns, f -> Futures.of(true)).join();
+        Assert.assertTrue("monitorJS", monitorUploadJSVal[0] == monitorVal[0]);
+
+        random.nextBytes(data);
+        AsyncReader reader2 = new AsyncReader.ArrayBacked(data);
+        FileWrapper txnDir2 = context.getByPath(Paths.get(username, UserContext.TRANSACTIONS_DIR_NAME)).join().get();
+        TransactionService txns2 = new NonClosingTransactionService(network, crypto, txnDir2);
+        long[] monitor2Val = new long[1];
+        ProgressConsumer<Long> monitor2 = val -> {
+            monitor2Val[0] = val;
+        };
+        try {
+            FileWrapper.FileUploadProperties fileUpload = new FileWrapper.FileUploadProperties(filename, reader2, 0, size, false, true, monitor2);
+            FileWrapper.FolderUploadProperties dirUploads = new FileWrapper.FolderUploadProperties(Arrays.asList(subdir), Arrays.asList(fileUpload));
+            context.getUserRoot().join().uploadSubtree(Stream.of(dirUploads), context.mirrorBatId(), network, crypto, txns2, f -> Futures.of(false), () -> true).join();
+        } catch (Exception e) {
+        }
+        Assert.assertTrue("bulkMonitor", monitor2Val[0] == monitorVal[0]);
+    }
+
+    @Test
     public void concurrentUploadSucceeds() {
         String username = generateUsername();
         String password = "test";
