@@ -1201,7 +1201,10 @@ public class FileWrapper {
                                                 } else {
                                                     return updateExistingChild(current, committer, child, fileData,
                                                             startIndex, endIndex, network, crypto, monitor)
-                                                            .thenApply(s -> new Pair<>(s, Optional.<NamedRelativeCapability>empty()));
+                                                            .thenApply(s -> {
+                                                                monitor.accept(THUMBNAIL_PROGRESS_OFFSET);
+                                                                return new Pair<>(s, Optional.<NamedRelativeCapability>empty());
+                                                            });
                                                 }
                                             }
                                             if (startIndex > 0) {
