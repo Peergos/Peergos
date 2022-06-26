@@ -1020,8 +1020,16 @@ public abstract class UserTests {
         FileWrapper file = context.getByPath(PathUtil.get(username, filename).toString()).get().get();
         String thumbnail = file.getBase64Thumbnail();
         Assert.assertTrue("Has thumbnail", thumbnail.length() > 0);
+
+        data = Files.readAllBytes(PathUtil.get("assets", "logos", "peergos-logo.png"));
+        userRoot.uploadOrReplaceFile(filename, new AsyncReader.ArrayBacked(data), data.length, context.network,
+                context.crypto, l -> {}).get();
+        file = context.getByPath(PathUtil.get(username, filename).toString()).get().get();
         boolean res = file.calculateAndUpdateThumbnail(context.network, context.crypto).join();
         Assert.assertTrue("Has updated Thumbnail", res);
+        file = context.getByPath(PathUtil.get(username, filename).toString()).get().get();
+        String thumbnailAfter = file.getBase64Thumbnail();
+        Assert.assertTrue("Thumbnail NOT changed", !thumbnail.equals(thumbnailAfter));
     }
 
     @Test

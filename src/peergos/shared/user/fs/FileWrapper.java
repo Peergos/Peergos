@@ -1304,7 +1304,7 @@ public class FileWrapper {
                         .exceptionally(ex -> new Pair<>(latestSnapshot, false))
         ).thenApply(p -> p.right);
     }
-    
+
     private CompletableFuture<Snapshot> recalculateThumbnail(Snapshot snapshot, Committer committer, String filename,
                                                              AsyncReader fileData, boolean isHidden, long fileSize,
                                                              LocalDateTime createdDateTime, NetworkAccess network,
@@ -1315,7 +1315,7 @@ public class FileWrapper {
                         .thenCompose(mimeType -> fileData.reset()
                                 .thenCompose(resetAgain ->
                                     generateThumbnailAndUpdate(snapshot, committer, fileWriteCap, filename, resetAgain,
-                                            network, isHidden, mimeType, fileSize, LocalDateTime.now(), createdDateTime, streamSecret, x -> {}))));
+                                            network, isHidden, mimeType, fileSize, LocalDateTime.now(), createdDateTime, streamSecret, true, x -> {}))));
     }
 
     private CompletableFuture<Snapshot> generateThumbnailAndUpdate(Snapshot base,
@@ -1331,8 +1331,26 @@ public class FileWrapper {
                                                                    LocalDateTime createdDateTime,
                                                                    Optional<byte[]> streamSecret,
                                                                    ProgressConsumer<Long> monitor) {
+        return generateThumbnailAndUpdate(base, committer, cap, fileName, fileData, network, isHidden,
+                mimeType, fileSize, updatedDateTime, createdDateTime, streamSecret, false, monitor);
+    }
+
+    private CompletableFuture<Snapshot> generateThumbnailAndUpdate(Snapshot base,
+                                                                   Committer committer,
+                                                                   WritableAbsoluteCapability cap,
+                                                                   String fileName,
+                                                                   AsyncReader fileData,
+                                                                   NetworkAccess network,
+                                                                   Boolean isHidden,
+                                                                   String mimeType,
+                                                                   long fileSize,
+                                                                   LocalDateTime updatedDateTime,
+                                                                   LocalDateTime createdDateTime,
+                                                                   Optional<byte[]> streamSecret,
+                                                                   boolean replaceExistingThumbnail,
+                                                                   ProgressConsumer<Long> monitor) {
         return network.getFile(base, cap, getChildsEntryWriter(), ownername).thenCompose(fileOpt -> {
-            if (fileOpt.get().props.thumbnail.isEmpty()) {
+            if (replaceExistingThumbnail || fileOpt.get().props.thumbnail.isEmpty()) {
                 return generateThumbnail(network, fileData, (int) Math.min(fileSize, Integer.MAX_VALUE), fileName, mimeType)
                         .thenCompose(thumbData -> {
                             if (thumbData.isEmpty())
