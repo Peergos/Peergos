@@ -9,6 +9,8 @@ import java.util.concurrent.*;
  */
 public interface StoreAppData {
 
+    CompletableFuture<Integer> existsInternal(Path relativePath, String username);
+
     CompletableFuture<List<String>> dirInternal(Path relativePath, String username);
 
     CompletableFuture<byte[]> readInternal(Path relativePath, String username);
@@ -17,5 +19,9 @@ public interface StoreAppData {
 
     CompletableFuture<Boolean> deleteInternal(Path relativePath, String username);
 
+    CompletableFuture<String> mimeTypeInternal(Path relativePath, String username);
+
     CompletableFuture<Boolean> createDirectoryInternal(Path relativePath, String username);
+
+    CompletableFuture<Boolean> appendInternal(Path relativePath, byte[] data, String username);
 }

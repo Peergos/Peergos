@@ -1,18 +1,18 @@
 package peergos.shared.user;
 
 import jsinterop.annotations.JsMethod;
-import peergos.shared.storage.auth.*;
+import peergos.shared.crypto.hash.*;
+import peergos.shared.io.ipfs.multibase.*;
+import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.user.app.*;
 import peergos.shared.user.fs.AsyncReader;
 import peergos.shared.user.fs.FileWrapper;
 import peergos.shared.util.*;
 
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
-import java.util.stream.Collectors;
-import java.util.stream.Stream;
+import java.util.stream.*;
 
 /** This is the trusted implementation of the API that will be presented to a sandboxed application in Peergos.
  *
@@ -45,6 +45,21 @@ public class App implements StoreAppData {
 
     public static Path getDataDir(String appName, String username) {
         return PathUtil.get(username, APPS_DIR_NAME, appName, DATA_DIR_NAME);
+    }
+
+    @JsMethod
+    public static CompletableFuture<String> getAppSubdomain(String path, Hasher h) {
+        return h.bareHash(PathUtil.get(path).toString().getBytes())
+                .thenApply(m -> Multibase.encode(Multibase.Base.Base32, m.toBytes()));
+    }
+
+    @JsMethod
+    public static CompletableFuture<String> getAppSubdomainWithAnonymityClass(String appRootPath, String anonymityClass, Hasher h) {
+        CompletableFuture<Multihash> root = h.bareHash(PathUtil.get(appRootPath).toString().getBytes());
+        CompletableFuture<Multihash> anonClass = h.bareHash(PathUtil.get(anonymityClass).toString().getBytes());
+        return Futures.combineAllInOrder(Stream.of(root, anonClass).collect(Collectors.toList()))
+                .thenCompose(both -> h.bareHash(ArrayOps.concat(both.get(0).getHash(), both.get(1).getHash())))
+                .thenApply(m -> Multibase.encode(Multibase.Base.Base32, m.toBytes()));
     }
 
     @JsMethod
@@ -83,6 +98,15 @@ public class App implements StoreAppData {
         return result;
     }
 
+    private CompletableFuture<Boolean> appendFileContents(Path path, byte[] data) {
+        Path pathWithoutUsername = path.subpath(1, path.getNameCount());
+        return ctx.getByPath(ctx.username).thenCompose(userRoot -> userRoot.get().getOrMkdirs(pathWithoutUsername.getParent(), ctx.network, true, userRoot.get().mirrorBatId(), ctx.crypto)
+                .thenCompose(dir -> dir.appendFileJS(path.getFileName().toString(), AsyncReader.build(data),
+                                0,data.length, ctx.network, ctx.crypto, x -> {})
+                        .thenApply(fw -> true)
+                ));
+    }
+
     private CompletableFuture<Boolean> writeFileContents(Path path, byte[] data) {
         Path pathWithoutUsername = path.subpath(1, path.getNameCount());
         return ctx.getByPath(ctx.username).thenCompose(userRoot -> userRoot.get().getOrMkdirs(pathWithoutUsername.getParent(), ctx.network, true, userRoot.get().mirrorBatId(), ctx.crypto)
@@ -109,6 +133,11 @@ public class App implements StoreAppData {
         });
     }
 
+    @JsMethod
+    public CompletableFuture<Boolean> appendInternal(Path relativePath, byte[] data, String username) {
+        Path path = fullPath(relativePath, username);
+        return appendFileContents(path, data);
+    }
     @JsMethod
     public CompletableFuture<Boolean> writeInternal(Path relativePath, byte[] data, String username) {
         Path path = fullPath(relativePath, username);
@@ -142,11 +171,38 @@ public class App implements StoreAppData {
         });
     }
     @JsMethod
+    public CompletableFuture<String> mimeTypeInternal(Path relativePath, String username) {
+        Path path = relativePath == null ?
+                PathUtil.get(username == null ? ctx.username : username).resolve(appDataDirectoryWithoutUser)
+                : fullPath(relativePath, username);
+        return ctx.getByPath(path).thenApply(fileOpt -> {
+            if(fileOpt.isEmpty()) {
+                return "";
+            }
+            return fileOpt.get().getFileProperties().mimeType;
+        });
+    }
+
+    @JsMethod
     public CompletableFuture<Boolean> createDirectoryInternal(Path relativePath, String username) {
         Path base = PathUtil.get(username == null ? ctx.username : username).resolve(appDataDirectoryWithoutUser);
         return ctx.getByPath(base)
                 .thenCompose(baseOpt -> baseOpt.get().getOrMkdirs(normalisePath(relativePath), ctx.network, false, baseOpt.get().mirrorBatId(), ctx.crypto)
                 .thenApply(fw -> true));
+    }
+    /*
+    Tests if a path exists
+    @return -1 Does not exist (or not accessible), 0 File, 1 Directory
+     */
+    @JsMethod
+    public CompletableFuture<Integer> existsInternal(Path relativePath, String username) {
+        Path path = fullPath(relativePath, username);
+        return ctx.getByPath(path).thenCompose(opt -> {
+            if(opt.isEmpty()) {
+                return Futures.of(Integer.valueOf(-1));
+            }
+            return Futures.of(opt.get().getFileProperties().isDirectory ? 1 : 0);
+        });
     }
 }
 

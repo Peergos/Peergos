@@ -363,7 +363,7 @@ public class Builder {
         return isPkiNode ?
                 buildPkiCorenode(localPointers, account, bats, localStorage, a) :
                 new MirrorCoreNode(new HTTPCoreNode(buildP2pHttpProxy(a), pkiServerId), rawAccount, bats, account, proxingMutable,
-                        localStorage, rawPointers, transactions, localSocial, usageStore, peergosId,
+                        localStorage, rawPointers, localPointers, transactions, localSocial, usageStore, peergosId,
                         a.fromPeergosDir("pki-mirror-state-path","pki-state.cbor"), hasher);
     }
 

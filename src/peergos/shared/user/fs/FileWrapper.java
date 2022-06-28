@@ -555,6 +555,32 @@ public class FileWrapper {
     }
 
     @JsMethod
+    public CompletableFuture<FileWrapper> appendFileJS(String filename,
+                                                       AsyncReader fileData,
+                                                       int lengthHi,
+                                                       int lengthLow,
+                                                       NetworkAccess network,
+                                                       Crypto crypto,
+                                                       ProgressConsumer<Long> monitor) {
+        long fileSize = LongUtil.intsToLong(lengthHi, lengthLow);
+        return network.synchronizer.applyComplexUpdate(owner(), signingPair(),
+                (s, committer) -> getChild(s, filename, network).thenCompose(childOpt -> {
+                if (childOpt.isEmpty()) {
+                    throw new IllegalStateException("File does not exists with name " + filename);
+                } else {
+                    FileProperties props = childOpt.get().getFileProperties();
+                    if (props.isHidden) {
+                        throw new IllegalStateException("File is hidden " + filename);
+                    }
+                    long startIndex = props.size;
+                    return uploadFileSection(s, committer, filename, fileData,
+                            false, startIndex, startIndex + fileSize, Optional.empty(), false, true, false,
+                            network, crypto, monitor, crypto.random.randomBytes(32), Optional.empty(),
+                            Optional.of(Bat.random(crypto.random)), mirrorBatId());
+                }
+        })).thenCompose(finished -> getUpdated(finished, network));
+    }
+        @JsMethod
     public CompletableFuture<FileWrapper> uploadFileJS(String filename,
                                                        AsyncReader fileData,
                                                        int lengthHi,
@@ -598,6 +624,19 @@ public class FileWrapper {
                         FileProperties.calculateNextMapKey(streamSecret, currentLoc.getMapKey(), Optional.empty(), crypto.hasher)
                                 .thenCompose(p -> findFirstAbsentChunkIndex(currentIndex + 1, streamSecret, currentLoc.withMapKey(p.left), s, network, crypto)) :
                         Futures.of(currentIndex));
+    }
+
+    @JsMethod
+    public CompletableFuture<FileWrapper> uploadOrReplaceFile(String filename,
+                                                              AsyncReader fileData,
+                                                              int fileSizeHi,
+                                                              int fileSizeLow,
+                                                              NetworkAccess network,
+                                                              Crypto crypto,
+                                                              ProgressConsumer<Long> monitor) {
+        long fileSize = (fileSizeLow & 0xFFFFFFFFL) + ((fileSizeHi & 0xFFFFFFFFL) << 32);
+        return uploadOrReplaceFile(filename, fileData, fileSize, network, crypto, monitor,
+                crypto.random.randomBytes(32), Optional.of(Bat.random(crypto.random)), mirrorBatId());
     }
 
     public CompletableFuture<FileWrapper> uploadOrReplaceFile(String filename,
@@ -1265,7 +1304,7 @@ public class FileWrapper {
                         .exceptionally(ex -> new Pair<>(latestSnapshot, false))
         ).thenApply(p -> p.right);
     }
-    
+
     private CompletableFuture<Snapshot> recalculateThumbnail(Snapshot snapshot, Committer committer, String filename,
                                                              AsyncReader fileData, boolean isHidden, long fileSize,
                                                              LocalDateTime createdDateTime, NetworkAccess network,
@@ -1276,7 +1315,7 @@ public class FileWrapper {
                         .thenCompose(mimeType -> fileData.reset()
                                 .thenCompose(resetAgain ->
                                     generateThumbnailAndUpdate(snapshot, committer, fileWriteCap, filename, resetAgain,
-                                            network, isHidden, mimeType, fileSize, LocalDateTime.now(), createdDateTime, streamSecret, x -> {}))));
+                                            network, isHidden, mimeType, fileSize, LocalDateTime.now(), createdDateTime, streamSecret, true, x -> {}))));
     }
 
     private CompletableFuture<Snapshot> generateThumbnailAndUpdate(Snapshot base,
@@ -1292,8 +1331,26 @@ public class FileWrapper {
                                                                    LocalDateTime createdDateTime,
                                                                    Optional<byte[]> streamSecret,
                                                                    ProgressConsumer<Long> monitor) {
+        return generateThumbnailAndUpdate(base, committer, cap, fileName, fileData, network, isHidden,
+                mimeType, fileSize, updatedDateTime, createdDateTime, streamSecret, false, monitor);
+    }
+
+    private CompletableFuture<Snapshot> generateThumbnailAndUpdate(Snapshot base,
+                                                                   Committer committer,
+                                                                   WritableAbsoluteCapability cap,
+                                                                   String fileName,
+                                                                   AsyncReader fileData,
+                                                                   NetworkAccess network,
+                                                                   Boolean isHidden,
+                                                                   String mimeType,
+                                                                   long fileSize,
+                                                                   LocalDateTime updatedDateTime,
+                                                                   LocalDateTime createdDateTime,
+                                                                   Optional<byte[]> streamSecret,
+                                                                   boolean replaceExistingThumbnail,
+                                                                   ProgressConsumer<Long> monitor) {
         return network.getFile(base, cap, getChildsEntryWriter(), ownername).thenCompose(fileOpt -> {
-            if (fileOpt.get().props.thumbnail.isEmpty()) {
+            if (replaceExistingThumbnail || fileOpt.get().props.thumbnail.isEmpty()) {
                 return generateThumbnail(network, fileData, (int) Math.min(fileSize, Integer.MAX_VALUE), fileName, mimeType)
                         .thenCompose(thumbData -> {
                             if (thumbData.isEmpty())
@@ -1341,7 +1398,6 @@ public class FileWrapper {
                 });
     }
 
-    @JsMethod
     public CompletableFuture<FileWrapper> appendToChild(String filename,
                                                         long expectedSize,
                                                         byte[] fileData,

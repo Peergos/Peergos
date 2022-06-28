@@ -10,6 +10,22 @@ import java.util.stream.Stream;
 
 public class PathUtils {
 
+
+    @JsMethod
+    public static Path getFileName(Path another) {
+        return another.getFileName();
+    }
+
+    @JsMethod
+    public static Path subpath(Path another, int from, int to) {
+        return another.subpath(from, to);
+    }
+
+    @JsMethod
+    public static int getNameCount(Path another) {
+        return another.getNameCount();
+    }
+
     @JsMethod
     public static Path getParent(Path another) {
         return another.getParent();

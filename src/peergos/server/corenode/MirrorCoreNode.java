@@ -37,9 +37,10 @@ public class MirrorCoreNode implements CoreNode {
     private final JdbcAccount rawAccount;
     private final BatCave batCave;
     private final Account account;
-    private final MutablePointers p2pMutable;
+    private final MutablePointersProxy p2pMutable;
     private final DeletableContentAddressedStorage ipfs;
-    private final JdbcIpnsAndSocial localPointers;
+    private final JdbcIpnsAndSocial rawPointers;
+    private final MutablePointers localPointers;
     private final TransactionStore transactions;
     private final JdbcIpnsAndSocial localSocial;
     private final UsageStore usageStore;
@@ -55,9 +56,10 @@ public class MirrorCoreNode implements CoreNode {
                           JdbcAccount rawAccount,
                           BatCave batCave,
                           Account account,
-                          MutablePointers p2pMutable,
+                          MutablePointersProxy p2pMutable,
                           DeletableContentAddressedStorage ipfs,
-                          JdbcIpnsAndSocial localPointers,
+                          JdbcIpnsAndSocial rawPointers,
+                          MutablePointers localPointers,
                           TransactionStore transactions,
                           JdbcIpnsAndSocial localSocial,
                           UsageStore usageStore,
@@ -70,6 +72,7 @@ public class MirrorCoreNode implements CoreNode {
         this.account = account;
         this.p2pMutable = p2pMutable;
         this.ipfs = ipfs;
+        this.rawPointers = rawPointers;
         this.localPointers = localPointers;
         this.transactions = transactions;
         this.localSocial = localSocial;
@@ -278,8 +281,8 @@ public class MirrorCoreNode implements CoreNode {
                     updated.reverseLookup, updated.usernames);
 
             // 'pin' the new pki version
-            Optional<byte[]> existingPointer = localPointers.getPointer(pkiKey).join();
-            localPointers.setPointer(pkiKey, existingPointer, newPointer).join();
+            Optional<byte[]> existingPointer = rawPointers.getPointer(pkiKey).join();
+            rawPointers.setPointer(pkiKey, existingPointer, newPointer).join();
             transactions.closeTransaction(peergosKey, tid);
 
             state = updated;
@@ -306,7 +309,7 @@ public class MirrorCoreNode implements CoreNode {
         update();
         usageStore.addUserIfAbsent(username);
         usageStore.addWriter(username, chain.owner);
-        IpfsCoreNode.applyOpLog(username, chain.owner, setupOperations, ipfs, p2pMutable, account, batCave);
+        IpfsCoreNode.applyOpLog(username, chain.owner, setupOperations, ipfs, localPointers, account, batCave);
         return Futures.of(Optional.empty());
     }
 
@@ -335,7 +338,7 @@ public class MirrorCoreNode implements CoreNode {
 
     private UserSnapshot update(UserSnapshot in) {
         return new UserSnapshot(in.pointerState.entrySet().stream()
-                .flatMap(e -> localPointers.getPointer(e.getKey()).join()
+                .flatMap(e -> rawPointers.getPointer(e.getKey()).join()
                         .map(v -> new Pair<>(e.getKey(), v))
                         .stream())
                 .collect(Collectors.toMap(p -> p.left, p -> p.right)),
@@ -386,9 +389,9 @@ public class MirrorCoreNode implements CoreNode {
                     batCave.addBat(username, bat.id(), bat.bat, new byte[0]);
             }
             // Mirror all the data locally
-            Mirror.mirrorUser(username, Optional.empty(), mirrorBat, this, p2pMutable, null, ipfs, localPointers, rawAccount, transactions, hasher);
+            Mirror.mirrorUser(username, Optional.empty(), mirrorBat, this, p2pMutable, null, ipfs, rawPointers, rawAccount, transactions, hasher);
             Map<PublicKeyHash, byte[]> mirrored = Mirror.mirrorUser(username, Optional.empty(), mirrorBat, this, p2pMutable,
-                    null, ipfs, localPointers, rawAccount, transactions, hasher);
+                    null, ipfs, rawPointers, rawAccount, transactions, hasher);
 
             // Proxy call to their current storage server
             UserSnapshot res = writeTarget.migrateUser(username, newChain, currentStorageId, mirrorBat).join();
@@ -404,7 +407,7 @@ public class MirrorCoreNode implements CoreNode {
             for (Map.Entry<PublicKeyHash, byte[]> e : res.pointerState.entrySet()) {
                 byte[] existingVal = mirrored.get(e.getKey());
                 if (! Arrays.equals(existingVal, e.getValue())) {
-                    Mirror.mirrorMerkleTree(owner, e.getKey(), e.getValue(), mirrorBat, ipfs, localPointers, transactions, hasher);
+                    Mirror.mirrorMerkleTree(owner, e.getKey(), e.getValue(), mirrorBat, ipfs, rawPointers, transactions, hasher);
                 }
             }
 
