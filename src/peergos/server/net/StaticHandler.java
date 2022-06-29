@@ -119,6 +119,7 @@ public abstract class StaticHandler implements HttpHandler
             // Todo work on removing unsafe-inline from sub domains
             if (includeCsp)
                 httpExchange.getResponseHeaders().set("content-security-policy", "default-src 'self' " + this.host + ";" +
+                        "script-src 'self' 'wasm-unsafe-eval';" +
                         "style-src 'self' " +
                         " " + this.host +
                         (isSubdomain ? " 'unsafe-inline' https://" + reqHost : "") + // calendar, editor, todoboard, pdfviewer
@@ -127,7 +128,7 @@ public abstract class StaticHandler implements HttpHandler
                         "frame-src 'self' " + frameDomains.stream().collect(Collectors.joining(" ")) + " " + (isSubdomain ? "" : this.host.wildcard()) + ";" +
                         "frame-ancestors 'self' " + this.host + ";" +
                         "prefetch-src 'self' " + this.host + ";" + // prefetch can be used to leak data via DNS
-                        "connect-src 'self' " + this.host +
+                        "connect-src 'self' data: " + this.host +
                         (isSubdomain ? "" : blockstoreDomain.stream().map(d -> " https://" + d).collect(Collectors.joining())) + ";" +
                         "webrtc 'block';" +
                         "media-src 'self' " + this.host + " blob:;" +

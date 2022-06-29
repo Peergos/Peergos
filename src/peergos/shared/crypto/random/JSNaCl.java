@@ -6,6 +6,7 @@ import java.util.concurrent.CompletableFuture;
 
 @JsType(namespace = "tweetNaCl", isNative = true)
 public class JSNaCl {
+    native public void init();
     native public byte[] randombytes(int len);
 
     native public byte[] secretbox(byte[] data, byte[] nonce, byte[] key);
