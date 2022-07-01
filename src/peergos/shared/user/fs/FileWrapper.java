@@ -2202,13 +2202,15 @@ public class FileWrapper {
                         fut.complete(convertFromBase64(base64Str));
                     });
                 } else {
-                    byte[] bytes = new byte[fileSize];
-                    fileData.readIntoArray(bytes, 0, fileSize).thenAccept(data -> {
-                        fut.complete(generateVideoThumbnail(bytes));
-                    }).exceptionally(t -> {
-                        fut.complete(Optional.empty());
-                        return null;
-                    });
+                    // TODO find a cross platform way to generate (streaming) video thumbnails in Java
+                    fut.complete(Optional.empty());
+//                    byte[] bytes = new byte[fileSize];
+//                    fileData.readIntoArray(bytes, 0, fileSize).thenAccept(data -> {
+//                        fut.complete(generateVideoThumbnail(bytes));
+//                    }).exceptionally(t -> {
+//                        fut.complete(Optional.empty());
+//                        return null;
+//                    });
                 }
             } else if (mimeType.startsWith("audio/mpeg")) {
                 byte[] mp3Data = new byte[fileSize];
