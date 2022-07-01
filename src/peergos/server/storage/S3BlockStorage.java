@@ -136,12 +136,14 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         // retrieve all blocks and verify BATs in parallel
         List<CompletableFuture<Optional<byte[]>>> data = blocks.stream()
                 .parallel()
-                .map(b -> getRaw(b.hash, b.bat, id, hasher))
+                .map(b -> authRaw(b.hash, b.hash.isRaw() ?
+                        Optional.of(new Pair<>(0, Bat.MAX_RAW_BLOCK_PREFIX_SIZE - 1)) :
+                        Optional.empty(), b.bat, id, hasher))
                 .collect(Collectors.toList());
 
         for (MirrorCap block : blocks) {
             String s3Key = hashToKey(block.hash);
-            res.add(S3Request.preSignGet(folder + s3Key, Optional.of(600), S3AdminRequests.asAwsDate(ZonedDateTime.now()), host, region, accessKeyId, secretKey, useHttps, hasher).join());
+            res.add(S3Request.preSignGet(folder + s3Key, Optional.of(600), Optional.empty(), S3AdminRequests.asAwsDate(ZonedDateTime.now()), host, region, accessKeyId, secretKey, useHttps, hasher).join());
         }
         for (CompletableFuture<Optional<byte[]>> fut : data) {
             fut.join(); // Any invalids BATs will cause this to throw
@@ -204,27 +206,47 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         return getRaw(object, bat, id, hasher);
     }
 
+    private CompletableFuture<Optional<byte[]>> authRaw(Cid hash,
+                                                       Optional<Pair<Integer, Integer>> range,
+                                                       Optional<BatWithId> bat,
+                                                       Cid ourId,
+                                                       Hasher h) {
+        if (bat.isEmpty())
+            return getRaw(hash, range, "", true, Optional.empty());
+        return bat.get().bat.generateAuth(hash, ourId, 300, S3Request.currentDatetime(), bat.get().id, h)
+                .thenApply(BlockAuth::encode)
+                .thenCompose(auth -> getRaw(hash, range, auth, true, bat));
+    }
+
     @Override
     public CompletableFuture<Optional<byte[]>> getRaw(Cid hash, Optional<BatWithId> bat, Cid ourId, Hasher h) {
         if (bat.isEmpty())
             return getRaw(hash, "");
         return bat.get().bat.generateAuth(hash, ourId, 300, S3Request.currentDatetime(), bat.get().id, h)
                 .thenApply(BlockAuth::encode)
-                .thenCompose(auth -> getRaw(hash, auth, true, bat));
+                .thenCompose(auth -> getRaw(hash, Optional.empty(), auth, true, bat));
     }
 
     @Override
     public CompletableFuture<Optional<byte[]>> getRaw(Cid hash, String auth) {
-        return getRaw(hash, auth, true, Optional.empty());
+        return getRaw(hash, Optional.empty(), auth, true, Optional.empty());
     }
 
-    private CompletableFuture<Optional<byte[]>> getRaw(Cid hash, String auth, boolean enforceAuth, Optional<BatWithId> bat) {
-        return getWithBackoff(() -> getRawWithoutBackoff(hash, auth, enforceAuth, bat));
+    private CompletableFuture<Optional<byte[]>> getRaw(Cid hash,
+                                                       Optional<Pair<Integer, Integer>> range,
+                                                       String auth,
+                                                       boolean enforceAuth,
+                                                       Optional<BatWithId> bat) {
+        return getWithBackoff(() -> getRawWithoutBackoff(hash, range, auth, enforceAuth, bat));
     }
 
-    private CompletableFuture<Optional<byte[]>> getRawWithoutBackoff(Cid hash, String auth, boolean enforceAuth, Optional<BatWithId> bat) {
+    private CompletableFuture<Optional<byte[]>> getRawWithoutBackoff(Cid hash,
+                                                                     Optional<Pair<Integer, Integer>> range,
+                                                                     String auth,
+                                                                     boolean enforceAuth,
+                                                                     Optional<BatWithId> bat) {
         String path = folder + hashToKey(hash);
-        PresignedUrl getUrl = S3Request.preSignGet(path, Optional.of(600),
+        PresignedUrl getUrl = S3Request.preSignGet(path, Optional.of(600), range,
                 S3AdminRequests.asAwsDate(ZonedDateTime.now()), host, region, accessKeyId, secretKey, useHttps, hasher).join();
         Histogram.Timer readTimer = readTimerLog.labels("read").startTimer();
         try {
@@ -495,7 +517,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
     public CompletableFuture<List<Cid>> getLinks(Cid root, String auth) {
         if (root.isRaw())
             return CompletableFuture.completedFuture(Collections.emptyList());
-        return getRaw(root, "", false, Optional.empty()).thenApply(opt -> opt
+        return getRaw(root, Optional.empty(), "", false, Optional.empty()).thenApply(opt -> opt
                 .map(CborObject::fromByteArray)
                 .map(cbor -> cbor.links().stream().map(c -> (Cid) c).collect(Collectors.toList()))
                 .orElse(Collections.emptyList())
@@ -508,7 +530,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
             return getSize(block)
                     .thenApply(s -> new Pair<>(s.orElse(0), Collections.emptyList()));
         }
-        Optional<byte[]> data = getRaw(block, "", false, Optional.empty()).join();
+        Optional<byte[]> data = getRaw(block, Optional.empty(), "", false, Optional.empty()).join();
         List<Cid> links = data.map(CborObject::fromByteArray)
                 .map(cbor -> cbor.links().stream().map(c -> (Cid) c).collect(Collectors.toList()))
                 .orElse(Collections.emptyList());
