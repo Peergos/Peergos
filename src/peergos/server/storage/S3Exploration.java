@@ -1,5 +1,6 @@
 package peergos.server.storage;
 
+import org.junit.*;
 import peergos.server.*;
 import peergos.server.util.*;
 import peergos.shared.*;
@@ -24,7 +25,8 @@ class S3Exploration {
         String regionEndpoint = region + ".linodeobjects.com";
         String host = bucketName + "." + regionEndpoint;
 
-        byte[] payload = "Hi Linode2!".getBytes();
+        byte[] payload = new byte[4096];
+        new Random(1).nextBytes(payload);
         Hasher h = crypto.hasher;
         RAMStorage ram = new RAMStorage(h);
         TransactionId tid = ram.startTransaction(null).join();
@@ -45,8 +47,10 @@ class S3Exploration {
             System.out.println(putRes);
 
             // test copying over to reset modified time
-            PresignedUrl getaUrl = S3Request.preSignGet(s3Key, Optional.of(600), S3AdminRequests.asAwsDate(ZonedDateTime.now()), host, region, accessKey, secretKey, useHttps, h).join();
-            get(new URI(getaUrl.base).toURL(), getaUrl.fields);
+            PresignedUrl getaUrl = S3Request.preSignGet(s3Key, Optional.of(600), Optional.of(new Pair<>(0, Bat.MAX_RAW_BLOCK_PREFIX_SIZE - 1)),
+                    S3AdminRequests.asAwsDate(ZonedDateTime.now()), host, region, accessKey, secretKey, useHttps, h).join();
+            byte[] prefix = get(new URI(getaUrl.base).toURL(), getaUrl.fields);
+            Assert.assertTrue(prefix.length == Bat.MAX_RAW_BLOCK_PREFIX_SIZE);
             String tempKey = s3Key + "Z";
             {
                 PresignedUrl copyUrl = S3Request.preSignCopy(bucketName, s3Key, tempKey,
@@ -112,13 +116,13 @@ class S3Exploration {
             throw new IllegalStateException("Incorrect size: " + size);
 
         // test an authed read
-        PresignedUrl getUrl = S3Request.preSignGet(s3Key, Optional.of(600), S3AdminRequests.asAwsDate(ZonedDateTime.now()), host, region, accessKey, secretKey, useHttps, h).join();
+        PresignedUrl getUrl = S3Request.preSignGet(s3Key, Optional.of(600), Optional.empty(), S3AdminRequests.asAwsDate(ZonedDateTime.now()), host, region, accessKey, secretKey, useHttps, h).join();
         byte[] authReadBytes = get(new URI(getUrl.base).toURL(), getUrl.fields);
         if (! Arrays.equals(authReadBytes, payload))
             throw new IllegalStateException("Incorrect contents: " + new String(authReadBytes));
 
         // test an authed read which has expired
-        PresignedUrl failGetUrl = S3Request.preSignGet(s3Key, Optional.of(600), S3AdminRequests.asAwsDate(ZonedDateTime.now().minusMinutes(11)), host, region, accessKey, secretKey, useHttps, h).join();
+        PresignedUrl failGetUrl = S3Request.preSignGet(s3Key, Optional.of(600), Optional.empty(), S3AdminRequests.asAwsDate(ZonedDateTime.now().minusMinutes(11)), host, region, accessKey, secretKey, useHttps, h).join();
         String failReadRes = new String(get(new URI(failGetUrl.base).toURL(), failGetUrl.fields));
         System.out.println(failReadRes);
 

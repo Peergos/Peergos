@@ -106,6 +106,7 @@ public class S3Request {
 
     public static CompletableFuture<PresignedUrl> preSignGet(String key,
                                                              Optional<Integer> expirySeconds,
+                                                             Optional<Pair<Integer, Integer>> range,
                                                              String datetime,
                                                              String host,
                                                              String region,
@@ -113,7 +114,7 @@ public class S3Request {
                                                              String s3SecretKey,
                                                              boolean useHttps,
                                                              Hasher h) {
-        return preSignNulliPotent("GET", key, expirySeconds, datetime, host, region, accessKeyId, s3SecretKey, useHttps, h);
+        return preSignNulliPotent("GET", key, expirySeconds, range, datetime, host, region, accessKeyId, s3SecretKey, useHttps, h);
     }
 
     public static CompletableFuture<PresignedUrl> preSignDelete(String key,
@@ -138,12 +139,13 @@ public class S3Request {
                                                               String s3SecretKey,
                                                               boolean useHttps,
                                                               Hasher h) {
-        return preSignNulliPotent("HEAD", key, expirySeconds, datetime, host, region, accessKeyId, s3SecretKey, useHttps, h);
+        return preSignNulliPotent("HEAD", key, expirySeconds, Optional.empty(), datetime, host, region, accessKeyId, s3SecretKey, useHttps, h);
     }
 
     private static CompletableFuture<PresignedUrl> preSignNulliPotent(String verb,
                                                                       String key,
                                                                       Optional<Integer> expiresSeconds,
+                                                                      Optional<Pair<Integer, Integer>> range,
                                                                       String datetime,
                                                                       String host,
                                                                       String region,
@@ -151,8 +153,12 @@ public class S3Request {
                                                                       String s3SecretKey,
                                                                       boolean useHttps,
                                                                       Hasher h) {
+
+        Map<String, String> extraHeaders = range
+                .map(p -> Stream.of(p).collect(Collectors.toMap(r -> "Range", r -> "bytes="+r.left+"-"+r.right)))
+                .orElse(Collections.emptyMap());
         S3Request policy = new S3Request(verb, host, key, UNSIGNED, expiresSeconds, false, true,
-                Collections.emptyMap(), Collections.emptyMap(), accessKeyId, region, datetime);
+                Collections.emptyMap(), extraHeaders, accessKeyId, region, datetime);
         return preSignRequest(policy, key, host, s3SecretKey, useHttps, h);
     }
 
