@@ -25,13 +25,12 @@ public class ProgressBar {
 
     private String progressBar(long bytes, long  total) {
         accumulatedBytes += bytes;
-        double frac =  (double) accumulatedBytes / (double) total;
-        int barsProgressed = (int) (frac * PROGRESS_BAR_LENGTH);
+        int barsProgressed = (int) (accumulatedBytes * PROGRESS_BAR_LENGTH / total);
 
         StringBuilder sb = new StringBuilder();
         sb.append('[');
         for (int i = 0; i < PROGRESS_BAR_LENGTH; i++) {
-            if (i <= barsProgressed)
+            if (i < barsProgressed)
                 sb.append('=');
             else
                 sb.append(' ');
@@ -61,9 +60,9 @@ public class ProgressBar {
     public static void main(String[] args) throws Exception {
         ProgressBar pb = new ProgressBar(Paths.get("home"), "somefile");
         int size = 1000;
-        for (int i = 0; i < size; i+=10) {
-            PrintWriter writer = new PrintWriter(System.out);
-            pb.update(writer, i, size);
+        PrintWriter writer = new PrintWriter(System.out);
+        for (int i = 10; i <= size; i+=10) {
+            pb.update(writer, 10, size);
             Thread.sleep(250);
         }
     }
