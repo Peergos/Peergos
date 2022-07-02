@@ -22,6 +22,7 @@ import java.io.*;
 import java.net.*;
 import java.nio.file.*;
 import java.util.*;
+import java.util.concurrent.atomic.*;
 import java.util.function.*;
 import java.util.logging.Level;
 import java.util.stream.*;
@@ -195,7 +196,7 @@ public class CLI implements Runnable {
         else if (!localPath.toFile().getParentFile().isDirectory())
             throw new IllegalStateException("Specified local path '" + localPath.getParent() + "' is not a directory or does not exist.");
 
-        ProgressBar pb = new ProgressBar(remotePath.getParent(), remotePath.getFileName().toString());
+        ProgressBar pb = new ProgressBar(new AtomicLong(0), new AtomicLong(1), remotePath.getParent(), remotePath.getFileName().toString());
         BiConsumer<Long, Long> progressConsumer = (bytes, size) -> pb.update(writerForProgress, bytes, size);
 
         byte[] data = peergosFileSystem.read(remotePath, progressConsumer);
@@ -229,6 +230,7 @@ public class CLI implements Runnable {
     private Stream<FileWrapper.FolderUploadProperties> parseLocalFolder(Path remoteRelativeDir,
                                                                         Path localDir,
                                                                         boolean skipExisting,
+                                                                        AtomicLong fileCount,
                                                                         ProgressCreator progressCreator) {
         try {
             List<FileWrapper.FileUploadProperties> files = Files.list(localDir).filter(p -> p.toFile().isFile())
@@ -236,11 +238,12 @@ public class CLI implements Runnable {
                             (int) (p.toFile().length() >> 32), (int) p.toFile().length(), skipExisting, true,
                             progressCreator.create(remoteRelativeDir, p.getFileName().toString(), p.toFile().length())))
                     .collect(Collectors.toList());
+            fileCount.addAndGet(files.size());
             FileWrapper.FolderUploadProperties dir = new FileWrapper.FolderUploadProperties(convert(remoteRelativeDir), files);
             return Stream.concat(Stream.of(dir),
                     Files.list(localDir)
                             .filter(p -> p.toFile().isDirectory())
-                            .flatMap(p -> parseLocalFolder(remoteRelativeDir.resolve(p.getFileName()), localDir.resolve(p.getFileName()), skipExisting, progressCreator)));
+                            .flatMap(p -> parseLocalFolder(remoteRelativeDir.resolve(p.getFileName()), localDir.resolve(p.getFileName()), skipExisting, fileCount, progressCreator)));
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
@@ -253,16 +256,19 @@ public class CLI implements Runnable {
         if (localPath.toFile().isDirectory()) {
             Path remotePath = cmd.hasSecondArgument() ? cliContext.pwd.resolve(Paths.get(cmd.secondArgument())) : cliContext.pwd;
             boolean skipExisting = cmd.hasThirdArgument() && cmd.thirdArgument().equalsIgnoreCase("true");
-            peergosFileSystem.writeSubtree(remotePath, parseLocalFolder(localPath.getFileName(), localPath, skipExisting, (path, name, size) -> {
-                ProgressBar pb = new ProgressBar(path, name);
-                return bytesWritten -> pb.update(writerForProgress, bytesWritten, size);
-            }), f -> Futures.of(true));
+            AtomicLong fileCount = new AtomicLong(0);
+            AtomicLong doneFiles = new AtomicLong(0);
+            peergosFileSystem.writeSubtree(remotePath, parseLocalFolder(localPath.getFileName(), localPath, skipExisting, fileCount,
+                    (path, name, size) -> {
+                        ProgressBar pb = new ProgressBar(doneFiles, fileCount, path, name);
+                        return bytesWritten -> pb.update(writerForProgress, bytesWritten, size);
+                    }), f -> Futures.of(true));
             return "\nSuccessfully uploaded " + localPath + " to remote " + remotePath;
         } else {
             String remotePathS = cmd.hasSecondArgument() ? cmd.secondArgument() : cliContext.pwd.resolve(localPath.getFileName()).toString();
             Path remotePath = resolvedRemotePath(remotePathS);
             byte[] data = Files.readAllBytes(localPath);
-            ProgressBar pb = new ProgressBar(remotePath, localPath.getFileName().toString());
+            ProgressBar pb = new ProgressBar(new AtomicLong(0), new AtomicLong(1), remotePath, localPath.getFileName().toString());
             Consumer<Long> progressConsumer = bytesSoFar -> pb.update(writerForProgress, bytesSoFar, data.length);
             peergosFileSystem.write(remotePath, data, progressConsumer);
             writerForProgress.println();
