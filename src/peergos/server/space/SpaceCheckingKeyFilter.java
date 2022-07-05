@@ -264,7 +264,10 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
 
         try {
             synchronized (current) {
+                long t0 = System.nanoTime();
                 long changeInStorage = dht.getChangeInContainedSize(current.target().toOptional().map(c -> (Cid) c), (Cid) newRoot.get()).get();
+                long t1 = System.nanoTime();
+                LOG.info("Calculating change in used space for (" + owner + ", " + writer + ") took " + (t1-t0)/1_000_000 + "mS");
                 Set<PublicKeyHash> updatedOwned =
                         WriterData.getDirectOwnedKeys(writer, newRoot, dht, hasher).join();
                 for (PublicKeyHash owned : updatedOwned) {
