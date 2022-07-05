@@ -49,9 +49,18 @@ public class Messenger {
 
     @JsMethod
     public CompletableFuture<ChatController> createChat() {
-        String chatId = "chat$" + context.username + "$" + UUID.randomUUID().toString();
-        Chat chat = Chat.createNew(chatId, context.username, context.signer.publicKeyHash);
+        return initChat(null);
+    }
 
+    @JsMethod
+    public CompletableFuture<ChatController> createAppChat(String appName){
+        return initChat(appName);
+    }
+
+    private CompletableFuture<ChatController> initChat(String appName) {
+        String prefix = appName != null ? "chat-" + appName + "$" : "chat$";
+        String chatId = prefix + context.username + "$" + UUID.randomUUID().toString();
+        Chat chat = Chat.createNew(chatId, context.username, context.signer.publicKeyHash);
         byte[] rawChat = chat.serialize();
         PrivateChatState privateChatState = Chat.generateChatIdentity(crypto);
         byte[] rawPrivateChatState = privateChatState.serialize();
@@ -260,6 +269,7 @@ public class Messenger {
         return current.sendMessage(new SetGroupState(key, value));
     }
 
+    @JsMethod
     public CompletableFuture<ChatController> getChat(String uuid) {
         return context.getByPath(getChatPath(context.username, uuid))
                 .thenApply(Optional::get)
