@@ -170,16 +170,19 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
                                     (s, h) -> getRecursiveBlockSize(h).thenApply(size -> size + s),
                                     (a, b) -> a + b);
 
-                    Function<List<Pair<Cid, Cid>>, CompletableFuture<Long>> getSizeDiff =
-                            ps -> Futures.reduceAll(ps,
-                                    0L,
-                                    (s, p) -> getChangeInContainedSize(p.left, p.right).thenApply(size -> size + s),
-                                    (a, b) -> a + b);
-                    return getAllRecursiveSizes.apply(extraBefore)
-                            .thenCompose(priorSize -> getAllRecursiveSizes.apply(extraAfter)
-                                    .thenApply(postSize -> postSize - priorSize + objectDelta))
-                            .thenCompose(total -> getSizeDiff.apply(pairs).thenApply(res -> res + total));
+                    CompletableFuture<Long> beforeRes = Futures.runAsync(() -> getAllRecursiveSizes.apply(extraBefore));
+                    CompletableFuture<Long> afterRes = Futures.runAsync(() -> getAllRecursiveSizes.apply(extraAfter));
+                    CompletableFuture<Long> pairsRes = Futures.runAsync(() -> getSizeDiff(pairs));
+                    return beforeRes.thenCompose(priorSize -> afterRes.thenApply(postSize -> postSize - priorSize + objectDelta))
+                            .thenCompose(total -> pairsRes.thenApply(res -> res + total));
                 }));
+    }
+
+    private CompletableFuture<Long> getSizeDiff(List<Pair<Cid, Cid>> pairs) {
+        return Futures.reduceAll(pairs,
+                0L,
+                (s, p) -> Futures.runAsync(() -> getChangeInContainedSize(p.left, p.right).thenApply(size -> size + s)),
+                (a, b) -> a + b);
     }
 
     class HTTP extends ContentAddressedStorage.HTTP implements DeletableContentAddressedStorage {

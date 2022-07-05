@@ -101,7 +101,7 @@ public class FileUploader implements AutoCloseable {
                 CompletableFuture<ChunkUpload> res = toUpload.poll();
                 if (! waitingWorkers.isEmpty()) {
                     CompletableFuture<Boolean> worker = waitingWorkers.poll();
-                    runAsync(() -> Futures.of(worker.complete(true)));
+                    Futures.runAsync(() -> Futures.of(worker.complete(true)));
                 }
                 return res;
             }
@@ -109,20 +109,6 @@ public class FileUploader implements AutoCloseable {
             waitingUploaders.add(wait);
             return wait;
         }
-    }
-
-    private static <V> CompletableFuture<V> runAsync(Supplier<CompletableFuture<V>> work) {
-        CompletableFuture<V> res = new CompletableFuture<>();
-        ForkJoinPool.commonPool().execute(() -> {
-            try {
-                work.get()
-                        .thenApply(res::complete)
-                        .exceptionally(res::completeExceptionally);
-            } catch (Throwable t) {
-                res.completeExceptionally(t);
-            }
-        });
-        return res;
     }
 
     public CompletableFuture<Snapshot> upload(Snapshot current,
@@ -152,7 +138,7 @@ public class FileUploader implements AutoCloseable {
             List<Integer> input = IntStream.range(startChunkIndex, (int) nchunks).mapToObj(i -> Integer.valueOf(i)).collect(Collectors.toList());
             CompletableFuture<Snapshot> res = new CompletableFuture<>();
             Futures.reduceAll(input, true,
-                            (p, i) -> runAsync(() -> encryptChunk(i, owner, writer, mirrorBat, MaybeMultihash.empty(), random, hasher, network.isJavascript())
+                            (p, i) -> Futures.runAsync(() -> encryptChunk(i, owner, writer, mirrorBat, MaybeMultihash.empty(), random, hasher, network.isJavascript())
                                     .thenCompose(queue::add)),
                             (a, b) -> b)
                     .exceptionally(res::completeExceptionally);
