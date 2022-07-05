@@ -21,6 +21,8 @@ import java.util.stream.*;
  */
 public interface DeletableContentAddressedStorage extends ContentAddressedStorage {
 
+    ForkJoinPool usagePool = new ForkJoinPool(100);
+
     Stream<Cid> getAllBlockHashes();
 
     List<Multihash> getOpenTransactionBlocks();
@@ -165,9 +167,9 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
                     List<Cid> extraBefore = onlyBefore.subList(nPairs, onlyBefore.size());
                     List<Cid> extraAfter = onlyAfter.subList(nPairs, onlyAfter.size());
 
-                    CompletableFuture<Long> beforeRes = Futures.runAsync(() -> getAllRecursiveSizes(extraBefore));
-                    CompletableFuture<Long> afterRes = Futures.runAsync(() -> getAllRecursiveSizes(extraAfter));
-                    CompletableFuture<Long> pairsRes = Futures.runAsync(() -> getSizeDiff(pairs));
+                    CompletableFuture<Long> beforeRes = Futures.runAsync(() -> getAllRecursiveSizes(extraBefore), usagePool);
+                    CompletableFuture<Long> afterRes = Futures.runAsync(() -> getAllRecursiveSizes(extraAfter), usagePool);
+                    CompletableFuture<Long> pairsRes = Futures.runAsync(() -> getSizeDiff(pairs), usagePool);
                     return beforeRes.thenCompose(priorSize -> afterRes.thenApply(postSize -> postSize - priorSize + objectDelta))
                             .thenCompose(total -> pairsRes.thenApply(res -> res + total));
                 }));
@@ -175,7 +177,7 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
 
     private CompletableFuture<Long> getAllRecursiveSizes(List<Cid> roots) {
         List<CompletableFuture<Long>> allSizes = roots.stream()
-                .map(c -> Futures.runAsync(() -> getRecursiveBlockSize(c)))
+                .map(c -> Futures.runAsync(() -> getRecursiveBlockSize(c), usagePool))
                 .collect(Collectors.toList());
         return Futures.reduceAll(allSizes,
                 0L,
@@ -185,7 +187,7 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
 
     private CompletableFuture<Long> getSizeDiff(List<Pair<Cid, Cid>> pairs) {
         List<CompletableFuture<Long>> pairDiffs = pairs.stream()
-                .map(p -> Futures.runAsync(() -> getChangeInContainedSize(p.left, p.right)))
+                .map(p -> Futures.runAsync(() -> getChangeInContainedSize(p.left, p.right), usagePool))
                 .collect(Collectors.toList());
         return Futures.reduceAll(pairDiffs,
                 0L,
