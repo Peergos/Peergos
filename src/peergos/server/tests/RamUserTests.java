@@ -123,8 +123,11 @@ public class RamUserTests extends UserTests {
         }
         Assert.assertTrue(usageAfterFail > size / 2);
         context.cleanPartialUploads(t -> true).join();
-        Thread.sleep(20_000);
         long usageAfterCleanup = context.getSpaceUsage().join();
+        while (usageAfterCleanup >= initialUsage + 16000) {
+            Thread.sleep(1_000);
+            usageAfterCleanup = context.getSpaceUsage().join();
+        }
         Assert.assertTrue(usageAfterCleanup < initialUsage + 16000); // TODO: investigate why 16000 more (open transactions in db referencing blocks?)
     }
 

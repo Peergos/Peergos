@@ -128,6 +128,24 @@ public class Futures {
                 });
     }
 
+    public static <V> CompletableFuture<V> runAsync(Supplier<CompletableFuture<V>> work) {
+        return runAsync(work, ForkJoinPool.commonPool());
+    }
+
+    public static <V> CompletableFuture<V> runAsync(Supplier<CompletableFuture<V>> work, ForkJoinPool pool) {
+        CompletableFuture<V> res = new CompletableFuture<>();
+        pool.execute(() -> {
+            try {
+                work.get()
+                        .thenApply(res::complete)
+                        .exceptionally(res::completeExceptionally);
+            } catch (Throwable t) {
+                res.completeExceptionally(t);
+            }
+        });
+        return res;
+    }
+
     public static <T> CompletableFuture<T> asyncExceptionally(Supplier<CompletableFuture<T>> normal,
                                                               Function<Throwable, CompletableFuture<T>> exceptional) {
         CompletableFuture<T> result = new CompletableFuture<>();

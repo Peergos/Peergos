@@ -21,6 +21,8 @@ import java.util.stream.*;
  */
 public interface DeletableContentAddressedStorage extends ContentAddressedStorage {
 
+    ForkJoinPool usagePool = new ForkJoinPool(100);
+
     Stream<Cid> getAllBlockHashes();
 
     List<Multihash> getOpenTransactionBlocks();
@@ -126,7 +128,7 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
         return getLinks(block, "").thenCompose(links -> {
             List<CompletableFuture<Long>> subtrees = links.stream()
                     .filter(m -> ! m.isIdentity())
-                    .map(this::getRecursiveBlockSize)
+                    .map(c -> Futures.runAsync(() -> getRecursiveBlockSize(c)))
                     .collect(Collectors.toList());
             return getSize(block)
                     .thenCompose(sizeOpt -> {
@@ -164,22 +166,33 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
 
                     List<Cid> extraBefore = onlyBefore.subList(nPairs, onlyBefore.size());
                     List<Cid> extraAfter = onlyAfter.subList(nPairs, onlyAfter.size());
-                    Function<List<Cid>, CompletableFuture<Long>> getAllRecursiveSizes =
-                            extra -> Futures.reduceAll(extra,
-                                    0L,
-                                    (s, h) -> getRecursiveBlockSize(h).thenApply(size -> size + s),
-                                    (a, b) -> a + b);
 
-                    Function<List<Pair<Cid, Cid>>, CompletableFuture<Long>> getSizeDiff =
-                            ps -> Futures.reduceAll(ps,
-                                    0L,
-                                    (s, p) -> getChangeInContainedSize(p.left, p.right).thenApply(size -> size + s),
-                                    (a, b) -> a + b);
-                    return getAllRecursiveSizes.apply(extraBefore)
-                            .thenCompose(priorSize -> getAllRecursiveSizes.apply(extraAfter)
-                                    .thenApply(postSize -> postSize - priorSize + objectDelta))
-                            .thenCompose(total -> getSizeDiff.apply(pairs).thenApply(res -> res + total));
+                    CompletableFuture<Long> beforeRes = Futures.runAsync(() -> getAllRecursiveSizes(extraBefore), usagePool);
+                    CompletableFuture<Long> afterRes = Futures.runAsync(() -> getAllRecursiveSizes(extraAfter), usagePool);
+                    CompletableFuture<Long> pairsRes = Futures.runAsync(() -> getSizeDiff(pairs), usagePool);
+                    return beforeRes.thenCompose(priorSize -> afterRes.thenApply(postSize -> postSize - priorSize + objectDelta))
+                            .thenCompose(total -> pairsRes.thenApply(res -> res + total));
                 }));
+    }
+
+    private CompletableFuture<Long> getAllRecursiveSizes(List<Cid> roots) {
+        List<CompletableFuture<Long>> allSizes = roots.stream()
+                .map(c -> Futures.runAsync(() -> getRecursiveBlockSize(c), usagePool))
+                .collect(Collectors.toList());
+        return Futures.reduceAll(allSizes,
+                0L,
+                (s, f) -> f.thenApply(size -> size + s),
+                (a, b) -> a + b);
+    }
+
+    private CompletableFuture<Long> getSizeDiff(List<Pair<Cid, Cid>> pairs) {
+        List<CompletableFuture<Long>> pairDiffs = pairs.stream()
+                .map(p -> Futures.runAsync(() -> getChangeInContainedSize(p.left, p.right), usagePool))
+                .collect(Collectors.toList());
+        return Futures.reduceAll(pairDiffs,
+                0L,
+                (s, f) -> f.thenApply(size -> size + s),
+                (a, b) -> a + b);
     }
 
     class HTTP extends ContentAddressedStorage.HTTP implements DeletableContentAddressedStorage {
