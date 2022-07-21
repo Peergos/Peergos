@@ -4,6 +4,7 @@ import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 import peergos.server.util.*;
 import peergos.shared.crypto.hash.Hash;
+import peergos.shared.user.*;
 import peergos.shared.util.ArrayOps;
 
 import java.io.*;
@@ -21,13 +22,15 @@ public abstract class StaticHandler implements HttpHandler
     private final List<String> appsubdomains;
     private final List<String> frameDomains;
     private final Map<String, String> appDomains;
+    private final Optional<HttpPoster> appDevTarget;
 
     public StaticHandler(CspHost host,
                          List<String> blockstoreDomain,
                          List<String> frameDomains,
                          List<String> appSubdomains,
                          boolean includeCsp,
-                         boolean isGzip) {
+                         boolean isGzip,
+                         Optional<HttpPoster> appDevTarget) {
         this.host = host;
         this.includeCsp = includeCsp;
         this.blockstoreDomain = blockstoreDomain;
@@ -36,6 +39,7 @@ public abstract class StaticHandler implements HttpHandler
         this.appDomains = appSubdomains.stream()
                 .collect(Collectors.toMap(s -> s + domainSuffix(), s -> s));
         this.isGzip = isGzip;
+        this.appDevTarget = appDevTarget;
     }
 
     private String domainSuffix() {
@@ -77,7 +81,16 @@ public abstract class StaticHandler implements HttpHandler
             }
 
             boolean isRoot = path.equals("index.html");
-            Asset res = getAsset(path);
+            Asset res;
+            if (appDevTarget.isEmpty() || ! isSubdomain || ! app.equals("sandbox"))
+                res = getAsset(path);
+            else {
+                try {
+                    res = getAsset(path);
+                } catch (Throwable t) {
+                    res = new Asset(appDevTarget.get().get(path.substring("apps/sandbox/".length())).join());
+                }
+            }
 
             if (isGzip)
                 httpExchange.getResponseHeaders().set("Content-Encoding", "gzip");
@@ -195,7 +208,7 @@ public abstract class StaticHandler implements HttpHandler
         Map<String, Asset> cache = new ConcurrentHashMap<>();
         StaticHandler that = this;
 
-        return new StaticHandler(host, blockstoreDomain, frameDomains, appsubdomains, includeCsp, isGzip) {
+        return new StaticHandler(host, blockstoreDomain, frameDomains, appsubdomains, includeCsp, isGzip, appDevTarget) {
             @Override
             public Asset getAsset(String resourcePath) throws IOException {
                 if (! cache.containsKey(resourcePath))

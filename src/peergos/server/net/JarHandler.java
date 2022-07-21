@@ -1,5 +1,7 @@
 package peergos.server.net;
 
+import peergos.shared.user.*;
+
 import java.io.*;
 import java.nio.file.Path;
 import java.util.*;
@@ -13,8 +15,9 @@ public class JarHandler extends StaticHandler {
                       List<String> appSubdomains,
                       boolean includeCsp,
                       boolean isGzip,
-                      Path root) {
-        super(host, blockstoreDomain, frameDomains, appSubdomains, includeCsp, isGzip);
+                      Path root,
+                      Optional<HttpPoster> appDevTarget) {
+        super(host, blockstoreDomain, frameDomains, appSubdomains, includeCsp, isGzip, appDevTarget);
         this.root = root;
     }
 
