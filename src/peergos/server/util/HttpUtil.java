@@ -177,4 +177,12 @@ public class HttpUtil {
             throw new IllegalStateException(new String(errBody), e);
         }
     }
+
+    public static URL toURL(String url) {
+        try {
+            return new URI(url).toURL();
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
 }
