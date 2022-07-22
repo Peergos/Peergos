@@ -82,17 +82,24 @@ public abstract class StaticHandler implements HttpHandler
 
             boolean isRoot = path.equals("index.html");
             Asset res;
-            if (appDevTarget.isEmpty() || ! isSubdomain || ! app.equals("sandbox"))
+            boolean isAppDevResource = false;
+            if (appDevTarget.isEmpty() || ! isSubdomain || ! app.equals("sandbox")) {
                 res = getAsset(path);
-            else {
+            } else {
                 try {
                     res = getAsset(path);
                 } catch (Throwable t) {
-                    res = new Asset(appDevTarget.get().get(path.substring("apps/sandbox/".length())).join());
+                    isAppDevResource = true;
+                    HttpPoster poster = appDevTarget.get();
+                    String urlBase = poster.toString();
+                    String assetPath = path.substring("apps/sandbox/".length());
+                    String fullUrl = urlBase.endsWith("/") ? urlBase + assetPath : urlBase + "/" + assetPath;
+                    byte[] data = poster.get(fullUrl).join();
+                    res = new Asset(data);
                 }
             }
 
-            if (isGzip)
+            if (isGzip && !isAppDevResource)
                 httpExchange.getResponseHeaders().set("Content-Encoding", "gzip");
             if (path.endsWith(".js"))
                 httpExchange.getResponseHeaders().set("Content-Type", "text/javascript");
