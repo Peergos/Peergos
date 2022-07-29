@@ -642,7 +642,9 @@ public class Main extends Builder {
             Optional<Path> webroot = a.hasArg("webroot") ?
                     Optional.of(PathUtil.get(a.getArg("webroot"))) :
                     Optional.empty();
-            boolean useWebAssetCache = a.getBoolean("webcache", true);
+            Optional<HttpPoster> appDevTarget = a.getOptionalArg("app-dev-target")
+                    .map(url ->  new JavaPoster(HttpUtil.toURL(url),  true));
+            boolean useWebAssetCache = a.getBoolean("webcache", appDevTarget.isEmpty());
             Optional<String> tlsHostname = hostname.equals("localhost") ? Optional.empty() : Optional.of(hostname);
             Optional<String> publicHostname = tlsHostname.isPresent() ? tlsHostname : a.getOptionalArg("public-domain");
             Optional<UserService.TlsProperties> tlsProps =
@@ -655,8 +657,7 @@ public class Main extends Builder {
             Optional<String> paymentDomain = a.getOptionalArg("payment-domain");
             List<String> appSubdomains = Arrays.asList(a.getArg("apps", "markdown-viewer,email,calendar,todo-board,code-editor,pdf").split(","));
             List<String> frameDomains = paymentDomain.map(Arrays::asList).orElse(Collections.emptyList());
-            Optional<HttpPoster> appDevTarget = a.getOptionalArg("app-dev-target")
-                    .map(url ->  new JavaPoster(HttpUtil.toURL(url),  true));
+
             localAPI.initAndStart(localAPIAddress, nodeId, tlsProps, publicHostname, blockstoreDomains, frameDomains, appSubdomains,
                     a.getBoolean("include-csp", true), basicAuth, webroot, appDevTarget, useWebAssetCache, isPublicServer, maxConnectionQueue, handlerThreads);
             p2pAPI.initAndStart(p2pAPIAddress, nodeId, Optional.empty(), publicHostname, blockstoreDomains, frameDomains, appSubdomains,
