@@ -122,8 +122,8 @@ public abstract class StaticHandler implements HttpHandler
                 httpExchange.sendResponseHeaders(200, -1);
                 return;
             }
-            if (! isRoot) {
-                httpExchange.getResponseHeaders().set("Cache-Control", "public, max-age=3600");
+            if (! isRoot && ! isAppDevResource) {
+                httpExchange.getResponseHeaders().set("Cache-Control", "public, max-age=600");
                 httpExchange.getResponseHeaders().set("ETag", res.hash);
             }
 
