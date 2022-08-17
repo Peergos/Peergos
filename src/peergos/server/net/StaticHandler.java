@@ -74,7 +74,7 @@ public abstract class StaticHandler implements HttpHandler
 
             String reqHost = httpExchange.getRequestHeaders().get("Host").stream().findFirst().orElse("");
             boolean isSubdomain = reqHost.contains(".") && reqHost.substring(reqHost.indexOf(".")).equals(domainSuffix());
-            Logging.LOG().info("Req host: " + reqHost + ", isSub: " + isSubdomain + ", path: " + path);
+//            Logging.LOG().info("Req host: " + reqHost + ", isSub: " + isSubdomain + ", path: " + path);
             String app = appDomains.getOrDefault(reqHost, "sandbox");
             if (isSubdomain && app.equals("sandbox")) { // serve sandbox assets from sandbox sub dir for root path
                 path = "apps/sandbox" + (path.startsWith("/") ? "" : "/") + path;
