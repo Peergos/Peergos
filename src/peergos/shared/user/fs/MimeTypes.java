@@ -182,7 +182,7 @@ public class MimeTypes {
             if (filename.endsWith(".js"))
                 return "text/javascript";
             if (filename.endsWith(".svg") && equalArrays(start, XML))
-                return "text/svg+xml";
+                return "image/svg+xml";
             return "text/plain";
         }
         return "application/octet-stream";
