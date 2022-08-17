@@ -7,6 +7,7 @@ public class MimeTypes {
     final static int[] MP3_2 = new int[]{0xff, 0xfa};
     final static int[] RIFF = new int[]{'R', 'I', 'F', 'F'};
     final static int[] WAV_2 = new int[]{'W', 'A', 'V', 'E'};
+    final static int[] FLAC = new int[]{'f', 'L', 'a', 'C'};
 
     final static int[] MP4 = new int[]{'f', 't', 'y', 'p'};
     final static int[] ISO2 = new int[]{'i', 's', 'o', '2'};
@@ -124,6 +125,8 @@ public class MimeTypes {
             return "audio/mpeg";
         if (equalArrays(start, MP3_2))
             return "audio/mpeg";
+        if (equalArrays(start, FLAC))
+            return "audio/flac";
         if (equalArrays(start, OGG)) // not sure how to distinguish from ogg video easily
             return "audio/ogg";
         if (equalArrays(start, RIFF) && equalArrays(start, 8, WAV_2))
