@@ -12,6 +12,7 @@ public class MimeTypes {
     final static int[] MP4 = new int[]{'f', 't', 'y', 'p'};
     final static int[] ISO2 = new int[]{'i', 's', 'o', '2'};
     final static int[] ISOM = new int[]{'i', 's', 'o', 'm'};
+    final static int[] DASH = new int[]{'d', 'a', 's', 'h'};
     final static int[] MP41 = new int[]{'m', 'p', '4', '1'};
     final static int[] MP42 = new int[]{'m', 'p', '4', '2'};
     final static int[] M4V = new int[]{'M', '4', 'V', ' '};
@@ -93,6 +94,7 @@ public class MimeTypes {
         if (equalArrays(start, 4, MP4)) {
             if (equalArrays(start, 8, ISO2)
                     || equalArrays(start, 8, ISOM)
+                    || equalArrays(start, 8, DASH)
                     || equalArrays(start, 8, MP42)
                     || equalArrays(start, 8, MP41))
                 return "video/mp4";
