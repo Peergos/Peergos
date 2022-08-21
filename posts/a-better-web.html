@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <head>
-    <title>Decentralized encrypted chat</title>
+    <title>A better web</title>
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta charset="utf-8">
     <meta http-equiv="Content-Security-Policy" content="default-src https: 'self'; style-src 'unsafe-inline' 'self'; script-src 'unsafe-inline' 'self';">
@@ -123,27 +123,54 @@
     <div class="col m3 col s4">
     </div>
     <div class="col m9 col s8" role="main" style="overflow-x:auto; padding-bottom: 10px;">
-    <h1 class="page-header main-title">Decentralized encrypted chat</h1>
-    <h3 class="main-title">Published: Fri 12 November 2021</h3>
+    <h1 class="page-header main-title">A better web</h1>
+    <h3 class="main-title">Published: Tue 02 August 2022</h3>
     <div class="bs-docs-section">
-    <p>We're pleased to announce the latest feature built as part of our NGI grant: decentralized encrypted chat. Why build yet another chat protocol, you ask? Our implementation of chat is an application inside Peergos, i.e. it benefits from all the privacy guarantees and access control without having to re-implement all of it. </p>
-<p>First, let’s see how it looks.</p>
-<p><center>
-<img alt="chat" class="class" id="id" src="/theme/img/blog/chat.png" width="500px" />
+    <p><em>The current web has become hostile for both its users and the society at large; its problems include control, surveillance and manipulation. At Peergos, we have implemented an improved web architecture, which includes strict sandboxing and permissions, to empower and protect end-users. Our solution is not only secure, but convenient, as it works in existing browsers.</em></p>
+<p>The web as it is today is, by design, ridden with hostility. The problems faced by its users fall into three main categories: ownership of identity, ownership of data, and <a href="https://en.wikipedia.org/wiki/Surveillance_capitalism">surveillance capitalism</a>. Websites want to own the identity of their users. This results in compromising either the convenience by having to log in to every site separately – or security and privacy, by outsourcing identity control to other third-party sites (“Would you like to log in with your Google or Facebook account?”), thus disclosing movements throughout the internet.</p>
+<p>Websites also want to own their users' data. This means they can lock users out from their own data (or delete it) with little or no recourse. There are many <a href="https://duckduckgo.com/?q=Google+deleted+my+data+TOS+violation">examples</a> of people losing their accounts or data in Dropbox or Google because an AI got a false positive. It also means users are forced into the provider’s interface for viewing data. Anyone who has ever been upset at a website's redesign knows this problem (e.g. see the recent outcry because of Instagram changing their interface trying to be more like Tiktok).</p>
+<p>Big tech are hell-bent on maximising their profits at all costs - be it personal or societal. Every part of any major website is highly optimised to keep users engaged. This is the direct result of business models that compel companies to exploit their users like a resource: surveil them to serve them targeted ads, and manipulate them to spend more and more time on a website (to see more ads). There are many examples of this, quite frankly, abusive design deliberately manipulating users. Take the notification emails saying, "You've got a new message on our site, come login to see it!", when the message itself could have just been included in the email. Or the habit-forming “infinite scroll” in user feeds that tricks them into never leaving. Technology should be a useful tool, not an addictive drug that prevents consumers from doing anything else.</p>
+<p>Apart from the above problems for users on the web, there are problems for creators as well. Creating a web app requires managing a server, arranging a domain name and TLS certificates, and perhaps running a database and handling data export and deletion requests. What if someone just wants to make some content and share it? Or maybe control access to their content so they can charge for it as well? The only viable option right now is to post to one of the big oppressive platforms like YouTube or Twitter. </p>
+<p>The current web architecture looks like this:
+<center>
+<img alt="current web" class="class" id="id" src="/theme/img/blog/current-web.png" width="100%" />
 <br/>
-Decentralized encrypted chat.
+The current web's architecture, where each website controls your identity and owns your data.
 </center></p>
-<p>The user interface is fairly familiar. However, one difference to most messengers is that it is built to respect you and your attention: no notifications and no nagging pop ups to "install our native app where we can track you more". You can only chat with your friends on Peergos. No unwanted messages - you have to accept someone as a friend before they request a chat with you. All you need to start a chat with a friend is their username - unlike some messengers that demand your phone number, and require you to share it with those you chat with.</p>
-<p>You can do all the usual things: textual messages, images, videos, emoji. The app allows one-to-one chats and group chats. Group chats can have any number of members and any number of admins; admins can grant and revoke admin status to others. Your Peergos server doesn't even know you're sending chat messages, because these are just regular files in your Peergos space.</p>
-<p><center>
-<img alt="group chat" class="class" id="id" src="/theme/img/blog/group-chat.png" width="500px" />
+<p>A better architecture for users would let people own their identity and data and selectively grant web apps access to these. This is illustrated below:
+<center>
+<img alt="ideal web" class="class" id="id" src="/theme/img/blog/better-web.png" width="100%" />
 <br/>
-Group chat.
+A better web architecture empowering users to own their identity and data and grant apps access to parts of it.
 </center></p>
-<p>Under the hood, each chat stores its messages as an append-only file in Peergos. Messages are not pushed to other recipients - to send a message, you simply append it to your own copy of the chat log. Other members will then pull the message and copy it into their log the next time they open the app – messages propagate peer-to-peer, from member to member. The messages themselves form a merkle dag with each message containing a merkle link to previous messages. With this structure, we are able to maintain causal order. That means you only see a reply to a message after seeing the message it is replying to. In group chats, when a member leaves, or is removed from a chat, then their access to the chat is revoked, preventing them from seeing any future messages.</p>
-<p>Want to try it out already? To enable the chat app, simply login or create an account at <a href="https://beta.peergos.net/?chat=true">https://beta.peergos.net/?chat=true</a> - note the "?chat=true" in the URL. We will enable chat by default once the UX is more polished. A free account will get you 200 MiB of space; if you want more, upgrade to get 50 GiB for £5 per month. We charge this fee to keep our business model aligned with our users’ interests - if you're not paying for the product, then you are the product.</p>
-<p>Don't forget to let us know what you think. We're always looking for feedback, so either <a href="mailto://peergos@peergos.org">drop us a line</a> or come say hi in our public <a href="https://app.element.io/#/room/#peergos-chat:matrix.org">Matrix chatroom</a>.</p>
-<p>This work was built as part of our <a href="/posts/next-generation-internet">grant</a> from the Next Generation Internet program (<a href="https://pointer.ngi.eu/">NGI POINTER</a>).</p>
+<p>This architecture is exactly what we've created in Peergos. User identity is controlled by users themselves, not by their home servers, or the Peergos network. Users own their data, since it is all stored in their personal datastore, fully encrypted. Users decide who can see what. </p>
+<p>We have an application sandbox to run custom apps. How does it work? An app in Peergos is basically just a folder of HTML5 assets. The sandbox locks down the app totally, so it can't steal private data. The idea is that even running a malicious app and granting it read-access to private data is still perfectly safe. Because an app is just a folder, access to it can be controlled – just like anything else in Peergos. Charging users for an app? Not a problem! Additionally, the app sandbox also prevents the app from communicating with its author without user consent, making tracking impossible by design. We want to isolate apps from each other, and from the main Peergos page. The architecture looks like this:</p>
+<p><center>
+<img alt="app sandbox" class="class" id="id" src="/theme/img/blog/app-sandbox.jpg" width="100%" />
+<br/>
+App sandbox
+</center></p>
+<p>Each app is loaded on a unique subdomain (a hash of the Peergos path of the app code). The sandbox runs in a separate operating system process with the use of COOP and COEP headers, and CSP is used to lock down the sandbox so it can't talk to the external web. The server returns the same static assets for all subdomains. These assets simply set up a service worker, and load the app in an iframe. The service worker intercepts requests from the app for assets or API calls, and send them via post messages to the parent Peergos context, where they can be checked against any permissions the app has been granted before answering. </p>
+<p>One of the permissions that the app can be granted is the ability to store data in a folder within Peergos. This data is owned and controlled by the user, since it is in their private drive. Other permissions include reading a file or folder, reading and modifying a file, registering to open certain kinds of files, sending messages to selected friends, and much more. We have some demo apps written <a href="https://github.com/Peergos/example-apps">here</a> that include:</p>
+<p><center>
+<img alt="image  editor" class="class" id="id" src="/theme/img/blog/app-image-editor.png" width="80%" />
+<br/>
+Image editor
+</center></p>
+<p><center>
+<img alt="winamp clone" class="class" id="id" src="/theme/img/blog/app-winamp.png" width="80%" />
+<br/>
+Winamp clone
+</center></p>
+<p><center>
+<img alt="tiddly wiki" class="class" id="id" src="/theme/img/blog/app-tiddlywiki.png" width="80%" />
+<br/>
+TiddlyWiki 5 - a non-linear personal web notebook
+</center></p>
+<p>We also used the sandbox to implement a web browser for private websites in Peergos. Any Peergos folder of HTML assets can be viewed in this browser, and different sites are isolated from each other in the same way different apps are. Different websites can be linked via their Peergos path, and anyone who has access to those files can follow the links. During this process, the Peergos server doesn't see any paths or assets. All requests are handled locally just as for other Peergos files.</p>
+<p>Such a private web is super cool because not only is third-party tracking impossible because of the sandbox, but even first-party tracking can be prevented, depending on how Peergos is run. This is how the web should be, protecting end users, not exploiting them. The inventor and futurist Buckminster Fuller once said,</p>
+<p><em>“You never change things by fighting the existing reality. To change something, build a new model that makes the existing model obsolete.”</em></p>
+<p>Want to join the party? Create a free account on <a href="https://peergos.net">https://peergos.net</a> or self-host your own <a href="https://github.com/Peergos/Peergos/blob/master/README.md#usage---self-hosting">private personal datastore</a>. </p>
 <p><br/><br/></p>
 <hr />
 <p><center>

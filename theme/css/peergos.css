@@ -151,6 +151,13 @@ footer a {
     border-radius: 4px;
 }
 
+@media (max-width: 700px) {
+    .row .col.s8 {
+	width: 100%;
+	text-align: center;
+    }
+}
+
 .feature-dark {
     text-align: center;
     background-color: #2c3e50;
