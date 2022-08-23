@@ -154,9 +154,11 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
         return getLinksAndSize(original, "")
                 .thenCompose(before -> getLinksAndSize(updated, "").thenCompose(after -> {
                     int objectDelta = after.left - before.left;
-                    List<Cid> onlyBefore = new ArrayList<>(before.right);
+                    List<Cid> beforeLinks = before.right.stream().filter(c -> !c.isIdentity()).collect(Collectors.toList());
+                    List<Cid> onlyBefore = new ArrayList<>(beforeLinks);
                     onlyBefore.removeAll(after.right);
-                    List<Cid> onlyAfter = new ArrayList<>(after.right);
+                    List<Cid> afterLinks = after.right.stream().filter(c -> !c.isIdentity()).collect(Collectors.toList());
+                    List<Cid> onlyAfter = new ArrayList<>(afterLinks);
                     onlyAfter.removeAll(before.right);
 
                     int nPairs = Math.min(onlyBefore.size(), onlyAfter.size());
