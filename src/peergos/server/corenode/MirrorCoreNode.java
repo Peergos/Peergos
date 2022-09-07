@@ -240,15 +240,16 @@ public class MirrorCoreNode implements CoreNode {
         try {
             PublicKeyHash peergosKey = writeTarget.getPublicKeyHash("peergos").join().get();
 
-            MaybeMultihash newPeergosRoot = p2pMutable.getPointerTarget(peergosKey, peergosKey, ipfs).get();
+            PointerUpdate fresh = p2pMutable.getPointerTarget(peergosKey, peergosKey, ipfs).join();
+            MaybeMultihash newPeergosRoot = fresh.updated;
 
-            CommittedWriterData currentPeergosWd = WriterData.getWriterData((Cid)newPeergosRoot.get(), ipfs).get();
+            CommittedWriterData currentPeergosWd = WriterData.getWriterData((Cid)newPeergosRoot.get(), fresh.sequence, ipfs).join();
             PublicKeyHash pkiKey = currentPeergosWd.props.namedOwnedKeys.get("pki").ownedKey;
             if (pkiKey == null)
                 throw new IllegalStateException("No pki key on owner: " + pkiOwnerIdentity);
 
             byte[] newPointer = p2pMutable.getPointer(pkiOwnerIdentity, pkiKey).join().get();
-            MaybeMultihash currentPkiRoot = MutablePointers.parsePointerTarget(newPointer, pkiKey, ipfs).join();
+            MaybeMultihash currentPkiRoot = MutablePointers.parsePointerTarget(newPointer, pkiKey, ipfs).join().updated;
             CorenodeState current = state;
             if (peergosKey.equals(current.pkiOwnerIdentity) &&
                     newPeergosRoot.equals(current.pkiOwnerTarget) &&

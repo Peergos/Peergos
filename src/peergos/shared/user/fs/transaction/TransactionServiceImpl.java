@@ -2,6 +2,7 @@ package peergos.shared.user.fs.transaction;
 
 import peergos.shared.*;
 import peergos.shared.crypto.*;
+import peergos.shared.storage.*;
 import peergos.shared.storage.auth.*;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
@@ -75,8 +76,11 @@ public class TransactionServiceImpl implements TransactionService {
                     boolean hasChild = fileOpt.isPresent();
                     if (!hasChild)
                         return CompletableFuture.completedFuture(version);
-                    FileWrapper fileWrapper = fileOpt.get();
-                    return dir.removeChild(version, committer, fileWrapper, networkAccess, crypto.random, crypto.hasher);
+                    FileWrapper child = fileOpt.get();
+                    return dir.removeChild(version, committer, child, networkAccess, crypto.random, crypto.hasher)
+                            .thenCompose(v -> IpfsTransaction.call(child.owner(),
+                                    tid -> FileWrapper.deleteAllChunks(child.writableFilePointer(),
+                                            child.signingPair(), tid, crypto.hasher, networkAccess, v, committer), networkAccess.dhtClient));
                 }));
     }
 

@@ -10,16 +10,15 @@ import peergos.shared.util.*;
 
 import java.util.*;
 import java.util.concurrent.*;
-import java.util.function.*;
 import java.util.stream.*;
 
 public class BufferedPointers implements MutablePointers {
 
-    public static class PointerUpdate {
+    public static class SignedPointerUpdate {
         public final PublicKeyHash owner, writer;
         public final byte[] signedUpdate;
 
-        public PointerUpdate(PublicKeyHash owner, PublicKeyHash writer, byte[] signedUpdate) {
+        public SignedPointerUpdate(PublicKeyHash owner, PublicKeyHash writer, byte[] signedUpdate) {
             this.owner = owner;
             this.writer = writer;
             this.signedUpdate = signedUpdate;
@@ -27,8 +26,8 @@ public class BufferedPointers implements MutablePointers {
     }
 
     private final MutablePointers target;
-    private final Map<PublicKeyHash, PointerUpdate> buffer = new HashMap<>();
-    private final List<PointerUpdate> order = new ArrayList<>();
+    private final Map<PublicKeyHash, SignedPointerUpdate> buffer = new HashMap<>();
+    private final List<SignedPointerUpdate> order = new ArrayList<>();
 
     public BufferedPointers(MutablePointers target) {
         this.target = target;
@@ -37,7 +36,7 @@ public class BufferedPointers implements MutablePointers {
     @Override
     public CompletableFuture<Optional<byte[]>> getPointer(PublicKeyHash owner, PublicKeyHash writer) {
         synchronized (buffer) {
-            PointerUpdate buffered = buffer.get(writer);
+            SignedPointerUpdate buffered = buffer.get(writer);
             if (buffered != null)
                 return CompletableFuture.completedFuture(Optional.of(buffered.signedUpdate));
         }
@@ -47,7 +46,7 @@ public class BufferedPointers implements MutablePointers {
     @Override
     public CompletableFuture<Boolean> setPointer(PublicKeyHash owner, PublicKeyHash writer, byte[] writerSignedBtreeRootHash) {
         synchronized (buffer) {
-            PointerUpdate update = new PointerUpdate(owner, writer, writerSignedBtreeRootHash);
+            SignedPointerUpdate update = new SignedPointerUpdate(owner, writer, writerSignedBtreeRootHash);
             buffer.put(writer, update);
             order.add(update);
         }
@@ -59,33 +58,35 @@ public class BufferedPointers implements MutablePointers {
      */
     public void condense(Map<PublicKeyHash, SigningPrivateKeyAndPublicHash> writers) {
         int start = 0;
-        List<PointerUpdate> newOrder = new ArrayList<>();
+        List<SignedPointerUpdate> newOrder = new ArrayList<>();
         int j=1;
         for (; j < order.size(); j++) {
-            PointerUpdate first = order.get(start);
+            SignedPointerUpdate first = order.get(start);
             // preserve order of inter writer commits
             if (! order.get(j).writer.equals(first.writer)) {
                 if (j - start > 1) {
-                    MaybeMultihash original = parse(first.signedUpdate).original;
+                    PointerUpdate firstUpdate = parse(first.signedUpdate);
+                    MaybeMultihash original = firstUpdate.original;
                     MaybeMultihash updated = parse(order.get(j - 1).signedUpdate).updated;
-                    newOrder.add(new PointerUpdate(first.owner, first.writer, writers.get(first.writer).secret.signMessage(new HashCasPair(original, updated).serialize())));
+                    newOrder.add(new SignedPointerUpdate(first.owner, first.writer, writers.get(first.writer).secret.signMessage(new peergos.shared.mutable.PointerUpdate(original, updated, firstUpdate.sequence).serialize())));
                 } else
                     newOrder.add(first); // nothing to condense
                 start = j;
             }
         }
         if (j - start > 0) {// condense the last run
-            PointerUpdate first = order.get(start);
-            MaybeMultihash original = parse(first.signedUpdate).original;
+            SignedPointerUpdate first = order.get(start);
+            PointerUpdate firstUpdate = parse(first.signedUpdate);
+            MaybeMultihash original = firstUpdate.original;
             MaybeMultihash updated = parse(order.get(j - 1).signedUpdate).updated;
-            newOrder.add(new PointerUpdate(first.owner, first.writer, writers.get(first.writer).secret.signMessage(new HashCasPair(original, updated).serialize())));
+            newOrder.add(new SignedPointerUpdate(first.owner, first.writer, writers.get(first.writer).secret.signMessage(new peergos.shared.mutable.PointerUpdate(original, updated, firstUpdate.sequence).serialize())));
         }
         order.clear();
         order.addAll(newOrder);
     }
 
-    private static HashCasPair parse(byte[] signedCas) {
-        return HashCasPair.fromCbor(CborObject.fromByteArray(Arrays.copyOfRange(signedCas, TweetNaCl.SIGNATURE_SIZE_BYTES, signedCas.length)));
+    private static PointerUpdate parse(byte[] signedCas) {
+        return PointerUpdate.fromCbor(CborObject.fromByteArray(Arrays.copyOfRange(signedCas, TweetNaCl.SIGNATURE_SIZE_BYTES, signedCas.length)));
     }
 
     public List<Cid> getRoots() {

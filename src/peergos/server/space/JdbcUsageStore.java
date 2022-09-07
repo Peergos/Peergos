@@ -144,7 +144,9 @@ public class JdbcUsageStore implements UsageStore {
                 ResultSet writerRes = writerSearch.executeQuery();
                 writerRes.next();
                 PublicKeyHash writer = PublicKeyHash.decode(writerRes.getBytes(1));
-                pending.put(writer, resultSet.getLong(2));
+                long pendingBytes = resultSet.getLong(2);
+                if (pendingBytes > 0)
+                    pending.put(writer, pendingBytes);
                 if (totalBytes == -1) {
                     totalBytes = resultSet.getLong(3);
                     errored = resultSet.getBoolean(4);

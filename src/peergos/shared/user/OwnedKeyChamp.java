@@ -1,6 +1,5 @@
 package peergos.shared.user;
 
-import peergos.shared.*;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
@@ -87,7 +86,7 @@ public class OwnedKeyChamp {
     public <T> CompletableFuture<T> applyToAllMappings(T identity,
                                                        BiFunction<T, Pair<PublicKeyHash, OwnerProof>, CompletableFuture<T>> consumer,
                                                        ContentAddressedStorage ipfs) {
-        return champ.applyToAllMappings(identity,
+        return champ.reduceAllMappings(identity,
                 (acc, pair) -> ! pair.right.isPresent() ? CompletableFuture.completedFuture(acc) :
                         ipfs.get((Cid)pair.right.get().target, Optional.empty())
                                 .thenApply(raw -> OwnerProof.fromCbor(raw.get()))

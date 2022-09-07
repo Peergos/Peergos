@@ -116,8 +116,8 @@ public class ChampWrapper<V extends Cborable> implements ImmutableTree<V>
                                                TransactionId tid) {
         ByteArrayWrapper key = new ByteArrayWrapper(rawKey);
         return keyHasher.apply(key)
-                .thenCompose(keyHash -> root.left.put(owner, writer, key, keyHash, 0, existing, Optional.empty(),
-                BIT_WIDTH, MAX_HASH_COLLISIONS_PER_LEVEL, keyHasher, tid, storage, writeHasher, root.right))
+                .thenCompose(keyHash -> root.left.remove(owner, writer, key, keyHash, 0, existing,
+                        BIT_WIDTH, MAX_HASH_COLLISIONS_PER_LEVEL, tid, storage, writeHasher, root.right))
                 .thenCompose(newRoot -> commit(writer, newRoot));
     }
 
@@ -137,11 +137,20 @@ public class ChampWrapper<V extends Cborable> implements ImmutableTree<V>
 
     /**
      *
+     * @return The combined result of applying the map to all mappings
+     * @throws IOException
+     */
+    public <T> CompletableFuture<T> reduceAllMappings(T identity,
+                                                      BiFunction<T, Pair<ByteArrayWrapper, Optional<V>>, CompletableFuture<T>> mapper) {
+        return root.left.reduceAllMappings(identity, mapper, storage);
+    }
+
+    /**
+     *
      * @return true
      * @throws IOException
      */
-    public <T> CompletableFuture<T> applyToAllMappings(T identity,
-                                                       BiFunction<T, Pair<ByteArrayWrapper, Optional<V>>, CompletableFuture<T>> consumer) {
-        return root.left.applyToAllMappings(identity, consumer, storage);
+    public CompletableFuture<Boolean> applyToAllMappings(Function<Pair<ByteArrayWrapper, Optional<V>>, CompletableFuture<Boolean>> mapper) {
+        return root.left.applyToAllMappings(mapper, storage);
     }
 }

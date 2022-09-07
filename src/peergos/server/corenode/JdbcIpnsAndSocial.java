@@ -230,7 +230,7 @@ public class JdbcIpnsAndSocial {
                 PublicSigningKey writer = ipfs.getSigningKey(writerHash).join().get();
                 byte[] signedRawCas = Base64.getDecoder().decode(rs.getString(IPNS_TARGET_NAME));
                 byte[] bothHashes = writer.unsignMessage(signedRawCas);
-                HashCasPair cas = HashCasPair.fromCbor(CborObject.fromByteArray(bothHashes));
+                PointerUpdate cas = PointerUpdate.fromCbor(CborObject.fromByteArray(bothHashes));
                 results.add(cas.updated.get());
             }
 

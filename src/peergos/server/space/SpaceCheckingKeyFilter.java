@@ -130,7 +130,7 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
 
             try {
                 PublicKeyHash owner = writerKey; //NB: owner is a dummy value
-                MaybeMultihash rootHash = mutable.getPointerTarget(owner, writerKey, dht).join();
+                MaybeMultihash rootHash = mutable.getPointerTarget(owner, writerKey, dht).join().updated;
                 boolean isChanged = ! writerUsage.target().equals(rootHash);
                 if (isChanged) {
                     Logging.LOG().info("Root hash changed from " + writerUsage.target() + " to " + rootHash);
@@ -144,7 +144,7 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
                     for (PublicKeyHash newOwnedKey : newOwnedKeys) {
                         store.addWriter(writerUsage.owner, newOwnedKey);
                         processMutablePointerEvent(store, owner, newOwnedKey, MaybeMultihash.empty(),
-                                mutable.getPointerTarget(owner, newOwnedKey, dht).get(), mutable, dht, hasher);
+                                mutable.getPointerTarget(owner, newOwnedKey, dht).get().updated, mutable, dht, hasher);
                     }
                     HashSet<PublicKeyHash> removedOwnedKeys = new HashSet<>(writerUsage.ownedKeys());
                     removedOwnedKeys.removeAll(directOwnedKeys);
@@ -202,7 +202,7 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
         for (PublicKeyHash writerKey : allUserKeys) {
             usageStore.addWriter(username, writerKey);
             WriterUsage current = usageStore.getUsage(writerKey);
-            MaybeMultihash updatedRoot = mutable.getPointerTarget(owner, writerKey, dht).join();
+            MaybeMultihash updatedRoot = mutable.getPointerTarget(owner, writerKey, dht).join().updated;
             processMutablePointerEvent(usageStore, owner, writerKey, current.target(), updatedRoot, mutable, dht, hasher);
         }
     }
@@ -211,11 +211,11 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
                                                     ContentAddressedStorage dht,
                                                     UsageStore usageStore,
                                                     Hasher hasher) {
-        HashCasPair hashCasPair = dht.getSigningKey(event.writer)
-                .thenApply(signer -> HashCasPair.fromCbor(CborObject.fromByteArray(signer.get()
+        PointerUpdate pointerUpdate = dht.getSigningKey(event.writer)
+                .thenApply(signer -> PointerUpdate.fromCbor(CborObject.fromByteArray(signer.get()
                         .unsignMessage(event.writerSignedBtreeRootHash)))).join();
         Set<PublicKeyHash> updatedOwned =
-                WriterData.getDirectOwnedKeys(event.writer, hashCasPair.updated, dht, hasher).join();
+                WriterData.getDirectOwnedKeys(event.writer, pointerUpdate.updated, dht, hasher).join();
         WriterUsage current = usageStore.getUsage(event.writer);
         for (PublicKeyHash owned : updatedOwned) {
             usageStore.addWriter(current.owner, owned);
@@ -224,10 +224,10 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
 
     private void processMutablePointerEvent(MutableEvent event) {
         try {
-            HashCasPair hashCasPair = dht.getSigningKey(event.writer)
-                    .thenApply(signer -> HashCasPair.fromCbor(CborObject.fromByteArray(signer.get()
+            PointerUpdate pointerUpdate = dht.getSigningKey(event.writer)
+                    .thenApply(signer -> PointerUpdate.fromCbor(CborObject.fromByteArray(signer.get()
                             .unsignMessage(event.writerSignedBtreeRootHash)))).join();
-            processMutablePointerEvent(usageStore, event.owner, event.writer, hashCasPair.original, hashCasPair.updated,
+            processMutablePointerEvent(usageStore, event.owner, event.writer, pointerUpdate.original, pointerUpdate.updated,
                     mutable, dht, hasher);
         } catch (Exception e) {
             LOG.log(Level.WARNING, e.getMessage(), e);
@@ -281,6 +281,7 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
                 HashSet<PublicKeyHash> addedOwnedKeys = new HashSet<>(updatedOwned);
                 addedOwnedKeys.removeAll(current.ownedKeys());
                 state.updateWriterUsage(writer, newRoot, removedChildren, addedOwnedKeys, current.directRetainedStorage() + changeInStorage);
+                System.out.println("Updated usage from " + current.directRetainedStorage() + ", adding " + changeInStorage);
             }
         } catch (Exception e) {
             Exceptions.getRootCause(e).printStackTrace();
@@ -295,7 +296,7 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
                                                 Hasher hasher) {
         for (PublicKeyHash ownedKey : removed) {
             try {
-                MaybeMultihash currentTarget = mutable.getPointerTarget(owner, ownedKey, dht).get();
+                MaybeMultihash currentTarget = mutable.getPointerTarget(owner, ownedKey, dht).get().updated;
                 processMutablePointerEvent(state, owner, ownedKey, currentTarget, MaybeMultihash.empty(), mutable, dht, hasher);
             } catch (Exception e) {
                 LOG.log(Level.WARNING, e.getMessage(), e);

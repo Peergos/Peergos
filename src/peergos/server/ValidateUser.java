@@ -30,7 +30,7 @@ public class ValidateUser {
     }
 
     private static void validateWriter(PublicKeyHash owner, PublicKeyHash writer, NetworkAccess network) {
-        MaybeMultihash target = network.mutable.getPointerTarget(owner, writer, network.dhtClient).join();
+        MaybeMultihash target = network.mutable.getPointerTarget(owner, writer, network.dhtClient).join().updated;
         if (! target.isPresent()) {
             Logging.LOG().log(Level.WARNING, "Skipping unretrievable mutable pointer for: " + writer);
             return;

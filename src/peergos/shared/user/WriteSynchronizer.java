@@ -5,7 +5,7 @@ import peergos.shared.cbor.CborObject;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.cid.*;
-import peergos.shared.mutable.HashCasPair;
+import peergos.shared.mutable.PointerUpdate;
 import peergos.shared.mutable.MutablePointers;
 import peergos.shared.storage.*;
 import peergos.shared.util.*;
@@ -48,7 +48,7 @@ public class WriteSynchronizer {
                 Collections.emptyMap(),
                 Optional.empty(),
                 Optional.empty());
-        CommittedWriterData emptyUserData = new CommittedWriterData(MaybeMultihash.empty(), emptyWD);
+        CommittedWriterData emptyUserData = new CommittedWriterData(MaybeMultihash.empty(), emptyWD, Optional.empty());
         put(owner, writer, emptyUserData);
     }
 
@@ -56,9 +56,9 @@ public class WriteSynchronizer {
         return mutable.getPointer(owner, writer)
                 .thenCompose(dataOpt -> dht.getSigningKey(writer)
                         .thenApply(signer -> dataOpt.isPresent() ?
-                                HashCasPair.fromCbor(CborObject.fromByteArray(signer.get().unsignMessage(dataOpt.get()))).updated :
-                                MaybeMultihash.empty())
-                        .thenCompose(x -> WriterData.getWriterData((Cid)x.get(), dht))
+                                PointerUpdate.fromCbor(CborObject.fromByteArray(signer.get().unsignMessage(dataOpt.get()))) :
+                                PointerUpdate.empty())
+                        .thenCompose(x -> WriterData.getWriterData((Cid)x.updated.get(), x.sequence, dht))
                         .thenApply(cwd -> new Snapshot(writer, cwd))
                 );
     }
@@ -83,7 +83,7 @@ public class WriteSynchronizer {
         // a previous transaction has completed (another node/user with write access may have concurrently updated the mapping)
         return pending.computeIfAbsent(new Pair<>(owner, writer.publicKeyHash), p -> new AsyncLock<>(getWriterData(owner, p.right)))
                 .runWithLock(current -> IpfsTransaction.call(owner, tid -> transformer.apply(current.get(writer).props, tid)
-                                .thenCompose(wd -> wd.commit(owner, writer, current.get(writer).hash, mutable, dht, hasher, tid)), dht),
+                                .thenCompose(wd -> wd.commit(owner, writer, current.get(writer).hash, current.get(writer).sequence, mutable, dht, hasher, tid)), dht),
                         () -> getWriterData(owner, writer.publicKeyHash));
     }
 
@@ -99,7 +99,7 @@ public class WriteSynchronizer {
                                                           ComplexMutation transformer) {
         return pending.computeIfAbsent(new Pair<>(owner, writer.publicKeyHash), p -> new AsyncLock<>(getWriterData(owner, p.right)))
                 .runWithLock(current -> transformer.apply(current,
-                        (aOwner, signer, wd, existing, tid) -> wd.commit(aOwner, signer, existing.hash, mutable, dht, hasher, tid)
+                        (aOwner, signer, wd, existing, tid) -> wd.commit(aOwner, signer, existing.hash, existing.sequence, mutable, dht, hasher, tid)
                         .thenCompose(s -> {
                             if (signer.publicKeyHash.equals(writer.publicKeyHash))
                                 return CompletableFuture.completedFuture(s);
@@ -127,7 +127,7 @@ public class WriteSynchronizer {
         CompletableFuture<Pair<Snapshot, V>> res = new CompletableFuture<>();
         return pending.computeIfAbsent(new Pair<>(owner, writer.publicKeyHash), p -> new AsyncLock<>(getWriterData(owner, p.right)))
                 .runWithLock(current -> transformer.apply(current,
-                        (aOwner, signer, wd, existing, tid) -> wd.commit(aOwner, signer, existing.hash, mutable, dht, hasher, tid)
+                        (aOwner, signer, wd, existing, tid) -> wd.commit(aOwner, signer, existing.hash, existing.sequence, mutable, dht, hasher, tid)
                         .thenCompose(s -> {
                             if (signer.publicKeyHash.equals(writer.publicKeyHash))
                                 return CompletableFuture.completedFuture(s);

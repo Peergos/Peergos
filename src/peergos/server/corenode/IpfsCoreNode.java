@@ -41,10 +41,12 @@ public class IpfsCoreNode implements CoreNode {
     private final DifficultyGenerator difficultyGenerator;
 
     private MaybeMultihash currentRoot;
+    private Optional<Long> currentSequence;
 
     public IpfsCoreNode(SigningPrivateKeyAndPublicHash pkiSigner,
                         int maxSignupsPerDay,
                         MaybeMultihash currentRoot,
+                        Optional<Long> currentSequence,
                         ContentAddressedStorage ipfs,
                         Hasher hasher,
                         MutablePointers mutable,
@@ -52,6 +54,7 @@ public class IpfsCoreNode implements CoreNode {
                         BatCave batCave,
                         PublicKeyHash peergosIdentity) {
         this.currentRoot = MaybeMultihash.empty();
+        this.currentSequence = Optional.empty();
         this.ipfs = ipfs;
         this.hasher = hasher;
         this.mutable = mutable;
@@ -59,7 +62,7 @@ public class IpfsCoreNode implements CoreNode {
         this.batCave = batCave;
         this.peergosIdentity = peergosIdentity;
         this.signer = pkiSigner;
-        this.update(currentRoot);
+        this.update(currentRoot, currentSequence);
         this.difficultyGenerator = new DifficultyGenerator(System.currentTimeMillis(), maxSignupsPerDay);
     }
 
@@ -71,15 +74,16 @@ public class IpfsCoreNode implements CoreNode {
      *
      * @param newRoot The root of the new champ
      */
-    private synchronized void update(MaybeMultihash newRoot) {
+    private synchronized void update(MaybeMultihash newRoot, Optional<Long> newSequence) {
         updateAllMappings(signer.publicKeyHash, currentRoot, newRoot, ipfs, chains, reverseLookup, usernames);
         this.currentRoot = newRoot;
+        this.currentSequence = newSequence;
     }
 
     public static MaybeMultihash getTreeRoot(MaybeMultihash pointerTarget, ContentAddressedStorage ipfs) {
         if (! pointerTarget.isPresent())
             return MaybeMultihash.empty();
-        CommittedWriterData current = WriterData.getWriterData((Cid)pointerTarget.get(), ipfs).join();
+        CommittedWriterData current = WriterData.getWriterData((Cid)pointerTarget.get(), Optional.empty(), ipfs).join();
         return current.props.tree.map(MaybeMultihash::of).orElseGet(MaybeMultihash::empty);
 
     }
@@ -220,7 +224,7 @@ public class IpfsCoreNode implements CoreNode {
             throw new IllegalStateException("Invalid username");
 
         try {
-            CommittedWriterData current = WriterData.getWriterData((Cid)currentRoot.get(), ipfs).get();
+            CommittedWriterData current = WriterData.getWriterData((Cid)currentRoot.get(), currentSequence, ipfs).get();
             MaybeMultihash currentTree = current.props.tree.map(MaybeMultihash::of).orElseGet(MaybeMultihash::empty);
 
             ChampWrapper<CborObject.CborMerkleLink> champ = currentTree.isPresent() ?
@@ -266,7 +270,7 @@ public class IpfsCoreNode implements CoreNode {
                 return IpfsTransaction.call(peergosIdentity,
                         tid -> champ.put(signer.publicKeyHash, signer, username.getBytes(), existing, new CborObject.CborMerkleLink(mergedChainHash), tid)
                                 .thenCompose(newPkiRoot -> current.props.withChamp(newPkiRoot)
-                                        .commit(peergosIdentity, signer, currentRoot, mutable, ipfs, hasher, tid)),
+                                        .commit(peergosIdentity, signer, currentRoot, currentSequence, mutable, ipfs, hasher, tid)),
                         ipfs
                 ).thenApply(committed -> {
                     if (existingChain.isEmpty())
@@ -275,6 +279,7 @@ public class IpfsCoreNode implements CoreNode {
                     reverseLookup.put(owner, username);
                     chains.put(username, mergedChain);
                     currentRoot = committed.get(signer).hash;
+                    currentSequence = committed.get(signer).sequence;
                     return Optional.empty();
                 });
             }

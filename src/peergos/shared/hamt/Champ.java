@@ -587,9 +587,9 @@ public class Champ<V extends Cborable> implements Cborable {
         return new Champ<>(newDataMap, nodeMap, dst, fromCbor);
     }
 
-    public <T> CompletableFuture<T> applyToAllMappings(T identity,
-                                                       BiFunction<T, Pair<ByteArrayWrapper, Optional<V>>, CompletableFuture<T>> consumer,
-                                                       ContentAddressedStorage storage) {
+    public <T> CompletableFuture<T> reduceAllMappings(T identity,
+                                                      BiFunction<T, Pair<ByteArrayWrapper, Optional<V>>, CompletableFuture<T>> consumer,
+                                                      ContentAddressedStorage storage) {
         return Futures.reduceAll(Arrays.stream(contents).collect(Collectors.toList()), identity, (res, payload) ->
                 (! payload.isShard() ?
                         Futures.reduceAll(
@@ -602,9 +602,29 @@ public class Champ<V extends Cborable> implements Cborable {
                         payload.isShard() && payload.link.isPresent() ?
                                 storage.get((Cid)payload.link.get(), Optional.empty())
                                         .thenApply(rawOpt -> Champ.fromCbor(rawOpt.orElseThrow(() -> new IllegalStateException("Hash not present! " + payload.link)), fromCbor))
-                                        .thenCompose(child -> child.applyToAllMappings(newRes, consumer, storage)) :
+                                        .thenCompose(child -> child.reduceAllMappings(newRes, consumer, storage)) :
                                 CompletableFuture.completedFuture(newRes)
                 ), (a, b) -> a);
+    }
+
+    public CompletableFuture<Boolean> applyToAllMappings(Function<Pair<ByteArrayWrapper, Optional<V>>, CompletableFuture<Boolean>> mapper,
+                                                         ContentAddressedStorage storage) {
+        return Futures.combineAll(Arrays.stream(contents).parallel().map(payload ->
+                        (! payload.isShard() ?
+                                Futures.combineAll(
+                                                Arrays.stream(payload.mappings).parallel()
+                                                        .map(mapping -> mapper.apply(new Pair<>(mapping.key, mapping.valueHash)))
+                                                        .collect(Collectors.toList()))
+                                        .thenApply(x -> true) :
+                                Futures.of(true)
+                        ).thenCompose(newRes ->
+                                payload.isShard() && payload.link.isPresent() ?
+                                        storage.get((Cid)payload.link.get(), Optional.empty())
+                                                .thenApply(rawOpt -> Champ.fromCbor(rawOpt.orElseThrow(() -> new IllegalStateException("Hash not present! " + payload.link)), fromCbor))
+                                                .thenCompose(child -> child.applyToAllMappings(mapper, storage)) :
+                                        Futures.of(true)
+                        )).collect(Collectors.toList()))
+                .thenApply(x -> true);
     }
 
     private List<KeyElement<V>> getMappings() {

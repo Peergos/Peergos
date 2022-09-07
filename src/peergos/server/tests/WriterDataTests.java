@@ -38,8 +38,9 @@ public class WriterDataTests {
         WriterData wdB = IpfsTransaction.call(pubB, tid -> WriterData.createEmpty(pubB, signerB, dht, hasher, tid), dht).join();
 
         WriterData wdA2 = wdA.addOwnedKey(pubA, signerA, OwnerProof.build(signerB, pubA), dht, hasher).join();
-        wdA2.commit(pubA, signerA, MaybeMultihash.empty(), mutable, dht, hasher, test).join();
-        MaybeMultihash bCurrent = wdB.commit(pubB, signerB, MaybeMultihash.empty(), mutable, dht, hasher, test).join().get(pubB).hash;
+        wdA2.commit(pubA, signerA, MaybeMultihash.empty(), Optional.empty(), mutable, dht, hasher, test).join();
+        CommittedWriterData bCurrentCwd = wdB.commit(pubB, signerB, MaybeMultihash.empty(), Optional.empty(), mutable, dht, hasher, test).join().get(pubB);
+        MaybeMultihash bCurrent = bCurrentCwd.hash;
 
         Set<PublicKeyHash> ownedByA1 = WriterData.getOwnedKeysRecursive(pubA, pubA, mutable, dht, hasher).join();
         Set<PublicKeyHash> ownedByB1 = WriterData.getOwnedKeysRecursive(pubB, pubB, mutable, dht, hasher).join();
@@ -48,7 +49,7 @@ public class WriterDataTests {
         Assert.assertTrue(ownedByB1.size() == 1);
 
         WriterData wdB2 = wdB.addOwnedKey(pubB, signerB, OwnerProof.build(signerA, pubB), dht, hasher).join();
-        wdB2.commit(pubB, signerB, bCurrent, mutable, dht, hasher, test).join();
+        wdB2.commit(pubB, signerB, bCurrent, bCurrentCwd.sequence, mutable, dht, hasher, test).join();
 
         Set<PublicKeyHash> ownedByA2 = WriterData.getOwnedKeysRecursive(pubA, pubA, mutable, dht, hasher).join();
         Set<PublicKeyHash> ownedByB2 = WriterData.getOwnedKeysRecursive(pubB, pubB, mutable, dht, hasher).join();
