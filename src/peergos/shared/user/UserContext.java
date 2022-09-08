@@ -170,7 +170,7 @@ public class UserContext {
 
     private static CompletableFuture<UserContext> login(String username,
                                                         UserWithRoot generatedCredentials,
-                                                        Pair<Multihash, CborObject> pair,
+                                                        Pair<PointerUpdate, CborObject> pair,
                                                         NetworkAccess network,
                                                         Crypto crypto,
                                                         Consumer<String> progressCallback) {
@@ -208,7 +208,7 @@ public class UserContext {
                                                                                 generatedCredentials.getRoot(),
                                                                                 network.withCorenode(tofuCorenode),
                                                                                 crypto,
-                                                                                new CommittedWriterData(MaybeMultihash.of(pair.left), userData),
+                                                                                new CommittedWriterData(pair.left.updated, userData, pair.left.sequence),
                                                                                 root,
                                                                                 transactions,
                                                                                 capCache,
@@ -304,10 +304,10 @@ public class UserContext {
                                         algorithm,
                                         network.dhtClient, network.hasher, tid).thenCompose(newUserData -> {
 
-                                    CommittedWriterData notCommitted = new CommittedWriterData(MaybeMultihash.empty(), newUserData);
+                                    CommittedWriterData notCommitted = new CommittedWriterData(MaybeMultihash.empty(), newUserData, Optional.empty());
                                     network.synchronizer.put(identity.publicKeyHash, identity.publicKeyHash, notCommitted);
                                     return network.synchronizer.applyComplexUpdate(identityHash, identity,
-                                            (s, committer) -> newUserData.commit(identityHash, identity, MaybeMultihash.empty(), network, tid));
+                                            (s, committer) -> newUserData.commit(identityHash, identity, MaybeMultihash.empty(), Optional.empty(), network, tid));
                                 });
                             }), network.dhtClient)
                                     .thenCompose(snapshot -> {
@@ -422,7 +422,7 @@ public class UserContext {
                         Collections.emptyMap(),
                         Optional.empty(),
                         Optional.empty());
-        CommittedWriterData userData = new CommittedWriterData(MaybeMultihash.empty(), empty);
+        CommittedWriterData userData = new CommittedWriterData(MaybeMultihash.empty(), empty, Optional.empty());
         UserContext context = new UserContext(null, null, null, null, network,
                 crypto, userData, TrieNodeImpl.empty(), null, null,
                 new SharedWithCache(null, null, network, crypto), Optional.empty());
@@ -794,7 +794,8 @@ public class UserContext {
                                             byte[] rawBlock = newIdBlock.serialize();
                                             return crypto.hasher.sha256(rawBlock).thenCompose(blockHash -> {
                                                 OpLog.BlockWrite blockWrite = new OpLog.BlockWrite(signer.publicKeyHash, signer.secret.signMessage(blockHash), rawBlock, false);
-                                                HashCasPair pointerCas = new HashCasPair(cwd.hash, MaybeMultihash.of(new Cid(1, Cid.Codec.DagCbor, Multihash.Type.sha2_256, blockHash)));
+                                                MaybeMultihash newHash = MaybeMultihash.of(new Cid(1, Cid.Codec.DagCbor, Multihash.Type.sha2_256, blockHash));
+                                                PointerUpdate pointerCas = new PointerUpdate(cwd.hash, newHash, PointerUpdate.increment(cwd.sequence));
                                                 OpLog.PointerWrite pointerWrite = new OpLog.PointerWrite(signer.publicKeyHash, signer.secret.signMessage(pointerCas.serialize()));
                                                 LoginData updatedLoginData = new LoginData(username, updatedEntry, newLoginPublicKey, Optional.of(new Pair<>(blockWrite, pointerWrite)));
                                                 return network.account.setLoginData(updatedLoginData, signer)
@@ -896,7 +897,8 @@ public class UserContext {
             // and authorise the writer key
             return network.synchronizer.applyComplexUpdate(owner.publicKeyHash, owner,
                     (s, committer) -> s.get(owner.publicKeyHash).props.addOwnedKeyAndCommit(owner.publicKeyHash, owner,
-                            OwnerProof.build(writerPair, owner.publicKeyHash), s.get(owner.publicKeyHash).hash, network, tid)
+                            OwnerProof.build(writerPair, owner.publicKeyHash),
+                                    s.get(owner.publicKeyHash).hash, s.get(owner.publicKeyHash).sequence, network, tid)
                             .thenCompose(s2 -> {
                                 long t2 = System.currentTimeMillis();
                                 RelativeCapability nextChunk =
@@ -910,7 +912,7 @@ public class UserContext {
                                             LOG.info("Uploading entry point directory");
                                             return WriterData.createEmpty(owner.publicKeyHash, writerPair,
                                                     network.dhtClient, network.hasher, tid)
-                                                    .thenCompose(empty -> empty.commit(owner.publicKeyHash, writerPair, MaybeMultihash.empty(), network, tid))
+                                                    .thenCompose(empty -> empty.commit(owner.publicKeyHash, writerPair, MaybeMultihash.empty(), Optional.empty(), network, tid))
                                                     .thenCompose(s3 -> root.commit(s3, committer, rootPointer, Optional.of(writerPair), network, tid)
                                                             .thenApply(finalSnapshot -> {
                                                                 long t3 = System.currentTimeMillis();
@@ -982,13 +984,13 @@ public class UserContext {
                     return user.getUserRoot().thenCompose(root -> {
                         SigningPrivateKeyAndPublicHash pair = root.signingPair();
                         CommittedWriterData current = root.getVersionRoot();
-                        HashCasPair cas = new HashCasPair(current.hash, MaybeMultihash.empty());
+                        PointerUpdate cas = new PointerUpdate(current.hash, MaybeMultihash.empty(), PointerUpdate.increment(current.sequence));
                         byte[] signed = pair.secret.signMessage(cas.serialize());
                         return network.mutable.setPointer(this.signer.publicKeyHash, pair.publicKeyHash, signed);
                     }).thenCompose(x -> network.spaceUsage.requestQuota(username, identity, 1024*1024))
                             .thenCompose(x -> network.mutable.getPointerTarget(owner, owner, network.dhtClient)
                                     .thenCompose(current -> {
-                                        HashCasPair cas = new HashCasPair(current, MaybeMultihash.empty());
+                                        PointerUpdate cas = new PointerUpdate(current.updated, MaybeMultihash.empty(), PointerUpdate.increment(current.sequence));
                                         byte[] signed = identity.secret.signMessage(cas.serialize());
                                         return network.mutable.setPointer(owner, owner, signed);
                                     })
@@ -1827,7 +1829,7 @@ public class UserContext {
         } else {
             // legacy account
             Optional<UserStaticData> updated = wd.staticData.map(sd -> new UserStaticData(sd.getData(rootKey).addEntryPoint(entry), rootKey));
-            return wd.withStaticData(updated).commit(owner.publicKeyHash, owner, cwd.hash, network, tid);
+            return wd.withStaticData(updated).commit(owner.publicKeyHash, owner, cwd.hash, cwd.sequence, network, tid);
         }
     }
 
@@ -2182,7 +2184,7 @@ public class UserContext {
                                                                        PublicKeyHash owner,
                                                                        PublicKeyHash writer) {
         return getWriterDataCbor(network.dhtClient, network.mutable, owner, writer)
-                .thenApply(pair -> new CommittedWriterData(MaybeMultihash.of(pair.left), WriterData.fromCbor(pair.right)));
+                .thenApply(pair -> new CommittedWriterData(pair.left.updated, WriterData.fromCbor(pair.right), pair.left.sequence));
     }
 
     public static CompletableFuture<CommittedWriterData> getWriterData(ContentAddressedStorage ipfs,
@@ -2190,10 +2192,10 @@ public class UserContext {
                                                                        PublicKeyHash owner,
                                                                        PublicKeyHash writer) {
         return getWriterDataCbor(ipfs, mutable, owner, writer)
-                .thenApply(pair -> new CommittedWriterData(MaybeMultihash.of(pair.left), WriterData.fromCbor(pair.right)));
+                .thenApply(pair -> new CommittedWriterData(pair.left.updated, WriterData.fromCbor(pair.right), pair.left.sequence));
     }
 
-    public static CompletableFuture<Pair<Multihash, CborObject>> getWriterDataCbor(NetworkAccess network, String username) {
+    public static CompletableFuture<Pair<PointerUpdate, CborObject>> getWriterDataCbor(NetworkAccess network, String username) {
         return network.coreNode.getPublicKeyHash(username)
                 .thenCompose(signer -> {
                     PublicKeyHash owner = signer.orElseThrow(
@@ -2202,18 +2204,18 @@ public class UserContext {
                 });
     }
 
-    private static CompletableFuture<Pair<Multihash, CborObject>> getWriterDataCbor(ContentAddressedStorage ipfs,
-                                                                                    MutablePointers mutable,
-                                                                                    PublicKeyHash owner,
-                                                                                    PublicKeyHash writer) {
+    private static CompletableFuture<Pair<PointerUpdate, CborObject>> getWriterDataCbor(ContentAddressedStorage ipfs,
+                                                                                        MutablePointers mutable,
+                                                                                        PublicKeyHash owner,
+                                                                                        PublicKeyHash writer) {
         return mutable.getPointer(owner, writer)
                 .thenCompose(casOpt -> ipfs.getSigningKey(writer)
-                        .thenApply(signer -> casOpt.map(raw -> HashCasPair.fromCbor(CborObject.fromByteArray(
-                                signer.get().unsignMessage(raw))).updated)
-                                .orElse(MaybeMultihash.empty())))
-                .thenCompose(key -> ipfs.get((Cid)key.get(), Optional.empty())
+                        .thenApply(signer -> casOpt.map(raw -> PointerUpdate.fromCbor(CborObject.fromByteArray(
+                                signer.get().unsignMessage(raw))))
+                                .orElse(PointerUpdate.empty())))
+                .thenCompose(pointer -> ipfs.get((Cid)pointer.updated.get(), Optional.empty())
                         .thenApply(Optional::get)
-                        .thenApply(cbor -> new Pair<>(key.get(), cbor))
+                        .thenApply(cbor -> new Pair<>(pointer, cbor))
                 );
     }
 

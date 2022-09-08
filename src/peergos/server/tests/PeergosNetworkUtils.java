@@ -14,6 +14,7 @@ import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.io.ipfs.multihash.Multihash;
 import peergos.shared.messaging.*;
 import peergos.shared.messaging.messages.*;
+import peergos.shared.mutable.*;
 import peergos.shared.social.*;
 import peergos.shared.storage.auth.*;
 import peergos.shared.user.*;
@@ -2342,9 +2343,10 @@ public class PeergosNetworkUtils {
         Pair<byte[], Optional<Bat>> nextLoc = dir.getNextChunkLocation(cap.rBaseKey, Optional.empty(), cap.getMapKey(), cap.bat, null).join();
         AbsoluteCapability nextChunkCap = cap.withMapKey(nextLoc.left, nextLoc.right);
 
+        PointerUpdate pointer = network.mutable.getPointerTarget(cap.owner, cap.writer,
+                network.dhtClient).join();
         Snapshot version = new Snapshot(cap.writer,
-                WriterData.getWriterData((Cid)network.mutable.getPointerTarget(cap.owner, cap.writer,
-                        network.dhtClient).join().get(), network.dhtClient).join());
+                WriterData.getWriterData((Cid) pointer.updated.get(), pointer.sequence, network.dhtClient).join());
 
         Optional<CryptreeNode> next = network.getMetadata(version.get(nextChunkCap.writer).props, nextChunkCap).join();
         Set<AbsoluteCapability> directUnnamed = direct.stream().map(n -> n.cap).collect(Collectors.toSet());
@@ -2361,9 +2363,10 @@ public class PeergosNetworkUtils {
     }
 
     public static Set<AbsoluteCapability> getAllChildCaps(AbsoluteCapability cap, CryptreeNode dir, NetworkAccess network) {
-            return dir.getAllChildrenCapabilities(new Snapshot(cap.writer,
-                    WriterData.getWriterData((Cid)network.mutable.getPointerTarget(cap.owner, cap.writer,
-                            network.dhtClient).join().get(), network.dhtClient).join()), cap, crypto.hasher, network).join()
+        PointerUpdate pointer = network.mutable.getPointerTarget(cap.owner, cap.writer,
+                network.dhtClient).join();
+        return dir.getAllChildrenCapabilities(new Snapshot(cap.writer,
+                    WriterData.getWriterData((Cid) pointer.updated.get(), pointer.sequence, network.dhtClient).join()), cap, crypto.hasher, network).join()
                     .stream().map(n -> n.cap).collect(Collectors.toSet());
     }
 

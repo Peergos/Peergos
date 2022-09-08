@@ -82,7 +82,7 @@ public class BufferedNetworkAccess extends NetworkAccess {
         targetCommitter = c;
         return (o, w, wd, e, tid) -> blockBuffer.put(owner, w.publicKeyHash, new byte[0], wd.serialize(), tid)
                 .thenCompose(newHash -> {
-                    CommittedWriterData updated = new CommittedWriterData(MaybeMultihash.of(newHash), wd);
+                    CommittedWriterData updated = new CommittedWriterData(MaybeMultihash.of(newHash), wd, PointerUpdate.increment(e.sequence));
                     PublicKeyHash writer = w.publicKeyHash;
                     writers.put(writer, w);
                     if (writerUpdates.isEmpty())

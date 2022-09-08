@@ -28,7 +28,7 @@ public class CommittableStorage extends DelegatingStorage {
             local = new ArrayList<>(pending);
             pending.clear();
         }
-        List<CompletableFuture<Cid>> uploads = local.stream()
+        List<CompletableFuture<Cid>> uploads = local.stream().parallel()
                 .map(p -> target.put(p.owner, p.writer, p.signature, p.block, p.tid)
                         .thenApply(h -> {
                             if (! h.equals(p.expected))

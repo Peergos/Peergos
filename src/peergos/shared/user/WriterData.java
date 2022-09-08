@@ -105,13 +105,14 @@ public class WriterData implements Cborable {
                                                             SigningPrivateKeyAndPublicHash signer,
                                                             OwnerProof newOwned,
                                                             MaybeMultihash currentHash,
+                                                            Optional<Long> currentSequence,
                                                             NetworkAccess network,
                                                             TransactionId tid) {
         return getOwnedKeyChamp(network.dhtClient, network.hasher)
                 .thenCompose(champ -> champ.add(owner, signer, newOwned, network.hasher, tid)
                         .thenApply(newRoot -> new WriterData(controller, generationAlgorithm, publicData,
                                 followRequestReceiver, Optional.of(newRoot), namedOwnedKeys, staticData, tree)))
-                .thenCompose(wd -> wd.commit(owner, signer, currentHash, network, tid));
+                .thenCompose(wd -> wd.commit(owner, signer, currentHash, currentSequence, network, tid));
     }
 
     public CompletableFuture<WriterData> removeOwnedKey(PublicKeyHash owner,
@@ -207,8 +208,8 @@ public class WriterData implements Cborable {
                         Optional.empty()));
     }
 
-    public CommittedWriterData committed(MaybeMultihash hash) {
-        return new CommittedWriterData(hash, this);
+    public CommittedWriterData committed(MaybeMultihash hash, Optional<Long> sequence) {
+        return new CommittedWriterData(hash, this, sequence);
     }
 
     public CompletableFuture<WriterData> changeKeys(String username,
@@ -275,14 +276,16 @@ public class WriterData implements Cborable {
     public CompletableFuture<Snapshot> commit(PublicKeyHash owner,
                                               SigningPrivateKeyAndPublicHash signer,
                                               MaybeMultihash currentHash,
+                                              Optional<Long> currentSequence,
                                               NetworkAccess network,
                                               TransactionId tid) {
-        return commit(owner, signer, currentHash, network.mutable, network.dhtClient, network.hasher, tid);
+        return commit(owner, signer, currentHash, currentSequence, network.mutable, network.dhtClient, network.hasher, tid);
     }
 
     public CompletableFuture<Snapshot> commit(PublicKeyHash owner,
                                               SigningPrivateKeyAndPublicHash signer,
                                               MaybeMultihash currentHash,
+                                              Optional<Long> currentSequence,
                                               MutablePointers mutable,
                                               ContentAddressedStorage immutable,
                                               Hasher hasher,
@@ -296,15 +299,15 @@ public class WriterData implements Cborable {
                     MaybeMultihash newHash = MaybeMultihash.of(blobHash);
                     if (newHash.equals(currentHash)) {
                         // nothing has changed
-                        CommittedWriterData committed = committed(newHash);
+                        CommittedWriterData committed = committed(newHash, currentSequence);
                         return CompletableFuture.completedFuture(new Snapshot(signer.publicKeyHash, committed));
                     }
-                    HashCasPair cas = new HashCasPair(currentHash, newHash);
+                    PointerUpdate cas = new PointerUpdate(currentHash, newHash, PointerUpdate.increment(currentSequence));
                     return mutable.setPointer(owner, signer, cas)
                             .thenApply(res -> {
                                 if (!res)
                                     throw new IllegalStateException("Mutable pointer update failed! Concurrent Modification.");
-                                CommittedWriterData committed = committed(newHash);
+                                CommittedWriterData committed = committed(newHash, cas.sequence);
                                 return new Snapshot(signer.publicKeyHash, committed);
                             });
                 });
@@ -441,7 +444,7 @@ public class WriterData implements Cborable {
                                                                            ContentAddressedStorage ipfs,
                                                                            Hasher hasher) {
         return mutable.getPointerTarget(owner, writer, ipfs)
-                .thenCompose(h -> getDirectOwnedKeys(writer, h, ipfs, hasher));
+                .thenCompose(h -> getDirectOwnedKeys(writer, h.updated, ipfs, hasher));
     }
 
     public static CompletableFuture<Set<PublicKeyHash>> getDirectOwnedKeys(PublicKeyHash writer,
@@ -461,7 +464,7 @@ public class WriterData implements Cborable {
                                 Stream.of(proof.ownedKey) :
                                 Stream.empty()).collect(Collectors.toSet()));
 
-        return getWriterData((Cid)root.get(), ipfs)
+        return getWriterData((Cid)root.get(), Optional.empty(), ipfs)
                 .thenCompose(wd -> wd.props.applyToOwnedKeys(owned ->
                         owned.applyToAllMappings(Collections.emptySet(), composer, ipfs), ipfs, hasher)
                         .thenApply(owned -> Stream.concat(owned.stream(),
@@ -478,18 +481,18 @@ public class WriterData implements Cborable {
                                                                        ContentAddressedStorage dht) {
         return mutable.getPointerTarget(owner, controller, dht)
                 .thenCompose(opt -> {
-                    if (! opt.isPresent())
+                    if (! opt.updated.isPresent())
                         throw new IllegalStateException("No root pointer present for controller " + controller);
-                    return getWriterData((Cid)opt.get(), dht);
+                    return getWriterData((Cid)opt.updated.get(), opt.sequence, dht);
                 });
     }
 
-    public static CompletableFuture<CommittedWriterData> getWriterData(Cid hash, ContentAddressedStorage dht) {
+    public static CompletableFuture<CommittedWriterData> getWriterData(Cid hash, Optional<Long> sequence, ContentAddressedStorage dht) {
         return dht.get(hash, Optional.empty())
                 .thenApply(cborOpt -> {
                     if (! cborOpt.isPresent())
                         throw new IllegalStateException("Couldn't retrieve WriterData from dht! " + hash);
-                    return new CommittedWriterData(MaybeMultihash.of(hash), WriterData.fromCbor(cborOpt.get()));
+                    return new CommittedWriterData(MaybeMultihash.of(hash), WriterData.fromCbor(cborOpt.get()), sequence);
                 });
     }
 }

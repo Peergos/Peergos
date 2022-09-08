@@ -18,6 +18,7 @@ import java.util.*;
 import java.util.concurrent.*;
 
 public class UserRepository implements SocialNetwork, MutablePointers {
+    public static final int MAX_POINTER_SIZE = TweetNaCl.SIGNATURE_SIZE_BYTES + 2 + 2*36 + 9; // Signature overhead + 2 cids + 2 (cbor list[3]) + cbor long
 
     private final ContentAddressedStorage ipfs;
     private final JdbcIpnsAndSocial store;
@@ -61,20 +62,22 @@ public class UserRepository implements SocialNetwork, MutablePointers {
                 .thenCompose(current -> ipfs.getSigningKey(writer)
                         .thenCompose(writerOpt -> {
                             try {
+                                if (writerSignedBtreeRootHash.length > MAX_POINTER_SIZE)
+                                    throw new IllegalStateException("Pointer update too big! " + writerSignedBtreeRootHash.length);
                                 if (! writerOpt.isPresent())
                                     throw new IllegalStateException("Couldn't retrieve writer key from ipfs with hash " + writer);
                                 PublicSigningKey writerKey = writerOpt.get();
                                 byte[] bothHashes = writerKey.unsignMessage(writerSignedBtreeRootHash);
-                                HashCasPair cas = HashCasPair.fromCbor(CborObject.fromByteArray(bothHashes));
+                                PointerUpdate cas = PointerUpdate.fromCbor(CborObject.fromByteArray(bothHashes));
                                 MaybeMultihash claimedCurrentHash = cas.original;
 
-                                if (! MutablePointers.isValidUpdate(writerKey, current, claimedCurrentHash))
+                                if (! MutablePointers.isValidUpdate(writerKey, current, claimedCurrentHash, cas.sequence))
                                     return Futures.of(false);
 
                                 // check the new target is valid for this writer (or a deletion)
                                 if (cas.updated.isPresent()) {
                                     Multihash newHash = cas.updated.get();
-                                    CommittedWriterData newWriterData = WriterData.getWriterData((Cid)newHash, ipfs).join();
+                                    CommittedWriterData newWriterData = WriterData.getWriterData((Cid)newHash, cas.sequence, ipfs).join();
                                     if (!newWriterData.props.controller.equals(writer))
                                         return Futures.of(false);
                                 }

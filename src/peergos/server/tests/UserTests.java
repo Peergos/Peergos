@@ -398,12 +398,12 @@ public abstract class UserTests {
 
         FileWrapper aRoot = aContext.getUserRoot().join();
         FileWrapper bRoot = bContext.getUserRoot().join();
-        MaybeMultihash target = network.mutable.getPointerTarget(aContext.signer.publicKeyHash, aRoot.writer(), network.dhtClient).join();
-        MaybeMultihash current = network.mutable.getPointerTarget(bContext.signer.publicKeyHash, bRoot.writer(), network.dhtClient).join();
-        HashCasPair cas = new HashCasPair(current, target);
+        MaybeMultihash target = network.mutable.getPointerTarget(aContext.signer.publicKeyHash, aRoot.writer(), network.dhtClient).join().updated;
+        MaybeMultihash current = network.mutable.getPointerTarget(bContext.signer.publicKeyHash, bRoot.writer(), network.dhtClient).join().updated;
+        PointerUpdate cas = new PointerUpdate(current, target, Optional.of(1000L));
         Assert.assertFalse(network.mutable.setPointer(bContext.signer.publicKeyHash, bRoot.writer(),
                 bRoot.signingPair().secret.signMessage(cas.serialize())).join());
-        MaybeMultihash updated = network.mutable.getPointerTarget(bContext.signer.publicKeyHash, bRoot.writer(), network.dhtClient).join();
+        MaybeMultihash updated = network.mutable.getPointerTarget(bContext.signer.publicKeyHash, bRoot.writer(), network.dhtClient).join().updated;
         Assert.assertTrue("Malicious pointer update failed", updated.equals(current));
     }
 
@@ -1846,6 +1846,35 @@ public abstract class UserTests {
 
         long updatedQuota = context.getQuota().join();
         Assert.assertTrue("Quota updated " + updatedQuota + " != 2 * " + quota, updatedQuota == 2 * quota);
+    }
+
+    @Test
+    public void correctUsageAndSpaceRecovery() {
+        String username = generateUsername();
+        String password = "password";
+        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
+        long initialUsage = context.getSpaceUsage().join();
+
+        UserGC.checkRawUsage(context);
+        String filename = "test.bin";
+        context.getUserRoot().join().uploadFileJS(filename, AsyncReader.build(new byte[10*1024*1024]),
+                0, 10*1024*1024, true, context.mirrorBatId(), network, crypto, x-> {},
+                context.getTransactionService(), f -> Futures.of(true)).join();
+        String dirName = "subdir";
+        context.getUserRoot().join().mkdir(dirName, network, false, context.mirrorBatId(), crypto).join();
+        UserGC.checkRawUsage(context);
+
+        // now delete the file and dir
+        Path filePath = PathUtil.get(username, filename);
+        context.getByPath(filePath).join().get().remove(context.getUserRoot().join(), filePath, context).join();
+        Path dirPath = PathUtil.get(username, dirName);
+        context.getByPath(dirPath).join().get().remove(context.getUserRoot().join(), dirPath, context).join();
+        try {Thread.sleep(2000);} catch (InterruptedException e) {}
+        UserGC.checkRawUsage(context);
+
+        long finalUsage = context.getSpaceUsage().join();
+        long diff = finalUsage - initialUsage;
+        Assert.assertTrue(diff == 0);
     }
 
     @Test

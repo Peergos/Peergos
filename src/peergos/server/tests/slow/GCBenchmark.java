@@ -6,7 +6,6 @@ import peergos.server.corenode.*;
 import peergos.server.space.*;
 import peergos.server.sql.*;
 import peergos.server.storage.*;
-import peergos.server.storage.auth.*;
 import peergos.shared.*;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.*;
@@ -39,7 +38,7 @@ public class GCBenchmark {
             PublicKeyHash owner = ContentAddressedStorage.hashKey(pair.publicSigningKey);
             TransactionId tid = storage.startTransaction(owner).join();
             Multihash root = generateTree(r, owner, storage, nLeavesPerUser, tid);
-            HashCasPair cas = new HashCasPair(MaybeMultihash.empty(), MaybeMultihash.of(root));
+            PointerUpdate cas = new PointerUpdate(MaybeMultihash.empty(), MaybeMultihash.of(root), Optional.of(Long.valueOf(i)));
             pointers.setPointer(owner, Optional.empty(), pair.signMessage(cas.serialize())).join();
             generateTree(r, owner, storage, nLeavesPerUser/2, tid); // garbage tree
             storage.closeTransaction(owner, tid).join();

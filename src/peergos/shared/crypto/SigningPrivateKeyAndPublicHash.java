@@ -40,4 +40,17 @@ public class SigningPrivateKeyAndPublicHash implements Cborable {
     public String toString() {
         return publicKeyHash.toString();
     }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(publicKeyHash, secret);
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+        SigningPrivateKeyAndPublicHash that = (SigningPrivateKeyAndPublicHash) o;
+        return Objects.equals(publicKeyHash, that.publicKeyHash) && Objects.equals(secret, that.secret);
+    }
 }

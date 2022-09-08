@@ -7,6 +7,7 @@ import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.MaybeMultihash;
 import peergos.shared.storage.ContentAddressedStorage;
+import peergos.shared.util.*;
 
 import java.util.*;
 import java.util.concurrent.*;
@@ -22,7 +23,7 @@ public interface MutablePointers {
      */
     CompletableFuture<Boolean> setPointer(PublicKeyHash owner, PublicKeyHash writer, byte[] writerSignedBtreeRootHash);
 
-    default CompletableFuture<Boolean> setPointer(PublicKeyHash owner, SigningPrivateKeyAndPublicHash writer, HashCasPair casUpdate) {
+    default CompletableFuture<Boolean> setPointer(PublicKeyHash owner, SigningPrivateKeyAndPublicHash writer, PointerUpdate casUpdate) {
         byte[] signed = writer.secret.signMessage(casUpdate.serialize());
         return setPointer(owner, writer.publicKeyHash, signed);
     }
@@ -40,41 +41,44 @@ public interface MutablePointers {
      * @param ipfs
      * @return
      */
-    default CompletableFuture<MaybeMultihash> getPointerTarget(PublicKeyHash owner, PublicKeyHash writerKeyHash, ContentAddressedStorage ipfs) {
+    default CompletableFuture<PointerUpdate> getPointerTarget(PublicKeyHash owner, PublicKeyHash writerKeyHash, ContentAddressedStorage ipfs) {
         return getPointer(owner, writerKeyHash)
                 .thenCompose(current -> current.isPresent() ?
                         parsePointerTarget(current.get(), writerKeyHash, ipfs) :
-                        CompletableFuture.completedFuture(MaybeMultihash.empty()));
+                        Futures.of(PointerUpdate.empty()));
     }
 
     default MutablePointers clearCache() {
         return this;
     }
 
-    static CompletableFuture<MaybeMultihash> parsePointerTarget(byte[] pointerCas,
-                                                                PublicKeyHash writerKeyHash,
-                                                                ContentAddressedStorage ipfs) {
+    static CompletableFuture<PointerUpdate> parsePointerTarget(byte[] pointerCas,
+                                                               PublicKeyHash writerKeyHash,
+                                                               ContentAddressedStorage ipfs) {
         return ipfs.getSigningKey(writerKeyHash)
-                .thenApply(writerOpt -> writerOpt.map(writerKey -> Optional.of(pointerCas)
-                        .map(signed -> HashCasPair.fromCbor(CborObject.fromByteArray(writerKey.unsignMessage(signed))).updated)
-                        .orElse(MaybeMultihash.empty()))
-                        .orElse(MaybeMultihash.empty()));
+                .thenApply(writerOpt -> writerOpt.map(writerKey -> PointerUpdate.fromCbor(CborObject.fromByteArray(writerKey.unsignMessage(pointerCas))))
+                        .orElse(PointerUpdate.empty()));
     }
 
     static boolean isValidUpdate(PublicSigningKey writerKey, Optional<byte[]> current, byte[] writerSignedBtreeRootHash) {
         byte[] bothHashes = writerKey.unsignMessage(writerSignedBtreeRootHash);
-        HashCasPair cas = HashCasPair.fromCbor(CborObject.fromByteArray(bothHashes));
+        PointerUpdate cas = PointerUpdate.fromCbor(CborObject.fromByteArray(bothHashes));
         MaybeMultihash claimedCurrentHash = cas.original;
         Multihash newHash = cas.updated.get();
 
-        return isValidUpdate(writerKey, current, claimedCurrentHash);
+        return isValidUpdate(writerKey, current, claimedCurrentHash, cas.sequence);
     }
 
-    static boolean isValidUpdate(PublicSigningKey writerKey, Optional<byte[]> current, MaybeMultihash claimedCurrentHash) {
-        MaybeMultihash existing = current
-                .map(signed -> HashCasPair.fromCbor(CborObject.fromByteArray(writerKey.unsignMessage(signed))).updated)
-                .orElse(MaybeMultihash.empty());
+    static boolean isValidUpdate(PublicSigningKey writerKey,
+                                 Optional<byte[]> current,
+                                 MaybeMultihash claimedCurrentHash,
+                                 Optional<Long> newSequence) {
+        Optional<PointerUpdate> decoded = current.map(signed ->
+                PointerUpdate.fromCbor(CborObject.fromByteArray(writerKey.unsignMessage(signed))));
+        MaybeMultihash existing = decoded.map(p -> p.updated).orElse(MaybeMultihash.empty());
+        Optional<Long> currentSequence = decoded.flatMap(p -> p.sequence);
         // check CAS [current hash, new hash]
-        return existing.equals(claimedCurrentHash);
+        boolean validSequence = currentSequence.isEmpty() || (newSequence.isPresent() && newSequence.get() > currentSequence.get());
+        return validSequence && existing.equals(claimedCurrentHash);
     }
 }

@@ -66,7 +66,7 @@ public class DirectoryInode implements Cborable {
     public CompletableFuture<List<InodeCap>> getChildren() {
         if (children.isA())
             return Futures.of(children.a());
-        return children.b().applyToAllMappings(new ArrayList<>(), (acc, p) -> {
+        return children.b().reduceAllMappings(new ArrayList<>(), (acc, p) -> {
             p.right.ifPresent(acc::add);
             return Futures.of(acc);
         }, storage);

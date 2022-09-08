@@ -2,7 +2,6 @@ package peergos.server.storage;
 
 import peergos.server.corenode.*;
 import peergos.server.space.*;
-import peergos.server.storage.auth.*;
 import peergos.shared.*;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.asymmetric.*;
@@ -132,7 +131,7 @@ public class GarbageCollector {
         long deletedRawBlocks = deleted.right;
         long t7 = System.nanoTime();
         System.out.println("Deleting blocks took " + (t7-t6)/1_000_000_000 + "s");
-        System.out.println("GC complete. Freed " + deletedCborBlocks + " cbor blocks and " + deletedRawBlocks + " raw blocks in " + (t7-t0)/1_000_000_000 + "s");
+        System.out.println("GC complete. Freed " + deletedCborBlocks + " cbor blocks and " + deletedRawBlocks + " raw blocks, total duration: " + (t7-t0)/1_000_000_000 + "s");
     }
 
     private static boolean markReachable(PublicKeyHash writerHash,
@@ -143,7 +142,7 @@ public class GarbageCollector {
                                          Set<Multihash> done) {
         PublicSigningKey writer = getWithBackoff(() -> storage.getSigningKey(writerHash).join().get());
         byte[] bothHashes = writer.unsignMessage(signedRawCas);
-        HashCasPair cas = HashCasPair.fromCbor(CborObject.fromByteArray(bothHashes));
+        PointerUpdate cas = PointerUpdate.fromCbor(CborObject.fromByteArray(bothHashes));
         MaybeMultihash updated = cas.updated;
         if (updated.isPresent() && ! done.contains(updated.get())) {
             markReachable(storage, (Cid) updated.get(), toIndex, reachable);
