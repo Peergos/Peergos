@@ -1869,6 +1869,7 @@ public abstract class UserTests {
         context.getByPath(filePath).join().get().remove(context.getUserRoot().join(), filePath, context).join();
         Path dirPath = PathUtil.get(username, dirName);
         context.getByPath(dirPath).join().get().remove(context.getUserRoot().join(), dirPath, context).join();
+        try {Thread.sleep(2000);} catch (InterruptedException e) {}
         UserGC.checkRawUsage(context);
 
         long finalUsage = context.getSpaceUsage().join();
