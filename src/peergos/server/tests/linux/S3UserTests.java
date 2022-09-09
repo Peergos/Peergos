@@ -38,7 +38,7 @@ public class S3UserTests extends UserTests {
             .with("useIPFS", "true")
             .with(IpfsWrapper.IPFS_BOOTSTRAP_NODES, ""); // no bootstrapping
 
-    private static Args withS3(Args in) {
+    public static Args withS3(Args in) {
         return in.with("s3.bucket", "local-s3")
                 .with("s3.region", "local")
                 .with("s3.region.endpoint", "localhost:9000")
