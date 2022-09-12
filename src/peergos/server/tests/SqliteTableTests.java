@@ -16,6 +16,7 @@ public class SqliteTableTests {
 
     @Test
     public void modifyTransactionsTable() throws Exception {
+        long start = System.currentTimeMillis();
         Connection db = new Sqlite.UncloseableConnection(Sqlite.build(":memory:"));
         String legacyTableCreate = "CREATE TABLE IF NOT EXISTS transactions (" +
                 "tid varchar(64) not null, owner varchar(64) not null, hash varchar(64) not null);";
@@ -41,6 +42,10 @@ public class SqliteTableTests {
         // check both entries are correct
         List<Multihash> open = txns.getOpenTransactionBlocks();
         Assert.assertTrue(open.size() == 2);
+
+        // check an immediate GC doesn't clear the new block
+        txns.clearOldTransactions(start);
+        Assert.assertTrue(txns.getOpenTransactionBlocks().size() == 1);
 
         // clear both entries
         txns.clearOldTransactions(System.currentTimeMillis() + 1000);
