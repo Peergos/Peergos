@@ -15,8 +15,9 @@ import java.util.logging.*;
 public class JdbcTransactionStore implements TransactionStore {
 	private static final Logger LOG = Logging.LOG();
 
-    private static final String SELECT_TRANSACTIONS_BLOCKS = "SELECT tid, owner, hash FROM transactions;";
+    private static final String SELECT_TRANSACTIONS_BLOCKS = "SELECT tid, owner, hash, time FROM transactions;";
     private static final String DELETE_TRANSACTION = "DELETE FROM transactions WHERE tid = ? AND owner = ?;";
+    private static final String DELETE_OLD_TRANSACTIONS = "DELETE FROM transactions WHERE time < ?;";
 
     private Supplier<Connection> conn;
     private final SqlSupplier commands;
@@ -45,6 +46,7 @@ public class JdbcTransactionStore implements TransactionStore {
 
         try (Connection conn = getConnection()) {
             commands.createTable(commands.createTransactionsTableCommand(), conn);
+            commands.createTable(commands.ensureColumnExistsCommand("transactions", "time", commands.sqlInteger() +" DEFAULT 0"), conn);
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
@@ -63,6 +65,7 @@ public class JdbcTransactionStore implements TransactionStore {
             insert.setString(1, tid.toString());
             insert.setString(2, owner.toString());
             insert.setString(3, hash.toString());
+            insert.setLong(4, System.currentTimeMillis());
             insert.executeUpdate();
         } catch (SQLException sqe) {
             LOG.log(Level.WARNING, sqe.getMessage(), sqe);
@@ -75,6 +78,16 @@ public class JdbcTransactionStore implements TransactionStore {
              PreparedStatement delete = conn.prepareStatement(DELETE_TRANSACTION)) {
             delete.setString(1, tid.toString());
             delete.setString(2, owner.toString());
+            delete.executeUpdate();
+        } catch (SQLException sqe) {
+            LOG.log(Level.WARNING, sqe.getMessage(), sqe);
+        }
+    }
+
+    public void clearOldTransactions(long cutoffMillis) {
+        try (Connection conn = getConnection();
+             PreparedStatement delete = conn.prepareStatement(DELETE_OLD_TRANSACTIONS)) {
+            delete.setLong(1, cutoffMillis);
             delete.executeUpdate();
         } catch (SQLException sqe) {
             LOG.log(Level.WARNING, sqe.getMessage(), sqe);

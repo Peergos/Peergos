@@ -81,6 +81,11 @@ public class FileContentAddressedStorage implements DeletableContentAddressedSto
     }
 
     @Override
+    public void clearOldTransactions(long cutoffMillis) {
+        transactions.clearOldTransactions(cutoffMillis);
+    }
+
+    @Override
     public CompletableFuture<List<Cid>> put(PublicKeyHash owner,
                                             PublicKeyHash writer,
                                             List<byte[]> signedHashes,

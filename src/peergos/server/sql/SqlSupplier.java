@@ -18,6 +18,8 @@ public interface SqlSupplier {
 
     String sqlInteger();
 
+    String ensureColumnExistsCommand(String table, String column, String type);
+
     default String createMutablePointersTableCommand() {
         return "CREATE TABLE IF NOT EXISTS metadatablobs (writingkey text primary key not null, hash text not null); " +
                 "CREATE UNIQUE INDEX IF NOT EXISTS index_name ON metadatablobs (writingkey);";
@@ -44,7 +46,7 @@ public interface SqlSupplier {
 
     default String createTransactionsTableCommand() {
         return "CREATE TABLE IF NOT EXISTS transactions (" +
-                "tid varchar(64) not null, owner varchar(64) not null, hash varchar(64) not null);";
+                "tid varchar(64) not null, owner varchar(64) not null, hash varchar(64) not null, time " + sqlInteger()+");";
     }
 
     default String createServerMessageTableCommand() {

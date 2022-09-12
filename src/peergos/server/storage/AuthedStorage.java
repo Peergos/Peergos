@@ -100,6 +100,11 @@ public class AuthedStorage extends DelegatingStorage implements DeletableContent
     }
 
     @Override
+    public void clearOldTransactions(long cutoffMillis) {
+        target.clearOldTransactions(cutoffMillis);
+    }
+
+    @Override
     public void delete(Multihash hash) {
         target.delete(hash);
     }

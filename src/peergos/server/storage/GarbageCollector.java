@@ -65,6 +65,7 @@ public class GarbageCollector {
                                Function<Stream<Map.Entry<PublicKeyHash, byte[]>>, CompletableFuture<Boolean>> snapshotSaver) {
         System.out.println("Starting blockstore garbage collection on node " + storage.id().join() + "...");
         // TODO: do this more efficiently with a bloom filter, and actual streaming and multithreading
+        storage.clearOldTransactions(System.currentTimeMillis() - 24*3600*1000L);
         long t0 = System.nanoTime();
         List<Multihash> present = storage.getAllBlockHashes().collect(Collectors.toList());
         long t1 = System.nanoTime();

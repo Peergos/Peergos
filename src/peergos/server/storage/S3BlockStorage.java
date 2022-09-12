@@ -362,6 +362,11 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         return transactions.getOpenTransactionBlocks();
     }
 
+    @Override
+    public void clearOldTransactions(long cutoffMillis) {
+        transactions.clearOldTransactions(cutoffMillis);
+    }
+
     private void collectGarbage(JdbcIpnsAndSocial pointers, UsageStore usage) {
         GarbageCollector.collect(this, pointers, usage, this::savePointerSnapshot);
     }
