@@ -46,7 +46,12 @@ public class JdbcTransactionStore implements TransactionStore {
 
         try (Connection conn = getConnection()) {
             commands.createTable(commands.createTransactionsTableCommand(), conn);
-            commands.createTable(commands.ensureColumnExistsCommand("transactions", "time", commands.sqlInteger() +" DEFAULT 0"), conn);
+            try { // sqlite doesn't have an "if not exists" modifer on "add column"
+                commands.createTable(commands.ensureColumnExistsCommand("transactions", "time", commands.sqlInteger() + " DEFAULT 0"), conn);
+            } catch (SQLException f) {
+                if (!f.getMessage().contains("duplicate column"))
+                    throw new RuntimeException(f);
+            }
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
