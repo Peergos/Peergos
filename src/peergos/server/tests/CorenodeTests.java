@@ -11,9 +11,9 @@ public class CorenodeTests {
     public void isValidUsernameTest() {
         List<String> areValid = Arrays.asList(
                 "chris",
-                "super_califragilistic_ex",
+                "super-califragilistic-ex",
                 "z",
-                "ch_ris",
+                "ch-ris",
                 "123456789012345678901234567890ab",
                 "1337",
                 "alpha-beta",
@@ -37,6 +37,7 @@ public class CorenodeTests {
                 "a-_b",
                 "a_-b",
                 "a--b",
+                "a_b",
                 "fred--flinstone",
                 "peter-_pan",
                 "_hello",
