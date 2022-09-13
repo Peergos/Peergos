@@ -151,4 +151,9 @@ public class TransactionalIpfs extends DelegatingStorage implements DeletableCon
     public List<Multihash> getOpenTransactionBlocks() {
         return transactions.getOpenTransactionBlocks();
     }
+
+    @Override
+    public void clearOldTransactions(long cutoffMillis) {
+        transactions.clearOldTransactions(cutoffMillis);
+    }
 }

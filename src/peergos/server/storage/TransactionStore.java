@@ -16,4 +16,5 @@ public interface TransactionStore {
 
     List<Multihash> getOpenTransactionBlocks();
 
+    void clearOldTransactions(long cutoff);
 }

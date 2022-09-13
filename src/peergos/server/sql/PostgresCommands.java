@@ -20,8 +20,13 @@ public class PostgresCommands implements SqlSupplier {
     }
 
     @Override
+    public String ensureColumnExistsCommand(String table, String column, String type) {
+        return "ALTER TABLE " + table + " ADD COLUMN IF NOT EXISTS " + column + " " + type + ";";
+    }
+
+    @Override
     public String insertTransactionCommand() {
-        return "INSERT INTO transactions (tid, owner, hash) VALUES(?, ?, ?) ON CONFLICT DO NOTHING;";
+        return "INSERT INTO transactions (tid, owner, hash, time) VALUES(?, ?, ?, ?) ON CONFLICT DO NOTHING;";
     }
 
     @Override

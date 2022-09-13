@@ -72,6 +72,11 @@ public class RAMStorage implements DeletableContentAddressedStorage {
     }
 
     @Override
+    public void clearOldTransactions(long cutoffMillis) {
+
+    }
+
+    @Override
     public CompletableFuture<List<Cid>> put(PublicKeyHash owner,
                                             PublicKeyHash writer,
                                             List<byte[]> signedHashes,

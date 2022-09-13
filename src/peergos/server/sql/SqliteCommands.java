@@ -19,8 +19,13 @@ public class SqliteCommands implements SqlSupplier {
     }
 
     @Override
+    public String ensureColumnExistsCommand(String table, String column, String type) {
+        return "ALTER TABLE " + table + " ADD COLUMN " + column + " " + type + ";";
+    }
+
+    @Override
     public String insertTransactionCommand() {
-        return "INSERT OR IGNORE INTO transactions (tid, owner, hash) VALUES (?, ?, ?);";
+        return "INSERT OR IGNORE INTO transactions (tid, owner, hash, time) VALUES (?, ?, ?, ?);";
     }
 
     @Override

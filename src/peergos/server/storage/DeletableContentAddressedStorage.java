@@ -27,6 +27,8 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
 
     List<Multihash> getOpenTransactionBlocks();
 
+    void clearOldTransactions(long cutoffMillis);
+
     boolean hasBlock(Cid hash);
 
     void delete(Multihash hash);
@@ -227,6 +229,11 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
 
         @Override
         public List<Multihash> getOpenTransactionBlocks() {
+            throw new IllegalStateException("Unimplemented!");
+        }
+
+        @Override
+        public void clearOldTransactions(long cutoffMillis) {
             throw new IllegalStateException("Unimplemented!");
         }
 
