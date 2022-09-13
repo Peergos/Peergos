@@ -591,7 +591,8 @@ public class Main extends Builder {
                     getDBConnector(a, "quotas-sql-file", dbConnectionPool));
             CoreNode signupFilter = new SignUpFilter(core, userQuotas, nodeId, httpSpaceUsage);
 
-            SpaceCheckingKeyFilter.update(usageStore, userQuotas, core, localPointers, localStorage, hasher);
+            if (a.getBoolean("update-usage", true))
+                SpaceCheckingKeyFilter.update(usageStore, userQuotas, core, localPointers, localStorage, hasher);
             SpaceCheckingKeyFilter spaceChecker = new SpaceCheckingKeyFilter(core, localPointers, localStorage,
                     hasher, userQuotas, usageStore);
             CorenodeEventPropagator corePropagator = new CorenodeEventPropagator(signupFilter);
