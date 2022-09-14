@@ -235,17 +235,16 @@ public class SocialFeed {
     @JsMethod
     public synchronized CompletableFuture<SocialFeed> update() {
         PublicKeyHash owner = context.signer.publicKeyHash;
-        BufferedNetworkAccess buffered = BufferedNetworkAccess.build(network, 10 * 1024 * 1024, owner, () -> true, network.hasher);
-        return buffered.synchronizer.applyComplexComputation(owner, dataDir.signingPair(),
+        return network.synchronizer.applyComplexComputation(owner, dataDir.signingPair(),
                 (s, c) -> {
-                    Committer condenser = buffered.buildCommitter(c);
+                    Committer condenser = network.buildCommitter(c, owner, () -> true);
                     return context.getFollowingNodes()
                             .thenCompose(friends -> Futures.reduceAll(friends.stream(), new Pair<>(s, Stream.<Update>empty()),
-                                    (p, friend) -> getFriendUpdate(friend, p.left, condenser, buffered)
+                                    (p, friend) -> getFriendUpdate(friend, p.left, condenser, network)
                                             .thenApply(res -> new Pair<>(res.left, Stream.concat(p.right, res.right.stream()))),
                                     (a, b) -> b));
                 }
-        ).thenCompose(updates -> buffered.commit()
+        ).thenCompose(updates -> network.commit(owner)
                 .thenCompose(x -> mergeUpdates(updates.right.collect(Collectors.toList()))));
     }
 
@@ -325,27 +324,26 @@ public class SocialFeed {
     private synchronized CompletableFuture<Snapshot> appendToFeedAndCommitState(byte[] data, int records) {
         PublicKeyHash owner = context.signer.publicKeyHash;
         // use a buffered network to make this atomic across multiple files
-        BufferedNetworkAccess buffered = BufferedNetworkAccess.build(network, 10 * 1024 * 1024, owner, () -> true, network.hasher);
-        return buffered.synchronizer.applyComplexUpdate(dataDir.owner(), dataDir.signingPair(),
+        return network.synchronizer.applyComplexUpdate(dataDir.owner(), dataDir.signingPair(),
                 (s, c) -> {
-                    Committer condenser = buffered.buildCommitter(c);
-                    return dataDir.getUpdated(s, buffered).thenCompose(updated ->
-                            updated.getChild(FEED_FILE, crypto.hasher, buffered).thenCompose(feedOpt -> {
+                    Committer condenser = network.buildCommitter(c, owner, () -> true);
+                    return dataDir.getUpdated(s, network).thenCompose(updated ->
+                            updated.getChild(FEED_FILE, crypto.hasher, network).thenCompose(feedOpt -> {
                                 if (feedOpt.isEmpty())
                                     return updated.uploadFileSection(updated.version, condenser, FEED_FILE, AsyncReader.build(data),
                                             false, 0, data.length, Optional.empty(), false, false,
-                                            false, buffered, crypto, x -> {},
+                                            false, network, crypto, x -> {},
                                             crypto.random.randomBytes(RelativeCapability.MAP_KEY_LENGTH),
                                             Optional.empty(),  Optional.of(Bat.random(crypto.random)), updated.mirrorBatId());
                                 if (feedOpt.get().getSize() != feedSizeBytes)
                                     throw new IllegalStateException("Feed size incorrect!");
-                                return feedOpt.get().append(data, buffered, crypto, condenser, x -> {});
+                                return feedOpt.get().append(data, network, crypto, condenser, x -> {});
                             })).thenCompose(s2 -> {
                         feedSizeRecords += records;
                         feedSizeBytes += data.length;
                         byte[] raw = new FeedState(lastSeenIndex, feedSizeRecords, feedSizeBytes, currentCapBytesProcessed).serialize();
-                        return stateFile.overwriteFile(AsyncReader.build(raw), raw.length, buffered, crypto, x -> {}, s2, condenser);
-                    }).thenCompose(v -> buffered.commit().thenApply(b -> v));
+                        return stateFile.overwriteFile(AsyncReader.build(raw), raw.length, network, crypto, x -> {}, s2, condenser);
+                    }).thenCompose(v -> network.commit(owner).thenApply(b -> v));
                 }).thenCompose(s -> this.dataDir.getUpdated(s, network).thenApply(u -> {
                     this.dataDir = u;
                     return true;

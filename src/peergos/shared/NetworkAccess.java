@@ -1,4 +1,5 @@
 package peergos.shared;
+import java.util.function.*;
 import java.util.logging.*;
 
 import jsinterop.annotations.*;
@@ -298,10 +299,14 @@ public class NetworkAccess {
                                        Hasher hasher,
                                        List<String> usernames,
                                        boolean isJavascript) {
-        WriteSynchronizer synchronizer = new WriteSynchronizer(mutable, dht, hasher);
-        MutableTree btree = new MutableTreeImpl(mutable, dht, hasher, synchronizer);
-        return new NetworkAccess(coreNode, account, social, dht, batCave, mutable, btree, synchronizer, instanceAdmin,
-                usage, serverMessager, hasher, usernames, isJavascript);
+        BufferedStorage blockBuffer = new BufferedStorage(dht, hasher);
+        BufferedPointers mutableBuffer = new BufferedPointers(mutable);
+        WriteSynchronizer synchronizer = new WriteSynchronizer(mutableBuffer, blockBuffer, hasher);
+        MutableTree tree = new MutableTreeImpl(mutableBuffer, blockBuffer, hasher, synchronizer);
+
+        int bufferSize = 20 * 1024 * 1024;
+        return new BufferedNetworkAccess(blockBuffer, mutableBuffer, bufferSize, coreNode, account,
+                social, dht, batCave, mutableBuffer, tree, synchronizer, instanceAdmin, usage, serverMessager, hasher, usernames, isJavascript);
     }
 
     public static CompletableFuture<NetworkAccess> buildPublicNetworkAccess(Hasher hasher,
@@ -312,6 +317,30 @@ public class NetworkAccess {
         MutableTree mutableTree = new MutableTreeImpl(mutable, storage, null, synchronizer);
         return CompletableFuture.completedFuture(new NetworkAccess(core, null, null, storage, null, mutable, mutableTree,
                 synchronizer, null, null, null, hasher, Collections.emptyList(), false));
+    }
+
+    public boolean isFull() {
+        return false;
+    }
+
+    public NetworkAccess disableCommits() {
+        return this;
+    }
+
+    public NetworkAccess enableCommits() {
+        return this;
+    }
+
+    public Committer buildCommitter(Committer c, PublicKeyHash owner, Supplier<Boolean> commitWatcher) {
+        return c;
+    }
+
+    public CompletableFuture<Boolean> commit(PublicKeyHash owner) {
+        return commit(owner, () -> true);
+    }
+
+    public CompletableFuture<Boolean> commit(PublicKeyHash owner, Supplier<Boolean> commitWatcher) {
+        return Futures.of(true);
     }
 
     public CompletableFuture<Optional<RetrievedCapability>> retrieveMetadata(AbsoluteCapability cap, Snapshot version) {

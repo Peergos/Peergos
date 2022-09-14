@@ -28,41 +28,31 @@ public class BufferedNetworkAccess extends NetworkAccess {
     private Map<PublicKeyHash, SigningPrivateKeyAndPublicHash> writers = new HashMap<>();
     private final List<WriterUpdate> writerUpdates = new ArrayList<>();
     private Committer targetCommitter;
-    private final PublicKeyHash owner;
-    private final Supplier<Boolean> commitWatcher;
-    private final WriteSynchronizer source;
     private final ContentAddressedStorage blocks;
     private boolean safeToCommit = true;
 
-    private BufferedNetworkAccess(BufferedStorage blockBuffer,
-                                  BufferedPointers mutableBuffer,
-                                  int bufferSize,
-                                  PublicKeyHash owner,
-                                  Supplier<Boolean> commitWatcher,
-                                  CoreNode coreNode,
-                                  Account account,
-                                  SocialNetwork social,
-                                  ContentAddressedStorage dhtClient,
-                                  BatCave batCave,
-                                  MutablePointers mutable,
-                                  MutableTree tree,
-                                  WriteSynchronizer synchronizer,
-                                  InstanceAdmin instanceAdmin,
-                                  SpaceUsage spaceUsage,
-                                  ServerMessager serverMessager,
-                                  Hasher hasher,
-                                  List<String> usernames,
-                                  CryptreeCache cache,
-                                  boolean isJavascript,
-                                  WriteSynchronizer source) {
+    public BufferedNetworkAccess(BufferedStorage blockBuffer,
+                                 BufferedPointers mutableBuffer,
+                                 int bufferSize,
+                                 CoreNode coreNode,
+                                 Account account,
+                                 SocialNetwork social,
+                                 ContentAddressedStorage dhtClient,
+                                 BatCave batCave,
+                                 MutablePointers mutable,
+                                 MutableTree tree,
+                                 WriteSynchronizer synchronizer,
+                                 InstanceAdmin instanceAdmin,
+                                 SpaceUsage spaceUsage,
+                                 ServerMessager serverMessager,
+                                 Hasher hasher,
+                                 List<String> usernames,
+                                 boolean isJavascript) {
         super(coreNode, account, social, blockBuffer, batCave, mutable, tree, synchronizer, instanceAdmin, spaceUsage,
-                serverMessager, hasher, usernames, cache, isJavascript);
+                serverMessager, hasher, usernames, isJavascript);
         this.blockBuffer = blockBuffer;
         this.pointerBuffer = mutableBuffer;
         this.bufferSize = bufferSize;
-        this.owner = owner;
-        this.commitWatcher = commitWatcher;
-        this.source = source;
         this.blocks = dhtClient;
     }
 
@@ -78,7 +68,7 @@ public class BufferedNetworkAccess extends NetworkAccess {
         }
     }
 
-    public Committer buildCommitter(Committer c) {
+    public Committer buildCommitter(Committer c, PublicKeyHash owner, Supplier<Boolean> commitWatcher) {
         targetCommitter = c;
         return (o, w, wd, e, tid) -> blockBuffer.put(owner, w.publicKeyHash, new byte[0], wd.serialize(), tid)
                 .thenCompose(newHash -> {
@@ -95,7 +85,7 @@ public class BufferedNetworkAccess extends NetworkAccess {
                             writerUpdates.add(new WriterUpdate(writer, e, updated));
                         }
                     }
-                    return maybeCommit().thenApply(x -> new Snapshot(writer, updated));
+                    return maybeCommit(owner, commitWatcher).thenApply(x -> new Snapshot(writer, updated));
                 });
     }
 
@@ -103,12 +93,12 @@ public class BufferedNetworkAccess extends NetworkAccess {
         return blockBuffer.totalSize();
     }
 
-    public BufferedNetworkAccess disableCommits() {
+    public NetworkAccess disableCommits() {
         safeToCommit = false;
         return this;
     }
 
-    public BufferedNetworkAccess enableCommits() {
+    public NetworkAccess enableCommits() {
         safeToCommit = true;
         return this;
     }
@@ -117,9 +107,9 @@ public class BufferedNetworkAccess extends NetworkAccess {
         return bufferedSize() >= bufferSize;
     }
 
-    private CompletableFuture<Boolean> maybeCommit() {
+    private CompletableFuture<Boolean> maybeCommit(PublicKeyHash owner, Supplier<Boolean> commitWatcher) {
         if (safeToCommit && isFull())
-            return commit();
+            return commit(owner, commitWatcher);
         return Futures.of(true);
     }
 
@@ -130,19 +120,20 @@ public class BufferedNetworkAccess extends NetworkAccess {
                 .collect(Collectors.toList());
     }
 
-    private CompletableFuture<List<Snapshot>> commitPointers(TransactionId tid) {
+    private CompletableFuture<List<Snapshot>> commitPointers(TransactionId tid, PublicKeyHash owner) {
         return Futures.combineAllInOrder(writerUpdates.stream()
                 .map(u -> targetCommitter.commit(owner, writers.get(u.writer), u.current.props, u.prev, tid))
                 .collect(Collectors.toList()));
     }
 
-    public synchronized CompletableFuture<Boolean> commit() {
+    @Override
+    public synchronized CompletableFuture<Boolean> commit(PublicKeyHash owner, Supplier<Boolean> commitWatcher) {
         // Condense pointers and do a mini GC to remove superfluous work
         blockBuffer.gc(getRoots());
         return blockBuffer.signBlocks(writers)
                 .thenCompose(b -> blocks.startTransaction(owner))
                 .thenCompose(tid -> blockBuffer.commit(owner, tid)
-                        .thenCompose(b -> commitPointers(tid))
+                        .thenCompose(b -> commitPointers(tid, owner))
                         .thenCompose(b -> pointerBuffer.commit())
                         .thenCompose(x -> blocks.closeTransaction(owner, tid))
                         .thenApply(x -> {
@@ -150,22 +141,7 @@ public class BufferedNetworkAccess extends NetworkAccess {
                             pointerBuffer.clear();
                             writers.clear();
                             writerUpdates.clear();
-                            source.clear();
                             return commitWatcher.get();
                         }));
-    }
-
-    public static BufferedNetworkAccess build(NetworkAccess base,
-                                              int bufferSize,
-                                              PublicKeyHash owner,
-                                              Supplier<Boolean> commitWatcher,
-                                              Hasher h) {
-        BufferedStorage blockBuffer = new BufferedStorage(base.dhtClient, h);
-        BufferedPointers mutableBuffer = new BufferedPointers(base.mutable);
-        WriteSynchronizer synchronizer = new WriteSynchronizer(mutableBuffer, blockBuffer, h);
-        MutableTree tree = new MutableTreeImpl(mutableBuffer, blockBuffer, h, synchronizer);
-        return new BufferedNetworkAccess(blockBuffer, mutableBuffer, bufferSize, owner, commitWatcher, base.coreNode, base.account, base.social,
-                base.dhtClient, base.batCave, mutableBuffer, tree, synchronizer, base.instanceAdmin,
-                base.spaceUsage, base.serverMessager, base.hasher, base.usernames, base.cache, base.isJavascript(), base.synchronizer);
     }
 }
