@@ -279,7 +279,8 @@ public class WriterData implements Cborable {
                                               Optional<Long> currentSequence,
                                               NetworkAccess network,
                                               TransactionId tid) {
-        return commit(owner, signer, currentHash, currentSequence, network.mutable, network.dhtClient, network.hasher, tid);
+        return commit(owner, signer, currentHash, currentSequence, network.mutable, network.dhtClient, network.hasher, tid)
+                .thenCompose(s -> network.commit(owner).thenApply(x -> s));
     }
 
     public CompletableFuture<Snapshot> commit(PublicKeyHash owner,

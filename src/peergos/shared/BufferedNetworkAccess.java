@@ -54,6 +54,8 @@ public class BufferedNetworkAccess extends NetworkAccess {
         this.pointerBuffer = mutableBuffer;
         this.bufferSize = bufferSize;
         this.blocks = dhtClient;
+        synchronizer.setCommitterBuilder(this::buildCommitter);
+        synchronizer.setFlusher((o, v) -> commit(o).thenApply(b -> v));
     }
 
     private static class WriterUpdate {
@@ -103,6 +105,29 @@ public class BufferedNetworkAccess extends NetworkAccess {
         return this;
     }
 
+    public NetworkAccess clear() {
+        NetworkAccess base = super.clear();
+        BufferedStorage blockBuffer = new BufferedStorage(base.dhtClient, hasher);
+        BufferedPointers mutableBuffer = new BufferedPointers(mutable);
+        WriteSynchronizer synchronizer = new WriteSynchronizer(mutableBuffer, blockBuffer, hasher);
+        MutableTree tree = new MutableTreeImpl(mutableBuffer, blockBuffer, hasher, synchronizer);
+        return new BufferedNetworkAccess(blockBuffer, mutableBuffer, bufferSize, base.coreNode, base.account, base.social, base.dhtClient,
+                base.batCave, base.mutable, tree, synchronizer, base.instanceAdmin, base.spaceUsage, base.serverMessager, hasher, usernames, isJavascript());
+    }
+
+    public NetworkAccess withCorenode(CoreNode newCore) {
+        return new BufferedNetworkAccess(blockBuffer, pointerBuffer, bufferSize, newCore, account, social, dhtClient,
+                batCave, mutable, tree, synchronizer, instanceAdmin, spaceUsage, serverMessager, hasher, usernames, isJavascript());
+    }
+
+    public NetworkAccess withMutablePointerCache(int ttl) {
+        CachingPointers mutable = new CachingPointers(pointerBuffer, ttl);
+        WriteSynchronizer synchronizer = new WriteSynchronizer(mutable, dhtClient, hasher);
+        MutableTree mutableTree = new MutableTreeImpl(mutable, dhtClient, hasher, synchronizer);
+        return new BufferedNetworkAccess(blockBuffer, pointerBuffer, bufferSize, coreNode, account, social, dhtClient,
+                batCave, mutable, mutableTree, synchronizer, instanceAdmin, spaceUsage, serverMessager, hasher, usernames, isJavascript());
+    }
+
     public boolean isFull() {
         return bufferedSize() >= bufferSize;
     }
@@ -128,6 +153,8 @@ public class BufferedNetworkAccess extends NetworkAccess {
 
     @Override
     public synchronized CompletableFuture<Boolean> commit(PublicKeyHash owner, Supplier<Boolean> commitWatcher) {
+        if (blockBuffer.isEmpty() && pointerBuffer.isEmpty())
+            return Futures.of(true);
         // Condense pointers and do a mini GC to remove superfluous work
         blockBuffer.gc(getRoots());
         return blockBuffer.signBlocks(writers)
@@ -143,5 +170,10 @@ public class BufferedNetworkAccess extends NetworkAccess {
                             writerUpdates.clear();
                             return commitWatcher.get();
                         }));
+    }
+
+    @Override
+    public String toString() {
+        return "Blocks(" + blockBuffer.size() + "),Pointers(" + writerUpdates.size()+")";
     }
 }

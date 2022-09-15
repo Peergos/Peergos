@@ -27,6 +27,10 @@ public class BufferedStorage extends DelegatingStorage {
         this.hasher = hasher;
     }
 
+    public boolean isEmpty() {
+        return storage.isEmpty();
+    }
+
     @Override
     public ContentAddressedStorage directToOrigin() {
         return this;

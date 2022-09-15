@@ -33,6 +33,10 @@ public class BufferedPointers implements MutablePointers {
         this.target = target;
     }
 
+    public boolean isEmpty() {
+        return order.isEmpty();
+    }
+
     @Override
     public CompletableFuture<Optional<byte[]>> getPointer(PublicKeyHash owner, PublicKeyHash writer) {
         synchronized (buffer) {
