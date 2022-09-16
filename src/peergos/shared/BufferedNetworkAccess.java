@@ -39,7 +39,6 @@ public class BufferedNetworkAccess extends NetworkAccess {
                                  SocialNetwork social,
                                  ContentAddressedStorage dhtClient,
                                  BatCave batCave,
-                                 MutablePointers mutable,
                                  MutableTree tree,
                                  WriteSynchronizer synchronizer,
                                  InstanceAdmin instanceAdmin,
@@ -48,7 +47,7 @@ public class BufferedNetworkAccess extends NetworkAccess {
                                  Hasher hasher,
                                  List<String> usernames,
                                  boolean isJavascript) {
-        super(coreNode, account, social, blockBuffer, batCave, mutable, tree, synchronizer, instanceAdmin, spaceUsage,
+        super(coreNode, account, social, blockBuffer, batCave, mutableBuffer, tree, synchronizer, instanceAdmin, spaceUsage,
                 serverMessager, hasher, usernames, isJavascript);
         this.blockBuffer = blockBuffer;
         this.pointerBuffer = mutableBuffer;
@@ -112,20 +111,20 @@ public class BufferedNetworkAccess extends NetworkAccess {
         WriteSynchronizer synchronizer = new WriteSynchronizer(mutableBuffer, blockBuffer, hasher);
         MutableTree tree = new MutableTreeImpl(mutableBuffer, blockBuffer, hasher, synchronizer);
         return new BufferedNetworkAccess(blockBuffer, mutableBuffer, bufferSize, base.coreNode, base.account, base.social, base.dhtClient,
-                base.batCave, base.mutable, tree, synchronizer, base.instanceAdmin, base.spaceUsage, base.serverMessager, hasher, usernames, isJavascript());
+                base.batCave, tree, synchronizer, base.instanceAdmin, base.spaceUsage, base.serverMessager, hasher, usernames, isJavascript());
     }
 
     public NetworkAccess withCorenode(CoreNode newCore) {
         return new BufferedNetworkAccess(blockBuffer, pointerBuffer, bufferSize, newCore, account, social, dhtClient,
-                batCave, mutable, tree, synchronizer, instanceAdmin, spaceUsage, serverMessager, hasher, usernames, isJavascript());
+                batCave, tree, synchronizer, instanceAdmin, spaceUsage, serverMessager, hasher, usernames, isJavascript());
     }
 
     public NetworkAccess withMutablePointerCache(int ttl) {
-        CachingPointers mutable = new CachingPointers(pointerBuffer, ttl);
+        BufferedPointers mutable = pointerBuffer.withCache(ttl);
         WriteSynchronizer synchronizer = new WriteSynchronizer(mutable, dhtClient, hasher);
         MutableTree mutableTree = new MutableTreeImpl(mutable, dhtClient, hasher, synchronizer);
-        return new BufferedNetworkAccess(blockBuffer, pointerBuffer, bufferSize, coreNode, account, social, dhtClient,
-                batCave, mutable, mutableTree, synchronizer, instanceAdmin, spaceUsage, serverMessager, hasher, usernames, isJavascript());
+        return new BufferedNetworkAccess(blockBuffer, mutable, bufferSize, coreNode, account, social, dhtClient,
+                batCave, mutableTree, synchronizer, instanceAdmin, spaceUsage, serverMessager, hasher, usernames, isJavascript());
     }
 
     public boolean isFull() {

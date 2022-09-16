@@ -37,6 +37,10 @@ public class BufferedPointers implements MutablePointers {
         return order.isEmpty();
     }
 
+    public BufferedPointers withCache(int ttl) {
+        return new BufferedPointers(new CachingPointers(target, ttl));
+    }
+
     @Override
     public CompletableFuture<Optional<byte[]>> getPointer(PublicKeyHash owner, PublicKeyHash writer) {
         synchronized (buffer) {

@@ -306,7 +306,7 @@ public class NetworkAccess {
 
         int bufferSize = 20 * 1024 * 1024;
         return new BufferedNetworkAccess(blockBuffer, mutableBuffer, bufferSize, coreNode, account,
-                social, dht, batCave, mutableBuffer, tree, synchronizer, instanceAdmin, usage, serverMessager, hasher, usernames, isJavascript);
+                social, dht, batCave, tree, synchronizer, instanceAdmin, usage, serverMessager, hasher, usernames, isJavascript);
     }
 
     public static CompletableFuture<NetworkAccess> buildPublicNetworkAccess(Hasher hasher,
