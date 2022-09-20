@@ -107,7 +107,7 @@ public class BufferedNetworkAccess extends NetworkAccess {
     public NetworkAccess clear() {
         NetworkAccess base = super.clear();
         BufferedStorage blockBuffer = new BufferedStorage(base.dhtClient, hasher);
-        BufferedPointers mutableBuffer = new BufferedPointers(mutable);
+        BufferedPointers mutableBuffer = new BufferedPointers(base.mutable);
         WriteSynchronizer synchronizer = new WriteSynchronizer(mutableBuffer, blockBuffer, hasher);
         MutableTree tree = new MutableTreeImpl(mutableBuffer, blockBuffer, hasher, synchronizer);
         return new BufferedNetworkAccess(blockBuffer, mutableBuffer, bufferSize, base.coreNode, base.account, base.social, base.dhtClient,
