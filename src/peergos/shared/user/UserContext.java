@@ -898,7 +898,7 @@ public class UserContext {
             return network.synchronizer.applyComplexUpdate(owner.publicKeyHash, owner,
                     (s, committer) -> s.get(owner.publicKeyHash).props.addOwnedKeyAndCommit(owner.publicKeyHash, owner,
                             OwnerProof.build(writerPair, owner.publicKeyHash),
-                                    s.get(owner.publicKeyHash).hash, s.get(owner.publicKeyHash).sequence, network, tid)
+                                    s.get(owner.publicKeyHash).hash, s.get(owner.publicKeyHash).sequence, network, committer, tid)
                             .thenCompose(s2 -> {
                                 long t2 = System.currentTimeMillis();
                                 RelativeCapability nextChunk =

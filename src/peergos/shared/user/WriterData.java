@@ -107,12 +107,13 @@ public class WriterData implements Cborable {
                                                             MaybeMultihash currentHash,
                                                             Optional<Long> currentSequence,
                                                             NetworkAccess network,
+                                                            Committer c,
                                                             TransactionId tid) {
         return getOwnedKeyChamp(network.dhtClient, network.hasher)
                 .thenCompose(champ -> champ.add(owner, signer, newOwned, network.hasher, tid)
                         .thenApply(newRoot -> new WriterData(controller, generationAlgorithm, publicData,
                                 followRequestReceiver, Optional.of(newRoot), namedOwnedKeys, staticData, tree)))
-                .thenCompose(wd -> wd.commit(owner, signer, currentHash, currentSequence, network, tid));
+                .thenCompose(wd -> c.commit(owner, signer, wd, new CommittedWriterData(currentHash, this, currentSequence), tid));
     }
 
     public CompletableFuture<WriterData> removeOwnedKey(PublicKeyHash owner,
