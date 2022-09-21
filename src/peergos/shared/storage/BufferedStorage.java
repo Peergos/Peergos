@@ -23,6 +23,8 @@ public class BufferedStorage extends DelegatingStorage {
 
     public BufferedStorage(ContentAddressedStorage target, Hasher hasher) {
         super(target);
+        if (target instanceof BufferedStorage)
+            throw new IllegalStateException("Nested BufferedStorage!");
         this.target = target;
         this.hasher = hasher;
     }

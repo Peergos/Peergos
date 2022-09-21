@@ -30,15 +30,13 @@ public class BufferedPointers implements MutablePointers {
     private final List<SignedPointerUpdate> order = new ArrayList<>();
 
     public BufferedPointers(MutablePointers target) {
+        if (target instanceof BufferedPointers)
+            throw new IllegalStateException("Nested BufferedPointers!");
         this.target = target;
     }
 
     public boolean isEmpty() {
         return order.isEmpty();
-    }
-
-    public BufferedPointers withCache(int ttl) {
-        return new BufferedPointers(new CachingPointers(target, ttl));
     }
 
     @Override

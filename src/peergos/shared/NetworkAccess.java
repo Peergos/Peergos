@@ -193,8 +193,7 @@ public class NetworkAccess {
 
         return isPeergosServer(relative)
                 .thenApply(isPeergosServer -> new Pair<>(isPeergosServer ? relative : absolute, isPeergosServer))
-                .thenCompose(p -> build(p.left, p.left, pkiServerNodeId, buildLocalDht(p.left, p.right, hasher), hasher, true))
-                .thenApply(e -> e.withMutablePointerCache(7_000));
+                .thenCompose(p -> build(p.left, p.left, pkiServerNodeId, buildLocalDht(p.left, p.right, hasher), 7_000, hasher, true));
     }
 
     private static CompletableFuture<Boolean> isPeergosServer(HttpPoster poster) {
@@ -210,6 +209,7 @@ public class NetworkAccess {
                                                          HttpPoster p2pPoster,
                                                          Multihash pkiServerNodeId,
                                                          ContentAddressedStorage localDht,
+                                                         int mutableCacheTime,
                                                          Hasher hasher,
                                                          boolean isJavascript) {
         CoreNode direct = buildDirectCorenode(apiPoster);
@@ -219,7 +219,7 @@ public class NetworkAccess {
                     // We are on a Peergos server
                     CoreNode core = direct;
                     buildDirectS3Blockstore(localDht, core, apiPoster, true, hasher)
-                            .thenCompose(dht -> build(core, dht, apiPoster, p2pPoster, hasher, usernames, true, isJavascript))
+                            .thenCompose(dht -> build(core, dht, apiPoster, p2pPoster, mutableCacheTime, hasher, usernames, true, isJavascript))
                             .thenApply(result::complete)
                             .exceptionally(t -> {
                                 result.completeExceptionally(t);
@@ -236,7 +236,7 @@ public class NetworkAccess {
                     ContentAddressedStorage localIpfs = buildLocalDht(apiPoster, false, hasher);
                     CoreNode core = buildProxyingCorenode(p2pPoster, pkiServerNodeId);
                     core.getUsernames("").thenCompose(usernames ->
-                            build(core, localIpfs, apiPoster, p2pPoster, hasher, usernames, false, isJavascript)
+                            build(core, localIpfs, apiPoster, p2pPoster, mutableCacheTime, hasher, usernames, false, isJavascript)
                                     .thenApply(result::complete))
                             .exceptionally(t2 -> {
                                 result.completeExceptionally(t2);
@@ -251,6 +251,7 @@ public class NetworkAccess {
                                                           ContentAddressedStorage localDht,
                                                           HttpPoster apiPoster,
                                                           HttpPoster p2pPoster,
+                                                          int mutableCacheTime,
                                                           Hasher hasher,
                                                           List<String> usernames,
                                                           boolean isPeergosServer,
@@ -282,7 +283,7 @@ public class NetworkAccess {
                     ServerMessager serverMessager = new ServerMessager.HTTP(apiPoster);
                     BatCave batCave = new HttpBatCave(apiPoster, p2pPoster);
                     RetryMutablePointers retryMutable = new RetryMutablePointers(p2pMutable);
-                    return build(new CommittableStorage(p2pDht), batCave, core, account, retryMutable, p2pSocial,
+                    return build(new CommittableStorage(p2pDht), batCave, core, account, retryMutable, mutableCacheTime, p2pSocial,
                             new HttpInstanceAdmin(apiPoster), p2pUsage, serverMessager, hasher, usernames, isJavascript);
                 });
     }
@@ -292,6 +293,7 @@ public class NetworkAccess {
                                        CoreNode coreNode,
                                        Account account,
                                        MutablePointers mutable,
+                                       int mutableCacheTime,
                                        SocialNetwork social,
                                        InstanceAdmin instanceAdmin,
                                        SpaceUsage usage,
@@ -300,13 +302,14 @@ public class NetworkAccess {
                                        List<String> usernames,
                                        boolean isJavascript) {
         BufferedStorage blockBuffer = new BufferedStorage(dht, hasher);
-        BufferedPointers mutableBuffer = new BufferedPointers(mutable);
+        MutablePointers unbufferedMutable = mutableCacheTime > 0 ? new CachingPointers(mutable, mutableCacheTime) : mutable;
+        BufferedPointers mutableBuffer = new BufferedPointers(unbufferedMutable);
         WriteSynchronizer synchronizer = new WriteSynchronizer(mutableBuffer, blockBuffer, hasher);
         MutableTree tree = new MutableTreeImpl(mutableBuffer, blockBuffer, hasher, synchronizer);
 
         int bufferSize = 20 * 1024 * 1024;
         return new BufferedNetworkAccess(blockBuffer, mutableBuffer, bufferSize, coreNode, account,
-                social, dht, batCave, tree, synchronizer, instanceAdmin, usage, serverMessager, hasher, usernames, isJavascript);
+                social, dht, unbufferedMutable, batCave, tree, synchronizer, instanceAdmin, usage, serverMessager, hasher, usernames, isJavascript);
     }
 
     public static CompletableFuture<NetworkAccess> buildPublicNetworkAccess(Hasher hasher,
