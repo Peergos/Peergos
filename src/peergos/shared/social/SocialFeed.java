@@ -237,15 +237,13 @@ public class SocialFeed {
         PublicKeyHash owner = context.signer.publicKeyHash;
         return network.synchronizer.applyComplexComputation(owner, dataDir.signingPair(),
                 (s, c) -> {
-                    Committer condenser = network.buildCommitter(c, owner, () -> true);
                     return context.getFollowingNodes()
                             .thenCompose(friends -> Futures.reduceAll(friends.stream(), new Pair<>(s, Stream.<Update>empty()),
-                                    (p, friend) -> getFriendUpdate(friend, p.left, condenser, network)
+                                    (p, friend) -> getFriendUpdate(friend, p.left, c, network)
                                             .thenApply(res -> new Pair<>(res.left, Stream.concat(p.right, res.right.stream()))),
                                     (a, b) -> b));
                 }
-        ).thenCompose(updates -> network.commit(owner)
-                .thenCompose(x -> mergeUpdates(updates.right.collect(Collectors.toList()))));
+        ).thenCompose(updates -> mergeUpdates(updates.right.collect(Collectors.toList())));
     }
 
     private static class Update extends Triple<String, ProcessedCaps, CapsDiff> {
@@ -326,24 +324,23 @@ public class SocialFeed {
         // use a buffered network to make this atomic across multiple files
         return network.synchronizer.applyComplexUpdate(dataDir.owner(), dataDir.signingPair(),
                 (s, c) -> {
-                    Committer condenser = network.buildCommitter(c, owner, () -> true);
                     return dataDir.getUpdated(s, network).thenCompose(updated ->
                             updated.getChild(FEED_FILE, crypto.hasher, network).thenCompose(feedOpt -> {
                                 if (feedOpt.isEmpty())
-                                    return updated.uploadFileSection(updated.version, condenser, FEED_FILE, AsyncReader.build(data),
+                                    return updated.uploadFileSection(updated.version, c, FEED_FILE, AsyncReader.build(data),
                                             false, 0, data.length, Optional.empty(), false, false,
                                             false, network, crypto, x -> {},
                                             crypto.random.randomBytes(RelativeCapability.MAP_KEY_LENGTH),
                                             Optional.empty(),  Optional.of(Bat.random(crypto.random)), updated.mirrorBatId());
                                 if (feedOpt.get().getSize() != feedSizeBytes)
                                     throw new IllegalStateException("Feed size incorrect!");
-                                return feedOpt.get().append(data, network, crypto, condenser, x -> {});
+                                return feedOpt.get().append(data, network, crypto, c, x -> {});
                             })).thenCompose(s2 -> {
                         feedSizeRecords += records;
                         feedSizeBytes += data.length;
                         byte[] raw = new FeedState(lastSeenIndex, feedSizeRecords, feedSizeBytes, currentCapBytesProcessed).serialize();
-                        return stateFile.overwriteFile(AsyncReader.build(raw), raw.length, network, crypto, x -> {}, s2, condenser);
-                    }).thenCompose(v -> network.commit(owner).thenApply(b -> v));
+                        return stateFile.overwriteFile(AsyncReader.build(raw), raw.length, network, crypto, x -> {}, s2, c);
+                    });
                 }).thenCompose(s -> this.dataDir.getUpdated(s, network).thenApply(u -> {
                     this.dataDir = u;
                     return true;

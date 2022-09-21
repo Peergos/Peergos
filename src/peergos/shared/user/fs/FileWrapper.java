@@ -814,15 +814,13 @@ public class FileWrapper {
         return getPath(network).thenCompose(path ->
                 network.synchronizer.applyComplexUpdate(owner(), signingPair(),
                         (s, c) -> {
-                            Committer condenser = network.buildCommitter(c, owner(), commitWatcher);
                             return getUpdated(s, network).thenCompose(us -> Futures.reduceAll(directories, us,
-                                    (dir, children) -> dir.getOrMkdirs(children.relativePath, false, mirror, network, crypto, dir.version, condenser)
+                                    (dir, children) -> dir.getOrMkdirs(children.relativePath, false, mirror, network, crypto, dir.version, c)
                                             .thenCompose(p -> uploadFolder(PathUtil.get(path).resolve(children.path()), p.right,
-                                                    children, mirrorBat, txns, resumeFile, commitWatcher, network, crypto, condenser)
+                                                    children, mirrorBat, txns, resumeFile, commitWatcher, network, crypto, c)
                                                     .thenCompose(v -> dir.getUpdated(v, network))),
                                     (a, b) -> b))
-                                    .thenCompose(d -> network.commit(owner(), commitWatcher)
-                                            .thenApply(b -> d.version));
+                                    .thenApply(d -> d.version);
                         }
                 )).thenCompose(finished -> getUpdated(finished, network));
     }
@@ -925,7 +923,7 @@ public class FileWrapper {
         return parent.getUpdated(in, network)
                 .thenCompose(latest -> latest.addChildPointers(in, c, childLinks, network.disableCommits(), crypto))
                 .thenCompose(res -> Futures.reduceAll(toClose, res, (v, f) -> transactions.close(v, c, f), (a, b) -> b))
-                .thenCompose(s -> network.enableCommits().commit(parent.owner(), commitWatcher).thenApply(b -> s))
+                .thenApply(s -> {network.enableCommits(); return s;})
                 .thenApply(s -> new Pair<>(s, Collections.<NamedRelativeCapability>emptyList()));
     }
 
@@ -1972,10 +1970,9 @@ public class FileWrapper {
         network.disableCommits();
         return network.synchronizer.applyComplexUpdate(owner(), signingPair(),
                 (version, c) -> {
-                    Committer condenser = network.buildCommitter(c, owner(), () -> true);
                     return (writableParent ? version.withWriter(owner(), parent.writer(), network)
                             .thenCompose(v2 -> parent.pointer.fileAccess
-                                    .removeChildren(v2, condenser, Arrays.asList(getPointer().capability), parent.writableFilePointer(),
+                                    .removeChildren(v2, c, Arrays.asList(getPointer().capability), parent.writableFilePointer(),
                                             parent.entryWriter, network, userContext.crypto.random, hasher)) :
                             Futures.of(version))
                             .thenCompose(v -> IpfsTransaction.call(owner(),
@@ -1985,10 +1982,9 @@ public class FileWrapper {
                                                     writableFilePointer(),
                                             writableParent ?
                                                     parent.signingPair() :
-                                                    signingPair(), tid, hasher, network, v, condenser), network.dhtClient)
+                                                    signingPair(), tid, hasher, network, v, c), network.dhtClient)
                                     .thenCompose(s -> userContext.isSecretLink() ? Futures.of(s) :
-                    userContext.sharedWithCache.clearSharedWith(ourPath, s, condenser, network)))
-                            .thenCompose(res -> network.commit(owner()).thenApply(b -> res));
+                    userContext.sharedWithCache.clearSharedWith(ourPath, s, c, network)));
                 })
                 .thenCompose(s -> parent.getUpdated(s, network));
     }

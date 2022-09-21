@@ -73,16 +73,19 @@ public class BufferedNetworkAccess extends NetworkAccess {
         targetCommitter = c;
         return (o, w, wd, e, tid) -> blockBuffer.put(owner, w.publicKeyHash, new byte[0], wd.serialize(), tid)
                 .thenCompose(newHash -> {
-                    CommittedWriterData updated = new CommittedWriterData(MaybeMultihash.of(newHash), wd, PointerUpdate.increment(e.sequence));
+                    CommittedWriterData updated;
                     PublicKeyHash writer = w.publicKeyHash;
                     writers.put(writer, w);
-                    if (writerUpdates.isEmpty())
+                    if (writerUpdates.isEmpty()) {
+                        updated = new CommittedWriterData(MaybeMultihash.of(newHash), wd, PointerUpdate.increment(e.sequence));
                         writerUpdates.add(new WriterUpdate(writer, e, updated));
-                    else {
+                    } else {
                         WriterUpdate last = writerUpdates.get(writerUpdates.size() - 1);
-                        if (last.writer.equals(writer))
+                        if (last.writer.equals(writer)) {
+                            updated = new CommittedWriterData(MaybeMultihash.of(newHash), wd, last.current.sequence);
                             writerUpdates.set(writerUpdates.size() - 1, new WriterUpdate(writer, last.prev, updated));
-                        else {
+                        } else {
+                            updated = new CommittedWriterData(MaybeMultihash.of(newHash), wd, PointerUpdate.increment(e.sequence));
                             writerUpdates.add(new WriterUpdate(writer, e, updated));
                         }
                     }
@@ -105,6 +108,8 @@ public class BufferedNetworkAccess extends NetworkAccess {
     }
 
     public NetworkAccess clear() {
+        if (!blockBuffer.isEmpty())
+            throw new IllegalStateException("Unwritten blocks!");
         NetworkAccess base = super.clear();
         BufferedStorage blockBuffer = new BufferedStorage(base.dhtClient, hasher);
         BufferedPointers mutableBuffer = new BufferedPointers(base.mutable);
@@ -155,7 +160,10 @@ public class BufferedNetworkAccess extends NetworkAccess {
         if (blockBuffer.isEmpty() && pointerBuffer.isEmpty())
             return Futures.of(true);
         // Condense pointers and do a mini GC to remove superfluous work
-        blockBuffer.gc(getRoots());
+        List<Cid> roots = getRoots();
+        if (roots.isEmpty())
+            throw new IllegalStateException("Where are the pointers?");
+        blockBuffer.gc(roots);
         return blockBuffer.signBlocks(writers)
                 .thenCompose(b -> blocks.startTransaction(owner))
                 .thenCompose(tid -> blockBuffer.commit(owner, tid)
