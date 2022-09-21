@@ -112,7 +112,7 @@ public class BufferedNetworkAccess extends NetworkAccess {
         if (!blockBuffer.isEmpty())
             throw new IllegalStateException("Unwritten blocks!");
         NetworkAccess base = super.clear();
-        blockBuffer.clear();
+        BufferedStorage blockBuffer = this.blockBuffer.clone();
         BufferedPointers mutableBuffer = new BufferedPointers(base.mutable);
         WriteSynchronizer synchronizer = new WriteSynchronizer(mutableBuffer, blockBuffer, hasher);
         MutableTree tree = new MutableTreeImpl(mutableBuffer, blockBuffer, hasher, synchronizer);

@@ -211,6 +211,10 @@ public class BufferedStorage extends DelegatingStorage {
                 .thenApply(a -> true);
     }
 
+    public BufferedStorage clone() {
+        return new BufferedStorage(target, hasher);
+    }
+
     public synchronized void clear() {
         storage.clear();
     }
