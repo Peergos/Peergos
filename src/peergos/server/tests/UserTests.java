@@ -464,6 +464,7 @@ public abstract class UserTests {
             if (!(c.getCause() instanceof MutableTree.CasException))
                 throw new RuntimeException("Failure!");
         }
+        network.clear();
     }
 
     @Test
