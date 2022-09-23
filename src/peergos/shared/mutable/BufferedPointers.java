@@ -55,7 +55,8 @@ public class BufferedPointers implements MutablePointers {
                                   MaybeMultihash newHash,
                                   MaybeMultihash prevHash,
                                   Optional<Long> prevSequence) {
-        if (Objects.equals(prevHash, newHash))
+        if (Objects.equals(prevHash, newHash) &&
+                (writerUpdates.isEmpty() || ! writerUpdates.get(writerUpdates.size() - 1).currentHash.equals(newHash)))
             throw new IllegalStateException("Noop pointer update!");
         PublicKeyHash writer = w.publicKeyHash;
         writers.put(writer, w);
