@@ -1849,7 +1849,7 @@ public abstract class UserTests {
     }
 
     @Test
-    public void correctUsageAndSpaceRecovery() {
+    public void correctUsageAndSpaceRecovery() throws Exception {
         String username = generateUsername();
         String password = "password";
         UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
@@ -1862,6 +1862,7 @@ public abstract class UserTests {
                 context.getTransactionService(), f -> Futures.of(true)).join();
         String dirName = "subdir";
         context.getUserRoot().join().mkdir(dirName, network, false, context.mirrorBatId(), crypto).join();
+        Thread.sleep(5_000); // Allow time for space usage recalculation
         UserGC.checkRawUsage(context);
 
         // now delete the file and dir
