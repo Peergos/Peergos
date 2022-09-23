@@ -65,11 +65,6 @@ public abstract class DelegatingStorage implements ContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<Boolean> flush() {
-        return target.flush();
-    }
-
-    @Override
     public CompletableFuture<Optional<byte[]>> getRaw(Cid hash, Optional<BatWithId> bat) {
         return target.getRaw(hash, bat);
     }

@@ -64,14 +64,9 @@ public class WriteSynchronizer {
     }
 
     public CompletableFuture<Snapshot> getWriterData(PublicKeyHash owner, PublicKeyHash writer) {
-        return mutable.getPointer(owner, writer)
-                .thenCompose(dataOpt -> dht.getSigningKey(writer)
-                        .thenApply(signer -> dataOpt.isPresent() ?
-                                PointerUpdate.fromCbor(CborObject.fromByteArray(signer.get().unsignMessage(dataOpt.get()))) :
-                                PointerUpdate.empty())
-                        .thenCompose(x -> WriterData.getWriterData((Cid)x.updated.get(), x.sequence, dht))
-                        .thenApply(cwd -> new Snapshot(writer, cwd))
-                );
+        return mutable.getPointerTarget(owner, writer, dht)
+                .thenCompose(x -> WriterData.getWriterData((Cid)x.updated.get(), x.sequence, dht))
+                .thenApply(cwd -> new Snapshot(writer, cwd));
     }
 
     /**
@@ -113,18 +108,24 @@ public class WriteSynchronizer {
                                                           ComplexMutation transformer) {
         return pending.computeIfAbsent(new Pair<>(owner, writer.publicKeyHash), p -> new AsyncLock<>(getWriterData(owner, p.right)))
                 .runWithLock(current -> transformer.apply(current,
-                                committerBuilder.buildCommitter((aOwner, signer, wd, existing, tid) -> wd.commit(aOwner, signer, existing.hash, existing.sequence, mutable, dht, hasher, tid)
-                                        .thenCompose(s -> {
-                                            if (signer.publicKeyHash.equals(writer.publicKeyHash))
-                                                return CompletableFuture.completedFuture(s);
-                                            // need to update local queue for other writer
-                                            return pending.computeIfAbsent(
-                                                            new Pair<>(owner, signer.publicKeyHash),
-                                                            p -> new AsyncLock<>(getWriterData(owner, p.right))
-                                                    ).runWithLock(v -> CompletableFuture.completedFuture(v.withVersion(signer.publicKeyHash, s.get(signer))))
-                                                    .thenApply(x -> s);
-                                        }), owner, () -> true)).thenCompose(v -> flusher.apply(owner, v)),
+                                        committerBuilder.buildCommitter((aOwner, signer, wd, existing, tid) -> wd.commit(aOwner, signer, existing.hash, existing.sequence, mutable, dht, hasher, tid)
+                                                .thenCompose(s -> updateWriterState(owner, signer.publicKeyHash, s).thenApply(x -> s)), owner, () -> true))
+                                .thenCompose(v -> flusher.apply(owner, v)),
                         () -> getWriterData(owner, writer.publicKeyHash));
+    }
+
+    public CompletableFuture<Boolean> updateWriterState(PublicKeyHash owner,
+                                                        PublicKeyHash writer,
+                                                        Snapshot value) {
+        AsyncLock<Snapshot> existing = pending.get(new Pair<>(owner, writer));
+        if (existing != null && ! existing.isDone()) // don't modify the lock we are in
+            return CompletableFuture.completedFuture(true);
+        // need to update local queue for other writer
+        return pending.computeIfAbsent(
+                        new Pair<>(owner, writer),
+                        p -> new AsyncLock<>(getWriterData(owner, p.right))
+                ).runWithLock(v -> CompletableFuture.completedFuture(v.withVersion(writer, value.get(writer))))
+                .thenApply(x -> true);
     }
 
     /** Apply an update and return a computed value
@@ -142,19 +143,12 @@ public class WriteSynchronizer {
         return pending.computeIfAbsent(new Pair<>(owner, writer.publicKeyHash), p -> new AsyncLock<>(getWriterData(owner, p.right)))
                 .runWithLock(current -> transformer.apply(current,
                                 committerBuilder.buildCommitter((aOwner, signer, wd, existing, tid) -> wd.commit(aOwner, signer, existing.hash, existing.sequence, mutable, dht, hasher, tid)
-                                .thenCompose(s -> {
-                                    if (signer.publicKeyHash.equals(writer.publicKeyHash))
-                                        return CompletableFuture.completedFuture(s);
-                                    // need to update local queue for other writer
-                                    return pending.computeIfAbsent(
-                                                    new Pair<>(owner, signer.publicKeyHash),
-                                                    p -> new AsyncLock<>(getWriterData(owner, p.right))
-                                            ).runWithLock(v -> CompletableFuture.completedFuture(v.withVersion(signer.publicKeyHash, s.get(signer))))
-                                            .thenApply(x -> s);
-                                }), owner, () -> true)).thenCompose(p -> flusher.apply(owner, p.left).thenApply(x -> p)).thenApply(p -> {
-                            res.complete(p);
-                            return p.left;
-                        }),
+                                                .thenCompose(s -> updateWriterState(owner, signer.publicKeyHash, s).thenApply(x -> s)), owner, () -> true))
+                                .thenCompose(p -> flusher.apply(owner, p.left).thenApply(x -> p))
+                                .thenApply(p -> {
+                                    res.complete(p);
+                                    return p.left;
+                                }),
                         () -> getWriterData(owner, writer.publicKeyHash))
                 .thenCompose(x -> res);
     }

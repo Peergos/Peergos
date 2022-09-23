@@ -1,11 +1,10 @@
 package peergos.shared.mutable;
 
-import peergos.server.crypto.*;
 import peergos.shared.*;
-import peergos.shared.cbor.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.cid.*;
+import peergos.shared.storage.*;
 import peergos.shared.util.*;
 
 import java.util.*;
@@ -14,20 +13,29 @@ import java.util.stream.*;
 
 public class BufferedPointers implements MutablePointers {
 
-    public static class SignedPointerUpdate {
-        public final PublicKeyHash owner, writer;
-        public final byte[] signedUpdate;
+    public static class WriterUpdate {
+        public final PublicKeyHash writer;
+        public final MaybeMultihash prevHash;
+        public final MaybeMultihash currentHash;
+        public final Optional<Long> currentSequence;
 
-        public SignedPointerUpdate(PublicKeyHash owner, PublicKeyHash writer, byte[] signedUpdate) {
-            this.owner = owner;
+        public WriterUpdate(PublicKeyHash writer, MaybeMultihash prevHash, MaybeMultihash currentHash, Optional<Long> currentSequence) {
             this.writer = writer;
-            this.signedUpdate = signedUpdate;
+            this.prevHash = prevHash;
+            this.currentHash = currentHash;
+            this.currentSequence = currentSequence;
+        }
+
+        @Override
+        public String toString() {
+            return writer + ":" + prevHash + " => " + currentSequence + currentHash;
         }
     }
 
     private final MutablePointers target;
-    private final Map<PublicKeyHash, SignedPointerUpdate> buffer = new HashMap<>();
-    private final List<SignedPointerUpdate> order = new ArrayList<>();
+    private final Map<PublicKeyHash, SigningPrivateKeyAndPublicHash> writers = new HashMap<>();
+    private final Map<PublicKeyHash, WriterUpdate> latest = new HashMap<>();
+    private final List<WriterUpdate> writerUpdates = new ArrayList<>();
 
     public BufferedPointers(MutablePointers target) {
         if (target instanceof BufferedPointers)
@@ -35,83 +43,81 @@ public class BufferedPointers implements MutablePointers {
         this.target = target;
     }
 
+    public List<WriterUpdate> getUpdates() {
+        return writerUpdates;
+    }
+
+    public Map<PublicKeyHash, SigningPrivateKeyAndPublicHash> getSigners() {
+        return writers;
+    }
+
+    public PointerUpdate addWrite(SigningPrivateKeyAndPublicHash w,
+                                  MaybeMultihash newHash,
+                                  MaybeMultihash prevHash,
+                                  Optional<Long> prevSequence) {
+        PublicKeyHash writer = w.publicKeyHash;
+        writers.put(writer, w);
+        if (writerUpdates.isEmpty()) {
+            writerUpdates.add(new WriterUpdate(writer, prevHash, newHash, PointerUpdate.increment(prevSequence)));
+        } else {
+            WriterUpdate last = writerUpdates.get(writerUpdates.size() - 1);
+            if (last.writer.equals(writer)) {
+                writerUpdates.set(writerUpdates.size() - 1, new WriterUpdate(writer, last.prevHash, newHash, last.currentSequence));
+            } else {
+                writerUpdates.add(new WriterUpdate(writer, prevHash, newHash, PointerUpdate.increment(prevSequence)));
+            }
+        }
+        WriterUpdate last = writerUpdates.get(writerUpdates.size() - 1);
+        latest.put(w.publicKeyHash, last);
+        return new PointerUpdate(last.prevHash, last.currentHash, last.currentSequence);
+    }
+
     public boolean isEmpty() {
-        return order.isEmpty();
+        return writerUpdates.isEmpty();
+    }
+
+    @Override
+    public CompletableFuture<PointerUpdate> getPointerTarget(PublicKeyHash owner, PublicKeyHash writer, ContentAddressedStorage ipfs) {
+        WriterUpdate cached = latest.get(writer);
+        if (cached != null) {
+            return Futures.of(new PointerUpdate(cached.prevHash, cached.currentHash, cached.currentSequence));
+        }
+        return target.getPointerTarget(owner, writer, ipfs);
     }
 
     @Override
     public CompletableFuture<Optional<byte[]>> getPointer(PublicKeyHash owner, PublicKeyHash writer) {
-        synchronized (buffer) {
-            SignedPointerUpdate buffered = buffer.get(writer);
-            if (buffered != null)
-                return CompletableFuture.completedFuture(Optional.of(buffered.signedUpdate));
-        }
-        return target.getPointer(owner, writer);
+        throw new IllegalStateException("Shouldn't get here!");
+    }
+
+    @Override
+    public CompletableFuture<Boolean> setPointer(PublicKeyHash owner, SigningPrivateKeyAndPublicHash writer, PointerUpdate casUpdate) {
+        addWrite(writer, casUpdate.updated, casUpdate.original, casUpdate.sequence);
+        return Futures.of(true);
     }
 
     @Override
     public CompletableFuture<Boolean> setPointer(PublicKeyHash owner, PublicKeyHash writer, byte[] writerSignedBtreeRootHash) {
-        synchronized (buffer) {
-            SignedPointerUpdate update = new SignedPointerUpdate(owner, writer, writerSignedBtreeRootHash);
-            buffer.put(writer, update);
-            order.add(update);
-        }
-        return Futures.of(true);
-    }
-
-    /**
-     *  Merge updates to a single pointer into a single update
-     */
-    public void condense(Map<PublicKeyHash, SigningPrivateKeyAndPublicHash> writers) {
-        int start = 0;
-        List<SignedPointerUpdate> newOrder = new ArrayList<>();
-        int j=1;
-        for (; j < order.size(); j++) {
-            SignedPointerUpdate first = order.get(start);
-            // preserve order of inter writer commits
-            if (! order.get(j).writer.equals(first.writer)) {
-                if (j - start > 1) {
-                    PointerUpdate firstUpdate = parse(first.signedUpdate);
-                    MaybeMultihash original = firstUpdate.original;
-                    MaybeMultihash updated = parse(order.get(j - 1).signedUpdate).updated;
-                    newOrder.add(new SignedPointerUpdate(first.owner, first.writer, writers.get(first.writer).secret.signMessage(new peergos.shared.mutable.PointerUpdate(original, updated, firstUpdate.sequence).serialize())));
-                } else
-                    newOrder.add(first); // nothing to condense
-                start = j;
-            }
-        }
-        if (j - start > 0) {// condense the last run
-            SignedPointerUpdate first = order.get(start);
-            PointerUpdate firstUpdate = parse(first.signedUpdate);
-            MaybeMultihash original = firstUpdate.original;
-            MaybeMultihash updated = parse(order.get(j - 1).signedUpdate).updated;
-            newOrder.add(new SignedPointerUpdate(first.owner, first.writer, writers.get(first.writer).secret.signMessage(new peergos.shared.mutable.PointerUpdate(original, updated, firstUpdate.sequence).serialize())));
-        }
-        order.clear();
-        order.addAll(newOrder);
-    }
-
-    private static PointerUpdate parse(byte[] signedCas) {
-        return PointerUpdate.fromCbor(CborObject.fromByteArray(Arrays.copyOfRange(signedCas, TweetNaCl.SIGNATURE_SIZE_BYTES, signedCas.length)));
+        throw new IllegalStateException("Shouldn't get here!");
     }
 
     public List<Cid> getRoots() {
-        return order.stream()
-                .map(u -> parse(u.signedUpdate))
-                .map(p -> p.updated)
-                .flatMap(m -> m.toOptional().stream())
+        return writerUpdates.stream()
+                .flatMap(u -> u.currentHash.toOptional().stream())
                 .map(c -> (Cid)c)
                 .collect(Collectors.toList());
     }
 
-    public CompletableFuture<List<Boolean>> commit() {
-        return Futures.combineAllInOrder(order.stream()
-                .map(u -> target.setPointer(u.owner, u.writer, u.signedUpdate))
-                .collect(Collectors.toList()));
+    public CompletableFuture<Boolean> commit(PublicKeyHash owner,
+                                             SigningPrivateKeyAndPublicHash signer,
+                                             PointerUpdate casUpdate) {
+        byte[] signed = signer.secret.signMessage(casUpdate.serialize());
+        return target.setPointer(owner, signer.publicKeyHash, signed);
     }
 
     public void clear() {
-        buffer.clear();
-        order.clear();
+        writers.clear();
+        writerUpdates.clear();
+        latest.clear();
     }
 }

@@ -25,9 +25,6 @@ public class BufferedNetworkAccess extends NetworkAccess {
     private final BufferedStorage blockBuffer;
     private final BufferedPointers pointerBuffer;
     private final int bufferSize;
-    private Map<PublicKeyHash, SigningPrivateKeyAndPublicHash> writers = new HashMap<>();
-    private final List<WriterUpdate> writerUpdates = new ArrayList<>();
-    private Committer targetCommitter;
     private final ContentAddressedStorage blocks;
     private boolean safeToCommit = true;
 
@@ -58,39 +55,13 @@ public class BufferedNetworkAccess extends NetworkAccess {
         synchronizer.setFlusher((o, v) -> commit(o).thenApply(b -> v));
     }
 
-    private static class WriterUpdate {
-        public final PublicKeyHash writer;
-        public final CommittedWriterData prev;
-        public final CommittedWriterData current;
-
-        public WriterUpdate(PublicKeyHash writer, CommittedWriterData prev, CommittedWriterData current) {
-            this.writer = writer;
-            this.prev = prev;
-            this.current = current;
-        }
-    }
-
+    @Override
     public Committer buildCommitter(Committer c, PublicKeyHash owner, Supplier<Boolean> commitWatcher) {
-        targetCommitter = c;
-        return (o, w, wd, e, tid) -> blockBuffer.put(owner, w.publicKeyHash, new byte[0], wd.serialize(), tid)
+        return (o, w, wd, e, tid) -> blockBuffer.put(o, w.publicKeyHash, new byte[0], wd.serialize(), tid)
                 .thenCompose(newHash -> {
-                    CommittedWriterData updated;
-                    PublicKeyHash writer = w.publicKeyHash;
-                    writers.put(writer, w);
-                    if (writerUpdates.isEmpty()) {
-                        updated = new CommittedWriterData(MaybeMultihash.of(newHash), wd, PointerUpdate.increment(e.sequence));
-                        writerUpdates.add(new WriterUpdate(writer, e, updated));
-                    } else {
-                        WriterUpdate last = writerUpdates.get(writerUpdates.size() - 1);
-                        if (last.writer.equals(writer)) {
-                            updated = new CommittedWriterData(MaybeMultihash.of(newHash), wd, last.current.sequence);
-                            writerUpdates.set(writerUpdates.size() - 1, new WriterUpdate(writer, last.prev, updated));
-                        } else {
-                            updated = new CommittedWriterData(MaybeMultihash.of(newHash), wd, PointerUpdate.increment(e.sequence));
-                            writerUpdates.add(new WriterUpdate(writer, e, updated));
-                        }
-                    }
-                    return maybeCommit(owner, commitWatcher).thenApply(x -> new Snapshot(writer, updated));
+                    PointerUpdate update = pointerBuffer.addWrite(w, MaybeMultihash.of(newHash), e.hash, e.sequence);
+                    return maybeCommit(o, commitWatcher)
+                            .thenApply(x -> new Snapshot(w.publicKeyHash, new CommittedWriterData(MaybeMultihash.of(newHash), wd, update.sequence)));
                 });
     }
 
@@ -113,16 +84,15 @@ public class BufferedNetworkAccess extends NetworkAccess {
             throw new IllegalStateException("Unwritten blocks!");
         NetworkAccess base = super.clear();
         BufferedStorage blockBuffer = this.blockBuffer.clone();
-        BufferedPointers mutableBuffer = new BufferedPointers(base.mutable);
-        WriteSynchronizer synchronizer = new WriteSynchronizer(mutableBuffer, blockBuffer, hasher);
-        MutableTree tree = new MutableTreeImpl(mutableBuffer, blockBuffer, hasher, synchronizer);
-        return new BufferedNetworkAccess(blockBuffer, mutableBuffer, bufferSize, base.coreNode, base.account, base.social, base.dhtClient,
+        WriteSynchronizer synchronizer = new WriteSynchronizer(base.mutable, blockBuffer, hasher);
+        MutableTree tree = new MutableTreeImpl(base.mutable, blockBuffer, hasher, synchronizer);
+        return new BufferedNetworkAccess(blockBuffer, pointerBuffer, bufferSize, base.coreNode, base.account, base.social, base.dhtClient,
                 base.mutable, base.batCave, tree, synchronizer, base.instanceAdmin, base.spaceUsage, base.serverMessager, hasher, usernames, isJavascript());
     }
 
     public NetworkAccess withCorenode(CoreNode newCore) {
         return new BufferedNetworkAccess(blockBuffer, pointerBuffer, bufferSize, newCore, account, social, dhtClient,
-                super.mutable, batCave, tree, synchronizer, instanceAdmin, spaceUsage, serverMessager, hasher, usernames, isJavascript());
+                mutable, batCave, tree, synchronizer, instanceAdmin, spaceUsage, serverMessager, hasher, usernames, isJavascript());
     }
 
     public boolean isFull() {
@@ -135,45 +105,37 @@ public class BufferedNetworkAccess extends NetworkAccess {
         return Futures.of(true);
     }
 
-    private List<Cid> getRoots() {
-        return writerUpdates.stream()
-                .flatMap(u -> u.current.hash.toOptional().stream())
-                .map(c -> (Cid)c)
-                .collect(Collectors.toList());
-    }
-
-    private CompletableFuture<List<Snapshot>> commitPointers(TransactionId tid, PublicKeyHash owner) {
-        return Futures.combineAllInOrder(writerUpdates.stream()
-                .map(u -> targetCommitter.commit(owner, writers.get(u.writer), u.current.props, u.prev, tid))
-                .collect(Collectors.toList()));
-    }
-
     @Override
     public synchronized CompletableFuture<Boolean> commit(PublicKeyHash owner, Supplier<Boolean> commitWatcher) {
-        if (blockBuffer.isEmpty() && pointerBuffer.isEmpty())
+        List<BufferedPointers.WriterUpdate> writerUpdates = pointerBuffer.getUpdates();
+        if (blockBuffer.isEmpty() && writerUpdates.isEmpty())
             return Futures.of(true);
         // Condense pointers and do a mini GC to remove superfluous work
-        List<Cid> roots = getRoots();
+        List<Cid> roots = pointerBuffer.getRoots();
         if (roots.isEmpty())
             throw new IllegalStateException("Where are the pointers?");
         blockBuffer.gc(roots);
+        Map<PublicKeyHash, SigningPrivateKeyAndPublicHash> writers = pointerBuffer.getSigners();
+        List<Pair<BufferedPointers.WriterUpdate, Optional<CommittedWriterData>>> writes = blockBuffer.getAllWriterData(writerUpdates);
         return blockBuffer.signBlocks(writers)
                 .thenCompose(b -> blocks.startTransaction(owner))
-                .thenCompose(tid -> blockBuffer.commit(owner, tid)
-                        .thenCompose(b -> commitPointers(tid, owner))
-                        .thenCompose(b -> pointerBuffer.commit())
+                .thenCompose(tid -> Futures.combineAllInOrder(writes.stream()
+                                .map(u -> blockBuffer.commit(owner, u.left.writer, tid)
+                                        .thenCompose(b -> pointerBuffer.commit(owner, writers.get(u.left.writer),
+                                                        new PointerUpdate(u.left.prevHash, u.left.currentHash, u.left.currentSequence))
+                                                .thenCompose(x -> u.right
+                                                        .map(cwd -> synchronizer.updateWriterState(owner, u.left.writer, new Snapshot(u.left.writer, cwd)))
+                                                        .orElse(Futures.of(true)))))
+                                .collect(Collectors.toList()))
                         .thenCompose(x -> blocks.closeTransaction(owner, tid))
                         .thenApply(x -> {
-                            blockBuffer.clear();
                             pointerBuffer.clear();
-                            writers.clear();
-                            writerUpdates.clear();
                             return commitWatcher.get();
                         }));
     }
 
     @Override
     public String toString() {
-        return "Blocks(" + blockBuffer.size() + "),Pointers(" + writerUpdates.size()+")";
+        return "Blocks(" + blockBuffer.size() + "),Pointers(" + pointerBuffer.getUpdates().size()+")";
     }
 }

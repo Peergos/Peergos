@@ -283,7 +283,7 @@ public class NetworkAccess {
                     ServerMessager serverMessager = new ServerMessager.HTTP(apiPoster);
                     BatCave batCave = new HttpBatCave(apiPoster, p2pPoster);
                     RetryMutablePointers retryMutable = new RetryMutablePointers(p2pMutable);
-                    return build(new CommittableStorage(p2pDht), batCave, core, account, retryMutable, mutableCacheTime, p2pSocial,
+                    return build(p2pDht, batCave, core, account, retryMutable, mutableCacheTime, p2pSocial,
                             new HttpInstanceAdmin(apiPoster), p2pUsage, serverMessager, hasher, usernames, isJavascript);
                 });
     }

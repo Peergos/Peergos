@@ -501,6 +501,8 @@ public class FileWrapper {
 
     @JsMethod
     public CompletableFuture<FileWrapper> truncate(long newSize, NetworkAccess network, Crypto crypto) {
+        if (getSize() <= newSize)
+            return Futures.of(this);
         return network.synchronizer.applyComplexUpdate(owner(), signingPair(), (current, committer) ->
                 truncate(current, committer, newSize, network, crypto)
         ).thenCompose(finished -> getUpdated(finished, network));
