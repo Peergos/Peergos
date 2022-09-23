@@ -194,10 +194,14 @@ public class ProfilePaths {
                 }).thenCompose(res -> {
                     if (res.isEmpty())
                         return Futures.of(Optional.empty());
-                    return user.getByPath(PathUtil.get(user.username).resolve(WEBROOT))
-                            .thenCompose(opt -> opt.map(user::makePublic)
-                                    .map(f -> f.thenApply(Optional::of))
-                                    .orElse(Futures.of(Optional.empty())));
+                    Path profileEntry = PathUtil.get(user.username).resolve(WEBROOT);
+                    return user.getPublicFile(profileEntry)
+                            .thenCompose(existing -> existing.isPresent() ?
+                                    Futures.of(Optional.of(existing.get().getVersionRoot())) :
+                                    user.getByPath(profileEntry)
+                                            .thenCompose(opt -> opt.map(user::makePublic)
+                                                    .map(f -> f.thenApply(Optional::of))
+                                                    .orElse(Futures.of(Optional.empty()))));
                 }).thenApply(x -> x.isPresent());
     }
 }
