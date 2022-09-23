@@ -432,6 +432,7 @@ public abstract class UserTests {
     public void concurrentFileModificationFailure() throws Exception {
         String username = generateUsername();
         String password = "test";
+        NetworkAccess network = this.network.clear();
         UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
         FileWrapper userRoot = context.getUserRoot().get();
 
@@ -464,7 +465,6 @@ public abstract class UserTests {
             if (!(c.getCause() instanceof MutableTree.CasException))
                 throw new RuntimeException("Failure!");
         }
-        network.clear();
     }
 
     @Test
