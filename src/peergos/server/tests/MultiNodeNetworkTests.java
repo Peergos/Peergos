@@ -329,6 +329,7 @@ public class MultiNodeNetworkTests {
         FileWrapper root = u1.getUserRoot().get();
         FileWrapper upload = root.uploadOrReplaceFile(filename, new AsyncReader.ArrayBacked(data), data.length,
                 getNode(iNode1), crypto, x -> {}).get();
+        Thread.sleep(10_000); // make sure pointer cache is invalidated
         Optional<FileWrapper> file = u1.getByPath("/" + username1 + "/" + filename).get();
         Assert.assertTrue(file.isPresent());
     }
