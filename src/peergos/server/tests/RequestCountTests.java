@@ -7,9 +7,9 @@ import peergos.server.util.*;
 import peergos.shared.*;
 import peergos.shared.crypto.symmetric.*;
 import peergos.shared.display.*;
+import peergos.shared.mutable.*;
 import peergos.shared.social.*;
 import peergos.shared.storage.*;
-import peergos.shared.storage.auth.*;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
 import peergos.shared.user.fs.cryptree.*;
@@ -30,14 +30,20 @@ public class RequestCountTests {
     private final RequestCountingStorage storageCounter;
 
     public RequestCountTests() {
-        WriteSynchronizer synchronizer = new WriteSynchronizer(service.mutable, service.storage, crypto.hasher);
-        MutableTree mutableTree = new MutableTreeImpl(service.mutable, service.storage, crypto.hasher, synchronizer);
         RequestCountingStorage requestCounter = new RequestCountingStorage(service.storage);
         this.storageCounter = requestCounter;
         CachingVerifyingStorage dhtClient = new CachingVerifyingStorage(requestCounter, 50 * 1024, 1_000, service.storage.id().join(), crypto.hasher);
-        this.network = new NetworkAccess(service.coreNode, service.account, service.social, dhtClient,
-                service.bats, service.mutable, mutableTree, synchronizer, service.controller, service.usage, service.serverMessages,
-                crypto.hasher, Arrays.asList("peergos"), false);
+
+        BufferedStorage blockBuffer = new BufferedStorage(dhtClient, hasher);
+        MutablePointers unbufferedMutable = new CachingPointers(service.mutable, 7_000);
+        BufferedPointers mutableBuffer = new BufferedPointers(unbufferedMutable);
+        WriteSynchronizer synchronizer = new WriteSynchronizer(mutableBuffer, blockBuffer, hasher);
+        MutableTree tree = new MutableTreeImpl(mutableBuffer, blockBuffer, hasher, synchronizer);
+
+        int bufferSize = 20 * 1024 * 1024;
+        this.network = new BufferedNetworkAccess(blockBuffer, mutableBuffer, bufferSize, service.coreNode, service.account, service.social,
+                blockBuffer, unbufferedMutable, service.bats, tree, synchronizer, service.controller, service.usage,
+                service.serverMessages, hasher, Arrays.asList("peergos"), false);
     }
 
     @BeforeClass
