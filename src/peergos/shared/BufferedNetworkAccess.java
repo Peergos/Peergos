@@ -22,6 +22,10 @@ import java.util.stream.*;
  */
 public class BufferedNetworkAccess extends NetworkAccess {
 
+    public interface Flusher {
+        CompletableFuture<Snapshot> commit(PublicKeyHash owner, Snapshot v, Supplier<Boolean> commitWatcher);
+    }
+
     private final BufferedStorage blockBuffer;
     private final BufferedPointers pointerBuffer;
     private final int bufferSize;
@@ -52,7 +56,7 @@ public class BufferedNetworkAccess extends NetworkAccess {
         this.bufferSize = bufferSize;
         this.blocks = dhtClient;
         synchronizer.setCommitterBuilder(this::buildCommitter);
-        synchronizer.setFlusher((o, v) -> commit(o).thenApply(b -> v));
+        synchronizer.setFlusher((o, v, w) -> commit(o, w).thenApply(b -> v));
     }
 
     @Override

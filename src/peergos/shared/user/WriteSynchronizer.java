@@ -1,11 +1,9 @@
 package peergos.shared.user;
 
-import peergos.shared.MaybeMultihash;
-import peergos.shared.cbor.CborObject;
+import peergos.shared.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.cid.*;
-import peergos.shared.mutable.PointerUpdate;
 import peergos.shared.mutable.MutablePointers;
 import peergos.shared.storage.*;
 import peergos.shared.util.*;
@@ -25,7 +23,7 @@ public class WriteSynchronizer {
     // The keys are <owner, writer> pairs. The owner is only needed to handle identity changes
     private final Map<Pair<PublicKeyHash, PublicKeyHash>, AsyncLock<Snapshot>> pending = new ConcurrentHashMap<>();
     private CommitterBuilder committerBuilder = (c, o, w) -> c;
-    private BiFunction<PublicKeyHash, Snapshot, CompletableFuture<Snapshot>> flusher = (o, v) -> Futures.of(v);
+    private BufferedNetworkAccess.Flusher flusher = (o, v, w) -> Futures.of(v);
 
     public WriteSynchronizer(MutablePointers mutable, ContentAddressedStorage dht, Hasher hasher) {
         this.mutable = mutable;
@@ -41,7 +39,7 @@ public class WriteSynchronizer {
         this.committerBuilder = committerBuilder;
     }
 
-    public void setFlusher(BiFunction<PublicKeyHash, Snapshot, CompletableFuture<Snapshot>> flusher) {
+    public void setFlusher(BufferedNetworkAccess.Flusher flusher) {
         this.flusher = flusher;
     }
 
@@ -92,7 +90,7 @@ public class WriteSynchronizer {
                                 .thenCompose(wd -> committerBuilder.buildCommitter((aOwner, signer, wdr, existing, t) -> wdr.commit(aOwner, signer,
                                         existing.hash, existing.sequence, mutable, dht, hasher, t), owner, () -> true)
                                         .commit(owner, writer, wd, current.get(writer), tid)
-                                        .thenCompose(v -> flusher.apply(owner, v))), dht),
+                                        .thenCompose(v -> flusher.commit(owner, v, () -> true))), dht),
                         () -> getWriterData(owner, writer.publicKeyHash));
     }
 
@@ -111,7 +109,7 @@ public class WriteSynchronizer {
                 .runWithLock(current -> transformer.apply(current,
                                         committerBuilder.buildCommitter((aOwner, signer, wd, existing, tid) -> wd.commit(aOwner, signer, existing.hash, existing.sequence, mutable, dht, hasher, tid)
                                                 .thenCompose(s -> updateWriterState(owner, signer.publicKeyHash, s).thenApply(x -> s)), owner, commitWatcher))
-                                .thenCompose(v -> flusher.apply(owner, v)),
+                                .thenCompose(v -> flusher.commit(owner, v, commitWatcher)),
                         () -> getWriterData(owner, writer.publicKeyHash));
     }
 
@@ -151,7 +149,7 @@ public class WriteSynchronizer {
                 .runWithLock(current -> transformer.apply(current,
                                 committerBuilder.buildCommitter((aOwner, signer, wd, existing, tid) -> wd.commit(aOwner, signer, existing.hash, existing.sequence, mutable, dht, hasher, tid)
                                                 .thenCompose(s -> updateWriterState(owner, signer.publicKeyHash, s).thenApply(x -> s)), owner, () -> true))
-                                .thenCompose(p -> flusher.apply(owner, p.left).thenApply(x -> p))
+                                .thenCompose(p -> flusher.commit(owner, p.left, () -> true).thenApply(x -> p))
                                 .thenApply(p -> {
                                     res.complete(p);
                                     return p.left;
