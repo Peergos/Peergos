@@ -15,6 +15,7 @@ import peergos.shared.util.*;
 
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.function.*;
 import java.util.stream.*;
 
 public class BufferedStorage extends DelegatingStorage {
@@ -232,6 +233,10 @@ public class BufferedStorage extends DelegatingStorage {
 
     public BufferedStorage clone() {
         return new BufferedStorage(target, hasher);
+    }
+
+    public BufferedStorage withStorage(Function<ContentAddressedStorage, ContentAddressedStorage> modifiedStorage) {
+        return new BufferedStorage(modifiedStorage.apply(target), hasher);
     }
 
     public synchronized void clear() {

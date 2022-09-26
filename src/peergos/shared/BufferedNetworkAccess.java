@@ -79,6 +79,7 @@ public class BufferedNetworkAccess extends NetworkAccess {
         return this;
     }
 
+    @Override
     public NetworkAccess clear() {
         if (!blockBuffer.isEmpty())
             throw new IllegalStateException("Unwritten blocks!");
@@ -88,6 +89,15 @@ public class BufferedNetworkAccess extends NetworkAccess {
         MutableTree tree = new MutableTreeImpl(base.mutable, blockBuffer, hasher, synchronizer);
         return new BufferedNetworkAccess(blockBuffer, pointerBuffer, bufferSize, base.coreNode, base.account, base.social, base.dhtClient,
                 base.mutable, base.batCave, tree, synchronizer, base.instanceAdmin, base.spaceUsage, base.serverMessager, hasher, usernames, isJavascript());
+    }
+
+    @Override
+    public NetworkAccess withStorage(Function<ContentAddressedStorage, ContentAddressedStorage> modifiedStorage) {
+        BufferedStorage blockBuffer = this.blockBuffer.withStorage(modifiedStorage);
+        WriteSynchronizer synchronizer = new WriteSynchronizer(super.mutable, blockBuffer, hasher);
+        MutableTree tree = new MutableTreeImpl(mutable, blockBuffer, hasher, synchronizer);
+        return new BufferedNetworkAccess(blockBuffer, pointerBuffer, bufferSize, coreNode, account, social, blocks,
+                mutable, batCave, tree, synchronizer, instanceAdmin, spaceUsage, serverMessager, hasher, usernames, isJavascript());
     }
 
     public NetworkAccess withCorenode(CoreNode newCore) {

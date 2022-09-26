@@ -41,7 +41,7 @@ public class SocialBenchmark {
         UserService service = Main.PKI_INIT.main(args);
         NetworkAccess net = Builder.buildJavaNetworkAccess(new URL("http://localhost:" + args.getInt("port")), false).join();
         int delayMillis = 50;
-        NetworkAccess delayed = DelayingStorage.buildNetwork(net, delayMillis, delayMillis);
+        NetworkAccess delayed = net.withStorage(s -> new DelayingStorage(s, delayMillis, delayMillis));
         return new Pair<>(service, delayed);
     }
 
