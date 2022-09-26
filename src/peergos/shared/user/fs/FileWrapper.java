@@ -823,7 +823,8 @@ public class FileWrapper {
                                                     .thenCompose(v -> dir.getUpdated(v, network))),
                                     (a, b) -> b))
                                     .thenApply(d -> d.version);
-                        }
+                        },
+                        commitWatcher
                 )).thenCompose(finished -> getUpdated(finished, network));
     }
 

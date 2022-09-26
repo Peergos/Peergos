@@ -105,13 +105,20 @@ public class WriteSynchronizer {
      */
     public CompletableFuture<Snapshot> applyComplexUpdate(PublicKeyHash owner,
                                                           SigningPrivateKeyAndPublicHash writer,
-                                                          ComplexMutation transformer) {
+                                                          ComplexMutation transformer,
+                                                          Supplier<Boolean> commitWatcher) {
         return pending.computeIfAbsent(new Pair<>(owner, writer.publicKeyHash), p -> new AsyncLock<>(getWriterData(owner, p.right)))
                 .runWithLock(current -> transformer.apply(current,
                                         committerBuilder.buildCommitter((aOwner, signer, wd, existing, tid) -> wd.commit(aOwner, signer, existing.hash, existing.sequence, mutable, dht, hasher, tid)
-                                                .thenCompose(s -> updateWriterState(owner, signer.publicKeyHash, s).thenApply(x -> s)), owner, () -> true))
+                                                .thenCompose(s -> updateWriterState(owner, signer.publicKeyHash, s).thenApply(x -> s)), owner, commitWatcher))
                                 .thenCompose(v -> flusher.apply(owner, v)),
                         () -> getWriterData(owner, writer.publicKeyHash));
+    }
+
+    public CompletableFuture<Snapshot> applyComplexUpdate(PublicKeyHash owner,
+                                                          SigningPrivateKeyAndPublicHash writer,
+                                                          ComplexMutation transformer) {
+        return applyComplexUpdate(owner, writer, transformer, () -> true);
     }
 
     public CompletableFuture<Boolean> updateWriterState(PublicKeyHash owner,
