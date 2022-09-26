@@ -84,6 +84,7 @@ public class QuotaTests {
             Path filePath = PathUtil.get(username, filename);
             FileWrapper file = context.getByPath(filePath).get().get();
             file.remove(context.getUserRoot().join(), filePath, context).get();
+            Thread.sleep(2_000);
         }
     }
 
