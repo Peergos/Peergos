@@ -85,10 +85,6 @@ public interface ContentAddressedStorage {
                 .thenApply(hashes -> hashes.get(0));
     }
 
-    default CompletableFuture<Boolean> flush() {
-        return Futures.of(true);
-    }
-
     /**
      *
      * @return The identity (hash of the public key) of the storage node we are talking to

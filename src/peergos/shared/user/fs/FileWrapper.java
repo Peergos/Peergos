@@ -501,6 +501,8 @@ public class FileWrapper {
 
     @JsMethod
     public CompletableFuture<FileWrapper> truncate(long newSize, NetworkAccess network, Crypto crypto) {
+        if (getSize() <= newSize)
+            return Futures.of(this);
         return network.synchronizer.applyComplexUpdate(owner(), signingPair(), (current, committer) ->
                 truncate(current, committer, newSize, network, crypto)
         ).thenCompose(finished -> getUpdated(finished, network));
@@ -806,27 +808,24 @@ public class FileWrapper {
                                                         Optional<BatId> mirrorBat,
                                                         NetworkAccess network,
                                                         Crypto crypto,
-                                                        TransactionService transactions,
+                                                        TransactionService txns,
                                                         Function<FileUploadTransaction, CompletableFuture<Boolean>> resumeFile,
                                                         Supplier<Boolean> commitWatcher) {
         // only use the supplied mirror BAT if the parent doesn't have a mirror BAT
         Optional<BatId> mirror = mirrorBatId().or(() -> mirrorBat);
-        BufferedNetworkAccess buffered = BufferedNetworkAccess.build(network, 10 * 1024 * 1024, owner(), commitWatcher, network.hasher);
-        TransactionServiceImpl txns = transactions == null ? null : transactions.withNetwork(buffered);
         return getPath(network).thenCompose(path ->
-                buffered.synchronizer.applyComplexUpdate(owner(), signingPair(),
+                network.synchronizer.applyComplexUpdate(owner(), signingPair(),
                         (s, c) -> {
-                            Committer condenser = buffered.buildCommitter(c);
-                            return getUpdated(s, buffered).thenCompose(us -> Futures.reduceAll(directories, us,
-                                    (dir, children) -> dir.getOrMkdirs(children.relativePath, false, mirror, buffered, crypto, dir.version, condenser)
+                            return getUpdated(s, network).thenCompose(us -> Futures.reduceAll(directories, us,
+                                    (dir, children) -> dir.getOrMkdirs(children.relativePath, false, mirror, network, crypto, dir.version, c)
                                             .thenCompose(p -> uploadFolder(PathUtil.get(path).resolve(children.path()), p.right,
-                                                    children, mirrorBat, txns, resumeFile, buffered, crypto, condenser)
-                                                    .thenCompose(v -> dir.getUpdated(v, buffered))),
+                                                    children, mirrorBat, txns, resumeFile, commitWatcher, network, crypto, c)
+                                                    .thenCompose(v -> dir.getUpdated(v, network))),
                                     (a, b) -> b))
-                                    .thenCompose(d -> buffered.commit()
-                                            .thenApply(b -> d.version));
-                        }
-                )).thenCompose(finished -> getUpdated(finished, buffered));
+                                    .thenApply(d -> d.version);
+                        },
+                        commitWatcher
+                )).thenCompose(finished -> getUpdated(finished, network));
     }
 
     public static CompletableFuture<Snapshot> uploadFolder(Path toParent,
@@ -835,7 +834,8 @@ public class FileWrapper {
                                                            Optional<BatId> mirrorBat,
                                                            TransactionService transactions,
                                                            Function<FileUploadTransaction, CompletableFuture<Boolean>> resumeFile,
-                                                           BufferedNetworkAccess network,
+                                                           Supplier<Boolean> commitWatcher,
+                                                           NetworkAccess network,
                                                            Crypto crypto,
                                                            Committer c) {
         Pair<Snapshot, List<NamedRelativeCapability>> identity = new Pair<>(parent.version, Collections.emptyList());
@@ -857,7 +857,7 @@ public class FileWrapper {
                                         .thenCompose(r -> {
                                             if (! network.isFull())
                                                 return Futures.of(r);
-                                            return atomicallyClearTransactionsAndAddToParent(Collections.emptyList(), r.right, parent, transactions, r.left, c, network, crypto);
+                                            return atomicallyClearTransactionsAndAddToParent(Collections.emptyList(), r.right, parent, transactions, r.left, c, commitWatcher, network, crypto);
                                         });
 
                             network.enableCommits();
@@ -904,10 +904,10 @@ public class FileWrapper {
                                                                 network, crypto, f.monitor, txn.firstMapKey(), Optional.of(txn.streamSecret()), txn.firstBat, mirrorBat))
                                                         .thenApply(pair -> new Pair<>(pair.left, Stream.concat(p.right.stream(), pair.right.stream()).collect(Collectors.toList())));
                                             })
-                            ).thenCompose(r -> atomicallyClearTransactionsAndAddToParent(toClose, r.right, parent, transactions, r.left, c, network, crypto));
+                            ).thenCompose(r -> atomicallyClearTransactionsAndAddToParent(toClose, r.right, parent, transactions, r.left, c, commitWatcher, network, crypto));
                         },
                         (a, b) -> new Pair<>(b.left, Stream.concat(a.right.stream(), b.right.stream()).collect(Collectors.toList())))
-                .thenCompose(r -> atomicallyClearTransactionsAndAddToParent(Collections.emptyList(), r.right, parent, transactions, r.left, c, network, crypto))
+                .thenCompose(r -> atomicallyClearTransactionsAndAddToParent(Collections.emptyList(), r.right, parent, transactions, r.left, c, commitWatcher, network, crypto))
                 .thenApply(x -> x.left);
     }
 
@@ -918,14 +918,15 @@ public class FileWrapper {
             TransactionService transactions,
             Snapshot in,
             Committer c,
-            BufferedNetworkAccess network,
+            Supplier<Boolean> commitWatcher,
+            NetworkAccess network,
             Crypto crypto) {
         if (toClose.isEmpty() && childLinks.isEmpty())
             return Futures.of(new Pair<>(in, childLinks));
         return parent.getUpdated(in, network)
                 .thenCompose(latest -> latest.addChildPointers(in, c, childLinks, network.disableCommits(), crypto))
                 .thenCompose(res -> Futures.reduceAll(toClose, res, (v, f) -> transactions.close(v, c, f), (a, b) -> b))
-                .thenCompose(s -> network.enableCommits().commit().thenApply(b -> s))
+                .thenApply(s -> {network.enableCommits(); return s;})
                 .thenApply(s -> new Pair<>(s, Collections.<NamedRelativeCapability>emptyList()));
     }
 
@@ -1967,18 +1968,15 @@ public class FileWrapper {
         if (! pointer.capability.isWritable())
             return Futures.errored(new IllegalStateException("Cannot delete file without write access to it"));
 
-        BufferedNetworkAccess buffered = BufferedNetworkAccess.build(network, 50 * 1024 * 1024, owner(), () -> true, network.hasher);
-
         boolean writableParent = parent.isWritable();
         parent.setModified();
-        buffered.disableCommits();
-        return buffered.synchronizer.applyComplexUpdate(owner(), signingPair(),
+        network.disableCommits();
+        return network.synchronizer.applyComplexUpdate(owner(), signingPair(),
                 (version, c) -> {
-                    Committer condenser = buffered.buildCommitter(c);
                     return (writableParent ? version.withWriter(owner(), parent.writer(), network)
                             .thenCompose(v2 -> parent.pointer.fileAccess
-                                    .removeChildren(v2, condenser, Arrays.asList(getPointer().capability), parent.writableFilePointer(),
-                                            parent.entryWriter, buffered, userContext.crypto.random, hasher)) :
+                                    .removeChildren(v2, c, Arrays.asList(getPointer().capability), parent.writableFilePointer(),
+                                            parent.entryWriter, network, userContext.crypto.random, hasher)) :
                             Futures.of(version))
                             .thenCompose(v -> IpfsTransaction.call(owner(),
                                     tid -> FileWrapper.deleteAllChunks(
@@ -1987,12 +1985,11 @@ public class FileWrapper {
                                                     writableFilePointer(),
                                             writableParent ?
                                                     parent.signingPair() :
-                                                    signingPair(), tid, hasher, buffered, v, condenser), buffered.dhtClient)
+                                                    signingPair(), tid, hasher, network, v, c), network.dhtClient)
                                     .thenCompose(s -> userContext.isSecretLink() ? Futures.of(s) :
-                    userContext.sharedWithCache.clearSharedWith(ourPath, s, condenser, buffered)))
-                            .thenCompose(res -> buffered.commit().thenApply(b -> res));
+                    userContext.sharedWithCache.clearSharedWith(ourPath, s, c, network)));
                 })
-                .thenCompose(s -> parent.getUpdated(s, buffered));
+                .thenCompose(s -> parent.getUpdated(s, network));
     }
 
     public static CompletableFuture<Snapshot> removeSigningKey(PublicKeyHash signerToRemove,

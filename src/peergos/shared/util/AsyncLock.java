@@ -16,6 +16,10 @@ public class AsyncLock<T> {
         this.queueHead = initialValue;
     }
 
+    public synchronized boolean isDone() {
+        return queueHead.isDone();
+    }
+
     public synchronized CompletableFuture<T> runWithLock(Function<T, CompletionStage<T>> processor) {
         return runWithLock(processor, () -> queueHead);
     }

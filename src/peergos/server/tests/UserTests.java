@@ -432,6 +432,7 @@ public abstract class UserTests {
     public void concurrentFileModificationFailure() throws Exception {
         String username = generateUsername();
         String password = "test";
+        NetworkAccess network = this.network.clear();
         UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
         FileWrapper userRoot = context.getUserRoot().get();
 
@@ -593,7 +594,7 @@ public abstract class UserTests {
         UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
 
         String filename = "somefile";
-        int size = 30 * 1024 * 1024;
+        int size = 50 * 1024 * 1024;
         byte[] data = new byte[size];
         random.nextBytes(data);
         AsyncReader thrower = new ThrowingStream(data, size / 2);
@@ -612,8 +613,8 @@ public abstract class UserTests {
         Assert.assertTrue(open.size() > 0);
         // Now try again, with confirmation from the user to resume upload
         FileWrapper parent = context.getByPath(Paths.get(username, subdir)).join().get();
-        parent.uploadFileJS(filename, AsyncReader.build(data), 0, size, false, context.mirrorBatId(), network, crypto, x -> {
-        }, txns, f -> Futures.of(true)).join();
+        parent.uploadFileJS(filename, AsyncReader.build(data), 0, size, false, context.mirrorBatId(),
+                network, crypto, x -> {}, context.getTransactionService(), f -> Futures.of(true)).join();
         checkFileContents(data, context.getByPath(Paths.get(username, subdir, filename)).join().get(), context);
     }
 
@@ -1849,7 +1850,7 @@ public abstract class UserTests {
     }
 
     @Test
-    public void correctUsageAndSpaceRecovery() {
+    public void correctUsageAndSpaceRecovery() throws Exception {
         String username = generateUsername();
         String password = "password";
         UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
@@ -1862,6 +1863,7 @@ public abstract class UserTests {
                 context.getTransactionService(), f -> Futures.of(true)).join();
         String dirName = "subdir";
         context.getUserRoot().join().mkdir(dirName, network, false, context.mirrorBatId(), crypto).join();
+        Thread.sleep(5_000); // Allow time for space usage recalculation
         UserGC.checkRawUsage(context);
 
         // now delete the file and dir

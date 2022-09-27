@@ -256,7 +256,7 @@ public class Main extends Builder {
             // sign up peergos user
             SecretGenerationAlgorithm algorithm = SecretGenerationAlgorithm.getDefaultWithoutExtraSalt();
             LocalDate expiry = LocalDate.now().plusMonths(2);
-            UserContext context = UserContext.signUpGeneral(pkiUsername, password, "", expiry, network, crypto, algorithm, x -> {}).get();
+            UserContext context = UserContext.signUpGeneral(pkiUsername, password, "", expiry, network, crypto, algorithm, x -> {}).join();
             Optional<PublicKeyHash> existingPkiKey = context.getNamedKey("pki").get();
             if (!existingPkiKey.isPresent() || existingPkiKey.get().equals(pkiPublicHash)) {
                 SigningPrivateKeyAndPublicHash pkiKeyPair = new SigningPrivateKeyAndPublicHash(pkiPublicHash, pkiSecret);

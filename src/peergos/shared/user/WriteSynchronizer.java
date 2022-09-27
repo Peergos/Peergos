@@ -1,11 +1,9 @@
 package peergos.shared.user;
 
-import peergos.shared.MaybeMultihash;
-import peergos.shared.cbor.CborObject;
+import peergos.shared.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.cid.*;
-import peergos.shared.mutable.PointerUpdate;
 import peergos.shared.mutable.MutablePointers;
 import peergos.shared.storage.*;
 import peergos.shared.util.*;
@@ -15,6 +13,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.*;
 
 public class WriteSynchronizer {
 
@@ -23,6 +22,8 @@ public class WriteSynchronizer {
     private final Hasher hasher;
     // The keys are <owner, writer> pairs. The owner is only needed to handle identity changes
     private final Map<Pair<PublicKeyHash, PublicKeyHash>, AsyncLock<Snapshot>> pending = new ConcurrentHashMap<>();
+    private CommitterBuilder committerBuilder = (c, o, w) -> c;
+    private BufferedNetworkAccess.Flusher flusher = (o, v, w) -> Futures.of(v);
 
     public WriteSynchronizer(MutablePointers mutable, ContentAddressedStorage dht, Hasher hasher) {
         this.mutable = mutable;
@@ -32,6 +33,14 @@ public class WriteSynchronizer {
 
     public void clear() {
         pending.clear();
+    }
+
+    public void setCommitterBuilder(CommitterBuilder committerBuilder) {
+        this.committerBuilder = committerBuilder;
+    }
+
+    public void setFlusher(BufferedNetworkAccess.Flusher flusher) {
+        this.flusher = flusher;
     }
 
     public void put(PublicKeyHash owner, PublicKeyHash writer, CommittedWriterData val) {
@@ -53,14 +62,9 @@ public class WriteSynchronizer {
     }
 
     public CompletableFuture<Snapshot> getWriterData(PublicKeyHash owner, PublicKeyHash writer) {
-        return mutable.getPointer(owner, writer)
-                .thenCompose(dataOpt -> dht.getSigningKey(writer)
-                        .thenApply(signer -> dataOpt.isPresent() ?
-                                PointerUpdate.fromCbor(CborObject.fromByteArray(signer.get().unsignMessage(dataOpt.get()))) :
-                                PointerUpdate.empty())
-                        .thenCompose(x -> WriterData.getWriterData((Cid)x.updated.get(), x.sequence, dht))
-                        .thenApply(cwd -> new Snapshot(writer, cwd))
-                );
+        return mutable.getPointerTarget(owner, writer, dht)
+                .thenCompose(x -> WriterData.getWriterData((Cid)x.updated.get(), x.sequence, dht))
+                .thenApply(cwd -> new Snapshot(writer, cwd));
     }
 
     /**
@@ -83,7 +87,10 @@ public class WriteSynchronizer {
         // a previous transaction has completed (another node/user with write access may have concurrently updated the mapping)
         return pending.computeIfAbsent(new Pair<>(owner, writer.publicKeyHash), p -> new AsyncLock<>(getWriterData(owner, p.right)))
                 .runWithLock(current -> IpfsTransaction.call(owner, tid -> transformer.apply(current.get(writer).props, tid)
-                                .thenCompose(wd -> wd.commit(owner, writer, current.get(writer).hash, current.get(writer).sequence, mutable, dht, hasher, tid)), dht),
+                                .thenCompose(wd -> committerBuilder.buildCommitter((aOwner, signer, wdr, existing, t) -> wdr.commit(aOwner, signer,
+                                        existing.hash, existing.sequence, mutable, dht, hasher, t), owner, () -> true)
+                                        .commit(owner, writer, wd, current.get(writer), tid)
+                                        .thenCompose(v -> flusher.commit(owner, v, () -> true))), dht),
                         () -> getWriterData(owner, writer.publicKeyHash));
     }
 
@@ -96,21 +103,34 @@ public class WriteSynchronizer {
      */
     public CompletableFuture<Snapshot> applyComplexUpdate(PublicKeyHash owner,
                                                           SigningPrivateKeyAndPublicHash writer,
-                                                          ComplexMutation transformer) {
+                                                          ComplexMutation transformer,
+                                                          Supplier<Boolean> commitWatcher) {
         return pending.computeIfAbsent(new Pair<>(owner, writer.publicKeyHash), p -> new AsyncLock<>(getWriterData(owner, p.right)))
                 .runWithLock(current -> transformer.apply(current,
-                        (aOwner, signer, wd, existing, tid) -> wd.commit(aOwner, signer, existing.hash, existing.sequence, mutable, dht, hasher, tid)
-                        .thenCompose(s -> {
-                            if (signer.publicKeyHash.equals(writer.publicKeyHash))
-                                return CompletableFuture.completedFuture(s);
-                            // need to update local queue for other writer
-                            return pending.computeIfAbsent(
-                                    new Pair<>(owner, signer.publicKeyHash),
-                                    p -> new AsyncLock<>(getWriterData(owner, p.right))
-                            ).runWithLock(v -> CompletableFuture.completedFuture(v.withVersion(signer.publicKeyHash, s.get(signer))))
-                                    .thenApply(x -> s);
-                        })),
+                                        committerBuilder.buildCommitter((aOwner, signer, wd, existing, tid) -> wd.commit(aOwner, signer, existing.hash, existing.sequence, mutable, dht, hasher, tid)
+                                                .thenCompose(s -> updateWriterState(owner, signer.publicKeyHash, s).thenApply(x -> s)), owner, commitWatcher))
+                                .thenCompose(v -> flusher.commit(owner, v, commitWatcher)),
                         () -> getWriterData(owner, writer.publicKeyHash));
+    }
+
+    public CompletableFuture<Snapshot> applyComplexUpdate(PublicKeyHash owner,
+                                                          SigningPrivateKeyAndPublicHash writer,
+                                                          ComplexMutation transformer) {
+        return applyComplexUpdate(owner, writer, transformer, () -> true);
+    }
+
+    public CompletableFuture<Boolean> updateWriterState(PublicKeyHash owner,
+                                                        PublicKeyHash writer,
+                                                        Snapshot value) {
+        AsyncLock<Snapshot> existing = pending.get(new Pair<>(owner, writer));
+        if (existing != null && ! existing.isDone()) // don't modify the lock we are in
+            return CompletableFuture.completedFuture(true);
+        // need to update local queue for other writer
+        return pending.computeIfAbsent(
+                        new Pair<>(owner, writer),
+                        p -> new AsyncLock<>(getWriterData(owner, p.right))
+                ).runWithLock(v -> CompletableFuture.completedFuture(v.withVersion(writer, value.get(writer))))
+                .thenApply(x -> true);
     }
 
     /** Apply an update and return a computed value
@@ -127,20 +147,13 @@ public class WriteSynchronizer {
         CompletableFuture<Pair<Snapshot, V>> res = new CompletableFuture<>();
         return pending.computeIfAbsent(new Pair<>(owner, writer.publicKeyHash), p -> new AsyncLock<>(getWriterData(owner, p.right)))
                 .runWithLock(current -> transformer.apply(current,
-                        (aOwner, signer, wd, existing, tid) -> wd.commit(aOwner, signer, existing.hash, existing.sequence, mutable, dht, hasher, tid)
-                        .thenCompose(s -> {
-                            if (signer.publicKeyHash.equals(writer.publicKeyHash))
-                                return CompletableFuture.completedFuture(s);
-                            // need to update local queue for other writer
-                            return pending.computeIfAbsent(
-                                    new Pair<>(owner, signer.publicKeyHash),
-                                    p -> new AsyncLock<>(getWriterData(owner, p.right))
-                            ).runWithLock(v -> CompletableFuture.completedFuture(v.withVersion(signer.publicKeyHash, s.get(signer))))
-                                    .thenApply(x -> s);
-                        })).thenApply(p -> {
-                            res.complete(p);
-                            return p.left;
-                        }),
+                                committerBuilder.buildCommitter((aOwner, signer, wd, existing, tid) -> wd.commit(aOwner, signer, existing.hash, existing.sequence, mutable, dht, hasher, tid)
+                                                .thenCompose(s -> updateWriterState(owner, signer.publicKeyHash, s).thenApply(x -> s)), owner, () -> true))
+                                .thenCompose(p -> flusher.commit(owner, p.left, () -> true).thenApply(x -> p))
+                                .thenApply(p -> {
+                                    res.complete(p);
+                                    return p.left;
+                                }),
                         () -> getWriterData(owner, writer.publicKeyHash))
                 .thenCompose(x -> res);
     }

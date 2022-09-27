@@ -382,7 +382,7 @@ public class Builder {
         JavaPoster p2pPoster = new JavaPoster(proxyAddress, false);
         JavaPoster apiPoster = new JavaPoster(apiAddress, false);
         ScryptJava hasher = new ScryptJava();
-        return NetworkAccess.build(apiPoster, p2pPoster, pkiServerNodeId, NetworkAccess.buildLocalDht(apiPoster, true, hasher), hasher, false);
+        return NetworkAccess.build(apiPoster, p2pPoster, pkiServerNodeId, NetworkAccess.buildLocalDht(apiPoster, true, hasher), 0, hasher, false);
     }
 
     public static CompletableFuture<NetworkAccess> buildJavaNetworkAccess(URL target,
@@ -393,18 +393,18 @@ public class Builder {
     public static CompletableFuture<NetworkAccess> buildJavaNetworkAccess(URL target,
                                                                           boolean isPublicServer,
                                                                           Optional<String> basicAuth) {
-        return buildNonCachingJavaNetworkAccess(target, isPublicServer, basicAuth)
-                .thenApply(e -> e.withMutablePointerCache(7_000));
+        return buildNonCachingJavaNetworkAccess(target, isPublicServer, 7_000, basicAuth);
     }
 
     public static CompletableFuture<NetworkAccess> buildNonCachingJavaNetworkAccess(URL target,
                                                                                     boolean isPublicServer,
+                                                                                    int mutableCacheTime,
                                                                                     Optional<String> basicAuth) {
         JavaPoster poster = new JavaPoster(target, isPublicServer, basicAuth);
         Multihash pkiNodeId = null; // This is not required when talking to a Peergos server
         ScryptJava hasher = new ScryptJava();
         ContentAddressedStorage localDht = NetworkAccess.buildLocalDht(poster, true, hasher);
-        return NetworkAccess.build(poster, poster, pkiNodeId, localDht, hasher, false);
+        return NetworkAccess.build(poster, poster, pkiNodeId, localDht, mutableCacheTime, hasher, false);
     }
 
     public static CompletableFuture<NetworkAccess> buildLocalJavaNetworkAccess(int targetPort) {

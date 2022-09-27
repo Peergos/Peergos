@@ -778,6 +778,7 @@ public class PeergosNetworkUtils {
 
             Assert.assertTrue(Arrays.equals(newFileContents, ArrayOps.concat(originalFileContents, suffix)));
 
+            Thread.sleep(10_000); // let all pointer caches invalidate
             // test remaining users can still see shared file and folder
             for (int j = i + 1; j < updatedSharees.size(); j++) {
                 UserContext otherUser = updatedSharees.get(j);

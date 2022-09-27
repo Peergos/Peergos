@@ -107,12 +107,13 @@ public class WriterData implements Cborable {
                                                             MaybeMultihash currentHash,
                                                             Optional<Long> currentSequence,
                                                             NetworkAccess network,
+                                                            Committer c,
                                                             TransactionId tid) {
         return getOwnedKeyChamp(network.dhtClient, network.hasher)
                 .thenCompose(champ -> champ.add(owner, signer, newOwned, network.hasher, tid)
                         .thenApply(newRoot -> new WriterData(controller, generationAlgorithm, publicData,
                                 followRequestReceiver, Optional.of(newRoot), namedOwnedKeys, staticData, tree)))
-                .thenCompose(wd -> wd.commit(owner, signer, currentHash, currentSequence, network, tid));
+                .thenCompose(wd -> c.commit(owner, signer, wd, new CommittedWriterData(currentHash, this, currentSequence), tid));
     }
 
     public CompletableFuture<WriterData> removeOwnedKey(PublicKeyHash owner,
@@ -279,7 +280,8 @@ public class WriterData implements Cborable {
                                               Optional<Long> currentSequence,
                                               NetworkAccess network,
                                               TransactionId tid) {
-        return commit(owner, signer, currentHash, currentSequence, network.mutable, network.dhtClient, network.hasher, tid);
+        return commit(owner, signer, currentHash, currentSequence, network.mutable, network.dhtClient, network.hasher, tid)
+                .thenCompose(s -> network.commit(owner).thenApply(x -> s));
     }
 
     public CompletableFuture<Snapshot> commit(PublicKeyHash owner,
@@ -294,7 +296,6 @@ public class WriterData implements Cborable {
 
         return hasher.sha256(raw)
                 .thenCompose(hash -> immutable.put(owner, signer.publicKeyHash, signer.secret.signMessage(hash), raw, tid))
-                .thenCompose(blobHash -> immutable.flush().thenApply(x -> blobHash))
                 .thenCompose(blobHash -> {
                     MaybeMultihash newHash = MaybeMultihash.of(blobHash);
                     if (newHash.equals(currentHash)) {

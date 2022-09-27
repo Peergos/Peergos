@@ -7,9 +7,9 @@ import peergos.server.util.*;
 import peergos.shared.*;
 import peergos.shared.crypto.symmetric.*;
 import peergos.shared.display.*;
+import peergos.shared.mutable.*;
 import peergos.shared.social.*;
 import peergos.shared.storage.*;
-import peergos.shared.storage.auth.*;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
 import peergos.shared.user.fs.cryptree.*;
@@ -30,14 +30,20 @@ public class RequestCountTests {
     private final RequestCountingStorage storageCounter;
 
     public RequestCountTests() {
-        WriteSynchronizer synchronizer = new WriteSynchronizer(service.mutable, service.storage, crypto.hasher);
-        MutableTree mutableTree = new MutableTreeImpl(service.mutable, service.storage, crypto.hasher, synchronizer);
         RequestCountingStorage requestCounter = new RequestCountingStorage(service.storage);
         this.storageCounter = requestCounter;
         CachingVerifyingStorage dhtClient = new CachingVerifyingStorage(requestCounter, 50 * 1024, 1_000, service.storage.id().join(), crypto.hasher);
-        this.network = new NetworkAccess(service.coreNode, service.account, service.social, dhtClient,
-                service.bats, service.mutable, mutableTree, synchronizer, service.controller, service.usage, service.serverMessages,
-                crypto.hasher, Arrays.asList("peergos"), false);
+
+        BufferedStorage blockBuffer = new BufferedStorage(dhtClient, hasher);
+        MutablePointers unbufferedMutable = new CachingPointers(service.mutable, 7_000);
+        BufferedPointers mutableBuffer = new BufferedPointers(unbufferedMutable);
+        WriteSynchronizer synchronizer = new WriteSynchronizer(mutableBuffer, blockBuffer, hasher);
+        MutableTree tree = new MutableTreeImpl(mutableBuffer, blockBuffer, hasher, synchronizer);
+
+        int bufferSize = 20 * 1024 * 1024;
+        this.network = new BufferedNetworkAccess(blockBuffer, mutableBuffer, bufferSize, service.coreNode, service.account, service.social,
+                blockBuffer, unbufferedMutable, service.bats, tree, synchronizer, service.controller, service.usage,
+                service.serverMessages, hasher, Arrays.asList("peergos"), false);
     }
 
     @BeforeClass
@@ -81,12 +87,12 @@ public class RequestCountTests {
             boolean reciprocate = true;
             a.sendReplyFollowRequest(u1Request, accept, reciprocate).join();
         }
-        Assert.assertTrue("send reply follow request: " + storageCounter.requestTotal(), storageCounter.requestTotal() <= 140);
+        Assert.assertTrue("send reply follow request: " + storageCounter.requestTotal(), storageCounter.requestTotal() <= 20);
 
         // complete the friendship connection
         storageCounter.reset();
         sharer.processFollowRequests().join();
-        Assert.assertTrue("friending complete: " + storageCounter.requestTotal(), storageCounter.requestTotal() <= 110);
+        Assert.assertTrue("friending complete: " + storageCounter.requestTotal(), storageCounter.requestTotal() <= 20);
 
         // friends are now connected
         // share a file from u1 to u2
@@ -97,7 +103,7 @@ public class RequestCountTests {
         // check 'a' can see the shared file in their social feed
         storageCounter.reset();
         SocialFeed feed = a.getSocialFeed().join();
-        Assert.assertTrue("initialise social feed: " + storageCounter.requestTotal(), storageCounter.requestTotal() <= 170);
+        Assert.assertTrue("initialise social feed: " + storageCounter.requestTotal(), storageCounter.requestTotal() <= 20);
         int feedSize = 2;
 
         storageCounter.reset();
@@ -136,7 +142,7 @@ public class RequestCountTests {
 
         storageCounter.reset();
         SocialFeed feed2 = a.getSocialFeed().join().update().join();
-        Assert.assertTrue("load 5 items in social feed: " + storageCounter.requestTotal(), storageCounter.requestTotal() <= 14);
+        Assert.assertTrue("load 5 items in social feed: " + storageCounter.requestTotal(), storageCounter.requestTotal() <= 4);
 
         storageCounter.reset();
         List<SharedItem> items2 = feed2.getShared(feedSize + 1, feedSize + 6, a.crypto, a.network).join();

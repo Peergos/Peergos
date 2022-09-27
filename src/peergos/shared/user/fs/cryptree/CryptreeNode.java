@@ -601,7 +601,7 @@ public class CryptreeNode implements Cborable {
                                     new SigningPrivateKeyAndPublicHash(newSignerHash, newSignerPair.secretSigningKey);
                             CommittedWriterData cwd = version.get(parentSigner);
                             OwnerProof proof = OwnerProof.build(newSigner, parentSigner.publicKeyHash);
-                            return cwd.props.addOwnedKeyAndCommit(owner, parentSigner, proof, cwd.hash, cwd.sequence, network, tid)
+                            return cwd.props.addOwnedKeyAndCommit(owner, parentSigner, proof, cwd.hash, cwd.sequence, network, committer, tid)
                                     .thenCompose(v -> WriterData.createEmpty(owner, newSigner, network.dhtClient,
                                             network.hasher, tid)
                                             .thenCompose(wd -> committer.commit(owner, newSigner, wd, new CommittedWriterData(MaybeMultihash.empty(), null, Optional.empty()), tid))

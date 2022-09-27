@@ -29,7 +29,7 @@ public class PointerUpdate implements Cborable {
 
     @Override
     public String toString() {
-        return "(" + original.toString() + ", " + updated.toString() + ")";
+        return sequence.orElse(0L) + "(" + original.toString() + ", " + updated.toString() + ")";
     }
 
     @Override

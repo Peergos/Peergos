@@ -36,15 +36,15 @@ public interface MutablePointers {
     CompletableFuture<Optional<byte[]>> getPointer(PublicKeyHash owner, PublicKeyHash writer);
 
     /**
-     * Get the CAS key-hash for the data pointed to by a writer-key.
-     * @param writerKeyHash
+     * Get the latest pointer state for a writer-key.
+     * @param writer
      * @param ipfs
      * @return
      */
-    default CompletableFuture<PointerUpdate> getPointerTarget(PublicKeyHash owner, PublicKeyHash writerKeyHash, ContentAddressedStorage ipfs) {
-        return getPointer(owner, writerKeyHash)
+    default CompletableFuture<PointerUpdate> getPointerTarget(PublicKeyHash owner, PublicKeyHash writer, ContentAddressedStorage ipfs) {
+        return getPointer(owner, writer)
                 .thenCompose(current -> current.isPresent() ?
-                        parsePointerTarget(current.get(), writerKeyHash, ipfs) :
+                        parsePointerTarget(current.get(), writer, ipfs) :
                         Futures.of(PointerUpdate.empty()));
     }
 
