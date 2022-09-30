@@ -7,6 +7,7 @@ import peergos.server.crypto.asymmetric.curve25519.*;
 import peergos.server.crypto.hash.*;
 import peergos.server.crypto.random.*;
 import peergos.server.crypto.symmetric.*;
+import peergos.server.messages.*;
 import peergos.server.tests.util.*;
 import peergos.server.util.*;
 
@@ -1886,7 +1887,8 @@ public abstract class UserTests {
         UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
 
         String serverMsgBody = "Welcome to the world of Peergos!";
-        service.serverMessages.addMessage(username, new ServerMessage(1, ServerMessage.Type.FromServer,
+        ServerMessageStore msgStore = (ServerMessageStore) service.serverMessages;
+        msgStore.addMessage(username, new ServerMessage(1, ServerMessage.Type.FromServer,
                 System.currentTimeMillis(), serverMsgBody, Optional.empty(), false));
 
         String replyBody = "Thanks for making Peergos awesome!";
@@ -1899,7 +1901,7 @@ public abstract class UserTests {
         List<ServerMessage> messages = context.getNewMessages().join();
         Assert.assertTrue(messages.size() == 0);
 
-        List<ServerMessage> onServer = service.serverMessages.getMessages(username);
+        List<ServerMessage> onServer = msgStore.getMessages(username);
         Assert.assertTrue(onServer.size() == 3);
         ServerMessage reply = onServer.get(2);
         Assert.assertTrue(reply.contents.equals(msgBody));
@@ -1907,7 +1909,7 @@ public abstract class UserTests {
         List<ServerConversation> convs = context.getServerConversations().join();
         Assert.assertTrue(convs.size() == 0);
 
-        service.serverMessages.addMessage(username, new ServerMessage(1, ServerMessage.Type.FromServer,
+        msgStore.addMessage(username, new ServerMessage(1, ServerMessage.Type.FromServer,
                 System.currentTimeMillis(), "Thank you for supporting Peergos.", Optional.empty(), false));
         context.dismissMessage(context.getNewMessages().join().get(0)).join();
         List<ServerMessage> updatedMessages = context.getNewMessages().join();

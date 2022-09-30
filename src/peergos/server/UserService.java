@@ -88,7 +88,7 @@ public class UserService {
     public final MutablePointers mutable;
     public final InstanceAdmin controller;
     public final SpaceUsage usage;
-    public final ServerMessageStore serverMessages;
+    public final ServerMessager serverMessages;
     public final GarbageCollector gc; // not exposed
 
     public UserService(ContentAddressedStorage storage,
@@ -100,7 +100,7 @@ public class UserService {
                        MutablePointers mutable,
                        InstanceAdmin controller,
                        SpaceUsage usage,
-                       ServerMessageStore serverMessages,
+                       ServerMessager serverMessages,
                        GarbageCollector gc) {
         this.storage = storage;
         this.bats = bats;
