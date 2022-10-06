@@ -72,7 +72,7 @@ public class UnauthedCachingStorage extends DelegatingStorage {
     public CompletableFuture<List<byte[]>> getChampLookup(Cid root, byte[] champKey, Optional<BatWithId> bat, Hasher hasher) {
         return target.getChampLookup(root, champKey, bat, hasher)
                 .thenApply(blocks -> {
-                    ForkJoinPool.commonPool().submit(() -> Futures.combineAll(blocks.stream()
+                    ForkJoinPool.commonPool().execute(() -> Futures.combineAll(blocks.stream()
                                     .map(b -> hasher.hash(b, false)
                                             .thenApply(c -> new Pair<>(c, b)))
                                     .collect(Collectors.toList()))
