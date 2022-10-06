@@ -188,7 +188,20 @@ public class FileBlockCache implements BlockCache {
     private void ensureWithinSizeLimit(long maxSize) {
         if (totalSize.get() <= maxSize)
             return;
+        Logging.LOG().info("Starting FileBlockCache reduction");
         AtomicLong toDelete = new AtomicLong(totalSize.get() - (maxSize*9/10));
-
+        SortedMap<Long, Cid> byAccessTime = new TreeMap<>();
+        applyToAll(c -> getLastAccessTimeMillis(c).map(t -> byAccessTime.put(t, c)));
+        for (Map.Entry<Long, Cid> e : byAccessTime.entrySet()) {
+            if (toDelete.get() <= 0)
+                break;
+            Cid c = e.getValue();
+            Optional<Integer> sizeOpt = getSize(c).join();
+            if (sizeOpt.isEmpty())
+                continue;
+            long size = sizeOpt.get();
+            delete(c);
+            toDelete.addAndGet(-size);
+        }
     }
 }
