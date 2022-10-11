@@ -22,11 +22,13 @@ public class FileBlockCache implements BlockCache {
     private static final Logger LOG = Logging.LOG();
     private static final int DIRECTORY_DEPTH = 5;
     private final Path root;
+    private final long maxSizeBytes;
     private long lastSizeCheckTime = 0;
     private AtomicLong totalSize = new AtomicLong(0);
 
-    public FileBlockCache(Path root) {
+    public FileBlockCache(Path root, long maxSizeBytes) {
         this.root = root;
+        this.maxSizeBytes = maxSizeBytes;
         File rootDir = root.toFile();
         if (!rootDir.exists()) {
             final boolean mkdirs = root.toFile().mkdirs();
@@ -105,7 +107,7 @@ public class FileBlockCache implements BlockCache {
             totalSize.addAndGet(data.length);
             if (lastSizeCheckTime < System.currentTimeMillis() - 600_000) {
                 lastSizeCheckTime = System.currentTimeMillis();
-                ForkJoinPool.commonPool().submit(() -> ensureWithinSizeLimit(10*1024*1024*1024L));
+                ForkJoinPool.commonPool().submit(() -> ensureWithinSizeLimit(maxSizeBytes));
             }
             return Futures.of(true);
         } catch (IOException e) {

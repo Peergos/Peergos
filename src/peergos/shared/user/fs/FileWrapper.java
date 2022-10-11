@@ -2119,28 +2119,6 @@ public class FileWrapper {
         return new FileWrapper(Optional.of(root), null, Optional.empty(), Optional.empty(), null, new Snapshot(new HashMap<>()));
     }
 
-    public static Optional<Thumbnail> generateThumbnail(byte[] imageBlob) {
-        try {
-            BufferedImage image = ImageIO.read(new ByteArrayInputStream(imageBlob));
-            BufferedImage thumbnailImage = new BufferedImage(THUMBNAIL_SIZE, THUMBNAIL_SIZE, image.getType());
-            Graphics2D g = thumbnailImage.createGraphics();
-            g.setComposite(AlphaComposite.Src);
-            g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
-            g.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
-            g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-            g.drawImage(image, 0, 0, THUMBNAIL_SIZE, THUMBNAIL_SIZE, null);
-            g.dispose();
-
-            ByteArrayOutputStream baos = new ByteArrayOutputStream();
-            ImageIO.write(thumbnailImage, "JPG", baos);
-            baos.close();
-            return Optional.of(new Thumbnail("image/jpeg", baos.toByteArray()));
-        } catch (IOException ioe) {
-            LOG.log(Level.WARNING, ioe.getMessage(), ioe);
-        }
-        return Optional.empty();
-    }
-
     public static Optional<Thumbnail> generateVideoThumbnail(byte[] videoBlob) {
         File tempFile = null;
         try {
@@ -2184,7 +2162,7 @@ public class FileWrapper {
                 } else {
                     byte[] bytes = new byte[fileSize];
                     fileData.readIntoArray(bytes, 0, fileSize).thenAccept(data -> {
-                        fut.complete(generateThumbnail(bytes));
+                        fut.complete(ThumbnailGenerator.get().generateThumbnail(bytes));
                     }).exceptionally(t -> {
                         fut.complete(Optional.empty());
                         return null;
@@ -2224,7 +2202,7 @@ public class FileWrapper {
                                             fut.complete(convertFromBase64(base64Str));
                                         });
                             } else {
-                                fut.complete(generateThumbnail(mp3CoverImage.imageData));
+                                fut.complete(ThumbnailGenerator.get().generateThumbnail(mp3CoverImage.imageData));
                             }
                         }
                     } catch(Exception ex) {
