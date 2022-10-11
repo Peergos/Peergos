@@ -100,7 +100,7 @@ public class S3DeleteOld {
     }
 
     public static void main(String[] args) {
-        Crypto crypto = Main.initJavaCrypto();
+        Crypto crypto = JavaCrypto.init();
         Args a = Args.parse(args);
         S3Config config = S3Config.build(a);
 
