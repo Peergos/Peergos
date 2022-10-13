@@ -520,11 +520,6 @@ public class UserContext {
     public static CompletableFuture<Optional<BatWithId>> getMirrorBat(String username,
                                                                       SigningPrivateKeyAndPublicHash identity,
                                                                       NetworkAccess network) {
-        PublicSigningKey publicSigningKey = network.dhtClient.getSigningKey(identity.publicKeyHash).join().get();
-        TimeLimitedClient.SignedRequest req = new TimeLimitedClient.SignedRequest(Constants.BATS_URL + "getUserBats", System.currentTimeMillis());
-        byte[] raw = req.serialize();
-        byte[] signed = identity.secret.signMessage(raw);
-        byte[] msg = publicSigningKey.unsignMessage(req.sign(identity.secret));
         return network.batCave.getUserBats(username, identity)
                 .thenApply(bats -> bats.isEmpty() ?
                         Optional.empty() :
