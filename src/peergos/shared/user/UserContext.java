@@ -280,7 +280,8 @@ public class UserContext {
                     SigningPrivateKeyAndPublicHash identity = new SigningPrivateKeyAndPublicHash(identityHash, identityPair.secretSigningKey);
 
                     Optional<BoxingKeyPair> boxer = isLegacy ? Optional.empty() : Optional.of(userWithRoot.getBoxingPair());
-                    UserStaticData entryData = new UserStaticData(Collections.emptyList(), userWithRoot.getRoot(), Optional.of(identityPair), boxer);
+                    Optional<SigningKeyPair> loginDataIdentity = isLegacy ? Optional.empty() : Optional.of(identityPair);
+                    UserStaticData entryData = new UserStaticData(Collections.emptyList(), userWithRoot.getRoot(), loginDataIdentity, boxer);
                     progressCallback.accept("Registering username");
                     Bat mirror = Bat.random(crypto.random);
                     return BatId.sha256(mirror, crypto.hasher)
@@ -519,6 +520,11 @@ public class UserContext {
     public static CompletableFuture<Optional<BatWithId>> getMirrorBat(String username,
                                                                       SigningPrivateKeyAndPublicHash identity,
                                                                       NetworkAccess network) {
+        PublicSigningKey publicSigningKey = network.dhtClient.getSigningKey(identity.publicKeyHash).join().get();
+        TimeLimitedClient.SignedRequest req = new TimeLimitedClient.SignedRequest(Constants.BATS_URL + "getUserBats", System.currentTimeMillis());
+        byte[] raw = req.serialize();
+        byte[] signed = identity.secret.signMessage(raw);
+        byte[] msg = publicSigningKey.unsignMessage(req.sign(identity.secret));
         return network.batCave.getUserBats(username, identity)
                 .thenApply(bats -> bats.isEmpty() ?
                         Optional.empty() :
