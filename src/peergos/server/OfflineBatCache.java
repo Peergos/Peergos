@@ -34,6 +34,9 @@ public class OfflineBatCache implements BatCave {
 
     @Override
     public CompletableFuture<Boolean> addBat(String username, BatId id, Bat bat, byte[] auth) {
-        return target.addBat(username, id, bat, auth);
+        return target.addBat(username, id, bat, auth).thenApply(res -> {
+            getUserBats(username, (byte[])null); // update cache
+            return res;
+        });
     }
 }
