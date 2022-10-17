@@ -22,6 +22,10 @@ public class JavaPoster implements HttpPoster {
         this.basicAuth = basicAuth;
     }
 
+    public HttpPoster buildDirectS3() {
+        return this;
+    }
+
     public JavaPoster(URL dht, boolean isPublicServer) {
         this(dht, isPublicServer, Optional.empty());
     }

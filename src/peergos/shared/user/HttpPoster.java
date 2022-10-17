@@ -5,6 +5,8 @@ import java.util.concurrent.*;
 
 public interface HttpPoster {
 
+    HttpPoster buildDirectS3();
+
     CompletableFuture<byte[]> post(String url, byte[] payload, boolean unzip, int timeoutMillis);
 
     default CompletableFuture<byte[]> post(String url, byte[] payload, boolean unzip) {

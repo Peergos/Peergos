@@ -7,12 +7,23 @@ import java.util.concurrent.*;
 
 public class JavaScriptPoster implements HttpPoster {
 
-    private final NativeJSHttp http = new NativeJSHttp();
+    private final NativeJSHttp http;
     private final boolean isAbsolute, useGet;
 
     public JavaScriptPoster(boolean isAbsolute, boolean useGet) {
+        this(isAbsolute, useGet, false);
+    }
+
+    private JavaScriptPoster(boolean isAbsolute, boolean useGet, boolean useDirectS3) {
         this.isAbsolute = isAbsolute;
         this.useGet = useGet;
+        http = new NativeJSHttp();
+        http.init(useDirectS3);
+    }
+
+
+    public HttpPoster buildDirectS3() {
+        return new JavaScriptPoster(isAbsolute, useGet, true);
     }
 
     private String canonicalise(String url) {

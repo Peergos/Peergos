@@ -8,6 +8,8 @@ import java.util.concurrent.*;
 @JsType(namespace = "http", isNative = true)
 public class NativeJSHttp {
 
+    public native void init(boolean directS3) ;
+
 //    public static <T> CompletableFuture<T> incomplete() {
 //        return new CompletableFuture<>();
 //    }
