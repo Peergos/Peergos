@@ -4,7 +4,9 @@ import com.sun.net.httpserver.*;
 import peergos.server.*;
 import peergos.server.util.*;
 import peergos.shared.cbor.*;
+import peergos.shared.corenode.*;
 import peergos.shared.io.ipfs.cid.*;
+import peergos.shared.storage.*;
 import peergos.shared.storage.auth.*;
 import peergos.shared.util.*;
 
@@ -18,10 +20,14 @@ import java.util.function.*;
 public class BatCaveHandler implements HttpHandler {
 
     private final BatCave bats;
+    private final CoreNode pki;
+    private final ContentAddressedStorage ipfs;
     private final boolean isPublicServer;
 
-    public BatCaveHandler(BatCave bats, boolean isPublicServer) {
+    public BatCaveHandler(BatCave bats, CoreNode pki, ContentAddressedStorage ipfs, boolean isPublicServer) {
         this.bats = bats;
+        this.pki = pki;
+        this.ipfs = ipfs;
         this.isPublicServer = isPublicServer;
     }
 
@@ -46,6 +52,7 @@ public class BatCaveHandler implements HttpHandler {
             switch (method) {
                 case "addBat":
                     AggregatedMetrics.BAT_ADD.inc();
+                    TimeLimited.isAllowed(path, auth, 300, ipfs, pki.getPublicKeyHash(username).join().get());
                     BatId batid = new BatId(Cid.decode(last.apply("batid")));
                     Bat bat = Bat.fromString(last.apply("bat"));
                     bats.addBat(username, batid, bat, auth);
@@ -53,6 +60,7 @@ public class BatCaveHandler implements HttpHandler {
                     break;
                 case "getUserBats":
                     AggregatedMetrics.BATS_GET.inc();
+                    TimeLimited.isAllowed(path, auth, 300, ipfs, pki.getPublicKeyHash(username).join().get());
                     List<BatWithId> userBats = bats.getUserBats(username, auth).join();
                     result = new CborObject.CborList(userBats);
                     break;

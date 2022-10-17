@@ -1,13 +1,10 @@
 package peergos.shared.storage.auth;
 
-import peergos.shared.cbor.*;
 import peergos.shared.crypto.*;
-import peergos.shared.user.*;
 import peergos.shared.util.*;
 
 import java.util.*;
 import java.util.concurrent.*;
-import java.util.stream.*;
 
 /** This is used to store a mirror bat (or two during rotations) for each user.
  *

@@ -9,6 +9,7 @@ import peergos.server.crypto.random.*;
 import peergos.server.crypto.symmetric.*;
 import peergos.server.messages.*;
 import peergos.server.tests.util.*;
+import peergos.server.user.*;
 import peergos.server.util.*;
 
 import org.junit.*;
@@ -42,6 +43,9 @@ import java.util.stream.*;
 
 public abstract class UserTests {
 	private static final Logger LOG = Logging.LOG();
+    static {
+        ThumbnailGenerator.setInstance(new JavaImageThumbnailer());
+    }
 
     public static int RANDOM_SEED = 666;
     protected final NetworkAccess network;

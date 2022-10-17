@@ -210,6 +210,18 @@ public class NetworkAccess {
         return res;
     }
 
+    public static CompletableFuture<NetworkAccess> build(List<String> usernames,
+                                                         CoreNode core,
+                                                         HttpPoster apiPoster,
+                                                         HttpPoster p2pPoster,
+                                                         ContentAddressedStorage localDht,
+                                                         int mutableCacheTime,
+                                                         Hasher hasher,
+                                                         boolean isJavascript) {
+        return buildDirectS3Blockstore(localDht, core, apiPoster, true, hasher)
+                .thenCompose(dht -> build(core, dht, apiPoster, p2pPoster, mutableCacheTime, hasher, usernames, true, isJavascript));
+    }
+
     public static CompletableFuture<NetworkAccess> build(HttpPoster apiPoster,
                                                          HttpPoster p2pPoster,
                                                          Multihash pkiServerNodeId,
@@ -222,9 +234,7 @@ public class NetworkAccess {
         direct.getUsernames("")
                 .thenAccept(usernames -> {
                     // We are on a Peergos server
-                    CoreNode core = direct;
-                    buildDirectS3Blockstore(localDht, core, apiPoster, true, hasher)
-                            .thenCompose(dht -> build(core, dht, apiPoster, p2pPoster, mutableCacheTime, hasher, usernames, true, isJavascript))
+                    build(usernames, direct, apiPoster, p2pPoster, localDht, mutableCacheTime, hasher, isJavascript)
                             .thenApply(result::complete)
                             .exceptionally(t -> {
                                 result.completeExceptionally(t);
@@ -264,33 +274,49 @@ public class NetworkAccess {
         return localDht.id()
                 .exceptionally(t -> new Cid(1, Cid.Codec.LibP2pKey, Multihash.Type.sha2_256, new byte[32]))
                 .thenApply(nodeId -> {
+                    if (isPeergosServer)
+                        return buildToPeergosServer(nodeId, core, localDht, apiPoster, p2pPoster, mutableCacheTime, hasher, usernames, isJavascript);
                     ContentAddressedStorageProxy proxingDht = new ContentAddressedStorageProxy.HTTP(p2pPoster);
-                    ContentAddressedStorage storage = isPeergosServer ?
-                            localDht :
-                            new ContentAddressedStorage.Proxying(localDht, proxingDht, nodeId, core);
+                    ContentAddressedStorage storage = new ContentAddressedStorage.Proxying(localDht, proxingDht, nodeId, core);
                     ContentAddressedStorage p2pDht = new CachingVerifyingStorage(new RetryStorage(storage, 3),
                             100 * 1024, 1_000, nodeId, hasher);
                     MutablePointersProxy httpMutable = new HttpMutablePointers(apiPoster, p2pPoster);
                     Account account = new HttpAccount(apiPoster, p2pPoster);
-                    MutablePointers p2pMutable =
-                            isPeergosServer ?
-                                    httpMutable :
-                                    new ProxyingMutablePointers(nodeId, core, httpMutable, httpMutable);
+                    MutablePointers p2pMutable = new ProxyingMutablePointers(nodeId, core, httpMutable, httpMutable);
 
                     SocialNetworkProxy httpSocial = new HttpSocialNetwork(apiPoster, p2pPoster);
-                    SocialNetwork p2pSocial = isPeergosServer ?
-                            httpSocial :
-                            new ProxyingSocialNetwork(nodeId, core, httpSocial, httpSocial);
+                    SocialNetwork p2pSocial = new ProxyingSocialNetwork(nodeId, core, httpSocial, httpSocial);
                     SpaceUsageProxy httpUsage = new HttpSpaceUsage(apiPoster, p2pPoster);
-                    SpaceUsage p2pUsage = isPeergosServer ?
-                            httpUsage :
-                            new ProxyingSpaceUsage(nodeId, core, httpUsage, httpUsage);
+                    SpaceUsage p2pUsage = new ProxyingSpaceUsage(nodeId, core, httpUsage, httpUsage);
                     ServerMessager serverMessager = new ServerMessager.HTTP(apiPoster);
                     BatCave batCave = new HttpBatCave(apiPoster, p2pPoster);
                     RetryMutablePointers retryMutable = new RetryMutablePointers(p2pMutable);
                     return build(p2pDht, batCave, core, account, retryMutable, mutableCacheTime, p2pSocial,
                             new HttpInstanceAdmin(apiPoster), p2pUsage, serverMessager, hasher, usernames, isJavascript);
                 });
+    }
+
+    public static NetworkAccess buildToPeergosServer(Cid nodeId,
+                                                     CoreNode core,
+                                                     ContentAddressedStorage localDht,
+                                                     HttpPoster apiPoster,
+                                                     HttpPoster p2pPoster,
+                                                     int mutableCacheTime,
+                                                     Hasher hasher,
+                                                     List<String> usernames,
+                                                     boolean isJavascript) {
+        ContentAddressedStorage p2pDht = new CachingVerifyingStorage(new RetryStorage(localDht, 3),
+                100 * 1024, 1_000, nodeId, hasher);
+        MutablePointersProxy httpMutable = new HttpMutablePointers(apiPoster, p2pPoster);
+        Account account = new HttpAccount(apiPoster, p2pPoster);
+
+        SocialNetworkProxy httpSocial = new HttpSocialNetwork(apiPoster, p2pPoster);
+        SpaceUsageProxy httpUsage = new HttpSpaceUsage(apiPoster, p2pPoster);
+        ServerMessager serverMessager = new ServerMessager.HTTP(apiPoster);
+        BatCave batCave = new HttpBatCave(apiPoster, p2pPoster);
+        RetryMutablePointers retryMutable = new RetryMutablePointers(httpMutable);
+        return build(p2pDht, batCave, core, account, retryMutable, mutableCacheTime, httpSocial,
+                new HttpInstanceAdmin(apiPoster), httpUsage, serverMessager, hasher, usernames, isJavascript);
     }
 
     private static NetworkAccess build(ContentAddressedStorage dht,

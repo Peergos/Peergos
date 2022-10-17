@@ -10,6 +10,7 @@ import org.jline.utils.*;
 import peergos.server.*;
 import peergos.server.simulation.*;
 import peergos.server.simulation.FileSystem;
+import peergos.server.user.*;
 import peergos.server.util.Logging;
 import peergos.shared.*;
 import peergos.shared.social.FollowRequestWithCipherText;
@@ -717,6 +718,7 @@ public class CLI implements Runnable {
 
     public static void main(String[] args) {
         CRYPTO = Main.initCrypto();
+        ThumbnailGenerator.setInstance(new JavaImageThumbnailer());
         Logging.LOG().setLevel(Level.WARNING);
         CLIContext cliContext = buildContextFromCLI();
         new CLI(cliContext).run();

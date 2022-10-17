@@ -15,7 +15,7 @@ import java.util.*;
 
 public class FragmentedPaddedCipherTextTests {
 
-    private static final Crypto crypto = Builder.initJavaCrypto();
+    private static final Crypto crypto = JavaCrypto.init();
 
     @Test
     public void legacyFormatWithinlinedIdentityMultihash() {

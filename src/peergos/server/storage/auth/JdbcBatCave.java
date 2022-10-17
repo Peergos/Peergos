@@ -1,5 +1,6 @@
 package peergos.server.storage.auth;
 
+import peergos.server.*;
 import peergos.server.sql.*;
 import peergos.server.util.Logging;
 import peergos.shared.cbor.*;
@@ -12,7 +13,7 @@ import java.util.concurrent.*;
 import java.util.function.*;
 import java.util.logging.*;
 
-public class JdbcBatCave implements BatCave {
+public class JdbcBatCave implements BatCave, BatCache {
 
     private static final Logger LOG = Logging.LOG();
 
@@ -104,5 +105,20 @@ public class JdbcBatCave implements BatCave {
             LOG.log(Level.WARNING, sqe.getMessage(), sqe);
             return CompletableFuture.completedFuture(false);
         }
+    }
+
+    @Override
+    public CompletableFuture<List<BatWithId>> getUserBats(String username) {
+        return getUserBats(username, (byte[])null);
+    }
+
+    @Override
+    public CompletableFuture<Boolean> setUserBats(String username, List<BatWithId> bats) {
+        List<BatWithId> existing = getUserBats(username).join();
+        for (BatWithId bat : bats) {
+            if (! existing.contains(bat))
+                addBat(username, bat.id(), bat.bat, (byte[])null).join();
+        }
+        return Futures.of(true);
     }
 }

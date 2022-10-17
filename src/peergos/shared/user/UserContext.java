@@ -280,7 +280,8 @@ public class UserContext {
                     SigningPrivateKeyAndPublicHash identity = new SigningPrivateKeyAndPublicHash(identityHash, identityPair.secretSigningKey);
 
                     Optional<BoxingKeyPair> boxer = isLegacy ? Optional.empty() : Optional.of(userWithRoot.getBoxingPair());
-                    UserStaticData entryData = new UserStaticData(Collections.emptyList(), userWithRoot.getRoot(), Optional.of(identityPair), boxer);
+                    Optional<SigningKeyPair> loginDataIdentity = isLegacy ? Optional.empty() : Optional.of(identityPair);
+                    UserStaticData entryData = new UserStaticData(Collections.emptyList(), userWithRoot.getRoot(), loginDataIdentity, boxer);
                     progressCallback.accept("Registering username");
                     Bat mirror = Bat.random(crypto.random);
                     return BatId.sha256(mirror, crypto.hasher)
