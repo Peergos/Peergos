@@ -190,7 +190,7 @@ public class NetworkAccess {
     }
 
     @JsMethod
-    public static CompletableFuture<NetworkAccess> buildJS(String pkiNodeId, boolean isPublic) {
+    public static CompletableFuture<NetworkAccess> buildJS(String pkiNodeId, boolean isPublic, int cacheSizeKiB) {
         Multihash pkiServerNodeId = Cid.decode(pkiNodeId);
         JavaScriptPoster relative = new JavaScriptPoster(false, isPublic);
         JavaScriptPoster absolute = new JavaScriptPoster(true, true);
@@ -198,7 +198,8 @@ public class NetworkAccess {
 
         return isPeergosServer(relative)
                 .thenApply(isPeergosServer -> new Pair<>(isPeergosServer ? relative : absolute, isPeergosServer))
-                .thenCompose(p -> build(p.left, p.left, pkiServerNodeId, buildLocalDht(p.left, p.right, hasher), 7_000, hasher, true));
+                .thenCompose(p -> build(p.left, p.left, pkiServerNodeId, buildLocalDht(p.left, p.right, hasher), 7_000, hasher, true))
+                .thenApply(net -> net.withStorage(s -> new UnauthedCachingStorage(s, new JSBlockCache(cacheSizeKiB*1024L))));
     }
 
     private static CompletableFuture<Boolean> isPeergosServer(HttpPoster poster) {
