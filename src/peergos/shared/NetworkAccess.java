@@ -199,7 +199,7 @@ public class NetworkAccess {
         return isPeergosServer(relative)
                 .thenApply(isPeergosServer -> new Pair<>(isPeergosServer ? relative : absolute, isPeergosServer))
                 .thenCompose(p -> build(p.left, p.left, pkiServerNodeId, buildLocalDht(p.left, p.right, hasher), 7_000, hasher, true))
-                .thenApply(net -> net.withStorage(s -> new UnauthedCachingStorage(s, new JSBlockCache(cacheSizeKiB*1024L))));
+                .thenApply(net -> net.withStorage(s -> new UnauthedCachingStorage(s, new JSBlockCache(cacheSizeKiB*1024))));
     }
 
     private static CompletableFuture<Boolean> isPeergosServer(HttpPoster poster) {
