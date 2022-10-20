@@ -156,6 +156,12 @@ public class NetworkAccess {
                 spaceUsage, serverMessager, hasher, usernames, isJavascript);
     }
 
+    public NetworkAccess withMutablePointerOfflineCache(PointerCache pointerCache) {
+        return new NetworkAccess(coreNode, account, social, dhtClient, batCave, new OfflinePointerCache(mutable, pointerCache),
+                tree, synchronizer, instanceAdmin,
+                spaceUsage, serverMessager, hasher, usernames, cache, isJavascript);
+    }
+
     public NetworkAccess withMutablePointerCache(int ttl) {
         CachingPointers mutable = new CachingPointers(this.mutable, ttl);
         WriteSynchronizer synchronizer = new WriteSynchronizer(mutable, dhtClient, hasher);
@@ -199,7 +205,10 @@ public class NetworkAccess {
         return isPeergosServer(relative)
                 .thenApply(isPeergosServer -> new Pair<>(isPeergosServer ? relative : absolute, isPeergosServer))
                 .thenCompose(p -> build(p.left, p.left, pkiServerNodeId, buildLocalDht(p.left, p.right, hasher), 7_000, hasher, true))
-                .thenApply(net -> net.withStorage(s -> new UnauthedCachingStorage(s, new JSBlockCache(cacheSizeKiB*1024))));
+                .thenApply(net -> net.withStorage(s ->
+                        new UnauthedCachingStorage(s, new JSBlockCache(cacheSizeKiB*1024)))
+                        .withMutablePointerOfflineCache(new JSPointerCache(2000))
+                );
     }
 
     private static CompletableFuture<Boolean> isPeergosServer(HttpPoster poster) {
