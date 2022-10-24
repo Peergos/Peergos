@@ -16,7 +16,9 @@ public interface PointerCache {
     default boolean doUpdate(Optional<byte[]> current, byte[] update, PublicSigningKey signer) {
         if (current.isPresent() && Arrays.equals(current.get(), update))
             return false;
-        Optional<PointerUpdate> currentVal = current.map(CborObject::fromByteArray).map(PointerUpdate::fromCbor);
+        Optional<PointerUpdate> currentVal = current.map(signer::unsignMessage)
+                .map(CborObject::fromByteArray)
+                .map(PointerUpdate::fromCbor);
 
         PointerUpdate newVal = PointerUpdate.fromCbor(CborObject.fromByteArray(signer.unsignMessage(update)));
 
