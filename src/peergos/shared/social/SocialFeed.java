@@ -238,7 +238,13 @@ public class SocialFeed {
         return network.synchronizer.applyComplexComputation(owner, dataDir.signingPair(),
                 (s, c) -> {
                     return context.getFollowingNodes()
-                            .thenCompose(friends -> Futures.reduceAll(friends.stream(), new Pair<>(s, Stream.<Update>empty()),
+                            .thenCompose(friends -> {
+                                List<CompletableFuture<Snapshot>> pointers = friends.stream().map(f -> f.getLatestVersion(network)).collect(Collectors.toList());
+                                return Futures.combineAllInOrder(pointers)
+                                        .thenApply(versions -> versions.stream().reduce((a, b) -> a.merge(b)))
+                                        .thenApply(vOpt ->  new Pair<>(friends, s.merge(vOpt.get())));
+                            })
+                            .thenCompose(fv -> Futures.reduceAll(fv.left.stream(), new Pair<>(fv.right, Stream.<Update>empty()),
                                     (p, friend) -> getFriendUpdate(friend, p.left, c, network)
                                             .thenApply(res -> new Pair<>(res.left, Stream.concat(p.right, res.right.stream()))),
                                     (a, b) -> b));
@@ -258,7 +264,7 @@ public class SocialFeed {
                                                                                 NetworkAccess network) {
         ProcessedCaps current = currentCapBytesProcessed.getOrDefault(friend.ownerName, ProcessedCaps.empty());
         return friend.updateIncludingGroups(s, c, network)
-                .thenCompose(p -> friend.getCaps(current, network)
+                .thenCompose(p -> friend.getCaps(current, s,network)
                         .thenApply(diff -> {
                             if (diff.isEmpty())
                                 return new Pair<>(p.left, Optional.<Update>empty());

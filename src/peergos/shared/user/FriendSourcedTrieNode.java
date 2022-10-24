@@ -58,6 +58,10 @@ public class FriendSourcedTrieNode implements TrieNode {
         return Futures.of(Optional.of(new FriendSourcedTrieNode(cache, e.ownerName, e, groupAdder, crypto)));
     }
 
+    public CompletableFuture<Snapshot> getLatestVersion(NetworkAccess network) {
+        return cache.getLatestVersion(sharedDir, network);
+    }
+
     /**
      *
      * @param crypto
@@ -72,8 +76,9 @@ public class FriendSourcedTrieNode implements TrieNode {
     }
 
     public synchronized CompletableFuture<CapsDiff> getCaps(ProcessedCaps current,
+                                                            Snapshot s,
                                                             NetworkAccess network) {
-        return cache.getCapsFrom(ownerName, sharedDir, groups, current, network);
+        return cache.getCapsFrom(ownerName, sharedDir, groups, current, s,network);
     }
 
     private CompletableFuture<Optional<FileWrapper>> getFriendRoot(NetworkAccess network) {
