@@ -206,7 +206,7 @@ public class NetworkAccess {
                 .thenApply(isPeergosServer -> new Pair<>(isPeergosServer ? relative : absolute, isPeergosServer))
                 .thenCompose(p -> build(p.left, p.left, pkiServerNodeId, buildLocalDht(p.left, p.right, hasher), 7_000, hasher, true))
                 .thenApply(net -> net.withStorage(s ->
-                        new UnauthedCachingStorage(s, new JSBlockCache(cacheSizeKiB*1024)))
+                        new UnauthedCachingStorage(s, new JSBlockCache(cacheSizeKiB/1024)))
                         .withMutablePointerOfflineCache(new JSPointerCache(2000))
                 );
     }

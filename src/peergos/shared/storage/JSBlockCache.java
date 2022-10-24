@@ -8,9 +8,8 @@ import java.util.concurrent.CompletableFuture;
 public class JSBlockCache implements BlockCache {
     private final NativeJSCache cache = new NativeJSCache();
 
-    public JSBlockCache(long maxSizeBytes) {
-        int maxSizeBytesAsInt = maxSizeBytes > Integer.MAX_VALUE ? Integer.MAX_VALUE : (int) maxSizeBytes;
-        cache.init(maxSizeBytesAsInt);
+    public JSBlockCache(int maxSizeMiB) {
+        cache.init(maxSizeMiB);
     }
 
     @Override

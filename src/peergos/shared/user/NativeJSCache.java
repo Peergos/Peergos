@@ -9,7 +9,7 @@ import java.util.concurrent.CompletableFuture;
 @JsType(namespace = "cache", isNative = true)
 public class NativeJSCache {
 
-    public native void init(int size);
+    public native void init(int maxSizeMiB);
 
     public native CompletableFuture<Boolean> put(Cid hash, byte[] data);
 
