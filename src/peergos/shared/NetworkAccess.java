@@ -110,6 +110,12 @@ public class NetworkAccess {
                 spaceUsage, serverMessager, hasher, usernames, cache, isJavascript);
     }
 
+    public NetworkAccess withMutablePointerOfflineCache(Function<MutablePointers, MutablePointers> modifiedPointers) {
+        return new NetworkAccess(coreNode, account, social, dhtClient, batCave, modifiedPointers.apply(mutable),
+                tree, synchronizer, instanceAdmin,
+                spaceUsage, serverMessager, hasher, usernames, cache, isJavascript);
+    }
+
     public NetworkAccess withCorenode(CoreNode newCore) {
         return new NetworkAccess(newCore, account, social, dhtClient, batCave, mutable, tree, synchronizer, instanceAdmin,
                 spaceUsage, serverMessager, hasher, usernames, cache, isJavascript);
@@ -154,12 +160,6 @@ public class NetworkAccess {
         MutableTree mutableTree = new MutableTreeImpl(mutable, dhtClient, hasher, synchronizer);
         return new NetworkAccess(coreNode, account, social, dhtClient, batCave, mutable, mutableTree, synchronizer, instanceAdmin,
                 spaceUsage, serverMessager, hasher, usernames, isJavascript);
-    }
-
-    public NetworkAccess withMutablePointerOfflineCache(PointerCache pointerCache) {
-        return new NetworkAccess(coreNode, account, social, dhtClient, batCave, new OfflinePointerCache(mutable, pointerCache),
-                tree, synchronizer, instanceAdmin,
-                spaceUsage, serverMessager, hasher, usernames, cache, isJavascript);
     }
 
     public NetworkAccess withMutablePointerCache(int ttl) {
@@ -207,7 +207,7 @@ public class NetworkAccess {
                 .thenCompose(p -> build(p.left, p.left, pkiServerNodeId, buildLocalDht(p.left, p.right, hasher), 7_000, hasher, true))
                 .thenApply(net -> net.withStorage(s ->
                         new UnauthedCachingStorage(s, new JSBlockCache(cacheSizeKiB/1024)))
-                        .withMutablePointerOfflineCache(new JSPointerCache(2000, net.dhtClient))
+                        .withMutablePointerOfflineCache(m -> new OfflinePointerCache(m, new JSPointerCache(2000, net.dhtClient)))
                 );
     }
 
