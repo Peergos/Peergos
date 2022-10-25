@@ -97,7 +97,7 @@ public class MultiUserTests {
     }
 
     private List<UserContext> getUserContexts(int size, List<String> passwords) {
-        return getUserContextsForNode(network, random, size, passwords);
+        return getUserContextsForNode(network.clear(), random, size, passwords);
     }
 
     @Test
