@@ -1,6 +1,5 @@
-package peergos.server;
+package peergos.shared.login;
 
-import peergos.server.login.*;
 import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.user.*;
 
@@ -10,9 +9,9 @@ import java.util.concurrent.*;
 public class OfflineAccountStore implements Account {
 
     private final Account target;
-    private final JdbcAccount local;
+    private final LoginCache local;
 
-    public OfflineAccountStore(Account target, JdbcAccount local) {
+    public OfflineAccountStore(Account target, LoginCache local) {
         this.target = target;
         this.local = local;
     }

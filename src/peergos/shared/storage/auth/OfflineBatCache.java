@@ -1,7 +1,6 @@
-package peergos.server;
+package peergos.shared.storage.auth;
 
-import peergos.server.storage.auth.*;
-import peergos.shared.storage.auth.*;
+import peergos.server.*;
 import peergos.shared.util.*;
 
 import java.util.*;
