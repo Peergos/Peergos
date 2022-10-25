@@ -132,7 +132,8 @@ public class FriendSourcedTrieNode implements TrieNode {
         return network.synchronizer.applyComplexUpdate(cache.owner(), cache.signingPair(), (v, c) -> getLatestVersion(network)
                 .thenCompose(s -> updateIncludingGroups(v.mergeAndOverwriteWith(s), c, network)).thenApply(p -> p.left))
                 .thenCompose(v -> cache.getByPath(file, v, hasher, network))
-                .thenApply(opt -> opt.map(f -> convert(f, path)));
+                .thenApply(opt -> opt.map(f -> convert(f, path)))
+                .exceptionally(t ->  Optional.empty());
     }
 
     @Override
@@ -166,7 +167,8 @@ public class FriendSourcedTrieNode implements TrieNode {
                 .thenCompose(v -> cache.getChildren(dir, v, hasher, network))
                 .thenApply(children -> children.stream()
                         .map(f -> convert(f, canonicalise(path) + "/" + f.getName()))
-                        .collect(Collectors.toSet()));
+                        .collect(Collectors.toSet()))
+                .exceptionally(t -> Collections.emptySet());
     }
 
     @Override
