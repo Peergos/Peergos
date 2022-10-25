@@ -33,7 +33,7 @@ public class IncomingCapCache {
     private static final String DIR_STATE = "items.cbor";
 
     private FileWrapper cacheRoot, worldRoot;
-    private final Map<PublicKeyHash, Pair<byte[], CapsDiff>> pointerCache;
+    private final Map<PublicKeyHash, Pair<MaybeMultihash, CapsDiff>> pointerCache;
     private final Crypto crypto;
     private final Hasher hasher;
 
@@ -376,6 +376,11 @@ public class IncomingCapCache {
         return worldRoot.version;
     }
 
+    public CompletableFuture<Snapshot> getLatestVersion(EntryPoint sharedDir, NetworkAccess network) {
+        return NetworkAccess.getLatestEntryPoint(sharedDir, network)
+                .thenApply(r ->  r.file.version);
+    }
+
     public synchronized CompletableFuture<Pair<Snapshot, CapsDiff>> ensureFriendUptodate(String friend,
                                                                                          EntryPoint sharedDir,
                                                                                          List<EntryPoint> groups,
@@ -385,31 +390,27 @@ public class IncomingCapCache {
         // if the friend's mutable pointer hasn't changed since our last update we can short circuit early
         PublicKeyHash owner = sharedDir.pointer.owner;
         PublicKeyHash writer = sharedDir.pointer.writer;
-        return network.mutable.getPointer(owner, writer)
-                .thenCompose(latestPointer -> {
-                    if (latestPointer.isEmpty())
-                        throw new IllegalStateException("Couldn't get pointer for directory of " + friend);
-                    byte[] current = latestPointer.get();
-                    Pair<byte[], CapsDiff> cached = pointerCache.get(writer);
-                    boolean equal = cached != null && Arrays.equals(current, cached.left);
-                    if (equal) {
-                        if (cached.right.groupDiffs.size() == groups.size())
-                            return Futures.of(new Pair<>(s, cached.right));
-                    }
+        CommittedWriterData latestCwd = s.get(writer);
+        MaybeMultihash latestRoot = latestCwd.hash;
+        Pair<MaybeMultihash, CapsDiff> cached = pointerCache.get(writer);
+        boolean equal = cached != null && latestRoot.equals(cached.left);
+        if (equal) {
+            if (cached.right.groupDiffs.size() == groups.size())
+                return Futures.of(new Pair<>(s, cached.right));
+        }
 
-                    return getAndUpdateRoot(s, network)
-                            .thenCompose(root -> root.getDescendentByPath(friend + FRIEND_STATE_SUFFIX, s, hasher, network)
-                                    .thenCompose(stateOpt -> {
-                                        if (stateOpt.isEmpty())
-                                            return Futures.of(ProcessedCaps.empty());
-                                        return Serialize.readFully(stateOpt.get(), crypto, network)
-                                                .thenApply(arr -> ProcessedCaps.fromCbor(CborObject.fromByteArray(arr)));
-                                    }))
-                            .thenCompose(currentState -> ensureUptodate(friend, sharedDir, groups, currentState, s, c, crypto, network))
-                            .thenApply(res -> {
-                                pointerCache.put(writer, new Pair<>(latestPointer.get(), res.right.flatten()));
-                                return res;
-                            });
+        return getAndUpdateRoot(s, network)
+                .thenCompose(root -> root.getDescendentByPath(friend + FRIEND_STATE_SUFFIX, s, hasher, network)
+                        .thenCompose(stateOpt -> {
+                            if (stateOpt.isEmpty())
+                                return Futures.of(ProcessedCaps.empty());
+                            return Serialize.readFully(stateOpt.get(), crypto, network)
+                                    .thenApply(arr -> ProcessedCaps.fromCbor(CborObject.fromByteArray(arr)));
+                        }))
+                .thenCompose(currentState -> ensureUptodate(friend, sharedDir, groups, currentState, s, c, crypto, network))
+                .thenApply(res -> {
+                    pointerCache.put(writer, new Pair<>(latestRoot, res.right.flatten()));
+                    return res;
                 });
     }
 
@@ -417,14 +418,17 @@ public class IncomingCapCache {
                                                    EntryPoint originalSharedDir,
                                                    List<EntryPoint> groups,
                                                    ProcessedCaps current,
+                                                   Snapshot s,
                                                    NetworkAccess network) {
-        return retrieveNewCaps(originalSharedDir, current, network, crypto)
+        return network.getFile(originalSharedDir, s)
+                .thenCompose(shared -> retrieveNewCaps(shared.get(), current, network, crypto))
                 .thenCompose(direct -> Futures.combineAll(groups.stream()
                         .parallel()
-                        .map(e -> NetworkAccess.getLatestEntryPoint(e, network)
+                        .map(e -> network.getFile(e, s)
+                                .thenApply(Optional::get)
                                 .thenCompose(sharedDir -> retrieveNewCaps(sharedDir,
-                                        current.groups.getOrDefault(sharedDir.file.getName(), ProcessedCaps.empty()), network, crypto)
-                                        .thenApply(diff -> Optional.of(new Pair<>(sharedDir.file.getName(), diff))))
+                                        current.groups.getOrDefault(sharedDir.getName(), ProcessedCaps.empty()), network, crypto)
+                                        .thenApply(diff -> Optional.of(new Pair<>(sharedDir.getName(), diff))))
                                 .exceptionally(t -> Optional.empty()))
                         .collect(Collectors.toList()))
                         .thenApply(groupDiffs -> groupDiffs.stream()
@@ -434,20 +438,7 @@ public class IncomingCapCache {
                                         CapsDiff::mergeGroups)));
     }
 
-    private static CompletableFuture<CapsDiff> retrieveNewCaps(EntryPoint sharingDir,
-                                                               ProcessedCaps current,
-                                                               NetworkAccess network,
-                                                               Crypto crypto) {
-        return NetworkAccess.getLatestEntryPoint(sharingDir, network)
-                .thenCompose(sharedDir -> retrieveNewCaps(sharedDir, current.readCapBytes, current.writeCapBytes, network, crypto))
-                .exceptionally(t -> {
-                    // we might have been removed from a group or similar
-                    t.printStackTrace();
-                    return CapsDiff.empty();
-                });
-    }
-
-    private static CompletableFuture<CapsDiff> retrieveNewCaps(RetrievedEntryPoint sharedDir,
+    private static CompletableFuture<CapsDiff> retrieveNewCaps(FileWrapper sharedDir,
                                                                ProcessedCaps current,
                                                                NetworkAccess network,
                                                                Crypto crypto) {
@@ -459,15 +450,15 @@ public class IncomingCapCache {
                 });
     }
 
-    private static CompletableFuture<CapsDiff> retrieveNewCaps(RetrievedEntryPoint sharedDir,
+    private static CompletableFuture<CapsDiff> retrieveNewCaps(FileWrapper sharedDir,
                                                                long readCapBytes,
                                                                long writeCapBytes,
                                                                NetworkAccess network,
                                                                Crypto crypto) {
-        return CapabilityStore.loadReadAccessSharingLinksFromIndex(null, sharedDir.file,
+        return CapabilityStore.loadReadAccessSharingLinksFromIndex(null, sharedDir,
                 null, network, crypto, readCapBytes, false, true)
                 .thenCompose(newReadCaps ->
-                        getWritableCaps(sharedDir.file, writeCapBytes, crypto, network)
+                        getWritableCaps(sharedDir, writeCapBytes, crypto, network)
                                 .thenApply(writeable ->
                                         new CapsDiff.ReadAndWriteCaps(newReadCaps, writeable)))
                 .thenApply(newCaps -> new CapsDiff(readCapBytes, writeCapBytes, newCaps, Collections.emptyMap()));
@@ -482,7 +473,7 @@ public class IncomingCapCache {
                                                                                     Crypto crypto,
                                                                                     NetworkAccess network) {
         // check there are no new capabilities in the friend's shared directory, or any of their groups
-        return getCapsFrom(friend, originalSharedDir, groups, current, network)
+        return getCapsFrom(friend, originalSharedDir, groups, current, s, network)
                 .thenCompose(diff -> addNewCapsToMirror(friend, current, diff, s, c, network))
                 .thenCompose(p -> getAndUpdateWorldRoot(p.left, network)
                         .thenApply(y -> p));
@@ -527,7 +518,7 @@ public class IncomingCapCache {
                                     false, updatedRoot.version, c, network, crypto, x -> {}, crypto.random.randomBytes(RelativeCapability.MAP_KEY_LENGTH),
                                     Optional.of(Bat.random(crypto.random)),
                                     root.mirrorBatId()))
-                            .thenApply(v -> new Pair<>(v, diff));
+                            .thenApply(v -> new Pair<>(s.mergeAndOverwriteWith(v), diff));
                 });
     }
 

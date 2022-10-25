@@ -58,6 +58,10 @@ public class FriendSourcedTrieNode implements TrieNode {
         return Futures.of(Optional.of(new FriendSourcedTrieNode(cache, e.ownerName, e, groupAdder, crypto)));
     }
 
+    public CompletableFuture<Snapshot> getLatestVersion(NetworkAccess network) {
+        return cache.getLatestVersion(sharedDir, network);
+    }
+
     /**
      *
      * @param crypto
@@ -72,8 +76,9 @@ public class FriendSourcedTrieNode implements TrieNode {
     }
 
     public synchronized CompletableFuture<CapsDiff> getCaps(ProcessedCaps current,
+                                                            Snapshot s,
                                                             NetworkAccess network) {
-        return cache.getCapsFrom(ownerName, sharedDir, groups, current, network);
+        return cache.getCapsFrom(ownerName, sharedDir, groups, current, s,network);
     }
 
     private CompletableFuture<Optional<FileWrapper>> getFriendRoot(NetworkAccess network) {
@@ -124,9 +129,11 @@ public class FriendSourcedTrieNode implements TrieNode {
             return getFriendRoot(network)
                     .thenApply(opt -> opt.map(f -> f.withTrieNode(this)));
         Path file = PathUtil.get(ownerName + path);
-        return network.synchronizer.applyComplexUpdate(cache.owner(), cache.signingPair(), (v, c) -> updateIncludingGroups(v, c, network).thenApply(p -> p.left))
+        return network.synchronizer.applyComplexUpdate(cache.owner(), cache.signingPair(), (v, c) -> getLatestVersion(network)
+                .thenCompose(s -> updateIncludingGroups(v.mergeAndOverwriteWith(s), c, network)).thenApply(p -> p.left))
                 .thenCompose(v -> cache.getByPath(file, v, hasher, network))
-                .thenApply(opt -> opt.map(f -> convert(f, path)));
+                .thenApply(opt -> opt.map(f -> convert(f, path)))
+                .exceptionally(t ->  Optional.empty());
     }
 
     @Override
@@ -155,11 +162,13 @@ public class FriendSourcedTrieNode implements TrieNode {
                                                                         NetworkAccess network) {
         FileProperties.ensureValidPath(path);
         Path dir = PathUtil.get(ownerName + path);
-        return network.synchronizer.applyComplexUpdate(cache.owner(), cache.signingPair(), (v, c) -> updateIncludingGroups(v, c, network).thenApply(p -> p.left))
+        return network.synchronizer.applyComplexUpdate(cache.owner(), cache.signingPair(), (v, c) -> getLatestVersion(network)
+                .thenCompose(s -> updateIncludingGroups(v.mergeAndOverwriteWith(s), c, network)).thenApply(p -> p.left))
                 .thenCompose(v -> cache.getChildren(dir, v, hasher, network))
                 .thenApply(children -> children.stream()
                         .map(f -> convert(f, canonicalise(path) + "/" + f.getName()))
-                        .collect(Collectors.toSet()));
+                        .collect(Collectors.toSet()))
+                .exceptionally(t -> Collections.emptySet());
     }
 
     @Override

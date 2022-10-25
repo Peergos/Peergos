@@ -6,6 +6,7 @@ import peergos.shared.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.io.ipfs.multihash.*;
+import peergos.shared.util.*;
 
 import java.sql.*;
 import java.util.*;
@@ -258,7 +259,12 @@ public class JdbcUsageStore implements UsageStore {
         }
     }
 
+    private Map<PublicKeyHash, String> owners = new LRUCache<>(100);
+
     private String getOwner(PublicKeyHash writer) {
+        String cached = owners.get(writer);
+        if (cached != null)
+            return cached;
         int writerId = getWriterId(writer);
         try (Connection conn = getConnection();
              PreparedStatement search = conn.prepareStatement("SELECT u.name FROM users u, writerusage wu WHERE u.id = wu.user_id AND wu.writer_id = ?;")) {
@@ -266,7 +272,9 @@ public class JdbcUsageStore implements UsageStore {
             ResultSet resultSet = search.executeQuery();
             if (! resultSet.next())
                 throw new IllegalStateException("Unknown writer on this server!");
-            return resultSet.getString(1);
+            String owner = resultSet.getString(1);
+            owners.put(writer, owner);
+            return owner;
         } catch (SQLException sqe) {
             LOG.log(Level.WARNING, sqe.getMessage(), sqe);
             throw new RuntimeException(sqe);

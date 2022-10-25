@@ -97,7 +97,7 @@ public class MultiUserTests {
     }
 
     private List<UserContext> getUserContexts(int size, List<String> passwords) {
-        return getUserContextsForNode(network, random, size, passwords);
+        return getUserContextsForNode(network.clear(), random, size, passwords);
     }
 
     @Test
@@ -486,7 +486,7 @@ public class MultiUserTests {
                 u1.network, u1.crypto, l -> {}).get();
 
         Path filePath = PathUtil.get(u1.username, subdirName, filename);
-        u1.shareWriteAccessWith(filePath, userContexts.stream().map(u -> u.username).collect(Collectors.toSet()));
+        u1.shareWriteAccessWith(filePath, userContexts.stream().map(u -> u.username).collect(Collectors.toSet())).join();
 
         // check other users can read the file
         for (UserContext userContext : userContexts) {
