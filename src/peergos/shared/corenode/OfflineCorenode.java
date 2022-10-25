@@ -1,11 +1,11 @@
-package peergos.server;
+package peergos.shared.corenode;
 
-import peergos.shared.corenode.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.storage.auth.*;
 import peergos.shared.user.*;
+import peergos.shared.util.*;
 
 import java.io.*;
 import java.util.*;
@@ -14,9 +14,9 @@ import java.util.concurrent.*;
 public class OfflineCorenode implements CoreNode {
 
     private final CoreNode target;
-    private final JdbcPkiCache pkiCache;
+    private final PkiCache pkiCache;
 
-    public OfflineCorenode(CoreNode target, JdbcPkiCache pkiCache) {
+    public OfflineCorenode(CoreNode target, PkiCache pkiCache) {
         this.target = target;
         this.pkiCache = pkiCache;
     }
@@ -32,10 +32,12 @@ public class OfflineCorenode implements CoreNode {
 
     @Override
     public CompletableFuture<List<UserPublicKeyLink>> getChain(String username) {
-        return target.getChain(username).thenApply(chain -> {
-            pkiCache.setChain(username, chain);
-            return chain;
-        }).exceptionally(t -> pkiCache.getChain(username));
+        return Futures.asyncExceptionally(
+                () -> target.getChain(username).thenApply(chain -> {
+                    pkiCache.setChain(username, chain);
+                    return chain;
+                }),
+                t -> pkiCache.getChain(username));
     }
 
     @Override
@@ -46,15 +48,17 @@ public class OfflineCorenode implements CoreNode {
         return target.updateChain(username, chain, proofOfWork, token)
                 .thenApply(work -> {
                     if (work.isEmpty())
-                        pkiCache.setChain(username, target.getChain(username).join());
+                        target.getChain(username)
+                                .thenCompose(updated -> pkiCache.setChain(username, updated));
                     return work;
         });
     }
 
     @Override
     public CompletableFuture<String> getUsername(PublicKeyHash identity) {
-        return target.getUsername(identity)
-                .exceptionally(t -> pkiCache.getUsername(identity));
+        return Futures.asyncExceptionally(
+                () -> target.getUsername(identity),
+                t -> pkiCache.getUsername(identity));
     }
 
     @Override
