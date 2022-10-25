@@ -242,7 +242,7 @@ public class SocialFeed {
                                 List<CompletableFuture<Snapshot>> pointers = friends.stream().map(f -> f.getLatestVersion(network)).collect(Collectors.toList());
                                 return Futures.combineAllInOrder(pointers)
                                         .thenApply(versions -> versions.stream().reduce((a, b) -> a.merge(b)))
-                                        .thenApply(vOpt ->  new Pair<>(friends, s.merge(vOpt.get())));
+                                        .thenApply(vOpt ->  new Pair<>(friends, s.mergeAndOverwriteWith(vOpt.get())));
                             })
                             .thenCompose(fv -> Futures.reduceAll(fv.left.stream(), new Pair<>(fv.right, Stream.<Update>empty()),
                                     (p, friend) -> getFriendUpdate(friend, p.left, c, network)

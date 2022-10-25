@@ -129,7 +129,8 @@ public class FriendSourcedTrieNode implements TrieNode {
             return getFriendRoot(network)
                     .thenApply(opt -> opt.map(f -> f.withTrieNode(this)));
         Path file = PathUtil.get(ownerName + path);
-        return network.synchronizer.applyComplexUpdate(cache.owner(), cache.signingPair(), (v, c) -> updateIncludingGroups(v, c, network).thenApply(p -> p.left))
+        return network.synchronizer.applyComplexUpdate(cache.owner(), cache.signingPair(), (v, c) -> getLatestVersion(network)
+                .thenCompose(s -> updateIncludingGroups(v.mergeAndOverwriteWith(s), c, network)).thenApply(p -> p.left))
                 .thenCompose(v -> cache.getByPath(file, v, hasher, network))
                 .thenApply(opt -> opt.map(f -> convert(f, path)));
     }
@@ -160,7 +161,8 @@ public class FriendSourcedTrieNode implements TrieNode {
                                                                         NetworkAccess network) {
         FileProperties.ensureValidPath(path);
         Path dir = PathUtil.get(ownerName + path);
-        return network.synchronizer.applyComplexUpdate(cache.owner(), cache.signingPair(), (v, c) -> updateIncludingGroups(v, c, network).thenApply(p -> p.left))
+        return network.synchronizer.applyComplexUpdate(cache.owner(), cache.signingPair(), (v, c) -> getLatestVersion(network)
+                .thenCompose(s -> updateIncludingGroups(v.mergeAndOverwriteWith(s), c, network)).thenApply(p -> p.left))
                 .thenCompose(v -> cache.getChildren(dir, v, hasher, network))
                 .thenApply(children -> children.stream()
                         .map(f -> convert(f, canonicalise(path) + "/" + f.getName()))
