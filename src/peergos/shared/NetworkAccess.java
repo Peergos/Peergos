@@ -110,6 +110,12 @@ public class NetworkAccess {
                 spaceUsage, serverMessager, hasher, usernames, cache, isJavascript);
     }
 
+    public NetworkAccess withMutablePointerOfflineCache(Function<MutablePointers, MutablePointers> modifiedPointers) {
+        return new NetworkAccess(coreNode, account, social, dhtClient, batCave, modifiedPointers.apply(mutable),
+                tree, synchronizer, instanceAdmin,
+                spaceUsage, serverMessager, hasher, usernames, cache, isJavascript);
+    }
+
     public NetworkAccess withCorenode(CoreNode newCore) {
         return new NetworkAccess(newCore, account, social, dhtClient, batCave, mutable, tree, synchronizer, instanceAdmin,
                 spaceUsage, serverMessager, hasher, usernames, cache, isJavascript);
@@ -190,7 +196,7 @@ public class NetworkAccess {
     }
 
     @JsMethod
-    public static CompletableFuture<NetworkAccess> buildJS(String pkiNodeId, boolean isPublic) {
+    public static CompletableFuture<NetworkAccess> buildJS(String pkiNodeId, boolean isPublic, int cacheSizeKiB) {
         Multihash pkiServerNodeId = Cid.decode(pkiNodeId);
         JavaScriptPoster relative = new JavaScriptPoster(false, isPublic);
         JavaScriptPoster absolute = new JavaScriptPoster(true, true);
@@ -198,7 +204,11 @@ public class NetworkAccess {
 
         return isPeergosServer(relative)
                 .thenApply(isPeergosServer -> new Pair<>(isPeergosServer ? relative : absolute, isPeergosServer))
-                .thenCompose(p -> build(p.left, p.left, pkiServerNodeId, buildLocalDht(p.left, p.right, hasher), 7_000, hasher, true));
+                .thenCompose(p -> build(p.left, p.left, pkiServerNodeId, buildLocalDht(p.left, p.right, hasher), 7_000, hasher, true))
+                .thenApply(net -> net.withStorage(s ->
+                        new UnauthedCachingStorage(s, new JSBlockCache(cacheSizeKiB/1024)))
+                        .withMutablePointerOfflineCache(m -> new OfflinePointerCache(m, new JSPointerCache(2000, net.dhtClient)))
+                );
     }
 
     private static CompletableFuture<Boolean> isPeergosServer(HttpPoster poster) {

@@ -104,6 +104,16 @@ public class BufferedNetworkAccess extends NetworkAccess {
                 mutable, batCave, tree, synchronizer, instanceAdmin, spaceUsage, serverMessager, hasher, usernames, isJavascript());
     }
 
+    @Override
+    public NetworkAccess withMutablePointerOfflineCache(Function<MutablePointers, MutablePointers> modifiedPointers) {
+        MutablePointers newMutable = modifiedPointers.apply(mutable);
+        BufferedPointers pointerBuffer = new BufferedPointers(newMutable);
+        WriteSynchronizer synchronizer = new WriteSynchronizer(newMutable, blockBuffer, hasher);
+        MutableTree tree = new MutableTreeImpl(newMutable, blockBuffer, hasher, synchronizer);
+        return new BufferedNetworkAccess(blockBuffer, pointerBuffer, bufferSize, coreNode, account, social, blocks,
+                newMutable, batCave, tree, synchronizer, instanceAdmin, spaceUsage, serverMessager, hasher, usernames, isJavascript());
+    }
+
     public NetworkAccess withCorenode(CoreNode newCore) {
         return new BufferedNetworkAccess(blockBuffer, pointerBuffer, bufferSize, newCore, account, social, dhtClient,
                 mutable, batCave, tree, synchronizer, instanceAdmin, spaceUsage, serverMessager, hasher, usernames, isJavascript());
