@@ -518,7 +518,7 @@ public class IncomingCapCache {
                                     false, updatedRoot.version, c, network, crypto, x -> {}, crypto.random.randomBytes(RelativeCapability.MAP_KEY_LENGTH),
                                     Optional.of(Bat.random(crypto.random)),
                                     root.mirrorBatId()))
-                            .thenApply(v -> new Pair<>(v, diff));
+                            .thenApply(v -> new Pair<>(s.mergeAndOverwriteWith(v), diff));
                 });
     }
 
