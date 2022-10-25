@@ -1,6 +1,5 @@
 package peergos.server.storage.auth;
 
-import peergos.server.*;
 import peergos.server.sql.*;
 import peergos.server.util.Logging;
 import peergos.shared.cbor.*;
