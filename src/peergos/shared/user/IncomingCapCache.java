@@ -390,6 +390,8 @@ public class IncomingCapCache {
         // if the friend's mutable pointer hasn't changed since our last update we can short circuit early
         PublicKeyHash owner = sharedDir.pointer.owner;
         PublicKeyHash writer = sharedDir.pointer.writer;
+        if (! s.contains(writer))
+            return Futures.of(new Pair<>(s, CapsDiff.empty()));
         CommittedWriterData latestCwd = s.get(writer);
         MaybeMultihash latestRoot = latestCwd.hash;
         Pair<MaybeMultihash, CapsDiff> cached = pointerCache.get(writer);
@@ -421,21 +423,23 @@ public class IncomingCapCache {
                                                    Snapshot s,
                                                    NetworkAccess network) {
         return network.getFile(originalSharedDir, s)
-                .thenCompose(shared -> retrieveNewCaps(shared.get(), current, network, crypto))
-                .thenCompose(direct -> Futures.combineAll(groups.stream()
-                        .parallel()
-                        .map(e -> network.getFile(e, s)
-                                .thenApply(Optional::get)
-                                .thenCompose(sharedDir -> retrieveNewCaps(sharedDir,
-                                        current.groups.getOrDefault(sharedDir.getName(), ProcessedCaps.empty()), network, crypto)
-                                        .thenApply(diff -> Optional.of(new Pair<>(sharedDir.getName(), diff))))
-                                .exceptionally(t -> Optional.empty()))
-                        .collect(Collectors.toList()))
-                        .thenApply(groupDiffs -> groupDiffs.stream()
-                                .flatMap(Optional::stream)
-                                .reduce(direct,
-                                        (a, p) -> a.mergeGroups(current.createGroupDiff(p.left, p.right)),
-                                        CapsDiff::mergeGroups)));
+                .thenCompose(shared -> shared.isEmpty() ?
+                        Futures.of(CapsDiff.empty()) :
+                        retrieveNewCaps(shared.get(), current, network, crypto)
+                                .thenCompose(direct -> Futures.combineAll(groups.stream()
+                                                .parallel()
+                                                .map(e -> network.getFile(e, s)
+                                                        .thenApply(Optional::get)
+                                                        .thenCompose(sharedDir -> retrieveNewCaps(sharedDir,
+                                                                current.groups.getOrDefault(sharedDir.getName(), ProcessedCaps.empty()), network, crypto)
+                                                                .thenApply(diff -> Optional.of(new Pair<>(sharedDir.getName(), diff))))
+                                                        .exceptionally(t -> Optional.empty()))
+                                                .collect(Collectors.toList()))
+                                        .thenApply(groupDiffs -> groupDiffs.stream()
+                                                .flatMap(Optional::stream)
+                                                .reduce(direct,
+                                                        (a, p) -> a.mergeGroups(current.createGroupDiff(p.left, p.right)),
+                                                        CapsDiff::mergeGroups))));
     }
 
     private static CompletableFuture<CapsDiff> retrieveNewCaps(FileWrapper sharedDir,
