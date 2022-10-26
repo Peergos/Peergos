@@ -440,7 +440,7 @@ public class NetworkAccess {
     }
 
     private static CompletableFuture<EntryPoint> getUptodateEntryPoint(EntryPoint e, NetworkAccess network) {
-        // User might have changed their password and thus identity key, check for an update
+        // User might have changed their identity key, check for an update
         return network.coreNode.updateUser(e.ownerName)
                 .thenCompose(x -> network.coreNode.getPublicKeyHash(e.ownerName))
                 .thenApply(currentIdOpt -> {

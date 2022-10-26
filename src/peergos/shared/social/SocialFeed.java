@@ -239,10 +239,17 @@ public class SocialFeed {
                 (s, c) -> {
                     return context.getFollowingNodes()
                             .thenCompose(friends -> {
-                                List<CompletableFuture<Snapshot>> pointers = friends.stream().map(f -> f.getLatestVersion(network)).collect(Collectors.toList());
+                                List<CompletableFuture<Optional<Pair<FriendSourcedTrieNode,Snapshot>>>> pointers = friends.stream()
+                                        .map(f -> f.getLatestVersion(network).thenApply(v -> Optional.of(new Pair<>(f, v))).exceptionally(t -> Optional.empty()))
+                                        .collect(Collectors.toList());
                                 return Futures.combineAllInOrder(pointers)
-                                        .thenApply(versions -> versions.stream().reduce((a, b) -> a.merge(b)))
-                                        .thenApply(vOpt ->  new Pair<>(friends, vOpt.map(s::mergeAndOverwriteWith).orElse(s)));
+                                        .thenApply(pairs -> pairs.stream()
+                                                .flatMap(Optional::stream)
+                                                .map(p -> new Pair<>(Stream.of(p.left), p.right))
+                                                .reduce((a, b) -> new Pair<>(Stream.concat(a.left, b.left), a.right.merge(b.right))))
+                                        .thenApply(combined ->  new Pair<>(
+                                                combined.map(p ->  p.left.collect(Collectors.toSet())).orElse(Collections.emptySet()),
+                                                combined.map(p ->  p.right).map(s::mergeAndOverwriteWith).orElse(s)));
                             })
                             .thenCompose(fv -> Futures.reduceAll(fv.left.stream(), new Pair<>(fv.right, Stream.<Update>empty()),
                                     (p, friend) -> getFriendUpdate(friend, p.left, c, network)
