@@ -484,7 +484,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                                              boolean isRaw,
                                              TransactionId tid) {
         return CompletableFuture.completedFuture(blocks.stream()
-                .map(b -> put(b, isRaw, tid, owner))
+                .map(b -> getWithBackoff(() -> put(b, isRaw, tid, owner)))
                 .collect(Collectors.toList()));
     }
 
@@ -511,6 +511,12 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
             blockPutBytes.labels("size").observe(data.length);
             return cid;
         } catch (IOException e) {
+            String msg = e.getMessage();
+            boolean rateLimited = msg.startsWith("<?xml version=\"1.0\" encoding=\"UTF-8\"?><Error><Code>SlowDown</Code>");
+            if (rateLimited) {
+                S3BlockStorage.rateLimited.inc();
+                throw new RateLimitException();
+            }
             LOG.log(Level.SEVERE, e.getMessage(), e);
             throw new RuntimeException(e.getMessage(), e);
         } finally {
