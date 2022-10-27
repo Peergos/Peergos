@@ -794,7 +794,7 @@ public class UserContext {
                                             WriterData newIdBlock = cwd.props.withAlgorithm(newAlgorithm);
                                             byte[] rawBlock = newIdBlock.serialize();
                                             return crypto.hasher.sha256(rawBlock).thenCompose(blockHash -> {
-                                                OpLog.BlockWrite blockWrite = new OpLog.BlockWrite(signer.publicKeyHash, signer.secret.signMessage(blockHash), rawBlock, false);
+                                                OpLog.BlockWrite blockWrite = new OpLog.BlockWrite(signer.publicKeyHash, signer.secret.signMessage(blockHash), rawBlock, false, Optional.empty());
                                                 MaybeMultihash newHash = MaybeMultihash.of(new Cid(1, Cid.Codec.DagCbor, Multihash.Type.sha2_256, blockHash));
                                                 PointerUpdate pointerCas = new PointerUpdate(cwd.hash, newHash, PointerUpdate.increment(cwd.sequence));
                                                 OpLog.PointerWrite pointerWrite = new OpLog.PointerWrite(signer.publicKeyHash, signer.secret.signMessage(pointerCas.serialize()));
