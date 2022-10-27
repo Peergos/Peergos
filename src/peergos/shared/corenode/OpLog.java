@@ -137,7 +137,7 @@ public class OpLog implements Cborable, Account, MutablePointers, ContentAddress
         byte[] hash = Arrays.copyOfRange(signedHash, ED25519_SIGNATURE_SIZE, signedHash.length);
         Cid h = new Cid(1, isRaw ? Cid.Codec.Raw : Cid.Codec.DagCbor, Multihash.Type.sha2_256, hash);
         storage.put(h, block);
-        operations.add(Either.b(new BlockWrite(writer, signedHash, block, isRaw)));
+        operations.add(Either.b(new BlockWrite(writer, signedHash, block, isRaw, Optional.empty())));
         return Futures.of(h);
     }
 
@@ -160,12 +160,14 @@ public class OpLog implements Cborable, Account, MutablePointers, ContentAddress
         public final PublicKeyHash writer;
         public final byte[] signature, block;
         public final boolean isRaw;
+        public final Optional<ProgressConsumer<Long>> progressMonitor;
 
-        public BlockWrite(PublicKeyHash writer, byte[] signature, byte[] block, boolean isRaw) {
+        public BlockWrite(PublicKeyHash writer, byte[] signature, byte[] block, boolean isRaw, Optional<ProgressConsumer<Long>> progressMonitor) {
             this.writer = writer;
             this.signature = signature;
             this.block = block;
             this.isRaw = isRaw;
+            this.progressMonitor = progressMonitor;
         }
 
         @Override
@@ -187,7 +189,7 @@ public class OpLog implements Cborable, Account, MutablePointers, ContentAddress
             byte[] signature = m.getByteArray("s");
             byte[] block = m.getByteArray("b");
             boolean isRaw = m.getBoolean("r");
-            return new BlockWrite(writer, signature, block, isRaw);
+            return new BlockWrite(writer, signature, block, isRaw, Optional.empty());
         }
 
         @Override

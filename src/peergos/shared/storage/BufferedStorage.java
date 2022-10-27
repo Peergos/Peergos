@@ -64,7 +64,7 @@ public class BufferedStorage extends DelegatingStorage {
                                             List<byte[]> signedHashes,
                                             List<byte[]> blocks,
                                             TransactionId tid) {
-        return put(writer, blocks, signedHashes, false);
+        return put(writer, blocks, signedHashes, false,Optional.empty());
     }
 
     @Override
@@ -74,17 +74,17 @@ public class BufferedStorage extends DelegatingStorage {
                                                List<byte[]> blocks,
                                                TransactionId tid,
                                                ProgressConsumer<Long> progressConsumer) {
-        blocks.forEach(b -> progressConsumer.accept((long)b.length));
-        return put(writer, blocks, signatures, true);
+        return put(writer, blocks, signatures, true, Optional.of(progressConsumer));
     }
 
     private CompletableFuture<List<Cid>> put(PublicKeyHash writer,
                                              List<byte[]> blocks,
                                              List<byte[]> signatures,
-                                             boolean isRaw) {
+                                             boolean isRaw,
+                                             Optional<ProgressConsumer<Long>> progressConsumer) {
         return Futures.combineAllInOrder(IntStream.range(0, blocks.size())
                 .mapToObj(i -> hashToCid(blocks.get(i), isRaw)
-                        .thenApply(cid -> put(cid, new OpLog.BlockWrite(writer, signatures.get(i), blocks.get(i), isRaw))))
+                        .thenApply(cid -> put(cid, new OpLog.BlockWrite(writer, signatures.get(i), blocks.get(i), isRaw, progressConsumer))))
                 .collect(Collectors.toList()));
     }
 
@@ -124,16 +124,20 @@ public class BufferedStorage extends DelegatingStorage {
                                       Hasher hasher,
                                       TransactionId tid) {
         // Do NOT do signature as this block will likely be GC'd before being committed, so we can delay calculating signatures until commit
-        return put(writer.publicKeyHash, Collections.singletonList(block), Collections.singletonList(new byte[0]), false)
+        return put(writer.publicKeyHash, Collections.singletonList(block), Collections.singletonList(new byte[0]), false, Optional.empty())
                 .thenApply(hashes -> hashes.get(0));
     }
 
     public CompletableFuture<Boolean> signBlocks(Map<PublicKeyHash, SigningPrivateKeyAndPublicHash> writers) {
         storage.putAll(storage.entrySet().stream()
-                .map(e -> new Pair<>(e.getKey(), new OpLog.BlockWrite(e.getValue().writer,
-                        e.getValue().signature.length > 0 ? e.getValue().signature :
-                                writers.get(e.getValue().writer).secret.signMessage(e.getKey().getHash()),
-                        e.getValue().block, e.getValue().isRaw)))
+                .map(e -> {
+                    OpLog.BlockWrite block = e.getValue();
+                    return new Pair<>(e.getKey(), new OpLog.BlockWrite(block.writer,
+                            block.signature.length > 0 ?
+                                    block.signature :
+                                    writers.get(block.writer).secret.signMessage(e.getKey().getHash()),
+                            block.block, block.isRaw, block.progressMonitor));
+                })
                 .collect(Collectors.toMap(p -> p.left, p -> p.right)));
         return Futures.of(true);
     }
@@ -220,7 +224,11 @@ public class BufferedStorage extends DelegatingStorage {
                         .filter(b -> ! b.isEmpty())
                         .map(batch -> target.putRaw(owner, writer,
                                 batch.stream().map(w -> w.signature).collect(Collectors.toList()),
-                                batch.stream().map(w -> w.block).collect(Collectors.toList()), tid, x-> {}))
+                                batch.stream().map(w -> w.block).collect(Collectors.toList()), tid, x-> {})
+                                .thenApply(res -> {
+                                    batch.stream().forEach(w ->  w.progressMonitor.ifPresent(m -> m.accept((long)w.block.length)));
+                                    return res;
+                                }))
                         .collect(Collectors.toList()))
                 .thenCompose(a -> Futures.combineAllInOrder(cborBatches.stream()
                         .filter(b -> ! b.isEmpty())
