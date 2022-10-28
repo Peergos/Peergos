@@ -114,6 +114,13 @@ public class BufferedNetworkAccess extends NetworkAccess {
                 newMutable, batCave, tree, synchronizer, instanceAdmin, spaceUsage, serverMessager, hasher, usernames, isJavascript());
     }
 
+    @Override
+    public NetworkAccess withBatOfflineCache(Function<BatCave, BatCave> batCaveFunc) {
+        System.out.println("KEV BufferedNetworkAccess.withBatOfflineCache");
+        return new BufferedNetworkAccess(blockBuffer, pointerBuffer, bufferSize, coreNode, account, social, blocks,
+                mutable, batCaveFunc.apply(batCave), tree, synchronizer, instanceAdmin, spaceUsage, serverMessager, hasher, usernames, isJavascript());
+    }
+
     public NetworkAccess withCorenode(CoreNode newCore) {
         return new BufferedNetworkAccess(blockBuffer, pointerBuffer, bufferSize, newCore, account, social, dhtClient,
                 mutable, batCave, tree, synchronizer, instanceAdmin, spaceUsage, serverMessager, hasher, usernames, isJavascript());

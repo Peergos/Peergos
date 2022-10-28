@@ -111,11 +111,17 @@ public class NetworkAccess {
     }
 
     public NetworkAccess withMutablePointerOfflineCache(Function<MutablePointers, MutablePointers> modifiedPointers) {
+        System.out.println("KEV withMutablePointerOfflineCache");
         return new NetworkAccess(coreNode, account, social, dhtClient, batCave, modifiedPointers.apply(mutable),
                 tree, synchronizer, instanceAdmin,
                 spaceUsage, serverMessager, hasher, usernames, cache, isJavascript);
     }
-
+    public NetworkAccess withBatOfflineCache(Function<BatCave, BatCave> batCaveFunc) {
+        System.out.println("KEV NetworkAccess.withBatOfflineCache");
+        return new NetworkAccess(coreNode, account, social, dhtClient, batCaveFunc.apply(batCave), mutable,
+                tree, synchronizer, instanceAdmin,
+                spaceUsage, serverMessager, hasher, usernames, cache, isJavascript);
+    }
     public NetworkAccess withCorenode(CoreNode newCore) {
         return new NetworkAccess(newCore, account, social, dhtClient, batCave, mutable, tree, synchronizer, instanceAdmin,
                 spaceUsage, serverMessager, hasher, usernames, cache, isJavascript);
@@ -208,6 +214,7 @@ public class NetworkAccess {
                 .thenApply(net -> net.withStorage(s ->
                         new UnauthedCachingStorage(s, new JSBlockCache(cacheSizeKiB/1024)))
                         .withMutablePointerOfflineCache(m -> new OfflinePointerCache(m, new JSPointerCache(2000, net.dhtClient)))
+                        .withBatOfflineCache(bats -> new OfflineBatCache(bats, new JSBatCache()))
                 );
     }
 
