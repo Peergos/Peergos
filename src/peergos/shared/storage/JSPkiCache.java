@@ -37,7 +37,7 @@ public class JSPkiCache implements PkiCache {
     public CompletableFuture<Boolean> setChain(String username, List<UserPublicKeyLink> chain) {
         String[] serialisedUserPublicKeyLinks = new String[chain.size()];
         for(int i =0; i < chain.size(); i++) {
-            serialisedUserPublicKeyLinks[i] = Multibase.encode(Multibase.Base.Base58BTC, new CborObject.CborList(chain).serialize());
+            serialisedUserPublicKeyLinks[i] = Multibase.encode(Multibase.Base.Base58BTC, chain.get(i).serialize());
         }
         PublicKeyHash owner = chain.get(chain.size() - 1).owner;
         String serialisedOwner = new String(Base64.getEncoder().encode(owner.serialize()));
