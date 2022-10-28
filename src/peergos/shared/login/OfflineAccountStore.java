@@ -2,6 +2,7 @@ package peergos.shared.login;
 
 import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.user.*;
+import peergos.shared.util.*;
 
 import java.util.*;
 import java.util.concurrent.*;
@@ -27,10 +28,11 @@ public class OfflineAccountStore implements Account {
 
     @Override
     public CompletableFuture<UserStaticData> getLoginData(String username, PublicSigningKey authorisedReader, byte[] auth) {
-        return target.getLoginData(username, authorisedReader, auth)
-                .thenApply(entryPoints -> {
-                    local.setLoginData(new LoginData(username, entryPoints, authorisedReader, Optional.empty()));
-                    return entryPoints;
-                }).exceptionally(t -> local.getEntryData(username, authorisedReader).join());
+        return Futures.asyncExceptionally(() -> target.getLoginData(username, authorisedReader, auth)
+                        .thenApply(entryPoints -> {
+                            local.setLoginData(new LoginData(username, entryPoints, authorisedReader, Optional.empty()));
+                            return entryPoints;
+                        }),
+                t -> local.getEntryData(username, authorisedReader));
     }
 }
