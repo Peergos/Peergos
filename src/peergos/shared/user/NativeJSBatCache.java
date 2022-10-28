@@ -11,7 +11,7 @@ public class NativeJSBatCache {
 
     public native void init();
 
-    public native CompletableFuture<List<BatWithId>> getUserBats(String username);
+    public native CompletableFuture<List<String>> getUserBats(String username);
 
     public native CompletableFuture<Boolean> setUserBats(String username, String[] serialisedBats);
 }

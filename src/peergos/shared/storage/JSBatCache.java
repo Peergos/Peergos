@@ -4,6 +4,7 @@ import peergos.shared.storage.auth.BatCache;
 import peergos.shared.storage.auth.BatWithId;
 import peergos.shared.user.NativeJSBatCache;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
@@ -21,7 +22,11 @@ public class JSBatCache implements BatCache {
             if (bats.isEmpty()) {
                 throw new RuntimeException("Client Offline!");
             }
-            return bats;
+            List<BatWithId> batsWithId = new ArrayList<>();
+            for(String bat : bats) {
+                batsWithId.add(BatWithId.decode(bat));
+            }
+            return batsWithId;
         });
     }
 
