@@ -10,6 +10,7 @@ import peergos.shared.crypto.hash.*;
 import peergos.shared.hamt.*;
 import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.io.ipfs.multihash.*;
+import peergos.shared.login.*;
 import peergos.shared.mutable.*;
 import peergos.shared.social.*;
 import peergos.shared.storage.*;
@@ -116,12 +117,20 @@ public class NetworkAccess {
                 tree, synchronizer, instanceAdmin,
                 spaceUsage, serverMessager, hasher, usernames, cache, isJavascript);
     }
+
     public NetworkAccess withBatOfflineCache(Function<BatCave, BatCave> batCaveFunc) {
         System.out.println("KEV NetworkAccess.withBatOfflineCache");
         return new NetworkAccess(coreNode, account, social, dhtClient, batCaveFunc.apply(batCave), mutable,
                 tree, synchronizer, instanceAdmin,
                 spaceUsage, serverMessager, hasher, usernames, cache, isJavascript);
     }
+
+    public NetworkAccess withAccountCache(Function<Account, Account> wrapper) {
+        return new NetworkAccess(coreNode, wrapper.apply(account), social, dhtClient, batCave, mutable,
+                tree, synchronizer, instanceAdmin,
+                spaceUsage, serverMessager, hasher, usernames, cache, isJavascript);
+    }
+
     public NetworkAccess withCorenode(CoreNode newCore) {
         return new NetworkAccess(newCore, account, social, dhtClient, batCave, mutable, tree, synchronizer, instanceAdmin,
                 spaceUsage, serverMessager, hasher, usernames, cache, isJavascript);
@@ -202,7 +211,10 @@ public class NetworkAccess {
     }
 
     @JsMethod
-    public static CompletableFuture<NetworkAccess> buildJS(String pkiNodeId, boolean isPublic, int cacheSizeKiB) {
+    public static CompletableFuture<NetworkAccess> buildJS(String pkiNodeId,
+                                                           boolean isPublic,
+                                                           int cacheSizeKiB,
+                                                           boolean allowOfflineLogin) {
         Multihash pkiServerNodeId = Cid.decode(pkiNodeId);
         JavaScriptPoster relative = new JavaScriptPoster(false, isPublic);
         JavaScriptPoster absolute = new JavaScriptPoster(true, true);
@@ -213,9 +225,12 @@ public class NetworkAccess {
                 .thenCompose(p -> build(p.left, p.left, pkiServerNodeId, buildLocalDht(p.left, p.right, hasher), 7_000, hasher, true))
                 .thenApply(net -> net.withStorage(s ->
                         new UnauthedCachingStorage(s, new JSBlockCache(cacheSizeKiB/1024)))
-                        .withMutablePointerOfflineCache(m -> new OfflinePointerCache(m, new JSPointerCache(2000, net.dhtClient)))
-                        .withBatOfflineCache(bats -> new OfflineBatCache(bats, new JSBatCache()))
-                );
+                        .withMutablePointerOfflineCache(m -> new OfflinePointerCache(m, new JSPointerCache(2000, net.dhtClient))))
+                .thenApply(net -> ! allowOfflineLogin ?
+                        net :
+                        net.withBatOfflineCache(bats -> new OfflineBatCache(bats, new JSBatCache()))
+                                .withAccountCache(a -> new OfflineAccountStore(net.account, new JSAccountCache()))
+                                .withCorenode(new OfflineCorenode(net.coreNode, new JSPkiCache())));
     }
 
     private static CompletableFuture<Boolean> isPeergosServer(HttpPoster poster) {
