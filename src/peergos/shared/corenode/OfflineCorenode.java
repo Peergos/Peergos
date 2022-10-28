@@ -34,7 +34,8 @@ public class OfflineCorenode implements CoreNode {
     public CompletableFuture<List<UserPublicKeyLink>> getChain(String username) {
         return Futures.asyncExceptionally(
                 () -> target.getChain(username).thenApply(chain -> {
-                    pkiCache.setChain(username, chain);
+                    if (!chain.isEmpty())
+                        pkiCache.setChain(username, chain);
                     return chain;
                 }),
                 t -> pkiCache.getChain(username));

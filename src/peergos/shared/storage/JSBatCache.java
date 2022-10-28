@@ -17,7 +17,12 @@ public class JSBatCache implements BatCache {
 
     @Override
     public CompletableFuture<List<BatWithId>> getUserBats(String username) {
-        return cache.getUserBats(username);
+        return cache.getUserBats(username).thenApply(bats -> {
+            if (bats.isEmpty()) {
+                throw new RuntimeException("Client Offline!");
+            }
+            return bats;
+        });
     }
 
     @Override

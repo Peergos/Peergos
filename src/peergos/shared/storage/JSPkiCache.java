@@ -23,6 +23,8 @@ public class JSPkiCache implements PkiCache {
     @Override
     public CompletableFuture<List<UserPublicKeyLink>> getChain(String username) {
         return cache.getChain(username).thenApply(serialisedUserPublicKeyLinks -> {
+            if (serialisedUserPublicKeyLinks.isEmpty())
+                throw new RuntimeException("Client Offline!");
             List<UserPublicKeyLink> list = new ArrayList();
             for(String userPublicKeyLink :  serialisedUserPublicKeyLinks) {
                 list.add(UserPublicKeyLink.fromCbor(CborObject.fromByteArray(Multibase.decode(userPublicKeyLink))));
@@ -44,7 +46,12 @@ public class JSPkiCache implements PkiCache {
 
     @Override
     public CompletableFuture<String> getUsername(PublicKeyHash key) {
-        return cache.getUsername(new String(Base64.getEncoder().encode(key.serialize())));
+        return cache.getUsername(new String(Base64.getEncoder().encode(key.serialize()))).thenApply(username -> {
+           if (username.isEmpty()) {
+               throw new RuntimeException("Client Offline!");
+           }
+           return username;
+        });
     }
 
 }
