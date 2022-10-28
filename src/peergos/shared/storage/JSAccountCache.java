@@ -20,15 +20,12 @@ public class JSAccountCache implements LoginCache {
     @Override
     public CompletableFuture<Boolean> setLoginData(LoginData login) {
         byte[] entrySerialized = login.entryPoints.toCbor().serialize();
-        byte[] readerSerialized = login.authorisedReader.toCbor().serialize();
-        String key = login.username + Multibase.encode(Multibase.Base.Base58BTC, readerSerialized);
-        return cache.setLoginData(key, entrySerialized);
+        return cache.setLoginData(login.username, entrySerialized);
     }
 
     @Override
     public CompletableFuture<UserStaticData> getEntryData(String username, PublicSigningKey authorisedReader) {
-        String key = username + Multibase.encode(Multibase.Base.Base58BTC, authorisedReader.toCbor().serialize());
-        return cache.getEntryData(key).thenApply(entryPoints -> {
+        return cache.getEntryData(username).thenApply(entryPoints -> {
             if (entryPoints == null) {
                 throw new RuntimeException("Client Offline!");
             }

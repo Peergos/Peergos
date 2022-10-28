@@ -160,11 +160,38 @@ public class UserContext {
         }).exceptionally(Futures::logAndThrow);
     }
 
-    public static CompletableFuture<UserContext> signIn(String username, UserWithRoot userWithRoot, NetworkAccess network
-            , Crypto crypto, Consumer<String> progressCallback) {
+    public static CompletableFuture<UserContext> signIn(String username,
+                                                        UserWithRoot userWithRoot,
+                                                        NetworkAccess network,
+                                                        Crypto crypto,
+                                                        Consumer<String> progressCallback) {
         progressCallback.accept("Logging in");
         return getWriterDataCbor(network, username)
                 .thenCompose(pair -> login(username, userWithRoot, pair, network, crypto, progressCallback))
+                .exceptionally(Futures::logAndThrow);
+    }
+
+    @JsMethod
+    public static CompletableFuture<UserContext> restoreContext(String username,
+                                                                SymmetricKey loginRoot,
+                                                                UserStaticData entryData,
+                                                                NetworkAccess network,
+                                                                Crypto crypto,
+                                                                Consumer<String> progressCallback) {
+        progressCallback.accept("Logging in");
+        return getWriterDataCbor(network, username)
+                .thenCompose(pair -> {
+                    WriterData userData = WriterData.fromCbor(pair.right);
+                    boolean legacyAccount = userData.staticData.isPresent();
+                    if (legacyAccount)
+                        throw new IllegalStateException("Legacy accounts can't stay logged in. Please change your password to upgrade your account.");
+
+                    UserStaticData.EntryPoints staticData = entryData.getData(loginRoot);
+                    SigningPrivateKeyAndPublicHash signer =
+                            new SigningPrivateKeyAndPublicHash(userData.controller, staticData.identity.get().secretSigningKey);
+                    BoxingKeyPair boxer = staticData.boxer.orElseThrow(() -> new IllegalStateException("No social keypair present in login data!"));
+                    return login(username, userData, staticData, signer, boxer, loginRoot, pair, network, crypto, progressCallback);
+                })
                 .exceptionally(Futures::logAndThrow);
     }
 
@@ -177,6 +204,7 @@ public class UserContext {
         try {
             WriterData userData = WriterData.fromCbor(pair.right);
             boolean legacyAccount = userData.staticData.isPresent();
+            SymmetricKey loginRoot = generatedCredentials.getRoot();
             PublicSigningKey loginPub = generatedCredentials.getUser().publicSigningKey;
             SecretSigningKey loginSecret = generatedCredentials.getUser().secretSigningKey;
             return (legacyAccount ?
@@ -184,7 +212,7 @@ public class UserContext {
                     network.account.getLoginData(username, loginPub, TimeLimitedClient.signNow(loginSecret))).thenCompose(entryData -> {
                 UserStaticData.EntryPoints staticData;
                 try {
-                    staticData = entryData.getData(generatedCredentials.getRoot());
+                    staticData = entryData.getData(loginRoot);
                 } catch (Exception e) {
                     if (legacyAccount)
                         throw new IllegalStateException("Incorrect password");
@@ -194,32 +222,50 @@ public class UserContext {
                 SigningPrivateKeyAndPublicHash signer =
                         new SigningPrivateKeyAndPublicHash(userData.controller,
                                 legacyAccount ? loginSecret : staticData.identity.get().secretSigningKey);
-                return createOurFileTreeOnly(username, staticData, userData, network)
-                        .thenCompose(root -> TofuCoreNode.load(username, root, network, crypto)
-                                .thenCompose(tofuCorenode -> {
-                                    return buildTransactionService(root, username, network, crypto)
-                                            .thenCompose(transactions -> getMirrorBat(username, signer, network)
-                                                    .thenCompose(mirrorBatId -> buildCapCache(root, username, mirrorBatId.map(BatWithId::id), network, crypto)
-                                                            .thenCompose(capCache -> SharedWithCache.initOrBuild(root, username, network, crypto)
-                                                                    .thenCompose(sharedWith -> {
-                                                                        UserContext result = new UserContext(username,
-                                                                                signer,
-                                                                                staticData.boxer.orElse(generatedCredentials.getBoxingPair()),
-                                                                                generatedCredentials.getRoot(),
-                                                                                network.withCorenode(tofuCorenode),
-                                                                                crypto,
-                                                                                new CommittedWriterData(pair.left.updated, userData, pair.left.sequence),
-                                                                                root,
-                                                                                transactions,
-                                                                                capCache,
-                                                                                sharedWith,
-                                                                                mirrorBatId);
-
-                                                                        return result.init(progressCallback)
-                                                                                .exceptionally(Futures::logAndThrow);
-                                                                    }))));
-                                }));
+                BoxingKeyPair boxer = staticData.boxer.orElse(generatedCredentials.getBoxingPair());
+                return login(username, userData, staticData, signer, boxer, loginRoot, pair, network, crypto, progressCallback);
             });
+        } catch (Throwable t) {
+            throw new IllegalStateException("Incorrect password");
+        }
+    }
+
+    private static CompletableFuture<UserContext> login(String username,
+                                                        WriterData userData,
+                                                        UserStaticData.EntryPoints staticData,
+                                                        SigningPrivateKeyAndPublicHash signer,
+                                                        BoxingKeyPair boxer,
+                                                        SymmetricKey login,
+                                                        Pair<PointerUpdate, CborObject> pair,
+                                                        NetworkAccess network,
+                                                        Crypto crypto,
+                                                        Consumer<String> progressCallback) {
+        try {
+            return createOurFileTreeOnly(username, staticData, userData, network)
+                    .thenCompose(root -> TofuCoreNode.load(username, root, network, crypto)
+                            .thenCompose(tofuCorenode -> {
+                                return buildTransactionService(root, username, network, crypto)
+                                        .thenCompose(transactions -> getMirrorBat(username, signer, network)
+                                                .thenCompose(mirrorBatId -> buildCapCache(root, username, mirrorBatId.map(BatWithId::id), network, crypto)
+                                                        .thenCompose(capCache -> SharedWithCache.initOrBuild(root, username, network, crypto)
+                                                                .thenCompose(sharedWith -> {
+                                                                    UserContext result = new UserContext(username,
+                                                                            signer,
+                                                                            boxer,
+                                                                            login,
+                                                                            network.withCorenode(tofuCorenode),
+                                                                            crypto,
+                                                                            new CommittedWriterData(pair.left.updated, userData, pair.left.sequence),
+                                                                            root,
+                                                                            transactions,
+                                                                            capCache,
+                                                                            sharedWith,
+                                                                            mirrorBatId);
+
+                                                                    return result.init(progressCallback)
+                                                                            .exceptionally(Futures::logAndThrow);
+                                                                }))));
+                            }));
         } catch (Throwable t) {
             throw new IllegalStateException("Incorrect password");
         }
