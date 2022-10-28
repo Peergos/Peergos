@@ -15,7 +15,6 @@ public class JSAccountCache implements LoginCache {
     private final NativeJSAccountCache cache = new NativeJSAccountCache();
 
     public JSAccountCache() {
-        System.out.println("KEV JSLoginCache calling init");
         cache.init();
     }
     @Override

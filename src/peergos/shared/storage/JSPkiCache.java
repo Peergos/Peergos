@@ -17,7 +17,6 @@ public class JSPkiCache implements PkiCache {
     private final NativeJSPkiCache cache = new NativeJSPkiCache();
 
     public JSPkiCache() {
-        System.out.println("KEV JSPkiCache calling init");
         cache.init();
     }
 

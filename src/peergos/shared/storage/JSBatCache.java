@@ -12,7 +12,6 @@ public class JSBatCache implements BatCache {
     private final NativeJSBatCache cache = new NativeJSBatCache();
 
     public JSBatCache() {
-        System.out.println("KEV JSBatCache calling init");
         cache.init();
     }
 
