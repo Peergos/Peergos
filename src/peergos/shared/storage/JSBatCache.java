@@ -21,7 +21,7 @@ public class JSBatCache implements EncryptedBatCache {
     @Override
     public CompletableFuture<List<BatWithId>> getUserBats(String username, SymmetricKey loginRoot) {
         return cache.getUserBats(username).thenApply(encryptedBats -> {
-            if (encryptedBats.length == 0) {
+            if (encryptedBats == null) {
                 throw new RuntimeException("No BAT cached for user: " + username);
             }
             return CipherText.fromCbor(CborObject.fromByteArray(encryptedBats)).decrypt(loginRoot, BatList::fromCbor).bats;
