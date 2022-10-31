@@ -245,7 +245,7 @@ public class UserContext {
                     .thenCompose(root -> TofuCoreNode.load(username, root, network, crypto)
                             .thenCompose(tofuCorenode -> {
                                 return buildTransactionService(root, username, network, crypto)
-                                        .thenCompose(transactions -> getMirrorBat(username, signer, network)
+                                        .thenCompose(transactions -> getMirrorBat(username, signer, login, network)
                                                 .thenCompose(mirrorBatId -> buildCapCache(root, username, mirrorBatId.map(BatWithId::id), network, crypto)
                                                         .thenCompose(capCache -> SharedWithCache.initOrBuild(root, username, network, crypto)
                                                                 .thenCompose(sharedWith -> {
@@ -565,15 +565,26 @@ public class UserContext {
 
     public static CompletableFuture<Optional<BatWithId>> getMirrorBat(String username,
                                                                       SigningPrivateKeyAndPublicHash identity,
+                                                                      SymmetricKey loginRoot,
                                                                       NetworkAccess network) {
-        return network.batCave.getUserBats(username, identity)
+        return Futures.asyncExceptionally(
+                        () -> network.batCave.getUserBats(username, identity).thenApply(res -> {
+                            if (!res.isEmpty() && network.batCache.isPresent())
+                                network.batCache.get().setUserBats(username, res, loginRoot);
+                            return res;
+                        }),
+                        t -> {
+                            if (network.batCache.isPresent())
+                                return network.batCache.get().getUserBats(username, loginRoot);
+                            throw new RuntimeException(t);
+                        })
                 .thenApply(bats -> bats.isEmpty() ?
                         Optional.empty() :
                         Optional.of(bats.get(bats.size() - 1)));
     }
 
     public CompletableFuture<Optional<BatWithId>> getMirrorBat() {
-        return getMirrorBat(username, signer, network);
+        return getMirrorBat(username, signer, rootKey, network);
     }
 
     @JsMethod
