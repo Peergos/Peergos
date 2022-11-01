@@ -59,8 +59,14 @@ public interface SymmetricKey extends Cborable
     @JsMethod
     SymmetricKey makeDirty();
 
+    @JsMethod
     static SymmetricKey fromByteArray(byte[] raw) {
         return fromCbor(CborObject.fromByteArray(raw));
+    }
+
+    @JsMethod
+    default byte[] toByteArray() {
+        return serialize();
     }
 
     static SymmetricKey fromCbor(Cborable cbor) {

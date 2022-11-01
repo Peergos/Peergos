@@ -4,6 +4,7 @@ import peergos.server.sql.*;
 import peergos.server.util.Logging;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.asymmetric.*;
+import peergos.shared.login.*;
 import peergos.shared.user.*;
 import peergos.shared.util.*;
 
@@ -13,7 +14,7 @@ import java.util.concurrent.*;
 import java.util.function.*;
 import java.util.logging.*;
 
-public class JdbcAccount {
+public class JdbcAccount implements LoginCache {
     private static final Logger LOG = Logging.LOG();
 
     private static final String CREATE = "INSERT INTO login (username, entry, reader) VALUES(?, ?, ?)";

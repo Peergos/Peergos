@@ -5,13 +5,15 @@ import peergos.server.util.Logging;
 import peergos.shared.cbor.*;
 import peergos.shared.corenode.*;
 import peergos.shared.crypto.hash.*;
+import peergos.shared.util.*;
 
 import java.sql.*;
 import java.util.*;
+import java.util.concurrent.*;
 import java.util.function.*;
 import java.util.logging.*;
 
-public class JdbcPkiCache {
+public class JdbcPkiCache implements PkiCache {
     private static final Logger LOG = Logging.LOG();
 
     private static final String CREATE = "INSERT INTO pkistate (username, chain, pubkey) VALUES(?, ?, ?)";
@@ -67,23 +69,23 @@ public class JdbcPkiCache {
         }
     }
 
-    public List<UserPublicKeyLink> getChain(String username) {
+    public CompletableFuture<List<UserPublicKeyLink>> getChain(String username) {
         try (Connection conn = getConnection();
              PreparedStatement present = conn.prepareStatement(GET_BY_USERNAME)) {
             conn.setTransactionIsolation(Connection.TRANSACTION_SERIALIZABLE);
             present.setString(1, username);
             ResultSet rs = present.executeQuery();
             if (rs.next()) {
-                return ((CborObject.CborList)CborObject.fromByteArray(rs.getBytes("chain"))).map(UserPublicKeyLink::fromCbor);
+                return Futures.of(((CborObject.CborList)CborObject.fromByteArray(rs.getBytes("chain"))).map(UserPublicKeyLink::fromCbor));
             }
             throw new IllegalStateException("Unknown user " + username);
         } catch (SQLException sqe) {
-                LOG.log(Level.WARNING, sqe.getMessage(), sqe);
-                throw new RuntimeException(sqe);
-            }
+            LOG.log(Level.WARNING, sqe.getMessage(), sqe);
+            throw new RuntimeException(sqe);
+        }
     }
 
-    public boolean setChain(String username, List<UserPublicKeyLink> chain) {
+    public CompletableFuture<Boolean> setChain(String username, List<UserPublicKeyLink> chain) {
         PublicKeyHash owner = chain.get(chain.size() - 1).owner;
         if (hasUser(username)) {
             try (Connection conn = getConnection();
@@ -94,10 +96,10 @@ public class JdbcPkiCache {
                 insert.setString(2, new String(Base64.getEncoder().encode(owner.serialize())));
                 insert.setString(3, username);
                 int changed = insert.executeUpdate();
-                return changed > 0;
+                return Futures.of(changed > 0);
             } catch (SQLException sqe) {
                 LOG.log(Level.WARNING, sqe.getMessage(), sqe);
-                return false;
+                return Futures.of(false);
             }
         } else {
             try (Connection conn = getConnection();
@@ -106,21 +108,21 @@ public class JdbcPkiCache {
                 stmt.setBytes(2, new CborObject.CborList(chain).serialize());
                 stmt.setString(3, new String(Base64.getEncoder().encode(owner.serialize())));
                 stmt.executeUpdate();
-                return true;
+                return Futures.of(true);
             } catch (SQLException sqe) {
                 LOG.log(Level.WARNING, sqe.getMessage(), sqe);
-                return false;
+                return Futures.of(false);
             }
         }
     }
 
-    public String getUsername(PublicKeyHash identity) {
+    public CompletableFuture<String> getUsername(PublicKeyHash identity) {
         try (Connection conn = getConnection();
              PreparedStatement stmt = conn.prepareStatement(GET_BY_KEY)) {
             stmt.setString(1, new String(Base64.getEncoder().encode(identity.serialize())));
             ResultSet rs = stmt.executeQuery();
             if (rs.next()) {
-                return rs.getString("username");
+                return Futures.of(rs.getString("username"));
             }
 
             throw new IllegalStateException("Unknown user identity key.");
