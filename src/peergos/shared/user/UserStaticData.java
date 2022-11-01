@@ -1,6 +1,7 @@
 package peergos.shared.user;
 import java.util.logging.*;
 
+import jsinterop.annotations.JsMethod;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.symmetric.SymmetricKey;
@@ -36,6 +37,11 @@ public class UserStaticData implements Cborable {
     @Override
     public CborObject toCbor() {
         return allEntryPoints.toCbor();
+    }
+
+    @JsMethod
+    public static UserStaticData fromByteArray(byte[] entryPoints) {
+        return UserStaticData.fromCbor(CborObject.fromByteArray(entryPoints));
     }
 
     public static UserStaticData fromCbor(Cborable cbor) {

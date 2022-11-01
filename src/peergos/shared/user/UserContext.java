@@ -55,6 +55,7 @@ public class UserContext {
     public final String username;
     public final SigningPrivateKeyAndPublicHash signer;
     private final BoxingKeyPair boxer;
+    @JsProperty
     private final SymmetricKey rootKey;
 
     private final WriteSynchronizer writeSynchronizer;
