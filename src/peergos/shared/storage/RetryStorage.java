@@ -8,6 +8,7 @@ import peergos.shared.storage.auth.*;
 import peergos.shared.user.fs.FragmentWithHash;
 import peergos.shared.util.*;
 
+import java.net.*;
 import java.util.List;
 import java.util.Optional;
 import java.util.Random;
@@ -56,6 +57,8 @@ public class RetryStorage implements ContentAddressedStorage {
                         } else if (e instanceof StorageQuotaExceededException) {
                             res.completeExceptionally(e);
                         } else if (e instanceof HttpFileNotFoundException) {
+                            res.completeExceptionally(e);
+                        } else if (e instanceof ConnectException) {
                             res.completeExceptionally(e);
                         } else {
                             retryAfter(() -> recurse(retriesLeft - 1, f)
