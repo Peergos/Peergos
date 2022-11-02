@@ -46,9 +46,29 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
             .help("Time to write a block to immutable storage")
             .exponentialBuckets(0.01, 2, 16)
             .register();
+    private static final Counter blockHeads = Counter.build()
+            .name("s3_block_heads")
+            .help("Number of block heads to S3")
+            .register();
+    private static final Counter blockGets = Counter.build()
+            .name("s3_block_gets")
+            .help("Number of block gets to S3")
+            .register();
+    private static final Counter blockGetAuths = Counter.build()
+            .name("s3_block_get_auths")
+            .help("Number of authed block gets to S3")
+            .register();
+    private static final Counter failedBlockGets = Counter.build()
+            .name("s3_block_get_failures")
+            .help("Number of failed block gets to S3")
+            .register();
     private static final Counter blockPuts = Counter.build()
             .name("s3_block_puts")
             .help("Number of block puts to S3")
+            .register();
+    private static final Counter blockPutAuths = Counter.build()
+            .name("s3_block_put_auths")
+            .help("Number of authed block puts to S3")
             .register();
     private static final Histogram blockPutBytes = Histogram.build()
             .labelNames("size")
@@ -148,6 +168,8 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         for (CompletableFuture<Optional<byte[]>> fut : data) {
             fut.join(); // Any invalids BATs will cause this to throw
         }
+        for (int i=0; i < blocks.size(); i++)
+            blockGetAuths.inc();
         return Futures.of(res);
     }
 
@@ -181,6 +203,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                 extraHeaders.put("Content-Type", "application/octet-stream");
                 res.add(S3Request.preSignPut(folder + s3Key, props.right, contentSha256, false,
                         S3AdminRequests.asAwsDate(ZonedDateTime.now()), host, extraHeaders, region, accessKeyId, secretKey, useHttps, hasher).join());
+                blockPutAuths.inc();
             }
             return Futures.of(res);
         } catch (Exception e) {
@@ -251,6 +274,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         Histogram.Timer readTimer = readTimerLog.labels("read").startTimer();
         try {
             byte[] block = HttpUtil.get(getUrl);
+            blockGets.inc();
             // validate auth, unless this is an internal query
             if (enforceAuth && ! authoriser.allowRead(hash, block, id, auth).join())
                 throw new IllegalStateException("Unauthorised!");
@@ -271,6 +295,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                 LOG.warning("S3 error reading " + path);
                 LOG.log(Level.WARNING, msg, e);
             }
+            failedBlockGets.inc();
 
             nonLocalGets.inc();
             if (p2pGetId.equals(id))
@@ -291,6 +316,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
             PresignedUrl headUrl = S3Request.preSignHead(folder + hashToKey(hash), Optional.of(60),
                     S3AdminRequests.asAwsDate(ZonedDateTime.now()), host, region, accessKeyId, secretKey, useHttps, hasher).join();
             Map<String, List<String>> headRes = HttpUtil.head(headUrl);
+            blockHeads.inc();
             return true;
         } catch (IOException e) {
             String msg = e.getMessage();
@@ -413,6 +439,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
             PresignedUrl headUrl = S3Request.preSignHead(folder + hashToKey(hash), Optional.of(60),
                     S3AdminRequests.asAwsDate(ZonedDateTime.now()), host, region, accessKeyId, secretKey, useHttps, hasher).join();
             Map<String, List<String>> headRes = HttpUtil.head(headUrl);
+            blockHeads.inc();
             long size = Long.parseLong(headRes.get("Content-Length").get(0));
             return Futures.of(Optional.of((int)size));
         } catch (IOException e) {
@@ -438,6 +465,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
             PresignedUrl headUrl = S3Request.preSignHead(folder + hashToKey(hash), Optional.of(60),
                     S3AdminRequests.asAwsDate(ZonedDateTime.now()), host, region, accessKeyId, secretKey, useHttps, hasher).join();
             Map<String, List<String>> headRes = HttpUtil.head(headUrl);
+            blockHeads.inc();
             return true;
         } catch (Exception e) {
             return false;
