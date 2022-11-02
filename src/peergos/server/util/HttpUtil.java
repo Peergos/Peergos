@@ -81,6 +81,11 @@ public class HttpUtil {
                 InputStream in = conn.getInputStream();
                 return Serialize.readFully(in);
             } catch (IOException e) {
+                int respCode = conn.getResponseCode();
+                if (respCode == 503)
+                    throw new RateLimitException();
+                if (respCode == 404)
+                    throw new FileNotFoundException();
                 InputStream err = conn.getErrorStream();
                 if (err == null)
                     throw e;
@@ -147,6 +152,9 @@ public class HttpUtil {
             return Serialize.readFully(in);
         } catch (IOException e) {
             if (conn != null) {
+                int httpCode = conn.getResponseCode();
+                if (httpCode == 503)
+                    throw new RateLimitException();
                 InputStream err = conn.getErrorStream();
                 byte[] errBody = Serialize.readFully(err);
                 throw new IOException(new String(errBody));
@@ -168,6 +176,8 @@ public class HttpUtil {
             int code = conn.getResponseCode();
             if (code == 204)
                 return;
+            if (code == 503)
+                throw new RateLimitException();
             InputStream in = conn.getInputStream();
             byte[] body = Serialize.readFully(in);
             throw new IllegalStateException("HTTP " + code + "-" + body);
