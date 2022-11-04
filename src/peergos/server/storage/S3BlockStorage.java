@@ -99,7 +99,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
     private final TransactionStore transactions;
     private final BlockRequestAuthoriser authoriser;
     private final Hasher hasher;
-    private final DeletableContentAddressedStorage p2pFallback;
+    private final DeletableContentAddressedStorage p2pFallback, bloomTarget;
 
     public S3BlockStorage(S3Config config,
                           Cid id,
@@ -107,7 +107,8 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                           TransactionStore transactions,
                           BlockRequestAuthoriser authoriser,
                           Hasher hasher,
-                          DeletableContentAddressedStorage p2pFallback) {
+                          DeletableContentAddressedStorage p2pFallback,
+                          DeletableContentAddressedStorage bloomTarget) {
         this.id = id;
         this.p2pGetId = p2pFallback.id().join();
         this.region = config.region;
@@ -124,6 +125,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         this.authoriser = authoriser;
         this.hasher = hasher;
         this.p2pFallback = p2pFallback;
+        this.bloomTarget = bloomTarget;
     }
 
     @Override
@@ -204,6 +206,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                 res.add(S3Request.preSignPut(folder + s3Key, props.right, contentSha256, false,
                         S3AdminRequests.asAwsDate(ZonedDateTime.now()), host, extraHeaders, region, accessKeyId, secretKey, useHttps, hasher).join());
                 blockPutAuths.inc();
+                bloomTarget.bloomAdd(props.left);
             }
             return Futures.of(res);
         } catch (Exception e) {
@@ -535,6 +538,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
             PresignedUrl putUrl = S3Request.preSignPut(s3Key, data.length, contentHash, false,
                     S3AdminRequests.asAwsDate(ZonedDateTime.now()), host, extraHeaders, region, accessKeyId, secretKey, useHttps, hasher).join();
             HttpUtil.put(putUrl, data);
+            bloomTarget.bloomAdd(cid);
             blockPuts.inc();
             blockPutBytes.labels("size").observe(data.length);
             return cid;
@@ -680,7 +684,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         TransactionStore transactions = JdbcTransactionStore.build(transactionsDb, sqlCommands);
         BlockRequestAuthoriser authoriser = (c, b, s, auth) -> Futures.of(true);
         S3BlockStorage s3 = new S3BlockStorage(config, Cid.decode(a.getArg("ipfs.id")),
-                BlockStoreProperties.empty(), transactions, authoriser, hasher, new RAMStorage(hasher));
+                BlockStoreProperties.empty(), transactions, authoriser, hasher, new RAMStorage(hasher), new RAMStorage(hasher));
         JdbcIpnsAndSocial rawPointers = new JdbcIpnsAndSocial(database, sqlCommands);
         Supplier<Connection> usageDb = Main.getDBConnector(a, "space-usage-sql-file");
         UsageStore usageStore = new JdbcUsageStore(usageDb, sqlCommands);

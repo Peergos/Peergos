@@ -137,6 +137,18 @@ public class Builder {
     }
 
     /**
+     *
+     * @param a
+     * @return This returns the ipfs bloom  filter api target
+     */
+    public static JavaPoster buildBloomApiTarget(Args a) {
+        if (! a.hasArg("ipfs-bloom-api-address"))
+            return buildIpfsApi(a);
+        URL ipfsGatewayAddress = AddressUtil.getAddress(new MultiAddress(a.getArg("ipfs-bloom-api-address")));
+        return new JavaPoster(ipfsGatewayAddress, false);
+    }
+
+    /**
      * Create path to local blockstore directory from Args.
      *
      * @param args
@@ -172,7 +184,7 @@ public class Builder {
                 BlockStoreProperties props = buildS3Properties(a);
                 TransactionalIpfs p2pBlockRetriever = new TransactionalIpfs(ipfs, transactions, authoriser, ipfs.id().join(), hasher);
 
-                return new S3BlockStorage(config, ipfs.id().join(), props, transactions, authoriser, hasher, p2pBlockRetriever);
+                return new S3BlockStorage(config, ipfs.id().join(), props, transactions, authoriser, hasher, p2pBlockRetriever, ipfs);
             } else if (enableGC) {
                 return new TransactionalIpfs(ipfs, transactions, authoriser, ipfs.id().join(), hasher);
             } else
@@ -188,7 +200,9 @@ public class Builder {
                 S3Config config = S3Config.build(a);
                 BlockStoreProperties props = buildS3Properties(a);
 
-                return new S3BlockStorage(config, ourId, props, transactions, authoriser, hasher, p2pBlockRetriever);
+                JavaPoster bloomApiTarget = buildBloomApiTarget(a);
+                DeletableContentAddressedStorage.HTTP bloomTarget = new DeletableContentAddressedStorage.HTTP(bloomApiTarget, false, hasher);
+                return new S3BlockStorage(config, ourId, props, transactions, authoriser, hasher, p2pBlockRetriever, bloomTarget);
             } else {
                 return new FileContentAddressedStorage(blockstorePath(a), transactions, authoriser, hasher);
             }

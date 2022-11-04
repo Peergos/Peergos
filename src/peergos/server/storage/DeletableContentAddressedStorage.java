@@ -33,6 +33,8 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
 
     void delete(Multihash hash);
 
+    default void bloomAdd(Multihash hash) {}
+
     default void bulkDelete(List<Multihash> blocks) {
         for (Multihash block : blocks) {
             delete(block);
@@ -219,6 +221,11 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
         @Override
         public void delete(Multihash hash) {
             poster.get(apiPrefix + BLOCK_RM + "?stream-channels=true&arg=" + hash.toString()).join();
+        }
+
+        @Override
+        public void bloomAdd(Multihash hash) {
+            poster.get(apiPrefix + BLOOM_ADD + "?stream-channels=true&arg=" + hash.toString()).join();
         }
 
         @Override
