@@ -136,6 +136,24 @@ public class Builder {
         return new JavaPoster(ipfsGatewayAddress, false);
     }
 
+    /** A number representing the size in bytes of the blockstore's bloom filter. A value of zero represents the feature is disabled.
+
+     This site generates useful graphs for various bloom filter values: https://hur.st/bloomfilter/?n=1e6&p=0.01&m=&k=7
+     You may use it to find a preferred optimal value, where m is BloomFilterSize in bits. Remember to convert the value
+     m from bits, into bytes for use as BloomFilterSize in the config file. For example, for 1,000,000 blocks, expecting
+     a 1% false-positive rate, you'd end up with a filter size of 9592955 bits, so for BloomFilterSize we'd want to use
+     1199120 bytes. As of writing, 7 hash functions are used, so the constant k is 7 in the formula.
+     *
+     * @param falsePositivesProbability
+     * @param numberOfBlocks
+     * @return
+     */
+    public static int bloomfilterSizeBytes(double falsePositivesProbability, long numberOfBlocks) {
+        int numberOfHashfunctions = 7;
+        return (int)Math.ceil((numberOfBlocks * Math.log(falsePositivesProbability)) / Math.log(1 / Math.pow(2, Math.log(2))))/8;
+
+    }
+
     /**
      *
      * @param a
