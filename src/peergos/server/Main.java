@@ -364,7 +364,8 @@ public class Main extends Builder {
                             S3Config.useS3(args) ?
                                     new S3BlockStorage(S3Config.build(args), Cid.decode(args.getArg("ipfs.id")),
                                             BlockStoreProperties.empty(), transactions, authoriser,
-                                            crypto.hasher, new DeletableContentAddressedStorage.HTTP(Builder.buildIpfsApi(args), false, crypto.hasher)) :
+                                            crypto.hasher, new DeletableContentAddressedStorage.HTTP(Builder.buildIpfsApi(args), false, crypto.hasher),
+                                            new DeletableContentAddressedStorage.HTTP(Builder.buildIpfsApi(args), false, crypto.hasher)) :
                                     new FileContentAddressedStorage(blockstorePath(args),
                                             transactions, authoriser, crypto.hasher);
                     Multihash pkiIpfsNodeId = storage.id().get();
