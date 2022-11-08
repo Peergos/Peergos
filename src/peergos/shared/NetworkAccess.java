@@ -219,12 +219,9 @@ public class NetworkAccess {
                                                            boolean allowOfflineLogin) {
         Multihash pkiServerNodeId = Cid.decode(pkiNodeId);
         JavaScriptPoster relative = new JavaScriptPoster(false, isPublic);
-        JavaScriptPoster absolute = new JavaScriptPoster(true, true);
         ScryptJS hasher = new ScryptJS();
-
-        return isPeergosServer(relative)
-                .thenApply(isPeergosServer -> new Pair<>(isPeergosServer ? relative : absolute, isPeergosServer))
-                .thenCompose(p -> build(p.left, p.left, pkiServerNodeId, buildLocalDht(p.left, p.right, hasher), 7_000, hasher, true))
+        boolean isPeergosServer = true; // we used to support using web ui through an ipfs gateway directly
+        return build(relative, relative, pkiServerNodeId, buildLocalDht(relative, isPeergosServer, hasher), 7_000, hasher, true)
                 .thenApply(net -> net.withStorage(s ->
                         new UnauthedCachingStorage(s, new JSBlockCache(cacheSizeKiB/1024)))
                         .withMutablePointerOfflineCache(m -> new OfflinePointerCache(m, new JSPointerCache(2000, net.dhtClient))))
