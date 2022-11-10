@@ -401,12 +401,12 @@ public class Builder {
     }
 
 
-    public static CompletableFuture<NetworkAccess> buildJavaNetworkAccess(URL apiAddress, URL proxyAddress, String pkiNodeId) {
+    public static CompletableFuture<NetworkAccess> buildJavaGatewayAccess(URL apiAddress, URL proxyAddress, String pkiNodeId) {
         Multihash pkiServerNodeId = Cid.decode(pkiNodeId);
         JavaPoster p2pPoster = new JavaPoster(proxyAddress, false);
         JavaPoster apiPoster = new JavaPoster(apiAddress, false);
         ScryptJava hasher = new ScryptJava();
-        return NetworkAccess.build(apiPoster, p2pPoster, pkiServerNodeId, NetworkAccess.buildLocalDht(apiPoster, true, hasher), 0, hasher, false);
+        return NetworkAccess.buildViaGateway(apiPoster, p2pPoster, pkiServerNodeId, 0, hasher, false);
     }
 
     public static CompletableFuture<NetworkAccess> buildJavaNetworkAccess(URL target,
@@ -425,10 +425,9 @@ public class Builder {
                                                                                     int mutableCacheTime,
                                                                                     Optional<String> basicAuth) {
         JavaPoster poster = new JavaPoster(target, isPublicServer, basicAuth);
-        Multihash pkiNodeId = null; // This is not required when talking to a Peergos server
         ScryptJava hasher = new ScryptJava();
         ContentAddressedStorage localDht = NetworkAccess.buildLocalDht(poster, true, hasher);
-        return NetworkAccess.build(poster, poster, pkiNodeId, localDht, mutableCacheTime, hasher, false);
+        return NetworkAccess.buildViaPeergosInstance(poster, poster, localDht, mutableCacheTime, hasher, false);
     }
 
     public static CompletableFuture<NetworkAccess> buildLocalJavaNetworkAccess(int targetPort) {

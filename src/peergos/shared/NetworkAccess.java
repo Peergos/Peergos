@@ -207,21 +207,20 @@ public class NetworkAccess {
         if (! isPeergosServer)
             return Futures.of(localDht);
         return localDht.blockStoreProperties()
+                .exceptionally(t -> BlockStoreProperties.empty())
                 .thenCompose(bp -> bp.useDirectBlockStore() ?
                         localDht.id().thenApply(id -> new DirectS3BlockStore(bp, direct, localDht, id, core, hasher)) :
                         Futures.of(localDht));
     }
 
     @JsMethod
-    public static CompletableFuture<NetworkAccess> buildJS(String pkiNodeId,
-                                                           boolean isPublic,
+    public static CompletableFuture<NetworkAccess> buildJS(boolean isPublic,
                                                            int cacheSizeKiB,
                                                            boolean allowOfflineLogin) {
-        Multihash pkiServerNodeId = Cid.decode(pkiNodeId);
         JavaScriptPoster relative = new JavaScriptPoster(false, isPublic);
         ScryptJS hasher = new ScryptJS();
         boolean isPeergosServer = true; // we used to support using web ui through an ipfs gateway directly
-        return build(relative, relative, pkiServerNodeId, buildLocalDht(relative, isPeergosServer, hasher), 7_000, hasher, true)
+        return buildViaPeergosInstance(relative, relative, buildLocalDht(relative, isPeergosServer, hasher), 7_000, hasher, true)
                 .thenApply(net -> net.withStorage(s ->
                         new UnauthedCachingStorage(s, new JSBlockCache(cacheSizeKiB/1024)))
                         .withMutablePointerOfflineCache(m -> new OfflinePointerCache(m, new JSPointerCache(2000, net.dhtClient))))
@@ -253,44 +252,31 @@ public class NetworkAccess {
                 .thenCompose(dht -> build(core, dht, apiPoster, p2pPoster, mutableCacheTime, hasher, usernames, true, isJavascript));
     }
 
-    public static CompletableFuture<NetworkAccess> build(HttpPoster apiPoster,
-                                                         HttpPoster p2pPoster,
-                                                         Multihash pkiServerNodeId,
-                                                         ContentAddressedStorage localDht,
-                                                         int mutableCacheTime,
-                                                         Hasher hasher,
-                                                         boolean isJavascript) {
+    public static CompletableFuture<NetworkAccess> buildViaPeergosInstance(HttpPoster apiPoster,
+                                                                            HttpPoster p2pPoster,
+                                                                            ContentAddressedStorage localDht,
+                                                                            int mutableCacheTime,
+                                                                            Hasher hasher,
+                                                                            boolean isJavascript) {
         CoreNode direct = buildDirectCorenode(apiPoster);
-        CompletableFuture<NetworkAccess> result = new CompletableFuture<>();
-        direct.getUsernames("")
-                .thenAccept(usernames -> {
-                    // We are on a Peergos server
-                    build(usernames, direct, apiPoster, p2pPoster, localDht, mutableCacheTime, hasher, isJavascript)
-                            .thenApply(result::complete)
-                            .exceptionally(t -> {
-                                result.completeExceptionally(t);
-                                return true;
-                            });
-                })
-                .exceptionally(t -> {
-                    if (pkiServerNodeId == null) {
-                        result.completeExceptionally(new NullPointerException());
-                        return null;
-                    }
+        return direct.getUsernames("")
+                .exceptionally(t -> Collections.emptyList())
+                .thenCompose(usernames -> build(usernames, direct, apiPoster, p2pPoster, localDht,
+                        mutableCacheTime, hasher, isJavascript));
+    }
 
-                    // We are not on a Peergos server, hopefully an IPFS gateway
-                    ContentAddressedStorage localIpfs = buildLocalDht(apiPoster, false, hasher);
-                    CoreNode core = buildProxyingCorenode(p2pPoster, pkiServerNodeId);
-                    core.getUsernames("").thenCompose(usernames ->
-                            build(core, localIpfs, apiPoster, p2pPoster, mutableCacheTime, hasher, usernames, false, isJavascript)
-                                    .thenApply(result::complete))
-                            .exceptionally(t2 -> {
-                                result.completeExceptionally(t2);
-                                return true;
-                            });
-                    return null;
-                });
-        return result;
+    public static CompletableFuture<NetworkAccess> buildViaGateway(HttpPoster apiPoster,
+                                                                   HttpPoster p2pPoster,
+                                                                   Multihash pkiServerNodeId,
+                                                                   int mutableCacheTime,
+                                                                   Hasher hasher,
+                                                                   boolean isJavascript) {
+        // We are not on a Peergos server, hopefully an IPFS gateway
+        ContentAddressedStorage localIpfs = buildLocalDht(apiPoster, false, hasher);
+        CoreNode core = buildProxyingCorenode(p2pPoster, pkiServerNodeId);
+        return core.getUsernames("").thenCompose(usernames ->
+                        build(core, localIpfs, apiPoster, p2pPoster, mutableCacheTime, hasher,
+                                usernames, false, isJavascript));
     }
 
     private static CompletableFuture<NetworkAccess> build(CoreNode core,
