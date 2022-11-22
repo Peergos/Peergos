@@ -177,6 +177,11 @@ public class JavaPoster implements HttpPoster {
             } catch (SocketTimeoutException e) {
                 throw new RuntimeException("Timeout retrieving: " + url, e);
             } catch (IOException e) {
+                String trailer = conn.getHeaderField("Trailer");
+                if (trailer != null)
+                    try {
+                        throw new IllegalStateException(URLDecoder.decode(trailer, "UTF-8"));
+                    } catch (UnsupportedEncodingException f) {}
                 throw new RuntimeException(e);
             } finally {
                 if (conn != null)

@@ -33,6 +33,10 @@ public class OfflineAccountStore implements Account {
                             local.setLoginData(new LoginData(username, entryPoints, authorisedReader, Optional.empty()));
                             return entryPoints;
                         }),
-                t -> local.getEntryData(username, authorisedReader));
+                t -> {
+                    if (t.getMessage().contains("Incorrect+password"))
+                        return Futures.errored(new IllegalStateException("Incorrect password!"));
+                    return local.getEntryData(username, authorisedReader);
+                });
     }
 }
