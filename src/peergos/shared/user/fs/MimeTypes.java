@@ -191,7 +191,7 @@ public class MimeTypes {
                 return "text/javascript";
             if (filename.endsWith(".svg") && equalArrays(start, XML))
                 return "image/svg+xml";
-            String prefix = new String(start);
+            String prefix = new String(start).trim().toLowerCase();
             if (prefix.contains("html>") || prefix.contains("<html"))
                 return "text/html";
             return "text/plain";
