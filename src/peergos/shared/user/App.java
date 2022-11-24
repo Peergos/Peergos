@@ -100,7 +100,7 @@ public class App implements StoreAppData {
 
     private CompletableFuture<Boolean> appendFileContents(Path path, byte[] data) {
         Path pathWithoutUsername = path.subpath(1, path.getNameCount());
-        return ctx.getByPath(ctx.username).thenCompose(userRoot -> userRoot.get().getOrMkdirs(pathWithoutUsername.getParent(), ctx.network, true, userRoot.get().mirrorBatId(), ctx.crypto)
+        return ctx.getByPath(ctx.username).thenCompose(userRoot -> userRoot.get().getOrMkdirs(pathWithoutUsername.getParent(), ctx.network, false, userRoot.get().mirrorBatId(), ctx.crypto)
                 .thenCompose(dir -> dir.appendFileJS(path.getFileName().toString(), AsyncReader.build(data),
                                 0,data.length, ctx.network, ctx.crypto, x -> {})
                         .thenApply(fw -> true)
@@ -109,7 +109,7 @@ public class App implements StoreAppData {
 
     private CompletableFuture<Boolean> writeFileContents(Path path, byte[] data) {
         Path pathWithoutUsername = path.subpath(1, path.getNameCount());
-        return ctx.getByPath(ctx.username).thenCompose(userRoot -> userRoot.get().getOrMkdirs(pathWithoutUsername.getParent(), ctx.network, true, userRoot.get().mirrorBatId(), ctx.crypto)
+        return ctx.getByPath(ctx.username).thenCompose(userRoot -> userRoot.get().getOrMkdirs(pathWithoutUsername.getParent(), ctx.network, false, userRoot.get().mirrorBatId(), ctx.crypto)
                 .thenCompose(dir -> dir.uploadOrReplaceFile(path.getFileName().toString(), AsyncReader.build(data),
                         data.length, ctx.network, ctx.crypto, x -> {})
                         .thenApply(fw -> true)
