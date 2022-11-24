@@ -1,5 +1,6 @@
 package peergos.shared.corenode;
 
+import peergos.shared.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.multihash.*;
@@ -15,10 +16,12 @@ public class OfflineCorenode implements CoreNode {
 
     private final CoreNode target;
     private final PkiCache pkiCache;
+    private final OnlineState online;
 
-    public OfflineCorenode(CoreNode target, PkiCache pkiCache) {
+    public OfflineCorenode(CoreNode target, PkiCache pkiCache, OnlineState online) {
         this.target = target;
         this.pkiCache = pkiCache;
+        this.online = online;
     }
 
     @Override
@@ -33,11 +36,15 @@ public class OfflineCorenode implements CoreNode {
     @Override
     public CompletableFuture<List<UserPublicKeyLink>> getChain(String username) {
         return Futures.asyncExceptionally(
-                () -> target.getChain(username).thenApply(chain -> {
-                    if (!chain.isEmpty())
-                        pkiCache.setChain(username, chain);
-                    return chain;
-                }),
+                () -> {
+                    if (online.isOnline())
+                        return target.getChain(username).thenApply(chain -> {
+                            if (!chain.isEmpty())
+                                pkiCache.setChain(username, chain);
+                            return chain;
+                        });
+                    return pkiCache.getChain(username);
+                },
                 t -> pkiCache.getChain(username));
     }
 

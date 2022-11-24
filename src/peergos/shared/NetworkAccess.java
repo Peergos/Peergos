@@ -220,15 +220,19 @@ public class NetworkAccess {
         JavaScriptPoster relative = new JavaScriptPoster(false, isPublic);
         ScryptJS hasher = new ScryptJS();
         boolean isPeergosServer = true; // we used to support using web ui through an ipfs gateway directly
-        return buildViaPeergosInstance(relative, relative, buildLocalDht(relative, isPeergosServer, hasher), 7_000, hasher, true)
+        ContentAddressedStorage localDht = buildLocalDht(relative, isPeergosServer, hasher);
+        OnlineState onlineState = new OnlineState(new NativeJsOnlineState());
+        return buildViaPeergosInstance(relative, relative, localDht, 7_000, hasher, true)
                 .thenApply(net -> net.withStorage(s ->
                         new UnauthedCachingStorage(s, new JSBlockCache(cacheSizeKiB/1024)))
-                        .withMutablePointerOfflineCache(m -> new OfflinePointerCache(m, new JSPointerCache(2000, net.dhtClient))))
+                        .withMutablePointerOfflineCache(m -> new OfflinePointerCache(m,
+                                new JSPointerCache(2000, net.dhtClient),
+                                onlineState)))
                 .thenApply(net -> ! allowOfflineLogin ?
                         net :
                         net.withBatOfflineCache(Optional.of(new JSBatCache()))
-                                .withAccountCache(a -> new OfflineAccountStore(net.account, new JSAccountCache()))
-                                .withCorenode(new OfflineCorenode(net.coreNode, new JSPkiCache())));
+                                .withAccountCache(a -> new OfflineAccountStore(net.account, new JSAccountCache(), onlineState))
+                                .withCorenode(new OfflineCorenode(net.coreNode, new JSPkiCache(), onlineState)));
     }
 
     private static CompletableFuture<Boolean> isPeergosServer(HttpPoster poster) {

@@ -1,5 +1,6 @@
 package peergos.shared.mutable;
 
+import peergos.shared.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.util.*;
 
@@ -10,10 +11,12 @@ public class OfflinePointerCache implements MutablePointers {
 
     private final MutablePointers target;
     private final PointerCache cache;
+    private final OnlineState online;
 
-    public OfflinePointerCache(MutablePointers target, PointerCache cache) {
+    public OfflinePointerCache(MutablePointers target, PointerCache cache, OnlineState online) {
         this.target = target;
         this.cache = cache;
+        this.online = online;
     }
 
     @Override
@@ -27,11 +30,15 @@ public class OfflinePointerCache implements MutablePointers {
 
     @Override
     public CompletableFuture<Optional<byte[]>> getPointer(PublicKeyHash owner, PublicKeyHash writer) {
-        return Futures.asyncExceptionally(() -> target.getPointer(owner, writer)
-                        .thenApply(res -> {
-                            res.ifPresent(p -> cache.put(owner, writer, p));
-                            return res;
-                        }),
+        return Futures.asyncExceptionally(() -> {
+                    if (online.isOnline())
+                        return target.getPointer(owner, writer)
+                                .thenApply(res -> {
+                                    res.ifPresent(p -> cache.put(owner, writer, p));
+                                    return res;
+                                });
+                    return cache.get(owner, writer);
+                },
                 t -> cache.get(owner, writer));
     }
 }
