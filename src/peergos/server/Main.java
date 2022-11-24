@@ -276,6 +276,20 @@ public class Main extends Builder {
                 FileWrapper releases = context.getByPath(PathUtil.get(pkiUsername, "releases")).join().get();
                 context.makePublic(releases).join();
             }
+
+            // Create /peergos/app-gallery and make it public
+            String appGalleryFolderName = "app-gallery";
+            Optional<FileWrapper> appGalleryDir = context.getByPath(PathUtil.get(pkiUsername, appGalleryFolderName)).join();
+            if (! appGalleryDir.isPresent()) {
+                context.getUserRoot().join().mkdir(appGalleryFolderName, network, false,
+                        Optional.empty(), crypto).join();
+                FileWrapper appGalleryFolder = context.getByPath(PathUtil.get(pkiUsername, appGalleryFolderName)).join().get();
+                String contents = "<html></html>";
+                byte[] data = contents.getBytes();
+                appGalleryFolder = appGalleryFolder.uploadFileJS("index.html", new AsyncReader.ArrayBacked(data), 0,data.length, false,
+                        appGalleryFolder.mirrorBatId(), network, crypto, l -> {}, context.getTransactionService(), f -> Futures.of(false)).join();
+                context.makePublic(appGalleryFolder).join();
+            }
         } catch (Exception e) {
             e.printStackTrace();
             System.exit(1);
