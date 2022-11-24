@@ -673,7 +673,8 @@ public class Main extends Builder {
 //                ipfsWrapper.connectToNode(new InetSocketAddress(pkiNodeIpAddress, pkiNodeSwarmPort), pkiServerNodeId);
                 ((MirrorCoreNode) core).start();
             }
-            spaceChecker.calculateUsage();
+            if (a.getBoolean("update-usage", true))
+                spaceChecker.calculateUsage();
 
             if (a.hasArg("mirror.node.id")) {
                 Multihash nodeToMirrorId = Cid.decode(a.getArg("mirror.node.id"));
