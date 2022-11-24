@@ -37,8 +37,12 @@ public class OfflinePointerCache implements MutablePointers {
                                     res.ifPresent(p -> cache.put(owner, writer, p));
                                     return res;
                                 });
+                    online.updateAsync();
                     return cache.get(owner, writer);
                 },
-                t -> cache.get(owner, writer));
+                t -> {
+                    online.handleRequestException(t);
+                    return cache.get(owner, writer);
+                });
     }
 }

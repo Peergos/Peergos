@@ -43,9 +43,13 @@ public class OfflineCorenode implements CoreNode {
                                 pkiCache.setChain(username, chain);
                             return chain;
                         });
+                    online.updateAsync();
                     return pkiCache.getChain(username);
                 },
-                t -> pkiCache.getChain(username));
+                t -> {
+                    online.handleRequestException(t);
+                    return pkiCache.getChain(username);
+                });
     }
 
     @Override
