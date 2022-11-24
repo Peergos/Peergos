@@ -31,7 +31,7 @@ public class OnlineState {
     }
 
     public void updateAsync() {
-        ForkJoinPool.commonPool().submit(this::update);
+        ForkJoinPool.commonPool().execute(this::update);
     }
 
     public void handleRequestException(Throwable t) {
