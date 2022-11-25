@@ -2058,7 +2058,12 @@ public class UserContext {
             return CompletableFuture.completedFuture(Optional.of(FileWrapper.createRoot(entrie)));
         FileProperties.ensureValidPath(path);
         String absolutePath = path.startsWith("/") ? path : "/" + path;
-        return entrie.getByPath(absolutePath, crypto.hasher, network);
+        return entrie.getByPath(absolutePath, crypto.hasher, network)
+                .thenCompose(res -> {
+                    if (res.isPresent())
+                        return Futures.of(res);
+                    return getPublicFile(PathUtil.get(path));
+                });
     }
 
     public CompletableFuture<Optional<FileWrapper>> getByPath(String path, Snapshot version) {
