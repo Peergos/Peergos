@@ -41,8 +41,9 @@ public class OfflinePointerCache implements MutablePointers {
                     return cache.get(owner, writer);
                 },
                 t -> {
-                    online.handleRequestException(t);
-                    return cache.get(owner, writer);
+                    if (online.isOfflineException(t))
+                        return cache.get(owner, writer);
+                    return Futures.errored(t);
                 });
     }
 }

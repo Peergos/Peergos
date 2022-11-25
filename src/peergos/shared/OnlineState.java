@@ -6,18 +6,16 @@ import java.util.function.*;
 
 public class OnlineState {
 
-    private final NativeJsOnlineState online;
     private final AtomicBoolean testedState = new AtomicBoolean(true);
     private final Supplier<CompletableFuture<Boolean>> updater;
     private long lastUpdate = 0;
 
-    public OnlineState(NativeJsOnlineState online, Supplier<CompletableFuture<Boolean>> updater) {
-        this.online = online;
+    public OnlineState(Supplier<CompletableFuture<Boolean>> updater) {
         this.updater = updater;
     }
 
     public boolean isOnline() {
-        return online.isOnline() && testedState.get();
+        return testedState.get();
     }
 
     public synchronized void update() {
@@ -34,8 +32,11 @@ public class OnlineState {
         ForkJoinPool.commonPool().execute(this::update);
     }
 
-    public void handleRequestException(Throwable t) {
-        if (t.toString().contains("ConnectException"))
+    public boolean isOfflineException(Throwable t) {
+        if (t.toString().contains("ConnectException")) {
             testedState.set(false);
+            return true;
+        }
+        return false;
     }
 }

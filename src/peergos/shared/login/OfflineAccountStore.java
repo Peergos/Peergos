@@ -44,8 +44,9 @@ public class OfflineAccountStore implements Account {
                 t -> {
                     if (t.getMessage().contains("Incorrect+password"))
                         return Futures.errored(new IllegalStateException("Incorrect password!"));
-                    online.handleRequestException(t);
-                    return local.getEntryData(username, authorisedReader);
+                    if (online.isOfflineException(t))
+                        return local.getEntryData(username, authorisedReader);
+                    return Futures.errored(t);
                 });
     }
 }
