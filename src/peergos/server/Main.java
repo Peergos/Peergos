@@ -123,7 +123,10 @@ public class Main extends Builder {
                                     "/ip6/2a03:b0c0:0:1010::23:1001/tcp/4001/p2p/QmSoLer265NRgSp2LA3dPaeykiS1J6DifTC88f5uVQKNAd",
                                     "/ip4/104.131.131.82/udp/4001/quic/p2p/QmaCpDMGvV2BGHeYERUEnRQAwe3N8SzbUtfsmvsqQLuvuJ"
                             ).collect(Collectors.joining(","))),
-                    new Command.Arg("ipfs-manage-runtime", "Will manage the IPFS daemon runtime when set (restart on exit)", false, "true")
+                    new Command.Arg("ipfs-manage-runtime", "Will manage the IPFS daemon runtime when set (restart on exit)", false, "true"),
+                    new Command.Arg("collect-metrics", "Export aggregated metrics", false, "false"),
+                    new Command.Arg("metrics.address", "Listen address for serving aggregated metrics", false, "localhost"),
+                    new Command.Arg("ipfs.metrics.port", "Port for serving aggregated ipfs metrics", false, "8101")
             )
     );
 
