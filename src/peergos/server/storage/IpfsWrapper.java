@@ -38,18 +38,21 @@ public class IpfsWrapper implements AutoCloseable, Runnable {
         public final int swarmPort;
         public final String apiAddress, gatewayAddress, allowTarget;
         public final List<IpfsInstaller.Plugin> plugins;
+        public final Optional<String> metricsAddress;
 
         public Config(Optional<List<MultiAddress>> bootstrapNode,
                       String apiAddress,
                       String gatewayAddress,
                       String allowTarget,
                       int swarmPort,
+                      Optional<String> metricsAddress,
                       List<IpfsInstaller.Plugin> plugins) {
             this.bootstrapNode = bootstrapNode;
             this.apiAddress = apiAddress;
             this.gatewayAddress = gatewayAddress;
             this.allowTarget = allowTarget;
             this.swarmPort = swarmPort;
+            this.metricsAddress = metricsAddress;
             this.plugins = plugins;
         }
 
@@ -84,8 +87,14 @@ public class IpfsWrapper implements AutoCloseable, Runnable {
         MultiAddress allowTarget = new MultiAddress(args.getArg("allow-target"));
         int swarmPort = args.getInt("ipfs-swarm-port", 4001);
 
+        boolean enableMetrics = args.getBoolean("collect-metrics", false);
+        Optional<String> metricsAddress = enableMetrics ?
+                Optional.of(args.getArg("metrics.address") + ":" + args.getInt("ipfs.metrics.port")) :
+                Optional.empty();
         List<IpfsInstaller.Plugin> plugins = IpfsInstaller.Plugin.parseAll(args);
-        return new Config(bootstrapNodes, apiAddress, gatewayAddress, "http://" + allowTarget.getHost() + ":" + allowTarget.getTCPPort(), swarmPort, plugins);
+        return new Config(bootstrapNodes, apiAddress, gatewayAddress,
+                "http://" + allowTarget.getHost() + ":" + allowTarget.getTCPPort(),
+                swarmPort, metricsAddress, plugins);
     }
 
     private static final String IPFS_DIR = "IPFS_PATH";
@@ -137,6 +146,13 @@ public class IpfsWrapper implements AutoCloseable, Runnable {
         }
 
         runIpfsCmd("config", "Addresses.ProxyTarget", proxyTarget.toString());
+
+        if (config.metricsAddress.isPresent()) {
+            String[] parts = config.metricsAddress.get().split(":");
+            runIpfsCmd("config", "--json", "Metrics.Enabled", "true");
+            runIpfsCmd("config", "Metrics.Address", parts[0]);
+            runIpfsCmd("config", "--json", "Metrics.Port", parts[1]);
+        }
 
         LOG().info("Running ipfs config");
         for (String[] configCmd : config.configCmds(extraQuoteEscape)) {
