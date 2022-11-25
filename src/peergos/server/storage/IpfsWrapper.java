@@ -149,9 +149,9 @@ public class IpfsWrapper implements AutoCloseable, Runnable {
 
         if (config.metricsAddress.isPresent()) {
             String[] parts = config.metricsAddress.get().split(":");
-            runIpfsCmd("config", "Metrics.Enabled", "true");
+            runIpfsCmd("config", "--json", "Metrics.Enabled", "true");
             runIpfsCmd("config", "Metrics.Address", parts[0]);
-            runIpfsCmd("config", "Metrics.Port", parts[1]);
+            runIpfsCmd("config", "--json", "Metrics.Port", parts[1]);
         }
 
         LOG().info("Running ipfs config");
