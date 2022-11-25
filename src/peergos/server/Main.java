@@ -278,7 +278,7 @@ public class Main extends Builder {
             }
 
             // Create /peergos/app-gallery and make it public
-            String appGalleryFolderName = "app-gallery";
+            String appGalleryFolderName = "recommended-apps";
             Optional<FileWrapper> appGalleryDir = context.getByPath(PathUtil.get(pkiUsername, appGalleryFolderName)).join();
             if (! appGalleryDir.isPresent()) {
                 context.getUserRoot().join().mkdir(appGalleryFolderName, network, false,
