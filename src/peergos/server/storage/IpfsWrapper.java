@@ -89,7 +89,7 @@ public class IpfsWrapper implements AutoCloseable, Runnable {
 
         boolean enableMetrics = args.getBoolean("collect-metrics", false);
         Optional<String> metricsAddress = enableMetrics ?
-                Optional.of(args.getArg("metrics.address") + ":" + args.getInt("metrics.port")) :
+                Optional.of(args.getArg("metrics.address") + ":" + args.getInt("ipfs.metrics.port")) :
                 Optional.empty();
         List<IpfsInstaller.Plugin> plugins = IpfsInstaller.Plugin.parseAll(args);
         return new Config(bootstrapNodes, apiAddress, gatewayAddress,
