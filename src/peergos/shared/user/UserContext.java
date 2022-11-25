@@ -575,9 +575,9 @@ public class UserContext {
                             return res;
                         }),
                         t -> {
-                            if (network.batCache.isPresent())
+                            if (network.batCache.isPresent() && t.toString().contains("ConnectException"))
                                 return network.batCache.get().getUserBats(username, loginRoot);
-                            throw new RuntimeException(t);
+                            return Futures.errored(t);
                         })
                 .thenApply(bats -> bats.isEmpty() ?
                         Optional.empty() :
