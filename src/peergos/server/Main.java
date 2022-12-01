@@ -605,9 +605,10 @@ public class Main extends Builder {
             CoreNode core = buildCorenode(a, localStorage, transactions, rawPointers, localPointers, proxingMutable,
                     rawSocial, usageStore, rawAccount, batStore, account, hasher);
 
+            boolean isPki = a.getArg("pki-node-id").equals(nodeId);
             QuotaAdmin userQuotas = buildSpaceQuotas(a, localStorage, core,
                     getDBConnector(a, "space-requests-sql-file", dbConnectionPool),
-                    getDBConnector(a, "quotas-sql-file", dbConnectionPool));
+                    getDBConnector(a, "quotas-sql-file", dbConnectionPool), isPki);
             CoreNode signupFilter = new SignUpFilter(core, userQuotas, nodeId, httpSpaceUsage, hasher);
 
             if (a.getBoolean("update-usage", true))

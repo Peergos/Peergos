@@ -114,7 +114,7 @@ public class ServerMessages extends Builder {
                 rawSocial, usageStore, account, null, new AccountWithStorage(localStorage, localPointers, account), hasher);
         return buildSpaceQuotas(a, localStorage, core,
                 getDBConnector(a, "space-requests-sql-file", dbConnectionPool),
-                getDBConnector(a, "quotas-sql-file", dbConnectionPool));
+                getDBConnector(a, "quotas-sql-file", dbConnectionPool), false);
     }
 
     public static final Command<Boolean> NEW = new Command<>("new",

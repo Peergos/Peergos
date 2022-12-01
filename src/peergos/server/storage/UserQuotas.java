@@ -29,19 +29,22 @@ public class UserQuotas implements QuotaAdmin {
     private final JdbcSpaceRequests spaceRequests;
     private final ContentAddressedStorage dht;
     private final CoreNode core;
+    private final boolean isPki;
 
     public UserQuotas(JdbcQuotas quotas,
                       long defaultQuota,
                       long maxUsers,
                       JdbcSpaceRequests spaceRequests,
                       ContentAddressedStorage dht,
-                      CoreNode core) {
+                      CoreNode core,
+                      boolean isPki) {
         this.quotas = quotas;
         this.defaultQuota = defaultQuota;
         this.maxUsers = maxUsers;
         this.spaceRequests = spaceRequests;
         this.dht = dht;
         this.core = core;
+        this.isPki = isPki;
     }
 
     @Override
@@ -121,6 +124,8 @@ public class UserQuotas implements QuotaAdmin {
 
     @Override
     public PaymentProperties createPaidUser(String username) {
+        if (isPki)
+            return new PaymentProperties(0);
         throw new IllegalStateException("Cannot create a paid user on an unpaid server!");
     }
 
