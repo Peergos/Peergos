@@ -1,8 +1,6 @@
 package peergos.server.storage.admin;
 
 import peergos.server.*;
-import peergos.server.net.*;
-import peergos.server.storage.*;
 import peergos.server.util.*;
 import peergos.shared.corenode.*;
 import peergos.shared.crypto.hash.*;
@@ -89,7 +87,7 @@ public class Admin implements InstanceAdmin {
     }
 
     @Override
-    public CompletableFuture<Boolean> acceptingSignups() {
+    public CompletableFuture<AllowedSignups> acceptingSignups() {
         return Futures.of(quotas.acceptingSignups());
     }
 

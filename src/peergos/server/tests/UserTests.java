@@ -231,7 +231,7 @@ public abstract class UserTests {
         String username = generateUsername();
         String password = "password";
         // set username claim to an expiry in the past
-        UserContext context = UserContext.signUpGeneral(username, password, "", LocalDate.now().minusDays(1),
+        UserContext context = UserContext.signUpGeneral(username, password, "", Optional.empty(), LocalDate.now().minusDays(1),
                 network, crypto, SecretGenerationAlgorithm.getDefault(crypto.random), t -> {}).join();
 
         LocalDate expiry = context.getUsernameClaimExpiry().join();
@@ -247,7 +247,7 @@ public abstract class UserTests {
     public void expiredSigninAfterPasswordChange() {
         String username = generateUsername();
         String password = "password";
-        UserContext context = UserContext.signUpGeneral(username, password, "", LocalDate.now().minusDays(2),
+        UserContext context = UserContext.signUpGeneral(username, password, "", Optional.empty(), LocalDate.now().minusDays(2),
                 network, crypto, SecretGenerationAlgorithm.getDefault(crypto.random), x -> {}).join();
         String newPassword = "G'day mate!";
 
@@ -337,7 +337,7 @@ public abstract class UserTests {
     public void legacyLogin() throws Exception {
         String username = generateUsername();
         String password = "password";
-        UserContext userContext = UserContext.signUpGeneral(username, password, "", LocalDate.now().plusMonths(2),
+        UserContext userContext = UserContext.signUpGeneral(username, password, "", Optional.empty(), LocalDate.now().plusMonths(2),
                 network, crypto, SecretGenerationAlgorithm.getLegacy(crypto.random), x -> {}).join();
         SecretGenerationAlgorithm originalAlg = WriterData.fromCbor(UserContext.getWriterDataCbor(network, username).join().right).generationAlgorithm.get();
         Assert.assertTrue("legacy accounts generate boxer", originalAlg.generateBoxerAndIdentity());
@@ -1829,7 +1829,7 @@ public abstract class UserTests {
     public void usage() {
         String username = generateUsername();
         String password = "password";
-        Assert.assertTrue(network.instanceAdmin.acceptingSignups().join());
+        Assert.assertTrue(network.instanceAdmin.acceptingSignups().join().free);
         UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
         long quota = context.getQuota().join();
         long usage = context.getSpaceUsage().join();

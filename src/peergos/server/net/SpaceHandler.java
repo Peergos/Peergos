@@ -67,8 +67,7 @@ public class SpaceHandler implements HttpHandler {
                 }
                 case "request": {
                     byte[] signedReq = ArrayOps.hexToBytes(last.apply("req"));
-                    boolean res = spaceUsage.requestQuota(owner, signedReq).join();
-                    result = new CborObject.CborBoolean(res);
+                    result = spaceUsage.requestQuota(owner, signedReq).join();
                     break;
                 }
                 default:

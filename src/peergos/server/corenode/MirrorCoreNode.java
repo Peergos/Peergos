@@ -315,6 +315,26 @@ public class MirrorCoreNode implements CoreNode {
     }
 
     @Override
+    public CompletableFuture<Either<PaymentProperties, RequiredDifficulty>> startPaidSignup(String username,
+                                                                                            UserPublicKeyLink chain,
+                                                                                            ProofOfWork proof) {
+        return writeTarget.startPaidSignup(username, chain, proof);
+    }
+
+    @Override
+    public CompletableFuture<PaymentProperties> completePaidSignup(String username,
+                                                                   UserPublicKeyLink chain,
+                                                                   OpLog setupOperations,
+                                                                   byte[] signedSpaceRequest,
+                                                                   ProofOfWork proof) {
+        writeTarget.completePaidSignup(username, chain, setupOperations, signedSpaceRequest, proof).join();
+        update();
+        usageStore.addWriter(username, chain.owner);
+        IpfsCoreNode.applyOpLog(username, chain.owner, setupOperations, ipfs, localPointers, account, batCave);
+        return Futures.of(new PaymentProperties(0));
+    }
+
+    @Override
     public CompletableFuture<List<UserPublicKeyLink>> getChain(String username) {
         List<UserPublicKeyLink> chain = state.chains.get(username);
         if (chain != null)

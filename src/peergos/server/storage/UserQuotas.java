@@ -10,6 +10,7 @@ import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.storage.*;
+import peergos.shared.storage.controller.*;
 import peergos.shared.util.*;
 
 import java.io.*;
@@ -56,10 +57,12 @@ public class UserQuotas implements QuotaAdmin {
     }
 
     @Override
-    public CompletableFuture<Boolean> requestQuota(PublicKeyHash owner, byte[] signedRequest) {
+    public CompletableFuture<PaymentProperties> requestQuota(PublicKeyHash owner, byte[] signedRequest) {
         SpaceUsage.SpaceRequest req = QuotaAdmin.parseQuotaRequest(owner, signedRequest, dht);
         // TODO check user is signed up to this server
-        return Futures.of(spaceRequests.addSpaceRequest(req.username, signedRequest));
+        boolean added = spaceRequests.addSpaceRequest(req.username, signedRequest);
+        String username = core.getUsername(owner).join();
+        return Futures.of(new PaymentProperties(getQuota(username)));
     }
 
     @Override
@@ -95,8 +98,8 @@ public class UserQuotas implements QuotaAdmin {
     }
 
     @Override
-    public boolean acceptingSignups() {
-        return quotas.numberOfUsers() < maxUsers;
+    public AllowedSignups acceptingSignups() {
+        return new AllowedSignups(quotas.numberOfUsers() < maxUsers, false);
     }
 
     @Override
@@ -114,6 +117,11 @@ public class UserQuotas implements QuotaAdmin {
             return false;
         quotas.setQuota(username, defaultQuota);
         return true;
+    }
+
+    @Override
+    public PaymentProperties createPaidUser(String username) {
+        throw new IllegalStateException("Cannot create a paid user on an unpaid server!");
     }
 
     @Override

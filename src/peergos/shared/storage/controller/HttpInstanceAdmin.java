@@ -54,9 +54,9 @@ public class HttpInstanceAdmin implements InstanceAdmin {
     }
 
     @Override
-    public CompletableFuture<Boolean> acceptingSignups() {
+    public CompletableFuture<AllowedSignups> acceptingSignups() {
         return poster.get(Constants.ADMIN_URL + SIGNUPS)
-                .thenApply(res -> ((CborObject.CborBoolean)CborObject.fromByteArray(res)).value);
+                .thenApply(res -> AllowedSignups.fromCbor(CborObject.fromByteArray(res)));
     }
 
     @Override

@@ -276,13 +276,21 @@ public class UserContext {
     public static CompletableFuture<UserContext> signUp(String username,
                                                         String password,
                                                         String token,
+                                                        Optional<Function<PaymentProperties, CompletableFuture<Long>>> addCard,
                                                         NetworkAccess network,
                                                         Crypto crypto,
                                                         Consumer<String> progressCallback) {
         // set claim expiry to two months from now
         LocalDate expiry = LocalDate.now().plusMonths(2);
         SecretGenerationAlgorithm algorithm = SecretGenerationAlgorithm.getDefault(crypto.random);
-        return signUpGeneral(username, password, token, expiry, network, crypto, algorithm, progressCallback);
+        return signUpGeneral(username, password, token,
+                addCard.map(f -> (p, i) -> f.apply(p).thenApply(s -> signSpaceRequest(username, i, s))),
+                expiry, network, crypto, algorithm, progressCallback);
+    }
+
+    private static byte[] signSpaceRequest(String username, SigningPrivateKeyAndPublicHash identity, long desiredQuota) {
+        SpaceUsage.SpaceRequest req = new SpaceUsage.SpaceRequest(username, desiredQuota, System.currentTimeMillis(), Optional.empty());
+        return identity.secret.signMessage(req.serialize());
     }
 
     public static CompletableFuture<UserContext> signUp(String username,
@@ -293,12 +301,13 @@ public class UserContext {
         // set claim expiry to two months from now
         LocalDate expiry = LocalDate.now().plusMonths(2);
         SecretGenerationAlgorithm algorithm = SecretGenerationAlgorithm.getDefault(crypto.random);
-        return signUpGeneral(username, password, token, expiry, network, crypto, algorithm, t -> {});
+        return signUpGeneral(username, password, token, Optional.empty(), expiry, network, crypto, algorithm, t -> {});
     }
 
     public static CompletableFuture<UserContext> signUpGeneral(String username,
                                                                String password,
                                                                String token,
+                                                               Optional<BiFunction<PaymentProperties, SigningPrivateKeyAndPublicHash, CompletableFuture<byte[]>>> addCard,
                                                                LocalDate expiry,
                                                                NetworkAccess initialNetwork,
                                                                Crypto crypto,
@@ -370,7 +379,17 @@ public class UserContext {
                                                         TRANSACTIONS_DIR_NAME, Optional.of(batid), network, crypto))
                                                 .thenCompose(globalRoot -> createSpecialDirectory(globalRoot, username,
                                                         CapabilityStore.CAPABILITY_CACHE_DIR, Optional.of(batid), network, crypto))
-                                                .thenCompose(x -> signupWithRetry(username, chain.get(0), token, opLog, crypto.hasher, initialNetwork, progressCallback))
+                                                .thenCompose(x -> signupWithRetry(chain.get(0), addCard.isPresent() ?
+                                                proof -> initialNetwork.coreNode.startPaidSignup(username, chain.get(0), proof)
+                                                        .thenCompose(toPayOrRetry -> toPayOrRetry.isB() ?
+                                                                Futures.of(Optional.of(toPayOrRetry.b())) :
+                                                                addCard.get().apply(toPayOrRetry.a(), identity)
+                                                                        .thenCompose(signedSpaceReq -> initialNetwork.coreNode.completePaidSignup(username, chain.get(0), opLog, signedSpaceReq, proof))
+                                                                        .thenCompose(paid -> paid.error.isPresent() ?
+                                                                                Futures.<Optional<RequiredDifficulty>>errored(new RuntimeException(paid.error.get())) :
+                                                                                Futures.of(Optional.<RequiredDifficulty>empty()))) :
+                                                proof -> initialNetwork.coreNode.signup(username, chain.get(0), opLog, proof, token),
+                                                crypto.hasher, progressCallback))
                                                 .thenCompose(y -> signIn(username, userWithRoot, initialNetwork, crypto, progressCallback));
                                     }))));
                 }).exceptionally(Futures::logAndThrow);
@@ -697,7 +716,7 @@ public class UserContext {
      * @return true when completed successfully
      */
     @JsMethod
-    public CompletableFuture<Boolean> requestSpace(long requestedQuota) {
+    public CompletableFuture<PaymentProperties> requestSpace(long requestedQuota) {
         return network.spaceUsage.requestQuota(username, signer, requestedQuota);
     }
 
@@ -730,21 +749,18 @@ public class UserContext {
         return renewUsernameClaim(username, signer, expiry, crypto.hasher, network);
     }
 
-    private static CompletableFuture<Boolean> signupWithRetry(String username,
-                                                              UserPublicKeyLink chain,
-                                                              String token,
-                                                              OpLog operations,
+    private static CompletableFuture<Boolean> signupWithRetry(UserPublicKeyLink chain,
+                                                              Function<ProofOfWork, CompletableFuture<Optional<RequiredDifficulty>>> signup,
                                                               Hasher hasher,
-                                                              NetworkAccess network,
                                                               Consumer<String> progressCallback) {
         byte[] data = new CborObject.CborList(Arrays.asList(chain)).serialize();
         return time(() -> hasher.generateProofOfWork(ProofOfWork.MIN_DIFFICULTY, data), "Proof of work")
-                .thenCompose(proof -> network.coreNode.signup(username, chain, operations, proof, token))
+                .thenCompose(signup)
                 .thenCompose(diff -> {
                     if (diff.isPresent()) {
                         progressCallback.accept("The server is currently under load, retrying...");
                         return time(() -> hasher.generateProofOfWork(diff.get().requiredDifficulty, data), "Proof of work")
-                                .thenCompose(proof -> network.coreNode.signup(username, chain, operations, proof, token))
+                                .thenCompose(signup)
                                 .thenApply(d -> {
                                     if (d.isPresent())
                                         throw new IllegalStateException("Server is under load please try again later");

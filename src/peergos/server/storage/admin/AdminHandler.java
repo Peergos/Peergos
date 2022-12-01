@@ -70,8 +70,7 @@ public class AdminHandler implements HttpHandler {
                     break;
                 }
                 case HttpInstanceAdmin.SIGNUPS: {
-                    boolean result = target.acceptingSignups().join();
-                    reply = new CborObject.CborBoolean(result);
+                    reply = target.acceptingSignups().join();
                     break;
                 }
                 default:

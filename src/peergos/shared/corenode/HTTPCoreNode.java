@@ -7,6 +7,7 @@ import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.api.*;
 import peergos.shared.io.ipfs.multihash.*;
+import peergos.shared.storage.*;
 import peergos.shared.storage.auth.*;
 import peergos.shared.user.*;
 import peergos.shared.util.*;
@@ -150,6 +151,61 @@ public class HTTPCoreNode implements CoreNode {
                             throw new RuntimeException(e);
                         }
                     });
+        } catch (IOException ioe) {
+            LOG.log(Level.WARNING, ioe.getMessage(), ioe);
+            return Futures.errored(ioe);
+        }
+    }
+
+    @Override
+    public CompletableFuture<Either<PaymentProperties, RequiredDifficulty>> startPaidSignup(String username, UserPublicKeyLink chain, ProofOfWork proof) {
+        try {
+            ByteArrayOutputStream bout = new ByteArrayOutputStream();
+            DataOutputStream dout = new DataOutputStream(bout);
+
+            Serialize.serialize(username, dout);
+            Serialize.serialize(chain.serialize(), dout);
+            Serialize.serialize(proof.serialize(), dout);
+            dout.flush();
+
+            return poster.postUnzip(urlPrefix + Constants.CORE_URL + "startPaidSignup", bout.toByteArray())
+                    .thenApply(res -> {
+                        DataInputStream din = new DataInputStream(new ByteArrayInputStream(res));
+                        try {
+                            boolean success = din.readBoolean();
+                            if (success) {
+                                return Either.a(PaymentProperties.fromCbor(CborObject.fromByteArray(Serialize.deserializeByteArray(din, 1024))));
+                            }
+                            return Either.b(new RequiredDifficulty(din.readInt()));
+                        } catch (IOException e) {
+                            throw new RuntimeException(e);
+                        }
+                    });
+        } catch (IOException ioe) {
+            LOG.log(Level.WARNING, ioe.getMessage(), ioe);
+            return Futures.errored(ioe);
+        }
+    }
+
+    @Override
+    public CompletableFuture<PaymentProperties> completePaidSignup(String username,
+                                                                   UserPublicKeyLink chain,
+                                                                   OpLog setupOperations,
+                                                                   byte[] signedspaceRequest,
+                                                                   ProofOfWork proof) {
+        try {
+            ByteArrayOutputStream bout = new ByteArrayOutputStream();
+            DataOutputStream dout = new DataOutputStream(bout);
+
+            Serialize.serialize(username, dout);
+            Serialize.serialize(chain.serialize(), dout);
+            Serialize.serialize(setupOperations.serialize(), dout);
+            Serialize.serialize(proof.serialize(), dout);
+            Serialize.serialize(signedspaceRequest, dout);
+            dout.flush();
+
+            return poster.postUnzip(urlPrefix + Constants.CORE_URL + "completePaidSignup", bout.toByteArray())
+                    .thenApply(res -> PaymentProperties.fromCbor(CborObject.fromByteArray(res)));
         } catch (IOException ioe) {
             LOG.log(Level.WARNING, ioe.getMessage(), ioe);
             return Futures.errored(ioe);
