@@ -329,6 +329,7 @@ public class MirrorCoreNode implements CoreNode {
                                                                    ProofOfWork proof) {
         writeTarget.completePaidSignup(username, chain, setupOperations, signedSpaceRequest, proof).join();
         update();
+        usageStore.addUserIfAbsent(username);
         usageStore.addWriter(username, chain.owner);
         IpfsCoreNode.applyOpLog(username, chain.owner, setupOperations, ipfs, localPointers, account, batCave);
         return Futures.of(new PaymentProperties(0));
