@@ -152,6 +152,10 @@ public class IpfsWrapper implements AutoCloseable, Runnable {
             runIpfsCmd("config", "--json", "Metrics.Enabled", "true");
             runIpfsCmd("config", "Metrics.Address", parts[0]);
             runIpfsCmd("config", "--json", "Metrics.Port", parts[1]);
+        } else {
+            runIpfsCmd("config", "--json", "Metrics.Enabled", "false");
+            runIpfsCmd("config", "Metrics.Address", "localhost");
+            runIpfsCmd("config", "--json", "Metrics.Port", "0");
         }
 
         LOG().info("Running ipfs config");
