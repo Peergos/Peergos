@@ -219,7 +219,8 @@ public class IpfsCoreNode implements CoreNode {
         if (retry.isPresent())
             return Futures.of(Either.b(retry.get()));
 
-        if (reservedUsernames.containsKey(chain.claim.username))
+        PublicKeyHash identity = reservedUsernames.get(chain.claim.username);
+        if (identity != null && ! identity.equals(chain.owner))
             return Futures.errored(new IllegalStateException("Username already reserved!"));
         reservedUsernames.put(username, chain.owner);
         return Futures.of(Either.a(new PaymentProperties(0)));
