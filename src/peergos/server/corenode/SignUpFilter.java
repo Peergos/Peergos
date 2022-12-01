@@ -25,17 +25,20 @@ public class SignUpFilter implements CoreNode {
     private final Multihash ourNodeId;
     private final HttpSpaceUsage space;
     private final Hasher hasher;
+    private final boolean isPki;
 
     public SignUpFilter(CoreNode target,
                         QuotaAdmin quotaStore,
                         Multihash ourNodeId,
                         HttpSpaceUsage space,
-                        Hasher hasher) {
+                        Hasher hasher,
+                        boolean isPki) {
         this.target = target;
         this.quotaStore = quotaStore;
         this.ourNodeId = ourNodeId;
         this.space = space;
         this.hasher = hasher;
+        this.isPki = isPki;
     }
 
     @Override
@@ -93,6 +96,8 @@ public class SignUpFilter implements CoreNode {
                                                                    OpLog setupOperations,
                                                                    byte[] signedSpaceRequest,
                                                                    ProofOfWork proof) {
+        if (isPki)
+            return target.completePaidSignup(username, chain, setupOperations, signedSpaceRequest, proof);
         // take payment, and if successful, finalise account creation
         quotaStore.getQuota(username); // This will throw is the user doesn't exist in quota store
         PaymentProperties result = quotaStore.requestQuota(chain.owner, signedSpaceRequest).join();
