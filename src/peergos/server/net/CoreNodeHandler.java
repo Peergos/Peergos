@@ -11,6 +11,7 @@ import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.api.*;
 import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.io.ipfs.multihash.*;
+import peergos.shared.storage.*;
 import peergos.shared.storage.auth.*;
 import peergos.shared.user.*;
 import peergos.shared.util.*;
@@ -61,6 +62,14 @@ public class CoreNodeHandler implements HttpHandler
                 case "signup":
                     AggregatedMetrics.SIGNUP.inc();
                     signup(din, dout);
+                    break;
+                case "startPaidSignup":
+                    AggregatedMetrics.PAID_SIGNUP_START.inc();
+                    startPaidSignup(din, dout, exchange);
+                    break;
+                case "completePaidSignup":
+                    AggregatedMetrics.PAID_SIGNUP_COMPLETE.inc();
+                    completePaidSignup(din, dout);
                     break;
                 case "updateChain":
                     AggregatedMetrics.UPDATE_PUBLIC_KEY_CHAIN.inc();
@@ -122,6 +131,31 @@ public class CoreNodeHandler implements HttpHandler
         dout.writeBoolean(err.isEmpty());
         if (err.isPresent())
             dout.writeInt(err.get().requiredDifficulty);
+    }
+
+    void startPaidSignup(DataInputStream din, DataOutputStream dout, HttpExchange exchange) throws Exception
+    {
+        String username = CoreNodeUtils.deserializeString(din);
+        UserPublicKeyLink chain = UserPublicKeyLink.fromCbor(CborObject.fromByteArray(Serialize.deserializeByteArray(din, 2 * UserPublicKeyLink.MAX_SIZE)));
+        ProofOfWork proof = ProofOfWork.fromCbor(CborObject.fromByteArray(Serialize.deserializeByteArray(din, 100)));
+        Either<PaymentProperties, RequiredDifficulty> res = coreNode.startPaidSignup(username, chain, proof).get();
+        dout.writeBoolean(res.isA());
+        if (res.isA())
+            Serialize.serialize(res.a().serialize(), dout);
+        else
+            dout.writeInt(res.b().requiredDifficulty);
+    }
+
+    void completePaidSignup(DataInputStream din, DataOutputStream dout) throws Exception
+    {
+        String username = CoreNodeUtils.deserializeString(din);
+        byte[] raw = Serialize.deserializeByteArray(din, 2 * UserPublicKeyLink.MAX_SIZE);
+        UserPublicKeyLink chain = UserPublicKeyLink.fromCbor(CborObject.fromByteArray(raw));
+        OpLog ops = OpLog.fromCbor(CborObject.fromByteArray(Serialize.deserializeByteArray(din, 64*1024)));
+        ProofOfWork proof = ProofOfWork.fromCbor(CborObject.fromByteArray(Serialize.deserializeByteArray(din, 100)));
+        byte[] signedSpaceRequest = Serialize.deserializeByteArray(din, 64 * 1024);
+        PaymentProperties res = coreNode.completePaidSignup(username, chain, ops, signedSpaceRequest, proof).get();
+        dout.write(res.serialize());
     }
 
     void updateChain(DataInputStream din, DataOutputStream dout) throws Exception

@@ -260,7 +260,7 @@ public class Main extends Builder {
             // sign up peergos user
             SecretGenerationAlgorithm algorithm = SecretGenerationAlgorithm.getDefaultWithoutExtraSalt();
             LocalDate expiry = LocalDate.now().plusMonths(2);
-            UserContext context = UserContext.signUpGeneral(pkiUsername, password, "", expiry, network, crypto, algorithm, x -> {}).join();
+            UserContext context = UserContext.signUpGeneral(pkiUsername, password, "", Optional.empty(), expiry, network, crypto, algorithm, x -> {}).join();
             Optional<PublicKeyHash> existingPkiKey = context.getNamedKey("pki").get();
             if (!existingPkiKey.isPresent() || existingPkiKey.get().equals(pkiPublicHash)) {
                 SigningPrivateKeyAndPublicHash pkiKeyPair = new SigningPrivateKeyAndPublicHash(pkiPublicHash, pkiSecret);
@@ -605,10 +605,11 @@ public class Main extends Builder {
             CoreNode core = buildCorenode(a, localStorage, transactions, rawPointers, localPointers, proxingMutable,
                     rawSocial, usageStore, rawAccount, batStore, account, hasher);
 
+            boolean isPki = Cid.decode(a.getArg("pki-node-id")).equals(nodeId);
             QuotaAdmin userQuotas = buildSpaceQuotas(a, localStorage, core,
                     getDBConnector(a, "space-requests-sql-file", dbConnectionPool),
-                    getDBConnector(a, "quotas-sql-file", dbConnectionPool));
-            CoreNode signupFilter = new SignUpFilter(core, userQuotas, nodeId, httpSpaceUsage);
+                    getDBConnector(a, "quotas-sql-file", dbConnectionPool), isPki);
+            CoreNode signupFilter = new SignUpFilter(core, userQuotas, nodeId, httpSpaceUsage, hasher, isPki);
 
             if (a.getBoolean("update-usage", true))
                 SpaceCheckingKeyFilter.update(usageStore, userQuotas, core, localPointers, localStorage, hasher);

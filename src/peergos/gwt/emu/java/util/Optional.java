@@ -37,6 +37,7 @@ public final class Optional<T> {
     public static <T> Optional<T> empty() {
         return (Optional<T>) EMPTY;
     }
+    @JsMethod
     public static <T> Optional<T> of(T value) {
         return new Optional<>(checkCriticalNotNull(value));
     }

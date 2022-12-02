@@ -6,6 +6,7 @@ import peergos.shared.crypto.hash.*;
 import peergos.shared.crypto.random.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.storage.*;
+import peergos.shared.storage.controller.*;
 import peergos.shared.util.*;
 
 import java.util.*;
@@ -15,9 +16,11 @@ import java.util.*;
  */
 public interface QuotaAdmin extends QuotaControl {
 
-    boolean acceptingSignups();
+    AllowedSignups acceptingSignups();
 
     boolean allowSignupOrUpdate(String username, String token);
+
+    PaymentProperties createPaidUser(String username);
 
     boolean addToken(String token);
 

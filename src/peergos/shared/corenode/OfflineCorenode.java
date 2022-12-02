@@ -4,6 +4,7 @@ import peergos.shared.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.multihash.*;
+import peergos.shared.storage.*;
 import peergos.shared.storage.auth.*;
 import peergos.shared.user.*;
 import peergos.shared.util.*;
@@ -31,6 +32,22 @@ public class OfflineCorenode implements CoreNode {
                                                                   ProofOfWork proofOfWork,
                                                                   String token) {
         return target.signup(username, userPublicKeyLink, opLog, proofOfWork, token);
+    }
+
+    @Override
+    public CompletableFuture<Either<PaymentProperties, RequiredDifficulty>> startPaidSignup(String username,
+                                                                                            UserPublicKeyLink chain,
+                                                                                            ProofOfWork proof) {
+        return target.startPaidSignup(username, chain, proof);
+    }
+
+    @Override
+    public CompletableFuture<PaymentProperties> completePaidSignup(String username,
+                                                                   UserPublicKeyLink chain,
+                                                                   OpLog setupOperations,
+                                                                   byte[] signedSpaceRequest,
+                                                                   ProofOfWork proof) {
+        return target.completePaidSignup(username, chain, setupOperations, signedSpaceRequest, proof);
     }
 
     @Override

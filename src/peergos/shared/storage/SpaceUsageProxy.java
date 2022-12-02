@@ -16,5 +16,5 @@ public interface SpaceUsageProxy extends SpaceUsage {
 
     CompletableFuture<Long> getQuota(Multihash targetServerId, PublicKeyHash owner, byte[] signedTime);
 
-    CompletableFuture<Boolean> requestSpace(Multihash targetServerId, PublicKeyHash owner, byte[] signedRequest);
+    CompletableFuture<PaymentProperties> requestSpace(Multihash targetServerId, PublicKeyHash owner, byte[] signedRequest);
 }

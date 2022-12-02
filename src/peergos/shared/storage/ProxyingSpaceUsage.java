@@ -53,7 +53,7 @@ public class ProxyingSpaceUsage implements SpaceUsage {
     }
 
     @Override
-    public CompletableFuture<Boolean> requestQuota(PublicKeyHash owner, byte[] signedRequest) {
+    public CompletableFuture<PaymentProperties> requestQuota(PublicKeyHash owner, byte[] signedRequest) {
         return Proxy.redirectCall(core,
                 serverId,
                 owner,

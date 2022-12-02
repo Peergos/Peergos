@@ -7,6 +7,7 @@ import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.storage.*;
 import peergos.shared.storage.auth.*;
 import peergos.shared.user.*;
+import peergos.shared.util.*;
 
 import java.io.*;
 import java.util.*;
@@ -71,6 +72,16 @@ public class NonWriteThroughCoreNode implements CoreNode {
                                                                   OpLog setupOperations,
                                                                   ProofOfWork proof,
                                                                   String token) {
+        throw new IllegalStateException("Unsupported operation!");
+    }
+
+    @Override
+    public CompletableFuture<Either<PaymentProperties, RequiredDifficulty>> startPaidSignup(String username, UserPublicKeyLink chain, ProofOfWork proof) {
+        throw new IllegalStateException("Unsupported operation!");
+    }
+
+    @Override
+    public CompletableFuture<PaymentProperties> completePaidSignup(String username, UserPublicKeyLink chain, OpLog setupOperations, byte[] signedSpaceRequest, ProofOfWork proof) {
         throw new IllegalStateException("Unsupported operation!");
     }
 

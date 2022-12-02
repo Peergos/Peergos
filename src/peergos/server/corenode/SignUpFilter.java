@@ -1,6 +1,8 @@
 package peergos.server.corenode;
 
 import peergos.server.storage.admin.*;
+import peergos.server.util.*;
+import peergos.shared.cbor.*;
 import peergos.shared.corenode.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
@@ -13,22 +15,30 @@ import peergos.shared.user.*;
 import java.io.*;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.logging.*;
 
 public class SignUpFilter implements CoreNode {
+    private static final Logger LOG = Logging.LOG();
 
     private final CoreNode target;
     private final QuotaAdmin quotaStore;
     private final Multihash ourNodeId;
     private final HttpSpaceUsage space;
+    private final Hasher hasher;
+    private final boolean isPki;
 
     public SignUpFilter(CoreNode target,
                         QuotaAdmin quotaStore,
                         Multihash ourNodeId,
-                        HttpSpaceUsage space) {
+                        HttpSpaceUsage space,
+                        Hasher hasher,
+                        boolean isPki) {
         this.target = target;
         this.quotaStore = quotaStore;
         this.ourNodeId = ourNodeId;
         this.space = space;
+        this.hasher = hasher;
+        this.isPki = isPki;
     }
 
     @Override
@@ -51,6 +61,51 @@ public class SignUpFilter implements CoreNode {
             return Futures.errored(new IllegalStateException("Invalid signup token."));
 
         return Futures.errored(new IllegalStateException("This server is not currently accepting new sign ups. Please try again later"));
+    }
+
+    private final DifficultyGenerator startPaidRateLimiter = new DifficultyGenerator(System.currentTimeMillis(), 10);
+
+    @Override
+    public CompletableFuture<Either<PaymentProperties, RequiredDifficulty>> startPaidSignup(String username,
+                                                                                            UserPublicKeyLink chain,
+                                                                                            ProofOfWork proof) {
+        // Apply rate limiting based on IP, failures, etc.
+        // Check proof of work is sufficient, unless it is a password change
+        byte[] hash = hasher.sha256(ArrayOps.concat(proof.prefix, new CborObject.CborList(Arrays.asList(chain)).serialize())).join();
+        startPaidRateLimiter.updateTime(System.currentTimeMillis());
+        int requiredDifficulty = startPaidRateLimiter.currentDifficulty();
+        if (! ProofOfWork.satisfiesDifficulty(requiredDifficulty, hash)) {
+            LOG.log(Level.INFO, "Rejected start paid signup request with insufficient proof of work for difficulty: " +
+                    requiredDifficulty + " and username " + username);
+            return Futures.of(Either.b(new RequiredDifficulty(requiredDifficulty)));
+        }
+
+        //  reserve username, then create user and get payment url
+        return target.startPaidSignup(username, chain, proof)
+                .thenApply(res -> {
+                    if (res.isA()) {
+                        return Either.a(quotaStore.createPaidUser(username));
+                    }
+                    return res;
+                });
+    }
+
+    @Override
+    public CompletableFuture<PaymentProperties> completePaidSignup(String username,
+                                                                   UserPublicKeyLink chain,
+                                                                   OpLog setupOperations,
+                                                                   byte[] signedSpaceRequest,
+                                                                   ProofOfWork proof) {
+        if (isPki)
+            return target.completePaidSignup(username, chain, setupOperations, signedSpaceRequest, proof);
+        // take payment, and if successful, finalise account creation
+        quotaStore.getQuota(username); // This will throw is the user doesn't exist in quota store
+        PaymentProperties result = quotaStore.requestQuota(chain.owner, signedSpaceRequest).join();
+        long quota = quotaStore.getQuota(username);
+        if (quota == result.desiredQuota && quota > 1024*1024) {// 1 MiB is the deletion quota
+            return target.completePaidSignup(username, chain, setupOperations, signedSpaceRequest, proof);
+        }
+        return Futures.of(result);
     }
 
     @Override

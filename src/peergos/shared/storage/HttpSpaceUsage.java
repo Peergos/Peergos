@@ -81,19 +81,19 @@ public class HttpSpaceUsage implements SpaceUsageProxy {
     }
 
     @Override
-    public CompletableFuture<Boolean> requestQuota(PublicKeyHash owner, byte[] signedRequest) {
+    public CompletableFuture<PaymentProperties> requestQuota(PublicKeyHash owner, byte[] signedRequest) {
         return requestSpace("", direct, owner, signedRequest);
     }
 
     @Override
-    public CompletableFuture<Boolean> requestSpace(Multihash targetServerId, PublicKeyHash owner, byte[] signedRequest) {
+    public CompletableFuture<PaymentProperties> requestSpace(Multihash targetServerId, PublicKeyHash owner, byte[] signedRequest) {
         return requestSpace(getProxyUrlPrefix(targetServerId), p2p, owner, signedRequest);
     }
 
-    public CompletableFuture<Boolean> requestSpace(String urlPrefix, HttpPoster poster, PublicKeyHash owner, byte[] signedRequest) {
+    public CompletableFuture<PaymentProperties> requestSpace(String urlPrefix, HttpPoster poster, PublicKeyHash owner, byte[] signedRequest) {
         return poster.get(urlPrefix + Constants.SPACE_USAGE_URL + "request?owner=" + encode(owner.toString())
                 + "&req=" + ArrayOps.bytesToHex(signedRequest)).thenApply(res -> {
-            return ((CborObject.CborBoolean)CborObject.fromByteArray(res)).value;
+            return PaymentProperties.fromCbor(CborObject.fromByteArray(res));
         });
     }
 

@@ -17,9 +17,9 @@ public interface QuotaControl {
 
     CompletableFuture<Long> getQuota(PublicKeyHash owner, byte[] signedTime);
 
-    CompletableFuture<Boolean> requestQuota(PublicKeyHash owner, byte[] signedRequest);
+    CompletableFuture<PaymentProperties> requestQuota(PublicKeyHash owner, byte[] signedRequest);
 
-    default CompletableFuture<Boolean> requestQuota(String username, SigningPrivateKeyAndPublicHash identity, long space) {
+    default CompletableFuture<PaymentProperties> requestQuota(String username, SigningPrivateKeyAndPublicHash identity, long space) {
         SpaceUsage.SpaceRequest req = new SpaceUsage.SpaceRequest(username, space, System.currentTimeMillis(), Optional.empty());
         byte[] signedRequest = identity.secret.signMessage(req.serialize());
         return requestQuota(identity.publicKeyHash, signedRequest);

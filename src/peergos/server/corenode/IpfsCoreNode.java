@@ -25,7 +25,7 @@ import java.util.stream.*;
 
 public class IpfsCoreNode implements CoreNode {
 	private static final Logger LOG = Logging.LOG();
-	public static final int MAX_FREE_PASSWORD_CHANGES = 10;
+	public static final int MAX_FREE_IDENTITY_CHANGES = 10;
 
     private final PublicKeyHash peergosIdentity;
     private final ContentAddressedStorage ipfs;
@@ -39,6 +39,7 @@ public class IpfsCoreNode implements CoreNode {
     private final Map<PublicKeyHash, String> reverseLookup = new ConcurrentHashMap<>();
     private final List<String> usernames = new ArrayList<>();
     private final DifficultyGenerator difficultyGenerator;
+    private final Map<String, PublicKeyHash> reservedUsernames = new ConcurrentHashMap<>();
 
     private MaybeMultihash currentRoot;
     private Optional<Long> currentSequence;
@@ -209,6 +210,51 @@ public class IpfsCoreNode implements CoreNode {
         return Futures.of(Optional.empty());
     }
 
+    @Override
+    public CompletableFuture<Either<PaymentProperties, RequiredDifficulty>> startPaidSignup(String username,
+                                                                                            UserPublicKeyLink chain,
+                                                                                            ProofOfWork proof) {
+        // reserve the username after checking proof of work is sufficient
+        Optional<RequiredDifficulty> retry = enforceRateLimit(proof, Arrays.asList(chain));
+        if (retry.isPresent())
+            return Futures.of(Either.b(retry.get()));
+
+        PublicKeyHash identity = reservedUsernames.get(chain.claim.username);
+        if (identity != null && ! identity.equals(chain.owner))
+            return Futures.errored(new IllegalStateException("Username already reserved!"));
+        reservedUsernames.put(username, chain.owner);
+        return Futures.of(Either.a(new PaymentProperties(0)));
+    }
+
+    @Override
+    public CompletableFuture<PaymentProperties> completePaidSignup(String username,
+                                                                   UserPublicKeyLink chain,
+                                                                   OpLog setupOperations,
+                                                                   byte[] signedSpaceRequest,
+                                                                   ProofOfWork proof) {
+        if (! reservedUsernames.containsKey(username))
+            return Futures.errored(new IllegalStateException("Username not reserved!"));
+        if (! chain.claim.username.equals(username))
+            return Futures.errored(new IllegalStateException("Username different from that in claim!"));
+
+        updateChain(username, Arrays.asList(chain), proof, "", false).join();
+        applyOpLog(username, chain.owner, setupOperations, ipfs, mutable, account, batCave);
+        return Futures.of(new PaymentProperties(0));
+    }
+
+    private Optional<RequiredDifficulty> enforceRateLimit(ProofOfWork proof, List<UserPublicKeyLink> updatedChain) {
+        byte[] hash = hasher.sha256(ArrayOps.concat(proof.prefix, new CborObject.CborList(updatedChain).serialize())).join();
+        difficultyGenerator.updateTime(System.currentTimeMillis());
+        int requiredDifficulty = difficultyGenerator.currentDifficulty();
+        if (! ProofOfWork.satisfiesDifficulty(requiredDifficulty, hash)) {
+            LOG.log(Level.INFO, "Rejected request with insufficient proof of work for difficulty: " +
+                    requiredDifficulty + " and username " + updatedChain.get(updatedChain.size() - 1).claim.username);
+            return Optional.of(new RequiredDifficulty(requiredDifficulty));
+        }
+        difficultyGenerator.addEvent();
+        return Optional.empty();
+    }
+
     /** Update a user's public key chain, keeping the in memory mappings correct and committing the new pki root
      *
      * @param username
@@ -220,6 +266,14 @@ public class IpfsCoreNode implements CoreNode {
                                                                                     List<UserPublicKeyLink> updatedChain,
                                                                                     ProofOfWork proof,
                                                                                     String token) {
+        return updateChain(username, updatedChain, proof, token, true);
+    }
+
+    synchronized CompletableFuture<Optional<RequiredDifficulty>> updateChain(String username,
+                                                                             List<UserPublicKeyLink> updatedChain,
+                                                                             ProofOfWork proof,
+                                                                             String token,
+                                                                             boolean rateLimit) {
         if (! UsernameValidator.isValidUsername(username))
             throw new IllegalStateException("Invalid username");
 
@@ -245,19 +299,14 @@ public class IpfsCoreNode implements CoreNode {
                     .collect(Collectors.toList()))
                     .orElse(Collections.emptyList());
 
-            // Check proof of work is sufficient, unless it is a password change
-            byte[] hash = hasher.sha256(ArrayOps.concat(proof.prefix, new CborObject.CborList(updatedChain).serialize())).join();
-            difficultyGenerator.updateTime(System.currentTimeMillis());
-            int requiredDifficulty = difficultyGenerator.currentDifficulty();
-            if (existingChain.isEmpty() || existingChain.size() > MAX_FREE_PASSWORD_CHANGES) {
-                if (!ProofOfWork.satisfiesDifficulty(requiredDifficulty, hash)) {
-                    LOG.log(Level.INFO, "Rejected request with insufficient proof of work for difficulty: " +
-                            requiredDifficulty + " and username " + username);
-                    return Futures.of(Optional.of(new RequiredDifficulty(requiredDifficulty)));
+            // Check proof of work is sufficient, unless it is an identity change
+            if (rateLimit) {
+                if (existingChain.isEmpty() || existingChain.size() > MAX_FREE_IDENTITY_CHANGES) {
+                    Optional<RequiredDifficulty> retry = enforceRateLimit(proof, updatedChain);
+                    if (retry.isPresent())
+                        return Futures.of(retry);
                 }
             }
-
-            difficultyGenerator.addEvent();
 
             List<UserPublicKeyLink> mergedChain = UserPublicKeyLink.merge(existingChain, updatedChain, ipfs).get();
             CborObject.CborList mergedChainCbor = new CborObject.CborList(mergedChain.stream()

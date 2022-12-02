@@ -53,6 +53,8 @@ public class AggregatedMetrics {
     public static final Counter UPDATE_PUBLIC_KEY_CHAIN  = build("core_node_update_chain", "Total getupdate-public-key-chain calls.");
     public static final Counter PKI_RATE_LIMITED  = build("pki_rate_limited", "Total number of pki updates rate limited.");
     public static final Counter SIGNUP  = build("core_node_signup", "Total signup calls.");
+    public static final Counter PAID_SIGNUP_START  = build("core_node_signup_paid_start", "Total start paid signup calls.");
+    public static final Counter PAID_SIGNUP_COMPLETE  = build("core_node_signup_paid_complete", "Total complete paid signup calls.");
     public static final Counter MIGRATE_USER  = build("core_node_migrate_user", "Total migrate-user calls.");
 
     public static void startExporter(String address, int port) throws IOException {

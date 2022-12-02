@@ -33,7 +33,7 @@ public interface InstanceAdmin {
                                                    byte[] signedRequest);
 
     @JsMethod
-    CompletableFuture<Boolean> acceptingSignups();
+    CompletableFuture<AllowedSignups> acceptingSignups();
 
     @JsMethod
     CompletableFuture<Boolean> addToWaitList(String email);

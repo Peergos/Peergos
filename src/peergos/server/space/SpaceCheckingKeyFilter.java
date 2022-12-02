@@ -330,7 +330,7 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
     }
 
     @Override
-    public CompletableFuture<Boolean> requestQuota(PublicKeyHash owner, byte[] signedRequest) {
+    public CompletableFuture<PaymentProperties> requestQuota(PublicKeyHash owner, byte[] signedRequest) {
         return quotaAdmin.requestQuota(owner, signedRequest);
     }
 
