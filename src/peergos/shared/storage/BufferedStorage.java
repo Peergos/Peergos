@@ -20,7 +20,7 @@ import java.util.stream.*;
 
 public class BufferedStorage extends DelegatingStorage {
 
-    private Map<Cid, OpLog.BlockWrite> storage = new EfficientHashMap<>();
+    private Map<Cid, OpLog.BlockWrite> storage = new LinkedHashMap<>();
     private final ContentAddressedStorage target;
     private final Hasher hasher;
 
