@@ -13,8 +13,9 @@ public class PrintTestErrors {
 
     public static void main(String[] args) throws IOException {
         List<Path> reports = Files.list(Path.of("test.reports")).collect(Collectors.toList());
-        boolean inErr = false, anyError = false;
+        boolean anyError = false;
         for (Path report : reports) {
+            boolean inErr = false;
             List<String> lines = Files.readAllLines(report);
             for (int i=0; i < lines.size(); i++) {
                 String line = lines.get(i);
