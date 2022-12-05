@@ -19,9 +19,9 @@ import java.util.function.Supplier;
 
 public class RetryStorage implements ContentAddressedStorage {
 
-    private final Random random = new Random(1);
+    private static final Random random = new Random(1);
+    private static final ScheduledThreadPoolExecutor executor = new ScheduledThreadPoolExecutor(1);
     private final ContentAddressedStorage target;
-    private final ScheduledThreadPoolExecutor executor = new ScheduledThreadPoolExecutor(1);
     private final int maxAttempts;
 
     public RetryStorage(ContentAddressedStorage target, int maxAttempts) {
@@ -34,19 +34,23 @@ public class RetryStorage implements ContentAddressedStorage {
         return new RetryStorage(target.directToOrigin(), maxAttempts);
     }
 
-    private <V> void retryAfter(Supplier<CompletableFuture<V>> method, int milliseconds) {
+    private static <V> void retryAfter(Supplier<CompletableFuture<V>> method, int milliseconds) {
         executor.schedule(method::get, milliseconds, TimeUnit.MILLISECONDS);
     }
 
-    private int jitter(int minMilliseconds, int rangeMilliseconds) {
+    private static int jitter(int minMilliseconds, int rangeMilliseconds) {
         return minMilliseconds + random.nextInt(rangeMilliseconds);
     }
 
     private <V> CompletableFuture<V> runWithRetry(Supplier<CompletableFuture<V>> f) {
-        return recurse(maxAttempts, f);
+        return recurse(maxAttempts, maxAttempts, f);
     }
 
-    private <V> CompletableFuture<V> recurse(int retriesLeft, Supplier<CompletableFuture<V>> f) {
+    public static <V> CompletableFuture<V> runWithRetry(int maxAttempts, Supplier<CompletableFuture<V>> f) {
+        return recurse(maxAttempts, maxAttempts, f);
+    }
+
+    private static <V> CompletableFuture<V> recurse(int retriesLeft, int maxAttempts, Supplier<CompletableFuture<V>> f) {
         CompletableFuture<V> res = new CompletableFuture<>();
         try {
             f.get()
@@ -61,7 +65,7 @@ public class RetryStorage implements ContentAddressedStorage {
                         } else if (e instanceof ConnectException) {
                             res.completeExceptionally(e);
                         } else {
-                            retryAfter(() -> recurse(retriesLeft - 1, f)
+                            retryAfter(() -> recurse(retriesLeft - 1, maxAttempts, f)
                                             .thenAccept(res::complete)
                                             .exceptionally(t -> {
                                                 res.completeExceptionally(t);
