@@ -15,12 +15,14 @@ public class UnauthedCachingStorage extends DelegatingStorage {
     private final ContentAddressedStorage target;
     private final BlockCache cache;
     private final LRUCache<Multihash, CompletableFuture<Optional<byte[]>>> pending;
+    private final Hasher hasher;
 
-    public UnauthedCachingStorage(ContentAddressedStorage target, BlockCache cache) {
+    public UnauthedCachingStorage(ContentAddressedStorage target, BlockCache cache, Hasher hasher) {
         super(target);
         this.target = target;
         this.cache = cache;
         this.pending = new LRUCache<>(200);
+        this.hasher = hasher;
     }
 
     @Override
@@ -30,7 +32,7 @@ public class UnauthedCachingStorage extends DelegatingStorage {
 
     @Override
     public ContentAddressedStorage directToOrigin() {
-        return new UnauthedCachingStorage(target.directToOrigin(), cache);
+        return new UnauthedCachingStorage(target.directToOrigin(), cache, hasher);
     }
 
     @Override
@@ -69,18 +71,29 @@ public class UnauthedCachingStorage extends DelegatingStorage {
     }
 
     @Override
+    public CompletableFuture<List<byte[]>> getChampLookup(PublicKeyHash owner, Cid root, byte[] champKey, Optional<BatWithId> bat) {
+        return Futures.asyncExceptionally(
+                () -> target.getChampLookup(owner, root, champKey, bat)
+                        .thenApply(blocks -> cacheBlocks(blocks, hasher)),
+                t -> super.getChampLookup(root, champKey, bat, hasher)
+        );
+    }
+
+    @Override
     public CompletableFuture<List<byte[]>> getChampLookup(Cid root, byte[] champKey, Optional<BatWithId> bat, Hasher hasher) {
         return Futures.asyncExceptionally(
                 () -> target.getChampLookup(root, champKey, bat, hasher),
                         t -> super.getChampLookup(root, champKey, bat, hasher)
-        ).thenApply(blocks -> {
-            ForkJoinPool.commonPool().execute(() -> Futures.combineAll(blocks.stream()
-                            .map(b -> hasher.hash(b, false)
-                                    .thenApply(c -> new Pair<>(c, b)))
-                            .collect(Collectors.toList()))
-                    .thenAccept(hashed -> hashed.stream().forEach(p -> cache.put(p.left, p.right))));
-            return blocks;
-        });
+        ).thenApply(blocks -> cacheBlocks(blocks, hasher));
+    }
+
+    private List<byte[]> cacheBlocks(List<byte[]> blocks, Hasher hasher) {
+        ForkJoinPool.commonPool().execute(() -> Futures.combineAll(blocks.stream()
+                        .map(b -> hasher.hash(b, false)
+                                .thenApply(c -> new Pair<>(c, b)))
+                        .collect(Collectors.toList()))
+                .thenAccept(hashed -> hashed.stream().forEach(p -> cache.put(p.left, p.right))));
+        return blocks;
     }
 
     @Override

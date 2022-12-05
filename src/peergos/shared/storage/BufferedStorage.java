@@ -5,6 +5,7 @@ import peergos.shared.cbor.*;
 import peergos.shared.corenode.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
+import peergos.shared.hamt.*;
 import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.mutable.*;
@@ -54,8 +55,24 @@ public class BufferedStorage extends DelegatingStorage {
 
     @Override
     public CompletableFuture<List<byte[]>> getChampLookup(PublicKeyHash owner, Cid root, byte[] champKey, Optional<BatWithId> bat) {
-        // We must do a local champ look up because of the unwritten blocks
-        return getChampLookup(root, champKey, bat, hasher);
+        // Try to perform a local champ lookup from the buffer, falling back to a direct champ get
+        return Futures.asyncExceptionally(
+                () -> getChampLookup(root, champKey, bat, hasher),
+                t -> target.getChampLookup(owner, root, champKey, bat)
+        );
+    }
+
+    @Override
+    public CompletableFuture<List<byte[]>> getChampLookup(Cid root, byte[] champKey, Optional<BatWithId> bat, Hasher hasher) {
+        CachingStorage cache = new CachingStorage(new LocalOnlyStorage(storage), 100, 100 * 1024);
+        return ChampWrapper.create((Cid)root, x -> Futures.of(x.data), cache, hasher, c -> (CborObject.CborMerkleLink) c)
+                        .thenCompose(tree -> tree.get(champKey))
+                        .thenApply(c -> c.map(x -> x.target).map(MaybeMultihash::of).orElse(MaybeMultihash.empty()))
+                        .thenApply(btreeValue -> {
+                            if (btreeValue.isPresent())
+                                return cache.get((Cid) btreeValue.get(), bat);
+                            return Optional.empty();
+                        }).thenApply(x -> new ArrayList<>(cache.getCached()));
     }
 
     @Override
