@@ -19,8 +19,6 @@ public class PrintTestErrors {
             List<String> lines = Files.readAllLines(report);
             for (int i=0; i < lines.size(); i++) {
                 String line = lines.get(i);
-                if (report.getFileName().toString().contains("IpfsUser"))
-                    inErr = true;
                 if (line.contains("<error") || line.contains("<failure")) {
                     System.out.println(lines.get(i-1));
                     inErr = true;
