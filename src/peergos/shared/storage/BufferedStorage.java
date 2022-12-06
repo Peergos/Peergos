@@ -56,6 +56,8 @@ public class BufferedStorage extends DelegatingStorage {
     @Override
     public CompletableFuture<List<byte[]>> getChampLookup(PublicKeyHash owner, Cid root, byte[] champKey, Optional<BatWithId> bat) {
         // Try to perform a local champ lookup from the buffer, falling back to a direct champ get
+        if (storage.isEmpty())
+            return target.getChampLookup(owner, root, champKey, bat);
         return Futures.asyncExceptionally(
                 () -> getChampLookup(root, champKey, bat, hasher),
                 t -> target.getChampLookup(owner, root, champKey, bat)
