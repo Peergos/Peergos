@@ -66,7 +66,7 @@ public class BufferedStorage extends DelegatingStorage {
 
     @Override
     public CompletableFuture<List<byte[]>> getChampLookup(Cid root, byte[] champKey, Optional<BatWithId> bat, Hasher hasher) {
-        CachingStorage cache = new CachingStorage(new LocalOnlyStorage(storage), 100, 100 * 1024);
+        CachingStorage cache = new CachingStorage(this, 100, 100 * 1024);
         return ChampWrapper.create((Cid)root, x -> Futures.of(x.data), cache, hasher, c -> (CborObject.CborMerkleLink) c)
                         .thenCompose(tree -> tree.get(champKey))
                         .thenApply(c -> c.map(x -> x.target).map(MaybeMultihash::of).orElse(MaybeMultihash.empty()))
