@@ -22,6 +22,9 @@ jobs:
       run: ant -noinput -buildfile build.xml dist
     - name: GWT build
       run: ant -noinput -buildfile build.xml gwtc
+    - name: install fuse 2
+      run: sudo apt install libfuse2
+      if: matrix.os == 'ubuntu-latest'
     - name: Run tests
       timeout-minutes: 120
       run: ant -noinput -buildfile build.xml test

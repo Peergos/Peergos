@@ -226,7 +226,7 @@ public class NetworkAccess {
                 .exceptionally(t -> false));
         return buildViaPeergosInstance(relative, relative, localDht, 7_000, hasher, true)
                 .thenApply(net -> net.withStorage(s ->
-                        new UnauthedCachingStorage(s, new JSBlockCache(cacheSizeKiB/1024)))
+                        new UnauthedCachingStorage(s, new JSBlockCache(cacheSizeKiB/1024), hasher))
                         .withMutablePointerOfflineCache(m -> new OfflinePointerCache(m,
                                 new JSPointerCache(2000, net.dhtClient),
                                 onlineState)))

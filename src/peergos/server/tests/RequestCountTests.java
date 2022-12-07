@@ -62,7 +62,7 @@ public class RequestCountTests {
 
         storageCounter.reset();
         PeergosNetworkUtils.ensureSignedUp(sharer.username, password, network, crypto);
-        Assert.assertTrue("login request count: " + storageCounter.requestTotal(), storageCounter.requestTotal() <= 3);
+        Assert.assertTrue("login request count: " + storageCounter.requestTotal(), storageCounter.requestTotal() <= 5);
 
         List<UserContext> shareeUsers = getUserContextsForNode(network, random, 1, Arrays.asList(password, password));
         UserContext a = shareeUsers.get(0);
@@ -87,12 +87,12 @@ public class RequestCountTests {
             boolean reciprocate = true;
             a.sendReplyFollowRequest(u1Request, accept, reciprocate).join();
         }
-        Assert.assertTrue("send reply follow request: " + storageCounter.requestTotal(), storageCounter.requestTotal() <= 20);
+        Assert.assertTrue("send reply follow request: " + storageCounter.requestTotal(), storageCounter.requestTotal() <= 22);
 
         // complete the friendship connection
         storageCounter.reset();
         sharer.processFollowRequests().join();
-        Assert.assertTrue("friending complete: " + storageCounter.requestTotal(), storageCounter.requestTotal() <= 20);
+        Assert.assertTrue("friending complete: " + storageCounter.requestTotal(), storageCounter.requestTotal() <= 29);
 
         // friends are now connected
         // share a file from u1 to u2
@@ -142,7 +142,7 @@ public class RequestCountTests {
 
         storageCounter.reset();
         SocialFeed feed2 = a.getSocialFeed().join().update().join();
-        Assert.assertTrue("load 5 items in social feed: " + storageCounter.requestTotal(), storageCounter.requestTotal() <= 4);
+        Assert.assertTrue("load 5 items in social feed: " + storageCounter.requestTotal(), storageCounter.requestTotal() <= 18);
 
         storageCounter.reset();
         List<SharedItem> items2 = feed2.getShared(feedSize + 1, feedSize + 6, a.crypto, a.network).join();
