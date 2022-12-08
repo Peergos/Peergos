@@ -299,14 +299,17 @@ public class Builder {
         return JdbcTransactionStore.build(transactionsDb, getSqlCommands(a));
     }
 
+    public static boolean isPaidInstance(Args a) {
+        return a.hasArg("quota-admin-address");
+    }
+
     public static QuotaAdmin buildSpaceQuotas(Args a,
                                               DeletableContentAddressedStorage localDht,
                                               CoreNode core,
                                               Supplier<Connection> spaceDb,
                                               Supplier<Connection> quotasDb,
                                               boolean isPki) {
-        boolean paidStorage = a.hasArg("quota-admin-address");
-        if (paidStorage)
+        if (isPaidInstance(a))
             return buildPaidQuotas(a);
 
         SqlSupplier sqlCommands = getSqlCommands(a);

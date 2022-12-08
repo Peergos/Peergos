@@ -25,6 +25,8 @@ public class SignUpFilter implements CoreNode {
     private final Multihash ourNodeId;
     private final HttpSpaceUsage space;
     private final Hasher hasher;
+    private final DifficultyGenerator startPaidRateLimiter;
+    private final int maxPaidSignupsPerDay;
     private final boolean isPki;
 
     public SignUpFilter(CoreNode target,
@@ -32,12 +34,15 @@ public class SignUpFilter implements CoreNode {
                         Multihash ourNodeId,
                         HttpSpaceUsage space,
                         Hasher hasher,
+                        int maxPaidSignupsPerDay,
                         boolean isPki) {
         this.target = target;
         this.quotaStore = quotaStore;
         this.ourNodeId = ourNodeId;
         this.space = space;
         this.hasher = hasher;
+        this.maxPaidSignupsPerDay = maxPaidSignupsPerDay;
+        startPaidRateLimiter = new DifficultyGenerator(System.currentTimeMillis(), maxPaidSignupsPerDay);
         this.isPki = isPki;
     }
 
@@ -63,12 +68,12 @@ public class SignUpFilter implements CoreNode {
         return Futures.errored(new IllegalStateException("This server is not currently accepting new sign ups. Please try again later"));
     }
 
-    private final DifficultyGenerator startPaidRateLimiter = new DifficultyGenerator(System.currentTimeMillis(), 10);
-
     @Override
     public CompletableFuture<Either<PaymentProperties, RequiredDifficulty>> startPaidSignup(String username,
                                                                                             UserPublicKeyLink chain,
                                                                                             ProofOfWork proof) {
+        if (maxPaidSignupsPerDay == 0)
+            return Futures.of(Either.b(new RequiredDifficulty(ProofOfWork.MAX_DIFFICULTY)));
         // Apply rate limiting based on IP, failures, etc.
         // Check proof of work is sufficient, unless it is a password change
         byte[] hash = hasher.sha256(ArrayOps.concat(proof.prefix, new CborObject.CborList(Arrays.asList(chain)).serialize())).join();

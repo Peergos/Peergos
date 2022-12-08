@@ -609,7 +609,8 @@ public class Main extends Builder {
             QuotaAdmin userQuotas = buildSpaceQuotas(a, localStorage, core,
                     getDBConnector(a, "space-requests-sql-file", dbConnectionPool),
                     getDBConnector(a, "quotas-sql-file", dbConnectionPool), isPki);
-            CoreNode signupFilter = new SignUpFilter(core, userQuotas, nodeId, httpSpaceUsage, hasher, isPki);
+            CoreNode signupFilter = new SignUpFilter(core, userQuotas, nodeId, httpSpaceUsage, hasher,
+                    a.getInt("max-daily-paid-signups", isPaidInstance(a) ? 10 : 0), isPki);
 
             if (a.getBoolean("update-usage", true))
                 SpaceCheckingKeyFilter.update(usageStore, userQuotas, core, localPointers, localStorage, hasher);

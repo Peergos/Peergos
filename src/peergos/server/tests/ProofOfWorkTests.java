@@ -2,6 +2,7 @@ package peergos.server.tests;
 
 import org.junit.*;
 import peergos.server.*;
+import peergos.server.util.*;
 import peergos.shared.*;
 import peergos.shared.crypto.*;
 import peergos.shared.util.*;
@@ -22,5 +23,12 @@ public class ProofOfWorkTests {
             byte[] hash = crypto.hasher.sha256(ArrayOps.concat(work.prefix, data)).join();
             Assert.assertTrue(ProofOfWork.satisfiesDifficulty(d, hash));
         }
+    }
+
+    @Test
+    public void infiniteDifficulty() {
+        DifficultyGenerator rateLimiter = new DifficultyGenerator(System.currentTimeMillis(), 0);
+        int diff = rateLimiter.currentDifficulty();
+        Assert.assertTrue(diff == ProofOfWork.MAX_DIFFICULTY);
     }
 }
