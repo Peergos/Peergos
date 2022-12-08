@@ -25,6 +25,8 @@ public class DifficultyGenerator {
         this.maxPerBucket = new double[nBuckets];
         for (int i=0; i < nBuckets; i++)
             maxPerBucket[i] = maxPerTimeStep * timeStepsForBucket(i);
+        if (maxPerDay == 0)
+            difficulty = ProofOfWork.MAX_DIFFICULTY;
     }
 
     private static long timeStepsForBucket(int bucket) {
