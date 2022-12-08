@@ -927,6 +927,9 @@ public class FileWrapper {
                 .thenCompose(latest -> latest.addChildPointers(in, c, childLinks, network.disableCommits(), crypto))
                 .thenCompose(res -> Futures.reduceAll(toClose, res, (v, f) -> transactions.close(v, c, f), (a, b) -> b))
                 .thenApply(s -> {network.enableCommits(); return s;})
+                .thenCompose(s -> network.isFull() ?
+                        network.commit(parent.owner(), commitWatcher).thenApply(x -> s) :
+                        Futures.of(s))
                 .thenApply(s -> new Pair<>(s, Collections.<NamedRelativeCapability>emptyList()));
     }
 
