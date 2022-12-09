@@ -177,7 +177,7 @@ public abstract class StaticHandler implements HttpHandler
             // allow list of permissions
             httpExchange.getResponseHeaders().set("permissions-policy",
                     "interest-cohort=(), geolocation=(), gyroscope=(), magnetometer=(), accelerometer=(), microphone=(), " +
-                    "camera=(self), fullscreen=(self)");
+                    "fullscreen=(self)");
             if (! isRoot) {
                 String previousEtag = httpExchange.getRequestHeaders().getFirst("If-None-Match");
                 if (res.hash.equals(previousEtag)) {
