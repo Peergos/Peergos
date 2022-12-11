@@ -104,10 +104,12 @@ public class SignUpFilter implements CoreNode {
         if (isPki)
             return target.completePaidSignup(username, chain, setupOperations, signedSpaceRequest, proof);
         // take payment, and if successful, finalise account creation
-        quotaStore.getQuota(username); // This will throw is the user doesn't exist in quota store
+        quotaStore.getQuota(username); // This will throw if the user doesn't exist in quota store
         PaymentProperties result = quotaStore.requestQuota(chain.owner, signedSpaceRequest).join();
         long quota = quotaStore.getQuota(username);
+        LOG.info("Paid signup: quota="+quota + ", username=" + username);
         if (quota == result.desiredQuota && quota > 1024*1024) {// 1 MiB is the deletion quota
+            LOG.info("Successful Paid signup!");
             return target.completePaidSignup(username, chain, setupOperations, signedSpaceRequest, proof);
         }
         return Futures.of(result);
