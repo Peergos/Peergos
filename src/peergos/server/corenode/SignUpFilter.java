@@ -1,5 +1,6 @@
 package peergos.server.corenode;
 
+import peergos.server.*;
 import peergos.server.storage.admin.*;
 import peergos.server.util.*;
 import peergos.shared.cbor.*;
@@ -110,6 +111,7 @@ public class SignUpFilter implements CoreNode {
         LOG.info("Paid signup: quota="+quota + ", username=" + username);
         if (quota == result.desiredQuota && quota > 1024*1024) {// 1 MiB is the deletion quota
             LOG.info("Successful Paid signup!");
+            AggregatedMetrics.PAID_SIGNUP_SUCCESS.inc();
             return target.completePaidSignup(username, chain, setupOperations, signedSpaceRequest, proof);
         }
         return Futures.of(result);
