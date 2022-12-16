@@ -746,7 +746,7 @@ public class PeergosNetworkUtils {
         List<UserContext> updatedSharees = shareeUsers.stream()
                 .map(e -> {
                     try {
-                        return ensureSignedUp(e.username, shareePasswords.get(shareeUsers.indexOf(e)), e.network, crypto);
+                        return ensureSignedUp(e.username, shareePasswords.get(shareeUsers.indexOf(e)), e.network.clear(), crypto);
                     } catch (Exception ex) {
                         throw new IllegalStateException(ex.getMessage(), ex);
                     }
@@ -756,6 +756,7 @@ public class PeergosNetworkUtils {
         for (int i = 0; i < updatedSharees.size(); i++) {
             UserContext user = updatedSharees.get(i);
             updatedSharer.unShareReadAccess(PathUtil.get(updatedSharer.username, folderName), user.username).join();
+            Thread.sleep(7_000); // make sure old pointers aren't cached
 
             Optional<FileWrapper> updatedSharedFolder = user.getByPath(updatedSharer.username + "/" + folderName).join();
 
