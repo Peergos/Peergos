@@ -1,7 +1,9 @@
 package peergos.shared.storage;
 
+import peergos.shared.*;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.hash.*;
+import peergos.shared.hamt.*;
 import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.storage.auth.*;
@@ -73,10 +75,22 @@ public class UnauthedCachingStorage extends DelegatingStorage {
     @Override
     public CompletableFuture<List<byte[]>> getChampLookup(PublicKeyHash owner, Cid root, byte[] champKey, Optional<BatWithId> bat) {
         return Futures.asyncExceptionally(
-                () -> target.getChampLookup(owner, root, champKey, bat)
-                        .thenApply(blocks -> cacheBlocks(blocks, hasher)),
-                t -> super.getChampLookup(root, champKey, bat, hasher)
+                () -> localChampLookup(root, champKey, bat, hasher),
+                t -> target.getChampLookup(owner, root, champKey, bat)
+                        .thenApply(blocks -> cacheBlocks(blocks, hasher))
         );
+    }
+
+    public CompletableFuture<List<byte[]>> localChampLookup(Cid root, byte[] champKey, Optional<BatWithId> bat, Hasher hasher) {
+        CachingStorage cache = new CachingStorage(new LocalOnlyStorage(this.cache), 100, 1024*1024);
+        return ChampWrapper.create((Cid)root, x -> Futures.of(x.data), cache, hasher, c -> (CborObject.CborMerkleLink) c)
+                .thenCompose(tree -> tree.get(champKey))
+                .thenApply(c -> c.map(x -> x.target).map(MaybeMultihash::of).orElse(MaybeMultihash.empty()))
+                .thenApply(btreeValue -> {
+                    if (btreeValue.isPresent())
+                        return cache.get((Cid) btreeValue.get(), bat);
+                    return Optional.empty();
+                }).thenApply(x -> new ArrayList<>(cache.getCached()));
     }
 
     @Override
