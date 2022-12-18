@@ -379,26 +379,38 @@ public class UserContext {
                                                         TRANSACTIONS_DIR_NAME, Optional.of(batid), network, crypto))
                                                 .thenCompose(globalRoot -> createSpecialDirectory(globalRoot, username,
                                                         CapabilityStore.CAPABILITY_CACHE_DIR, Optional.of(batid), network, crypto))
-                                                .thenCompose(x -> signupWithRetry(chain.get(0), addCard.isPresent() ?
-                                                proof -> initialNetwork.coreNode.startPaidSignup(username, chain.get(0), proof)
-                                                        .thenCompose(toPayOrRetry -> toPayOrRetry.isB() ?
-                                                                Futures.of(Optional.of(toPayOrRetry.b())) :
-                                                                addCard.get().apply(toPayOrRetry.a(), identity)
-                                                                        .thenCompose(signedSpaceReq -> initialNetwork.coreNode.completePaidSignup(username, chain.get(0), opLog, signedSpaceReq, proof)
-                                                                        .thenCompose(paid -> paid.error.isPresent() ?
-                                                                                Futures.<Optional<RequiredDifficulty>>errored(new RuntimeException(paid.error.get())) :
-                                                                                retryUntilPositiveQuota(initialNetwork, identity,
-                                                                                        () -> initialNetwork.coreNode.completePaidSignup(username, chain.get(0), opLog, signedSpaceReq, proof), 1_000, 5).thenApply(z -> Optional.<RequiredDifficulty>empty())))) :
-                                                proof -> initialNetwork.coreNode.signup(username, chain.get(0), opLog, proof, token),
-                                                crypto.hasher, progressCallback))
+                                                .thenCompose(x -> completeSignup(username, chain, identity, token, addCard, progressCallback, opLog, initialNetwork, crypto))
                                                 .thenCompose(y -> signIn(username, userWithRoot, initialNetwork, crypto, progressCallback));
                                     }))));
                 }).exceptionally(Futures::logAndThrow);
     }
 
-    private static <T> CompletableFuture<Boolean> retryUntilPositiveQuota(NetworkAccess network,
+    private static CompletableFuture<Boolean> completeSignup(String username,
+                                                             List<UserPublicKeyLink> chain,
+                                                             SigningPrivateKeyAndPublicHash identity,
+                                                             String token,
+                                                             Optional<BiFunction<PaymentProperties, SigningPrivateKeyAndPublicHash, CompletableFuture<byte[]>>> addCard,
+                                                             Consumer<String> progressCallback,
+                                                             OpLog opLog,
+                                                             NetworkAccess initialNetwork,
+                                                             Crypto crypto) {
+        return signupWithRetry(chain.get(0), addCard.isPresent() ?
+                        proof -> initialNetwork.coreNode.startPaidSignup(username, chain.get(0), proof)
+                                .thenCompose(toPayOrRetry -> toPayOrRetry.isB() ?
+                                        Futures.of(Optional.of(toPayOrRetry.b())) :
+                                        addCard.get().apply(toPayOrRetry.a(), identity)
+                                                .thenCompose(signedSpaceReq -> initialNetwork.coreNode.completePaidSignup(username, chain.get(0), opLog, signedSpaceReq, proof)
+                                                        .thenCompose(paid -> paid.error.isPresent() ?
+                                                                Futures.<Optional<RequiredDifficulty>>errored(new RuntimeException(paid.error.get())) :
+                                                                retryUntilPositiveQuota(initialNetwork, identity,
+                                                                        () -> initialNetwork.coreNode.completePaidSignup(username, chain.get(0), opLog, signedSpaceReq, proof), 1_000, 5).thenApply(z -> Optional.<RequiredDifficulty>empty())))) :
+                        proof -> initialNetwork.coreNode.signup(username, chain.get(0), opLog, proof, token),
+                crypto.hasher, progressCallback);
+    }
+
+    private static CompletableFuture<Boolean> retryUntilPositiveQuota(NetworkAccess network,
                                                                           SigningPrivateKeyAndPublicHash identity,
-                                                                          Supplier<CompletableFuture<T>> retry,
+                                                                          Supplier<CompletableFuture<PaymentProperties>> retry,
                                                                           long sleepMillis,
                                                                           int attemptsLeft) {
         byte[] signedTime = TimeLimitedClient.signNow(identity.secret);
