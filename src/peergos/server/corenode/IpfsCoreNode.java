@@ -236,6 +236,8 @@ public class IpfsCoreNode implements CoreNode {
             return Futures.errored(new IllegalStateException("Username not reserved!"));
         if (! chain.claim.username.equals(username))
             return Futures.errored(new IllegalStateException("Username different from that in claim!"));
+        if (! reservedUsernames.get(username).equals(chain.owner))
+            return Futures.errored(new IllegalStateException("Username is reserved by a different key pair!"));
 
         updateChain(username, Arrays.asList(chain), proof, "", false).join();
         applyOpLog(username, chain.owner, setupOperations, ipfs, mutable, account, batCave);
