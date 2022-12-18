@@ -384,15 +384,34 @@ public class UserContext {
                                                         .thenCompose(toPayOrRetry -> toPayOrRetry.isB() ?
                                                                 Futures.of(Optional.of(toPayOrRetry.b())) :
                                                                 addCard.get().apply(toPayOrRetry.a(), identity)
-                                                                        .thenCompose(signedSpaceReq -> initialNetwork.coreNode.completePaidSignup(username, chain.get(0), opLog, signedSpaceReq, proof))
+                                                                        .thenCompose(signedSpaceReq -> initialNetwork.coreNode.completePaidSignup(username, chain.get(0), opLog, signedSpaceReq, proof)
                                                                         .thenCompose(paid -> paid.error.isPresent() ?
                                                                                 Futures.<Optional<RequiredDifficulty>>errored(new RuntimeException(paid.error.get())) :
-                                                                                Futures.of(Optional.<RequiredDifficulty>empty()))) :
+                                                                                retryUntilPositiveQuota(initialNetwork, identity,
+                                                                                        () -> initialNetwork.coreNode.completePaidSignup(username, chain.get(0), opLog, signedSpaceReq, proof), 1_000, 5).thenApply(z -> Optional.<RequiredDifficulty>empty())))) :
                                                 proof -> initialNetwork.coreNode.signup(username, chain.get(0), opLog, proof, token),
                                                 crypto.hasher, progressCallback))
                                                 .thenCompose(y -> signIn(username, userWithRoot, initialNetwork, crypto, progressCallback));
                                     }))));
                 }).exceptionally(Futures::logAndThrow);
+    }
+
+    private static <T> CompletableFuture<Boolean> retryUntilPositiveQuota(NetworkAccess network,
+                                                                          SigningPrivateKeyAndPublicHash identity,
+                                                                          Supplier<CompletableFuture<T>> retry,
+                                                                          long sleepMillis,
+                                                                          int attemptsLeft) {
+        byte[] signedTime = TimeLimitedClient.signNow(identity.secret);
+        return network.spaceUsage.getQuota(identity.publicKeyHash, signedTime)
+                .thenCompose(quota -> {
+                    if (quota > 0)
+                        return Futures.of(true);
+                    if (attemptsLeft <= 0)
+                        return Futures.errored(new IllegalStateException("Unable to complete paid signup. Did you add your payment card?"));
+                    try {Thread.sleep(sleepMillis);} catch (InterruptedException e) {}
+                    return retry.get()
+                            .thenCompose(b -> retryUntilPositiveQuota(network, identity, retry, sleepMillis * 2, attemptsLeft - 1));
+                });
     }
 
     @JsMethod
