@@ -36,7 +36,7 @@ public class JavaPoster implements HttpPoster {
 
     @Override
     public CompletableFuture<byte[]> postUnzip(String url, byte[] payload, int timeoutMillis) {
-        return post(url, payload, true);
+        return post(url, payload, true, timeoutMillis);
     }
 
     @Override
