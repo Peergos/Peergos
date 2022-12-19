@@ -104,9 +104,9 @@ public class UnauthedCachingStorage extends DelegatingStorage {
     private List<byte[]> cacheBlocks(List<byte[]> blocks, Hasher hasher) {
         ForkJoinPool.commonPool().execute(() -> Futures.combineAll(blocks.stream()
                         .map(b -> hasher.hash(b, false)
-                                .thenApply(c -> new Pair<>(c, b)))
+                                .thenApply(c -> new Pair<>(c, new ByteArrayWrapper(b))))
                         .collect(Collectors.toList()))
-                .thenAccept(hashed -> hashed.stream().forEach(p -> cache.put(p.left, p.right))));
+                .thenAccept(hashed -> hashed.stream().forEach(p -> cache.put(p.left, p.right.data))));
         return blocks;
     }
 
