@@ -360,7 +360,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         Optional<byte[]> newBlock = p2pFallback.getRaw(newRoot, mirrorBat, id, hasher).join();
         if (newBlock.isEmpty())
             throw new IllegalStateException("Couldn't retrieve block: " + newRoot);
-        put(newBlock.get(), false, tid, owner);
+        put(newBlock.get(), newRoot.isRaw(), tid, owner);
         if (newRoot.isRaw())
             return Futures.of(Collections.singletonList(newRoot));
 
