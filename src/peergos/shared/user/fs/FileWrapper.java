@@ -1725,14 +1725,19 @@ public class FileWrapper {
             return Futures.errored(new IllegalStateException("CopyTo target " + target + " must be a directory"));
         }
 
+        Optional<BatId> targetMirrorBatId = target.mirrorBatId()
+                .or(() -> target.owner().equals(context.signer.publicKeyHash) ?
+                        context.mirrorBatId() :
+                        Optional.empty());
         return context.network.synchronizer.applyComplexUpdate(target.owner(), target.signingPair(),
                 (version, committer) -> version.withWriter(owner(), writer(), network)
-                        .thenCompose(both -> copyTo(target, this.props.thumbnail, network, crypto, both, committer)))
+                        .thenCompose(both -> copyTo(target, this.props.thumbnail, targetMirrorBatId, network, crypto, both, committer)))
                 .thenApply(newAccess -> true);
     }
 
     private CompletableFuture<Snapshot> copyTo(FileWrapper target,
                                               Optional<Thumbnail> existingThumbnail,
+                                              Optional<BatId> targetMirrorBat,
                                               NetworkAccess network,
                                               Crypto crypto,
                                               Snapshot version,
@@ -1757,7 +1762,7 @@ public class FileWrapper {
                 return withVersion(this.version.mergeAndOverwriteWith(version))
                         .getChildren(version, crypto.hasher, network).thenCompose(children ->
                         target.mkdir(getName(), Optional.of(newBaseR), Optional.of(newBaseW), Optional.of(newMapKey),
-                                newBat, getFileProperties().isHidden, target.mirrorBatId(), network, crypto, version, committer)
+                                newBat, getFileProperties().isHidden, targetMirrorBat, network, crypto, version, committer)
                                 .thenCompose(versionWithDir ->
                                         network.getFile(versionWithDir, newCap, target.getChildsEntryWriter(), target.ownername)
                                                 .thenCompose(subTargetOpt -> {
@@ -1765,7 +1770,7 @@ public class FileWrapper {
                                                     return Futures.reduceAll(children, versionWithDir,
                                                             (s, child) -> newTarget.getUpdated(s, network)
                                                                     .thenCompose(updated ->
-                                                                            child.copyTo(updated, existingThumbnail, network, crypto, s, committer)),
+                                                                            child.copyTo(updated, existingThumbnail, targetMirrorBat, network, crypto, s, committer)),
                                                             (a, b) -> a.merge(b));
                                                 })));
             } else {
@@ -1775,7 +1780,7 @@ public class FileWrapper {
                                                 getName(), stream, existingThumbnail, false, 0, getSize(),
                                                 Optional.empty(), Optional.empty(), Optional.empty(), false, false, false, network, crypto, x -> {},
                                                 crypto.random.randomBytes(32), Optional.empty(),
-                                                Optional.of(Bat.random(crypto.random)), target.mirrorBatId())
+                                                Optional.of(Bat.random(crypto.random)), targetMirrorBat)
                                         .thenCompose(p -> p.right.isEmpty() ?
                                                 Futures.of(p.left) :
                                                 target.addChildPointer(p.left, committer, p.right.get(), network, crypto))));
