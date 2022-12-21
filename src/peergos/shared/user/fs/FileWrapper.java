@@ -1725,9 +1725,10 @@ public class FileWrapper {
             return Futures.errored(new IllegalStateException("CopyTo target " + target + " must be a directory"));
         }
 
-        Optional<BatId> targetMirrorBatId = target.mirrorBatId().isPresent() ?
-                target.mirrorBatId() :
-                target.owner().equals(context.signer.publicKeyHash) ? context.mirrorBatId() : Optional.empty();
+        Optional<BatId> targetMirrorBatId = target.mirrorBatId()
+                .or(() -> target.owner().equals(context.signer.publicKeyHash) ?
+                        context.mirrorBatId() :
+                        Optional.empty());
         return context.network.synchronizer.applyComplexUpdate(target.owner(), target.signingPair(),
                 (version, committer) -> version.withWriter(owner(), writer(), network)
                         .thenCompose(both -> copyTo(target, this.props.thumbnail, targetMirrorBatId, network, crypto, both, committer)))
