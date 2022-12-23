@@ -70,7 +70,8 @@ public class TransactionalIpfs extends DelegatingStorage implements DeletableCon
         return getRaw(hash, auth, true);
     }
 
-    private CompletableFuture<Optional<byte[]>> getRaw(Cid hash, String auth, boolean doAuth) {
+    @Override
+    public CompletableFuture<Optional<byte[]>> getRaw(Cid hash, String auth, boolean doAuth) {
         return target.getRaw(hash, auth).thenApply(bopt -> {
             if (bopt.isEmpty())
                 return Optional.empty();

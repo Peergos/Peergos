@@ -63,12 +63,20 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
      */
     CompletableFuture<Optional<byte[]>> getRaw(Cid hash, String auth);
 
+    default CompletableFuture<Optional<byte[]>> getRaw(Cid hash, String auth, boolean doAuth) {
+        return getRaw(hash, auth);
+    }
+
     default CompletableFuture<Optional<byte[]>> getRaw(Cid hash, Optional<BatWithId> bat, Cid ourId, Hasher h) {
+        return getRaw(hash, bat, ourId, h, true);
+    }
+
+    default CompletableFuture<Optional<byte[]>> getRaw(Cid hash, Optional<BatWithId> bat, Cid ourId, Hasher h, boolean doAuth) {
         if (bat.isEmpty())
             return getRaw(hash, "");
         return bat.get().bat.generateAuth(hash, ourId, 300, S3Request.currentDatetime(), bat.get().id, h)
                 .thenApply(BlockAuth::encode)
-                .thenCompose(auth -> getRaw(hash, auth));
+                .thenCompose(auth -> getRaw(hash, auth, doAuth));
     }
 
     /** Ensure that local copies of all blocks in merkle tree referenced are present locally

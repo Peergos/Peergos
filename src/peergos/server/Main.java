@@ -39,6 +39,7 @@ import java.time.*;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.function.*;
+import java.util.logging.*;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -733,7 +734,7 @@ public class Main extends Builder {
                                 Thread.sleep(60_000);
                             } catch (InterruptedException f) {}
                         } catch (Exception e) {
-                            e.printStackTrace();
+                            Logging.LOG().log(Level.SEVERE, e, () -> e.getMessage());
                             try {
                                 Thread.sleep(5_000);
                             } catch (InterruptedException f) {}
