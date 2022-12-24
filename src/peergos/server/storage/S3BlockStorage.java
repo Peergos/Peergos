@@ -360,7 +360,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         if (newBlock.isEmpty())
             throw new IllegalStateException("Couldn't retrieve block: " + newRoot);
         if (! hasBlock(newRoot))
-            put(newBlock.get(), newRoot.isRaw(), tid, owner);
+            getWithBackoff(() -> put(newBlock.get(), newRoot.isRaw(), tid, owner));
         if (newRoot.isRaw())
             return Futures.of(Collections.singletonList(newRoot));
 
