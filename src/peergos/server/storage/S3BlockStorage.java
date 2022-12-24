@@ -321,6 +321,8 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
             Map<String, List<String>> headRes = HttpUtil.head(headUrl);
             blockHeads.inc();
             return true;
+        } catch (FileNotFoundException e) {
+            return false;
         } catch (IOException e) {
             String msg = e.getMessage();
             if (msg == null) {
@@ -365,7 +367,9 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
             return Futures.of(Collections.singletonList(newRoot));
 
         List<Multihash> newLinks = CborObject.fromByteArray(newBlock.get()).links();
-        List<Multihash> existingLinks = existing.map(h -> getRaw(h, Optional.empty(), "", false, mirrorBat).join())
+        List<Multihash> existingLinks = existing.map(h -> h.isRaw() ?
+                        Optional.<byte[]>empty() :
+                        getRaw(h, Optional.empty(), "", false, mirrorBat).join())
                 .map(bopt -> bopt.map(CborObject::fromByteArray))
                 .flatMap(copt -> copt.map(CborObject::links))
                 .orElse(Collections.emptyList());
