@@ -366,12 +366,17 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         if (newRoot.isRaw())
             return Futures.of(Collections.singletonList(newRoot));
 
-        List<Multihash> newLinks = CborObject.fromByteArray(newBlock.get()).links();
+        List<Multihash> newLinks = CborObject.fromByteArray(newBlock.get()).links()
+                .stream()
+                .filter(h -> !h.isIdentity())
+                .collect(Collectors.toList());
         List<Multihash> existingLinks = existing.map(h -> h.isRaw() ?
                         Optional.<byte[]>empty() :
                         getRaw(h, Optional.empty(), "", false, mirrorBat).join())
                 .map(bopt -> bopt.map(CborObject::fromByteArray))
-                .flatMap(copt -> copt.map(CborObject::links))
+                .flatMap(copt -> copt.map(CborObject::links).map(links -> links.stream()
+                        .filter(h -> !h.isIdentity())
+                        .collect(Collectors.toList())))
                 .orElse(Collections.emptyList());
 
         for (int i=0; i < newLinks.size(); i++) {
