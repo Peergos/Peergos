@@ -45,8 +45,8 @@ public class IncomingCapCache {
         this.pointerCache = new HashMap<>();
     }
 
-    public static CompletableFuture<IncomingCapCache> build(FileWrapper cacheRoot, Crypto crypto, NetworkAccess network) {
-        return cacheRoot.getOrMkdirs(PathUtil.get(WORLD_ROOT_NAME), network, true, cacheRoot.getPointer().fileAccess.mirrorBatId(), crypto)
+    public static CompletableFuture<IncomingCapCache> build(FileWrapper cacheRoot, Optional<BatId> mirrorBatId, Crypto crypto, NetworkAccess network) {
+        return cacheRoot.getOrMkdirs(PathUtil.get(WORLD_ROOT_NAME), network, true, mirrorBatId, crypto)
                 .thenApply(worldRoot -> new IncomingCapCache(cacheRoot, worldRoot, crypto));
     }
 

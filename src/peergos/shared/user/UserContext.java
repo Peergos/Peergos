@@ -124,7 +124,7 @@ public class UserContext {
         return root.getByPath(username, crypto.hasher, network)
                 .thenApply(Optional::get)
                 .thenCompose(home -> home.getOrMkdirs(PathUtil.get(CapabilityStore.CAPABILITY_CACHE_DIR), network, true, mirrorBatId, crypto))
-                .thenCompose(cacheRoot -> IncomingCapCache.build(cacheRoot, crypto, network));
+                .thenCompose(cacheRoot -> IncomingCapCache.build(cacheRoot, mirrorBatId, crypto, network));
     }
 
     @JsMethod
