@@ -1658,6 +1658,12 @@ public class FileWrapper {
                 });
     }
 
+    public CompletableFuture<Snapshot> addMirrorBat(BatId mirrorBat, NetworkAccess network) {
+        return network.synchronizer.applyComplexUpdate(owner(), signingPair(),
+                (s, committer) -> getPointer().fileAccess.addMirrorBat(s, committer, writableFilePointer(),
+                        entryWriter, getFileProperties().streamSecret, mirrorBat, network));
+    }
+
     public CompletableFuture<Boolean> setProperties(FileProperties updatedProperties,
                                                     Hasher hasher,
                                                     NetworkAccess network,

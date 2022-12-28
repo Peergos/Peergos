@@ -443,6 +443,32 @@ public class CryptreeNode implements Cborable {
                 network.dhtClient);
     }
 
+    public CompletableFuture<Snapshot> addMirrorBat(Snapshot base,
+                                                    Committer committer,
+                                                    WritableAbsoluteCapability us,
+                                                    Optional<SigningPrivateKeyAndPublicHash> entryWriter,
+                                                    Optional<byte[]> streamSecret,
+                                                    BatId mirrorBat,
+                                                    NetworkAccess network) {
+        List<BatId> newBats = new ArrayList<>(bats);
+        if (newBats.size() != 1)
+            throw new IllegalStateException("Can't add mirror bat unless chunk has exactly 1 BAT!");
+        newBats.add(mirrorBat);
+        CryptreeNode updated = new CryptreeNode(lastCommittedHash, isDirectory, newBats, fromBaseKey, childrenOrData,
+                fromParentKey);
+        return IpfsTransaction.call(us.owner,
+                tid -> network.uploadChunk(base, committer, updated, us.owner, us.getMapKey(), getSigner(us.rBaseKey, us.wBaseKey.get(), entryWriter), tid),
+                network.dhtClient)
+                .thenCompose(s -> getNextChunk(s, us, network, streamSecret, network.hasher)
+                        .thenCompose(next -> {
+                            if (next.isPresent()) {
+                                return next.get().fileAccess.addMirrorBat(s, committer, (WritableAbsoluteCapability) next.get().capability,
+                                        entryWriter, streamSecret, mirrorBat, network);
+                            }
+                            return Futures.of(s);
+                        }));
+    }
+
     public boolean isDirty(SymmetricKey baseKey) {
         if (isDirectory())
             return false;

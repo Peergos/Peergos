@@ -15,10 +15,9 @@ import peergos.shared.util.*;
 
 import java.net.*;
 import java.util.*;
-import java.util.concurrent.*;
 import java.util.stream.*;
 
-public class UserGC {
+public class UserCleanup {
 
     public static void main(String[] args) throws Exception {
         Crypto crypto = Main.initCrypto();
@@ -27,8 +26,8 @@ public class UserGC {
         String password = args[1];
         UserContext context = UserContext.signIn(username, password, network, crypto).get();
         long usage = context.getSpaceUsage().join();
-        checkRawUsage(context);
-//        clearUnreachableChampNodes(context);
+//        checkRawUsage(context);
+        clearUnreachableChampNodes(context);
     }
 
     public static void clearUnreachableChampNodes(UserContext c) {
@@ -54,9 +53,16 @@ public class UserGC {
         }
 
         Map<SigningPrivateKeyAndPublicHash, Map<String, ByteArrayWrapper>> reachableKeys = new HashMap<>();
-        traverseDescendants(root, "/" + c.username, (s, m, p) -> {
+        BatWithId mirrorBat = c.getMirrorBat().join().get();
+        traverseDescendants(root, "/" + c.username, (s, cap, p, fopt) -> {
             reachableKeys.putIfAbsent(s, new HashMap<>());
-            reachableKeys.get(s).put(p, new ByteArrayWrapper(m));
+            reachableKeys.get(s).put(p, new ByteArrayWrapper(cap.getMapKey()));
+            fopt.ifPresent(f -> {
+                if (f.getPointer().capability.bat.isPresent() && f.mirrorBatId().isEmpty()) {
+                    System.out.println("Fixing file with 1 bat at " + p);
+                    f.addMirrorBat(mirrorBat.id(), c.network).join();
+                }
+            });
             return true;
         }, c);
 
@@ -203,28 +209,31 @@ public class UserGC {
         }
     }
 
+    interface ChunkProcessor {
+        boolean apply(SigningPrivateKeyAndPublicHash signer, AbsoluteCapability cap, String path, Optional<FileWrapper> f);
+    }
+
     private static void traverseDescendants(FileWrapper dir,
                                             String path,
-                                            TriFunction<SigningPrivateKeyAndPublicHash, byte[], String, Boolean> f,
+                                            ChunkProcessor visitor,
                                             UserContext c) {
-        f.apply(dir.signingPair(), dir.writableFilePointer().getMapKey(), path);
+        visitor.apply(dir.signingPair(), dir.writableFilePointer(), path, Optional.of(dir));
         Set<FileWrapper> children = dir.getChildren(c.crypto.hasher, c.network).join();
-        List<ForkJoinTask> subtasks = new ArrayList<>();
         for (FileWrapper child : children) {
-            if (!child.isDirectory()) {
-                byte[] firstChunk = child.writableFilePointer().getMapKey();
+            if (! child.isDirectory()) {
+                WritableAbsoluteCapability cap = child.writableFilePointer();
+                byte[] firstChunk = cap.getMapKey();
+                Optional<Bat> firstBat = cap.bat;
                 SigningPrivateKeyAndPublicHash childSigner = child.signingPair();
-                f.apply(childSigner, firstChunk, path + "/" + child.getName());
+                visitor.apply(childSigner, cap, path + "/" + child.getName(), Optional.of(child));
                 for (int i=0; i < child.getSize()/ (5*1024*1024); i++) {
                     byte[] streamSecret = child.getFileProperties().streamSecret.get();
-                    byte[] mapKey = FileProperties.calculateMapKey(streamSecret, firstChunk, Optional.empty(), 5 * 1024 * 1024 * (i + 1), c.crypto.hasher).join().left;
-                    f.apply(childSigner, mapKey, path + "/" + child.getName() + "[" + i + "]");
+                    Pair<byte[], Optional<Bat>> chunk = FileProperties.calculateMapKey(streamSecret, firstChunk,
+                            firstBat, 5 * 1024 * 1024 * (i + 1), c.crypto.hasher).join();
+                    visitor.apply(childSigner, cap.withMapKey(chunk.left, chunk.right), path + "/" + child.getName() + "[" + i + "]", Optional.empty());
                 }
             } else
-                subtasks.add(ForkJoinPool.commonPool().submit(() -> traverseDescendants(child, path + "/" + child.getName(), f, c)));
-        }
-        for (ForkJoinTask subtask : subtasks) {
-            subtask.join();
+                traverseDescendants(child, path + "/" + child.getName(), visitor, c);
         }
     }
 }
