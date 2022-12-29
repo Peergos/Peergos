@@ -44,6 +44,11 @@ public class UserCleanup {
                 .filter(w ->  !w.equals(owner))
                 .collect(Collectors.toSet());
 
+        Set<PublicKeyHash> namedOwnedKeys = WriterData.getWriterData(owner, owner, mutable, storage).join()
+                .props.namedOwnedKeys.values().stream()
+                .map(p -> p.ownedKey)
+                .collect(Collectors.toSet());
+
         Map<PublicKeyHash, PublicKeyHash> toParent = new HashMap<>();
         for (PublicKeyHash writer : writers) {
             Set<PublicKeyHash> owned = WriterData.getDirectOwnedKeys(owner, writer, mutable, storage, hasher).join();
@@ -87,6 +92,8 @@ public class UserCleanup {
                     .filter(s -> s.publicKeyHash.equals(writer))
                     .findFirst();
             if (keypair.isEmpty()) {
+                if (namedOwnedKeys.contains(writer))
+                    continue;
                 // writing space is unreachable, but non-empty. Remove it by orphaning it.
                 PublicKeyHash parent = toParent.get(writer);
                 Optional<SigningPrivateKeyAndPublicHash> parentKeypair = reachableKeys.keySet()

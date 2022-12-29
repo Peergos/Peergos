@@ -60,7 +60,7 @@ public class CryptreeNode implements Cborable {
 
     private transient final MaybeMultihash lastCommittedHash;
     private transient final boolean isDirectory;
-    private final List<BatId> bats;
+    public final List<BatId> bats;
     private final PaddedCipherText fromBaseKey;
     private final FragmentedPaddedCipherText childrenOrData;
     private final PaddedCipherText fromParentKey;
@@ -443,7 +443,7 @@ public class CryptreeNode implements Cborable {
                 network.dhtClient);
     }
 
-    public CompletableFuture<Snapshot> addMirrorBat(Snapshot base,
+    public CompletableFuture<Snapshot> addMirrorBat(Snapshot originalBase,
                                                     Committer committer,
                                                     WritableAbsoluteCapability us,
                                                     Optional<SigningPrivateKeyAndPublicHash> entryWriter,
@@ -454,19 +454,31 @@ public class CryptreeNode implements Cborable {
         if (newBats.size() != 1)
             throw new IllegalStateException("Can't add mirror bat unless chunk has exactly 1 BAT!");
         newBats.add(mirrorBat);
-        CryptreeNode updated = new CryptreeNode(lastCommittedHash, isDirectory, newBats, fromBaseKey, childrenOrData,
-                fromParentKey);
-        return IpfsTransaction.call(us.owner,
-                tid -> network.uploadChunk(base, committer, updated, us.owner, us.getMapKey(), getSigner(us.rBaseKey, us.wBaseKey.get(), entryWriter), tid),
-                network.dhtClient)
-                .thenCompose(s -> getNextChunk(s, us, network, streamSecret, network.hasher)
-                        .thenCompose(next -> {
-                            if (next.isPresent()) {
-                                return next.get().fileAccess.addMirrorBat(s, committer, (WritableAbsoluteCapability) next.get().capability,
-                                        entryWriter, streamSecret, mirrorBat, network);
-                            }
-                            return Futures.of(s);
-                        }));
+        return addMirrorBatToFragments(originalBase, committer, mirrorBat, childrenOrData.getFragments())
+                .thenCompose(frags -> IpfsTransaction.call(us.owner,
+                                tid -> network.uploadChunk(frags.left, committer, new CryptreeNode(lastCommittedHash, isDirectory,
+                                        newBats, fromBaseKey, childrenOrData.withFragments(frags.right),
+                                        fromParentKey), us.owner, us.getMapKey(), getSigner(us.rBaseKey, us.wBaseKey.get(), entryWriter), tid),
+                                network.dhtClient)
+                        .thenCompose(s -> getNextChunk(s, us, network, streamSecret, network.hasher)
+                                .thenCompose(next -> {
+                                    if (next.isPresent()) {
+                                        return next.get().fileAccess.addMirrorBat(s, committer, (WritableAbsoluteCapability) next.get().capability,
+                                                entryWriter, streamSecret, mirrorBat, network);
+                                    }
+                                    return Futures.of(s);
+                                }))
+                );
+    }
+
+    private CompletableFuture<Pair<Snapshot, List<Cid>>> addMirrorBatToFragments(Snapshot base,
+                                                                                 Committer committer,
+                                                                                 BatId mirrorBat,
+                                                                                 List<Cid> fragments) {
+        if (fragments.isEmpty())
+            return Futures.of(new Pair<>(base, fragments));
+
+        throw new IllegalStateException("Adding mirror bat to fragments is currently unimplemented!");
     }
 
     public boolean isDirty(SymmetricKey baseKey) {
