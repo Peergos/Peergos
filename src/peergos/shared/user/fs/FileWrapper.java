@@ -1032,9 +1032,10 @@ public class FileWrapper {
                                                         LocalDateTime.now(), props.created, props.isHidden,
                                                         props.thumbnail, props.streamSecret);
 
+                                                Optional<BatId> mirrorBat = mirrorBatId();
                                                 CompletableFuture<Snapshot> chunkUploaded = FileUploader.uploadChunk(version, committer, us.signingPair(),
                                                         newProps, parentLocation, parentBat, parentParentKey, baseKey, located,
-                                                        nextChunkLocation, nextChunkBat, writerLink, mirrorBatId(),
+                                                        nextChunkLocation, nextChunkBat, writerLink, mirrorBat,
                                                         crypto.random, crypto.hasher, network, monitor);
 
                                                 return chunkUploaded.thenCompose(updatedBase -> {
@@ -1658,10 +1659,10 @@ public class FileWrapper {
                 });
     }
 
-    public CompletableFuture<Snapshot> addMirrorBat(BatId mirrorBat, NetworkAccess network) {
+    public CompletableFuture<Snapshot> addMirrorBat(BatId mirrorBat, boolean addToFragmentsOnly, NetworkAccess network) {
         return network.synchronizer.applyComplexUpdate(owner(), signingPair(),
                 (s, committer) -> getPointer().fileAccess.addMirrorBat(s, committer, writableFilePointer(),
-                        entryWriter, getFileProperties().streamSecret, mirrorBat, network));
+                        entryWriter, getFileProperties().streamSecret, mirrorBat, ! addToFragmentsOnly, network));
     }
 
     public CompletableFuture<Boolean> setProperties(FileProperties updatedProperties,

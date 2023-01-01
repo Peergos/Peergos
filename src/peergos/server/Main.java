@@ -728,6 +728,12 @@ public class Main extends Builder {
                             Optional<BatWithId> mirrorBat = a.getOptionalArg("mirror.bat").map(BatWithId::decode);
                             if (mirrorBat.isEmpty())
                                 System.out.println("WARNING: Mirroring users public blocks only, see option 'mirror.bat'");
+                            else {
+                                BatId mirrorId = mirrorBat.get().id();
+                                Optional<Bat> existingMirrorBat = batStore.getBat(mirrorId);
+                                if (existingMirrorBat.isEmpty())
+                                    batStore.addBat(username, mirrorId, mirrorBat.get().bat, new byte[0]).join();
+                            }
                             Mirror.mirrorUser(username, mirrorLoginDataPair, mirrorBat, core, p2mMutable, p2pAccount, localStorage,
                                     rawPointers, rawAccount, transactions, hasher);
                             try {

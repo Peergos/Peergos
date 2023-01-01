@@ -100,13 +100,13 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
             return Futures.of(Collections.singletonList(newRoot));
         boolean isRaw = newRoot.isRaw();
 
-        Optional<CborObject> newVal = get(newRoot, mirrorBat, ourNodeId, hasher).join();
+        Optional<byte[]> newVal = getRaw(newRoot, mirrorBat, ourNodeId, hasher, false).join();
         if (newVal.isEmpty())
             throw new IllegalStateException("Couldn't retrieve block: " + newRoot);
         if (isRaw)
             return Futures.of(Collections.singletonList(newRoot));
 
-        CborObject newBlock = newVal.get();
+        CborObject newBlock = CborObject.fromByteArray(newVal.get());
         List<Multihash> newLinks = newBlock.links().stream()
                 .filter(h -> !h.isIdentity())
                 .collect(Collectors.toList());

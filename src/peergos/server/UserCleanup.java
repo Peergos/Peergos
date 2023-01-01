@@ -63,10 +63,10 @@ public class UserCleanup {
             reachableKeys.putIfAbsent(s, new HashMap<>());
             reachableKeys.get(s).put(p, new ByteArrayWrapper(cap.getMapKey()));
             fopt.ifPresent(f -> {
-                if (f.getPointer().capability.bat.isPresent() && f.mirrorBatId().isEmpty()) {
-                    System.out.println("Fixing file with 1 bat at " + p);
-                    f.addMirrorBat(mirrorBat.id(), c.network).join();
-                }
+                RetrievedCapability rcap = f.getPointer();
+                boolean addToFragmentsOnly = rcap.capability.bat.isEmpty();
+                if (! f.isDirectory())
+                    f.addMirrorBat(mirrorBat.id(), addToFragmentsOnly, c.network).join();
             });
             return true;
         }, c);

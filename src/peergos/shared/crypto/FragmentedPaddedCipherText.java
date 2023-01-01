@@ -49,6 +49,10 @@ public class FragmentedPaddedCipherText implements Cborable {
         return cipherTextFragments;
     }
 
+    public List<BatWithId> getBats() {
+        return bats;
+    }
+
     public FragmentedPaddedCipherText withFragments(List<Cid> fragments) {
         return new FragmentedPaddedCipherText(nonce, header, fragments, bats, inlinedCipherText);
     }

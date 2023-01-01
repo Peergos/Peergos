@@ -279,7 +279,8 @@ public class Builder {
                                 return ALLOW;
                         }
                         if (! batids.isEmpty()) {
-                            Logging.LOG().info("INVALID AUTH: source: " + s + ", cid: " + b + " reason: " + BlockRequestAuthoriser.invalidReason(blockAuth, b, s, batids, hasher));
+                            String reason = BlockRequestAuthoriser.invalidReason(blockAuth, b, s, batids, hasher);
+                            Logging.LOG().info("INVALID AUTH: source: " + s + ", cid: " + b + " reason: " + reason);
                         }
                         return BLOCK;
                     } else return ALLOW; // This is a public block
