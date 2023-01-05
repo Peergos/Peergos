@@ -12,7 +12,6 @@ import peergos.shared.util.*;
 
 import java.util.*;
 import java.util.concurrent.*;
-import java.util.function.*;
 import java.util.stream.*;
 
 /** This interface is only used locally on a server and never exposed.
@@ -100,7 +99,7 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
             return Futures.of(Collections.singletonList(newRoot));
         boolean isRaw = newRoot.isRaw();
 
-        Optional<byte[]> newVal = getRaw(newRoot, mirrorBat, ourNodeId, hasher, false).join();
+        Optional<byte[]> newVal = RetryStorage.runWithRetry(3, () -> getRaw(newRoot, mirrorBat, ourNodeId, hasher, false)).join();
         if (newVal.isEmpty())
             throw new IllegalStateException("Couldn't retrieve block: " + newRoot);
         if (isRaw)

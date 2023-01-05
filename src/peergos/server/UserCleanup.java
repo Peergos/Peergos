@@ -65,7 +65,7 @@ public class UserCleanup {
             fopt.ifPresent(f -> {
                 RetrievedCapability rcap = f.getPointer();
                 boolean addToFragmentsOnly = rcap.capability.bat.isEmpty();
-                if (! f.isDirectory())
+                if (! addToFragmentsOnly || ! f.getPointer().fileAccess.bats.isEmpty())
                     f.addMirrorBat(mirrorBat.id(), addToFragmentsOnly, c.network).join();
             });
             return true;
