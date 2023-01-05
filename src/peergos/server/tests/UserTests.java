@@ -1861,7 +1861,7 @@ public abstract class UserTests {
         UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
         long initialUsage = context.getSpaceUsage().join();
 
-        UserGC.checkRawUsage(context);
+        UserCleanup.checkRawUsage(context);
         String filename = "test.bin";
         context.getUserRoot().join().uploadFileJS(filename, AsyncReader.build(new byte[10*1024*1024]),
                 0, 10*1024*1024, true, context.mirrorBatId(), network, crypto, x-> {},
@@ -1869,7 +1869,7 @@ public abstract class UserTests {
         String dirName = "subdir";
         context.getUserRoot().join().mkdir(dirName, network, false, context.mirrorBatId(), crypto).join();
         Thread.sleep(5_000); // Allow time for space usage recalculation
-        UserGC.checkRawUsage(context);
+        UserCleanup.checkRawUsage(context);
 
         // now delete the file and dir
         Path filePath = PathUtil.get(username, filename);
@@ -1877,7 +1877,7 @@ public abstract class UserTests {
         Path dirPath = PathUtil.get(username, dirName);
         context.getByPath(dirPath).join().get().remove(context.getUserRoot().join(), dirPath, context).join();
         try {Thread.sleep(2000);} catch (InterruptedException e) {}
-        UserGC.checkRawUsage(context);
+        UserCleanup.checkRawUsage(context);
 
         long finalUsage = context.getSpaceUsage().join();
         long diff = finalUsage - initialUsage;

@@ -156,7 +156,8 @@ public class FileContentAddressedStorage implements DeletableContentAddressedSto
         return getRaw(hash, auth, true);
     }
 
-    private CompletableFuture<Optional<byte[]>> getRaw(Cid hash, String auth, boolean doAuth) {
+    @Override
+    public CompletableFuture<Optional<byte[]>> getRaw(Cid hash, String auth, boolean doAuth) {
         try {
             if (hash.isIdentity())
                 return Futures.of(Optional.of(hash.getHash()));

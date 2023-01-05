@@ -262,7 +262,7 @@ public class Builder {
                     if (((CborObject.CborMap) block).containsKey("bats")) {
                         List<BatId> batids = ((CborObject.CborMap) block).getList("bats", BatId::fromCbor);
                         if (auth.isEmpty()) {
-                            System.out.println("INVALID AUTH: EMPTY");
+                            Logging.LOG().info("INVALID AUTH: EMPTY");
                             return BLOCK;
                         }
                         BlockAuth blockAuth = BlockAuth.fromString(auth);
@@ -279,7 +279,8 @@ public class Builder {
                                 return ALLOW;
                         }
                         if (! batids.isEmpty()) {
-                            Logging.LOG().info("INVALID AUTH: " + BlockRequestAuthoriser.invalidReason(blockAuth, b, s, batids, hasher));
+                            String reason = BlockRequestAuthoriser.invalidReason(blockAuth, b, s, batids, hasher);
+                            Logging.LOG().info("INVALID AUTH: source: " + s + ", cid: " + b + " reason: " + reason);
                         }
                         return BLOCK;
                     } else return ALLOW; // This is a public block

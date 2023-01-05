@@ -71,6 +71,8 @@ public class JavaPoster implements HttpPoster {
             byte[] resp = Serialize.readFully(din);
             din.close();
             res.complete(resp);
+        } catch (SocketTimeoutException e) {
+            res.completeExceptionally(new SocketTimeoutException("Socket timeout on: " + url));
         } catch (IOException e) {
             if (conn != null){
                 String trailer = conn.getHeaderField("Trailer");

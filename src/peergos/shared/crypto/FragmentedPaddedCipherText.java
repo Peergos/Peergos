@@ -41,6 +41,22 @@ public class FragmentedPaddedCipherText implements Cborable {
             throw new IllegalStateException("Cannot have an inlined block and merkle linked blocks!");
     }
 
+    public boolean isInline() {
+        return inlinedCipherText.isPresent();
+    }
+
+    public List<Cid> getFragments() {
+        return cipherTextFragments;
+    }
+
+    public List<BatWithId> getBats() {
+        return bats;
+    }
+
+    public FragmentedPaddedCipherText withFragments(List<Cid> fragments) {
+        return new FragmentedPaddedCipherText(nonce, header, fragments, bats, inlinedCipherText);
+    }
+
     @Override
     public CborObject toCbor() {
         SortedMap<String, Cborable> state = new TreeMap<>();

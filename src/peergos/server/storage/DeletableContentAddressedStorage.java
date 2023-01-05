@@ -12,7 +12,6 @@ import peergos.shared.util.*;
 
 import java.util.*;
 import java.util.concurrent.*;
-import java.util.function.*;
 import java.util.stream.*;
 
 /** This interface is only used locally on a server and never exposed.
@@ -63,12 +62,20 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
      */
     CompletableFuture<Optional<byte[]>> getRaw(Cid hash, String auth);
 
+    default CompletableFuture<Optional<byte[]>> getRaw(Cid hash, String auth, boolean doAuth) {
+        return getRaw(hash, auth);
+    }
+
     default CompletableFuture<Optional<byte[]>> getRaw(Cid hash, Optional<BatWithId> bat, Cid ourId, Hasher h) {
+        return getRaw(hash, bat, ourId, h, true);
+    }
+
+    default CompletableFuture<Optional<byte[]>> getRaw(Cid hash, Optional<BatWithId> bat, Cid ourId, Hasher h, boolean doAuth) {
         if (bat.isEmpty())
             return getRaw(hash, "");
         return bat.get().bat.generateAuth(hash, ourId, 300, S3Request.currentDatetime(), bat.get().id, h)
                 .thenApply(BlockAuth::encode)
-                .thenCompose(auth -> getRaw(hash, auth));
+                .thenCompose(auth -> getRaw(hash, auth, doAuth));
     }
 
     /** Ensure that local copies of all blocks in merkle tree referenced are present locally
@@ -92,16 +99,20 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
             return Futures.of(Collections.singletonList(newRoot));
         boolean isRaw = newRoot.isRaw();
 
-        Optional<CborObject> newVal = get(newRoot, mirrorBat, ourNodeId, hasher).join();
+        Optional<byte[]> newVal = RetryStorage.runWithRetry(3, () -> getRaw(newRoot, mirrorBat, ourNodeId, hasher, false)).join();
         if (newVal.isEmpty())
             throw new IllegalStateException("Couldn't retrieve block: " + newRoot);
         if (isRaw)
             return Futures.of(Collections.singletonList(newRoot));
 
-        CborObject newBlock = newVal.get();
-        List<Multihash> newLinks = newBlock.links();
+        CborObject newBlock = CborObject.fromByteArray(newVal.get());
+        List<Multihash> newLinks = newBlock.links().stream()
+                .filter(h -> !h.isIdentity())
+                .collect(Collectors.toList());
         List<Multihash> existingLinks = existing.map(h -> get(h, mirrorBat, ourNodeId, hasher).join())
-                .flatMap(copt -> copt.map(CborObject::links))
+                .flatMap(copt -> copt.map(CborObject::links).map(links -> links.stream()
+                        .filter(h -> !h.isIdentity())
+                        .collect(Collectors.toList())))
                 .orElse(Collections.emptyList());
 
         for (int i=0; i < newLinks.size(); i++) {

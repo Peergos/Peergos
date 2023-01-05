@@ -39,6 +39,7 @@ import java.time.*;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.function.*;
+import java.util.logging.*;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -727,13 +728,19 @@ public class Main extends Builder {
                             Optional<BatWithId> mirrorBat = a.getOptionalArg("mirror.bat").map(BatWithId::decode);
                             if (mirrorBat.isEmpty())
                                 System.out.println("WARNING: Mirroring users public blocks only, see option 'mirror.bat'");
+                            else {
+                                BatId mirrorId = mirrorBat.get().id();
+                                Optional<Bat> existingMirrorBat = batStore.getBat(mirrorId);
+                                if (existingMirrorBat.isEmpty())
+                                    batStore.addBat(username, mirrorId, mirrorBat.get().bat, new byte[0]).join();
+                            }
                             Mirror.mirrorUser(username, mirrorLoginDataPair, mirrorBat, core, p2mMutable, p2pAccount, localStorage,
                                     rawPointers, rawAccount, transactions, hasher);
                             try {
                                 Thread.sleep(60_000);
                             } catch (InterruptedException f) {}
                         } catch (Exception e) {
-                            e.printStackTrace();
+                            Logging.LOG().log(Level.SEVERE, e, () -> e.getMessage());
                             try {
                                 Thread.sleep(5_000);
                             } catch (InterruptedException f) {}

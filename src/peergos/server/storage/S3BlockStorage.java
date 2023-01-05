@@ -303,7 +303,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
             nonLocalGets.inc();
             if (p2pGetId.equals(id))
                 return p2pFallback.getRaw(hash, auth);
-            return p2pFallback.getRaw(hash, bat); // recalculate auth when the fallback node has a different node id
+            return p2pFallback.getRaw(hash, bat, p2pGetId, hasher, enforceAuth); // recalculate auth when the fallback node has a different node id
         } finally {
             readTimer.observeDuration();
         }
@@ -321,6 +321,8 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
             Map<String, List<String>> headRes = HttpUtil.head(headUrl);
             blockHeads.inc();
             return true;
+        } catch (FileNotFoundException e) {
+            return false;
         } catch (IOException e) {
             String msg = e.getMessage();
             if (msg == null) {
@@ -355,18 +357,26 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         if (existing.equals(updated))
             return Futures.of(Collections.singletonList(newRoot));
 
-        if (contains(newRoot))
-            return Futures.of(Collections.singletonList(newRoot));
-        Optional<byte[]> newBlock = p2pFallback.getRaw(newRoot, mirrorBat, p2pGetId, hasher).join();
+        // This call will not verify the auth as we might not have the mirror bat present locally
+        Optional<byte[]> newBlock = p2pFallback.getRaw(newRoot, mirrorBat, p2pGetId, hasher, false).join();
         if (newBlock.isEmpty())
             throw new IllegalStateException("Couldn't retrieve block: " + newRoot);
-        put(newBlock.get(), newRoot.isRaw(), tid, owner);
+        if (! hasBlock(newRoot))
+            getWithBackoff(() -> put(newBlock.get(), newRoot.isRaw(), tid, owner));
         if (newRoot.isRaw())
             return Futures.of(Collections.singletonList(newRoot));
 
-        List<Multihash> newLinks = CborObject.fromByteArray(newBlock.get()).links();
-        List<Multihash> existingLinks = existing.map(h -> get(h, mirrorBat, id, hasher).join())
-                .flatMap(copt -> copt.map(CborObject::links))
+        List<Multihash> newLinks = CborObject.fromByteArray(newBlock.get()).links()
+                .stream()
+                .filter(h -> !h.isIdentity())
+                .collect(Collectors.toList());
+        List<Multihash> existingLinks = existing.map(h -> h.isRaw() ?
+                        Optional.<byte[]>empty() :
+                        getRaw(h, Optional.empty(), "", false, mirrorBat).join())
+                .map(bopt -> bopt.map(CborObject::fromByteArray))
+                .flatMap(copt -> copt.map(CborObject::links).map(links -> links.stream()
+                        .filter(h -> !h.isIdentity())
+                        .collect(Collectors.toList())))
                 .orElse(Collections.emptyList());
 
         for (int i=0; i < newLinks.size(); i++) {

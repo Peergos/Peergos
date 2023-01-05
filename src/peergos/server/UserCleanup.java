@@ -15,10 +15,9 @@ import peergos.shared.util.*;
 
 import java.net.*;
 import java.util.*;
-import java.util.concurrent.*;
 import java.util.stream.*;
 
-public class UserGC {
+public class UserCleanup {
 
     public static void main(String[] args) throws Exception {
         Crypto crypto = Main.initCrypto();
@@ -27,8 +26,8 @@ public class UserGC {
         String password = args[1];
         UserContext context = UserContext.signIn(username, password, network, crypto).get();
         long usage = context.getSpaceUsage().join();
-        checkRawUsage(context);
-//        clearUnreachableChampNodes(context);
+//        checkRawUsage(context);
+        clearUnreachableChampNodes(context);
     }
 
     public static void clearUnreachableChampNodes(UserContext c) {
@@ -45,6 +44,11 @@ public class UserGC {
                 .filter(w ->  !w.equals(owner))
                 .collect(Collectors.toSet());
 
+        Set<PublicKeyHash> namedOwnedKeys = WriterData.getWriterData(owner, owner, mutable, storage).join()
+                .props.namedOwnedKeys.values().stream()
+                .map(p -> p.ownedKey)
+                .collect(Collectors.toSet());
+
         Map<PublicKeyHash, PublicKeyHash> toParent = new HashMap<>();
         for (PublicKeyHash writer : writers) {
             Set<PublicKeyHash> owned = WriterData.getDirectOwnedKeys(owner, writer, mutable, storage, hasher).join();
@@ -54,9 +58,16 @@ public class UserGC {
         }
 
         Map<SigningPrivateKeyAndPublicHash, Map<String, ByteArrayWrapper>> reachableKeys = new HashMap<>();
-        traverseDescendants(root, "/" + c.username, (s, m, p) -> {
+        BatWithId mirrorBat = c.getMirrorBat().join().get();
+        traverseDescendants(root, "/" + c.username, (s, cap, p, fopt) -> {
             reachableKeys.putIfAbsent(s, new HashMap<>());
-            reachableKeys.get(s).put(p, new ByteArrayWrapper(m));
+            reachableKeys.get(s).put(p, new ByteArrayWrapper(cap.getMapKey()));
+            fopt.ifPresent(f -> {
+                RetrievedCapability rcap = f.getPointer();
+                boolean addToFragmentsOnly = rcap.capability.bat.isEmpty();
+                if (! addToFragmentsOnly || ! f.getPointer().fileAccess.bats.isEmpty())
+                    f.addMirrorBat(mirrorBat.id(), addToFragmentsOnly, c.network).join();
+            });
             return true;
         }, c);
 
@@ -81,6 +92,8 @@ public class UserGC {
                     .filter(s -> s.publicKeyHash.equals(writer))
                     .findFirst();
             if (keypair.isEmpty()) {
+                if (namedOwnedKeys.contains(writer))
+                    continue;
                 // writing space is unreachable, but non-empty. Remove it by orphaning it.
                 PublicKeyHash parent = toParent.get(writer);
                 Optional<SigningPrivateKeyAndPublicHash> parentKeypair = reachableKeys.keySet()
@@ -203,28 +216,31 @@ public class UserGC {
         }
     }
 
+    interface ChunkProcessor {
+        boolean apply(SigningPrivateKeyAndPublicHash signer, AbsoluteCapability cap, String path, Optional<FileWrapper> f);
+    }
+
     private static void traverseDescendants(FileWrapper dir,
                                             String path,
-                                            TriFunction<SigningPrivateKeyAndPublicHash, byte[], String, Boolean> f,
+                                            ChunkProcessor visitor,
                                             UserContext c) {
-        f.apply(dir.signingPair(), dir.writableFilePointer().getMapKey(), path);
+        visitor.apply(dir.signingPair(), dir.writableFilePointer(), path, Optional.of(dir));
         Set<FileWrapper> children = dir.getChildren(c.crypto.hasher, c.network).join();
-        List<ForkJoinTask> subtasks = new ArrayList<>();
         for (FileWrapper child : children) {
-            if (!child.isDirectory()) {
-                byte[] firstChunk = child.writableFilePointer().getMapKey();
+            if (! child.isDirectory()) {
+                WritableAbsoluteCapability cap = child.writableFilePointer();
+                byte[] firstChunk = cap.getMapKey();
+                Optional<Bat> firstBat = cap.bat;
                 SigningPrivateKeyAndPublicHash childSigner = child.signingPair();
-                f.apply(childSigner, firstChunk, path + "/" + child.getName());
+                visitor.apply(childSigner, cap, path + "/" + child.getName(), Optional.of(child));
                 for (int i=0; i < child.getSize()/ (5*1024*1024); i++) {
                     byte[] streamSecret = child.getFileProperties().streamSecret.get();
-                    byte[] mapKey = FileProperties.calculateMapKey(streamSecret, firstChunk, Optional.empty(), 5 * 1024 * 1024 * (i + 1), c.crypto.hasher).join().left;
-                    f.apply(childSigner, mapKey, path + "/" + child.getName() + "[" + i + "]");
+                    Pair<byte[], Optional<Bat>> chunk = FileProperties.calculateMapKey(streamSecret, firstChunk,
+                            firstBat, 5 * 1024 * 1024 * (i + 1), c.crypto.hasher).join();
+                    visitor.apply(childSigner, cap.withMapKey(chunk.left, chunk.right), path + "/" + child.getName() + "[" + i + "]", Optional.empty());
                 }
             } else
-                subtasks.add(ForkJoinPool.commonPool().submit(() -> traverseDescendants(child, path + "/" + child.getName(), f, c)));
-        }
-        for (ForkJoinTask subtask : subtasks) {
-            subtask.join();
+                traverseDescendants(child, path + "/" + child.getName(), visitor, c);
         }
     }
 }

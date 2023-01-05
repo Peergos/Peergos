@@ -68,7 +68,7 @@ public class SocialFeed {
         byte[] raw = post.serialize();
         AsyncReader reader = AsyncReader.build(raw);
         return context.getUserRoot()
-                .thenCompose(home -> home.getOrMkdirs(dir, network, true, home.mirrorBatId(), crypto))
+                .thenCompose(home -> home.getOrMkdirs(dir, network, true, context.mirrorBatId(), crypto))
                 .thenCompose(postDir -> postDir.uploadAndReturnFile(postFilename, reader, raw.length, false,
                         postDir.mirrorBatId(), network, crypto)
                         .thenApply(f -> new Pair<>(PathUtil.get(post.author).resolve(dir).resolve(postFilename), f)))
@@ -109,7 +109,7 @@ public class SocialFeed {
                 Integer.toString(postTime.getYear()),
                 mediaType);
         return context.getUserRoot()
-                .thenCompose(home -> home.getOrMkdirs(dirFromHome, network, true, home.mirrorBatId(), crypto)
+                .thenCompose(home -> home.getOrMkdirs(dirFromHome, network, true, context.mirrorBatId(), crypto)
                 .thenApply(dir -> new Pair<>(PathUtil.get("/" + context.username).resolve(dirFromHome), dir)));
     }
 
@@ -398,7 +398,7 @@ public class SocialFeed {
 
     public static CompletableFuture<SocialFeed> create(UserContext c) {
         return c.getUserRoot()
-                .thenCompose(home -> home.getOrMkdirs(PathUtil.get(UserContext.FEED_DIR_NAME), c.network, true, home.mirrorBatId(), c.crypto))
+                .thenCompose(home -> home.getOrMkdirs(PathUtil.get(UserContext.FEED_DIR_NAME), c.network, true, c.mirrorBatId(), c.crypto))
                 .thenCompose(feedDir -> {
                     FeedState empty = new FeedState(0, 0, 0L, Collections.emptyMap());
                     byte[] rawEmpty = empty.serialize();
