@@ -73,6 +73,8 @@ public class SignUpFilter implements CoreNode {
     public CompletableFuture<Either<PaymentProperties, RequiredDifficulty>> startPaidSignup(String username,
                                                                                             UserPublicKeyLink chain,
                                                                                             ProofOfWork proof) {
+        if (isPki)
+            return target.startPaidSignup(username, chain, proof);
         if (maxPaidSignupsPerDay == 0)
             return Futures.of(Either.b(new RequiredDifficulty(ProofOfWork.MAX_DIFFICULTY)));
         // Apply rate limiting based on IP, failures, etc.
