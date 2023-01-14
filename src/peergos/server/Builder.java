@@ -202,7 +202,8 @@ public class Builder {
                 BlockStoreProperties props = buildS3Properties(a);
                 TransactionalIpfs p2pBlockRetriever = new TransactionalIpfs(ipfs, transactions, authoriser, ipfs.id().join(), hasher);
 
-                return new S3BlockStorage(config, ipfs.id().join(), props, transactions, authoriser, hasher, p2pBlockRetriever, ipfs);
+                return new S3BlockStorage(config, ipfs.id().join(), props, transactions, authoriser,
+                        new RamBlockMetadataStore(), hasher, p2pBlockRetriever, ipfs);
             } else if (enableGC) {
                 return new TransactionalIpfs(ipfs, transactions, authoriser, ipfs.id().join(), hasher);
             } else
@@ -220,7 +221,10 @@ public class Builder {
 
                 JavaPoster bloomApiTarget = buildBloomApiTarget(a);
                 DeletableContentAddressedStorage.HTTP bloomTarget = new DeletableContentAddressedStorage.HTTP(bloomApiTarget, false, hasher);
-                return new S3BlockStorage(config, ourId, props, transactions, authoriser, hasher, p2pBlockRetriever, bloomTarget);
+                RamBlockMetadataStore blockMetadata = new RamBlockMetadataStore();
+                S3BlockStorage s3 = new S3BlockStorage(config, ourId, props, transactions, authoriser, blockMetadata,
+                        hasher, p2pBlockRetriever, bloomTarget);
+                return new MetadataCachingStorage(s3, blockMetadata, hasher);
             } else {
                 return new FileContentAddressedStorage(blockstorePath(a), transactions, authoriser, hasher);
             }

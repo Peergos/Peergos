@@ -98,6 +98,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
     private final BlockStoreProperties props;
     private final TransactionStore transactions;
     private final BlockRequestAuthoriser authoriser;
+    private final BlockMetadataStore blockMetadata;
     private final Hasher hasher;
     private final DeletableContentAddressedStorage p2pFallback, bloomTarget;
 
@@ -106,6 +107,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                           BlockStoreProperties props,
                           TransactionStore transactions,
                           BlockRequestAuthoriser authoriser,
+                          BlockMetadataStore blockMetadata,
                           Hasher hasher,
                           DeletableContentAddressedStorage p2pFallback,
                           DeletableContentAddressedStorage bloomTarget) {
@@ -123,6 +125,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         this.props = props;
         this.transactions = transactions;
         this.authoriser = authoriser;
+        this.blockMetadata = blockMetadata;
         this.hasher = hasher;
         this.p2pFallback = p2pFallback;
         this.bloomTarget = bloomTarget;
@@ -160,7 +163,12 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                 .parallel()
                 .map(b -> authRaw(b.hash, b.hash.isRaw() ?
                         Optional.of(new Pair<>(0, Bat.MAX_RAW_BLOCK_PREFIX_SIZE - 1)) :
-                        Optional.empty(), b.bat, id, hasher))
+                        Optional.empty(), b.bat, id, hasher)
+                        .thenApply(bopt -> {
+                            if (bopt.isPresent())
+                                blockMetadata.put(b.hash, bopt.get());
+                            return bopt;
+                        }))
                 .collect(Collectors.toList());
 
         for (MirrorCap block : blocks) {
@@ -694,7 +702,8 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         TransactionStore transactions = JdbcTransactionStore.build(transactionsDb, sqlCommands);
         BlockRequestAuthoriser authoriser = (c, b, s, auth) -> Futures.of(true);
         S3BlockStorage s3 = new S3BlockStorage(config, Cid.decode(a.getArg("ipfs.id")),
-                BlockStoreProperties.empty(), transactions, authoriser, hasher, new RAMStorage(hasher), new RAMStorage(hasher));
+                BlockStoreProperties.empty(), transactions, authoriser, new RamBlockMetadataStore(),
+                hasher, new RAMStorage(hasher), new RAMStorage(hasher));
         JdbcIpnsAndSocial rawPointers = new JdbcIpnsAndSocial(database, sqlCommands);
         Supplier<Connection> usageDb = Main.getDBConnector(a, "space-usage-sql-file");
         UsageStore usageStore = new JdbcUsageStore(usageDb, sqlCommands);

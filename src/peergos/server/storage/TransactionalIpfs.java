@@ -13,7 +13,7 @@ import java.util.*;
 import java.util.concurrent.*;
 import java.util.stream.*;
 
-public class TransactionalIpfs extends DelegatingStorage implements DeletableContentAddressedStorage {
+public class TransactionalIpfs extends DelegatingDeletableStorage implements DeletableContentAddressedStorage {
 
     private final DeletableContentAddressedStorage target;
     private final TransactionStore transactions;
