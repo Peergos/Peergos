@@ -6,6 +6,7 @@ import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.storage.*;
 import peergos.shared.storage.auth.*;
+import peergos.shared.user.fs.*;
 import peergos.shared.util.*;
 
 import java.util.*;
@@ -147,6 +148,16 @@ public class DelegatingDeletableStorage implements DeletableContentAddressedStor
     @Override
     public CompletableFuture<List<byte[]>> getChampLookup(PublicKeyHash owner, Cid root, byte[] champKey, Optional<BatWithId> bat) {
         return target.getChampLookup(owner, root, champKey, bat);
+    }
+
+    @Override
+    public CompletableFuture<List<FragmentWithHash>> downloadFragments(PublicKeyHash owner,
+                                                                       List<Cid> hashes,
+                                                                       List<BatWithId> bats,
+                                                                       Hasher h,
+                                                                       ProgressConsumer<Long> monitor,
+                                                                       double spaceIncreaseFactor) {
+        return target.downloadFragments(owner, hashes, bats, h, monitor, spaceIncreaseFactor);
     }
 
     @Override
