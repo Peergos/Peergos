@@ -13,7 +13,7 @@ import java.util.*;
 import java.util.concurrent.*;
 import java.util.stream.*;
 
-public class AuthedStorage extends DelegatingDeletableStorage implements DeletableContentAddressedStorage {
+public class AuthedStorage extends DelegatingStorage implements DeletableContentAddressedStorage {
     private final DeletableContentAddressedStorage target;
     private final BlockRequestAuthoriser authoriser;
     private final Hasher h;
