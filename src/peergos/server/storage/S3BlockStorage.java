@@ -196,14 +196,14 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
             if (blockSizes.size() != signedHashes.size())
                 throw new IllegalStateException("Number of sizes doesn't match number of signed hashes!");
             PublicSigningKey writer = getSigningKey(writerHash).get().get();
-            List<Pair<Multihash, Integer>> blockProps = new ArrayList<>();
+            List<Pair<Cid, Integer>> blockProps = new ArrayList<>();
             for (int i=0; i < signedHashes.size(); i++) {
                 Cid.Codec codec = isRaw ? Cid.Codec.Raw : Cid.Codec.DagCbor;
                 Cid cid = new Cid(1, codec, Multihash.Type.sha2_256, writer.unsignMessage(signedHashes.get(i)));
                 blockProps.add(new Pair<>(cid, blockSizes.get(i)));
             }
             List<PresignedUrl> res = new ArrayList<>();
-            for (Pair<Multihash, Integer> props : blockProps) {
+            for (Pair<Cid, Integer> props : blockProps) {
                 if (props.left.type != Multihash.Type.sha2_256)
                     throw new IllegalStateException("Can only pre-auth writes of sha256 hashed blocks!");
                 transactions.addBlock(props.left, tid, owner);
@@ -215,6 +215,8 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                         S3AdminRequests.asAwsDate(ZonedDateTime.now()), host, extraHeaders, region, accessKeyId, secretKey, useHttps, hasher).join());
                 blockPutAuths.inc();
                 bloomTarget.bloomAdd(props.left);
+                if (isRaw)
+                    blockMetadata.put(props.left, new BlockMetadata(props.right, Collections.emptyList()));
             }
             return Futures.of(res);
         } catch (Exception e) {
