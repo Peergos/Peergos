@@ -130,6 +130,9 @@ public class UserQuotas implements QuotaAdmin {
     }
 
     @Override
+    public void removeDesiredQuota(String username) {}
+
+    @Override
     public boolean consumeToken(String username, String token) {
         if (! token.isEmpty()) {
             return quotas.removeToken(token) && quotas.setQuota(username, defaultQuota);

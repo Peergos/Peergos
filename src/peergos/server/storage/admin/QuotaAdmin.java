@@ -22,6 +22,8 @@ public interface QuotaAdmin extends QuotaControl {
 
     PaymentProperties createPaidUser(String username);
 
+    void removeDesiredQuota(String username);
+
     boolean addToken(String token);
 
     boolean consumeToken(String username, String token);
