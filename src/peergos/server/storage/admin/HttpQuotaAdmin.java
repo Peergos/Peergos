@@ -19,6 +19,7 @@ public class HttpQuotaAdmin implements QuotaAdmin {
     public static final String USERNAMES = "usernames";
     public static final String ALLOWED = "allowed";
     public static final String CREATE_PAID = "create-paid";
+    public static final String REMOVE_DESIRED = "remove-desired-quota";
     public static final String TOKEN_ADD = "token-add";
     public static final String TOKEN_REMOVE = "token-remove";
     public static final String QUOTA_PRIVATE = "quota-by-name";
@@ -48,6 +49,11 @@ public class HttpQuotaAdmin implements QuotaAdmin {
     public PaymentProperties createPaidUser(String username) {
         return poster.get(QUOTA_URL + CREATE_PAID + "?username=" + username)
                 .thenApply(res -> PaymentProperties.fromCbor(CborObject.fromByteArray(res))).join();
+    }
+
+    @Override
+    public void removeDesiredQuota(String username) {
+        poster.get(QUOTA_URL + REMOVE_DESIRED + "?username=" + username).join();
     }
 
     @Override

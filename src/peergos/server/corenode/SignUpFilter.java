@@ -115,6 +115,10 @@ public class SignUpFilter implements CoreNode {
             LOG.info("Successful Paid signup!");
             AggregatedMetrics.PAID_SIGNUP_SUCCESS.inc();
             return target.completePaidSignup(username, chain, setupOperations, signedSpaceRequest, proof);
+        } else if (result.hasError()) {
+            LOG.info("Payment error during Paid signup! username=" + username);
+            // payment failed, set desired quota to 0 to prevent future payment attempts
+            quotaStore.removeDesiredQuota(username);
         }
         return Futures.of(result);
     }
