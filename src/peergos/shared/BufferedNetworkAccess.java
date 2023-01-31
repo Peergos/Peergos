@@ -156,14 +156,13 @@ public class BufferedNetworkAccess extends NetworkAccess {
         List<Pair<BufferedPointers.WriterUpdate, Optional<CommittedWriterData>>> writes = blockBuffer.getAllWriterData(writerUpdates);
         return blockBuffer.signBlocks(writers)
                 .thenCompose(b -> blocks.startTransaction(owner))
-                .thenCompose(tid -> Futures.combineAllInOrder(writes.stream()
-                                .map(u -> blockBuffer.commit(owner, u.left.writer, tid)
+                .thenCompose(tid -> Futures.reduceAll(writes.stream(), true, (a,u) ->
+                                 blockBuffer.commit(owner, u.left.writer, tid)
                                         .thenCompose(b -> pointerBuffer.commit(owner, writers.get(u.left.writer),
                                                         new PointerUpdate(u.left.prevHash, u.left.currentHash, u.left.currentSequence))
                                                 .thenCompose(x -> u.right
                                                         .map(cwd -> synchronizer.updateWriterState(owner, u.left.writer, new Snapshot(u.left.writer, cwd)))
-                                                        .orElse(Futures.of(true)))))
-                                .collect(Collectors.toList()))
+                                                        .orElse(Futures.of(true)))), (x,y) -> x && y)
                         .thenCompose(x -> blocks.closeTransaction(owner, tid))
                         .thenApply(x -> {
                             pointerBuffer.clear();
