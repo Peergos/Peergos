@@ -111,7 +111,7 @@ public class SignUpFilter implements CoreNode {
         PaymentProperties result = quotaStore.requestQuota(chain.owner, signedSpaceRequest).join();
         long quota = quotaStore.getQuota(username);
         LOG.info("Paid signup: quota="+quota + ", username=" + username);
-        if (quota == result.desiredQuota && quota > 1024*1024) {// 1 MiB is the deletion quota
+        if (quota >= result.desiredQuota && quota > 1024*1024) {// 1 MiB is the deletion quota
             LOG.info("Successful Paid signup!");
             AggregatedMetrics.PAID_SIGNUP_SUCCESS.inc();
             return target.completePaidSignup(username, chain, setupOperations, signedSpaceRequest, proof);
