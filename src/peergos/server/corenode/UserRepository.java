@@ -71,18 +71,19 @@ public class UserRepository implements SocialNetwork, MutablePointers {
                                 PointerUpdate cas = PointerUpdate.fromCbor(CborObject.fromByteArray(bothHashes));
                                 MaybeMultihash claimedCurrentHash = cas.original;
 
-                                if (! MutablePointers.isValidUpdate(writerKey, current, claimedCurrentHash, cas.sequence))
-                                    return Futures.of(false);
+                                return MutablePointers.isValidUpdate(writerKey, current, claimedCurrentHash, cas.sequence)
+                                        .thenCompose(x -> {
 
-                                // check the new target is valid for this writer (or a deletion)
-                                if (cas.updated.isPresent()) {
-                                    Multihash newHash = cas.updated.get();
-                                    CommittedWriterData newWriterData = WriterData.getWriterData((Cid)newHash, cas.sequence, ipfs).join();
-                                    if (!newWriterData.props.controller.equals(writer))
-                                        return Futures.of(false);
-                                }
+                                            // check the new target is valid for this writer (or a deletion)
+                                            if (cas.updated.isPresent()) {
+                                                Multihash newHash = cas.updated.get();
+                                                CommittedWriterData newWriterData = WriterData.getWriterData((Cid) newHash, cas.sequence, ipfs).join();
+                                                if (!newWriterData.props.controller.equals(writer))
+                                                    return Futures.of(false);
+                                            }
 
-                                return store.setPointer(writer, current, writerSignedBtreeRootHash);
+                                            return store.setPointer(writer, current, writerSignedBtreeRootHash);
+                                        });
                             } catch (TweetNaCl.InvalidSignatureException e) {
                                 System.err.println("Invalid signature during setMetadataBlob for sharer: " + writer);
                                 return Futures.of(false);

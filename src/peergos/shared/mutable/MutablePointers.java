@@ -7,6 +7,7 @@ import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.MaybeMultihash;
 import peergos.shared.storage.ContentAddressedStorage;
+import peergos.shared.user.*;
 import peergos.shared.util.*;
 
 import java.util.*;
@@ -60,7 +61,7 @@ public interface MutablePointers {
                         .orElse(PointerUpdate.empty()));
     }
 
-    static boolean isValidUpdate(PublicSigningKey writerKey, Optional<byte[]> current, byte[] writerSignedBtreeRootHash) {
+    static CompletableFuture<Boolean> isValidUpdate(PublicSigningKey writerKey, Optional<byte[]> current, byte[] writerSignedBtreeRootHash) {
         byte[] bothHashes = writerKey.unsignMessage(writerSignedBtreeRootHash);
         PointerUpdate cas = PointerUpdate.fromCbor(CborObject.fromByteArray(bothHashes));
         MaybeMultihash claimedCurrentHash = cas.original;
@@ -69,16 +70,20 @@ public interface MutablePointers {
         return isValidUpdate(writerKey, current, claimedCurrentHash, cas.sequence);
     }
 
-    static boolean isValidUpdate(PublicSigningKey writerKey,
-                                 Optional<byte[]> current,
-                                 MaybeMultihash claimedCurrentHash,
-                                 Optional<Long> newSequence) {
+    static CompletableFuture<Boolean> isValidUpdate(PublicSigningKey writerKey,
+                                                    Optional<byte[]> current,
+                                                    MaybeMultihash claimedCurrentHash,
+                                                    Optional<Long> newSequence) {
         Optional<PointerUpdate> decoded = current.map(signed ->
                 PointerUpdate.fromCbor(CborObject.fromByteArray(writerKey.unsignMessage(signed))));
         MaybeMultihash existing = decoded.map(p -> p.updated).orElse(MaybeMultihash.empty());
         Optional<Long> currentSequence = decoded.flatMap(p -> p.sequence);
         // check CAS [current hash, new hash]
         boolean validSequence = currentSequence.isEmpty() || (newSequence.isPresent() && newSequence.get() > currentSequence.get());
-        return validSequence && existing.equals(claimedCurrentHash);
+        if (! existing.equals(claimedCurrentHash))
+            return Futures.errored(new MutableTree.CasException(existing, claimedCurrentHash));
+        if (! validSequence)
+            return Futures.errored(new IllegalStateException("Invalid sequence number update in mutable pointer: " + currentSequence + " => " + newSequence));
+        return Futures.of(true);
     }
 }

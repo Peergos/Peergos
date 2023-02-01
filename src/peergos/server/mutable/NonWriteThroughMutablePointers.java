@@ -30,11 +30,11 @@ public class NonWriteThroughMutablePointers implements MutablePointers {
             Optional<PublicSigningKey> opt = storage.getSigningKey(writer).get();
             if (! opt.isPresent())
                 throw new IllegalStateException("Couldn't retrieve signing key!");
-            boolean validUpdate = MutablePointers.isValidUpdate(opt.get(), Optional.ofNullable(modifications.get(writer)), writerSignedBtreeRootHash);
-            if (! validUpdate)
-                return CompletableFuture.completedFuture(false);
-            modifications.put(writer, writerSignedBtreeRootHash);
-            return CompletableFuture.completedFuture(true);
+            return MutablePointers.isValidUpdate(opt.get(), Optional.ofNullable(modifications.get(writer)), writerSignedBtreeRootHash)
+                    .thenApply(x -> {
+                        modifications.put(writer, writerSignedBtreeRootHash);
+                        return true;
+                    });
         } catch (Exception e) {
             throw new RuntimeException(e.getMessage(), e);
         }

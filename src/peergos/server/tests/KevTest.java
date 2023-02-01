@@ -12,10 +12,7 @@ import peergos.shared.NetworkAccess;
 import peergos.shared.crypto.symmetric.SymmetricKey;
 import peergos.shared.social.FollowRequestWithCipherText;
 import peergos.shared.storage.CachingStorage;
-import peergos.shared.user.MutableTree;
-import peergos.shared.user.MutableTreeImpl;
-import peergos.shared.user.UserContext;
-import peergos.shared.user.WriteSynchronizer;
+import peergos.shared.user.*;
 import peergos.shared.user.fs.AbsoluteCapability;
 import peergos.shared.user.fs.AsyncReader;
 import peergos.shared.user.fs.FileProperties;
@@ -23,7 +20,8 @@ import peergos.shared.user.fs.FileWrapper;
 import peergos.shared.util.ArrayOps;
 import peergos.shared.util.PathUtil;
 
-import java.net.URL;
+import java.net.*;
+import java.nio.charset.*;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
@@ -130,13 +128,18 @@ public class KevTest {
 
         try {
             //sharee modifies file
+            Snapshot priorShareeVersion = shareeFile.version;
             shareeFile = saveFile(shareeContents + "-sharee", shareeUser, shareeFile).join();
+            Snapshot postShareeVersion = shareeFile.version;
             shareeContents = new String(readFile(shareeUser, shareeFile).join());
             //sharer should get a CAS exception when modifying file
+            Snapshot priorSharerVersion = sharerFile.version;
+            Assert.assertTrue(priorSharerVersion.equals(priorShareeVersion));
             sharerFile = saveFile(sharerContents + "-sharer", sharerUser, sharerFile).join();
+            Snapshot postSharerVersion = sharerFile.version;
             Assert.assertTrue("Should not have made it here", false);
         } catch (Throwable ex) {
-            String msg = ex.getMessage();
+            String msg = URLDecoder.decode(ex.getMessage(), StandardCharsets.UTF_8);
             boolean isExpected = msg.contains("CAS exception updating cryptree node.")
                     ||   msg.contains("Mutable pointer update failed! Concurrent Modification.");
             Assert.assertTrue("Was expecting CAS exception", isExpected);
