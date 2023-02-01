@@ -124,7 +124,7 @@ public class KevTest {
         FileWrapper shareeFile = shareeUser.getByPath(filePath).join().get();
         String shareeContents = new String(readFile(shareeUser, shareeFile).join());
 
-        FileWrapper sharerFile = shareeUser.getByPath(filePath).join().get();
+        FileWrapper sharerFile = sharerUser.getByPath(filePath).join().get();
         String sharerContents = new String(readFile(sharerUser, sharerFile).join());
         Assert.assertTrue("Contents match", shareeContents.equals(sharerContents));
 
