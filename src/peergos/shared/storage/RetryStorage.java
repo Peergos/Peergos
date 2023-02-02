@@ -60,6 +60,8 @@ public class RetryStorage implements ContentAddressedStorage {
                             res.completeExceptionally(e);
                         } else if (e instanceof StorageQuotaExceededException) {
                             res.completeExceptionally(e);
+                        } else if (e instanceof ConcurrentModificationException) {
+                            res.completeExceptionally(e);
                         } else if (e instanceof HttpFileNotFoundException) {
                             res.completeExceptionally(e);
                         } else if (e instanceof ConnectException) {
