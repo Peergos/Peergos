@@ -384,6 +384,33 @@ public class MultiUserTests {
     }
 
     @Test
+    public void upgradeAccess() {
+
+        UserContext u1 = PeergosNetworkUtils.ensureSignedUp(random(), "a", network.clear(), crypto);
+        UserContext u2 = PeergosNetworkUtils.ensureSignedUp(random(), "a", network.clear(), crypto);
+
+        List<UserContext> all = Arrays.asList(u1, u2);
+
+        // make u1 friend all users
+        PeergosNetworkUtils.friendBetweenGroups(Arrays.asList(u1), Arrays.asList(u2));
+
+        u1.getUserRoot().join().mkdir("subdir", u1.network, false, u1.mirrorBatId(), crypto).join();
+        byte[] fileData = "file data".getBytes();
+        AsyncReader reader = AsyncReader.build(fileData);
+        u1.getByPath(PathUtil.get(u1.username, "subdir")).join().get().uploadOrReplaceFile("file.txt",
+                reader, fileData.length, u1.network, crypto, x -> {}).join();
+        Path filePath = PathUtil.get(u1.username, "subdir", "file.txt");
+        FileWrapper file = u1.getByPath(filePath).join().get();
+        u1.shareReadAccessWith(filePath, Collections.singleton(u2.username)).join();
+        SharedWithState sharedWithState = u1.getDirectorySharingState(PathUtil.get(u1.username, "subdir")).join();
+        FileSharedWithState fileState = sharedWithState.get("file.txt");
+        Assert.assertTrue("read access granted", fileState.readAccess.size() == 1 && fileState.writeAccess.size() == 0);
+        u1.shareWriteAccessWith(filePath, Collections.singleton(u2.username)).join();
+        sharedWithState = u1.getDirectorySharingState(PathUtil.get(u1.username, "subdir")).join();
+        fileState = sharedWithState.get("file.txt");
+        Assert.assertTrue("write access granted", fileState.readAccess.size() == 0 && fileState.writeAccess.size() == 1);
+    }
+    @Test
     public void shareTwoFilesWithSameNameReadAccess() throws Exception {
         TriFunction<UserContext, List<UserContext>, Path, CompletableFuture<Snapshot>> readAccessSharingFunction =
                 (u1, userContexts, path) ->
