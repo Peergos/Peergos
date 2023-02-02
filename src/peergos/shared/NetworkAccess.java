@@ -4,8 +4,6 @@ import java.util.function.*;
 import java.util.logging.*;
 
 import jsinterop.annotations.*;
-import peergos.server.crypto.hash.ScryptJava;
-import peergos.server.util.JavaPoster;
 import peergos.shared.cbor.*;
 import peergos.shared.corenode.*;
 import peergos.shared.crypto.*;
@@ -214,17 +212,6 @@ public class NetworkAccess {
                 .thenCompose(bp -> bp.useDirectBlockStore() ?
                         localDht.id().thenApply(id -> new DirectS3BlockStore(bp, direct, localDht, id, core, hasher)) :
                         Futures.of(localDht));
-    }
-
-    @JsMethod
-    public static CompletableFuture<NetworkAccess> buildJSKev(URL url) {
-        boolean isPublic = false;
-        JavaPoster relative = new JavaPoster(url, isPublic);
-
-        ScryptJava hasher = new ScryptJava();
-        boolean isPeergosServer = true; // we used to support using web ui through an ipfs gateway directly
-        ContentAddressedStorage localDht = buildLocalDht(relative, isPeergosServer, hasher);
-        return buildViaPeergosInstance(relative, relative, localDht, 0, hasher, true);
     }
 
     @JsMethod
