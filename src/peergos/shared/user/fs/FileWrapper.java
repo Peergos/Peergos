@@ -743,7 +743,7 @@ public class FileWrapper {
                                                         Crypto crypto,
                                                         ProgressConsumer<Long> monitor) {
         return network.synchronizer.applyComplexUpdate(owner(), signingPair(),
-                (s, committer) -> overwriteFile(fileData, newSize, network, crypto, monitor, s, committer))
+                (s, committer) -> overwriteFile(fileData, newSize, network, crypto, monitor, version, committer))
                 .thenCompose(v -> getUpdated(v, network));
     }
 

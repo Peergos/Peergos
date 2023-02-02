@@ -382,7 +382,7 @@ public class MultiUserTests {
         freshContext.getUserRoot().join().mkdir("Adir", network, false, u1.mirrorBatId(), crypto).join();
         checkUserValidity(network, u1.username);
     }
-
+    
     @Test
     public void shareTwoFilesWithSameNameReadAccess() throws Exception {
         TriFunction<UserContext, List<UserContext>, Path, CompletableFuture<Snapshot>> readAccessSharingFunction =

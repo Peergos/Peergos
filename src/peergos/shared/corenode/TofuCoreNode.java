@@ -74,7 +74,9 @@ public class TofuCoreNode implements CoreNode {
     private synchronized CompletableFuture<Boolean> commit() {
         byte[] data = tofu.serialize();
         AsyncReader.ArrayBacked dataReader = new AsyncReader.ArrayBacked(data);
-        return backingFile.overwriteFile(dataReader, data.length, network, crypto, x -> {})
+        return network.synchronizer.applyComplexUpdate(backingFile.owner(), backingFile.signingPair(),
+                        (s, committer) -> backingFile.overwriteFile(dataReader, data.length, network, crypto, x -> {}, s, committer))
+                .thenCompose(v -> backingFile.getUpdated(v, network))
                 .thenApply(f -> {
                     this.backingFile = f;
                     return true;

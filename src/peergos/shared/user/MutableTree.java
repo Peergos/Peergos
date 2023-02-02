@@ -55,10 +55,4 @@ public interface MutableTree {
                                          MaybeMultihash existing,
                                          TransactionId tid);
 
-
-    class CasException extends RuntimeException {
-        public CasException(Object actualExisting, Object claimedExisting) {
-            super("CAS exception updating cryptree node. existing: " + actualExisting + ", claimed: " + claimedExisting);
-        }
-    }
 }
