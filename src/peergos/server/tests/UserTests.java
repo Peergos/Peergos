@@ -467,7 +467,7 @@ public abstract class UserTests {
                             1024, 1024 + section2.length, network, crypto, x -> {})).join();
             throw new RuntimeException("Concurrentmodification should have failed!");
         } catch (CompletionException c) {
-            if (!(c.getCause() instanceof MutableTree.CasException))
+            if (!(c.getCause() instanceof CasException))
                 throw new RuntimeException("Failure!");
         }
     }
