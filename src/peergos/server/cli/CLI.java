@@ -644,7 +644,8 @@ public class CLI implements Runnable {
                 System.exit(0);
             }
 
-            UserContext userContext = UserContext.signUp(username, password, "", Optional.empty(), networkAccess, CRYPTO, progressConsumer).join();
+            UserContext userContext = UserContext.signUp(username, password, "", Optional.empty(), s -> {},
+                    Optional.empty(), networkAccess, CRYPTO, progressConsumer).join();
             return new CLIContext(userContext, serverURL.toString(), username);
         } else {
             writer.println("Enter password for '" + username + "'");
