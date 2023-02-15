@@ -276,17 +276,19 @@ public class UserContext {
     public static CompletableFuture<UserContext> signUp(String username,
                                                         String password,
                                                         String token,
-                                                        Optional<String> salt,
-                                                        Consumer<String> saltStorer,
+                                                        Optional<String> existingIdentity,
+                                                        Consumer<String> identityStorer,
                                                         Optional<Function<PaymentProperties, CompletableFuture<Long>>> addCard,
                                                         NetworkAccess network,
                                                         Crypto crypto,
                                                         Consumer<String> progressCallback) {
         // set claim expiry to two months from now
         LocalDate expiry = LocalDate.now().plusMonths(2);
-        SecretGenerationAlgorithm algorithm = SecretGenerationAlgorithm.getDefault(crypto.random, salt);
-        saltStorer.accept(algorithm.getExtraSalt());
-        return signUpGeneral(username, password, token,
+        SecretGenerationAlgorithm algorithm = SecretGenerationAlgorithm.getDefault(crypto.random);
+        Optional<SigningKeyPair> existingKeyPair = existingIdentity.map(ArrayOps::hexToBytes)
+                .map(CborObject::fromByteArray)
+                .map(SigningKeyPair::fromCbor);
+        return signUpGeneral(username, password, token, existingKeyPair, identityStorer,
                 addCard.map(f -> (p, i) -> f.apply(p).thenApply(s -> signSpaceRequest(username, i, s))),
                 expiry, network, crypto, algorithm, progressCallback);
     }
@@ -304,12 +306,15 @@ public class UserContext {
         // set claim expiry to two months from now
         LocalDate expiry = LocalDate.now().plusMonths(2);
         SecretGenerationAlgorithm algorithm = SecretGenerationAlgorithm.getDefault(crypto.random);
-        return signUpGeneral(username, password, token, Optional.empty(), expiry, network, crypto, algorithm, t -> {});
+        return signUpGeneral(username, password, token, Optional.empty(), id -> {}, Optional.empty(), expiry,
+                network, crypto, algorithm, t -> {});
     }
 
     public static CompletableFuture<UserContext> signUpGeneral(String username,
                                                                String password,
                                                                String token,
+                                                               Optional<SigningKeyPair> existingIdentity,
+                                                               Consumer<String> tmpIdentityStore,
                                                                Optional<BiFunction<PaymentProperties, SigningPrivateKeyAndPublicHash, CompletableFuture<byte[]>>> addCard,
                                                                LocalDate expiry,
                                                                NetworkAccess initialNetwork,
@@ -334,7 +339,9 @@ public class UserContext {
                     boolean isLegacy = algorithm.generateBoxerAndIdentity();
                     SigningKeyPair identityPair = isLegacy ?
                             userWithRoot.getUser() :
-                            SigningKeyPair.random(crypto.random, crypto.signer);
+                            existingIdentity.orElseGet(() -> SigningKeyPair.random(crypto.random, crypto.signer));
+                    if (addCard.isPresent())
+                        tmpIdentityStore.accept(ArrayOps.bytesToHex(identityPair.serialize()));
                     PublicKeyHash identityHash = ContentAddressedStorage.hashKey(identityPair.publicSigningKey);
                     SigningPrivateKeyAndPublicHash identity = new SigningPrivateKeyAndPublicHash(identityHash, identityPair.secretSigningKey);
 
