@@ -276,13 +276,16 @@ public class UserContext {
     public static CompletableFuture<UserContext> signUp(String username,
                                                         String password,
                                                         String token,
+                                                        Optional<String> salt,
+                                                        Consumer<String> saltStorer,
                                                         Optional<Function<PaymentProperties, CompletableFuture<Long>>> addCard,
                                                         NetworkAccess network,
                                                         Crypto crypto,
                                                         Consumer<String> progressCallback) {
         // set claim expiry to two months from now
         LocalDate expiry = LocalDate.now().plusMonths(2);
-        SecretGenerationAlgorithm algorithm = SecretGenerationAlgorithm.getDefault(crypto.random);
+        SecretGenerationAlgorithm algorithm = SecretGenerationAlgorithm.getDefault(crypto.random, salt);
+        saltStorer.accept(algorithm.getExtraSalt());
         return signUpGeneral(username, password, token,
                 addCard.map(f -> (p, i) -> f.apply(p).thenApply(s -> signSpaceRequest(username, i, s))),
                 expiry, network, crypto, algorithm, progressCallback);

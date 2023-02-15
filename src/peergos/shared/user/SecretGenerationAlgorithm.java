@@ -41,6 +41,12 @@ public interface SecretGenerationAlgorithm extends Cborable {
         return new ScryptGenerator(ScryptGenerator.MIN_MEMORY_COST, 8, 1, 64, generateSalt(rnd));
     }
 
+    static SecretGenerationAlgorithm getDefault(SafeRandom rnd, Optional<String> salt) {
+        if (salt.isPresent() && salt.get().length() != 64)
+            throw new IllegalStateException("Invalid salt length");
+        return new ScryptGenerator(ScryptGenerator.MIN_MEMORY_COST, 8, 1, 64, salt.orElseGet(() -> generateSalt(rnd)));
+    }
+
     static SecretGenerationAlgorithm getLegacy(SafeRandom rnd) {
         return new ScryptGenerator(ScryptGenerator.MIN_MEMORY_COST, 8, 1, 96, generateSalt(rnd));
     }
