@@ -340,7 +340,8 @@ public class UserContext {
                     SigningKeyPair identityPair = isLegacy ?
                             userWithRoot.getUser() :
                             existingIdentity.orElseGet(() -> SigningKeyPair.random(crypto.random, crypto.signer));
-                    tmpIdentityStore.accept(ArrayOps.bytesToHex(identityPair.serialize()));
+                    if (addCard.isPresent())
+                        tmpIdentityStore.accept(ArrayOps.bytesToHex(identityPair.serialize()));
                     PublicKeyHash identityHash = ContentAddressedStorage.hashKey(identityPair.publicSigningKey);
                     SigningPrivateKeyAndPublicHash identity = new SigningPrivateKeyAndPublicHash(identityHash, identityPair.secretSigningKey);
 
