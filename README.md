@@ -9,7 +9,7 @@ Peergos is building the next web - the private web, where end users are in contr
 
 The foundation of Peergos is a peer-to-peer encrypted global filesystem with fine-grained access control designed to be resistant to surveillance of data content or friendship graphs. It has a secure messenger, an encrypted email client and bridge, and a totally private and secure social network, where users are in control of who sees what (executed cryptographically). Our motto at Peergos is, "Control your data, control your destiny."
 
-The name Peergos comes from the Greek word Πύργος (Pyrgos), which means stronghold or tower, but phonetically spelt with the nice connection to being peer-to-peer. Pronuniation: peer-goss (as in gossip).
+The name Peergos comes from the Greek word Πύργος (Pyrgos), which means stronghold or tower, but phonetically spelt with the nice connection to being peer-to-peer. Pronunciation: peer-goss (as in gossip).
 
 Screenshots
 ----
@@ -81,7 +81,7 @@ Peergos aims
 ------------
  - To allow individuals to securely and privately store files in a peer to peer network which has no central node and is generally difficult to disrupt or surveil
  - To allow secure sharing of files with other users of the network without visible meta-data (who shares with who)
- - Allow web apps to be loaded and run durectly from Peergos in a sandbox that prevents data exfiltration and with user granted permissions
+ - Allow web apps to be loaded and run directly from Peergos in a sandbox that prevents data exfiltration and with user granted permissions
  - To have a beautiful user interface that any computer or mobile user can understand
  - To be independent of the central TLS Certificate Authority trust architecture
  - Self hostable - A user should be able to easily run Peergos on a machine in their home and get their own Peergos storage space, and social communication platform from it. 
@@ -121,7 +121,7 @@ Architecture
  - The data store (which may not be ipfs directly, but S3 compatible service for example) is also not trusted
 
 4.0 Logging in
- - A user's username is used along with a random salt and the hash of their password and run through scrypt (with parameters 17, 8, 1, 96, though users can choose harder parameters if desired) to generate a symmetric key and a signing keypair. The signing keypiar is then used to auth and retrieve encrypted login data. This login data is then decrypted using the symmetric key to obtain the identity key pair, social keypair and root directory capability. This means that a user can log in from any machine without transfering any keys, and also that their keys are protected from a brute force attack (see slides mentioned above for a cost estimate).
+ - A user's username is used along with a random salt and the hash of their password and run through scrypt (with parameters 17, 8, 1, 96, though users can choose harder parameters if desired) to generate a symmetric key and a signing keypair. The signing keypair is then used to auth and retrieve encrypted login data. This login data is then decrypted using the symmetric key to obtain the identity key pair, social keypair and root directory capability. This means that a user can log in from any machine without transferring any keys, and also that their keys are protected from a brute force attack (see slides mentioned above for a cost estimate).
 
 5.0 Encryption
  - private keys never leave client node, two random symmetric keys are generated for every file or directory (explicitly not convergent encryption, which leaks information)
@@ -378,7 +378,7 @@ To show all available commands
 demo@https://peergos.net > help
 ```
 
-Hint: The following command might be useful to do a initial upload for larger folders.
+Hint: The following command might be useful to do an initial upload for larger folders.
 ```shell
 put local_path remote_path 
 ```
