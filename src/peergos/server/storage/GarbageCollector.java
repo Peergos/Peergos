@@ -25,6 +25,7 @@ public class GarbageCollector {
     private final DeletableContentAddressedStorage storage;
     private final JdbcIpnsAndSocial pointers;
     private final UsageStore usage;
+    private final BlockMetadataStore metadata;
 
     public GarbageCollector(DeletableContentAddressedStorage storage,
                             JdbcIpnsAndSocial pointers,
@@ -32,10 +33,11 @@ public class GarbageCollector {
         this.storage = storage;
         this.pointers = pointers;
         this.usage = usage;
+        this.metadata = storage.getBlockMetadataStore().orElseGet(RamBlockMetadataStore::new);
     }
 
     public synchronized void collect(Function<Stream<Map.Entry<PublicKeyHash, byte[]>>, CompletableFuture<Boolean>> snapshotSaver) {
-        collect(storage, pointers, usage, snapshotSaver);
+        collect(storage, pointers, usage, snapshotSaver, metadata);
     }
 
     public void start(long periodMillis, Function<Stream<Map.Entry<PublicKeyHash, byte[]>>, CompletableFuture<Boolean>> snapshotSaver) {
@@ -62,7 +64,8 @@ public class GarbageCollector {
     public static void collect(DeletableContentAddressedStorage storage,
                                JdbcIpnsAndSocial pointers,
                                UsageStore usage,
-                               Function<Stream<Map.Entry<PublicKeyHash, byte[]>>, CompletableFuture<Boolean>> snapshotSaver) {
+                               Function<Stream<Map.Entry<PublicKeyHash, byte[]>>, CompletableFuture<Boolean>> snapshotSaver,
+                               BlockMetadataStore metadata) {
         System.out.println("Starting blockstore garbage collection on node " + storage.id().join() + "...");
         // TODO: do this more efficiently with a bloom filter, and actual streaming and multithreading
         storage.clearOldTransactions(System.currentTimeMillis() - 24*3600*1000L);
@@ -83,7 +86,6 @@ public class GarbageCollector {
         // Get the current roots from the usage store which shouldn't be GC'd until usage has been updated
         List<Multihash> usageRoots = usage.getAllTargets();
 
-
         Map<Multihash, Integer> toIndex = new HashMap<>();
         for (int i=0; i < present.size(); i++)
             toIndex.put(present.get(i), i);
@@ -92,7 +94,7 @@ public class GarbageCollector {
         int markParallelism = 10;
         ForkJoinPool markPool = new ForkJoinPool(markParallelism);
         List<ForkJoinTask<Boolean>> usageMarked = usageRoots.stream()
-                .map(r -> markPool.submit(() -> markReachable(storage, (Cid)r, toIndex, reachable)))
+                .map(r -> markPool.submit(() -> markReachable(storage, (Cid)r, toIndex, reachable, metadata)))
                 .collect(Collectors.toList());
         usageMarked.forEach(f -> f.join());
         long t4 = System.nanoTime();
@@ -100,7 +102,7 @@ public class GarbageCollector {
 
         Set<Multihash> fromUsage = new HashSet<>(usageRoots);
         List<ForkJoinTask<Boolean>> marked = allPointers.entrySet().stream()
-                .map(e -> markPool.submit(() -> markReachable(e.getKey(), e.getValue(), reachable, toIndex, storage, fromUsage)))
+                .map(e -> markPool.submit(() -> markReachable(e.getKey(), e.getValue(), reachable, toIndex, storage, fromUsage, metadata)))
                 .collect(Collectors.toList());
         long rootsProcessed = marked.stream().filter(ForkJoinTask::join).count();
 
@@ -123,7 +125,7 @@ public class GarbageCollector {
         AtomicLong progressCounter = new AtomicLong(0);
         List<ForkJoinTask<Pair<Long, Long>>> futures = IntStream.range(0, deleteParallelism)
                 .mapToObj(i -> pool.submit(() -> deleteUnreachableBlocks(i * batchSize,
-                        Math.min((i + 1) * batchSize, present.size()), reachable, present, progressCounter, storage)))
+                        Math.min((i + 1) * batchSize, present.size()), reachable, present, progressCounter, storage, metadata)))
                 .collect(Collectors.toList());
         Pair<Long, Long> deleted = futures.stream()
                 .map(ForkJoinTask::join).reduce((a, b) -> new Pair<>(a.left + b.left, a.right + b.right))
@@ -140,13 +142,14 @@ public class GarbageCollector {
                                          BitSet reachable,
                                          Map<Multihash, Integer> toIndex,
                                          DeletableContentAddressedStorage storage,
-                                         Set<Multihash> done) {
+                                         Set<Multihash> done,
+                                         BlockMetadataStore metadata) {
         PublicSigningKey writer = getWithBackoff(() -> storage.getSigningKey(writerHash).join().get());
         byte[] bothHashes = writer.unsignMessage(signedRawCas);
         PointerUpdate cas = PointerUpdate.fromCbor(CborObject.fromByteArray(bothHashes));
         MaybeMultihash updated = cas.updated;
         if (updated.isPresent() && ! done.contains(updated.get())) {
-            markReachable(storage, (Cid) updated.get(), toIndex, reachable);
+            markReachable(storage, (Cid) updated.get(), toIndex, reachable, metadata);
             return true;
         }
         return false;
@@ -157,7 +160,8 @@ public class GarbageCollector {
                                                             BitSet reachable,
                                                             List<Multihash> present,
                                                             AtomicLong progress,
-                                                            DeletableContentAddressedStorage storage) {
+                                                            DeletableContentAddressedStorage storage,
+                                                            BlockMetadataStore metadata) {
         long deletedCborBlocks = 0, deletedRawBlocks = 0;
         long logPoint = startIndex;
         final int maxDeleteCount = 1000;
@@ -172,6 +176,10 @@ public class GarbageCollector {
 
             if (pendingDeletes.size() >= maxDeleteCount) {
                 getWithBackoff(() -> {storage.bulkDelete(pendingDeletes); return true;});
+                for (Multihash block : pendingDeletes) {
+                    if (block instanceof Cid)
+                        metadata.remove((Cid)block);
+                }
                 pendingDeletes.clear();
             }
 
@@ -193,16 +201,18 @@ public class GarbageCollector {
     private static boolean markReachable(DeletableContentAddressedStorage storage,
                                          Cid root,
                                          Map<Multihash, Integer> toIndex,
-                                         BitSet reachable) {
+                                         BitSet reachable,
+                                         BlockMetadataStore metadata) {
         int index = toIndex.getOrDefault(root, -1);
         if (index >= 0) {
             synchronized (reachable) {
                 reachable.set(index);
             }
         }
-        List<Cid> links = getWithBackoff(() -> storage.getLinks(root, "").join());
+        List<Cid> links = metadata.get(root).map(m -> m.links)
+                .orElseGet(() -> getWithBackoff(() -> storage.getLinks(root, "").join()));
         for (Cid link : links) {
-            markReachable(storage, link, toIndex, reachable);
+            markReachable(storage, link, toIndex, reachable, metadata);
         }
         return true;
     }

@@ -1,6 +1,5 @@
 package peergos.server.storage;
 
-import peergos.shared.cbor.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.io.ipfs.multihash.*;
@@ -9,7 +8,6 @@ import peergos.shared.util.*;
 
 import java.util.*;
 import java.util.concurrent.*;
-import java.util.stream.*;
 
 public class MetadataCachingStorage extends DelegatingDeletableStorage {
 
@@ -22,6 +20,11 @@ public class MetadataCachingStorage extends DelegatingDeletableStorage {
         this.target = target;
         this.metadata = metadata;
         this.hasher = hasher;
+    }
+
+    @Override
+    public Optional<BlockMetadataStore> getBlockMetadataStore() {
+        return Optional.of(metadata);
     }
 
     @Override

@@ -49,6 +49,14 @@ public interface SqlSupplier {
                 "tid varchar(64) not null, owner varchar(64) not null, hash varchar(64) not null, time " + sqlInteger()+");";
     }
 
+    default String createBlockMetadataStoreTableCommand() {
+        return "CREATE TABLE IF NOT EXISTS blockmetadata (cid " + getByteArrayType() + " primary key not null, " +
+                "size " + sqlInteger() + " not null, " +
+                "links " + getByteArrayType() + " not null, " +
+                "accesstime " + sqlInteger() + " not null); " +
+                "CREATE UNIQUE INDEX IF NOT EXISTS blockmetadata_index ON blockmetadata (cid);";
+    }
+
     default String createServerMessageTableCommand() {
         return "CREATE TABLE IF NOT EXISTS messages (" +
                 "id " + getSerialIdType() + " PRIMARY KEY NOT NULL," +
