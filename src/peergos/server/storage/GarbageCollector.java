@@ -133,8 +133,11 @@ public class GarbageCollector {
         long deletedCborBlocks = deleted.left;
         long deletedRawBlocks = deleted.right;
         long t7 = System.nanoTime();
+        metadata.compact();
+        long t8 = System.nanoTime();
         System.out.println("Deleting blocks took " + (t7-t6)/1_000_000_000 + "s");
-        System.out.println("GC complete. Freed " + deletedCborBlocks + " cbor blocks and " + deletedRawBlocks + " raw blocks, total duration: " + (t7-t0)/1_000_000_000 + "s");
+        System.out.println("GC complete. Freed " + deletedCborBlocks + " cbor blocks and " + deletedRawBlocks +
+                " raw blocks, total duration: " + (t7-t0)/1_000_000_000 + "s, metadata.compact took " + (t8-t7)/1_000_000_000 + "s");
     }
 
     private static boolean markReachable(PublicKeyHash writerHash,

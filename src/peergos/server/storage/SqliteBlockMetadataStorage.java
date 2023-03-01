@@ -7,7 +7,6 @@ import peergos.shared.io.ipfs.cid.*;
 
 import java.io.*;
 import java.sql.*;
-import java.time.*;
 import java.util.*;
 import java.util.function.*;
 import java.util.logging.*;
@@ -61,6 +60,10 @@ public class SqliteBlockMetadataStorage implements BlockMetadataStore {
             LOG.log(Level.WARNING, sqe.getMessage(), sqe);
             throw new RuntimeException(sqe);
         }
+        compact();
+    }
+
+    public void compact() {
         try (Connection conn = getConnection();
              PreparedStatement stmt = conn.prepareStatement(VACUUM)) {
             stmt.executeUpdate();
@@ -73,7 +76,6 @@ public class SqliteBlockMetadataStorage implements BlockMetadataStore {
     public void remove(Cid block) {
         try (Connection conn = getConnection();
              PreparedStatement insert = conn.prepareStatement(REMOVE)) {
-            conn.setTransactionIsolation(Connection.TRANSACTION_SERIALIZABLE);
 
             insert.setBytes(1, block.toBytes());
             insert.executeUpdate();
@@ -124,7 +126,6 @@ public class SqliteBlockMetadataStorage implements BlockMetadataStore {
     private void touch(Cid block) {
         try (Connection conn = getConnection();
              PreparedStatement insert = conn.prepareStatement(TOUCH)) {
-            conn.setTransactionIsolation(Connection.TRANSACTION_SERIALIZABLE);
 
             insert.setBytes(1, block.toBytes());
             insert.setLong(2, System.currentTimeMillis());
@@ -139,7 +140,6 @@ public class SqliteBlockMetadataStorage implements BlockMetadataStore {
     public void put(Cid block, BlockMetadata meta) {
         try (Connection conn = getConnection();
              PreparedStatement insert = conn.prepareStatement(CREATE)) {
-            conn.setTransactionIsolation(Connection.TRANSACTION_SERIALIZABLE);
 
             insert.setBytes(1, block.toBytes());
             insert.setLong(2, meta.size);

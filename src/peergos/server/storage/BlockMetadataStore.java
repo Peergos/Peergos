@@ -25,4 +25,6 @@ public interface BlockMetadataStore {
             put(block, new BlockMetadata(data.length, links));
         }
     }
+
+    void compact();
 }

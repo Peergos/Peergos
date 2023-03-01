@@ -27,4 +27,7 @@ public class RamBlockMetadataStore implements BlockMetadataStore {
     public void remove(Cid block) {
         cache.remove(block);
     }
+
+    @Override
+    public void compact() {}
 }
