@@ -197,7 +197,7 @@ public class Builder {
         JavaPoster ipfsApi = buildIpfsApi(a);
         if (useIPFS) {
             DeletableContentAddressedStorage.HTTP ipfs = new DeletableContentAddressedStorage.HTTP(ipfsApi, false, hasher);
-            File metaFile = new File("blockmetadata.sql");
+            File metaFile = a.fromPeergosDir("block-metadata-sql-file", "blockmetadata.sql").toFile();
             Connection instance = new Sqlite.UncloseableConnection(Sqlite.build(metaFile.getPath()));
             int maxMetadataStoreSize = 0; // 0 means unlimited
             SqliteBlockMetadataStorage metadata = new SqliteBlockMetadataStorage(() -> instance, new SqliteCommands(), maxMetadataStoreSize, metaFile);
