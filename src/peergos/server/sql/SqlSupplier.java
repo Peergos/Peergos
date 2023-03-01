@@ -54,7 +54,7 @@ public interface SqlSupplier {
                 "size " + sqlInteger() + " not null, " +
                 "links " + getByteArrayType() + " not null, " +
                 "accesstime " + sqlInteger() + " not null); " +
-                "CREATE UNIQUE INDEX IF NOT EXISTS blockmetadata_accessindex ON blockmetadata (accesstime);";
+                "CREATE INDEX IF NOT EXISTS blockmetadata_accessindex ON blockmetadata (accesstime);";
     }
 
     default String createServerMessageTableCommand() {
