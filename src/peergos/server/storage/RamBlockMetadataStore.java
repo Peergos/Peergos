@@ -22,4 +22,12 @@ public class RamBlockMetadataStore implements BlockMetadataStore {
     public void put(Cid block, BlockMetadata meta) {
         cache.put(block, meta);
     }
+
+    @Override
+    public void remove(Cid block) {
+        cache.remove(block);
+    }
+
+    @Override
+    public void compact() {}
 }

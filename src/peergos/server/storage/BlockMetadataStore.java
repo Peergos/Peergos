@@ -12,6 +12,8 @@ public interface BlockMetadataStore {
 
     void put(Cid block, BlockMetadata meta);
 
+    void remove(Cid block);
+
     default void put(Cid block, byte[] data) {
         if (block.isRaw()) {
             put(block, new BlockMetadata(data.length, Collections.emptyList()));
@@ -23,4 +25,6 @@ public interface BlockMetadataStore {
             put(block, new BlockMetadata(data.length, links));
         }
     }
+
+    void compact();
 }

@@ -34,6 +34,10 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
 
     default void bloomAdd(Multihash hash) {}
 
+    default Optional<BlockMetadataStore> getBlockMetadataStore() {
+        return Optional.empty();
+    }
+
     default void bulkDelete(List<Multihash> blocks) {
         for (Multihash block : blocks) {
             delete(block);

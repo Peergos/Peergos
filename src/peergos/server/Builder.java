@@ -33,6 +33,7 @@ import peergos.shared.storage.auth.*;
 import peergos.shared.user.*;
 import peergos.shared.util.*;
 
+import java.io.*;
 import java.net.*;
 import java.nio.file.*;
 import java.sql.*;
@@ -189,25 +190,29 @@ public class Builder {
     public static DeletableContentAddressedStorage buildLocalStorage(Args a,
                                                                      TransactionStore transactions,
                                                                      BlockRequestAuthoriser authoriser,
-                                                                     Hasher hasher) {
+                                                                     Hasher hasher) throws SQLException {
         boolean useIPFS = a.getBoolean("useIPFS");
         boolean enableGC = a.getBoolean("enable-gc", false);
         boolean useS3 = S3Config.useS3(a);
         JavaPoster ipfsApi = buildIpfsApi(a);
         if (useIPFS) {
             DeletableContentAddressedStorage.HTTP ipfs = new DeletableContentAddressedStorage.HTTP(ipfsApi, false, hasher);
+            File metaFile = new File("blockmetadata.sql");
+            Connection instance = new Sqlite.UncloseableConnection(Sqlite.build(metaFile.getPath()));
+            int maxMetadataStoreSize = 0; // 0 means unlimited
+            SqliteBlockMetadataStorage metadata = new SqliteBlockMetadataStorage(() -> instance, new SqliteCommands(), maxMetadataStoreSize, metaFile);
             if (useS3) {
                 // IPFS is already running separately, we can still use an S3BlockStorage
                 S3Config config = S3Config.build(a);
                 BlockStoreProperties props = buildS3Properties(a);
                 TransactionalIpfs p2pBlockRetriever = new TransactionalIpfs(ipfs, transactions, authoriser, ipfs.id().join(), hasher);
 
-                return new S3BlockStorage(config, ipfs.id().join(), props, transactions, authoriser,
-                        new RamBlockMetadataStore(), hasher, p2pBlockRetriever, ipfs);
+                return new MetadataCachingStorage(new S3BlockStorage(config, ipfs.id().join(), props, transactions, authoriser,
+                        new RamBlockMetadataStore(), hasher, p2pBlockRetriever, ipfs), metadata, hasher);
             } else if (enableGC) {
-                return new TransactionalIpfs(ipfs, transactions, authoriser, ipfs.id().join(), hasher);
+                return new MetadataCachingStorage(new TransactionalIpfs(ipfs, transactions, authoriser, ipfs.id().join(), hasher), metadata, hasher);
             } else
-                return new AuthedStorage(ipfs, authoriser, hasher);
+                return new MetadataCachingStorage(new AuthedStorage(ipfs, authoriser, hasher), metadata, hasher);
         } else {
             // In S3 mode of operation we require the ipfs id to be supplied as we don't have a local ipfs running
             if (useS3) {
