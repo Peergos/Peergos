@@ -15,7 +15,7 @@ import java.util.stream.*;
 public class SqliteBlockMetadataStorage implements BlockMetadataStore {
 
     private static final Logger LOG = Logging.LOG();
-    private static final String CREATE = "INSERT INTO blockmetadata (cid, size, links, accesstime) VALUES(?, ?, ?, ?)";
+    private static final String CREATE = "INSERT OR IGNORE INTO blockmetadata (cid, size, links, accesstime) VALUES(?, ?, ?, ?)";
     private static final String TOUCH = "UPDATE blockmetadata set accesstime=? WHERE cid = ?";
     private static final String GET_INFO = "SELECT * FROM blockmetadata WHERE cid = ?;";
     private static final String OLDEST = "SELECT * FROM blockmetadata ORDER BY accesstime;";

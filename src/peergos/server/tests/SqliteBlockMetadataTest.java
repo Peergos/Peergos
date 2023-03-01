@@ -42,9 +42,13 @@ public class SqliteBlockMetadataTest {
         long initialSize = store.currentSize();
         assertTrue(initialSize == 16384);
         Cid cid = randomCid();
-        store.put(cid, new BlockMetadata(10240, randomCids(20)));
+        BlockMetadata meta = new BlockMetadata(10240, randomCids(20));
+        store.put(cid, meta);
         long sizeWithBlock = store.currentSize();
         store.ensureWithinSize();
+
+        // add same cid again
+        store.put(cid, meta);
     }
 
     @Test
