@@ -465,6 +465,9 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
             blockHeads.inc();
             long size = Long.parseLong(headRes.get("Content-Length").get(0));
             return Futures.of(Optional.of((int)size));
+        } catch (FileNotFoundException f) {
+            LOG.warning("S3 404 error reading " + hash);
+            return Futures.of(Optional.empty());
         } catch (IOException e) {
             String msg = e.getMessage();
             boolean rateLimited = msg.startsWith("<?xml version=\"1.0\" encoding=\"UTF-8\"?><Error><Code>SlowDown</Code>");
