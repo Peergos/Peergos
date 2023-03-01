@@ -103,18 +103,22 @@ public class ServerMessages extends Builder {
         TransactionStore transactions = buildTransactionStore(a, dbConnectionPool);
         Hasher hasher = Main.initCrypto().hasher;
         BlockRequestAuthoriser blockRequestAuthoriser = (b, d, s, auth) -> Futures.of(true); // not relevant for local only use here
-        DeletableContentAddressedStorage localStorage = buildLocalStorage(a, transactions, blockRequestAuthoriser, hasher);
-        JdbcIpnsAndSocial rawPointers = buildRawPointers(a, getDBConnector(a, "mutable-pointers-file", dbConnectionPool));
-        MutablePointers localPointers = UserRepository.build(localStorage, rawPointers);
-        MutablePointersProxy proxingMutable = new HttpMutablePointers(buildP2pHttpProxy(a), getPkiServerId(a));
-        JdbcIpnsAndSocial rawSocial = new JdbcIpnsAndSocial(getDBConnector(a, "social-sql-file", dbConnectionPool), getSqlCommands(a));
-        UsageStore usageStore = new JdbcUsageStore(getDBConnector(a, "space-usage-sql-file", dbConnectionPool), getSqlCommands(a));
-        JdbcAccount account = new JdbcAccount(getDBConnector(a, "account-sql-file", dbConnectionPool), getSqlCommands(a));
-        CoreNode core = buildCorenode(a, localStorage, transactions, rawPointers, localPointers, proxingMutable,
-                rawSocial, usageStore, account, null, new AccountWithStorage(localStorage, localPointers, account), hasher);
-        return buildSpaceQuotas(a, localStorage, core,
-                getDBConnector(a, "space-requests-sql-file", dbConnectionPool),
-                getDBConnector(a, "quotas-sql-file", dbConnectionPool), false);
+        try {
+            DeletableContentAddressedStorage localStorage = buildLocalStorage(a, transactions, blockRequestAuthoriser, hasher);
+            JdbcIpnsAndSocial rawPointers = buildRawPointers(a, getDBConnector(a, "mutable-pointers-file", dbConnectionPool));
+            MutablePointers localPointers = UserRepository.build(localStorage, rawPointers);
+            MutablePointersProxy proxingMutable = new HttpMutablePointers(buildP2pHttpProxy(a), getPkiServerId(a));
+            JdbcIpnsAndSocial rawSocial = new JdbcIpnsAndSocial(getDBConnector(a, "social-sql-file", dbConnectionPool), getSqlCommands(a));
+            UsageStore usageStore = new JdbcUsageStore(getDBConnector(a, "space-usage-sql-file", dbConnectionPool), getSqlCommands(a));
+            JdbcAccount account = new JdbcAccount(getDBConnector(a, "account-sql-file", dbConnectionPool), getSqlCommands(a));
+            CoreNode core = buildCorenode(a, localStorage, transactions, rawPointers, localPointers, proxingMutable,
+                    rawSocial, usageStore, account, null, new AccountWithStorage(localStorage, localPointers, account), hasher);
+            return buildSpaceQuotas(a, localStorage, core,
+                    getDBConnector(a, "space-requests-sql-file", dbConnectionPool),
+                    getDBConnector(a, "quotas-sql-file", dbConnectionPool), false);
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     public static final Command<Boolean> NEW = new Command<>("new",
