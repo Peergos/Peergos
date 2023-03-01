@@ -18,6 +18,7 @@ import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.storage.auth.*;
 import peergos.shared.util.*;
 
+import javax.net.ssl.*;
 import java.io.*;
 import java.net.*;
 import java.nio.file.*;
@@ -292,7 +293,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
             if (enforceAuth && ! authoriser.allowRead(hash, block, id, auth).join())
                 throw new IllegalStateException("Unauthorised!");
             return Futures.of(Optional.of(block));
-        } catch (SocketTimeoutException e) {
+        } catch (SocketTimeoutException | SSLException e) {
             // S3 can't handle the load so treat this as a rate limit and slow down
             throw new RateLimitException();
         } catch (IOException e) {
