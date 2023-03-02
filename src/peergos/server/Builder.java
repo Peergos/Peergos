@@ -187,6 +187,23 @@ public class Builder {
         return new BlockStoreProperties(directWrites, publicReads, authedReads, publicReadUrl, authedUrl);
     }
 
+    private static SqliteBlockMetadataStorage buildBlockMetadata(Args a) {
+        try {
+            File metaFile = a.fromPeergosDir("block-metadata-sql-file", "blockmetadata.sql").toFile();
+            Connection instance = new Sqlite.UncloseableConnection(Sqlite.build(metaFile.getPath()));
+            int maxMetadataStoreSize = a.getInt("max-block-metadata-store-size", 0); // 0 means unlimited
+            return new SqliteBlockMetadataStorage(() -> instance, new SqliteCommands(), maxMetadataStoreSize, metaFile);
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    private static MetadataCachingStorage buildMetadataStorage(Args a,
+                                                               DeletableContentAddressedStorage target,
+                                                               Hasher hasher) {
+        return new MetadataCachingStorage(target, buildBlockMetadata(a), hasher);
+    }
+
     public static DeletableContentAddressedStorage buildLocalStorage(Args a,
                                                                      TransactionStore transactions,
                                                                      BlockRequestAuthoriser authoriser,
@@ -197,22 +214,18 @@ public class Builder {
         JavaPoster ipfsApi = buildIpfsApi(a);
         if (useIPFS) {
             DeletableContentAddressedStorage.HTTP ipfs = new DeletableContentAddressedStorage.HTTP(ipfsApi, false, hasher);
-            File metaFile = a.fromPeergosDir("block-metadata-sql-file", "blockmetadata.sql").toFile();
-            Connection instance = new Sqlite.UncloseableConnection(Sqlite.build(metaFile.getPath()));
-            int maxMetadataStoreSize = 0; // 0 means unlimited
-            SqliteBlockMetadataStorage metadata = new SqliteBlockMetadataStorage(() -> instance, new SqliteCommands(), maxMetadataStoreSize, metaFile);
             if (useS3) {
                 // IPFS is already running separately, we can still use an S3BlockStorage
                 S3Config config = S3Config.build(a);
                 BlockStoreProperties props = buildS3Properties(a);
                 TransactionalIpfs p2pBlockRetriever = new TransactionalIpfs(ipfs, transactions, authoriser, ipfs.id().join(), hasher);
 
-                return new MetadataCachingStorage(new S3BlockStorage(config, ipfs.id().join(), props, transactions, authoriser,
-                        new RamBlockMetadataStore(), hasher, p2pBlockRetriever, ipfs), metadata, hasher);
+                return buildMetadataStorage(a, new S3BlockStorage(config, ipfs.id().join(), props, transactions, authoriser,
+                        new RamBlockMetadataStore(), hasher, p2pBlockRetriever, ipfs), hasher);
             } else if (enableGC) {
-                return new MetadataCachingStorage(new TransactionalIpfs(ipfs, transactions, authoriser, ipfs.id().join(), hasher), metadata, hasher);
+                return buildMetadataStorage(a, new TransactionalIpfs(ipfs, transactions, authoriser, ipfs.id().join(), hasher), hasher);
             } else
-                return new MetadataCachingStorage(new AuthedStorage(ipfs, authoriser, hasher), metadata, hasher);
+                return buildMetadataStorage(a, new AuthedStorage(ipfs, authoriser, hasher), hasher);
         } else {
             // In S3 mode of operation we require the ipfs id to be supplied as we don't have a local ipfs running
             if (useS3) {
@@ -226,10 +239,10 @@ public class Builder {
 
                 JavaPoster bloomApiTarget = buildBloomApiTarget(a);
                 DeletableContentAddressedStorage.HTTP bloomTarget = new DeletableContentAddressedStorage.HTTP(bloomApiTarget, false, hasher);
-                RamBlockMetadataStore blockMetadata = new RamBlockMetadataStore();
-                S3BlockStorage s3 = new S3BlockStorage(config, ourId, props, transactions, authoriser, blockMetadata,
+                SqliteBlockMetadataStorage metadata = buildBlockMetadata(a);
+                S3BlockStorage s3 = new S3BlockStorage(config, ourId, props, transactions, authoriser, metadata,
                         hasher, p2pBlockRetriever, bloomTarget);
-                return new MetadataCachingStorage(s3, blockMetadata, hasher);
+                return new MetadataCachingStorage(s3, metadata, hasher);
             } else {
                 return new FileContentAddressedStorage(blockstorePath(a), transactions, authoriser, hasher);
             }
