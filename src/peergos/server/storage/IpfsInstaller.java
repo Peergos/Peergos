@@ -21,18 +21,18 @@ import java.util.stream.*;
 public class IpfsInstaller {
 
     public enum DownloadTarget {
-        DARWIN_AMD64("https://github.com/peergos/ipfs-nucleus-releases/blob/main/v0.2.6/darwin-amd64/ipfs?raw=true",
-                Cid.decode("QmSY8GVZfxg7tFHPUDZ1Gwgwb2NyGxKy6CTJXQpPXEd7DJ")),
-        DARWIN_ARM64("https://github.com/peergos/ipfs-nucleus-releases/blob/main/v0.2.6/darwin-arm64/ipfs?raw=true",
-                Cid.decode("QmTE8RuRGQow54CBmNzV7nZDSMjjWYfgXfnNmzPSnrSktk")),
-        LINUX_AMD64("https://github.com/peergos/ipfs-nucleus-releases/blob/main/v0.2.6/linux-amd64/ipfs?raw=true",
-                Cid.decode("QmUeGcUy4nXLBJk9YYK4inmuNvytXW2M5cijQB7WtXkfoN")),
-        LINUX_ARM("https://github.com/peergos/ipfs-nucleus-releases/blob/main/v0.2.6/linux-arm/ipfs?raw=true",
-                Cid.decode("QmdDsjQrC2KtbiFdPwciefRmWLT8516g51CzjqvTeQ2pD4")),
-        LINUX_ARM64("https://github.com/peergos/ipfs-nucleus-releases/blob/main/v0.2.6/linux-arm64/ipfs?raw=true",
-                Cid.decode("QmZ1gwKeGBKoijVBmFiFuekUsrf9nhNsKrTCdU3SaTR9X2")),
-        WINDOWS_AMD64("https://github.com/peergos/ipfs-nucleus-releases/blob/main/v0.2.6/windows-amd64/ipfs.exe?raw=true",
-                Cid.decode("QmSvnLsY4LNCsqvsDmgn4BaVA6vtB2EZ8BtVZDU3487stT")),;
+        DARWIN_AMD64("https://github.com/peergos/ipfs-nucleus-releases/blob/main/v0.2.7/darwin-amd64/ipfs?raw=true",
+                Cid.decode("QmP5FnGhvhUQXrmuFZCebD485SZkfsCaFcCizkKEqkdfCm")),
+        DARWIN_ARM64("https://github.com/peergos/ipfs-nucleus-releases/blob/main/v0.2.7/darwin-arm64/ipfs?raw=true",
+                Cid.decode("QmRVEW2BBwdmMd6KHfWJdkoMJr2jvCQMFCb8DNdtHGagtD")),
+        LINUX_AMD64("https://github.com/peergos/ipfs-nucleus-releases/blob/main/v0.2.7/linux-amd64/ipfs?raw=true",
+                Cid.decode("QmR5grTMH3QWRNovZcPf3dY6r7babWCdMMDTTpHHaKKp54")),
+        LINUX_ARM("https://github.com/peergos/ipfs-nucleus-releases/blob/main/v0.2.7/linux-arm/ipfs?raw=true",
+                Cid.decode("QmXpDPVTR1gBc5KdtPKPKqwAS5nCrtiEAryxaHszpfj4vg")),
+        LINUX_ARM64("https://github.com/peergos/ipfs-nucleus-releases/blob/main/v0.2.7/linux-arm64/ipfs?raw=true",
+                Cid.decode("QmaBsPBjzccGuZYiwDTR5Gef3rQXvQkgzdzNy8ZXNezCRn")),
+        WINDOWS_AMD64("https://github.com/peergos/ipfs-nucleus-releases/blob/main/v0.2.7/windows-amd64/ipfs.exe?raw=true",
+                Cid.decode("QmWdciDizX3RMZX1haDdhXwQ1nBoaKQX2ipPmQZBJqzvf7")),;
 
         public final String url;
         public final Multihash multihash;
@@ -324,7 +324,7 @@ public class IpfsInstaller {
     }
 
     public static void main(String[] args) throws Exception {
-        String version = "v0.2.6";
+        String version = "v0.2.7";
         codegen(Paths.get("/home/ian/ipfs-nucleus-releases/" + version));
     }
 
