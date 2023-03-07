@@ -144,7 +144,9 @@ public abstract class StaticHandler implements HttpHandler
                         (isSubdomain ? " 'unsafe-inline' https://" + reqHost : "") + // calendar, editor, todoboard, pdfviewer
                         ";" +
                         (isSubdomain ? "sandbox allow-same-origin allow-scripts allow-forms;" : "") +
-                        "frame-src 'self' " + frameDomains.stream().collect(Collectors.joining(" ")) + " " + (isSubdomain ? "" : this.host.wildcard()) + ";" +
+                        "frame-src 'self' " + frameDomains.stream().collect(Collectors.joining(" "))
+                        + " " + blockstoreDomain.stream().map(d -> " https://" + d + "/robot-proxy.html").collect(Collectors.joining())
+                        + " " + (isSubdomain ? "" : this.host.wildcard()) + ";" +
                         "frame-ancestors 'self' " + this.host + ";" +
                         "prefetch-src 'self' " + this.host + ";" + // prefetch can be used to leak data via DNS
                         "connect-src 'self' " + this.host +
