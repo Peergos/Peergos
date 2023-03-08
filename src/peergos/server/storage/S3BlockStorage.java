@@ -147,7 +147,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                     bloomTarget.bloomAdd(h);
                     bloomAdds.poll();
                 } catch (Exception e) {
-                    e.printStackTrace();
+                    LOG.log(Level.INFO, e.getMessage(), e);
                 }
             }
         });
