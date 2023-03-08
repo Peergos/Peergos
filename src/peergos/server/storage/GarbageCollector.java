@@ -41,7 +41,7 @@ public class GarbageCollector {
     }
 
     public void start(long periodMillis, Function<Stream<Map.Entry<PublicKeyHash, byte[]>>, CompletableFuture<Boolean>> snapshotSaver) {
-        new Thread(() -> {
+        Thread garbageCollector = new Thread(() -> {
             while (true) {
                 try {
                     collect(snapshotSaver);
@@ -50,7 +50,9 @@ public class GarbageCollector {
                     LOG.log(Level.SEVERE, e, e::getMessage);
                 }
             }
-        }, "Garbage Collector").start();
+        }, "Garbage Collector");
+        garbageCollector.setDaemon(true);
+        garbageCollector.start();
     }
 
     /** The result of this method is a snapshot of the mutable pointers that is consistent with the blocks store

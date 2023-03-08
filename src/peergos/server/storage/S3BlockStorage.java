@@ -103,6 +103,8 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
     private final Hasher hasher;
     private final DeletableContentAddressedStorage p2pFallback, bloomTarget;
 
+    private final LinkedBlockingQueue<Cid> bloomAdds = new LinkedBlockingQueue<>();
+
     public S3BlockStorage(S3Config config,
                           Cid id,
                           BlockStoreProperties props,
@@ -130,6 +132,27 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         this.hasher = hasher;
         this.p2pFallback = p2pFallback;
         this.bloomTarget = bloomTarget;
+        startBloomThread();
+    }
+
+    private void startBloomThread() {
+        Thread bloomer = new Thread(() -> {
+            while (true) {
+                try {
+                    Cid h = bloomAdds.peek();
+                    if (h == null) {
+                        Thread.sleep(1_000);
+                        continue;
+                    }
+                    bloomTarget.bloomAdd(h);
+                    bloomAdds.poll();
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+            }
+        });
+        bloomer.setDaemon(true);
+        bloomer.start();
     }
 
     @Override
@@ -215,7 +238,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                 res.add(S3Request.preSignPut(folder + s3Key, props.right, contentSha256, false,
                         S3AdminRequests.asAwsDate(ZonedDateTime.now()), host, extraHeaders, region, accessKeyId, secretKey, useHttps, hasher).join());
                 blockPutAuths.inc();
-                bloomTarget.bloomAdd(props.left);
+                bloomAdds.add(props.left);
                 if (isRaw)
                     blockMetadata.put(props.left, new BlockMetadata(props.right, Collections.emptyList()));
             }
@@ -562,7 +585,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
             PresignedUrl putUrl = S3Request.preSignPut(s3Key, data.length, contentHash, false,
                     S3AdminRequests.asAwsDate(ZonedDateTime.now()), host, extraHeaders, region, accessKeyId, secretKey, useHttps, hasher).join();
             HttpUtil.put(putUrl, data);
-            bloomTarget.bloomAdd(cid);
+            bloomAdds.add(cid);
             blockPuts.inc();
             blockPutBytes.labels("size").observe(data.length);
             return cid;
