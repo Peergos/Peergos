@@ -176,9 +176,9 @@ public class CachingVerifyingStorage extends DelegatingStorage {
 
         CompletableFuture<Optional<byte[]>> pipe = new CompletableFuture<>();
         pendingRaw.put(key, pipe);
-        return target.getRaw(key, bat)
+        target.getRaw(key, bat)
                 .thenCompose(arrOpt -> arrOpt.map(bytes -> verify(bytes, key, () -> bytes)
-                        .thenApply(Optional::of))
+                                .thenApply(Optional::of))
                         .orElseGet(() -> Futures.of(Optional.empty())))
                 .thenApply(rawOpt -> {
                     if (rawOpt.isPresent()) {
@@ -190,9 +190,10 @@ public class CachingVerifyingStorage extends DelegatingStorage {
                     pipe.complete(rawOpt);
                     return rawOpt;
                 }).exceptionally(t -> {
-                    pending.remove(key);
+                    pendingRaw.remove(key);
                     pipe.completeExceptionally(t);
-                    return Optional.empty();
+                    return null;
                 });
+        return pipe;
     }
 }
