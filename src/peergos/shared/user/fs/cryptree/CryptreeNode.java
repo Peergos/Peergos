@@ -464,7 +464,7 @@ public class CryptreeNode implements Cborable {
         SigningPrivateKeyAndPublicHash signer = getSigner(us.rBaseKey, us.wBaseKey.get(), entryWriter);
         List<Cid> fragments = childrenOrData.getFragments();
         return addMirrorBatToFragments(mirrorBat, fragments, childrenOrData.getBats(), us.owner, signer, network)
-                .thenCompose(frags -> frags.equals(fragments) ? Futures.of(base) : IpfsTransaction.call(us.owner,
+                .thenCompose(frags -> frags.equals(fragments) && ourBats.equals(bats) ? Futures.of(base) : IpfsTransaction.call(us.owner,
                                 tid -> network.uploadChunk(base, committer, new CryptreeNode(lastCommittedHash, isDirectory,
                                         ourBats, fromBaseKey, childrenOrData.withFragments(frags),
                                         fromParentKey), us.owner, us.getMapKey(), signer, tid),
