@@ -189,7 +189,7 @@ If you don't set up a domain name and TLS you can still log in to your account f
 If you are also using a reverse proxy like nginx to terminate TLS you will need to tell peergos which domain you are using with the following arg:
 > -public-domain $YOUR_DOMAIN
 
-And the TLS certificate will also need to cover the wildcard subdomain for the applications (like the PDF viewer, text editor, calendar, and custom 3rd party apps) to work. For example, it should cover peergos.net and *.peergos.net
+And the TLS certificate will also need to cover the wildcard subdomain for the applications (like the PDF viewer, text editor, calendar, and custom 3rd party apps) to work. For example, it should have A records that cover $YOUR_DOMAIN and *.$YOUR_DOMAIN
 
 If you are using a reverse proxy like nginx to terminate TLS here is a good example of the nginx config file (replace $YOUR_DOMAIN_NAME):
 ```
