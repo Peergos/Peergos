@@ -45,6 +45,7 @@ public class MimeTypes {
     final static int[] ICS = new int[]{'B','E','G','I','N',':','V','C','A','L','E','N','D','A','R'};
     final static int[] VCF = new int[]{'B','E','G','I','N',':','V','C','A','R','D'};
     final static int[] XML = new int[]{'<','?','x','m','l'};
+    final static int[] SVG = new int[]{'<','s','v','g',' '};
     final static int[] WOFF = new int[]{'w','O','F','F'};
     final static int[] WOFF2 = new int[]{'w','O','F','2'};
 
@@ -189,7 +190,7 @@ public class MimeTypes {
                 return "text/css";
             if (filename.endsWith(".js"))
                 return "text/javascript";
-            if (filename.endsWith(".svg") && equalArrays(start, XML))
+            if (filename.endsWith(".svg") && (equalArrays(start, XML) || equalArrays(start, SVG)))
                 return "image/svg+xml";
             String prefix = new String(start).trim().toLowerCase();
             if (prefix.contains("html>") || prefix.contains("<html"))
