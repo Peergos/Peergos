@@ -555,9 +555,12 @@ public class Main extends Builder {
             MultiAddress localP2PApi = new MultiAddress(a.getArg("proxy-target"));
 
             Multihash pkiServerNodeId = getPkiServerId(a);
-            String domain = a.getArg("domain");
+            String listeningHost = a.getArg("domain");
             int webPort = a.getInt("port");
-            InetSocketAddress userAPIAddress = new InetSocketAddress(domain, webPort);
+            boolean localhostApi = listeningHost.equals("localhost");
+            if (! localhostApi)
+                System.out.println("Warning: listening on non localhost address: " + listeningHost);
+            InetSocketAddress userAPIAddress = new InetSocketAddress(listeningHost, webPort);
 
             JavaPoster p2pHttpProxy = buildP2pHttpProxy(a);
 
@@ -573,7 +576,6 @@ public class Main extends Builder {
             JdbcIpnsAndSocial rawPointers = buildRawPointers(a,
                     getDBConnector(a, "mutable-pointers-file", dbConnectionPool));
 
-            String hostname = a.getArg("domain");
             Multihash nodeId = localStorage.id().get();
 
             MutablePointers localPointers = UserRepository.build(localStorage, rawPointers);
@@ -610,7 +612,7 @@ public class Main extends Builder {
             boolean isPki = Cid.decode(a.getArg("pki-node-id")).equals(nodeId);
             QuotaAdmin userQuotas = buildSpaceQuotas(a, localStorage, core,
                     getDBConnector(a, "space-requests-sql-file", dbConnectionPool),
-                    getDBConnector(a, "quotas-sql-file", dbConnectionPool), isPki);
+                    getDBConnector(a, "quotas-sql-file", dbConnectionPool), isPki, localhostApi);
             CoreNode signupFilter = new SignUpFilter(core, userQuotas, nodeId, httpSpaceUsage, hasher,
                     a.getInt("max-daily-paid-signups", isPaidInstance(a) ? 10 : 0), isPki);
 
@@ -660,7 +662,7 @@ public class Main extends Builder {
                     p2pSocial, p2mMutable, storageAdmin, p2pSpaceUsage, serverMessages, gc);
             UserService p2pAPI = new UserService(incomingP2PStorage, p2pBats, crypto, corePropagator, verifyingAccount,
                     p2pSocial, p2mMutable, storageAdmin, p2pSpaceUsage, serverMessages, gc);
-            InetSocketAddress localAPIAddress = new InetSocketAddress("localhost", userAPIAddress.getPort());
+            InetSocketAddress localAPIAddress = userAPIAddress;
             InetSocketAddress p2pAPIAddress = new InetSocketAddress("localhost", localP2PApi.getTCPPort());
 
             Optional<Path> webroot = a.hasArg("webroot") ?
@@ -669,7 +671,7 @@ public class Main extends Builder {
             Optional<HttpPoster> appDevTarget = a.getOptionalArg("app-dev-target")
                     .map(url ->  new JavaPoster(HttpUtil.toURL(url),  true));
             boolean useWebAssetCache = a.getBoolean("webcache", appDevTarget.isEmpty());
-            Optional<String> tlsHostname = hostname.equals("localhost") ? Optional.empty() : Optional.of(hostname);
+            Optional<String> tlsHostname = a.hasArg("tls.keyfile.password") ? Optional.of(listeningHost) : Optional.empty();
             Optional<String> publicHostname = tlsHostname.isPresent() ? tlsHostname : a.getOptionalArg("public-domain");
             Optional<UserService.TlsProperties> tlsProps =
                     tlsHostname.map(host -> new UserService.TlsProperties(host, a.getArg("tls.keyfile.password")));
@@ -762,14 +764,14 @@ public class Main extends Builder {
                     " █████║    ██╔═══╝ ██╔══╝  ██╔══╝  ██╔══██╗██║   ██║██║   ██║╚════██║    █████║\n" +
                     "███████╗   ██║     ███████╗███████╗██║  ██║╚██████╔╝╚██████╔╝███████║   ███████╗\n" +
                     "╚══════╝   ╚═╝     ╚══════╝╚══════╝╚═╝  ╚═╝ ╚═════╝  ╚═════╝ ╚══════╝   ╚══════╝");
-            boolean generateToken = a.getBoolean("generate-token", false);
+            boolean generateToken = a.getBoolean("generate-token", ! localhostApi);
             if (generateToken) {
                 System.out.println("Generating signup token...");
                 String token = userQuotas.generateToken(crypto.random);
                 System.out.println("Peergos daemon started. Browse to http://localhost:" + webPort + "/?signup=true&token="
                         + token + " to sign up.");
             } else
-                System.out.println("Peergos daemon started. Browse to http://localhost:" + webPort + "/ to sign up or login. ");
+                System.out.println("Peergos daemon started. Browse to http://localhost:" + webPort + "/ to sign up or login. \nRun with -generate-token true to generate a signup token.");
             InstanceAdmin.VersionInfo version = storageAdmin.getVersionInfo().join();
             System.out.println("Running version " + version);
             return localAPI;

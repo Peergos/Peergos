@@ -331,7 +331,8 @@ public class Builder {
                                               CoreNode core,
                                               Supplier<Connection> spaceDb,
                                               Supplier<Connection> quotasDb,
-                                              boolean isPki) {
+                                              boolean isPki,
+                                              boolean localhostApi) {
         if (isPaidInstance(a))
             return buildPaidQuotas(a);
 
@@ -344,7 +345,9 @@ public class Builder {
             quotaInit.forEach(quotas::setQuota);
         }
         long defaultQuota = a.getLong("default-quota");
-        long maxUsers = a.getLong("max-users");
+        long maxUsers = localhostApi ? a.getLong("max-users") : 0;
+        if (! localhostApi)
+        Logging.LOG().info("Only allowing signups using a signup token.");
         Logging.LOG().info("Using default user space quota of " + defaultQuota);
         return new UserQuotas(quotas, defaultQuota, maxUsers, spaceRequests, localDht, core, isPki);
     }
