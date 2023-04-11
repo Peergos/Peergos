@@ -158,7 +158,6 @@ public class Main extends Builder {
                     new Command.Arg("pki.node.swarm.port", "Swarm port of the pki node", true, "5001"),
                     new Command.Arg("domain", "Domain name to bind to", false, "localhost"),
                     new Command.Arg("public-domain", "The public domain name for this server (required if TLS is managed upstream)", false),
-                    new Command.Arg("max-users", "The maximum number of local users", false, "1"),
                     ARG_USE_IPFS,
                     new Command.Arg("bat-store", "The filename for the BAT store (or :memory: for ram based)", true, "bats.sql"),
                     new Command.Arg("mutable-pointers-file", "The filename for the mutable pointers datastore", true, "mutable.sql"),
@@ -557,10 +556,10 @@ public class Main extends Builder {
             Multihash pkiServerNodeId = getPkiServerId(a);
             String listeningHost = a.getArg("domain");
             int webPort = a.getInt("port");
-            boolean localhostApi = listeningHost.equals("localhost");
+            InetSocketAddress userAPIAddress = new InetSocketAddress(listeningHost, webPort);
+            boolean localhostApi = userAPIAddress.getHostName().equals("localhost");
             if (! localhostApi)
                 System.out.println("Warning: listening on non localhost address: " + listeningHost);
-            InetSocketAddress userAPIAddress = new InetSocketAddress(listeningHost, webPort);
 
             JavaPoster p2pHttpProxy = buildP2pHttpProxy(a);
 

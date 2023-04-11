@@ -345,9 +345,9 @@ public class Builder {
             quotaInit.forEach(quotas::setQuota);
         }
         long defaultQuota = a.getLong("default-quota");
-        long maxUsers = localhostApi ? a.getLong("max-users") : 0;
-        if (! localhostApi)
-        Logging.LOG().info("Only allowing signups using a signup token.");
+        long maxUsers = a.getLong("max-users", localhostApi ? 1 : 0);
+        if (! localhostApi && maxUsers > 0)
+            Logging.LOG().warning("Anyone can signup to this instance because we are listening on non-localhost addresses and max-users > 0. Using signup tokens is more secure.");
         Logging.LOG().info("Using default user space quota of " + defaultQuota);
         return new UserQuotas(quotas, defaultQuota, maxUsers, spaceRequests, localDht, core, isPki);
     }
