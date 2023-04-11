@@ -115,7 +115,7 @@ public class ServerMessages extends Builder {
                     rawSocial, usageStore, account, null, new AccountWithStorage(localStorage, localPointers, account), hasher);
             return buildSpaceQuotas(a, localStorage, core,
                     getDBConnector(a, "space-requests-sql-file", dbConnectionPool),
-                    getDBConnector(a, "quotas-sql-file", dbConnectionPool), false);
+                    getDBConnector(a, "quotas-sql-file", dbConnectionPool), false, true);
         } catch (SQLException e) {
             throw new RuntimeException(e);
         }
