@@ -37,13 +37,9 @@ public abstract class StaticHandler implements HttpHandler
         this.frameDomains = frameDomains;
         this.appsubdomains = appSubdomains;
         this.appDomains = appSubdomains.stream()
-                .collect(Collectors.toMap(s -> s + domainSuffix(), s -> s));
+                .collect(Collectors.toMap(s -> s, s -> s));
         this.isGzip = isGzip;
         this.appDevTarget = appDevTarget;
-    }
-
-    private String domainSuffix() {
-        return "." + host.domain + host.port.map(p -> ":" + p).orElse("");
     }
 
     public abstract Asset getAsset(String resourcePath) throws IOException;
@@ -73,9 +69,10 @@ public abstract class StaticHandler implements HttpHandler
                 path = "index.html";
 
             String reqHost = httpExchange.getRequestHeaders().get("Host").stream().findFirst().orElse("");
-            boolean isSubdomain = reqHost.contains(".") && reqHost.substring(reqHost.indexOf(".")).equals(domainSuffix());
-//            Logging.LOG().info("Req host: " + reqHost + ", isSub: " + isSubdomain + ", path: " + path);
-            String app = appDomains.getOrDefault(reqHost, "sandbox");
+            boolean isSubdomain = host.validSubdomain(reqHost);
+            Logging.LOG().info("Req host: " + reqHost + ", isSub: " + isSubdomain + ", path: " + path);
+            String subdomain = host.getSubdomain(reqHost);
+            String app = appDomains.getOrDefault(subdomain, "sandbox");
             if (isSubdomain && app.equals("sandbox")) { // serve sandbox assets from sandbox sub dir for root path
                 path = "apps/sandbox" + (path.startsWith("/") ? "" : "/") + path;
             }
@@ -163,7 +160,7 @@ public abstract class StaticHandler implements HttpHandler
             // Request same site, cross origin isolation
             httpExchange.getResponseHeaders().set("Origin-Agent-Cluster", "?1");
 
-            // Don't let anyone to load main Peergos site in an iframe (legacy header)
+            // Don't let anyone load main Peergos site in an iframe (legacy header)
             if (!isSubdomain)
                 httpExchange.getResponseHeaders().set("x-frame-options", "sameorigin");
             // Enable cross site scripting protection
