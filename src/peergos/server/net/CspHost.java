@@ -55,6 +55,8 @@ public class CspHost {
             return "";
         if (isWildcard)
             return reqHost.substring(0, reqHost.lastIndexOf("."));
+        if (reqHost.equals(domain + portSuffix))
+            return "";
         return reqHost.substring(0, reqHost.length() - (1 + domain.length() + portSuffix.length()));
     }
 
