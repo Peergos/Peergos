@@ -211,7 +211,7 @@ public class FingerPrint implements Cborable {
         crc.update(b);
     }
 
-    private static byte[] encodeToPng(int mode, int width, int height, BitMatrix pixels) throws IOException {
+    public static byte[] encodeToPng(int mode, int width, int height, BitMatrix pixels) throws IOException {
         ByteArrayOutputStream bout = new ByteArrayOutputStream();
         final byte id[] = {-119, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13};
         CRC32 crc = new CRC32();
