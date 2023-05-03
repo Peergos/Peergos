@@ -127,7 +127,6 @@
     <h3 class="main-title">Published: Tue 22 December 2020</h3>
     <div class="bs-docs-section">
     <p>A much requested feature in Peergos has been the ability to search your whole Peergos space for files. This is more difficult than it sounds in an end-to-end encrypted setting. </p>
-<p>If you haven't heard of Peergos before, it is a peer-to-peer, private storage, social and application platform. You can read more in our book: <a href="https://book.peergos.org">https://book.peergos.org</a>. </p>
 <p>A normal web app like, say, Facebook, would implement search by just sending the query to the server, which would then do the search for you, and return back the results. This is only possible because in websites like Facebook the server can read all your data. We don't have that luxury and so we had to take a different approach to search. First, let's see it in action.</p>
 <p><center>
 <img alt="search" class="class" id="id" src="/theme/img/blog/search.gif" width="90%" />
@@ -135,8 +134,7 @@
 Search for files by name, type, size or modification time.
 </center></p>
 <p>To implement search in Peergos we have to do it all client side, without exposing anything to the server (remember, our servers are trustless). Luckily, our systems are designed with this in mind, so you are able to search all the properties of files like name etc. without downloading and decrypting the entire file, just a small amount of encrypted metadata. In the future we might consider constructing an encrypted index of your files to speed things up further but it's plenty fast enough now for many use cases. You can search by name, modification time, file type or file size. If you want to limit your search to a particular directory you can right click on the directory and select search. </p>
-<p>If you don't already have an account, you can create one for free on <a href="https://peergos.net?signup=true">our server</a>. Let us know what you think!</p>
-<p>Stay tuned for introductions to the other new features and apps we're building as part of our <a href="/posts/next-generation-internet">grant</a> from the Next Generation Internet program (<a href="https://pointer.ngi.eu/">NGI POINTER</a>).</p>
+<p>Want to be part of the future? Create an account on <a href="https://peergos.net/?signup=true">https://peergos.net</a> or self-host your own <a href="https://github.com/Peergos/Peergos/blob/master/README.md#usage---self-hosting">private personal datastore</a>. </p>
 <p><br/><br/></p>
 <hr />
 <p><center>

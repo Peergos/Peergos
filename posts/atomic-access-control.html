@@ -126,23 +126,23 @@
     <h1 class="page-header main-title">Atomic access control</h1>
     <h3 class="main-title">Published: Fri 15 November 2019</h3>
     <div class="bs-docs-section">
-    <p>At Peergos we care deeply about your privacy, and the core of privacy is access control. Controlling who can see what. We've made some big improvements in this area for our new <a href="https://alpha.peergos.net/public/peergos/releases/v0.1.4">v0.1.4</a> release, so let's learn some more about them.</p>
+    <p>At Peergos we care deeply about your privacy, and the core of privacy is access control. Controlling who can see what. We've made some big improvements in this area for our new <a href="https://peergos.net/public/peergos/releases">v0.1.4</a> release, so let's learn some more about them.</p>
 <p>We have totally rewritten our access revocation implementation. Previously there were some issues with nested write access which could cause data loss. Now in the new version, revoking write access is a single pass over the files and directories you are revoking access to, rather than 3. We've also made it atomic. This means your machine can crash at any point and your file system is in a consistent state with all data present. </p>
 <p>Similar improvements have been made to revoking read access and we are working on fuzzing the access control mechanism to further assure correctness and safety. While we had the hood popped open, we also removed unnecessary reloads of the current directory which has made the web interface <em>much snappier</em>.</p>
 <p><center>
 <img alt="New public link UI" class="class" id="id" src="/theme/img/blog/new-public-link-ui.png" width="50%" />
 <br/>
-<b>New</b> public link UI for https://alpha.peergos.net/public/peergos/releases
+<b>New</b> public link UI for https://peergos.net/public/peergos/releases
 </center></p>
-<p>We also have a secret to share with you - we have a mechanism for making files public, though it is not added to the web interface yet. Each user can choose to publish a capability to a file or folder that is readable to anyone. The mechanism for this is each user publishing a merkle <a href="https://blog.acolyer.org/2015/11/27/hamt/">CHAMP</a> root, which is a lookup from path to capability. This is currently only used by the "peergos" user for releases of Peergos itself: <a href="https://alpha.peergos.net/public/peergos/releases">https://alpha.peergos.net/public/peergos/releases</a>.</p>
+<p>We also have a secret to share with you - we have a mechanism for making files public, though it is not added to the web interface yet. Each user can choose to publish a capability to a file or folder that is readable to anyone. The mechanism for this is each user publishing a merkle <a href="https://blog.acolyer.org/2015/11/27/hamt/">CHAMP</a> root, which is a lookup from path to capability. This is currently only used by the "peergos" user for releases of Peergos itself: <a href="https://peergos.net/public/peergos/releases">https://peergos.net/public/peergos/releases</a>.</p>
 <p><center>
 <img alt="New public link UI" class="class" id="id" src="/theme/img/blog/old-public-link-ui.png" width="50%" />
 <br/>
-<b>Old</b> public link UI for https://alpha.peergos.net/public/peergos/releases
+<b>Old</b> public link UI for https://peergos.net/public/peergos/releases
 </center></p>
 <p>Prior to this release, public files were decrypted server side after retrieving the capability from this CHAMP and delivered directly to the requestor. Clearly if we allowed anyone to use the feature then it would be a trivial cross-site-scripting (XSS) vector. So, in preparation for allowing all users to publicly share files, we now make the server retrieve the capability, and then do a http redirect to a "secret link" to that file. This means we get the full Peergos interface for navigating, viewing and downloading public files, and removes the potential for XSS attacks. The file or directory then becomes accessible under the human readable url</p>
-<p><em>https://alpha.peergos.net/public/$path-to-file</em></p>
-<p>Head on over to the <a href="https://alpha.peergos.net">alpha</a> and enjoy your improved access control!</p>
+<p><em>https://peergos.net/public/$path-to-file</em></p>
+<p>Want to be part of the future? Create an account on <a href="https://peergos.net/?signup=true">https://peergos.net</a> or self-host your own <a href="https://github.com/Peergos/Peergos/blob/master/README.md#usage---self-hosting">private personal datastore</a>. </p>
 <h4>RECENT POSTS</h4>
 <ul id="recent-posts">
     <li>

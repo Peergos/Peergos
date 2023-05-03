@@ -126,7 +126,7 @@
     <h1 class="page-header main-title">Release the BATs (block level access control in IPFS)</h1>
     <h3 class="main-title">Published: Tue 25 January 2022</h3>
     <div class="bs-docs-section">
-    <p>The main valid criticism of private applications built on IPFS is that blocks in IPFS are public. Yes, you can encrypt them, but the ciphertext is still fundamentally public. Or it was – until now. We've implemented block level access control in bitswap (the block exchange protocol used by IPFS). This means that only the people granted access to a file will be able to retrieve the encrypted blocks that constitute it. It's a ground-breaking advance: nothing else built on IPFS is this private. </p>
+    <p>The main valid criticism of private applications built on <a href="https://ipfs.io">IPFS</a> is that blocks in IPFS are public. Yes, you can encrypt them, but the ciphertext is still fundamentally public. Or it was – until now. We've implemented block level access control in bitswap (the block exchange protocol used by IPFS). This means that only the people granted access to a file will be able to retrieve the encrypted blocks that constitute it. It's a ground-breaking advance: nothing else built on IPFS is this private. </p>
 <p>In the rest of this post, we're going to talk about:</p>
 <ol>
 <li>how the design works from the bitswap protocol level up to the Peergos client, and</li>
@@ -188,7 +188,7 @@ Structure for storing BATs in the prefix of a raw block
 BAT derivation for subsequent chunks of a file
 </center></p>
 <p>Each 5 MiB chunk of a file or directory has its own unique BAT, so the server still cannot link the different blocks of a file to deduce the padded size of the file. Subsequent chunk BATs within a file are <a href="/posts/fast-seeking">derived</a> in the same way as we do the CHAMP labels, by hashing the current chunk BAT with a stream-secret, stored encrypted in the first chunk. This maintains our ability to seek within arbitrarily large files without any IO operations (just local hashing and then a final lookup of the requested chunk). When someone's access to a file or directory is revoked, the BATs are also changed, making it impossible to retrieve the new ciphertext even with previous access.</p>
-<p>Want to join the party? Create a free account on <a href="https://peergos.net">https://peergos.net</a> or run your own <a href="https://github.com/Peergos/Peergos/blob/master/README.md#usage---self-hosting">private personal datastore</a>. </p>
+<p>Want to be part of the future? Create an account on <a href="https://peergos.net/?signup=true">https://peergos.net</a> or self-host your own <a href="https://github.com/Peergos/Peergos/blob/master/README.md#usage---self-hosting">private personal datastore</a>. </p>
 <p><br/><br/></p>
 <hr />
 <p><center>
