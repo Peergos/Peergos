@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <head>
-    <title>Peergos release v0.3.0</title>
+    <title>Reasons to prefer blake3 over sha256</title>
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta charset="utf-8">
     <meta http-equiv="Content-Security-Policy" content="default-src https: 'self'; style-src 'unsafe-inline' 'self'; script-src 'unsafe-inline' 'self';">
@@ -144,39 +144,44 @@
     <div class="col m3 col s4">
     </div>
     <div class="col m9 col s8" role="main" style="overflow-x:auto; padding-bottom: 10px;">
-    <h1 class="page-header main-title">Peergos release v0.3.0</h1>
-    <h3 class="main-title">Published: Mon 10 August 2020</h3>
+    <h1 class="page-header main-title">Reasons to prefer blake3 over sha256</h1>
+    <h3 class="main-title">Published: Tue 09 May 2023</h3>
     <div class="bs-docs-section">
-    <p>Privacy is alive and well at Peergos as we continue on our mission to build the private web where you are in control of your data and identity.</p>
-<p>We are pleased to announce the release of <a href="https://peergos.net/public/peergos/releases">v0.3.0</a>, and it's a big one! You can try it out on <a href="https://peergos.net">peergos.net</a> now. This release patches a number of bugs in both the server and the client, and also brings a host of cool new features. There's too much to talk about in a single blog post, but we'll mention everything briefly before diving deep in later posts.</p>
-<p>Some of the highlights include:</p>
-<h3 id="performance-improvements">Performance improvements</h3>
-<ol>
-<li>S3 datastore - read and write directly to S3 from the browser without proxying through a Peergos server</li>
-<li>GC is now fully concurrent and doesn't have any "stop the world" pauses</li>
-<li>Smoother HD video streaming through a buffered async reader</li>
-</ol>
-<h3 id="client">Client</h3>
-<ol>
-<li>Improved sharing UX</li>
-<li>Saving a document in the text editor is now 7x faster</li>
-<li>Easily delete your account and all your data</li>
-</ol>
-<h3 id="server">Server</h3>
-<ol>
-<li>Privacy-respecting payments - self-host a Peergos server and charge for storage</li>
-<li>Easily install and run IPFS via a top-level command</li>
-<li>Expanded quota APIs</li>
-<li>Postgres is now supported as well as SQLite</li>
-</ol>
-<h3 id="protocol-upgrades">Protocol upgrades</h3>
-<ol>
-<li>Upgrade to IPFS v0.6.0 - see the release notes <a href="https://docs.ipfs.io/recent-releases/go-ipfs-0-6/#features">here</a>.</li>
-<li>Support base36 and base64 in multibase</li>
-<li>Limit identity multihashes to 36 bytes</li>
-</ol>
-<p>We are particularly proud of the direct S3 datastore as it allows a Peergos server to use S3 compatible storage for the blockstore. Clients can read and write directly to an S3 bucket after authorization from the Peergos server. This new feature makes the Peergos server much more scalable and reliable, and gets around the need for complicated access policies when using S3. We will be exploring this feature in more detail soon!</p>
-<p>Want to be part of the future? Create an account on <a href="https://peergos.net/?signup=true">https://peergos.net</a> or self-host your own <a href="https://github.com/Peergos/Peergos/blob/master/README.md#usage---self-hosting">private personal datastore</a>. </p>
+    <h1 id="reasons-to-prefer-blake3-over-sha256">Reasons to prefer blake3 over sha256</h1>
+<p>This post is a copy of <a href="https://twitter.com/zooko/status/1652743779932045313">tweets</a> by <a href="https://en.wikipedia.org/wiki/Zooko_Wilcox-O%27Hearn">Zooko Wilcox-O'Hearn</a>.</p>
+<p>SHA256 was designed by the NSA. BLAKE (the original) and BLAKE3 were designed by Jean-Philippe Aumasson and others (including me, but Jean-Philippe and the other contributors did a lot more of the cryptographic heavy lifting than I did).</p>
+<p>SHA256 was based on SHA1 (which is weak). BLAKE was based on ChaCha20, which was based on Salsa20 (which are both strong).</p>
+<p>NIST/NSA have repeatedly signaled lack of confidence in SHA256: first by hastily organising the SHA3 contest in the aftermath of Wang's break of SHA1, then by making "Don't be like SHA256" a goal for the algorithms of that contest, and then by banning SHA256 from new designs to be used by the USA government (except for in one specific cryptosystem that protects from weaknesses in the hash function <a href="https://media.defense.gov/2022/Sep/07/2003071836/-1/-1/0/CSI_CNSA_2.0_FAQ_.PDF">https://media.defense.gov/2022/Sep/07/2003071836/-1/-1/0/CSI_CNSA_2.0_FAQ_.PDF</a>).</p>
+<p>BLAKE (the original) was very well-studied during the SHA3 competition. In NIST's final report on the SHA3 process, they stated that the depth of scientific analysis applied to BLAKE exceeded even that applied to Keccak (the final SHA3 winner).</p>
+<p><img style="width:100%;" src="/theme/img/blog/blake3-analysis.jpeg"/></p>
+<p>Known, feasible attacks can break 31 out of 64 rounds of SHA256 (48% of the rounds). Known, feasible attacks can break only 2 out of 7 rounds of BLAKE3 (29% of the rounds).</p>
+<p>BLAKE3 comes “out of the box” with security features that can protect users in common use cases, such as protection against length-extension attack, a standard method of keying, "personalization tags" to guarantee domain separation, etc.</p>
+<p>BLAKE3 is <em>much</em> more efficient (in time and energy) than SHA256, like 14 <em>times</em> as efficient in typical use cases on typical platforms.</p>
+<p><img style="width:100%;" src="/theme/img/blog/blake3-performance.jpeg"/></p>
+<p>BLAKE3 also offers performance that is competitive against SHA256 in a lot of different use cases and platforms, including some that might surprise you, such as sometimes being more efficient than SHA256 <em>even</em> when your CPU comes with SHA256 acceleration circuits built into it!</p>
+<p>BLAKE3 is highly parallelizable. This provides two performance advantages, only the first of which most people think about.</p>
+<ul>
+<li>
+<p>The first is big data + big multicore: if the size of your data inputs scale up 100X but the number of CPU cores in your platform also scale up 100X, BLAKE3 takes only a little longer, but SHA256 takes approximately 100X times as long.</p>
+</li>
+<li>
+<p>The other advantage, less widely understood, is that inside a single compute device, new tech improvements provide more and more parallel power. This is true in FPGAs and GPUs, and it is true in CPUs because of vectorization upgrades.</p>
+</li>
+</ul>
+<p>AVX in Intel/AMD, Neon and Scalable Vector Extensions in Arm, and RISC-V Vector computing in RISC-V. BLAKE3 can take advantage of all of it.</p>
+<p>When you upgrade to a newer CPU/platform/device, BLAKE3 typically <em>further extends</em> its performance advantage over SHA256 compared to the performance advantage it already had on the previous platform!</p>
+<p>Finally, BLAKE3 was designed and implemented by both cryptographers <em>and</em> software engineers. The reference implementations are super efficient and well-engineered for security, thanks to Jack O'Connor, Samuel Neves, and Jean-Philippe Aumasson: <a href="https://github.com/BLAKE3-team/BLAKE3">https://github.com/BLAKE3-team/BLAKE3</a></p>
+<hr />
+<p>End of quote. You can follow our progress on upgrading to blake3 <a href="https://github.com/Peergos/Peergos/issues/1045">here</a>.</p>
+<p><br/><br/></p>
+<hr />
+<p><center>
+<img alt="NGI Pointer" class="class" height="65px" id="id" src="/theme/img/ngi-logo.png" />
+<img alt="NGI Pointer" class="class" height="65" id="id" src="/theme/img/eu.png" />
+</center>
+<br/>
+This project has received funding from the European Union’s Horizon 2020 research and innovation programme within the framework of the NGI-POINTER Project funded under grant agreement No 871528</p>
+<p><br/><br/><br/></p>
 <h4>RECENT POSTS</h4>
 <ul id="recent-posts">
     <li>
