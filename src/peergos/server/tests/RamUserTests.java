@@ -23,6 +23,7 @@ import java.security.*;
 import java.time.*;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.*;
 import java.util.stream.*;
 
 @RunWith(Parameterized.class)
@@ -97,17 +98,24 @@ public class RamUserTests extends UserTests {
         Assert.assertTrue(enabled.size() == 1 && enabled.get(0).enabled);
 
         // now try logging in again, now with mfa
+        AtomicBoolean usedMfa = new AtomicBoolean(false);
         UserContext freshLogin = UserContext.signIn(username, password, methods -> {
             Optional<MultiFactorAuthMethod> anyTotp = methods.stream().filter(m -> m.type == MultiFactorAuthMethod.Type.TOTP).findFirst();
             if (anyTotp.isEmpty())
                 throw new IllegalStateException("No supported 2 factor auth method! " + methods);
             MultiFactorAuthMethod method = anyTotp.get();
+            usedMfa.set(true);
             try {
                 return Futures.of(new MultiFactorAuthResponse(method.uid, totp.generateOneTimePasswordString(key, Instant.now())));
             } catch (InvalidKeyException e) {
                 throw new RuntimeException(e);
             }
         }, network, crypto).join();
+        Assert.assertTrue(usedMfa.get());
+
+        // Now delete the second factor and login again without MFA
+        context.network.account.deleteSecondFactor(username, enabled.get(0).uid, context.signer).join();
+        Assert.assertTrue(context.network.account.getSecondAuthMethods(username, context.signer).join().isEmpty());
     }
 
     @Test

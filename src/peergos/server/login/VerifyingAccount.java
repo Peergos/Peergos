@@ -51,19 +51,21 @@ public class VerifyingAccount implements Account {
     }
 
     @Override
+    public CompletableFuture<TotpKey> addTotpFactor(String username, byte[] auth) {
+        PublicKeyHash identityHash = core.getPublicKeyHash(username).join().get();
+        TimeLimited.isAllowed(Constants.LOGIN_URL + "addTotp", auth, 24*3600, storage, identityHash);
+        return target.addTotpFactor(username, auth);
+    }
+
+    @Override
     public CompletableFuture<Boolean> enableTotpFactor(String username, String uid, String code) {
         return target.enableTotpFactor(username, uid, code);
     }
 
     @Override
     public CompletableFuture<Boolean> deleteSecondFactor(String username, String uid, byte[] auth) {
-        throw new IllegalStateException("TODO");
-    }
-
-    @Override
-    public CompletableFuture<TotpKey> addTotpFactor(String username, byte[] auth) {
         PublicKeyHash identityHash = core.getPublicKeyHash(username).join().get();
-        TimeLimited.isAllowed(Constants.LOGIN_URL + "addTotp", auth, 24*3600, storage, identityHash);
-        return target.addTotpFactor(username, auth);
+        TimeLimited.isAllowed(Constants.LOGIN_URL + "deleteMfa", auth, 24*3600, storage, identityHash);
+        return target.deleteSecondFactor(username, uid, auth);
     }
 }

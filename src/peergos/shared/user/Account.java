@@ -52,8 +52,6 @@ public interface Account {
 
     CompletableFuture<Boolean> enableTotpFactor(String username, String uid, String code);
 
-    CompletableFuture<Boolean> deleteSecondFactor(String username, String uid, byte[] auth);
-
     CompletableFuture<TotpKey> addTotpFactor(String username, byte[] auth);
 
     default CompletableFuture<TotpKey> addTotpFactor(String username, SigningPrivateKeyAndPublicHash identity) {
@@ -61,6 +59,15 @@ public interface Account {
                 new TimeLimitedClient.SignedRequest(Constants.LOGIN_URL + "addTotp", System.currentTimeMillis());
         byte[] auth = req.sign(identity.secret);
         return addTotpFactor(username, auth);
+    }
+
+    CompletableFuture<Boolean> deleteSecondFactor(String username, String uid, byte[] auth);
+
+    default CompletableFuture<Boolean> deleteSecondFactor(String username, String uid, SigningPrivateKeyAndPublicHash identity) {
+        TimeLimitedClient.SignedRequest req =
+                new TimeLimitedClient.SignedRequest(Constants.LOGIN_URL + "deleteMfa", System.currentTimeMillis());
+        byte[] auth = req.sign(identity.secret);
+        return deleteSecondFactor(username, uid, auth);
     }
 
 }

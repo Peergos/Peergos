@@ -30,6 +30,7 @@ public class JdbcAccount implements LoginCache {
     private static final String CREATE_AUTH = "INSERT INTO mfa (username, uid, type, enabled, value) VALUES(?, ?, ?, ?, ?)";
     private static final String GET_AUTH = "SELECT value FROM mfa WHERE username = ? AND uid = ?;";
     private static final String UPDATE_AUTH = "UPDATE mfa SET enabled=? WHERE username = ? AND uid = ?";
+    private static final String DELETE_AUTH = "DELETE FROM mfa WHERE username = ? AND uid = ?";
     private static final String GET_AUTH_METHODS = "SELECT uid, type, enabled FROM mfa WHERE username = ?;";
 
     private volatile boolean isClosed;
@@ -228,7 +229,21 @@ public class JdbcAccount implements LoginCache {
             update.setString(3, uid);
             update.executeUpdate();
 
-            return Futures.of(false);
+            return Futures.of(true);
+        } catch (Exception e) {
+            LOG.log(Level.WARNING, e.getMessage(), e);
+            throw new IllegalStateException(e);
+        }
+    }
+
+    public CompletableFuture<Boolean> deleteMfa(String username, String uid) {
+        try (Connection conn = getConnection();
+             PreparedStatement update = conn.prepareStatement(DELETE_AUTH)) {
+            update.setString(1, username);
+            update.setString(2, uid);
+            update.executeUpdate();
+
+            return Futures.of(true);
         } catch (Exception e) {
             LOG.log(Level.WARNING, e.getMessage(), e);
             throw new IllegalStateException(e);

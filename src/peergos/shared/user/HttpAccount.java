@@ -146,6 +146,22 @@ public class HttpAccount implements AccountProxy {
 
     @Override
     public CompletableFuture<Boolean> deleteSecondFactor(String username, String uid, byte[] auth) {
-        throw new IllegalStateException("TODO");
+        return deleteSecondFactor(directUrlPrefix, direct, username, uid, auth);
+    }
+
+    @Override
+    public CompletableFuture<Boolean> deleteSecondFactor(Multihash targetServerId, String username, String uid, byte[] auth) {
+        return deleteSecondFactor(getProxyUrlPrefix(targetServerId), p2p, username, uid, auth);
+    }
+
+    private CompletableFuture<Boolean> deleteSecondFactor(String urlPrefix,
+                                                        HttpPoster poster,
+                                                        String username,
+                                                        String uid,
+                                                        byte[] auth) {
+        return poster.get(urlPrefix + Constants.LOGIN_URL + "deleteMfa?username=" + username
+                        + "&uid=" + uid
+                        + "&auth=" + ArrayOps.bytesToHex(auth))
+                .thenApply(res -> ((CborObject.CborBoolean)CborObject.fromByteArray(res)).value);
     }
 }

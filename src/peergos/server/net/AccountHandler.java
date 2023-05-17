@@ -89,6 +89,14 @@ public class AccountHandler implements HttpHandler {
                     dout.write(new CborObject.CborBoolean(res).serialize());
                     break;
                 }
+                case "deleteMfa": {
+                    AggregatedMetrics.LOGIN_DELETE_MFA.inc();
+                    String username = params.get("username").get(0);
+                    String uid = params.get("uid").get(0);
+                    boolean res = account.deleteSecondFactor(username, uid, auth).join();
+                    dout.write(new CborObject.CborBoolean(res).serialize());
+                    break;
+                }
                 default:
                     throw new IOException("Unknown method in AccountHandler!");
             }

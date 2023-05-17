@@ -58,7 +58,7 @@ public class AccountWithStorage implements Account {
 
     @Override
     public CompletableFuture<Boolean> deleteSecondFactor(String username, String uid, byte[] auth) {
-        throw new IllegalStateException("TODO");
+        return target.deleteMfa(username, uid);
     }
 
     @Override

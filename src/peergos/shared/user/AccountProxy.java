@@ -27,4 +27,5 @@ public interface AccountProxy extends Account {
 
     CompletableFuture<Boolean> enableTotpFactor(Multihash targetServerId, String username, String uid, String code);
 
+    CompletableFuture<Boolean> deleteSecondFactor(Multihash targetServerId, String username, String uid, byte[] auth);
 }
