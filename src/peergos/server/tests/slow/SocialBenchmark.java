@@ -186,7 +186,7 @@ public class SocialBenchmark {
         for (int i=0; i < nFriendsLeaving; i++) {
             int index = random.nextInt(friends.size());
             UserContext friend = friends.get(index);
-            friend.deleteAccount(otherUsers.get(index).right).join();
+            friend.deleteAccount(otherUsers.get(index).right, UserTests::noMfa).join();
             friends.remove(friend);
         }
 

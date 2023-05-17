@@ -24,14 +24,14 @@ public class Playground {
         String username = args[0];
         Console console = System.console();
         String password = new String(console.readPassword("Enter password for " + username + ":"));
-        UserContext context = UserContext.signIn(username, password, nonWriteThrough, crypto).get();
+        UserContext context = UserContext.signIn(username, password, Main::getMfaResponseCLI, nonWriteThrough, crypto).get();
 
         // invert the following two lines to actually commit the experiment
         experiment(username, context, nonWriteThrough);
 //        experiment(username, context, source);
 
         // Can we still log in?
-        UserContext context2 = UserContext.signIn(username, password, nonWriteThrough, crypto).get();
+        UserContext context2 = UserContext.signIn(username, password, Main::getMfaResponseCLI, nonWriteThrough, crypto).get();
         LOG.info(context2.getUserRoot().get().getName());
     }
 

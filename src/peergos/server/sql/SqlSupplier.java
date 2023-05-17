@@ -30,6 +30,12 @@ public interface SqlSupplier {
                 "CREATE UNIQUE INDEX IF NOT EXISTS login_index ON login (username);";
     }
 
+    default String createMfaTableCommand() {
+        return "CREATE TABLE IF NOT EXISTS mfa (username text not null, uid text not null, " +
+                "type " + sqlInteger() + " not null, enabled boolean not null, value " + getByteArrayType() + " not null); " +
+                "CREATE UNIQUE INDEX IF NOT EXISTS mfa_index ON mfa (username);";
+    }
+
     default String createBatStoreTableCommand() {
         return "CREATE TABLE IF NOT EXISTS bats (username text not null, id text primary key not null, bat text not null); " +
                 "CREATE UNIQUE INDEX IF NOT EXISTS bat_index ON bats (id);";

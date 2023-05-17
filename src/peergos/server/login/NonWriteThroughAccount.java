@@ -1,6 +1,7 @@
 package peergos.server.login;
 
 import peergos.shared.crypto.asymmetric.*;
+import peergos.shared.login.mfa.*;
 import peergos.shared.user.*;
 import peergos.shared.util.*;
 
@@ -24,10 +25,33 @@ public class NonWriteThroughAccount implements Account {
     }
 
     @Override
-    public CompletableFuture<UserStaticData> getLoginData(String username, PublicSigningKey authorisedReader, byte[] auth) {
+    public CompletableFuture<Either<UserStaticData, List<MultiFactorAuthMethod>>> getLoginData(String username,
+                                                          PublicSigningKey authorisedReader,
+                                                          byte[] auth,
+                                                          Optional<MultiFactorAuthResponse>  mfa) {
         LoginData updated = modifications.get(username);
         if (updated == null)
-            return source.getLoginData(username, authorisedReader, auth);
-        return Futures.of(updated.entryPoints);
+            return source.getLoginData(username, authorisedReader, auth, mfa);
+        return Futures.of(Either.a(updated.entryPoints));
+    }
+
+    @Override
+    public CompletableFuture<List<MultiFactorAuthMethod>> getSecondAuthMethods(String username, byte[] auth) {
+        return source.getSecondAuthMethods(username, auth);
+    }
+
+    @Override
+    public CompletableFuture<Boolean> enableTotpFactor(String username, String uid, String code) {
+        throw new IllegalStateException("TODO");
+    }
+
+    @Override
+    public CompletableFuture<Boolean> deleteSecondFactor(String username, String uid, byte[] auth) {
+        throw new IllegalStateException("TODO");
+    }
+
+    @Override
+    public CompletableFuture<TotpKey> addTotpFactor(String username, byte[] auth) {
+        throw new IllegalStateException("TODO");
     }
 }

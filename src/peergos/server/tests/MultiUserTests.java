@@ -1050,7 +1050,7 @@ public class MultiUserTests {
         // Add file bigger than the 1MiB final quota
         u1.getUserRoot().join().uploadOrReplaceFile("afile.bin", AsyncReader.build(new byte[2*1024*1024]),
                 2*1024*1024, u1.network, crypto, x -> {}).join();
-        u1.deleteAccount(password1).join();
+        u1.deleteAccount(password1, UserTests::noMfa).join();
 
         // Check u2 can still log in
         UserContext u2Refresh = PeergosNetworkUtils.ensureSignedUp(username2, password2, network, crypto);

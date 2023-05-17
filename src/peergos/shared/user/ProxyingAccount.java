@@ -2,9 +2,9 @@ package peergos.shared.user;
 
 import peergos.shared.corenode.*;
 import peergos.shared.crypto.asymmetric.*;
-import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.multihash.*;
-import peergos.shared.mutable.*;
+import peergos.shared.login.mfa.*;
+import peergos.shared.util.*;
 
 import java.util.*;
 import java.util.concurrent.*;
@@ -33,11 +33,50 @@ public class ProxyingAccount implements Account {
     }
 
     @Override
-    public CompletableFuture<UserStaticData> getLoginData(String username, PublicSigningKey authorisedReader, byte[] auth) {
+    public CompletableFuture<Either<UserStaticData, List<MultiFactorAuthMethod>>> getLoginData(String username,
+                                                                                               PublicSigningKey authorisedReader,
+                                                                                               byte[] auth,
+                                                                                               Optional<MultiFactorAuthResponse>  mfa) {
         return core.getPublicKeyHash(username).thenCompose(idOpt -> Proxy.redirectCall(core,
                 serverId,
                 idOpt.get(),
-                () -> local.getLoginData(username, authorisedReader, auth),
-                target -> p2p.getLoginData(target, username, authorisedReader, auth)));
+                () -> local.getLoginData(username, authorisedReader, auth, mfa),
+                target -> p2p.getLoginData(target, username, authorisedReader, auth, mfa)));
+    }
+
+    @Override
+    public CompletableFuture<TotpKey> addTotpFactor(String username, byte[] auth) {
+        return core.getPublicKeyHash(username).thenCompose(idOpt -> Proxy.redirectCall(core,
+                serverId,
+                idOpt.get(),
+                () -> local.addTotpFactor(username, auth),
+                target -> p2p.addTotpFactor(username, auth)));
+    }
+
+    @Override
+    public CompletableFuture<List<MultiFactorAuthMethod>> getSecondAuthMethods(String username, byte[] auth) {
+        return core.getPublicKeyHash(username).thenCompose(idOpt -> Proxy.redirectCall(core,
+                serverId,
+                idOpt.get(),
+                () -> local.getSecondAuthMethods(username, auth),
+                target -> p2p.getSecondAuthMethods(username, auth)));
+    }
+
+    @Override
+    public CompletableFuture<Boolean> enableTotpFactor(String username, String uid, String code) {
+        return core.getPublicKeyHash(username).thenCompose(idOpt -> Proxy.redirectCall(core,
+                serverId,
+                idOpt.get(),
+                () -> local.enableTotpFactor(username, uid, code),
+                target -> p2p.enableTotpFactor(username, uid, code)));
+    }
+
+    @Override
+    public CompletableFuture<Boolean> deleteSecondFactor(String username, String uid, byte[] auth) {
+        return core.getPublicKeyHash(username).thenCompose(idOpt -> Proxy.redirectCall(core,
+                serverId,
+                idOpt.get(),
+                () -> local.deleteSecondFactor(username, uid, auth),
+                target -> p2p.deleteSecondFactor(username, uid, auth)));
     }
 }

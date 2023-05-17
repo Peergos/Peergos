@@ -179,7 +179,7 @@ public class MultiNodeNetworkTests {
         UserContext user = ensureSignedUp(username, password, node1, crypto);
         for (int i=0; i < nPasswordChanges; i++) {
             String newPassword = randomString();
-            user = ensureSignedUp(username, password, node2, crypto).changePassword(password, newPassword).join();
+            user = ensureSignedUp(username, password, node2, crypto).changePassword(password, newPassword, UserTests::noMfa).join();
             password = newPassword;
         }
         // make sure we have some raw fragments

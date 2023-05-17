@@ -14,7 +14,7 @@ public class Login {
         String username = args[0];
         Console console = System.console();
         String password = new String(console.readPassword("Enter password for " + username + ":"));
-        UserContext context = UserContext.signIn(username, password, network, crypto).get();
+        UserContext context = UserContext.signIn(username, password, Main::getMfaResponseCLI, network, crypto).get();
         System.out.println("Logged in " + username + " successfully!");
     }
 }

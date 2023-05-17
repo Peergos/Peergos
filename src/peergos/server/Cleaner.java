@@ -14,7 +14,7 @@ public class Cleaner {
         String username = args[0];
         Console console = System.console();
         String password = new String(console.readPassword("Enter password for " + username + ":"));
-        UserContext context = UserContext.signIn(username, password, network, crypto).get();
+        UserContext context = UserContext.signIn(username, password, Main::getMfaResponseCLI, network, crypto).get();
         long prior = context.getSpaceUsage().join();
         context.cleanPartialUploads().join();
         long post = context.getSpaceUsage().join();

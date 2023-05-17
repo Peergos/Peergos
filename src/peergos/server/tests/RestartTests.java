@@ -123,12 +123,12 @@ public class RestartTests {
 
         // change password for u2
         String password3 = random();
-        u2.changePassword(password2, password3).join();
+        u2.changePassword(password2, password3, UserTests::noMfa).join();
 
         // restart the server
         restart();
 
-        UserContext freshU1 = UserContext.signIn(username1, password1, network.clear(), crypto).join();
+        UserContext freshU1 = UserContext.signIn(username1, password1, UserTests::noMfa, network.clear(), crypto).join();
         Optional<FileWrapper> u2ToU1 = freshU1.getByPath("/" + u2.username).join();
         assertTrue("Friend root present after their password change", u2ToU1.isPresent());
     }

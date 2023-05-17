@@ -4,11 +4,12 @@ import peergos.server.util.*;
 import peergos.shared.corenode.*;
 import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.hash.*;
-import peergos.shared.mutable.*;
+import peergos.shared.login.mfa.*;
 import peergos.shared.storage.*;
 import peergos.shared.user.*;
 import peergos.shared.util.*;
 
+import java.util.*;
 import java.util.concurrent.*;
 
 public class VerifyingAccount implements Account {
@@ -32,10 +33,37 @@ public class VerifyingAccount implements Account {
     }
 
     @Override
-    public CompletableFuture<UserStaticData> getLoginData(String username, PublicSigningKey authorisedReader, byte[] auth) {
-        return target.getLoginData(username, authorisedReader, auth).thenApply(res -> {
+    public CompletableFuture<Either<UserStaticData, List<MultiFactorAuthMethod>>> getLoginData(String username,
+                                                                                               PublicSigningKey authorisedReader,
+                                                                                               byte[] auth,
+                                                                                               Optional<MultiFactorAuthResponse>  mfa) {
+        return target.getLoginData(username, authorisedReader, auth, mfa).thenApply(res -> {
             TimeLimited.isAllowedTime(auth, 24*3600, authorisedReader);
             return res;
         });
+    }
+
+    @Override
+    public CompletableFuture<List<MultiFactorAuthMethod>> getSecondAuthMethods(String username, byte[] auth) {
+        PublicKeyHash identityHash = core.getPublicKeyHash(username).join().get();
+        TimeLimited.isAllowed(Constants.LOGIN_URL + "listMfa", auth, 24*3600, storage, identityHash);
+        return target.getSecondAuthMethods(username, auth);
+    }
+
+    @Override
+    public CompletableFuture<Boolean> enableTotpFactor(String username, String uid, String code) {
+        return target.enableTotpFactor(username, uid, code);
+    }
+
+    @Override
+    public CompletableFuture<Boolean> deleteSecondFactor(String username, String uid, byte[] auth) {
+        throw new IllegalStateException("TODO");
+    }
+
+    @Override
+    public CompletableFuture<TotpKey> addTotpFactor(String username, byte[] auth) {
+        PublicKeyHash identityHash = core.getPublicKeyHash(username).join().get();
+        TimeLimited.isAllowed(Constants.LOGIN_URL + "addTotp", auth, 24*3600, storage, identityHash);
+        return target.addTotpFactor(username, auth);
     }
 }

@@ -13,7 +13,7 @@ import java.nio.file.*;
 import java.security.*;
 import java.time.*;
 
-public class OtpTest {
+public class TotpTest {
 
     @Test
     public void roundtrip() throws Exception {

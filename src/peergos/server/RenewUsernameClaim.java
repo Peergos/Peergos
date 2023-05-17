@@ -17,7 +17,7 @@ public class RenewUsernameClaim {
         String password = new String(console.readPassword("Enter password for " + username + ":"));
 
         LocalDate expiry = LocalDate.now().plusMonths(2);
-        UserContext context = UserContext.signIn(username, password, network, crypto).get();
+        UserContext context = UserContext.signIn(username, password, Main::getMfaResponseCLI, network, crypto).get();
         boolean isExpired = context.usernameIsExpired().get();
         if (isExpired)
             System.out.println(context.renewUsernameClaim(expiry).get() ? "Renewed username" : "Failed to renew username");

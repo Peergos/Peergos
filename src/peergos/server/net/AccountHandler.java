@@ -5,6 +5,8 @@ import peergos.server.*;
 import peergos.server.util.*;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.asymmetric.*;
+import peergos.shared.login.*;
+import peergos.shared.login.mfa.*;
 import peergos.shared.user.*;
 import peergos.shared.util.*;
 
@@ -55,8 +57,12 @@ public class AccountHandler implements HttpHandler {
                     AggregatedMetrics.LOGIN_GET.inc();
                     String username = params.get("username").get(0);
                     PublicSigningKey authorisedReader = PublicSigningKey.fromByteArray(ArrayOps.hexToBytes(params.get("author").get(0)));
-                    byte[] res = account.getLoginData(username, authorisedReader, auth).join().serialize();
-                    dout.write(res);
+                    Optional<MultiFactorAuthResponse> mfa = params.containsKey("mfa") ?
+                            Optional.of(MultiFactorAuthResponse.fromCbor(CborObject.fromByteArray(ArrayOps.hexToBytes(params.get("mfa").get(0))))) :
+                            Optional.empty();
+                    Either<UserStaticData, List<MultiFactorAuthMethod>> res = account.getLoginData(username, authorisedReader, auth, mfa).join();
+                    byte[] resBytes = new LoginResponse(res).serialize();
+                    dout.write(resBytes);
                     break;
                 default:
                     throw new IOException("Unknown method in AccountHandler!");

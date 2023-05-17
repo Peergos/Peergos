@@ -2,11 +2,19 @@ package peergos.shared.user;
 
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.asymmetric.*;
+import peergos.shared.login.mfa.*;
+import peergos.shared.util.*;
 
+import java.util.*;
 import java.util.concurrent.*;
 
 public interface Account {
-
+    /** Auth signed by identity
+     *
+     * @param login
+     * @param auth
+     * @return
+     */
     CompletableFuture<Boolean> setLoginData(LoginData login, byte[] auth);
 
     default CompletableFuture<Boolean> setLoginData(LoginData login, SigningPrivateKeyAndPublicHash identity) {
@@ -14,5 +22,45 @@ public interface Account {
         return setLoginData(login, auth);
     }
 
-    CompletableFuture<UserStaticData> getLoginData(String username, PublicSigningKey authorisedReader, byte[] auth);
+    /** Auth signed by login keypair
+     *
+     * @param username
+     * @param authorisedReader
+     * @param auth
+     * @param mfa
+     * @return
+     */
+    CompletableFuture<Either<UserStaticData, List<MultiFactorAuthMethod>>> getLoginData(String username,
+                                                                                        PublicSigningKey authorisedReader,
+                                                                                        byte[] auth,
+                                                                                        Optional<MultiFactorAuthResponse>  mfa);
+
+    /** Auth signed by identity
+     *
+     * @param username
+     * @param auth
+     * @return
+     */
+    CompletableFuture<List<MultiFactorAuthMethod>> getSecondAuthMethods(String username, byte[] auth);
+
+    default CompletableFuture<List<MultiFactorAuthMethod>> getSecondAuthMethods(String username, SigningPrivateKeyAndPublicHash identity) {
+        TimeLimitedClient.SignedRequest req =
+                new TimeLimitedClient.SignedRequest(Constants.LOGIN_URL + "listMfa", System.currentTimeMillis());
+        byte[] auth = req.sign(identity.secret);
+        return getSecondAuthMethods(username, auth);
+    }
+
+    CompletableFuture<Boolean> enableTotpFactor(String username, String uid, String code);
+
+    CompletableFuture<Boolean> deleteSecondFactor(String username, String uid, byte[] auth);
+
+    CompletableFuture<TotpKey> addTotpFactor(String username, byte[] auth);
+
+    default CompletableFuture<TotpKey> addTotpFactor(String username, SigningPrivateKeyAndPublicHash identity) {
+        TimeLimitedClient.SignedRequest req =
+                new TimeLimitedClient.SignedRequest(Constants.LOGIN_URL + "addTotp", System.currentTimeMillis());
+        byte[] auth = req.sign(identity.secret);
+        return addTotpFactor(username, auth);
+    }
+
 }

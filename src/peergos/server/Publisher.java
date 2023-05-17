@@ -19,7 +19,7 @@ public class Publisher {
         String pathToMakePublic = args[1];
         Console console = System.console();
         String password = new String(console.readPassword("Enter password for " + username + ":"));
-        UserContext context = UserContext.signIn(username, password, network, crypto).get();
+        UserContext context = UserContext.signIn(username, password, Main::getMfaResponseCLI, network, crypto).get();
         FileWrapper file = context.getByPath(pathToMakePublic).join().get();
         context.makePublic(file).join();
         System.out.println("Made " + pathToMakePublic + " public.");

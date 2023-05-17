@@ -22,6 +22,7 @@ import peergos.shared.crypto.password.*;
 import peergos.shared.io.ipfs.multiaddr.*;
 import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.io.ipfs.multihash.*;
+import peergos.shared.login.mfa.*;
 import peergos.shared.mutable.*;
 import peergos.shared.social.*;
 import peergos.shared.storage.*;
@@ -824,7 +825,7 @@ public class Main extends Builder {
             NetworkAccess network = buildJavaNetworkAccess(api, ! peergosUrl.startsWith("http://localhost")).join();
 
             Crypto crypto = initCrypto();
-            UserContext userContext = UserContext.signIn(username, password, network, crypto).join();
+            UserContext userContext = UserContext.signIn(username, password, Main::getMfaResponseCLI, network, crypto).join();
             PeergosFS peergosFS = new PeergosFS(userContext);
             FuseProcess fuseProcess = new FuseProcess(peergosFS, path);
 
@@ -838,6 +839,16 @@ public class Main extends Builder {
         }
     }
 
+    public static CompletableFuture<MultiFactorAuthResponse> getMfaResponseCLI(List<MultiFactorAuthMethod> methods) {
+        Optional<MultiFactorAuthMethod> anyTotp = methods.stream().filter(m -> m.type == MultiFactorAuthMethod.Type.TOTP).findFirst();
+        if (anyTotp.isEmpty())
+            throw new IllegalStateException("No supported 2 factor auth method! " + methods);
+        MultiFactorAuthMethod totp = anyTotp.get();
+        System.out.println("Enter TOTP code for login");
+        Console console = System.console();
+        String code = console.readLine().trim();
+        return Futures.of(new MultiFactorAuthResponse(totp.uid, code));
+    }
 
     public static IpfsWrapper startIpfs(Args a) {
         // test if ipfs is already running
@@ -878,7 +889,7 @@ public class Main extends Builder {
             String username = console.readLine("Enter username to migrate to this server: ");
             String password = new String(console.readPassword("Enter password for " + username + ": "));
 
-            UserContext user = UserContext.signIn(username, password, network, crypto).join();
+            UserContext user = UserContext.signIn(username, password, Main::getMfaResponseCLI, network, crypto).join();
             List<UserPublicKeyLink> existing = user.network.coreNode.getChain(username).join();
             Multihash currentStorageNodeId = existing.get(existing.size() - 1).claim.storageProviders.stream().findFirst().get();
             Multihash newStorageNodeId = network.dhtClient.id().join();

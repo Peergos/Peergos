@@ -5,6 +5,7 @@ import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.io.ipfs.multihash.*;
+import peergos.shared.login.mfa.*;
 import peergos.shared.mutable.*;
 import peergos.shared.storage.*;
 import peergos.shared.storage.auth.*;
@@ -15,6 +16,9 @@ import java.util.*;
 import java.util.concurrent.*;
 import java.util.stream.*;
 
+/** Oplog is used  during signup to atomically apply a set of operations
+ *
+ */
 public class OpLog implements Cborable, Account, MutablePointers, ContentAddressedStorage, BatCave {
     private static final int ED25519_SIGNATURE_SIZE = 64;
 
@@ -54,16 +58,37 @@ public class OpLog implements Cborable, Account, MutablePointers, ContentAddress
     }
 
     @Override
-    public synchronized CompletableFuture<UserStaticData> getLoginData(String username,
-                                                                       PublicSigningKey authorisedReader,
-                                                                       byte[] auth) {
+    public synchronized CompletableFuture<Either<UserStaticData, List<MultiFactorAuthMethod>>> getLoginData(String username,
+                                                                                                            PublicSigningKey authorisedReader,
+                                                                                                            byte[] auth,
+                                                                                                            Optional<MultiFactorAuthResponse>  mfa) {
         if (loginData == null)
             throw new IllegalStateException("No login data present!");
         if (! loginData.left.username.equals(username))
             throw new IllegalStateException("No login data present for " + username);
         if (! loginData.left.authorisedReader.equals(authorisedReader))
             throw new IllegalStateException("You are not authorised to login as " + username);
-        return Futures.of(loginData.left.entryPoints);
+        return Futures.of(Either.a(loginData.left.entryPoints));
+    }
+
+    @Override
+    public CompletableFuture<List<MultiFactorAuthMethod>> getSecondAuthMethods(String username, byte[] auth) {
+        throw new IllegalStateException("Unsupported operation!");
+    }
+
+    @Override
+    public CompletableFuture<Boolean> enableTotpFactor(String username, String uid, String code) {
+        throw new IllegalStateException("Unsupported operation!");
+    }
+
+    @Override
+    public CompletableFuture<Boolean> deleteSecondFactor(String username, String uid, byte[] auth) {
+        throw new IllegalStateException("Unsupported operation!");
+    }
+
+    @Override
+    public CompletableFuture<TotpKey> addTotpFactor(String username, byte[] auth) {
+        throw new IllegalStateException("Unsupported operation!");
     }
 
     @Override
