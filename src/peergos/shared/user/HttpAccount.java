@@ -90,21 +90,62 @@ public class HttpAccount implements AccountProxy {
 
     @Override
     public CompletableFuture<List<MultiFactorAuthMethod>> getSecondAuthMethods(String username, byte[] auth) {
-        throw new IllegalStateException("TODO");
+        return getSecondAuthMethods(directUrlPrefix, direct, username, auth);
     }
 
     @Override
-    public CompletableFuture<Boolean> enableTotpFactor(String username, String uid, String code) {
-        throw new IllegalStateException("TODO");
+    public CompletableFuture<List<MultiFactorAuthMethod>> getSecondAuthMethods(Multihash targetServerId, String username, byte[] auth) {
+        return getSecondAuthMethods(getProxyUrlPrefix(targetServerId), p2p, username, auth);
     }
 
-    @Override
-    public CompletableFuture<Boolean> deleteSecondFactor(String username, String uid, byte[] auth) {
-        throw new IllegalStateException("TODO");
+    private CompletableFuture<List<MultiFactorAuthMethod>> getSecondAuthMethods(String urlPrefix,
+                                                                                HttpPoster poster,
+                                                                                String username,
+                                                                                byte[] auth) {
+        return poster.get(urlPrefix + Constants.LOGIN_URL + "getMfa?username=" + username
+                        + "&auth=" + ArrayOps.bytesToHex(auth))
+                .thenApply(res -> ((CborObject.CborList)CborObject.fromByteArray(res)).map(MultiFactorAuthMethod::fromCbor));
     }
 
     @Override
     public CompletableFuture<TotpKey> addTotpFactor(String username, byte[] auth) {
+        return addTotpFactor(directUrlPrefix, direct, username, auth);
+    }
+
+    @Override
+    public CompletableFuture<TotpKey> addTotpFactor(Multihash targetServerId, String username, byte[] auth) {
+        return addTotpFactor(getProxyUrlPrefix(targetServerId), p2p, username, auth);
+    }
+
+    private CompletableFuture<TotpKey> addTotpFactor(String urlPrefix, HttpPoster poster, String username, byte[] auth) {
+        return poster.get(urlPrefix + Constants.LOGIN_URL + "addTotp?username=" + username
+                        + "&auth=" + ArrayOps.bytesToHex(auth))
+                .thenApply(res -> TotpKey.fromString(new String(res)));
+    }
+
+    @Override
+    public CompletableFuture<Boolean> enableTotpFactor(String username, String uid, String code) {
+        return enableTotpFactor(directUrlPrefix, direct, username, uid, code);
+    }
+
+    @Override
+    public CompletableFuture<Boolean> enableTotpFactor(Multihash targetServerId, String username, String uid, String code) {
+        return enableTotpFactor(getProxyUrlPrefix(targetServerId), p2p, username, uid, code);
+    }
+
+    private CompletableFuture<Boolean> enableTotpFactor(String urlPrefix,
+                                                        HttpPoster poster,
+                                                        String username,
+                                                        String uid,
+                                                        String code) {
+        return poster.get(urlPrefix + Constants.LOGIN_URL + "enableTotp?username=" + username
+                        + "&uid=" + uid
+                        + "&code=" + code)
+                .thenApply(res -> ((CborObject.CborBoolean)CborObject.fromByteArray(res)).value);
+    }
+
+    @Override
+    public CompletableFuture<Boolean> deleteSecondFactor(String username, String uid, byte[] auth) {
         throw new IllegalStateException("TODO");
     }
 }

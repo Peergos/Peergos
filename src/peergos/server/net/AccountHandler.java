@@ -11,6 +11,7 @@ import peergos.shared.user.*;
 import peergos.shared.util.*;
 
 import java.io.*;
+import java.nio.charset.*;
 import java.util.*;
 
 /** This is the http endpoint for getting and setting encrypted login blobs
@@ -53,7 +54,7 @@ public class AccountHandler implements HttpHandler {
                     boolean isAdded = account.setLoginData(LoginData.fromCbor(CborObject.fromByteArray(payload)), auth).join();
                     dout.writeBoolean(isAdded);
                     break;
-                case "getLogin":
+                case "getLogin": {
                     AggregatedMetrics.LOGIN_GET.inc();
                     String username = params.get("username").get(0);
                     PublicSigningKey authorisedReader = PublicSigningKey.fromByteArray(ArrayOps.hexToBytes(params.get("author").get(0)));
@@ -64,6 +65,30 @@ public class AccountHandler implements HttpHandler {
                     byte[] resBytes = new LoginResponse(res).serialize();
                     dout.write(resBytes);
                     break;
+                }
+                case "getMfa": {
+                    AggregatedMetrics.LOGIN_GET_MFA.inc();
+                    String username = params.get("username").get(0);
+                    List<MultiFactorAuthMethod> res = account.getSecondAuthMethods(username, auth).join();
+                    dout.write(new CborObject.CborList(res).serialize());
+                    break;
+                }
+                case "addTotp": {
+                    AggregatedMetrics.LOGIN_ADD_TOTP.inc();
+                    String username = params.get("username").get(0);
+                    TotpKey res = account.addTotpFactor(username, auth).join();
+                    dout.write(res.encode().getBytes(StandardCharsets.UTF_8));
+                    break;
+                }
+                case "enableTotp": {
+                    AggregatedMetrics.LOGIN_ENABLE_TOTP.inc();
+                    String username = params.get("username").get(0);
+                    String uid = params.get("uid").get(0);
+                    String code = params.get("code").get(0);
+                    boolean res = account.enableTotpFactor(username, uid, code).join();
+                    dout.write(new CborObject.CborBoolean(res).serialize());
+                    break;
+                }
                 default:
                     throw new IOException("Unknown method in AccountHandler!");
             }

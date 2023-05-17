@@ -14,7 +14,7 @@ public class TotpKey {
         return new Base32().encodeToString(key).replaceAll("=","");
     }
 
-    public TotpKey fromString(String base32) {
+    public static TotpKey fromString(String base32) {
         return new TotpKey(new Base32().decode(base32));
     }
 }

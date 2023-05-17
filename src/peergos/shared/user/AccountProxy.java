@@ -21,4 +21,10 @@ public interface AccountProxy extends Account {
                                                                                         byte[] auth,
                                                                                         Optional<MultiFactorAuthResponse>  mfa);
 
+    CompletableFuture<List<MultiFactorAuthMethod>> getSecondAuthMethods(Multihash targetServerId, String username, byte[] auth);
+
+    CompletableFuture<TotpKey> addTotpFactor(Multihash targetServerId, String username, byte[] auth);
+
+    CompletableFuture<Boolean> enableTotpFactor(Multihash targetServerId, String username, String uid, String code);
+
 }

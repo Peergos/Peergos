@@ -50,7 +50,7 @@ public class ProxyingAccount implements Account {
                 serverId,
                 idOpt.get(),
                 () -> local.addTotpFactor(username, auth),
-                target -> p2p.addTotpFactor(username, auth)));
+                target -> p2p.addTotpFactor(target, username, auth)));
     }
 
     @Override
@@ -59,7 +59,7 @@ public class ProxyingAccount implements Account {
                 serverId,
                 idOpt.get(),
                 () -> local.getSecondAuthMethods(username, auth),
-                target -> p2p.getSecondAuthMethods(username, auth)));
+                target -> p2p.getSecondAuthMethods(target, username, auth)));
     }
 
     @Override
@@ -68,7 +68,7 @@ public class ProxyingAccount implements Account {
                 serverId,
                 idOpt.get(),
                 () -> local.enableTotpFactor(username, uid, code),
-                target -> p2p.enableTotpFactor(username, uid, code)));
+                target -> p2p.enableTotpFactor(target, username, uid, code)));
     }
 
     @Override
