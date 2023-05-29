@@ -66,6 +66,7 @@ public class Main extends Builder {
     public static Command<Boolean> ENSURE_IPFS_INSTALLED = new Command<>("install-ipfs",
             "Download/update IPFS binary. Does nothing if current IPFS binary is up-to-date.",
             args -> {
+                /*
                 Path ipfsExePath = IpfsWrapper.getIpfsExePath(args);
                 File dir = ipfsExePath.getParent().toFile();
                 if (!  dir.isDirectory() && ! dir.mkdirs())
@@ -81,7 +82,7 @@ public class Main extends Builder {
 
                 for (IpfsInstaller.Plugin plugin : plugins) {
                     plugin.ensureInstalled(ipfsDir);
-                }
+                }*/
                 return true;
             },
             Arrays.asList(
@@ -126,7 +127,6 @@ public class Main extends Builder {
                                     "/ip6/2a03:b0c0:0:1010::23:1001/tcp/4001/p2p/QmSoLer265NRgSp2LA3dPaeykiS1J6DifTC88f5uVQKNAd",
                                     "/ip4/104.131.131.82/udp/4001/quic/p2p/QmaCpDMGvV2BGHeYERUEnRQAwe3N8SzbUtfsmvsqQLuvuJ"
                             ).collect(Collectors.joining(","))),
-                    new Command.Arg("ipfs-manage-runtime", "Will manage the IPFS daemon runtime when set (restart on exit)", false, "true"),
                     new Command.Arg("collect-metrics", "Export aggregated metrics", false, "false"),
                     new Command.Arg("metrics.address", "Listen address for serving aggregated metrics", false, "localhost"),
                     new Command.Arg("ipfs.metrics.port", "Port for serving aggregated ipfs metrics", false, "8101")
@@ -862,13 +862,7 @@ public class Main extends Builder {
         }
 
         IpfsWrapper ipfs = IpfsWrapper.build(a);
-
-        if (a.getBoolean("ipfs-manage-runtime", true))
-            IpfsWrapper.launchAndManage(ipfs);
-        else {
-            IpfsWrapper.launchOnce(ipfs);
-        }
-        // wait for daemon to finish starting
+        IpfsWrapper.launch(ipfs);
         ipfs.waitForDaemon(10);
         return ipfs;
     }
