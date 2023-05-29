@@ -331,11 +331,13 @@ public class MirrorCoreNode implements CoreNode {
         usageStore.addWriter(username, chain.owner);
         IpfsCoreNode.applyOpLog(username, chain.owner, setupOperations, ipfs, localPointers, account, batCave);
         writeTarget.completePaidSignup(username, chain, setupOperations, signedSpaceRequest, proof).join();
-        try {
-            update();
-        } catch (Throwable t) {
-            LOG.log(Level.WARNING, "Failed to update local PKI during completePaidSignup", t);
-        }
+        ForkJoinPool.commonPool().submit(() -> {
+            try {
+                update();
+            } catch (Throwable t) {
+                LOG.log(Level.WARNING, "Failed to update local PKI during completePaidSignup", t);
+            }
+        });
         return Futures.of(new PaymentProperties(0));
     }
 
