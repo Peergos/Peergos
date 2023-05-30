@@ -16,8 +16,8 @@ public class JarHandler extends StaticHandler {
                       boolean includeCsp,
                       boolean isGzip,
                       Path root,
-                      Optional<HttpPoster> appDevTarget) {
-        super(host, blockstoreDomain, frameDomains, appSubdomains, includeCsp, isGzip, appDevTarget);
+                      Map<String, HttpPoster> portals) {
+        super(host, blockstoreDomain, frameDomains, appSubdomains, includeCsp, isGzip, portals);
         this.root = root;
     }
 

@@ -22,7 +22,7 @@ public abstract class StaticHandler implements HttpHandler
     private final List<String> appsubdomains;
     private final List<String> frameDomains;
     private final Map<String, String> appDomains;
-    private final Optional<HttpPoster> appDevTarget;
+    private final Map<String, HttpPoster> portals;
 
     public StaticHandler(CspHost host,
                          List<String> blockstoreDomain,
@@ -30,7 +30,7 @@ public abstract class StaticHandler implements HttpHandler
                          List<String> appSubdomains,
                          boolean includeCsp,
                          boolean isGzip,
-                         Optional<HttpPoster> appDevTarget) {
+                         Map<String, HttpPoster> portals) {
         this.host = host;
         this.includeCsp = includeCsp;
         this.blockstoreDomain = blockstoreDomain;
@@ -39,7 +39,7 @@ public abstract class StaticHandler implements HttpHandler
         this.appDomains = appSubdomains.stream()
                 .collect(Collectors.toMap(s -> s, s -> s));
         this.isGzip = isGzip;
-        this.appDevTarget = appDevTarget;
+        this.portals = portals;
     }
 
     public abstract Asset getAsset(String resourcePath) throws IOException;
@@ -78,24 +78,31 @@ public abstract class StaticHandler implements HttpHandler
 
             boolean isRoot = path.equals("index.html");
             Asset res;
-            boolean isAppDevResource = false;
-            if (appDevTarget.isEmpty() || ! isSubdomain || ! app.equals("sandbox")) {
+            boolean isPortalResource = false;
+            if (portals.isEmpty() || ! isSubdomain || ! app.equals("sandbox")) {
                 res = getAsset(path);
             } else {
                 try {
                     res = getAsset(path);
                 } catch (Throwable t) {
-                    isAppDevResource = true;
-                    HttpPoster poster = appDevTarget.get();
-                    String urlBase = poster.toString();
-                    String assetPath = path.substring("apps/sandbox/".length());
-                    String fullUrl = urlBase.endsWith("/") ? urlBase + assetPath : urlBase + "/" + assetPath;
-                    byte[] data = poster.get(fullUrl).join();
-                    res = new Asset(data);
+                    isPortalResource = true;
+                    String assetPathStart = path.substring("apps/sandbox/".length());
+                    int portalNameEndIndex = assetPathStart.indexOf("/");
+                    String portalName = assetPathStart.substring(0, portalNameEndIndex);
+                    HttpPoster poster = portals.get(portalName);
+                    if (poster != null) {
+                        String urlBase = poster.toString();
+                        String assetPath = assetPathStart.substring(portalNameEndIndex + 1);
+                        String fullUrl = urlBase.endsWith("/") ? urlBase + assetPath : urlBase + "/" + assetPath;
+                        byte[] data = poster.get(fullUrl).join();
+                        res = new Asset(data);
+                    } else {
+                        res = new Asset(new byte[0]);
+                    }
                 }
             }
 
-            if (isGzip && !isAppDevResource)
+            if (isGzip && !isPortalResource)
                 httpExchange.getResponseHeaders().set("Content-Encoding", "gzip");
             if (path.endsWith(".js"))
                 httpExchange.getResponseHeaders().set("Content-Type", "text/javascript");
@@ -118,7 +125,7 @@ public abstract class StaticHandler implements HttpHandler
                 httpExchange.sendResponseHeaders(200, -1);
                 return;
             }
-            if (! isRoot && ! isAppDevResource) {
+            if (! isRoot && ! isPortalResource) {
                 httpExchange.getResponseHeaders().set("Cache-Control", "public, max-age=600");
                 httpExchange.getResponseHeaders().set("ETag", res.hash);
             }
@@ -211,7 +218,7 @@ public abstract class StaticHandler implements HttpHandler
         Map<String, Asset> cache = new ConcurrentHashMap<>();
         StaticHandler that = this;
 
-        return new StaticHandler(host, blockstoreDomain, frameDomains, appsubdomains, includeCsp, isGzip, appDevTarget) {
+        return new StaticHandler(host, blockstoreDomain, frameDomains, appsubdomains, includeCsp, isGzip, portals) {
             @Override
             public Asset getAsset(String resourcePath) throws IOException {
                 if (! cache.containsKey(resourcePath))

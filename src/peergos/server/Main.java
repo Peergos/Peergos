@@ -19,6 +19,7 @@ import peergos.shared.crypto.*;
 import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.crypto.password.*;
+import peergos.shared.io.ipfs.api.JSONParser;
 import peergos.shared.io.ipfs.multiaddr.*;
 import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.io.ipfs.multihash.*;
@@ -178,7 +179,7 @@ public class Main extends Builder {
                     new Command.Arg("public-server", "Are we a public server? (allow http GETs to API)", false, "false"),
                     new Command.Arg("run-gateway", "Run a local Peergos gateway", false),
                     new Command.Arg("gateway-port", "Port to run a local gateway on", false, "9000"),
-                    new Command.Arg("app-dev-target", "URL for app assets for localhost app development", false),
+                    new Command.Arg("portals", "Json k/v map of portals. ie \"{\"portal1\": \"URL1\",\"portal2\": \"URL2\"}\"", false),
                     new Command.Arg("collect-metrics", "Export aggregated metrics", false, "false"),
                     new Command.Arg("metrics.address", "Listen address for serving aggregated metrics", false, "localhost"),
                     new Command.Arg("metrics.port", "Port for serving aggregated metrics", false, "8001"),
@@ -667,9 +668,16 @@ public class Main extends Builder {
             Optional<Path> webroot = a.hasArg("webroot") ?
                     Optional.of(PathUtil.get(a.getArg("webroot"))) :
                     Optional.empty();
-            Optional<HttpPoster> appDevTarget = a.getOptionalArg("app-dev-target")
-                    .map(url ->  new JavaPoster(HttpUtil.toURL(url),  true));
-            boolean useWebAssetCache = a.getBoolean("webcache", appDevTarget.isEmpty());
+
+            Map<String, HttpPoster> portals = new HashMap<>();
+            Optional<String> portalArg = a.getOptionalArg("portals");
+            if (portalArg.isPresent()) {
+                Map<String, String> jsonMap = (Map) JSONParser.parse(portalArg.get());
+                for(Map.Entry<String, String> kv : jsonMap.entrySet()) {
+                    portals.put(kv.getKey(), new JavaPoster(HttpUtil.toURL(kv.getValue()),  true));
+                }
+            }
+            boolean useWebAssetCache = a.getBoolean("webcache", portals.isEmpty());
             Optional<String> tlsHostname = a.hasArg("tls.keyfile.password") ? Optional.of(listeningHost) : Optional.empty();
             Optional<String> publicHostname = tlsHostname.isPresent() ? tlsHostname : a.getOptionalArg("public-domain");
             Optional<UserService.TlsProperties> tlsProps =
@@ -684,9 +692,9 @@ public class Main extends Builder {
             List<String> frameDomains = paymentDomain.map(Arrays::asList).orElse(Collections.emptyList());
 
             localAPI.initAndStart(localAPIAddress, nodeId, tlsProps, publicHostname, blockstoreDomains, frameDomains, appSubdomains,
-                    a.getBoolean("include-csp", true), basicAuth, webroot, appDevTarget, useWebAssetCache, isPublicServer, maxConnectionQueue, handlerThreads);
+                    a.getBoolean("include-csp", true), basicAuth, webroot, portals, useWebAssetCache, isPublicServer, maxConnectionQueue, handlerThreads);
             p2pAPI.initAndStart(p2pAPIAddress, nodeId, Optional.empty(), publicHostname, blockstoreDomains, frameDomains, appSubdomains,
-                    a.getBoolean("include-csp", true), basicAuth, webroot, Optional.empty(), useWebAssetCache, isPublicServer, maxConnectionQueue, handlerThreads);
+                    a.getBoolean("include-csp", true), basicAuth, webroot, Collections.emptyMap(), useWebAssetCache, isPublicServer, maxConnectionQueue, handlerThreads);
 
             boolean isPkiNode = nodeId.equals(pkiServerNodeId);
             if (! isPkiNode && useIPFS) {

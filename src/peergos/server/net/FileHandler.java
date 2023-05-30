@@ -16,8 +16,8 @@ public class FileHandler extends StaticHandler
                        Path root,
                        boolean includeCsp,
                        boolean isGzip,
-                       Optional<HttpPoster> appDevTarget) {
-        super(host, blockstoreDomain, frameDomains, appSubdomains, includeCsp, isGzip, appDevTarget);
+                       Map<String, HttpPoster> portals) {
+        super(host, blockstoreDomain, frameDomains, appSubdomains, includeCsp, isGzip, portals);
         this.root = root;
     }
 

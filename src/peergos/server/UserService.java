@@ -134,7 +134,7 @@ public class UserService {
                                 boolean includeCsp,
                                 Optional<String> basicAuth,
                                 Optional<Path> webroot,
-                                Optional<HttpPoster> appDevTarget,
+                                Map<String, HttpPoster> portals,
                                 boolean useWebCache,
                                 boolean isPublicServer,
                                 int connectionBacklog,
@@ -225,8 +225,8 @@ public class UserService {
                         new CspHost(CspHost.isLocal(publicHostname.get()) ?
                                 "http://" : "https://", publicHostname.get())  :
                         new CspHost("http://",  local.getHostName(), local.getPort()));
-        StaticHandler handler = webroot.map(p -> (StaticHandler) new FileHandler(host, blockstoreDomains, frameDomains, appSubdomains, p, includeCsp, true, appDevTarget))
-                .orElseGet(() -> new JarHandler(host, blockstoreDomains, frameDomains, appSubdomains, includeCsp, true, PathUtil.get("/webroot"), appDevTarget));
+        StaticHandler handler = webroot.map(p -> (StaticHandler) new FileHandler(host, blockstoreDomains, frameDomains, appSubdomains, p, includeCsp, true, portals))
+                .orElseGet(() -> new JarHandler(host, blockstoreDomains, frameDomains, appSubdomains, includeCsp, true, PathUtil.get("/webroot"), portals));
 
         if (useWebCache) {
             LOG.info("Caching web-resources");
