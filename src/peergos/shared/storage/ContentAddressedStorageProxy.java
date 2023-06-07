@@ -109,7 +109,7 @@ public interface ContentAddressedStorageProxy {
                                                 List<byte[]> signatures,
                                                 List<byte[]> blocks,
                                                 TransactionId tid) {
-            return put(targetServerId, owner, writer, signatures, blocks, "cbor", tid);
+            return put(targetServerId, owner, writer, signatures, blocks, "dag-cbor", tid);
         }
 
         @Override

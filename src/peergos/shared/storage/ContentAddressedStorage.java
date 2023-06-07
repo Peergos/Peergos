@@ -379,7 +379,7 @@ public interface ContentAddressedStorage {
                                                 List<byte[]> signedHashes,
                                                 List<byte[]> blocks,
                                                 TransactionId tid) {
-            return bulkPut(owner, writer, signedHashes, blocks, "cbor", tid, x -> {});
+            return bulkPut(owner, writer, signedHashes, blocks, "dag-cbor", tid, x -> {});
         }
 
         @Override
