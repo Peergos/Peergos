@@ -90,7 +90,8 @@ public class IpfsWrapper implements AutoCloseable {
     }
 
     public static ConfigParams buildConfig(Args args) {
-        Optional<List<MultiAddress>> bootstrapNodes = args.hasArg(IPFS_BOOTSTRAP_NODES) ?
+        Optional<List<MultiAddress>> bootstrapNodes = args.hasArg(IPFS_BOOTSTRAP_NODES)
+                && args.getArg(IPFS_BOOTSTRAP_NODES).trim().length() > 0 ?
                 Optional.of(parseMultiAddresses(args.getArg(IPFS_BOOTSTRAP_NODES))) :
                 Optional.empty();
 
@@ -229,7 +230,7 @@ public class IpfsWrapper implements AutoCloseable {
 
         embeddedIpfs = EmbeddedIpfs.build(ipfsWrapper.ipfsDir,
                 buildBlockStore(config, ipfsWrapper.ipfsDir),
-                config.addresses.getSwarmAddresses(),
+                List.of(config.addresses.getSwarmAddresses().stream().findFirst().get()),
                 config.bootstrap.getBootstrapAddresses(),
                 config.identity,
                 authoriser,
