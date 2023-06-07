@@ -36,8 +36,8 @@ public class WebauthnTest {
             String path = httpExchange.getRequestURI().getPath();
             byte[] html = ("<!DOCTYPE html><html><body>\n" +
                     "<h1>Webauthn test</h1>\n" +
-                    "<button onclick=\"register()\">Register</button><br/>\n" +
-                    "<button onclick=\"login()\">Login</button>\n" +
+                    "<button onclick=\"register()\">Register</button><label id='register'></label><br/>\n" +
+                    "<button onclick=\"login()\">Login</button><label id='login'></label>\n" +
                     "<script type=\"text/javascript\" src=\"webauthn.js\"></script>\n" +
                     "</body></html>").getBytes();
             byte[] js = (
@@ -69,11 +69,12 @@ public class WebauthnTest {
                             "      pubKeyCredParams: [ {type: \"public-key\", alg: -8}, {type: \"public-key\", alg: -7}, {type: \"public-key\", alg: -257}]\n" +
                             "   }\n" +
                             "});\n" +
-                            "console.log(credential.rawId)\n" +
-                            "fetch(\"/registerComplete\", {'method':'POST','body':JSON.stringify({" +
-                            "'attestationObject':toHexString(credential.response.attestationObject),\n"+
-                            "'clientDataJSON': toHexString(credential.response.clientDataJSON)" +
-                            "})})\n" +
+                            "let res = await fetch(\"/registerComplete\", {'method':'POST','body':JSON.stringify({" +
+                            "      'attestationObject':toHexString(credential.response.attestationObject),\n"+
+                            "      'clientDataJSON': toHexString(credential.response.clientDataJSON)" +
+                            "   })\n" +
+                            "}).then(response=>response.json());\n" +
+                            "document.getElementById(\"register\").textContent = res.status;\n" +
                             "}\n" +
                             "async function login() {\n" +
                             "   let init = await fetch(\"/loginStart\").then(response=>response.json());\n" +
@@ -89,12 +90,13 @@ public class WebauthnTest {
                             "         userVerification: \"preferred\",\n" +
                             "      }\n" +
                             "   });\n" +
-                            "   fetch(\"/loginComplete\", {'method':'POST','body':JSON.stringify({" +
-                            "      'authenticatorData':toHexString(credential.response.authenticatorData),\n"+
-                            "      'signature':toHexString(credential.response.signature),\n"+
-                            "      'clientDataJSON': toHexString(credential.response.clientDataJSON)" +
-                            "   })" +
-                            "})\n" +
+                            "   let res = await fetch(\"/loginComplete\", {'method':'POST','body':JSON.stringify({" +
+                            "         'authenticatorData':toHexString(credential.response.authenticatorData),\n"+
+                            "         'signature':toHexString(credential.response.signature),\n"+
+                            "         'clientDataJSON': toHexString(credential.response.clientDataJSON)" +
+                            "      })" +
+                            "   }).then(response=>response.json());\n" +
+                            "   document.getElementById(\"login\").textContent = res.status;\n" +
                             "}").getBytes();
             boolean isHTML = ! path.equals("/webauthn.js");
             byte[] res = isHTML ? html : js;
@@ -104,7 +106,6 @@ public class WebauthnTest {
                 httpExchange.getResponseHeaders().set("Content-Type", "text/javascript");
             httpExchange.sendResponseHeaders(200, res.length);
             httpExchange.getResponseBody().write(res);
-            httpExchange.getResponseBody().flush();
             httpExchange.getResponseBody().close();
         });
         server.createContext("/registerStart", httpExchange -> {
@@ -115,7 +116,6 @@ public class WebauthnTest {
             httpExchange.getResponseHeaders().set("Content-Type", "text/json");
             httpExchange.sendResponseHeaders(200, res.length);
             httpExchange.getResponseBody().write(res);
-            httpExchange.getResponseBody().flush();
             httpExchange.getResponseBody().close();
         });
         server.createContext("/registerComplete", httpExchange -> {
@@ -130,14 +130,18 @@ public class WebauthnTest {
                 Authenticator registered = register(webAuthnManager, registerChallenges.get(registerChallenges.size() - 1),
                         attestationObject, clientDataJSON, clientExtensionJSON, transports);
                 users.add(registered);
-                byte[] res = "{'status':'success'}".getBytes();
+                byte[] res = "{\"status\":\"success\"}".getBytes();
                 httpExchange.getResponseHeaders().set("Content-Type", "text/json");
                 httpExchange.sendResponseHeaders(200, res.length);
                 httpExchange.getResponseBody().write(res);
-                httpExchange.getResponseBody().flush();
                 httpExchange.getResponseBody().close();
             } catch (Throwable e) {
                 e.printStackTrace();
+                byte[] res = "{\"status\":\"error\"}".getBytes();
+                httpExchange.getResponseHeaders().set("Content-Type", "text/json");
+                httpExchange.sendResponseHeaders(200, res.length);
+                httpExchange.getResponseBody().write(res);
+                httpExchange.getResponseBody().close();
             }
         });
         server.createContext("/loginStart", httpExchange -> {
@@ -150,7 +154,6 @@ public class WebauthnTest {
             httpExchange.getResponseHeaders().set("Content-Type", "text/json");
             httpExchange.sendResponseHeaders(200, res.length);
             httpExchange.getResponseBody().write(res);
-            httpExchange.getResponseBody().flush();
             httpExchange.getResponseBody().close();
         });
         server.createContext("/loginComplete", httpExchange -> {
@@ -164,14 +167,18 @@ public class WebauthnTest {
                 login(webAuthnManager, loginChallenges.get(loginChallenges.size() - 1),
                         user.getAttestedCredentialData().getCredentialId(), "peergosuser".getBytes(), user,
                         authenticatorData, clientDataJSON, signature);
-                byte[] res = "{'status':'success'}".getBytes();
+                byte[] res = "{\"status\":\"success\"}".getBytes();
                 httpExchange.getResponseHeaders().set("Content-Type", "text/json");
                 httpExchange.sendResponseHeaders(200, res.length);
                 httpExchange.getResponseBody().write(res);
-                httpExchange.getResponseBody().flush();
                 httpExchange.getResponseBody().close();
             } catch (Throwable e) {
                 e.printStackTrace();
+                byte[] res = "{\"status\":\"error\"}".getBytes();
+                httpExchange.getResponseHeaders().set("Content-Type", "text/json");
+                httpExchange.sendResponseHeaders(200, res.length);
+                httpExchange.getResponseBody().write(res);
+                httpExchange.getResponseBody().close();
             }
         });
         server.start();
