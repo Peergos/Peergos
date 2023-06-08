@@ -62,11 +62,12 @@ public class WebauthnTest {
                             "         challenge: challenge,\n" +
                             "         rp: { name: \"Peergos\" },\n" +
                             "         user: {\n" +
-                            "         id: userId,\n" +
-                            "         name: username,\n" +
-                            "         displayName: username,\n" +
-                            "      },\n" +
-                            "      pubKeyCredParams: [ {type: \"public-key\", alg: -8}, {type: \"public-key\", alg: -7}, {type: \"public-key\", alg: -257}]\n" +
+                            "            id: userId,\n" +
+                            "            name: username,\n" +
+                            "            displayName: username,\n" +
+                            "         },\n" +
+                            "         timeout: 60000,\n" +
+                            "         pubKeyCredParams: [ {type: \"public-key\", alg: -8}, {type: \"public-key\", alg: -7}, {type: \"public-key\", alg: -257}]\n" +
                             "   }\n" +
                             "});\n" +
                             "let res = await fetch(\"/registerComplete\", {'method':'POST','body':JSON.stringify({" +
@@ -87,6 +88,7 @@ public class WebauthnTest {
                             "            type: \"public-key\",\n" +
                             "            id: id\n" +
                             "         }],\n" +
+                            "         timeout: 60000,\n" +
                             "         userVerification: \"preferred\",\n" +
                             "      }\n" +
                             "   });\n" +
