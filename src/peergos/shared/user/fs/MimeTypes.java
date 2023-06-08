@@ -17,6 +17,7 @@ public class MimeTypes {
     final static int[] MP42 = new int[]{'m', 'p', '4', '2'};
     final static int[] M4V = new int[]{'M', '4', 'V', ' '};
     final static int[] AVIF = new int[]{'a', 'v', 'i', 'f'};
+    final static int[] HEIC = new int[]{'h', 'e', 'i', 'c'};
     final static int[] AVC1 = new int[]{'a', 'v', 'c', '1'};
     final static int[] M4A = new int[]{'M', '4', 'A', ' '};
     final static int[] QT = new int[]{'q', 't', ' ', ' '};
@@ -37,6 +38,8 @@ public class MimeTypes {
     final static int[] TIFF2 = new int[]{'M', 'M', 0, 0x2A};
     final static int[] PNG = new int[]{137, 'P', 'N', 'G', 13, 10, 26, 10};
     final static int[] WEBP = new int[]{'W', 'E', 'B', 'P'};
+    final static int[] JPEGXL = new int[]{0xff, 0x0a};
+    final static int[] JPEGXL2 = new int[]{0x00, 0x00, 0x00, 0x0C, 0x4A, 0x58, 0x4C, 0x20, 0x0D, 0x0A, 0x87, 0x0A};
 
     final static int[] PDF = new int[]{0x25, 'P', 'D', 'F'};
     final static int[] ZIP = new int[]{'P', 'K', 3, 4};
@@ -86,6 +89,8 @@ public class MimeTypes {
             return "image/x-icon";
         if (equalArrays(start, RIFF) && equalArrays(start, 8, WEBP))
             return "image/webp";
+        if (equalArrays(start, JPEGXL) || equalArrays(start, JPEGXL2))
+            return "image/jxl";
         // many browsers don't support tiff
         if (equalArrays(start, TIFF1))
             return "image/tiff";
@@ -103,6 +108,8 @@ public class MimeTypes {
                 return "video/m4v";
             if (equalArrays(start, 8, AVIF))
                 return "image/avif";
+            if (equalArrays(start, 8, HEIC))
+                return "image/heic";
             if (equalArrays(start, 8, M4A))
                 return "audio/mp4";
             if (equalArrays(start, 8, AVC1))
