@@ -1,4 +1,4 @@
-package peergos.shared.login.mfa;
+package peergos.server.login;
 
 import com.webauthn4j.*;
 import com.webauthn4j.authenticator.*;

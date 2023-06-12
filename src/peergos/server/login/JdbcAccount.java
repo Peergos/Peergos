@@ -2,7 +2,6 @@ package peergos.server.login;
 
 import com.eatthepath.otp.*;
 import com.webauthn4j.*;
-import com.webauthn4j.data.attestation.statement.*;
 import com.webauthn4j.data.client.*;
 import peergos.server.sql.*;
 import peergos.server.util.Logging;
