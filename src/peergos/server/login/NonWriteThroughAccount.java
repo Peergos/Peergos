@@ -25,10 +25,10 @@ public class NonWriteThroughAccount implements Account {
     }
 
     @Override
-    public CompletableFuture<Either<UserStaticData, List<MultiFactorAuthMethod>>> getLoginData(String username,
-                                                          PublicSigningKey authorisedReader,
-                                                          byte[] auth,
-                                                          Optional<MultiFactorAuthResponse>  mfa) {
+    public CompletableFuture<Either<UserStaticData, MultiFactorAuthRequest>> getLoginData(String username,
+                                                                                          PublicSigningKey authorisedReader,
+                                                                                          byte[] auth,
+                                                                                          Optional<MultiFactorAuthResponse>  mfa) {
         LoginData updated = modifications.get(username);
         if (updated == null)
             return source.getLoginData(username, authorisedReader, auth, mfa);
@@ -41,12 +41,22 @@ public class NonWriteThroughAccount implements Account {
     }
 
     @Override
-    public CompletableFuture<Boolean> enableTotpFactor(String username, String uid, String code) {
+    public CompletableFuture<Boolean> enableTotpFactor(String username, byte[] credentialId, String code) {
         throw new IllegalStateException("TODO");
     }
 
     @Override
-    public CompletableFuture<Boolean> deleteSecondFactor(String username, String uid, byte[] auth) {
+    public CompletableFuture<byte[]> registerSecurityKeyStart(String username, byte[] auth) {
+        throw new IllegalStateException("TODO");
+    }
+
+    @Override
+    public CompletableFuture<Boolean> registerSecurityKeyComplete(String username, MultiFactorAuthResponse resp, byte[] auth) {
+        throw new IllegalStateException("TODO");
+    }
+
+    @Override
+    public CompletableFuture<Boolean> deleteSecondFactor(String username, byte[] credentialId, byte[] auth) {
         throw new IllegalStateException("TODO");
     }
 

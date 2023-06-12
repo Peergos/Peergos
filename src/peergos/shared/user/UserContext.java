@@ -135,7 +135,7 @@ public class UserContext {
 
     public static CompletableFuture<UserContext> signIn(String username,
                                                         String password,
-                                                        Function<List<MultiFactorAuthMethod>, CompletableFuture<MultiFactorAuthResponse>> mfa,
+                                                        MultiFactorAuthSupplier mfa,
                                                         NetworkAccess network,
                                                         Crypto crypto) {
         return signIn(username, password, mfa, network, crypto, t -> {});
@@ -144,7 +144,7 @@ public class UserContext {
     @JsMethod
     public static CompletableFuture<UserContext> signIn(String username,
                                                         String password,
-                                                        Function<List<MultiFactorAuthMethod>, CompletableFuture<MultiFactorAuthResponse>> mfa,
+                                                        MultiFactorAuthSupplier mfa,
                                                         NetworkAccess network,
                                                         Crypto crypto,
                                                         Consumer<String> progressCallback) {
@@ -171,7 +171,7 @@ public class UserContext {
 
     public static CompletableFuture<UserContext> signIn(String username,
                                                         UserWithRoot userWithRoot,
-                                                        Function<List<MultiFactorAuthMethod>, CompletableFuture<MultiFactorAuthResponse>> mfa,
+                                                        MultiFactorAuthSupplier mfa,
                                                         NetworkAccess network,
                                                         Crypto crypto,
                                                         Consumer<String> progressCallback) {
@@ -208,14 +208,14 @@ public class UserContext {
     private static CompletableFuture<UserStaticData> getLoginData(String username,
                                                                   PublicSigningKey loginPub,
                                                                   SecretSigningKey loginSecret,
-                                                                  Function<List<MultiFactorAuthMethod>, CompletableFuture<MultiFactorAuthResponse>> mfa,
+                                                                  MultiFactorAuthSupplier mfa,
                                                                   NetworkAccess network) {
         return network.account.getLoginData(username, loginPub, TimeLimitedClient.signNow(loginSecret), Optional.empty())
                 .thenCompose(res -> {
                     if (res.isA())
                         return Futures.of(res.a());
-                    List<MultiFactorAuthMethod> authMethods = res.b();
-                    return mfa.apply(authMethods)
+                    MultiFactorAuthRequest authReq = res.b();
+                    return mfa.authorise(authReq)
                             .thenCompose(authResp -> network.account.getLoginData(username, loginPub, TimeLimitedClient.signNow(loginSecret), Optional.of(authResp)))
                             .thenApply(login -> {
                                 if (login.isB())
@@ -227,7 +227,7 @@ public class UserContext {
 
     private static CompletableFuture<UserContext> login(String username,
                                                         UserWithRoot generatedCredentials,
-                                                        Function<List<MultiFactorAuthMethod>, CompletableFuture<MultiFactorAuthResponse>> mfa,
+                                                        MultiFactorAuthSupplier mfa,
                                                         Pair<PointerUpdate, CborObject> pair,
                                                         NetworkAccess network,
                                                         Crypto crypto,
@@ -897,7 +897,7 @@ public class UserContext {
     @JsMethod
     public CompletableFuture<UserContext> changePassword(String oldPassword,
                                                          String newPassword,
-                                                         Function<List<MultiFactorAuthMethod>, CompletableFuture<MultiFactorAuthResponse>> mfa) {
+                                                         MultiFactorAuthSupplier mfa) {
         return getKeyGenAlgorithm().thenCompose(alg -> {
             if (oldPassword.equals(newPassword))
                 throw new IllegalStateException("You must change to a different password.");
@@ -914,7 +914,7 @@ public class UserContext {
                                                          SecretGenerationAlgorithm existingAlgorithm,
                                                          SecretGenerationAlgorithm newAlgorithm,
                                                          LocalDate expiry,
-                                                         Function<List<MultiFactorAuthMethod>, CompletableFuture<MultiFactorAuthResponse>> mfa) {
+                                                         MultiFactorAuthSupplier mfa) {
         LOG.info("Changing password and setting expiry to: " + expiry);
         boolean isLegacy = existingAlgorithm.generateBoxerAndIdentity();
         if (! isLegacy && newAlgorithm.generateBoxerAndIdentity())
@@ -1125,7 +1125,7 @@ public class UserContext {
 
     @JsMethod
     public CompletableFuture<Boolean> deleteAccount(String password,
-                                                    Function<List<MultiFactorAuthMethod>, CompletableFuture<MultiFactorAuthResponse>> mfa) {
+                                                    MultiFactorAuthSupplier mfa) {
         return signIn(username, password, mfa, network, crypto)
                 .thenCompose(user -> {
                     // set mutable pointer of root dir writer and owner to EMPTY

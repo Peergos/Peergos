@@ -10,9 +10,9 @@ import java.util.stream.*;
 
 public class LoginResponse implements Cborable {
 
-    public final Either<UserStaticData, List<MultiFactorAuthMethod>> resp;
+    public final Either<UserStaticData, MultiFactorAuthRequest> resp;
 
-    public LoginResponse(Either<UserStaticData, List<MultiFactorAuthMethod>> resp) {
+    public LoginResponse(Either<UserStaticData, MultiFactorAuthRequest> resp) {
         this.resp = resp;
     }
 
@@ -20,8 +20,7 @@ public class LoginResponse implements Cborable {
     public CborObject toCbor() {
         SortedMap<String, Cborable> state = new TreeMap<>();
         state.put("a", new CborObject.CborBoolean(resp.isA()));
-        state.put("r", resp.map(Cborable::toCbor,
-                methods -> new CborObject.CborList(methods.stream().map(Cborable::toCbor).collect(Collectors.toList()))));
+        state.put("r", resp.map(Cborable::toCbor, MultiFactorAuthRequest::toCbor));
         return CborObject.CborMap.build(state);
     }
 
@@ -32,6 +31,6 @@ public class LoginResponse implements Cborable {
         boolean isA = m.getBoolean("a");
         if (isA)
             return new LoginResponse(Either.a(m.get("r", UserStaticData::fromCbor)));
-        return new LoginResponse(Either.b(m.get("r", list -> ((CborObject.CborList)list).map(MultiFactorAuthMethod::fromCbor))));
+        return new LoginResponse(Either.b(m.get("r", MultiFactorAuthRequest::fromCbor)));
     }
 }

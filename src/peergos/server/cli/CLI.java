@@ -13,6 +13,7 @@ import peergos.server.simulation.FileSystem;
 import peergos.server.user.*;
 import peergos.server.util.Logging;
 import peergos.shared.*;
+import peergos.shared.cbor.*;
 import peergos.shared.login.mfa.*;
 import peergos.shared.social.FollowRequestWithCipherText;
 import peergos.shared.user.*;
@@ -657,16 +658,16 @@ public class CLI implements Runnable {
         }
     }
 
-    private static CompletableFuture<MultiFactorAuthResponse> mfa(List<MultiFactorAuthMethod> methods,
+    private static CompletableFuture<MultiFactorAuthResponse> mfa(MultiFactorAuthRequest req,
                                                                   PrintWriter writer,
                                                                   LineReader reader) {
-        Optional<MultiFactorAuthMethod> anyTotp = methods.stream().filter(m -> m.type == MultiFactorAuthMethod.Type.TOTP).findFirst();
+        Optional<MultiFactorAuthMethod> anyTotp = req.methods.stream().filter(m -> m.type == MultiFactorAuthMethod.Type.TOTP).findFirst();
         if (anyTotp.isEmpty())
-            throw new IllegalStateException("No supported 2 factor auth method! " + methods);
+            throw new IllegalStateException("No supported 2 factor auth method! " + req.methods);
         MultiFactorAuthMethod totp = anyTotp.get();
         writer.println("Enter TOTP code for login");
         String code = reader.readLine(PROMPT).trim();
-        return Futures.of(new MultiFactorAuthResponse(totp.uid, code));
+        return Futures.of(new MultiFactorAuthResponse(totp.credentialId, new CborObject.CborString(code)));
     }
 
     public static Terminal buildTerminal() {

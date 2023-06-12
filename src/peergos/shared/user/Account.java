@@ -30,10 +30,10 @@ public interface Account {
      * @param mfa
      * @return
      */
-    CompletableFuture<Either<UserStaticData, List<MultiFactorAuthMethod>>> getLoginData(String username,
-                                                                                        PublicSigningKey authorisedReader,
-                                                                                        byte[] auth,
-                                                                                        Optional<MultiFactorAuthResponse>  mfa);
+    CompletableFuture<Either<UserStaticData, MultiFactorAuthRequest>> getLoginData(String username,
+                                                                                   PublicSigningKey authorisedReader,
+                                                                                   byte[] auth,
+                                                                                   Optional<MultiFactorAuthResponse>  mfa);
 
     /** Auth signed by identity
      *
@@ -50,7 +50,7 @@ public interface Account {
         return getSecondAuthMethods(username, auth);
     }
 
-    CompletableFuture<Boolean> enableTotpFactor(String username, String uid, String code);
+    CompletableFuture<Boolean> enableTotpFactor(String username, byte[] credentialId, String code);
 
     CompletableFuture<TotpKey> addTotpFactor(String username, byte[] auth);
 
@@ -61,13 +61,17 @@ public interface Account {
         return addTotpFactor(username, auth);
     }
 
-    CompletableFuture<Boolean> deleteSecondFactor(String username, String uid, byte[] auth);
+    CompletableFuture<byte[]> registerSecurityKeyStart(String username, byte[] auth);
 
-    default CompletableFuture<Boolean> deleteSecondFactor(String username, String uid, SigningPrivateKeyAndPublicHash identity) {
+    CompletableFuture<Boolean> registerSecurityKeyComplete(String username, MultiFactorAuthResponse resp, byte[] auth);
+
+    CompletableFuture<Boolean> deleteSecondFactor(String username, byte[] credentialId, byte[] auth);
+
+    default CompletableFuture<Boolean> deleteSecondFactor(String username, byte[] credentialId, SigningPrivateKeyAndPublicHash identity) {
         TimeLimitedClient.SignedRequest req =
                 new TimeLimitedClient.SignedRequest(Constants.LOGIN_URL + "deleteMfa", System.currentTimeMillis());
         byte[] auth = req.sign(identity.secret);
-        return deleteSecondFactor(username, uid, auth);
+        return deleteSecondFactor(username, credentialId, auth);
     }
 
 }

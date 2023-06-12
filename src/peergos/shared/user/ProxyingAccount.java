@@ -33,10 +33,10 @@ public class ProxyingAccount implements Account {
     }
 
     @Override
-    public CompletableFuture<Either<UserStaticData, List<MultiFactorAuthMethod>>> getLoginData(String username,
-                                                                                               PublicSigningKey authorisedReader,
-                                                                                               byte[] auth,
-                                                                                               Optional<MultiFactorAuthResponse>  mfa) {
+    public CompletableFuture<Either<UserStaticData, MultiFactorAuthRequest>> getLoginData(String username,
+                                                                                          PublicSigningKey authorisedReader,
+                                                                                          byte[] auth,
+                                                                                          Optional<MultiFactorAuthResponse>  mfa) {
         return core.getPublicKeyHash(username).thenCompose(idOpt -> Proxy.redirectCall(core,
                 serverId,
                 idOpt.get(),
@@ -54,6 +54,16 @@ public class ProxyingAccount implements Account {
     }
 
     @Override
+    public CompletableFuture<byte[]> registerSecurityKeyStart(String username, byte[] auth) {
+        throw new IllegalStateException("TODO");
+    }
+
+    @Override
+    public CompletableFuture<Boolean> registerSecurityKeyComplete(String username, MultiFactorAuthResponse resp, byte[] auth) {
+        throw new IllegalStateException("TODO");
+    }
+
+    @Override
     public CompletableFuture<List<MultiFactorAuthMethod>> getSecondAuthMethods(String username, byte[] auth) {
         return core.getPublicKeyHash(username).thenCompose(idOpt -> Proxy.redirectCall(core,
                 serverId,
@@ -63,20 +73,20 @@ public class ProxyingAccount implements Account {
     }
 
     @Override
-    public CompletableFuture<Boolean> enableTotpFactor(String username, String uid, String code) {
+    public CompletableFuture<Boolean> enableTotpFactor(String username, byte[] credentialId, String code) {
         return core.getPublicKeyHash(username).thenCompose(idOpt -> Proxy.redirectCall(core,
                 serverId,
                 idOpt.get(),
-                () -> local.enableTotpFactor(username, uid, code),
-                target -> p2p.enableTotpFactor(target, username, uid, code)));
+                () -> local.enableTotpFactor(username, credentialId, code),
+                target -> p2p.enableTotpFactor(target, username, credentialId, code)));
     }
 
     @Override
-    public CompletableFuture<Boolean> deleteSecondFactor(String username, String uid, byte[] auth) {
+    public CompletableFuture<Boolean> deleteSecondFactor(String username, byte[] credentialId, byte[] auth) {
         return core.getPublicKeyHash(username).thenCompose(idOpt -> Proxy.redirectCall(core,
                 serverId,
                 idOpt.get(),
-                () -> local.deleteSecondFactor(username, uid, auth),
-                target -> p2p.deleteSecondFactor(username, uid, auth)));
+                () -> local.deleteSecondFactor(username, credentialId, auth),
+                target -> p2p.deleteSecondFactor(username, credentialId, auth)));
     }
 }

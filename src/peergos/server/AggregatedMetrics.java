@@ -45,6 +45,8 @@ public class AggregatedMetrics {
     public static final Counter LOGIN_GET_MFA  = build("login_get_mfa", "Total get mfa calls.");
     public static final Counter LOGIN_ADD_TOTP  = build("login_add_totp", "Total add totp calls.");
     public static final Counter LOGIN_ENABLE_TOTP  = build("login_enable_totp", "Total enable totp calls.");
+    public static final Counter LOGIN_WEBAUTHN_START  = build("login_webauthn_start", "Total webauthn start calls.");
+    public static final Counter LOGIN_WEBAUTHN_COMPLETE  = build("login_webauthn_complete", "Total webauthn complete calls.");
     public static final Counter LOGIN_DELETE_MFA  = build("login_delete_mfa", "Total delete mfa calls.");
 
     public static final Counter BAT_ADD  = build("bat_add", "Total addBat calls.");

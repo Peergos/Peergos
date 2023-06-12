@@ -58,10 +58,10 @@ public class OpLog implements Cborable, Account, MutablePointers, ContentAddress
     }
 
     @Override
-    public synchronized CompletableFuture<Either<UserStaticData, List<MultiFactorAuthMethod>>> getLoginData(String username,
-                                                                                                            PublicSigningKey authorisedReader,
-                                                                                                            byte[] auth,
-                                                                                                            Optional<MultiFactorAuthResponse>  mfa) {
+    public synchronized CompletableFuture<Either<UserStaticData, MultiFactorAuthRequest>> getLoginData(String username,
+                                                                                                       PublicSigningKey authorisedReader,
+                                                                                                       byte[] auth,
+                                                                                                       Optional<MultiFactorAuthResponse> mfa) {
         if (loginData == null)
             throw new IllegalStateException("No login data present!");
         if (! loginData.left.username.equals(username))
@@ -77,12 +77,22 @@ public class OpLog implements Cborable, Account, MutablePointers, ContentAddress
     }
 
     @Override
-    public CompletableFuture<Boolean> enableTotpFactor(String username, String uid, String code) {
+    public CompletableFuture<Boolean> enableTotpFactor(String username, byte[] credentialId, String code) {
         throw new IllegalStateException("Unsupported operation!");
     }
 
     @Override
-    public CompletableFuture<Boolean> deleteSecondFactor(String username, String uid, byte[] auth) {
+    public CompletableFuture<byte[]> registerSecurityKeyStart(String username, byte[] auth) {
+        throw new IllegalStateException("Unsupported operation!");
+    }
+
+    @Override
+    public CompletableFuture<Boolean> registerSecurityKeyComplete(String username, MultiFactorAuthResponse resp, byte[] auth) {
+        throw new IllegalStateException("Unsupported operation!");
+    }
+
+    @Override
+    public CompletableFuture<Boolean> deleteSecondFactor(String username, byte[] credentialId, byte[] auth) {
         throw new IllegalStateException("Unsupported operation!");
     }
 

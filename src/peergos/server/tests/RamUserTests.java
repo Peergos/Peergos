@@ -8,6 +8,7 @@ import peergos.server.*;
 import peergos.server.tests.util.*;
 import peergos.server.util.*;
 import peergos.shared.*;
+import peergos.shared.cbor.*;
 import peergos.shared.login.mfa.*;
 import peergos.shared.social.*;
 import peergos.shared.user.*;
@@ -92,21 +93,21 @@ public class RamUserTests extends UserTests {
 
         Instant now = Instant.now();
         String clientCode = totp.generateOneTimePasswordString(key, now);
-        context.network.account.enableTotpFactor(username, mfa.uid, clientCode).join();
+        context.network.account.enableTotpFactor(username, mfa.credentialId, clientCode).join();
 
         List<MultiFactorAuthMethod> enabled = context.network.account.getSecondAuthMethods(username, context.signer).join();
         Assert.assertTrue(enabled.size() == 1 && enabled.get(0).enabled);
 
         // now try logging in again, now with mfa
         AtomicBoolean usedMfa = new AtomicBoolean(false);
-        UserContext freshLogin = UserContext.signIn(username, password, methods -> {
-            Optional<MultiFactorAuthMethod> anyTotp = methods.stream().filter(m -> m.type == MultiFactorAuthMethod.Type.TOTP).findFirst();
+        UserContext freshLogin = UserContext.signIn(username, password, req -> {
+            Optional<MultiFactorAuthMethod> anyTotp = req.methods.stream().filter(m -> m.type == MultiFactorAuthMethod.Type.TOTP).findFirst();
             if (anyTotp.isEmpty())
-                throw new IllegalStateException("No supported 2 factor auth method! " + methods);
+                throw new IllegalStateException("No supported 2 factor auth method! " + req.methods);
             MultiFactorAuthMethod method = anyTotp.get();
             usedMfa.set(true);
             try {
-                return Futures.of(new MultiFactorAuthResponse(method.uid, totp.generateOneTimePasswordString(key, Instant.now())));
+                return Futures.of(new MultiFactorAuthResponse(method.credentialId, new CborObject.CborString(totp.generateOneTimePasswordString(key, Instant.now()))));
             } catch (InvalidKeyException e) {
                 throw new RuntimeException(e);
             }
@@ -114,7 +115,7 @@ public class RamUserTests extends UserTests {
         Assert.assertTrue(usedMfa.get());
 
         // Now delete the second factor and login again without MFA
-        context.network.account.deleteSecondFactor(username, enabled.get(0).uid, context.signer).join();
+        context.network.account.deleteSecondFactor(username, enabled.get(0).credentialId, context.signer).join();
         Assert.assertTrue(context.network.account.getSecondAuthMethods(username, context.signer).join().isEmpty());
     }
 

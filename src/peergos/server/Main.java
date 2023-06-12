@@ -1,5 +1,6 @@
 package peergos.server;
 
+import com.webauthn4j.data.client.*;
 import peergos.server.cli.CLI;
 import peergos.server.login.*;
 import peergos.server.messages.*;
@@ -597,7 +598,12 @@ public class Main extends Builder {
 
             JdbcIpnsAndSocial rawSocial = new JdbcIpnsAndSocial(getDBConnector(a, "social-sql-file", dbConnectionPool), sqlCommands);
             HttpSpaceUsage httpSpaceUsage = new HttpSpaceUsage(p2pHttpProxy, p2pHttpProxy);
-            JdbcAccount rawAccount = new JdbcAccount(getDBConnector(a, "account-sql-file", dbConnectionPool), sqlCommands);
+
+            Optional<String> tlsHostname = a.hasArg("tls.keyfile.password") ? Optional.of(listeningHost) : Optional.empty();
+            Optional<String> publicHostname = tlsHostname.isPresent() ? tlsHostname : a.getOptionalArg("public-domain");
+            Origin origin = new Origin(publicHostname.map(host -> "https://" + host).orElse("http://localhost:" + webPort));
+            String rpId = publicHostname.orElse("localhost");
+            JdbcAccount rawAccount = new JdbcAccount(getDBConnector(a, "account-sql-file", dbConnectionPool), sqlCommands, origin, rpId);
             Account account = new AccountWithStorage(localStorage, localPointers, rawAccount);
             AccountProxy accountProxy = new HttpAccount(p2pHttpProxy, pkiServerNodeId);
 
@@ -671,8 +677,6 @@ public class Main extends Builder {
             Optional<HttpPoster> appDevTarget = a.getOptionalArg("app-dev-target")
                     .map(url ->  new JavaPoster(HttpUtil.toURL(url),  true));
             boolean useWebAssetCache = a.getBoolean("webcache", appDevTarget.isEmpty());
-            Optional<String> tlsHostname = a.hasArg("tls.keyfile.password") ? Optional.of(listeningHost) : Optional.empty();
-            Optional<String> publicHostname = tlsHostname.isPresent() ? tlsHostname : a.getOptionalArg("public-domain");
             Optional<UserService.TlsProperties> tlsProps =
                     tlsHostname.map(host -> new UserService.TlsProperties(host, a.getArg("tls.keyfile.password")));
             int maxConnectionQueue = a.getInt("max-connection-queue", 500);
@@ -839,15 +843,15 @@ public class Main extends Builder {
         }
     }
 
-    public static CompletableFuture<MultiFactorAuthResponse> getMfaResponseCLI(List<MultiFactorAuthMethod> methods) {
-        Optional<MultiFactorAuthMethod> anyTotp = methods.stream().filter(m -> m.type == MultiFactorAuthMethod.Type.TOTP).findFirst();
+    public static CompletableFuture<MultiFactorAuthResponse> getMfaResponseCLI(MultiFactorAuthRequest req) {
+        Optional<MultiFactorAuthMethod> anyTotp = req.methods.stream().filter(m -> m.type == MultiFactorAuthMethod.Type.TOTP).findFirst();
         if (anyTotp.isEmpty())
-            throw new IllegalStateException("No supported 2 factor auth method! " + methods);
+            throw new IllegalStateException("No supported 2 factor auth method! " + req.methods);
         MultiFactorAuthMethod totp = anyTotp.get();
         System.out.println("Enter TOTP code for login");
         Console console = System.console();
         String code = console.readLine().trim();
-        return Futures.of(new MultiFactorAuthResponse(totp.uid, code));
+        return Futures.of(new MultiFactorAuthResponse(totp.credentialId, new CborObject.CborString(code)));
     }
 
     public static IpfsWrapper startIpfs(Args a) {

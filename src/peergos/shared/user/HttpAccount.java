@@ -59,28 +59,28 @@ public class HttpAccount implements AccountProxy {
     }
 
     @Override
-    public CompletableFuture<Either<UserStaticData, List<MultiFactorAuthMethod>>> getLoginData(String username,
-                                                                                               PublicSigningKey authorisedReader,
-                                                                                               byte[] auth,
-                                                                                               Optional<MultiFactorAuthResponse>  mfa) {
+    public CompletableFuture<Either<UserStaticData, MultiFactorAuthRequest>> getLoginData(String username,
+                                                                                          PublicSigningKey authorisedReader,
+                                                                                          byte[] auth,
+                                                                                          Optional<MultiFactorAuthResponse>  mfa) {
         return getLoginData(directUrlPrefix, direct, username, authorisedReader, auth,  mfa);
     }
 
     @Override
-    public CompletableFuture<Either<UserStaticData, List<MultiFactorAuthMethod>>> getLoginData(Multihash targetServerId,
-                                                                                               String username,
-                                                                                               PublicSigningKey authorisedReader,
-                                                                                               byte[] auth,
-                                                                                               Optional<MultiFactorAuthResponse>  mfa) {
+    public CompletableFuture<Either<UserStaticData, MultiFactorAuthRequest>> getLoginData(Multihash targetServerId,
+                                                                                          String username,
+                                                                                          PublicSigningKey authorisedReader,
+                                                                                          byte[] auth,
+                                                                                          Optional<MultiFactorAuthResponse>  mfa) {
         return getLoginData(getProxyUrlPrefix(targetServerId), p2p, username, authorisedReader, auth, mfa);
     }
 
-    private CompletableFuture<Either<UserStaticData, List<MultiFactorAuthMethod>>> getLoginData(String urlPrefix,
-                                                                                                HttpPoster poster,
-                                                                                                String username,
-                                                                                                PublicSigningKey authorisedReader,
-                                                                                                byte[] auth,
-                                                                                                Optional<MultiFactorAuthResponse>  mfa) {
+    private CompletableFuture<Either<UserStaticData, MultiFactorAuthRequest>> getLoginData(String urlPrefix,
+                                                                                           HttpPoster poster,
+                                                                                           String username,
+                                                                                           PublicSigningKey authorisedReader,
+                                                                                           byte[] auth,
+                                                                                           Optional<MultiFactorAuthResponse>  mfa) {
         return poster.get(urlPrefix + Constants.LOGIN_URL + "getLogin?username=" + username
                         + "&author=" + ArrayOps.bytesToHex(authorisedReader.serialize())
                         + "&auth=" + ArrayOps.bytesToHex(auth)
@@ -102,7 +102,7 @@ public class HttpAccount implements AccountProxy {
                                                                                 HttpPoster poster,
                                                                                 String username,
                                                                                 byte[] auth) {
-        return poster.get(urlPrefix + Constants.LOGIN_URL + "getMfa?username=" + username
+        return poster.get(urlPrefix + Constants.LOGIN_URL + "listMfa?username=" + username
                         + "&auth=" + ArrayOps.bytesToHex(auth))
                 .thenApply(res -> ((CborObject.CborList)CborObject.fromByteArray(res)).map(MultiFactorAuthMethod::fromCbor));
     }
@@ -124,43 +124,56 @@ public class HttpAccount implements AccountProxy {
     }
 
     @Override
-    public CompletableFuture<Boolean> enableTotpFactor(String username, String uid, String code) {
-        return enableTotpFactor(directUrlPrefix, direct, username, uid, code);
+    public CompletableFuture<Boolean> enableTotpFactor(String username, byte[] credentialId, String code) {
+        return enableTotpFactor(directUrlPrefix, direct, username, credentialId, code);
     }
 
     @Override
-    public CompletableFuture<Boolean> enableTotpFactor(Multihash targetServerId, String username, String uid, String code) {
-        return enableTotpFactor(getProxyUrlPrefix(targetServerId), p2p, username, uid, code);
+    public CompletableFuture<Boolean> enableTotpFactor(Multihash targetServerId, String username, byte[] credentialId, String code) {
+        return enableTotpFactor(getProxyUrlPrefix(targetServerId), p2p, username, credentialId, code);
     }
 
     private CompletableFuture<Boolean> enableTotpFactor(String urlPrefix,
                                                         HttpPoster poster,
                                                         String username,
-                                                        String uid,
+                                                        byte[] credentialId,
                                                         String code) {
         return poster.get(urlPrefix + Constants.LOGIN_URL + "enableTotp?username=" + username
-                        + "&uid=" + uid
+                        + "&uid=" + ArrayOps.bytesToHex(credentialId)
                         + "&code=" + code)
                 .thenApply(res -> ((CborObject.CborBoolean)CborObject.fromByteArray(res)).value);
     }
 
     @Override
-    public CompletableFuture<Boolean> deleteSecondFactor(String username, String uid, byte[] auth) {
-        return deleteSecondFactor(directUrlPrefix, direct, username, uid, auth);
+    public CompletableFuture<byte[]> registerSecurityKeyStart(String username, byte[] auth) {
+        return direct.get(directUrlPrefix + Constants.LOGIN_URL + "registerWebauthnStart?username=" + username
+                + "&auth=" + ArrayOps.bytesToHex(auth));
     }
 
     @Override
-    public CompletableFuture<Boolean> deleteSecondFactor(Multihash targetServerId, String username, String uid, byte[] auth) {
-        return deleteSecondFactor(getProxyUrlPrefix(targetServerId), p2p, username, uid, auth);
+    public CompletableFuture<Boolean> registerSecurityKeyComplete(String username, MultiFactorAuthResponse resp, byte[] auth) {
+        return direct.post(directUrlPrefix + Constants.LOGIN_URL + "registerWebauthnComplete?username=" + username
+                + "&auth=" + ArrayOps.bytesToHex(auth), resp.serialize(), true)
+                .thenApply(res -> ((CborObject.CborBoolean)CborObject.fromByteArray(res)).value);
+    }
+
+    @Override
+    public CompletableFuture<Boolean> deleteSecondFactor(String username, byte[] credentialId, byte[] auth) {
+        return deleteSecondFactor(directUrlPrefix, direct, username, credentialId, auth);
+    }
+
+    @Override
+    public CompletableFuture<Boolean> deleteSecondFactor(Multihash targetServerId, String username, byte[] credentialId, byte[] auth) {
+        return deleteSecondFactor(getProxyUrlPrefix(targetServerId), p2p, username, credentialId, auth);
     }
 
     private CompletableFuture<Boolean> deleteSecondFactor(String urlPrefix,
-                                                        HttpPoster poster,
-                                                        String username,
-                                                        String uid,
-                                                        byte[] auth) {
+                                                          HttpPoster poster,
+                                                          String username,
+                                                          byte[] credentialId,
+                                                          byte[] auth) {
         return poster.get(urlPrefix + Constants.LOGIN_URL + "deleteMfa?username=" + username
-                        + "&uid=" + uid
+                        + "&uid=" + ArrayOps.bytesToHex(credentialId)
                         + "&auth=" + ArrayOps.bytesToHex(auth))
                 .thenApply(res -> ((CborObject.CborBoolean)CborObject.fromByteArray(res)).value);
     }
