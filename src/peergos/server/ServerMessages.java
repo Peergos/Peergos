@@ -110,7 +110,8 @@ public class ServerMessages extends Builder {
             MutablePointersProxy proxingMutable = new HttpMutablePointers(buildP2pHttpProxy(a), getPkiServerId(a));
             JdbcIpnsAndSocial rawSocial = new JdbcIpnsAndSocial(getDBConnector(a, "social-sql-file", dbConnectionPool), getSqlCommands(a));
             UsageStore usageStore = new JdbcUsageStore(getDBConnector(a, "space-usage-sql-file", dbConnectionPool), getSqlCommands(a));
-            JdbcAccount account = new JdbcAccount(getDBConnector(a, "account-sql-file", dbConnectionPool), getSqlCommands(a));
+            JdbcAccount account = new JdbcAccount(getDBConnector(a, "account-sql-file", dbConnectionPool),
+                    getSqlCommands(a), new com.webauthn4j.data.client.Origin("http://localhost:8000"), "localhost");
             CoreNode core = buildCorenode(a, localStorage, transactions, rawPointers, localPointers, proxingMutable,
                     rawSocial, usageStore, account, null, new AccountWithStorage(localStorage, localPointers, account), hasher);
             return buildSpaceQuotas(a, localStorage, core,

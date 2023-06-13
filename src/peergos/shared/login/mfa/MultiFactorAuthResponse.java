@@ -6,19 +6,19 @@ import java.util.*;
 
 public class MultiFactorAuthResponse implements Cborable {
 
-    public final String uid;
-    public final String code;
+    public final byte[] credentialId;
+    public final Cborable responseCbor;
 
-    public MultiFactorAuthResponse(String uid, String code) {
-        this.uid = uid;
-        this.code = code;
+    public MultiFactorAuthResponse(byte[] credentialId, Cborable responseCbor) {
+        this.credentialId = credentialId;
+        this.responseCbor = responseCbor;
     }
 
     @Override
     public CborObject toCbor() {
         SortedMap<String, Cborable> state = new TreeMap<>();
-        state.put("u", new CborObject.CborString(uid));
-        state.put("c", new CborObject.CborString(code));
+        state.put("i", new CborObject.CborByteArray(credentialId));
+        state.put("r", responseCbor);
         return CborObject.CborMap.build(state);
     }
 
@@ -26,6 +26,6 @@ public class MultiFactorAuthResponse implements Cborable {
         if (!(cbor instanceof CborObject.CborMap))
             throw new IllegalStateException("Invalid cbor for MultiFactorAuthResponse! " + cbor);
         CborObject.CborMap m = (CborObject.CborMap) cbor;
-        return new MultiFactorAuthResponse(m.getString("u"), m.getString("c"));
+        return new MultiFactorAuthResponse(m.getByteArray("i"), m.get("r"));
     }
 }

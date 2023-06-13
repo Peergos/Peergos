@@ -33,10 +33,10 @@ public class VerifyingAccount implements Account {
     }
 
     @Override
-    public CompletableFuture<Either<UserStaticData, List<MultiFactorAuthMethod>>> getLoginData(String username,
-                                                                                               PublicSigningKey authorisedReader,
-                                                                                               byte[] auth,
-                                                                                               Optional<MultiFactorAuthResponse>  mfa) {
+    public CompletableFuture<Either<UserStaticData, MultiFactorAuthRequest>> getLoginData(String username,
+                                                                                          PublicSigningKey authorisedReader,
+                                                                                          byte[] auth,
+                                                                                          Optional<MultiFactorAuthResponse>  mfa) {
         return target.getLoginData(username, authorisedReader, auth, mfa).thenApply(res -> {
             TimeLimited.isAllowedTime(auth, 24*3600, authorisedReader);
             return res;
@@ -58,14 +58,28 @@ public class VerifyingAccount implements Account {
     }
 
     @Override
-    public CompletableFuture<Boolean> enableTotpFactor(String username, String uid, String code) {
-        return target.enableTotpFactor(username, uid, code);
+    public CompletableFuture<Boolean> enableTotpFactor(String username, byte[] credentialId, String code) {
+        return target.enableTotpFactor(username, credentialId, code);
     }
 
     @Override
-    public CompletableFuture<Boolean> deleteSecondFactor(String username, String uid, byte[] auth) {
+    public CompletableFuture<byte[]> registerSecurityKeyStart(String username, byte[] auth) {
+        PublicKeyHash identityHash = core.getPublicKeyHash(username).join().get();
+        TimeLimited.isAllowed(Constants.LOGIN_URL + "registerWebauthnStart", auth, 24*3600, storage, identityHash);
+        return target.registerSecurityKeyStart(username, auth);
+    }
+
+    @Override
+    public CompletableFuture<Boolean> registerSecurityKeyComplete(String username, MultiFactorAuthResponse resp, byte[] auth) {
+        PublicKeyHash identityHash = core.getPublicKeyHash(username).join().get();
+        TimeLimited.isAllowed(Constants.LOGIN_URL + "registerWebauthnComplete", auth, 24*3600, storage, identityHash);
+        return target.registerSecurityKeyComplete(username, resp, auth);
+    }
+
+    @Override
+    public CompletableFuture<Boolean> deleteSecondFactor(String username, byte[] credentialId, byte[] auth) {
         PublicKeyHash identityHash = core.getPublicKeyHash(username).join().get();
         TimeLimited.isAllowed(Constants.LOGIN_URL + "deleteMfa", auth, 24*3600, storage, identityHash);
-        return target.deleteSecondFactor(username, uid, auth);
+        return target.deleteSecondFactor(username, credentialId, auth);
     }
 }

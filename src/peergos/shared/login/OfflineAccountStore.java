@@ -31,10 +31,10 @@ public class OfflineAccountStore implements Account {
     }
 
     @Override
-    public CompletableFuture<Either<UserStaticData, List<MultiFactorAuthMethod>>> getLoginData(String username,
-                                                                                               PublicSigningKey authorisedReader,
-                                                                                               byte[] auth,
-                                                                                               Optional<MultiFactorAuthResponse>  mfa) {
+    public CompletableFuture<Either<UserStaticData, MultiFactorAuthRequest>> getLoginData(String username,
+                                                                                          PublicSigningKey authorisedReader,
+                                                                                          byte[] auth,
+                                                                                          Optional<MultiFactorAuthResponse>  mfa) {
         return Futures.asyncExceptionally(() -> {
                     if (online.isOnline())
                         return target.getLoginData(username, authorisedReader, auth, mfa)
@@ -57,21 +57,31 @@ public class OfflineAccountStore implements Account {
 
     @Override
     public CompletableFuture<List<MultiFactorAuthMethod>> getSecondAuthMethods(String username, byte[] auth) {
-        throw new IllegalStateException("TODO");
+        return target.getSecondAuthMethods(username, auth);
     }
 
     @Override
-    public CompletableFuture<Boolean> enableTotpFactor(String username, String uid, String code) {
-        throw new IllegalStateException("TODO");
+    public CompletableFuture<Boolean> enableTotpFactor(String username, byte[] credentialId, String code) {
+        return target.enableTotpFactor(username, credentialId, code);
     }
 
     @Override
-    public CompletableFuture<Boolean> deleteSecondFactor(String username, String uid, byte[] auth) {
-        throw new IllegalStateException("TODO");
+    public CompletableFuture<byte[]> registerSecurityKeyStart(String username, byte[] auth) {
+        return target.registerSecurityKeyStart(username, auth);
+    }
+
+    @Override
+    public CompletableFuture<Boolean> registerSecurityKeyComplete(String username, MultiFactorAuthResponse resp, byte[] auth) {
+        return registerSecurityKeyComplete(username, resp, auth);
+    }
+
+    @Override
+    public CompletableFuture<Boolean> deleteSecondFactor(String username, byte[] credentialId, byte[] auth) {
+        return target.deleteSecondFactor(username, credentialId, auth);
     }
 
     @Override
     public CompletableFuture<TotpKey> addTotpFactor(String username, byte[] auth) {
-        throw new IllegalStateException("TODO");
+        return target.addTotpFactor(username, auth);
     }
 }

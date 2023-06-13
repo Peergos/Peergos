@@ -1,6 +1,7 @@
 package peergos.shared.login.mfa;
 
 import peergos.shared.cbor.*;
+import peergos.shared.util.*;
 
 import java.util.*;
 
@@ -10,7 +11,7 @@ public class MultiFactorAuthMethod implements Cborable {
 
     public enum Type {
         TOTP(0x1, false),
-        U2F(0x2, true);
+        WEBAUTHN(0x2, true);
 
         public final int value;
         public final boolean hasChallenge;
@@ -26,12 +27,12 @@ public class MultiFactorAuthMethod implements Cborable {
         }
     }
 
-    public final String uid;
+    public final byte[] credentialId;
     public final Type type;
     public final boolean enabled;
 
-    public MultiFactorAuthMethod(String uid, Type type, boolean enabled) {
-        this.uid = uid;
+    public MultiFactorAuthMethod(byte[] credentialId, Type type, boolean enabled) {
+        this.credentialId = credentialId;
         this.type = type;
         this.enabled = enabled;
     }
@@ -39,7 +40,7 @@ public class MultiFactorAuthMethod implements Cborable {
     @Override
     public CborObject toCbor() {
         SortedMap<String, Cborable> state = new TreeMap<>();
-        state.put("u", new CborObject.CborString(uid));
+        state.put("i", new CborObject.CborByteArray(credentialId));
         state.put("t", new CborObject.CborLong(type.value));
         state.put("e", new CborObject.CborBoolean(enabled));
         return CborObject.CborMap.build(state);
@@ -49,13 +50,13 @@ public class MultiFactorAuthMethod implements Cborable {
         if (!(cbor instanceof CborObject.CborMap))
             throw new IllegalStateException("Invalid cbor for MultiFactorAuthMethod! " + cbor);
         CborObject.CborMap m = (CborObject.CborMap) cbor;
-        return new MultiFactorAuthMethod(m.getString("uid"), Type.byValue((int)m.getLong("t")), m.getBoolean("e"));
+        return new MultiFactorAuthMethod(m.getByteArray("i"), Type.byValue((int)m.getLong("t")), m.getBoolean("e"));
     }
 
     @Override
     public String toString() {
         return "MultiFactorAuthMethod{" +
-                "uid='" + uid + '\'' +
+                "uid='" + ArrayOps.bytesToHex(credentialId) + '\'' +
                 ", type=" + type +
                 ", enabled=" + enabled +
                 '}';

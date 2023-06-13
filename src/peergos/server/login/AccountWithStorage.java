@@ -1,5 +1,6 @@
 package peergos.server.login;
 
+import peergos.shared.cbor.*;
 import peergos.shared.corenode.*;
 import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.login.mfa.*;
@@ -39,10 +40,10 @@ public class AccountWithStorage implements Account {
     }
 
     @Override
-    public CompletableFuture<Either<UserStaticData, List<MultiFactorAuthMethod>>> getLoginData(String username,
-                                                                                               PublicSigningKey authorisedReader,
-                                                                                               byte[] auth,
-                                                                                               Optional<MultiFactorAuthResponse> mfa) {
+    public CompletableFuture<Either<UserStaticData, MultiFactorAuthRequest>> getLoginData(String username,
+                                                                                          PublicSigningKey authorisedReader,
+                                                                                          byte[] auth,
+                                                                                          Optional<MultiFactorAuthResponse> mfa) {
         return target.getEntryData(username, authorisedReader, mfa);
     }
 
@@ -52,17 +53,28 @@ public class AccountWithStorage implements Account {
     }
 
     @Override
-    public CompletableFuture<Boolean> enableTotpFactor(String username, String uid, String code) {
-        return target.enableTotpFactor(username, uid, code);
+    public CompletableFuture<Boolean> enableTotpFactor(String username, byte[] credentialId, String code) {
+        return target.enableTotpFactor(username, credentialId, code);
     }
 
     @Override
-    public CompletableFuture<Boolean> deleteSecondFactor(String username, String uid, byte[] auth) {
-        return target.deleteMfa(username, uid);
+    public CompletableFuture<byte[]> registerSecurityKeyStart(String username, byte[] auth) {
+        return Futures.of(target.registerSecurityKeyStart(username));
+    }
+
+    @Override
+    public CompletableFuture<Boolean> registerSecurityKeyComplete(String username, MultiFactorAuthResponse resp, byte[] auth) {
+        target.registerSecurityKeyComplete(username, resp);
+        return Futures.of(true);
+    }
+
+    @Override
+    public CompletableFuture<Boolean> deleteSecondFactor(String username, byte[] credentialId, byte[] auth) {
+        return target.deleteMfa(username, credentialId);
     }
 
     @Override
     public CompletableFuture<TotpKey> addTotpFactor(String username, byte[] auth) {
-        return target.addTotpFactor(username, auth);
+        return target.addTotpFactor(username);
     }
 }

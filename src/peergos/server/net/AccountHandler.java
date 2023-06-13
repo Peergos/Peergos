@@ -61,12 +61,12 @@ public class AccountHandler implements HttpHandler {
                     Optional<MultiFactorAuthResponse> mfa = params.containsKey("mfa") ?
                             Optional.of(MultiFactorAuthResponse.fromCbor(CborObject.fromByteArray(ArrayOps.hexToBytes(params.get("mfa").get(0))))) :
                             Optional.empty();
-                    Either<UserStaticData, List<MultiFactorAuthMethod>> res = account.getLoginData(username, authorisedReader, auth, mfa).join();
+                    Either<UserStaticData, MultiFactorAuthRequest> res = account.getLoginData(username, authorisedReader, auth, mfa).join();
                     byte[] resBytes = new LoginResponse(res).serialize();
                     dout.write(resBytes);
                     break;
                 }
-                case "getMfa": {
+                case "listMfa": {
                     AggregatedMetrics.LOGIN_GET_MFA.inc();
                     String username = params.get("username").get(0);
                     List<MultiFactorAuthMethod> res = account.getSecondAuthMethods(username, auth).join();
@@ -83,17 +83,33 @@ public class AccountHandler implements HttpHandler {
                 case "enableTotp": {
                     AggregatedMetrics.LOGIN_ENABLE_TOTP.inc();
                     String username = params.get("username").get(0);
-                    String uid = params.get("uid").get(0);
+                    byte[] credentialId = ArrayOps.hexToBytes(params.get("credid").get(0));
                     String code = params.get("code").get(0);
-                    boolean res = account.enableTotpFactor(username, uid, code).join();
+                    boolean res = account.enableTotpFactor(username, credentialId, code).join();
+                    dout.write(new CborObject.CborBoolean(res).serialize());
+                    break;
+                }
+                case "registerWebauthnStart": {
+                    AggregatedMetrics.LOGIN_WEBAUTHN_START.inc();
+                    String username = params.get("username").get(0);
+                    byte[] res = account.registerSecurityKeyStart(username, auth).join();
+                    dout.write(res);
+                    break;
+                }
+                case "registerWebauthnComplete": {
+                    AggregatedMetrics.LOGIN_WEBAUTHN_COMPLETE.inc();
+                    String username = params.get("username").get(0);
+                    byte[] rawAttestation = Serialize.readFully(din, 2048);
+                    MultiFactorAuthResponse keyResponse = MultiFactorAuthResponse.fromCbor(CborObject.fromByteArray(rawAttestation));
+                    boolean res = account.registerSecurityKeyComplete(username, keyResponse, auth).join();
                     dout.write(new CborObject.CborBoolean(res).serialize());
                     break;
                 }
                 case "deleteMfa": {
                     AggregatedMetrics.LOGIN_DELETE_MFA.inc();
                     String username = params.get("username").get(0);
-                    String uid = params.get("uid").get(0);
-                    boolean res = account.deleteSecondFactor(username, uid, auth).join();
+                    byte[] credentialId = ArrayOps.hexToBytes(params.get("credid").get(0));
+                    boolean res = account.deleteSecondFactor(username, credentialId, auth).join();
                     dout.write(new CborObject.CborBoolean(res).serialize());
                     break;
                 }

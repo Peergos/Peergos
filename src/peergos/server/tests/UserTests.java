@@ -212,7 +212,7 @@ public abstract class UserTests {
         Assert.assertTrue("Second sign up fails", secondSignup.isCompletedExceptionally());
     }
 
-    public static CompletableFuture<MultiFactorAuthResponse> noMfa(List<MultiFactorAuthMethod> methods) {
+    public static CompletableFuture<MultiFactorAuthResponse> noMfa(MultiFactorAuthRequest req) {
         throw new IllegalStateException("Unsupported!");
     }
 

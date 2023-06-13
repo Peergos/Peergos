@@ -15,17 +15,21 @@ public interface AccountProxy extends Account {
 
     CompletableFuture<Boolean> setLoginData(Multihash targetServerId, LoginData login, byte[] auth);
 
-    CompletableFuture<Either<UserStaticData, List<MultiFactorAuthMethod>>> getLoginData(Multihash targetServerId,
-                                                                                        String username,
-                                                                                        PublicSigningKey authorisedReader,
-                                                                                        byte[] auth,
-                                                                                        Optional<MultiFactorAuthResponse>  mfa);
+    CompletableFuture<Either<UserStaticData, MultiFactorAuthRequest>> getLoginData(Multihash targetServerId,
+                                                                                   String username,
+                                                                                   PublicSigningKey authorisedReader,
+                                                                                   byte[] auth,
+                                                                                   Optional<MultiFactorAuthResponse>  mfa);
 
     CompletableFuture<List<MultiFactorAuthMethod>> getSecondAuthMethods(Multihash targetServerId, String username, byte[] auth);
 
     CompletableFuture<TotpKey> addTotpFactor(Multihash targetServerId, String username, byte[] auth);
 
-    CompletableFuture<Boolean> enableTotpFactor(Multihash targetServerId, String username, String uid, String code);
+    CompletableFuture<Boolean> enableTotpFactor(Multihash targetServerId, String username, byte[] credentialId, String code);
 
-    CompletableFuture<Boolean> deleteSecondFactor(Multihash targetServerId, String username, String uid, byte[] auth);
+    CompletableFuture<byte[]> registerSecurityKeyStart(Multihash targetServerId, String username, byte[] auth);
+
+    CompletableFuture<Boolean> registerSecurityKeyComplete(Multihash targetServerId, String username, MultiFactorAuthResponse resp, byte[] auth);
+
+    CompletableFuture<Boolean> deleteSecondFactor(Multihash targetServerId, String username, byte[] credentialId, byte[] auth);
 }
