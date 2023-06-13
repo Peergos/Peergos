@@ -66,7 +66,7 @@ public class AccountHandler implements HttpHandler {
                     dout.write(resBytes);
                     break;
                 }
-                case "getMfa": {
+                case "listMfa": {
                     AggregatedMetrics.LOGIN_GET_MFA.inc();
                     String username = params.get("username").get(0);
                     List<MultiFactorAuthMethod> res = account.getSecondAuthMethods(username, auth).join();
