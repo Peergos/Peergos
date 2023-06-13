@@ -277,6 +277,10 @@ public class JdbcAccount implements LoginCache {
     }
 
     public CompletableFuture<Boolean> enableTotpFactor(String username, byte[] credentialId, String code) {
+        List<MultiFactorAuthMethod> olderTotp = getSecondAuthMethods(username).join()
+                .stream()
+                .filter(m -> !Arrays.equals(m.credentialId, credentialId) && m.type == MultiFactorAuthMethod.Type.TOTP)
+                .collect(Collectors.toList());
         validateTotpCode(username, credentialId, code);
         try (Connection conn = getConnection();
              PreparedStatement update = conn.prepareStatement(ENABLE_AUTH)) {
@@ -284,7 +288,10 @@ public class JdbcAccount implements LoginCache {
             update.setString(2, username);
             update.setBytes(3, credentialId);
             update.executeUpdate();
-
+            // now delete any existing old ones
+            for (MultiFactorAuthMethod mfa : olderTotp) {
+                deleteMfa(username, mfa.credentialId).join();
+            }
             return Futures.of(true);
         } catch (Exception e) {
             LOG.log(Level.WARNING, e.getMessage(), e);

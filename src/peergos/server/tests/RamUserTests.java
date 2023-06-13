@@ -106,6 +106,8 @@ public class RamUserTests extends UserTests {
         } catch (Exception e) {
             e.printStackTrace();
         }
+        // test that the old totp is deleted when new one is enabled
+        Assert.assertTrue(context.network.account.getSecondAuthMethods(username, context.signer).join().size() == 1);
     }
 
     private static void testLoginRequiresTotp(String username,
