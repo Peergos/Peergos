@@ -33,6 +33,7 @@ public class JdbcAccount implements LoginCache {
     private static final String UPDATE_MFA = "UPDATE mfa SET value=? WHERE username = ? AND credid = ?;";
     private static final String GET_AUTH = "SELECT value FROM mfa WHERE username = ? AND credid = ?;";
     private static final String CREATE_CHALLENGE = "INSERT INTO mfa_challenge (username, challenge) VALUES(?, ?);";
+    private static final String UPDATE_CHALLENGE = "UPDATE mfa_challenge SET challenge=? WHERE username=?;";
     private static final String GET_CHALLENGE = "SELECT challenge FROM mfa_challenge WHERE username = ?;";
     private static final String ENABLE_AUTH = "UPDATE mfa SET enabled=? WHERE username = ? AND credid = ?;";
     private static final String DELETE_AUTH = "DELETE FROM mfa WHERE username = ? AND credid = ?";
@@ -264,9 +265,8 @@ public class JdbcAccount implements LoginCache {
     private void validateTotpCode(String username, byte[] credentialId, String code) {
         byte[] rawKey = getMfa(username, credentialId);
 
-        String algorithm = "HmacSHA1";
-        TimeBasedOneTimePasswordGenerator totp = new TimeBasedOneTimePasswordGenerator(Duration.ofSeconds(30L), 6, algorithm);
-        Key key = new SecretKeySpec(rawKey, algorithm);
+        TimeBasedOneTimePasswordGenerator totp = new TimeBasedOneTimePasswordGenerator(Duration.ofSeconds(30L), 6, TotpKey.ALGORITHM);
+        Key key = new SecretKeySpec(rawKey, TotpKey.ALGORITHM);
         try {
             String serverCode = totp.generateOneTimePasswordString(key, Instant.now());
             if (!serverCode.equals(code))
@@ -302,15 +302,32 @@ public class JdbcAccount implements LoginCache {
     private byte[] createChallenge(String username) {
         byte[] challenge = new byte[32];
         rnd.nextBytes(challenge);
+        boolean hasChallenge = hasChallenge(username);
         try (Connection conn = getConnection();
-             PreparedStatement update = conn.prepareStatement(CREATE_CHALLENGE)) {
-            update.setString(1, username);
-            update.setBytes(2, challenge);
+             PreparedStatement update = hasChallenge ? conn.prepareStatement(UPDATE_CHALLENGE) : conn.prepareStatement(CREATE_CHALLENGE)) {
+            update.setBytes(1, challenge);
+            update.setString(2, username);
             update.executeUpdate();
             return challenge;
         } catch (Exception e) {
             LOG.log(Level.WARNING, e.getMessage(), e);
             throw new IllegalStateException(e);
+        }
+    }
+
+    private boolean hasChallenge(String username) {
+        try (Connection conn = getConnection();
+             PreparedStatement stmt = conn.prepareStatement(GET_CHALLENGE)) {
+            stmt.setString(1, username);
+            ResultSet rs = stmt.executeQuery();
+            if (rs.next()) {
+                return true;
+            }
+
+            return false;
+        } catch (SQLException sqe) {
+            LOG.log(Level.WARNING, sqe.getMessage(), sqe);
+            throw new RuntimeException(sqe);
         }
     }
 

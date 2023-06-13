@@ -4,6 +4,7 @@ import com.eatthepath.otp.*;
 import org.junit.*;
 import peergos.shared.fingerprint.*;
 import peergos.shared.io.ipfs.multibase.binary.*;
+import peergos.shared.login.mfa.*;
 import peergos.shared.zxing.*;
 import peergos.shared.zxing.common.*;
 import peergos.shared.zxing.qrcode.*;
@@ -18,10 +19,9 @@ public class TotpTest {
     @Test
     public void roundtrip() throws Exception {
         // Google authenticator is hard coded to this and will silently ignore attempts to use HmacSha256. Thanks Google!
-        String algorithm = "HmacSHA1";
-        TimeBasedOneTimePasswordGenerator totp = new TimeBasedOneTimePasswordGenerator(Duration.ofSeconds(30L), 6, algorithm);
+        TimeBasedOneTimePasswordGenerator totp = new TimeBasedOneTimePasswordGenerator(Duration.ofSeconds(30L), 6, TotpKey.ALGORITHM);
         byte[] rawKey = new Base32().decode("W6AWIT4QDM3BIHILNZUHRLAQ7DWAC4IODJBUZWHQGKVKA3DVJQ6Q");
-        Key key = new SecretKeySpec(rawKey, algorithm);
+        Key key = new SecretKeySpec(rawKey, TotpKey.ALGORITHM);
 
         byte[] encoded = key.getEncoded();
         Instant now = Instant.now();

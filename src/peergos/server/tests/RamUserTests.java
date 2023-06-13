@@ -78,27 +78,30 @@ public class RamUserTests extends UserTests {
         UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
         Assert.assertTrue(context.network.account.getSecondAuthMethods(username, context.signer).join().isEmpty());
 
-        TotpKey totpKey = context.network.account.addTotpFactor(context.username, context.signer).join();
-        // User stores totp key in authenticator app via QR code
-
-        List<MultiFactorAuthMethod> disabled = context.network.account.getSecondAuthMethods(username, context.signer).join();
-        Assert.assertTrue(disabled.size() == 1 && !disabled.get(0).enabled);
-
-        // need to verify once to enable the second factor
-        // (to guard against things like google authenticator which silently ignore the algorithm)
-        MultiFactorAuthMethod mfa = disabled.get(0);
-        String algorithm = "HmacSHA1";
-        TimeBasedOneTimePasswordGenerator totp = new TimeBasedOneTimePasswordGenerator(Duration.ofSeconds(30L), 6, algorithm);
-        Key key = new SecretKeySpec(totpKey.key, algorithm);
-
-        Instant now = Instant.now();
-        String clientCode = totp.generateOneTimePasswordString(key, now);
-        context.network.account.enableTotpFactor(username, mfa.credentialId, clientCode).join();
+        TimeBasedOneTimePasswordGenerator totp = new TimeBasedOneTimePasswordGenerator(Duration.ofSeconds(30L), 6, TotpKey.ALGORITHM);
+        Key key = addTotpKey(context, totp);
 
         List<MultiFactorAuthMethod> enabled = context.network.account.getSecondAuthMethods(username, context.signer).join();
         Assert.assertTrue(enabled.size() == 1 && enabled.get(0).enabled);
 
         // now try logging in again, now with mfa
+        testLoginRequiresTotp(username, password, network, totp, key);
+
+        // Now delete the second factor and login again without MFA
+        context.network.account.deleteSecondFactor(username, enabled.get(0).credentialId, context.signer).join();
+        Assert.assertTrue(context.network.account.getSecondAuthMethods(username, context.signer).join().isEmpty());
+        context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
+
+        // now add a new totp key
+        Key key2 = addTotpKey(context, totp);
+        testLoginRequiresTotp(username, password, network, totp, key2);
+    }
+
+    private static void testLoginRequiresTotp(String username,
+                                              String password,
+                                              NetworkAccess network,
+                                              TimeBasedOneTimePasswordGenerator totp,
+                                              Key key) {
         AtomicBoolean usedMfa = new AtomicBoolean(false);
         UserContext freshLogin = UserContext.signIn(username, password, req -> {
             Optional<MultiFactorAuthMethod> anyTotp = req.methods.stream().filter(m -> m.type == MultiFactorAuthMethod.Type.TOTP).findFirst();
@@ -113,10 +116,24 @@ public class RamUserTests extends UserTests {
             }
         }, network, crypto).join();
         Assert.assertTrue(usedMfa.get());
+    }
 
-        // Now delete the second factor and login again without MFA
-        context.network.account.deleteSecondFactor(username, enabled.get(0).credentialId, context.signer).join();
-        Assert.assertTrue(context.network.account.getSecondAuthMethods(username, context.signer).join().isEmpty());
+    private static Key addTotpKey(UserContext context, TimeBasedOneTimePasswordGenerator totp) throws Exception {
+        TotpKey totpKey = context.network.account.addTotpFactor(context.username, context.signer).join();
+        // User stores totp key in authenticator app via QR code
+
+        List<MultiFactorAuthMethod> disabled = context.network.account.getSecondAuthMethods(context.username, context.signer).join();
+        Assert.assertTrue(disabled.size() == 1 && !disabled.get(0).enabled);
+
+        // need to verify once to enable the second factor
+        // (to guard against things like google authenticator which silently ignore the algorithm)
+        MultiFactorAuthMethod mfa = disabled.get(0);
+        Key key = new SecretKeySpec(totpKey.key, TotpKey.ALGORITHM);
+
+        Instant now = Instant.now();
+        String clientCode = totp.generateOneTimePasswordString(key, now);
+        context.network.account.enableTotpFactor(context.username, mfa.credentialId, clientCode).join();
+        return key;
     }
 
     @Test

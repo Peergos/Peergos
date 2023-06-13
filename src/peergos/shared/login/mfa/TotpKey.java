@@ -3,6 +3,7 @@ package peergos.shared.login.mfa;
 import peergos.shared.io.ipfs.multibase.binary.*;
 
 public class TotpKey {
+    public static final String ALGORITHM = "HmacSHA1"; // Can't change this because google authenticator ignores the algorithm!!
 
     public final byte[] key;
 
