@@ -18,7 +18,7 @@ import java.security.*;
 import java.util.*;
 import java.util.concurrent.*;
 
-public class WebauthnTest {
+public class StandaloneWebauthnDemo {
 
     public static void main(String[] args) throws Exception {
         // demo webauthn server and client
