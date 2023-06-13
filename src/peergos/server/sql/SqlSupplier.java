@@ -35,7 +35,7 @@ public interface SqlSupplier {
         return "CREATE TABLE IF NOT EXISTS mfa (username text not null, credid " + getByteArrayType() + " not null, " +
                 "type " + sqlInteger() + " not null, enabled boolean not null, value "
                 + getByteArrayType() + " not null); " +
-                "CREATE UNIQUE INDEX IF NOT EXISTS mfa_index ON mfa (username);";
+                "CREATE INDEX IF NOT EXISTS mfa_index ON mfa (username);";
     }
 
     default String createMfaChallengeTableCommand() {

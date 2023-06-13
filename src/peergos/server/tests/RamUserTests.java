@@ -72,7 +72,7 @@ public class RamUserTests extends UserTests {
     }
 
     @Test
-    public void mfa() throws Exception {
+    public void mfa() throws Throwable {
         String username = generateUsername();
         String password = "password";
         UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
@@ -95,6 +95,17 @@ public class RamUserTests extends UserTests {
         // now add a new totp key
         Key key2 = addTotpKey(context, totp);
         testLoginRequiresTotp(username, password, network, totp, key2);
+
+        // Now add a 3rd which should delete the old one
+        Key key3 = addTotpKey(context, totp);
+        testLoginRequiresTotp(username, password, network, totp, key3);
+        // logging in with old totp key should fail
+        try {
+            testLoginRequiresTotp(username, password, network, totp, key2);
+            throw new Throwable("Shouldn't get here!");
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
     }
 
     private static void testLoginRequiresTotp(String username,
@@ -104,10 +115,10 @@ public class RamUserTests extends UserTests {
                                               Key key) {
         AtomicBoolean usedMfa = new AtomicBoolean(false);
         UserContext freshLogin = UserContext.signIn(username, password, req -> {
-            Optional<MultiFactorAuthMethod> anyTotp = req.methods.stream().filter(m -> m.type == MultiFactorAuthMethod.Type.TOTP).findFirst();
-            if (anyTotp.isEmpty())
+            List<MultiFactorAuthMethod> totps = req.methods.stream().filter(m -> m.type == MultiFactorAuthMethod.Type.TOTP).collect(Collectors.toList());
+            if (totps.isEmpty())
                 throw new IllegalStateException("No supported 2 factor auth method! " + req.methods);
-            MultiFactorAuthMethod method = anyTotp.get();
+            MultiFactorAuthMethod method = totps.get(totps.size() - 1);
             usedMfa.set(true);
             try {
                 return Futures.of(new MultiFactorAuthResponse(method.credentialId, new CborObject.CborString(totp.generateOneTimePasswordString(key, Instant.now()))));
@@ -123,16 +134,16 @@ public class RamUserTests extends UserTests {
         // User stores totp key in authenticator app via QR code
 
         List<MultiFactorAuthMethod> disabled = context.network.account.getSecondAuthMethods(context.username, context.signer).join();
-        Assert.assertTrue(disabled.size() == 1 && !disabled.get(0).enabled);
+        MultiFactorAuthMethod newMfa = disabled.get(disabled.size() - 1);
+        Assert.assertTrue(! newMfa.enabled);
 
         // need to verify once to enable the second factor
         // (to guard against things like google authenticator which silently ignore the algorithm)
-        MultiFactorAuthMethod mfa = disabled.get(0);
         Key key = new SecretKeySpec(totpKey.key, TotpKey.ALGORITHM);
 
         Instant now = Instant.now();
         String clientCode = totp.generateOneTimePasswordString(key, now);
-        context.network.account.enableTotpFactor(context.username, mfa.credentialId, clientCode).join();
+        context.network.account.enableTotpFactor(context.username, newMfa.credentialId, clientCode).join();
         return key;
     }
 

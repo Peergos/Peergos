@@ -270,7 +270,7 @@ public class JdbcAccount implements LoginCache {
         try {
             String serverCode = totp.generateOneTimePasswordString(key, Instant.now());
             if (!serverCode.equals(code))
-                throw new IllegalStateException("Invalid TOTP code");
+                throw new IllegalStateException("Invalid TOTP code for credId " + ArrayOps.bytesToHex(credentialId));
         } catch (InvalidKeyException e) {
             throw new RuntimeException(e);
         }
