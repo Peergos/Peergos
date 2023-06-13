@@ -55,12 +55,22 @@ public class ProxyingAccount implements Account {
 
     @Override
     public CompletableFuture<byte[]> registerSecurityKeyStart(String username, byte[] auth) {
-        throw new IllegalStateException("TODO");
+        return core.getPublicKeyHash(username).thenCompose(idOpt -> Proxy.redirectCall(core,
+                serverId,
+                idOpt.get(),
+                () -> local.registerSecurityKeyStart(username, auth),
+                target -> p2p.registerSecurityKeyStart(target, username, auth)));
     }
+
+
 
     @Override
     public CompletableFuture<Boolean> registerSecurityKeyComplete(String username, MultiFactorAuthResponse resp, byte[] auth) {
-        throw new IllegalStateException("TODO");
+        return core.getPublicKeyHash(username).thenCompose(idOpt -> Proxy.redirectCall(core,
+                serverId,
+                idOpt.get(),
+                () -> local.registerSecurityKeyComplete(username, resp, auth),
+                target -> p2p.registerSecurityKeyComplete(target, username, resp, auth)));
     }
 
     @Override

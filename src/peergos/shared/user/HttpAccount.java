@@ -124,6 +124,37 @@ public class HttpAccount implements AccountProxy {
     }
 
     @Override
+    public CompletableFuture<byte[]> registerSecurityKeyStart(String username, byte[] auth) {
+        return registerSecurityKeyStart(directUrlPrefix, direct, username, auth);
+    }
+
+    @Override
+    public CompletableFuture<byte[]> registerSecurityKeyStart(Multihash targetServerId, String username, byte[] auth) {
+        return registerSecurityKeyStart(getProxyUrlPrefix(targetServerId), p2p, username, auth);
+    }
+
+    private CompletableFuture<byte[]> registerSecurityKeyStart(String urlPrefix, HttpPoster poster, String username, byte[] auth) {
+        return poster.get(urlPrefix + Constants.LOGIN_URL + "registerWebauthnStart?username=" + username
+                + "&auth=" + ArrayOps.bytesToHex(auth));
+    }
+
+    @Override
+    public CompletableFuture<Boolean> registerSecurityKeyComplete(String username, MultiFactorAuthResponse resp, byte[] auth) {
+        return registerSecurityKeyComplete(directUrlPrefix, direct, username, resp, auth);
+    }
+
+    @Override
+    public CompletableFuture<Boolean> registerSecurityKeyComplete(Multihash targetServerId, String username, MultiFactorAuthResponse resp, byte[] auth) {
+        return registerSecurityKeyComplete(getProxyUrlPrefix(targetServerId), p2p, username, resp, auth);
+    }
+
+    private CompletableFuture<Boolean> registerSecurityKeyComplete(String urlPrefix, HttpPoster poster, String username, MultiFactorAuthResponse resp, byte[] auth) {
+        return poster.post(urlPrefix + Constants.LOGIN_URL + "registerWebauthnComplete?username=" + username
+                        + "&auth=" + ArrayOps.bytesToHex(auth), resp.serialize(), true)
+                .thenApply(res -> ((CborObject.CborBoolean)CborObject.fromByteArray(res)).value);
+    }
+
+    @Override
     public CompletableFuture<Boolean> enableTotpFactor(String username, byte[] credentialId, String code) {
         return enableTotpFactor(directUrlPrefix, direct, username, credentialId, code);
     }
@@ -141,19 +172,6 @@ public class HttpAccount implements AccountProxy {
         return poster.get(urlPrefix + Constants.LOGIN_URL + "enableTotp?username=" + username
                         + "&uid=" + ArrayOps.bytesToHex(credentialId)
                         + "&code=" + code)
-                .thenApply(res -> ((CborObject.CborBoolean)CborObject.fromByteArray(res)).value);
-    }
-
-    @Override
-    public CompletableFuture<byte[]> registerSecurityKeyStart(String username, byte[] auth) {
-        return direct.get(directUrlPrefix + Constants.LOGIN_URL + "registerWebauthnStart?username=" + username
-                + "&auth=" + ArrayOps.bytesToHex(auth));
-    }
-
-    @Override
-    public CompletableFuture<Boolean> registerSecurityKeyComplete(String username, MultiFactorAuthResponse resp, byte[] auth) {
-        return direct.post(directUrlPrefix + Constants.LOGIN_URL + "registerWebauthnComplete?username=" + username
-                + "&auth=" + ArrayOps.bytesToHex(auth), resp.serialize(), true)
                 .thenApply(res -> ((CborObject.CborBoolean)CborObject.fromByteArray(res)).value);
     }
 
