@@ -30,11 +30,6 @@ public class S3UserTests extends UserTests {
     private static Random random = new Random(1);
 
     private static Args pkiArgs = buildArgs()
-            .with("ipfs-api-address", "/ip4/127.0.0.1/tcp/" + (9000 + random.nextInt(10000)))
-            .with("ipfs-gateway-address", "/ip4/127.0.0.1/tcp/" + (9000 + random.nextInt(10000)))
-            .with("ipfs-swarm-port", "" + (9000 + random.nextInt(10000)))
-            .with("proxy-target", Main.getLocalMultiAddress(9000 + random.nextInt(10000)).toString())
-            .with("allow-target", "/ip4/127.0.0.1/tcp/" + (9000 + random.nextInt(10000)))
             .with("useIPFS", "true")
             .with(IpfsWrapper.IPFS_BOOTSTRAP_NODES, ""); // no bootstrapping
 

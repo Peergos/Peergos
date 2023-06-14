@@ -65,14 +65,13 @@ public abstract class UserTests {
     public static Args buildArgs() {
         try {
             Path peergosDir = Files.createTempDirectory("peergos");
-            Random r = new Random();
-            int port = 9000 + r.nextInt(8000);
-            int allowPort = 9000 + r.nextInt(8000);
-            int proxyPort = 9000 + r.nextInt(8000);
-            int gatewayPort = 9000 + r.nextInt(8000);
-            int ipfsApiPort = 9000 + r.nextInt(50_000);
-            int ipfsGatewayPort = 9000 + r.nextInt(50_000);
-            int ipfsSwarmPort = 9000 + r.nextInt(50_000);
+            int port = TestPorts.getPort();
+            int allowPort = TestPorts.getPort();
+            int proxyPort = TestPorts.getPort();
+            int gatewayPort = TestPorts.getPort();
+            int ipfsApiPort = TestPorts.getPort();
+            int ipfsGatewayPort = TestPorts.getPort();
+            int ipfsSwarmPort = TestPorts.getPort();
             return Args.parse(new String[]{
                     "-port", Integer.toString(port),
                     "-allow-target", "/ip4/127.0.0.1/tcp/" + allowPort,
@@ -81,6 +80,7 @@ public abstract class UserTests {
                     "-ipfs-api-address", "/ip4/127.0.0.1/tcp/" + ipfsApiPort,
                     "-ipfs-gateway-address", "/ip4/127.0.0.1/tcp/" + ipfsGatewayPort,
                     "-ipfs-swarm-port", Integer.toString(ipfsSwarmPort),
+                    "-ipfs.metrics.port", Integer.toString(TestPorts.getPort()),
                     "-admin-usernames", "peergos",
                     "-logToConsole", "true",
                     "-enable-gc", "true",
