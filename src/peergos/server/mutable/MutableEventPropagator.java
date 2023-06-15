@@ -38,4 +38,9 @@ public class MutableEventPropagator implements MutablePointers {
     public CompletableFuture<Optional<byte[]>> getPointer(PublicKeyHash owner, PublicKeyHash writer) {
         return target.getPointer(owner, writer);
     }
+
+    @Override
+    public MutablePointers clearCache() {
+        return this;
+    }
 }

@@ -50,4 +50,9 @@ public class NonWriteThroughMutablePointers implements MutablePointers {
             throw new RuntimeException(e.getMessage(), e);
         }
     }
+
+    @Override
+    public MutablePointers clearCache() {
+        return this;
+    }
 }

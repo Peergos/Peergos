@@ -107,4 +107,9 @@ public class HttpMutablePointers implements MutablePointersProxy {
                 LOG.info("HttpMutablePointers.get took " + (t2 -t1) + "mS for (" + owner + ", " + writer + ")");
         }
     }
+
+    @Override
+    public MutablePointers clearCache() {
+        return this;
+    }
 }
