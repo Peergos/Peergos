@@ -92,6 +92,11 @@ public class UserRepository implements SocialNetwork, MutablePointers {
 
     }
 
+    @Override
+    public MutablePointers clearCache() {
+        return this;
+    }
+
     public static UserRepository build(ContentAddressedStorage ipfs, JdbcIpnsAndSocial sqlNode) {
         return new UserRepository(ipfs, sqlNode);
     }

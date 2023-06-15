@@ -50,9 +50,7 @@ public interface MutablePointers {
                         Futures.of(PointerUpdate.empty()));
     }
 
-    default MutablePointers clearCache() {
-        return this;
-    }
+    MutablePointers clearCache();
 
     static CompletableFuture<PointerUpdate> parsePointerTarget(byte[] pointerCas,
                                                                PublicKeyHash writerKeyHash,

@@ -32,4 +32,9 @@ public class BlockingMutablePointers implements MutablePointers {
         res.completeExceptionally(new IllegalStateException("This Peergos subspace has been banned from this server"));
         return res;
     }
+
+    @Override
+    public MutablePointers clearCache() {
+        return this;
+    }
 }

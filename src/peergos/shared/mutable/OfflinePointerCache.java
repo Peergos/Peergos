@@ -46,4 +46,9 @@ public class OfflinePointerCache implements MutablePointers {
                     return Futures.errored(t);
                 });
     }
+
+    @Override
+    public MutablePointers clearCache() {
+        return new OfflinePointerCache(target.clearCache(), cache, online);
+    }
 }

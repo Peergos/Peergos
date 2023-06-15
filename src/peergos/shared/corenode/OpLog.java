@@ -48,6 +48,11 @@ public class OpLog implements Cborable, Account, MutablePointers, ContentAddress
     }
 
     @Override
+    public MutablePointers clearCache() {
+        return this;
+    }
+
+    @Override
     public synchronized CompletableFuture<Boolean> setLoginData(LoginData login, byte[] auth) {
         loginData = new Pair<>(login, auth);
         return Futures.of(true);

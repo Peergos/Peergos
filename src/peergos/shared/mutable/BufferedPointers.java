@@ -118,6 +118,11 @@ public class BufferedPointers implements MutablePointers {
         return target.setPointer(owner, signer.publicKeyHash, signed);
     }
 
+    @Override
+    public MutablePointers clearCache() {
+        return new BufferedPointers(target.clearCache());
+    }
+
     public void clear() {
         writers.clear();
         writerUpdates.clear();

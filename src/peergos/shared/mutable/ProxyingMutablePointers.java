@@ -39,4 +39,9 @@ public class ProxyingMutablePointers implements MutablePointers {
                 () -> local.getPointer(owner, writer),
                 target -> p2p.getPointer(target, owner, writer));
     }
+
+    @Override
+    public MutablePointers clearCache() {
+        return new ProxyingMutablePointers(serverId, core, local.clearCache(), p2p);
+    }
 }
