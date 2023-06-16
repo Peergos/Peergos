@@ -29,7 +29,7 @@ public class JdbcAccount implements LoginCache {
     private static final String UPDATE = "UPDATE login SET entry=?, reader=? WHERE username = ?";
     private static final String GET_LOGIN = "SELECT * FROM login WHERE username = ? AND reader = ? LIMIT 1;";
     private static final String GET = "SELECT * FROM login WHERE username = ? LIMIT 1;";
-    private static final String CREATE_MFA = "INSERT INTO mfa (username, name, credid, type, enabled, value) VALUES(?, ?, ?, ?, ?, ?);";
+    private static final String CREATE_MFA = "INSERT INTO mfa (username, name, credid, type, enabled, created, value) VALUES(?, ?, ?, ?, ?, ?, ?);";
     private static final String UPDATE_MFA = "UPDATE mfa SET value=? WHERE username = ? AND credid = ?;";
     private static final String GET_AUTH = "SELECT value FROM mfa WHERE username = ? AND credid = ?;";
     private static final String CREATE_CHALLENGE = "INSERT INTO mfa_challenge (username, challenge) VALUES(?, ?);";
@@ -37,7 +37,7 @@ public class JdbcAccount implements LoginCache {
     private static final String GET_CHALLENGE = "SELECT challenge FROM mfa_challenge WHERE username = ?;";
     private static final String ENABLE_AUTH = "UPDATE mfa SET enabled=? WHERE username = ? AND credid = ?;";
     private static final String DELETE_AUTH = "DELETE FROM mfa WHERE username = ? AND credid = ?";
-    private static final String GET_AUTH_METHODS = "SELECT name, credid, type, enabled FROM mfa WHERE username = ?;";
+    private static final String GET_AUTH_METHODS = "SELECT name, credid, created, type, enabled FROM mfa WHERE username = ?;";
 
     public static final int MAX_MFA = 10;
 
@@ -202,6 +202,7 @@ public class JdbcAccount implements LoginCache {
                 res.add(new MultiFactorAuthMethod(
                         rs.getString("name"),
                         rs.getBytes("credid"),
+                        LocalDate.ofEpochDay(rs.getInt("created")),
                         MultiFactorAuthMethod.Type.byValue(rs.getInt("type")),
                         rs.getBoolean("enabled")));
             }
@@ -238,7 +239,8 @@ public class JdbcAccount implements LoginCache {
             stmt.setBytes(3, credId);
             stmt.setInt(4, MultiFactorAuthMethod.Type.TOTP.value);
             stmt.setBoolean(5, false);
-            stmt.setBytes(6, rawKey);
+            stmt.setLong(6, LocalDate.now().toEpochDay());
+            stmt.setBytes(7, rawKey);
             stmt.executeUpdate();
             return Futures.of(new TotpKey(rawKey));
         } catch (SQLException sqe) {
@@ -372,7 +374,8 @@ public class JdbcAccount implements LoginCache {
             stmt.setBytes(3, resp.credentialId);
             stmt.setInt(4, MultiFactorAuthMethod.Type.WEBAUTHN.value);
             stmt.setBoolean(5, true);
-            stmt.setBytes(6, authenticator.serialize());
+            stmt.setLong(6, LocalDate.now().toEpochDay());
+            stmt.setBytes(7, authenticator.serialize());
             stmt.executeUpdate();
         } catch (SQLException sqe) {
             LOG.log(Level.WARNING, sqe.getMessage(), sqe);

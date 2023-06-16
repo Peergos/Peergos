@@ -33,8 +33,10 @@ public interface SqlSupplier {
     // credid is <= 1023 bytes
     default String createMfaTableCommand() {
         return "CREATE TABLE IF NOT EXISTS mfa (username text not null, name text not null, credid " + getByteArrayType() + " not null, " +
-                "type " + sqlInteger() + " not null, enabled boolean not null, value "
-                + getByteArrayType() + " not null); " +
+                "type " + sqlInteger() + " not null, " +
+                "enabled boolean not null, " +
+                "created " + sqlInteger() + " not null, " +
+                "value " + getByteArrayType() + " not null); " +
                 "CREATE INDEX IF NOT EXISTS mfa_index ON mfa (username);";
     }
 
