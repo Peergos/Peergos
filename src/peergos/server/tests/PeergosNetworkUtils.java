@@ -2054,11 +2054,12 @@ public class PeergosNetworkUtils {
         UserContext b2 = PeergosNetworkUtils.ensureSignedUp(b.username, password, network.clear(), crypto);
         Messenger msgB2 = new Messenger(b2);
         ChatController controllerB2 = msgB2.getChat(controllerB.chatUuid).join();
-        ForkJoinPool.commonPool().submit(() -> {
+        ForkJoinTask<?> concurrent = ForkJoinPool.commonPool().submit(() -> {
             msgB2.mergeMessages(controllerB2, a.username).join();
         });
 
         controllerB = msgB.mergeMessages(controllerB, a.username).join();
+        concurrent.join();
 
         UserContext b3 = PeergosNetworkUtils.ensureSignedUp(b.username, password, network.clear(), crypto);
         Messenger msgB3 = new Messenger(b3);
