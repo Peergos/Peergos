@@ -33,7 +33,7 @@ public interface AccountProxy extends Account {
 
     CompletableFuture<byte[]> registerSecurityKeyStart(Multihash targetServerId, String username, byte[] auth);
 
-    CompletableFuture<Boolean> registerSecurityKeyComplete(Multihash targetServerId, String username, MultiFactorAuthResponse resp, byte[] auth);
+    CompletableFuture<Boolean> registerSecurityKeyComplete(Multihash targetServerId, String username, String keyName, MultiFactorAuthResponse resp, byte[] auth);
 
     CompletableFuture<Boolean> deleteSecondFactor(Multihash targetServerId, String username, byte[] credentialId, byte[] auth);
 }

@@ -139,17 +139,18 @@ public class HttpAccount implements AccountProxy {
     }
 
     @Override
-    public CompletableFuture<Boolean> registerSecurityKeyComplete(String username, MultiFactorAuthResponse resp, byte[] auth) {
-        return registerSecurityKeyComplete(directUrlPrefix, direct, username, resp, auth);
+    public CompletableFuture<Boolean> registerSecurityKeyComplete(String username, String keyName, MultiFactorAuthResponse resp, byte[] auth) {
+        return registerSecurityKeyComplete(directUrlPrefix, direct, username, keyName, resp, auth);
     }
 
     @Override
-    public CompletableFuture<Boolean> registerSecurityKeyComplete(Multihash targetServerId, String username, MultiFactorAuthResponse resp, byte[] auth) {
-        return registerSecurityKeyComplete(getProxyUrlPrefix(targetServerId), p2p, username, resp, auth);
+    public CompletableFuture<Boolean> registerSecurityKeyComplete(Multihash targetServerId, String username, String keyName, MultiFactorAuthResponse resp, byte[] auth) {
+        return registerSecurityKeyComplete(getProxyUrlPrefix(targetServerId), p2p, username, keyName, resp, auth);
     }
 
-    private CompletableFuture<Boolean> registerSecurityKeyComplete(String urlPrefix, HttpPoster poster, String username, MultiFactorAuthResponse resp, byte[] auth) {
+    private CompletableFuture<Boolean> registerSecurityKeyComplete(String urlPrefix, HttpPoster poster, String username, String keyName, MultiFactorAuthResponse resp, byte[] auth) {
         return poster.post(urlPrefix + Constants.LOGIN_URL + "registerWebauthnComplete?username=" + username
+                        + "&keyname=" + keyName
                         + "&auth=" + ArrayOps.bytesToHex(auth), resp.serialize(), true)
                 .thenApply(res -> ((CborObject.CborBoolean)CborObject.fromByteArray(res)).value);
     }

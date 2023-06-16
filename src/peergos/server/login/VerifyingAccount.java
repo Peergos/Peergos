@@ -72,10 +72,10 @@ public class VerifyingAccount implements Account {
     }
 
     @Override
-    public CompletableFuture<Boolean> registerSecurityKeyComplete(String username, MultiFactorAuthResponse resp, byte[] auth) {
+    public CompletableFuture<Boolean> registerSecurityKeyComplete(String username, String keyName, MultiFactorAuthResponse resp, byte[] auth) {
         PublicKeyHash identityHash = core.getPublicKeyHash(username).join().get();
         TimeLimited.isAllowed(Constants.LOGIN_URL + "registerWebauthnComplete", auth, 24*3600, storage, identityHash);
-        return target.registerSecurityKeyComplete(username, resp, auth);
+        return target.registerSecurityKeyComplete(username, keyName, resp, auth);
     }
 
     @Override

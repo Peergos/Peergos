@@ -77,7 +77,7 @@ public interface Account {
 
     CompletableFuture<byte[]> registerSecurityKeyStart(String username, byte[] auth);
 
-    CompletableFuture<Boolean> registerSecurityKeyComplete(String username, MultiFactorAuthResponse resp, byte[] auth);
+    CompletableFuture<Boolean> registerSecurityKeyComplete(String username, String keyName, MultiFactorAuthResponse resp, byte[] auth);
 
     CompletableFuture<Boolean> deleteSecondFactor(String username, byte[] credentialId, byte[] auth);
     @JsMethod

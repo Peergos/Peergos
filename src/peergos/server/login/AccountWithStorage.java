@@ -63,8 +63,8 @@ public class AccountWithStorage implements Account {
     }
 
     @Override
-    public CompletableFuture<Boolean> registerSecurityKeyComplete(String username, MultiFactorAuthResponse resp, byte[] auth) {
-        target.registerSecurityKeyComplete(username, resp);
+    public CompletableFuture<Boolean> registerSecurityKeyComplete(String username, String keyName, MultiFactorAuthResponse resp, byte[] auth) {
+        target.registerSecurityKeyComplete(username, keyName, resp);
         return Futures.of(true);
     }
 

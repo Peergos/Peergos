@@ -65,12 +65,12 @@ public class ProxyingAccount implements Account {
 
 
     @Override
-    public CompletableFuture<Boolean> registerSecurityKeyComplete(String username, MultiFactorAuthResponse resp, byte[] auth) {
+    public CompletableFuture<Boolean> registerSecurityKeyComplete(String username, String keyName, MultiFactorAuthResponse resp, byte[] auth) {
         return core.getPublicKeyHash(username).thenCompose(idOpt -> Proxy.redirectCall(core,
                 serverId,
                 idOpt.get(),
-                () -> local.registerSecurityKeyComplete(username, resp, auth),
-                target -> p2p.registerSecurityKeyComplete(target, username, resp, auth)));
+                () -> local.registerSecurityKeyComplete(username, keyName, resp, auth),
+                target -> p2p.registerSecurityKeyComplete(target, username, keyName, resp, auth)));
     }
 
     @Override
