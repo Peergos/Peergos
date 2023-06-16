@@ -123,7 +123,7 @@ public class RamUserTests extends UserTests {
             MultiFactorAuthMethod method = totps.get(totps.size() - 1);
             usedMfa.set(true);
             try {
-                return Futures.of(new MultiFactorAuthResponse(method.credentialId, new CborObject.CborString(totp.generateOneTimePasswordString(key, Instant.now()))));
+                return Futures.of(new MultiFactorAuthResponse(method.credentialId, Either.a(totp.generateOneTimePasswordString(key, Instant.now()))));
             } catch (InvalidKeyException e) {
                 throw new RuntimeException(e);
             }
@@ -145,7 +145,7 @@ public class RamUserTests extends UserTests {
 
         Instant now = Instant.now();
         String clientCode = totp.generateOneTimePasswordString(key, now);
-        context.network.account.enableTotpFactor(context.username, newMfa.credentialId, clientCode).join();
+        context.network.account.enableTotpFactor(context.username, newMfa.credentialId, clientCode, context.signer).join();
         return key;
     }
 

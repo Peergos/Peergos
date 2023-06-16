@@ -53,7 +53,7 @@ public class AccountWithStorage implements Account {
     }
 
     @Override
-    public CompletableFuture<Boolean> enableTotpFactor(String username, byte[] credentialId, String code) {
+    public CompletableFuture<Boolean> enableTotpFactor(String username, byte[] credentialId, String code, byte[] auth) {
         return target.enableTotpFactor(username, credentialId, code);
     }
 

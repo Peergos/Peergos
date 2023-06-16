@@ -1,14 +1,16 @@
 package peergos.shared.login.mfa;
 
+import jsinterop.annotations.JsType;
 import peergos.shared.cbor.*;
 import peergos.shared.util.*;
 
 import java.util.*;
-
+@JsType
 public class MultiFactorAuthMethod implements Cborable {
 
     private static Map<Integer, MultiFactorAuthMethod.Type> byValue = new HashMap<>();
 
+    @JsType
     public enum Type {
         TOTP(0x1, false),
         WEBAUTHN(0x2, true);

@@ -85,7 +85,7 @@ public class AccountHandler implements HttpHandler {
                     String username = params.get("username").get(0);
                     byte[] credentialId = ArrayOps.hexToBytes(params.get("credid").get(0));
                     String code = params.get("code").get(0);
-                    boolean res = account.enableTotpFactor(username, credentialId, code).join();
+                    boolean res = account.enableTotpFactor(username, credentialId, code, auth).join();
                     dout.write(new CborObject.CborBoolean(res).serialize());
                     break;
                 }
@@ -121,6 +121,7 @@ public class AccountHandler implements HttpHandler {
             exchange.sendResponseHeaders(200, b.length);
             exchange.getResponseBody().write(b);
         } catch (Exception e) {
+            e.printStackTrace();
             HttpUtil.replyError(exchange, e);
         } finally {
             exchange.close();

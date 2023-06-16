@@ -58,8 +58,10 @@ public class VerifyingAccount implements Account {
     }
 
     @Override
-    public CompletableFuture<Boolean> enableTotpFactor(String username, byte[] credentialId, String code) {
-        return target.enableTotpFactor(username, credentialId, code);
+    public CompletableFuture<Boolean> enableTotpFactor(String username, byte[] credentialId, String code, byte[] auth) {
+        PublicKeyHash identityHash = core.getPublicKeyHash(username).join().get();
+        TimeLimited.isAllowed(Constants.LOGIN_URL + "enableTotp", auth, 24*3600, storage, identityHash);
+        return target.enableTotpFactor(username, credentialId, code, auth);
     }
 
     @Override

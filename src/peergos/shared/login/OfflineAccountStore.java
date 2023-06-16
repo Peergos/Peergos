@@ -61,8 +61,8 @@ public class OfflineAccountStore implements Account {
     }
 
     @Override
-    public CompletableFuture<Boolean> enableTotpFactor(String username, byte[] credentialId, String code) {
-        return target.enableTotpFactor(username, credentialId, code);
+    public CompletableFuture<Boolean> enableTotpFactor(String username, byte[] credentialId, String code, byte[] auth) {
+        return target.enableTotpFactor(username, credentialId, code, auth);
     }
 
     @Override

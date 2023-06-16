@@ -41,7 +41,7 @@ public class NonWriteThroughAccount implements Account {
     }
 
     @Override
-    public CompletableFuture<Boolean> enableTotpFactor(String username, byte[] credentialId, String code) {
+    public CompletableFuture<Boolean> enableTotpFactor(String username, byte[] credentialId, String code, byte[] auth) {
         throw new IllegalStateException("TODO");
     }
 

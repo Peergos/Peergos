@@ -1,9 +1,11 @@
 package peergos.shared.login.mfa;
 
+import jsinterop.annotations.JsType;
 import peergos.shared.cbor.*;
 
 import java.util.*;
 
+@JsType
 public class MultiFactorAuthRequest implements Cborable {
 
     public final List<MultiFactorAuthMethod> methods;

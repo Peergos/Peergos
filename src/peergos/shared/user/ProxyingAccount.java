@@ -83,12 +83,12 @@ public class ProxyingAccount implements Account {
     }
 
     @Override
-    public CompletableFuture<Boolean> enableTotpFactor(String username, byte[] credentialId, String code) {
+    public CompletableFuture<Boolean> enableTotpFactor(String username, byte[] credentialId, String code, byte[] auth) {
         return core.getPublicKeyHash(username).thenCompose(idOpt -> Proxy.redirectCall(core,
                 serverId,
                 idOpt.get(),
-                () -> local.enableTotpFactor(username, credentialId, code),
-                target -> p2p.enableTotpFactor(target, username, credentialId, code)));
+                () -> local.enableTotpFactor(username, credentialId, code, auth),
+                target -> p2p.enableTotpFactor(target, username, credentialId, code, auth)));
     }
 
     @Override

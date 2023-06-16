@@ -155,22 +155,24 @@ public class HttpAccount implements AccountProxy {
     }
 
     @Override
-    public CompletableFuture<Boolean> enableTotpFactor(String username, byte[] credentialId, String code) {
-        return enableTotpFactor(directUrlPrefix, direct, username, credentialId, code);
+    public CompletableFuture<Boolean> enableTotpFactor(String username, byte[] credentialId, String code, byte[] auth) {
+        return enableTotpFactor(directUrlPrefix, direct, username, credentialId, code, auth);
     }
 
     @Override
-    public CompletableFuture<Boolean> enableTotpFactor(Multihash targetServerId, String username, byte[] credentialId, String code) {
-        return enableTotpFactor(getProxyUrlPrefix(targetServerId), p2p, username, credentialId, code);
+    public CompletableFuture<Boolean> enableTotpFactor(Multihash targetServerId, String username, byte[] credentialId, String code, byte[] auth) {
+        return enableTotpFactor(getProxyUrlPrefix(targetServerId), p2p, username, credentialId, code, auth);
     }
 
     private CompletableFuture<Boolean> enableTotpFactor(String urlPrefix,
                                                         HttpPoster poster,
                                                         String username,
                                                         byte[] credentialId,
-                                                        String code) {
+                                                        String code,
+                                                        byte[] auth) {
         return poster.get(urlPrefix + Constants.LOGIN_URL + "enableTotp?username=" + username
-                        + "&uid=" + ArrayOps.bytesToHex(credentialId)
+                        + "&credid=" + ArrayOps.bytesToHex(credentialId)
+                        + "&auth=" + ArrayOps.bytesToHex(auth)
                         + "&code=" + code)
                 .thenApply(res -> ((CborObject.CborBoolean)CborObject.fromByteArray(res)).value);
     }

@@ -851,7 +851,7 @@ public class Main extends Builder {
         System.out.println("Enter TOTP code for login");
         Console console = System.console();
         String code = console.readLine().trim();
-        return Futures.of(new MultiFactorAuthResponse(totp.credentialId, new CborObject.CborString(code)));
+        return Futures.of(new MultiFactorAuthResponse(totp.credentialId, Either.a(code)));
     }
 
     public static IpfsWrapper startIpfs(Args a) {

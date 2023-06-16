@@ -1,6 +1,9 @@
 package peergos.client;
 
 import jsinterop.annotations.*;
+import peergos.shared.cbor.CborObject;
+import peergos.shared.login.mfa.MultiFactorAuthResponse;
+import peergos.shared.util.Either;
 
 import java.time.LocalDateTime;
 import java.util.*;
@@ -40,5 +43,10 @@ public class JsUtil {
     @JsMethod
     public static LocalDateTime now() {
         return LocalDateTime.now();
+    }
+
+    @JsMethod
+    public static MultiFactorAuthResponse generateAuthResponse(byte[] credentialId, String code) {
+        return new MultiFactorAuthResponse(credentialId, Either.a(code));
     }
 }

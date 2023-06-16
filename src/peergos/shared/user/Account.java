@@ -1,5 +1,6 @@
 package peergos.shared.user;
 
+import jsinterop.annotations.JsMethod;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.login.mfa.*;
@@ -43,6 +44,7 @@ public interface Account {
      */
     CompletableFuture<List<MultiFactorAuthMethod>> getSecondAuthMethods(String username, byte[] auth);
 
+    @JsMethod
     default CompletableFuture<List<MultiFactorAuthMethod>> getSecondAuthMethods(String username, SigningPrivateKeyAndPublicHash identity) {
         TimeLimitedClient.SignedRequest req =
                 new TimeLimitedClient.SignedRequest(Constants.LOGIN_URL + "listMfa", System.currentTimeMillis());
@@ -50,10 +52,22 @@ public interface Account {
         return getSecondAuthMethods(username, auth);
     }
 
-    CompletableFuture<Boolean> enableTotpFactor(String username, byte[] credentialId, String code);
+    CompletableFuture<Boolean> enableTotpFactor(String username, byte[] credentialId, String code, byte[] auth);
+
+    @JsMethod
+    default CompletableFuture<Boolean> enableTotpFactor(String username,
+                                                        byte[] credentialId,
+                                                        String code,
+                                                        SigningPrivateKeyAndPublicHash identity) {
+        TimeLimitedClient.SignedRequest req =
+                new TimeLimitedClient.SignedRequest(Constants.LOGIN_URL + "enableTotp", System.currentTimeMillis());
+        byte[] auth = req.sign(identity.secret);
+        return enableTotpFactor(username, credentialId, code, auth);
+    }
 
     CompletableFuture<TotpKey> addTotpFactor(String username, byte[] auth);
 
+    @JsMethod
     default CompletableFuture<TotpKey> addTotpFactor(String username, SigningPrivateKeyAndPublicHash identity) {
         TimeLimitedClient.SignedRequest req =
                 new TimeLimitedClient.SignedRequest(Constants.LOGIN_URL + "addTotp", System.currentTimeMillis());
@@ -66,7 +80,7 @@ public interface Account {
     CompletableFuture<Boolean> registerSecurityKeyComplete(String username, MultiFactorAuthResponse resp, byte[] auth);
 
     CompletableFuture<Boolean> deleteSecondFactor(String username, byte[] credentialId, byte[] auth);
-
+    @JsMethod
     default CompletableFuture<Boolean> deleteSecondFactor(String username, byte[] credentialId, SigningPrivateKeyAndPublicHash identity) {
         TimeLimitedClient.SignedRequest req =
                 new TimeLimitedClient.SignedRequest(Constants.LOGIN_URL + "deleteMfa", System.currentTimeMillis());

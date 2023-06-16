@@ -138,21 +138,19 @@ public class JdbcAccount implements LoginCache {
         }
         MultiFactorAuthResponse mfaAuth = mfa.get();
         byte[] credentialId = mfaAuth.credentialId;
-        if (mfaAuth.responseCbor instanceof CborObject.CborMap) {
+        if (mfaAuth.response.isB()) {
             Webauthn.Verifier verifier = Webauthn.Verifier.fromCbor(CborObject.fromByteArray(getMfa(username, credentialId)));
             byte[] challenge = getChallenge(username);
-            byte[] authenticatorData = ((CborObject.CborMap) mfaAuth.responseCbor).getByteArray("authenticatorData");
-            byte[] clientDataJson = ((CborObject.CborMap) mfaAuth.responseCbor).getByteArray("clientDataJson");
-            byte[] signature = ((CborObject.CborMap) mfaAuth.responseCbor).getByteArray("signature");
+            byte[] authenticatorData = mfaAuth.response.b().authenticatorData;
+            byte[] clientDataJson = mfaAuth.response.b().clientDataJson;
+            byte[] signature = mfaAuth.response.b().signature;
             long newSignCount = Webauthn.validateLogin(webauthn, origin, rpId, challenge, verifier, credentialId, username.getBytes(),
                     authenticatorData, clientDataJson, signature);
             // Update counter
             verifier.setCounter(newSignCount);
             updateMFA(username, credentialId, verifier.serialize());
         } else {
-            if (!(mfaAuth.responseCbor instanceof CborObject.CborString))
-                throw new IllegalArgumentException("totp code cbor is not a string!");
-            validateTotpCode(username, credentialId, ((CborObject.CborString) mfaAuth.responseCbor).value);
+            validateTotpCode(username, credentialId, mfaAuth.response.a());
         }
         return getEntryData(username, authorisedReader).thenApply(Either::a);
     }
@@ -356,10 +354,10 @@ public class JdbcAccount implements LoginCache {
 
     public void registerSecurityKeyComplete(String username, MultiFactorAuthResponse resp) {
         byte[] challenge = getChallenge(username);
-        if (! (resp.responseCbor instanceof CborObject.CborMap))
-            throw new IllegalStateException("Invalid cbor for MFA response!");
-        byte[] attestationObject = ((CborObject.CborMap) resp.responseCbor).getByteArray("attestationObject");
-        byte[] clientDataJson = ((CborObject.CborMap) resp.responseCbor).getByteArray("clientDataJson");
+        if (resp.response.isA())
+            throw new IllegalStateException("Not MFA response!");
+        byte[] attestationObject = resp.response.b().authenticatorData;
+        byte[] clientDataJson = resp.response.b().clientDataJson;
         Webauthn.Verifier authenticator = Webauthn.validateRegistration(webauthn, origin, rpId, challenge,
                 attestationObject, clientDataJson);
         try (Connection conn = getConnection();

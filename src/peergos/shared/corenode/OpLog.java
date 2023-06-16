@@ -77,7 +77,7 @@ public class OpLog implements Cborable, Account, MutablePointers, ContentAddress
     }
 
     @Override
-    public CompletableFuture<Boolean> enableTotpFactor(String username, byte[] credentialId, String code) {
+    public CompletableFuture<Boolean> enableTotpFactor(String username, byte[] credentialId, String code, byte[] auth) {
         throw new IllegalStateException("Unsupported operation!");
     }
 

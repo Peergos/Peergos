@@ -1,7 +1,10 @@
 package peergos.shared.login.mfa;
 
-import java.util.concurrent.*;
+import jsinterop.annotations.JsMethod;
+import jsinterop.annotations.JsType;
 
+import java.util.concurrent.*;
+@JsType
 public interface MultiFactorAuthSupplier {
 
     CompletableFuture<MultiFactorAuthResponse> authorise(MultiFactorAuthRequest req);

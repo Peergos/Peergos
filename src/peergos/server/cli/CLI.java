@@ -667,7 +667,7 @@ public class CLI implements Runnable {
         MultiFactorAuthMethod totp = anyTotp.get();
         writer.println("Enter TOTP code for login");
         String code = reader.readLine(PROMPT).trim();
-        return Futures.of(new MultiFactorAuthResponse(totp.credentialId, new CborObject.CborString(code)));
+        return Futures.of(new MultiFactorAuthResponse(totp.credentialId, Either.a(code)));
     }
 
     public static Terminal buildTerminal() {

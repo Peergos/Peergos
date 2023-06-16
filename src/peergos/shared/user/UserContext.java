@@ -215,13 +215,23 @@ public class UserContext {
                     if (res.isA())
                         return Futures.of(res.a());
                     MultiFactorAuthRequest authReq = res.b();
-                    return mfa.authorise(authReq)
-                            .thenCompose(authResp -> network.account.getLoginData(username, loginPub, TimeLimitedClient.signNow(loginSecret), Optional.of(authResp)))
-                            .thenApply(login -> {
-                                if (login.isB())
-                                    throw new IllegalStateException("Server rejected second factor auth");
-                                return login.a();
-                            });
+                    return handleMfa(username, mfa, authReq, loginPub, loginSecret, network);
+                });
+    }
+
+    private static CompletableFuture<UserStaticData> handleMfa(String username,
+                                                               MultiFactorAuthSupplier mfa,
+                                                               MultiFactorAuthRequest authReq,
+                                                               PublicSigningKey loginPub,
+                                                               SecretSigningKey loginSecret,
+                                                               NetworkAccess network) {
+        CompletableFuture<MultiFactorAuthResponse> authorise = mfa.authorise(authReq);
+        return authorise
+                .thenCompose(authResp -> network.account.getLoginData(username, loginPub, TimeLimitedClient.signNow(loginSecret), Optional.of(authResp)))
+                .thenApply(login -> {
+                    if (login.isB())
+                        throw new IllegalStateException("Server rejected second factor auth");
+                    return login.a();
                 });
     }
 
