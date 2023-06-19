@@ -194,7 +194,7 @@ public class HttpAccount implements AccountProxy {
                                                           byte[] credentialId,
                                                           byte[] auth) {
         return poster.get(urlPrefix + Constants.LOGIN_URL + "deleteMfa?username=" + username
-                        + "&uid=" + ArrayOps.bytesToHex(credentialId)
+                        + "&credid=" + ArrayOps.bytesToHex(credentialId)
                         + "&auth=" + ArrayOps.bytesToHex(auth))
                 .thenApply(res -> ((CborObject.CborBoolean)CborObject.fromByteArray(res)).value);
     }
