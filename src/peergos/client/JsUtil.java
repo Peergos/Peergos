@@ -4,6 +4,7 @@ import jsinterop.annotations.*;
 import peergos.shared.cbor.CborObject;
 import peergos.shared.cbor.Cborable;
 import peergos.shared.login.mfa.MultiFactorAuthResponse;
+import peergos.shared.login.mfa.WebauthnResponse;
 import peergos.shared.util.Either;
 
 import java.time.LocalDateTime;
@@ -52,9 +53,10 @@ public class JsUtil {
     }
 
     @JsMethod
-    public static MultiFactorAuthResponse generateWebAuthnResponse(byte[] rawAttestation) {
-        Cborable cbor = CborObject.fromByteArray(rawAttestation);
-        return MultiFactorAuthResponse.fromCbor(cbor);
+    public static MultiFactorAuthResponse generateWebAuthnResponse(byte[] credentialId, byte[] authenticatorData,
+                                                                   byte[] clientDataJson, byte[] signature) {
+        WebauthnResponse resp = new WebauthnResponse(authenticatorData, clientDataJson, signature);
+        return new MultiFactorAuthResponse(credentialId, Either.b(resp));
     }
 
 }
