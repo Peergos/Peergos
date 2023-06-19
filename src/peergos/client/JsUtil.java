@@ -2,6 +2,7 @@ package peergos.client;
 
 import jsinterop.annotations.*;
 import peergos.shared.cbor.CborObject;
+import peergos.shared.cbor.Cborable;
 import peergos.shared.login.mfa.MultiFactorAuthResponse;
 import peergos.shared.util.Either;
 
@@ -49,4 +50,11 @@ public class JsUtil {
     public static MultiFactorAuthResponse generateAuthResponse(byte[] credentialId, String code) {
         return new MultiFactorAuthResponse(credentialId, Either.a(code));
     }
+
+    @JsMethod
+    public static MultiFactorAuthResponse generateWebAuthnResponse(byte[] rawAttestation) {
+        Cborable cbor = CborObject.fromByteArray(rawAttestation);
+        return MultiFactorAuthResponse.fromCbor(cbor);
+    }
+
 }

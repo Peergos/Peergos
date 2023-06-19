@@ -76,6 +76,8 @@ public interface Account {
     }
 
     CompletableFuture<byte[]> registerSecurityKeyStart(String username, byte[] auth);
+
+    @JsMethod
     default CompletableFuture<byte[]> registerSecurityKeyStart(String username, SigningPrivateKeyAndPublicHash identity) {
         TimeLimitedClient.SignedRequest req =
                 new TimeLimitedClient.SignedRequest(Constants.LOGIN_URL + "registerWebauthnStart", System.currentTimeMillis());
@@ -85,6 +87,7 @@ public interface Account {
 
     CompletableFuture<Boolean> registerSecurityKeyComplete(String username, String keyName, MultiFactorAuthResponse resp, byte[] auth);
 
+    @JsMethod
     default CompletableFuture<Boolean> registerSecurityKeyComplete(String username,
                                                                    String keyName,
                                                                    MultiFactorAuthResponse resp,
