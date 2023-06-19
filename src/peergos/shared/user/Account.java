@@ -76,8 +76,24 @@ public interface Account {
     }
 
     CompletableFuture<byte[]> registerSecurityKeyStart(String username, byte[] auth);
+    default CompletableFuture<byte[]> registerSecurityKeyStart(String username, SigningPrivateKeyAndPublicHash identity) {
+        TimeLimitedClient.SignedRequest req =
+                new TimeLimitedClient.SignedRequest(Constants.LOGIN_URL + "registerWebauthnStart", System.currentTimeMillis());
+        byte[] auth = req.sign(identity.secret);
+        return registerSecurityKeyStart(username, auth);
+    }
 
     CompletableFuture<Boolean> registerSecurityKeyComplete(String username, String keyName, MultiFactorAuthResponse resp, byte[] auth);
+
+    default CompletableFuture<Boolean> registerSecurityKeyComplete(String username,
+                                                                   String keyName,
+                                                                   MultiFactorAuthResponse resp,
+                                                                   SigningPrivateKeyAndPublicHash identity) {
+        TimeLimitedClient.SignedRequest req =
+                new TimeLimitedClient.SignedRequest(Constants.LOGIN_URL + "registerWebauthnComplete", System.currentTimeMillis());
+        byte[] auth = req.sign(identity.secret);
+        return registerSecurityKeyComplete(username, keyName, resp, auth);
+    }
 
     CompletableFuture<Boolean> deleteSecondFactor(String username, byte[] credentialId, byte[] auth);
     @JsMethod
