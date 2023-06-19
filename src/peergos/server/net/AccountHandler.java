@@ -99,7 +99,7 @@ public class AccountHandler implements HttpHandler {
                 case "registerWebauthnComplete": {
                     AggregatedMetrics.LOGIN_WEBAUTHN_COMPLETE.inc();
                     String username = params.get("username").get(0);
-                    String keyName = params.get("username").get(0);
+                    String keyName = params.get("keyname").get(0);
                     byte[] rawAttestation = Serialize.readFully(din, 2048);
                     MultiFactorAuthResponse keyResponse = MultiFactorAuthResponse.fromCbor(CborObject.fromByteArray(rawAttestation));
                     boolean res = account.registerSecurityKeyComplete(username, keyName, keyResponse, auth).join();
