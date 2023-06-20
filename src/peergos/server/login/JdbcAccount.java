@@ -32,7 +32,7 @@ public class JdbcAccount implements LoginCache {
     private static final String CREATE_MFA = "INSERT INTO mfa (username, name, credid, type, enabled, created, value) VALUES(?, ?, ?, ?, ?, ?, ?);";
     private static final String UPDATE_MFA = "UPDATE mfa SET value=? WHERE username = ? AND credid = ?;";
     private static final String GET_AUTH = "SELECT value FROM mfa WHERE username = ? AND credid = ?;";
-    private static final String CREATE_CHALLENGE = "INSERT INTO mfa_challenge (username, challenge) VALUES(?, ?);";
+    private static final String CREATE_CHALLENGE = "INSERT INTO mfa_challenge (challenge, username) VALUES(?, ?);";
     private static final String UPDATE_CHALLENGE = "UPDATE mfa_challenge SET challenge=? WHERE username=?;";
     private static final String GET_CHALLENGE = "SELECT challenge FROM mfa_challenge WHERE username = ?;";
     private static final String ENABLE_AUTH = "UPDATE mfa SET enabled=? WHERE username = ? AND credid = ?;";
