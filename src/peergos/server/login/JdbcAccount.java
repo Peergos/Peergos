@@ -242,7 +242,7 @@ public class JdbcAccount implements LoginCache {
             stmt.setLong(6, LocalDate.now().toEpochDay());
             stmt.setBytes(7, rawKey);
             stmt.executeUpdate();
-            return Futures.of(new TotpKey(rawKey));
+            return Futures.of(new TotpKey(credId, rawKey));
         } catch (SQLException sqe) {
             LOG.log(Level.WARNING, sqe.getMessage(), sqe);
             throw new IllegalStateException(sqe);
