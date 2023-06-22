@@ -275,9 +275,14 @@ public class JdbcAccount implements LoginCache {
         TimeBasedOneTimePasswordGenerator totp = new TimeBasedOneTimePasswordGenerator(Duration.ofSeconds(30L), 6, TotpKey.ALGORITHM);
         Key key = new SecretKeySpec(rawKey, TotpKey.ALGORITHM);
         try {
-            String serverCode = totp.generateOneTimePasswordString(key, Instant.now());
-            if (!serverCode.equals(code))
-                throw new IllegalStateException("Invalid TOTP code for credId " + ArrayOps.bytesToHex(credentialId));
+            Instant now = Instant.now();
+            String serverCode = totp.generateOneTimePasswordString(key, now);
+            if (serverCode.equals(code))
+                return;
+            String previousCode = totp.generateOneTimePasswordString(key, now.minusSeconds(30));
+            if (previousCode.equals(code))
+                return;
+            throw new IllegalStateException("Invalid TOTP code for credId " + ArrayOps.bytesToHex(credentialId));
         } catch (InvalidKeyException e) {
             throw new RuntimeException(e);
         }
