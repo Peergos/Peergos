@@ -199,12 +199,16 @@ public class JdbcAccount implements LoginCache {
             ResultSet rs = stmt.executeQuery();
             List<MultiFactorAuthMethod> res = new ArrayList<>();
             while (rs.next()) {
+                boolean enabled = rs.getBoolean("enabled");
+                MultiFactorAuthMethod.Type type = MultiFactorAuthMethod.Type.byValue(rs.getInt("type"));
+                if (type == MultiFactorAuthMethod.Type.TOTP && !enabled)
+                    continue; // Don't return disabled totp
                 res.add(new MultiFactorAuthMethod(
                         rs.getString("name"),
                         rs.getBytes("credid"),
                         LocalDate.ofEpochDay(rs.getInt("created")),
-                        MultiFactorAuthMethod.Type.byValue(rs.getInt("type")),
-                        rs.getBoolean("enabled")));
+                        type,
+                        enabled));
             }
 
             return Futures.of(res);
