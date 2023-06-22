@@ -1,8 +1,11 @@
 package peergos.shared.util;
 
+import jsinterop.annotations.JsType;
+
 import java.util.*;
 import java.util.function.*;
 
+@JsType
 public class Either<A, B> {
     private final A a;
     private final B b;

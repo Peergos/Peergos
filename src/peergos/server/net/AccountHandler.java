@@ -5,10 +5,13 @@ import peergos.server.*;
 import peergos.server.util.*;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.asymmetric.*;
+import peergos.shared.login.*;
+import peergos.shared.login.mfa.*;
 import peergos.shared.user.*;
 import peergos.shared.util.*;
 
 import java.io.*;
+import java.nio.charset.*;
 import java.util.*;
 
 /** This is the http endpoint for getting and setting encrypted login blobs
@@ -51,13 +54,66 @@ public class AccountHandler implements HttpHandler {
                     boolean isAdded = account.setLoginData(LoginData.fromCbor(CborObject.fromByteArray(payload)), auth).join();
                     dout.writeBoolean(isAdded);
                     break;
-                case "getLogin":
+                case "getLogin": {
                     AggregatedMetrics.LOGIN_GET.inc();
                     String username = params.get("username").get(0);
                     PublicSigningKey authorisedReader = PublicSigningKey.fromByteArray(ArrayOps.hexToBytes(params.get("author").get(0)));
-                    byte[] res = account.getLoginData(username, authorisedReader, auth).join().serialize();
+                    Optional<MultiFactorAuthResponse> mfa = params.containsKey("mfa") ?
+                            Optional.of(MultiFactorAuthResponse.fromCbor(CborObject.fromByteArray(ArrayOps.hexToBytes(params.get("mfa").get(0))))) :
+                            Optional.empty();
+                    Either<UserStaticData, MultiFactorAuthRequest> res = account.getLoginData(username, authorisedReader, auth, mfa).join();
+                    byte[] resBytes = new LoginResponse(res).serialize();
+                    dout.write(resBytes);
+                    break;
+                }
+                case "listMfa": {
+                    AggregatedMetrics.LOGIN_GET_MFA.inc();
+                    String username = params.get("username").get(0);
+                    List<MultiFactorAuthMethod> res = account.getSecondAuthMethods(username, auth).join();
+                    dout.write(new CborObject.CborList(res).serialize());
+                    break;
+                }
+                case "addTotp": {
+                    AggregatedMetrics.LOGIN_ADD_TOTP.inc();
+                    String username = params.get("username").get(0);
+                    TotpKey res = account.addTotpFactor(username, auth).join();
+                    dout.write(res.encode().getBytes(StandardCharsets.UTF_8));
+                    break;
+                }
+                case "enableTotp": {
+                    AggregatedMetrics.LOGIN_ENABLE_TOTP.inc();
+                    String username = params.get("username").get(0);
+                    byte[] credentialId = ArrayOps.hexToBytes(params.get("credid").get(0));
+                    String code = params.get("code").get(0);
+                    boolean res = account.enableTotpFactor(username, credentialId, code, auth).join();
+                    dout.write(new CborObject.CborBoolean(res).serialize());
+                    break;
+                }
+                case "registerWebauthnStart": {
+                    AggregatedMetrics.LOGIN_WEBAUTHN_START.inc();
+                    String username = params.get("username").get(0);
+                    byte[] res = account.registerSecurityKeyStart(username, auth).join();
                     dout.write(res);
                     break;
+                }
+                case "registerWebauthnComplete": {
+                    AggregatedMetrics.LOGIN_WEBAUTHN_COMPLETE.inc();
+                    String username = params.get("username").get(0);
+                    String keyName = params.get("keyname").get(0);
+                    byte[] rawAttestation = Serialize.readFully(din, 2048);
+                    MultiFactorAuthResponse keyResponse = MultiFactorAuthResponse.fromCbor(CborObject.fromByteArray(rawAttestation));
+                    boolean res = account.registerSecurityKeyComplete(username, keyName, keyResponse, auth).join();
+                    dout.write(new CborObject.CborBoolean(res).serialize());
+                    break;
+                }
+                case "deleteMfa": {
+                    AggregatedMetrics.LOGIN_DELETE_MFA.inc();
+                    String username = params.get("username").get(0);
+                    byte[] credentialId = ArrayOps.hexToBytes(params.get("credid").get(0));
+                    boolean res = account.deleteSecondFactor(username, credentialId, auth).join();
+                    dout.write(new CborObject.CborBoolean(res).serialize());
+                    break;
+                }
                 default:
                     throw new IOException("Unknown method in AccountHandler!");
             }
@@ -66,6 +122,7 @@ public class AccountHandler implements HttpHandler {
             exchange.sendResponseHeaders(200, b.length);
             exchange.getResponseBody().write(b);
         } catch (Exception e) {
+            e.printStackTrace();
             HttpUtil.replyError(exchange, e);
         } finally {
             exchange.close();

@@ -24,6 +24,7 @@ import peergos.shared.crypto.symmetric.*;
 import peergos.server.*;
 import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.io.ipfs.multihash.*;
+import peergos.shared.login.mfa.*;
 import peergos.shared.mutable.*;
 import peergos.shared.storage.*;
 import peergos.shared.storage.auth.*;
@@ -64,14 +65,13 @@ public abstract class UserTests {
     public static Args buildArgs() {
         try {
             Path peergosDir = Files.createTempDirectory("peergos");
-            Random r = new Random();
-            int port = 9000 + r.nextInt(8000);
-            int allowPort = 9000 + r.nextInt(8000);
-            int proxyPort = 9000 + r.nextInt(8000);
-            int gatewayPort = 9000 + r.nextInt(8000);
-            int ipfsApiPort = 9000 + r.nextInt(50_000);
-            int ipfsGatewayPort = 9000 + r.nextInt(50_000);
-            int ipfsSwarmPort = 9000 + r.nextInt(50_000);
+            int port = TestPorts.getPort();
+            int allowPort = TestPorts.getPort();
+            int proxyPort = TestPorts.getPort();
+            int gatewayPort = TestPorts.getPort();
+            int ipfsApiPort = TestPorts.getPort();
+            int ipfsGatewayPort = TestPorts.getPort();
+            int ipfsSwarmPort = TestPorts.getPort();
             return Args.parse(new String[]{
                     "-port", Integer.toString(port),
                     "-allow-target", "/ip4/127.0.0.1/tcp/" + allowPort,
@@ -80,6 +80,7 @@ public abstract class UserTests {
                     "-ipfs-api-address", "/ip4/127.0.0.1/tcp/" + ipfsApiPort,
                     "-ipfs-gateway-address", "/ip4/127.0.0.1/tcp/" + ipfsGatewayPort,
                     "-ipfs-swarm-port", Integer.toString(ipfsSwarmPort),
+                    "-ipfs.metrics.port", Integer.toString(TestPorts.getPort()),
                     "-admin-usernames", "peergos",
                     "-logToConsole", "true",
                     "-enable-gc", "true",
@@ -211,12 +212,16 @@ public abstract class UserTests {
         Assert.assertTrue("Second sign up fails", secondSignup.isCompletedExceptionally());
     }
 
+    public static CompletableFuture<MultiFactorAuthResponse> noMfa(MultiFactorAuthRequest req) {
+        throw new IllegalStateException("Unsupported!");
+    }
+
     @Test
     public void errorLoggingInToDeletedAccont() {
         String username = generateUsername();
         String password = "password";
         UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
-        context.deleteAccount(password).join();
+        context.deleteAccount(password, UserTests::noMfa).join();
 
         try {
             PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
@@ -256,7 +261,7 @@ public abstract class UserTests {
         // change password and set username claim to an expiry in the past
         SecretGenerationAlgorithm alg = context.getKeyGenAlgorithm().join();
         SecretGenerationAlgorithm newAlg = SecretGenerationAlgorithm.withNewSalt(alg, crypto.random);
-        context = context.changePassword(password, newPassword, alg, newAlg, LocalDate.now().minusDays(1)).join();
+        context = context.changePassword(password, newPassword, alg, newAlg, LocalDate.now().minusDays(1), UserTests::noMfa).join();
 
         LocalDate expiry = context.getUsernameClaimExpiry().join();
         Assert.assertTrue(expiry.isBefore(LocalDate.now()));
@@ -274,9 +279,9 @@ public abstract class UserTests {
         String password1 = "pass1";
         String password2 = "pass2";
         UserContext context1 = PeergosNetworkUtils.ensureSignedUp(username, password1, network, crypto);
-        UserContext context2 = context1.changePassword(password1, password2).join();
+        UserContext context2 = context1.changePassword(password1, password2, UserTests::noMfa).join();
         try {
-            context2.changePassword(password2, password1).join();
+            context2.changePassword(password2, password1, UserTests::noMfa).join();
         } catch (Throwable t) {
             Assert.assertTrue(t.getMessage().contains("You must change to a different password."));
         }
@@ -318,7 +323,7 @@ public abstract class UserTests {
         PublicBoxingKey initialBoxer = keyPairs.right;
         PublicKeyHash initialIdentity = keyPairs.left;
         String newPassword = "newPassword";
-        UserContext updated = userContext.changePassword(password, newPassword).join();
+        UserContext updated = userContext.changePassword(password, newPassword, UserTests::noMfa).join();
         MultiUserTests.checkUserValidity(network, username);
 
         Pair<PublicKeyHash, PublicBoxingKey> updatedPairs = updated.getPublicKeys(username).join().get();
@@ -330,7 +335,7 @@ public abstract class UserTests {
 
         // change it again
         String password3 = "pass3";
-        changedPassword.changePassword(newPassword, password3).get();
+        changedPassword.changePassword(newPassword, password3, UserTests::noMfa).get();
         MultiUserTests.checkUserValidity(network, username);
         PeergosNetworkUtils.ensureSignedUp(username, password3, network, crypto);
     }
@@ -353,7 +358,7 @@ public abstract class UserTests {
         UserContext login = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
 
         String newPassword = "newPassword";
-        userContext.changePassword(password, newPassword).get();
+        userContext.changePassword(password, newPassword, UserTests::noMfa).get();
         MultiUserTests.checkUserValidity(network, username);
 
         UserContext changedPassword = PeergosNetworkUtils.ensureSignedUp(username, newPassword, network, crypto);
@@ -375,7 +380,7 @@ public abstract class UserTests {
         String password = "password";
         UserContext userContext = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
         String newPassword = "passwordtest";
-        UserContext newContext = userContext.changePassword(password, newPassword).get();
+        UserContext newContext = userContext.changePassword(password, newPassword, UserTests::noMfa).get();
 
         try {
             UserContext oldContext = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
@@ -392,7 +397,7 @@ public abstract class UserTests {
         UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
         SecretGenerationAlgorithm algo = context.getKeyGenAlgorithm().get();
         ScryptGenerator newAlgo = new ScryptGenerator(19, 8, 1, 64, algo.getExtraSalt());
-        context.changePassword(password, password, algo, newAlgo, LocalDate.now().plusMonths(2)).get();
+        context.changePassword(password, password, algo, newAlgo, LocalDate.now().plusMonths(2), UserTests::noMfa).get();
         PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
     }
 

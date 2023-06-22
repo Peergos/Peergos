@@ -6,6 +6,7 @@ import java.util.logging.*;
 import peergos.shared.fingerprint.*;
 import peergos.shared.inode.*;
 import peergos.shared.io.ipfs.cid.*;
+import peergos.shared.login.mfa.*;
 import peergos.shared.storage.auth.*;
 import peergos.shared.user.fs.cryptree.*;
 import peergos.shared.user.fs.transaction.*;
@@ -132,14 +133,21 @@ public class UserContext {
         return transactions;
     }
 
-    public static CompletableFuture<UserContext> signIn(String username, String password, NetworkAccess network
-            , Crypto crypto) {
-        return signIn(username, password, network, crypto, t -> {});
+    public static CompletableFuture<UserContext> signIn(String username,
+                                                        String password,
+                                                        Function<MultiFactorAuthRequest, CompletableFuture<MultiFactorAuthResponse>> mfa,
+                                                        NetworkAccess network,
+                                                        Crypto crypto) {
+        return signIn(username, password, mfa, network, crypto, t -> {});
     }
 
     @JsMethod
-    public static CompletableFuture<UserContext> signIn(String username, String password, NetworkAccess network,
-                                                        Crypto crypto, Consumer<String> progressCallback) {
+    public static CompletableFuture<UserContext> signIn(String username,
+                                                        String password,
+                                                        Function<MultiFactorAuthRequest, CompletableFuture<MultiFactorAuthResponse>> mfa,
+                                                        NetworkAccess network,
+                                                        Crypto crypto,
+                                                        Consumer<String> progressCallback) {
         return Futures.asyncExceptionally(() -> getWriterDataCbor(network, username),
                 e ->  {
                     if (e.getMessage().contains("hash not present"))
@@ -156,19 +164,20 @@ public class UserContext {
                     crypto.random, crypto.signer, crypto.boxer, algorithm)
                     .thenCompose(userWithRoot -> {
                         progressCallback.accept("Logging in");
-                        return login(username, userWithRoot, pair, network, crypto, progressCallback);
+                        return login(username, userWithRoot, mfa, pair, network, crypto, progressCallback);
                     });
         }).exceptionally(Futures::logAndThrow);
     }
 
     public static CompletableFuture<UserContext> signIn(String username,
                                                         UserWithRoot userWithRoot,
+                                                        Function<MultiFactorAuthRequest, CompletableFuture<MultiFactorAuthResponse>> mfa,
                                                         NetworkAccess network,
                                                         Crypto crypto,
                                                         Consumer<String> progressCallback) {
         progressCallback.accept("Logging in");
         return getWriterDataCbor(network, username)
-                .thenCompose(pair -> login(username, userWithRoot, pair, network, crypto, progressCallback))
+                .thenCompose(pair -> login(username, userWithRoot, mfa, pair, network, crypto, progressCallback))
                 .exceptionally(Futures::logAndThrow);
     }
 
@@ -196,8 +205,29 @@ public class UserContext {
                 .exceptionally(Futures::logAndThrow);
     }
 
+    private static CompletableFuture<UserStaticData> getLoginData(String username,
+                                                                  PublicSigningKey loginPub,
+                                                                  SecretSigningKey loginSecret,
+                                                                  Function<MultiFactorAuthRequest, CompletableFuture<MultiFactorAuthResponse>> mfa,
+                                                                  NetworkAccess network) {
+        return network.account.getLoginData(username, loginPub, TimeLimitedClient.signNow(loginSecret), Optional.empty())
+                .thenCompose(res -> {
+                    if (res.isA())
+                        return Futures.of(res.a());
+                    MultiFactorAuthRequest authReq = res.b();
+                    return mfa.apply(authReq)
+                            .thenCompose(authResp -> network.account.getLoginData(username, loginPub, TimeLimitedClient.signNow(loginSecret), Optional.of(authResp)))
+                            .thenApply(login -> {
+                                if (login.isB())
+                                    throw new IllegalStateException("Server rejected second factor auth");
+                                return login.a();
+                            });
+                });
+    }
+
     private static CompletableFuture<UserContext> login(String username,
                                                         UserWithRoot generatedCredentials,
+                                                        Function<MultiFactorAuthRequest, CompletableFuture<MultiFactorAuthResponse>> mfa,
                                                         Pair<PointerUpdate, CborObject> pair,
                                                         NetworkAccess network,
                                                         Crypto crypto,
@@ -210,7 +240,7 @@ public class UserContext {
             SecretSigningKey loginSecret = generatedCredentials.getUser().secretSigningKey;
             return (legacyAccount ?
                     Futures.of(userData.staticData.get()) :
-                    network.account.getLoginData(username, loginPub, TimeLimitedClient.signNow(loginSecret))).thenCompose(entryData -> {
+                    getLoginData(username, loginPub, loginSecret, mfa, network)).thenCompose(entryData -> {
                 UserStaticData.EntryPoints staticData;
                 try {
                     staticData = entryData.getData(loginRoot);
@@ -390,7 +420,7 @@ public class UserContext {
                                                 .thenCompose(globalRoot -> createSpecialDirectory(globalRoot, username,
                                                         CapabilityStore.CAPABILITY_CACHE_DIR, Optional.of(batid), network, crypto))
                                                 .thenCompose(x -> completeSignup(username, chain, identity, token, addCard, progressCallback, opLog, initialNetwork, crypto))
-                                                .thenCompose(y -> signIn(username, userWithRoot, initialNetwork, crypto, progressCallback));
+                                                .thenCompose(y -> signIn(username, userWithRoot, mfa -> null, initialNetwork, crypto, progressCallback));
                                     }))));
                 }).exceptionally(Futures::logAndThrow);
     }
@@ -865,7 +895,9 @@ public class UserContext {
     }
 
     @JsMethod
-    public CompletableFuture<UserContext> changePassword(String oldPassword, String newPassword) {
+    public CompletableFuture<UserContext> changePassword(String oldPassword,
+                                                         String newPassword,
+                                                         Function<MultiFactorAuthRequest, CompletableFuture<MultiFactorAuthResponse>> mfa) {
         return getKeyGenAlgorithm().thenCompose(alg -> {
             if (oldPassword.equals(newPassword))
                 throw new IllegalStateException("You must change to a different password.");
@@ -873,7 +905,7 @@ public class UserContext {
             // a new generated identity independent of the password
             SecretGenerationAlgorithm newAlgorithm = SecretGenerationAlgorithm.withNewSalt(alg, crypto.random).withoutBoxerOrIdentity();
             // set claim expiry to two months from now
-            return changePassword(oldPassword, newPassword, alg, newAlgorithm, LocalDate.now().plusMonths(2));
+            return changePassword(oldPassword, newPassword, alg, newAlgorithm, LocalDate.now().plusMonths(2), mfa);
         });
     }
 
@@ -881,7 +913,8 @@ public class UserContext {
                                                          String newPassword,
                                                          SecretGenerationAlgorithm existingAlgorithm,
                                                          SecretGenerationAlgorithm newAlgorithm,
-                                                         LocalDate expiry) {
+                                                         LocalDate expiry,
+                                                         Function<MultiFactorAuthRequest, CompletableFuture<MultiFactorAuthResponse>> mfa) {
         LOG.info("Changing password and setting expiry to: " + expiry);
         boolean isLegacy = existingAlgorithm.generateBoxerAndIdentity();
         if (! isLegacy && newAlgorithm.generateBoxerAndIdentity())
@@ -900,8 +933,7 @@ public class UserContext {
                                 PublicKeyHash existingOwner = ContentAddressedStorage.hashKey(existingLogin.getUser().publicSigningKey);
                                 if (! isLegacy) {
                                     // identity doesn't change here, just need to update the secret UserStaticData
-                                    byte[] auth = TimeLimitedClient.signNow(existingLoginSecret);
-                                    return network.account.getLoginData(username, existingLogin.getUser().publicSigningKey, auth).thenCompose(usd -> {
+                                    return getLoginData(username, existingLogin.getUser().publicSigningKey, existingLoginSecret, mfa, network).thenCompose(usd -> {
                                         UserStaticData.EntryPoints entry = usd.getData(existingLogin.getRoot());
                                         UserStaticData updatedEntry = new UserStaticData(entry.entries, updatedLogin.getRoot(), entry.identity, entry.boxer);
                                         // need to commit new login algorithm too in the same call
@@ -915,7 +947,8 @@ public class UserContext {
                                                 OpLog.PointerWrite pointerWrite = new OpLog.PointerWrite(signer.publicKeyHash, signer.secret.signMessage(pointerCas.serialize()));
                                                 LoginData updatedLoginData = new LoginData(username, updatedEntry, newLoginPublicKey, Optional.of(new Pair<>(blockWrite, pointerWrite)));
                                                 return network.account.setLoginData(updatedLoginData, signer)
-                                                        .thenCompose(b -> UserContext.signIn(username, newPassword, network.clear(), crypto));
+                                                        .thenCompose(b -> UserContext.login(username, newIdBlock, entry,
+                                                                signer, entry.boxer.get(), updatedLogin.getRoot(), new Pair<>(pointerCas, newIdBlock.toCbor()), network.clear(), crypto, p -> {}));
                                             });
                                         });
                                     });
@@ -939,7 +972,7 @@ public class UserContext {
                                         // If we ever implement plausibly deniable dual (N) login this will need to include all the other keys
                                         ownedKeys.put(homeDir.writer(), homeDir.signingPair());
                                         // Add any named owned key to lookup as well
-                                        // TODO need to get the pki keypair here if were are the 'peergos' user
+                                        // TODO need to get the pki keypair here if we are the 'peergos' user
 
                                         // auth new key by adding to existing writer data first
                                         OwnerProof proof = OwnerProof.build(newIdentity, signer.publicKeyHash);
@@ -964,7 +997,7 @@ public class UserContext {
                                                                     if (!updatedChain)
                                                                         throw new IllegalStateException("Couldn't register new public keys during password change!");
 
-                                                                    return UserContext.signIn(username, newPassword, network, crypto);
+                                                                    return UserContext.signIn(username, newPassword, mfas -> null, network, crypto);
                                                                 });
                                                     });
                                                 });
@@ -1091,8 +1124,9 @@ public class UserContext {
     }
 
     @JsMethod
-    public CompletableFuture<Boolean> deleteAccount(String password) {
-        return signIn(username, password, network, crypto)
+    public CompletableFuture<Boolean> deleteAccount(String password,
+                                                    Function<MultiFactorAuthRequest, CompletableFuture<MultiFactorAuthResponse>> mfa) {
+        return signIn(username, password, mfa, network, crypto)
                 .thenCompose(user -> {
                     // set mutable pointer of root dir writer and owner to EMPTY
                     SigningPrivateKeyAndPublicHash identity = user.signer;

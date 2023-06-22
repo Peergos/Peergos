@@ -1,5 +1,6 @@
 package peergos.server.tests;
 
+import com.eatthepath.otp.*;
 import org.junit.*;
 import org.junit.runner.*;
 import org.junit.runners.*;
@@ -7,17 +8,23 @@ import peergos.server.*;
 import peergos.server.tests.util.*;
 import peergos.server.util.*;
 import peergos.shared.*;
+import peergos.shared.cbor.*;
+import peergos.shared.login.mfa.*;
 import peergos.shared.social.*;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
 import peergos.shared.user.fs.transaction.*;
 import peergos.shared.util.*;
 
+import javax.crypto.spec.*;
 import java.io.*;
 import java.net.*;
 import java.nio.file.*;
+import java.security.*;
+import java.time.*;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.*;
 import java.util.stream.*;
 
 @RunWith(Parameterized.class)
@@ -62,6 +69,87 @@ public class RamUserTests extends UserTests {
     }
     private static boolean isMacos() {
         return System.getProperty("os.name").toLowerCase().startsWith("mac");
+    }
+
+    @Test
+    public void mfa() throws Throwable {
+        String username = generateUsername();
+        String password = "password";
+        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
+        Assert.assertTrue(context.network.account.getSecondAuthMethods(username, context.signer).join().isEmpty());
+
+        TimeBasedOneTimePasswordGenerator totp = new TimeBasedOneTimePasswordGenerator(Duration.ofSeconds(30L), 6, TotpKey.ALGORITHM);
+        TotpKey key = addTotpKey(context, totp);
+
+        List<MultiFactorAuthMethod> enabled = context.network.account.getSecondAuthMethods(username, context.signer).join();
+        Assert.assertTrue(enabled.size() == 1 && enabled.get(0).enabled);
+
+        // now try logging in again, now with mfa
+        testLoginRequiresTotp(username, password, network, totp, key);
+
+        // Now delete the second factor and login again without MFA
+        context.network.account.deleteSecondFactor(username, enabled.get(0).credentialId, context.signer).join();
+        Assert.assertTrue(context.network.account.getSecondAuthMethods(username, context.signer).join().isEmpty());
+        context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
+
+        // now add a new totp key
+        TotpKey key2 = addTotpKey(context, totp);
+        testLoginRequiresTotp(username, password, network, totp, key2);
+
+        // Now add a 3rd which should delete the old one
+        TotpKey key3 = addTotpKey(context, totp);
+        testLoginRequiresTotp(username, password, network, totp, key3);
+        // logging in with old totp key should fail
+        try {
+            testLoginRequiresTotp(username, password, network, totp, key2);
+            throw new Throwable("Shouldn't get here!");
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        // test that the old totp is deleted when new one is enabled
+        Assert.assertTrue(context.network.account.getSecondAuthMethods(username, context.signer).join().size() == 1);
+    }
+
+    private static void testLoginRequiresTotp(String username,
+                                              String password,
+                                              NetworkAccess network,
+                                              TimeBasedOneTimePasswordGenerator totp,
+                                              TotpKey totpKey) {
+        AtomicBoolean usedMfa = new AtomicBoolean(false);
+        UserContext freshLogin = UserContext.signIn(username, password, req -> {
+            List<MultiFactorAuthMethod> totps = req.methods.stream().filter(m -> m.type == MultiFactorAuthMethod.Type.TOTP).collect(Collectors.toList());
+            if (totps.isEmpty())
+                throw new IllegalStateException("No supported 2 factor auth method! " + req.methods);
+            MultiFactorAuthMethod method = totps.get(totps.size() - 1);
+            usedMfa.set(true);
+            try {
+                return Futures.of(new MultiFactorAuthResponse(method.credentialId, Either.a(totp.generateOneTimePasswordString(new SecretKeySpec(totpKey.key, TotpKey.ALGORITHM), Instant.now()))));
+            } catch (InvalidKeyException e) {
+                throw new RuntimeException(e);
+            }
+        }, network, crypto).join();
+        Assert.assertTrue(usedMfa.get());
+    }
+
+    private static TotpKey addTotpKey(UserContext context, TimeBasedOneTimePasswordGenerator totp) throws Exception {
+        TotpKey totpKey = context.network.account.addTotpFactor(context.username, context.signer).join();
+        // User stores totp key in authenticator app via QR code
+
+        List<MultiFactorAuthMethod> disabled = context.network.account.getSecondAuthMethods(context.username, context.signer)
+                .join()
+                .stream()
+                .filter(t -> !t.enabled)
+                .collect(Collectors.toList());
+        Assert.assertTrue(disabled.isEmpty());
+
+        // need to verify once to enable the second factor
+        // (to guard against things like google authenticator which silently ignore the algorithm)
+        Key key = new SecretKeySpec(totpKey.key, TotpKey.ALGORITHM);
+
+        Instant now = Instant.now();
+        String clientCode = totp.generateOneTimePasswordString(key, now);
+        context.network.account.enableTotpFactor(context.username, totpKey.credentialId, clientCode, context.signer).join();
+        return totpKey;
     }
 
     @Test

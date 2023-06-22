@@ -30,6 +30,21 @@ public interface SqlSupplier {
                 "CREATE UNIQUE INDEX IF NOT EXISTS login_index ON login (username);";
     }
 
+    // credid is <= 1023 bytes
+    default String createMfaTableCommand() {
+        return "CREATE TABLE IF NOT EXISTS mfa (username text not null, name text not null, credid " + getByteArrayType() + " not null, " +
+                "type " + sqlInteger() + " not null, " +
+                "enabled boolean not null, " +
+                "created " + sqlInteger() + " not null, " +
+                "value " + getByteArrayType() + " not null); " +
+                "CREATE INDEX IF NOT EXISTS mfa_index ON mfa (username);";
+    }
+
+    default String createMfaChallengeTableCommand() {
+        return "CREATE TABLE IF NOT EXISTS mfa_challenge (username text primary key not null, challenge " + getByteArrayType() + " not null); " +
+                "CREATE UNIQUE INDEX IF NOT EXISTS mfa_challenge_index ON mfa_challenge (username);";
+    }
+
     default String createBatStoreTableCommand() {
         return "CREATE TABLE IF NOT EXISTS bats (username text not null, id text primary key not null, bat text not null); " +
                 "CREATE UNIQUE INDEX IF NOT EXISTS bat_index ON bats (id);";

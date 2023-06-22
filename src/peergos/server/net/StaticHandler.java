@@ -142,7 +142,6 @@ public abstract class StaticHandler implements HttpHandler
                         (isSubdomain ? "sandbox allow-same-origin allow-scripts allow-forms allow-modals;" : "") +
                         "frame-src 'self' " + frameDomains.stream().collect(Collectors.joining(" ")) + " " + (isSubdomain ? "" : this.host.wildcard()) + ";" +
                         "frame-ancestors 'self' " + this.host + ";" +
-                        "prefetch-src 'self' " + this.host + ";" + // prefetch can be used to leak data via DNS
                         "connect-src 'self' " + this.host +
                         (isSubdomain ? "" : blockstoreDomain.stream().map(d -> " https://" + d).collect(Collectors.joining())) + ";" +
                         "webrtc 'block';" +

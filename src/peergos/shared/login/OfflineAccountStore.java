@@ -2,6 +2,7 @@ package peergos.shared.login;
 
 import peergos.shared.*;
 import peergos.shared.crypto.asymmetric.*;
+import peergos.shared.login.mfa.*;
 import peergos.shared.user.*;
 import peergos.shared.util.*;
 
@@ -30,23 +31,57 @@ public class OfflineAccountStore implements Account {
     }
 
     @Override
-    public CompletableFuture<UserStaticData> getLoginData(String username, PublicSigningKey authorisedReader, byte[] auth) {
+    public CompletableFuture<Either<UserStaticData, MultiFactorAuthRequest>> getLoginData(String username,
+                                                                                          PublicSigningKey authorisedReader,
+                                                                                          byte[] auth,
+                                                                                          Optional<MultiFactorAuthResponse>  mfa) {
         return Futures.asyncExceptionally(() -> {
                     if (online.isOnline())
-                        return target.getLoginData(username, authorisedReader, auth)
-                                .thenApply(entryPoints -> {
-                                    local.setLoginData(new LoginData(username, entryPoints, authorisedReader, Optional.empty()));
-                                    return entryPoints;
+                        return target.getLoginData(username, authorisedReader, auth, mfa)
+                                .thenApply(res -> {
+                                    if (res.isA())
+                                        local.setLoginData(new LoginData(username, res.a(), authorisedReader, Optional.empty()));
+                                    return res;
                                 });
                     online.updateAsync();
-                    return local.getEntryData(username, authorisedReader);
+                    return local.getEntryData(username, authorisedReader).thenApply(Either::a);
                 },
                 t -> {
                     if (t.getMessage().contains("Incorrect+password"))
                         return Futures.errored(new IllegalStateException("Incorrect password!"));
                     if (online.isOfflineException(t))
-                        return local.getEntryData(username, authorisedReader);
+                        return local.getEntryData(username, authorisedReader).thenApply(Either::a);
                     return Futures.errored(t);
                 });
+    }
+
+    @Override
+    public CompletableFuture<List<MultiFactorAuthMethod>> getSecondAuthMethods(String username, byte[] auth) {
+        return target.getSecondAuthMethods(username, auth);
+    }
+
+    @Override
+    public CompletableFuture<Boolean> enableTotpFactor(String username, byte[] credentialId, String code, byte[] auth) {
+        return target.enableTotpFactor(username, credentialId, code, auth);
+    }
+
+    @Override
+    public CompletableFuture<byte[]> registerSecurityKeyStart(String username, byte[] auth) {
+        return target.registerSecurityKeyStart(username, auth);
+    }
+
+    @Override
+    public CompletableFuture<Boolean> registerSecurityKeyComplete(String username, String keyName, MultiFactorAuthResponse resp, byte[] auth) {
+        return target.registerSecurityKeyComplete(username, keyName, resp, auth);
+    }
+
+    @Override
+    public CompletableFuture<Boolean> deleteSecondFactor(String username, byte[] credentialId, byte[] auth) {
+        return target.deleteSecondFactor(username, credentialId, auth);
+    }
+
+    @Override
+    public CompletableFuture<TotpKey> addTotpFactor(String username, byte[] auth) {
+        return target.addTotpFactor(username, auth);
     }
 }

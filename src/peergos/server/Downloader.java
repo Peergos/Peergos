@@ -22,7 +22,7 @@ public class Downloader {
         String toPath = args[2];
         Console console = System.console();
         String password = new String(console.readPassword("Enter password for " + username + ":"));
-        UserContext context = UserContext.signIn(username, password, network, crypto).get();
+        UserContext context = UserContext.signIn(username, password, Main::getMfaResponseCLI, network, crypto).get();
         ForkJoinPool pool = new ForkJoinPool(50);
         long t1 = System.currentTimeMillis();
         downloadTo(context, fromPath, PathUtil.get(toPath), props -> true, pool);

@@ -1585,7 +1585,7 @@ public class PeergosNetworkUtils {
         sharee.shareReadAccessWith(result.left, Set.of(receiverGroupUid)).join();
 
         //now sharer should see the reply
-        sharer = UserContext.signIn(sharer.username, password, sharer.network, sharer.crypto, c -> {}).join();
+        sharer = UserContext.signIn(sharer.username, password, UserTests::noMfa, sharer.network, sharer.crypto, c -> {}).join();
         feed = sharer.getSocialFeed().join().update().join();
         files = feed.getSharedFiles(0, 100).join();
         assertTrue(files.size() == 5);
@@ -2054,11 +2054,12 @@ public class PeergosNetworkUtils {
         UserContext b2 = PeergosNetworkUtils.ensureSignedUp(b.username, password, network.clear(), crypto);
         Messenger msgB2 = new Messenger(b2);
         ChatController controllerB2 = msgB2.getChat(controllerB.chatUuid).join();
-        ForkJoinPool.commonPool().submit(() -> {
+        ForkJoinTask<?> concurrent = ForkJoinPool.commonPool().submit(() -> {
             msgB2.mergeMessages(controllerB2, a.username).join();
         });
 
         controllerB = msgB.mergeMessages(controllerB, a.username).join();
+        concurrent.join();
 
         UserContext b3 = PeergosNetworkUtils.ensureSignedUp(b.username, password, network.clear(), crypto);
         Messenger msgB3 = new Messenger(b3);
@@ -2483,7 +2484,7 @@ public class PeergosNetworkUtils {
     public static UserContext ensureSignedUp(String username, String password, NetworkAccess network, Crypto crypto) {
         boolean isRegistered = network.isUsernameRegistered(username).join();
         if (isRegistered)
-            return UserContext.signIn(username, password, network, crypto).join();
+            return UserContext.signIn(username, password, UserTests::noMfa, network, crypto).join();
         return UserContext.signUp(username, password, "", network, crypto).join();
     }
 }

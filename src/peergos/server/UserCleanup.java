@@ -24,7 +24,7 @@ public class UserCleanup {
         NetworkAccess network = Builder.buildJavaNetworkAccess(new URL("https://peergos.net"), true).get();
         String username = args[0];
         String password = args[1];
-        UserContext context = UserContext.signIn(username, password, network, crypto).get();
+        UserContext context = UserContext.signIn(username, password, Main::getMfaResponseCLI, network, crypto).get();
         long usage = context.getSpaceUsage().join();
 //        checkRawUsage(context);
         clearUnreachableChampNodes(context);

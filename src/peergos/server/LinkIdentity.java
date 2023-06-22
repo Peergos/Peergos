@@ -29,7 +29,7 @@ public class LinkIdentity {
         String username = a.getArg("username");
         Console console = System.console();
         String password = new String(console.readPassword("Enter password for " + username + ":"));
-        UserContext context = UserContext.signIn(username, password, network, crypto).join();
+        UserContext context = UserContext.signIn(username, password, Main::getMfaResponseCLI, network, crypto).join();
         String usernameB = a.getArg("service-username");
         String serviceB = a.getArg("service");
         if (! Pattern.compile(IdentityLink.KnownService.Peergos.usernameRegex).matcher(username).matches())

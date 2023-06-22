@@ -10,6 +10,7 @@ import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.io.ipfs.multihash.*;
+import peergos.shared.login.mfa.*;
 import peergos.shared.mutable.*;
 import peergos.shared.storage.*;
 import peergos.shared.storage.auth.*;
@@ -35,7 +36,7 @@ public class Mirror {
                     String username = a.getArg("username");
                     String password = new String(console.readPassword("Enter password for " + username + ": "));
 
-                    UserContext user = UserContext.signIn(username, password, network, crypto).join();
+                    UserContext user = UserContext.signIn(username, password, Main::getMfaResponseCLI, network, crypto).join();
                     Optional<BatWithId> mirrorBat = user.getMirrorBat().join();
 
                     WriterData userData = WriterData.fromCbor(UserContext.getWriterDataCbor(network, username).join().right);
@@ -123,7 +124,7 @@ public class Mirror {
                                                         JdbcAccount targetAccount,
                                                         TransactionStore transactions,
                                                         Hasher hasher) {
-        Logging.LOG().log(Level.INFO, "Mirroring data for " + username);
+        Logging.LOG().log(Level.INFO, "Mirroring data for " + username + loginAuth.map(k -> " including login data").orElse(" excluding login data"));
         Optional<PublicKeyHash> identity = core.getPublicKeyHash(username).join();
         if (! identity.isPresent())
             return Collections.emptyMap();
@@ -138,8 +139,13 @@ public class Mirror {
         }
         if (loginAuth.isPresent()) {
             SigningKeyPair login = loginAuth.get();
-            UserStaticData entryData = p2pAccount.getLoginData(username, login.publicSigningKey, TimeLimitedClient.signNow(login.secretSigningKey)).join();
-            targetAccount.setLoginData(new LoginData(username, entryData, login.publicSigningKey, Optional.empty())).join();
+            Either<UserStaticData, MultiFactorAuthRequest> loginData = p2pAccount.getLoginData(username, login.publicSigningKey,
+                    TimeLimitedClient.signNow(login.secretSigningKey), Optional.empty()).join();
+            if (loginData.isA()) {
+                UserStaticData entryData = loginData.a();
+                targetAccount.setLoginData(new LoginData(username, entryData, login.publicSigningKey, Optional.empty())).join();
+            } else
+                Logging.LOG().log(Level.WARNING, "Unable to mirror login data because 2FA is required");
         }
         Logging.LOG().log(Level.INFO, "Finished mirroring data for " + username);
         return versions;

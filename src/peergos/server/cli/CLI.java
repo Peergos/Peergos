@@ -13,9 +13,10 @@ import peergos.server.simulation.FileSystem;
 import peergos.server.user.*;
 import peergos.server.util.Logging;
 import peergos.shared.*;
+import peergos.shared.cbor.*;
+import peergos.shared.login.mfa.*;
 import peergos.shared.social.FollowRequestWithCipherText;
-import peergos.shared.user.SocialState;
-import peergos.shared.user.UserContext;
+import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
 import peergos.shared.util.*;
 
@@ -23,6 +24,7 @@ import java.io.*;
 import java.net.*;
 import java.nio.file.*;
 import java.util.*;
+import java.util.concurrent.*;
 import java.util.concurrent.atomic.*;
 import java.util.function.*;
 import java.util.logging.Level;
@@ -316,7 +318,7 @@ public class CLI implements Runnable {
         terminal.writer().println("Enter new  password:");
         String newPassword = reader.readLine(PROMPT, PASSWORD_MASK);
         try {
-            cliContext.userContext.changePassword(currentPassword, newPassword).join();
+            cliContext.userContext.changePassword(currentPassword, newPassword, methods -> mfa(methods, terminal.writer(), reader)).join();
         } catch (Exception ex) {
             ex.printStackTrace();
             return "Failed to update password";
@@ -625,14 +627,14 @@ public class CLI implements Runnable {
         writer.println("Enter username");
         String username = reader.readLine(PROMPT).trim();
 
-        NetworkAccess networkAccess = Builder.buildJavaNetworkAccess(serverURL, ! serverURL.getHost().equals("localhost")).join();
+        NetworkAccess network = Builder.buildJavaNetworkAccess(serverURL, ! serverURL.getHost().equals("localhost")).join();
         Consumer<String> progressConsumer =  msg -> {
             writer.println(msg);
             writer.flush();
             return;
         };
 
-        boolean isRegistered = networkAccess.isUsernameRegistered(username).join();
+        boolean isRegistered = network.isUsernameRegistered(username).join();
         if (! isRegistered) {
             writer.println("To create account, enter password,");
             writer.println("we recommend a random alphanumeric password longer than 12 characters");
@@ -645,14 +647,27 @@ public class CLI implements Runnable {
             }
 
             UserContext userContext = UserContext.signUp(username, password, "", Optional.empty(), s -> {},
-                    Optional.empty(), networkAccess, CRYPTO, progressConsumer).join();
+                    Optional.empty(), network, CRYPTO, progressConsumer).join();
             return new CLIContext(userContext, serverURL.toString(), username);
         } else {
             writer.println("Enter password for '" + username + "'");
             String password = reader.readLine(PROMPT, PASSWORD_MASK);
-            UserContext userContext = UserContext.signIn(username, password, networkAccess, CRYPTO, progressConsumer).join();
+            UserContext userContext = UserContext.signIn(username, password,
+                    methods -> mfa(methods, writer, reader), network, CRYPTO, progressConsumer).join();
             return new CLIContext(userContext, serverURL.toString(), username);
         }
+    }
+
+    private static CompletableFuture<MultiFactorAuthResponse> mfa(MultiFactorAuthRequest req,
+                                                                  PrintWriter writer,
+                                                                  LineReader reader) {
+        Optional<MultiFactorAuthMethod> anyTotp = req.methods.stream().filter(m -> m.type == MultiFactorAuthMethod.Type.TOTP).findFirst();
+        if (anyTotp.isEmpty())
+            throw new IllegalStateException("No supported 2 factor auth method! " + req.methods);
+        MultiFactorAuthMethod totp = anyTotp.get();
+        writer.println("Enter TOTP code for login");
+        String code = reader.readLine(PROMPT).trim();
+        return Futures.of(new MultiFactorAuthResponse(totp.credentialId, Either.a(code)));
     }
 
     public static Terminal buildTerminal() {
