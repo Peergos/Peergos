@@ -79,7 +79,7 @@ public class RamUserTests extends UserTests {
         Assert.assertTrue(context.network.account.getSecondAuthMethods(username, context.signer).join().isEmpty());
 
         TimeBasedOneTimePasswordGenerator totp = new TimeBasedOneTimePasswordGenerator(Duration.ofSeconds(30L), 6, TotpKey.ALGORITHM);
-        Key key = addTotpKey(context, totp);
+        TotpKey key = addTotpKey(context, totp);
 
         List<MultiFactorAuthMethod> enabled = context.network.account.getSecondAuthMethods(username, context.signer).join();
         Assert.assertTrue(enabled.size() == 1 && enabled.get(0).enabled);
@@ -93,11 +93,11 @@ public class RamUserTests extends UserTests {
         context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
 
         // now add a new totp key
-        Key key2 = addTotpKey(context, totp);
+        TotpKey key2 = addTotpKey(context, totp);
         testLoginRequiresTotp(username, password, network, totp, key2);
 
         // Now add a 3rd which should delete the old one
-        Key key3 = addTotpKey(context, totp);
+        TotpKey key3 = addTotpKey(context, totp);
         testLoginRequiresTotp(username, password, network, totp, key3);
         // logging in with old totp key should fail
         try {
@@ -114,7 +114,7 @@ public class RamUserTests extends UserTests {
                                               String password,
                                               NetworkAccess network,
                                               TimeBasedOneTimePasswordGenerator totp,
-                                              Key key) {
+                                              TotpKey totpKey) {
         AtomicBoolean usedMfa = new AtomicBoolean(false);
         UserContext freshLogin = UserContext.signIn(username, password, req -> {
             List<MultiFactorAuthMethod> totps = req.methods.stream().filter(m -> m.type == MultiFactorAuthMethod.Type.TOTP).collect(Collectors.toList());
@@ -123,7 +123,7 @@ public class RamUserTests extends UserTests {
             MultiFactorAuthMethod method = totps.get(totps.size() - 1);
             usedMfa.set(true);
             try {
-                return Futures.of(new MultiFactorAuthResponse(method.credentialId, Either.a(totp.generateOneTimePasswordString(key, Instant.now()))));
+                return Futures.of(new MultiFactorAuthResponse(method.credentialId, Either.a(totp.generateOneTimePasswordString(new SecretKeySpec(totpKey.key, TotpKey.ALGORITHM), Instant.now()))));
             } catch (InvalidKeyException e) {
                 throw new RuntimeException(e);
             }
@@ -131,13 +131,16 @@ public class RamUserTests extends UserTests {
         Assert.assertTrue(usedMfa.get());
     }
 
-    private static Key addTotpKey(UserContext context, TimeBasedOneTimePasswordGenerator totp) throws Exception {
+    private static TotpKey addTotpKey(UserContext context, TimeBasedOneTimePasswordGenerator totp) throws Exception {
         TotpKey totpKey = context.network.account.addTotpFactor(context.username, context.signer).join();
         // User stores totp key in authenticator app via QR code
 
-        List<MultiFactorAuthMethod> disabled = context.network.account.getSecondAuthMethods(context.username, context.signer).join();
-        MultiFactorAuthMethod newMfa = disabled.get(disabled.size() - 1);
-        Assert.assertTrue(! newMfa.enabled);
+        List<MultiFactorAuthMethod> disabled = context.network.account.getSecondAuthMethods(context.username, context.signer)
+                .join()
+                .stream()
+                .filter(t -> !t.enabled)
+                .collect(Collectors.toList());
+        Assert.assertTrue(disabled.isEmpty());
 
         // need to verify once to enable the second factor
         // (to guard against things like google authenticator which silently ignore the algorithm)
@@ -145,8 +148,8 @@ public class RamUserTests extends UserTests {
 
         Instant now = Instant.now();
         String clientCode = totp.generateOneTimePasswordString(key, now);
-        context.network.account.enableTotpFactor(context.username, newMfa.credentialId, clientCode, context.signer).join();
-        return key;
+        context.network.account.enableTotpFactor(context.username, totpKey.credentialId, clientCode, context.signer).join();
+        return totpKey;
     }
 
     @Test
