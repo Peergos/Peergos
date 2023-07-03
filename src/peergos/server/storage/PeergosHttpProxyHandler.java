@@ -39,9 +39,10 @@ public class PeergosHttpProxyHandler extends HttpProxyHandler {
                     throw new IllegalStateException("Expecting p2p request to include path in url");
                 }
                 String peerId = path.substring(0, streamPathIndex);
-                byte[] cid = Cid.decodePeerId(peerId).toBytes();
-                Multihash targetNodeId =Multihash.deserialize(cid);
-                //Multihash targetNodeId = Multihash.decode(cid);
+                Cid pkiIpfsNodeId = Cid.decodePeerId(peerId);
+                Multihash targetNodeId = new Multihash(Multihash.Type.lookup(pkiIpfsNodeId.type.index),
+                        pkiIpfsNodeId.getHash());
+
                 String targetPath = path.substring(streamPathIndex);
                 if (!targetPath.startsWith(HTTP_REQUEST)) {
                     throw new IllegalStateException("Expecting path to be a http request");
