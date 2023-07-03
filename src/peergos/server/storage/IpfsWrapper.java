@@ -1,11 +1,15 @@
 package peergos.server.storage;
 
 import com.sun.net.httpserver.HttpServer;
+import io.ipfs.cid.Cid;
 import io.libp2p.core.PeerId;
 import io.libp2p.core.crypto.PrivKey;
 import io.netty.handler.codec.http.FullHttpRequest;
 import io.netty.handler.codec.http.FullHttpResponse;
 import org.peergos.*;
+import org.peergos.blockstore.Blockstore;
+import org.peergos.blockstore.FilteredBlockstore;
+import org.peergos.blockstore.TypeLimitedBlockstore;
 import org.peergos.client.RequestSender;
 import org.peergos.config.*;
 import org.peergos.config.Filter;
@@ -28,12 +32,12 @@ import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
 import java.util.logging.*;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-import static org.peergos.EmbeddedIpfs.buildBlockStore;
 import static peergos.server.util.Logging.LOG;
 import static peergos.server.util.AddressUtil.getAddress;
 
@@ -229,7 +233,7 @@ public class IpfsWrapper implements AutoCloseable {
         BlockRequestAuthoriser authoriser = (c, b, p, a) -> CompletableFuture.completedFuture(true);
 
         embeddedIpfs = EmbeddedIpfs.build(ipfsWrapper.ipfsDir,
-                buildBlockStore(config, ipfsWrapper.ipfsDir),
+                buildMemoryBlockStore(config, ipfsWrapper.ipfsDir),
                 List.of(config.addresses.getSwarmAddresses().stream().findFirst().get()),
                 config.bootstrap.getBootstrapAddresses(),
                 config.identity,
@@ -261,6 +265,61 @@ public class IpfsWrapper implements AutoCloseable {
         Runtime.getRuntime().addShutdownHook(shutdownHook);
         return ipfsWrapper;
     }
+
+    public static class MemBlockstore implements Blockstore {
+        private final ConcurrentHashMap<Cid, byte[]> blocks = new ConcurrentHashMap();
+
+        public MemBlockstore() {
+        }
+
+        public CompletableFuture<Boolean> has(Cid c) {
+            return CompletableFuture.completedFuture(this.blocks.containsKey(c));
+        }
+
+        public CompletableFuture<Optional<byte[]>> get(Cid c) {
+            return CompletableFuture.completedFuture(Optional.ofNullable((byte[])this.blocks.get(c)));
+        }
+
+        public CompletableFuture<Cid> put(byte[] block, Cid.Codec codec) {
+            Cid cid = new Cid(1L, codec, io.ipfs.multihash.Multihash.Type.sha2_256, Hash.sha256(block));
+            this.blocks.put(cid, block);
+            return CompletableFuture.completedFuture(cid);
+        }
+
+        public CompletableFuture<Boolean> rm(Cid c) {
+            if (this.blocks.containsKey(c)) {
+                this.blocks.remove(c);
+                return CompletableFuture.completedFuture(true);
+            } else {
+                return CompletableFuture.completedFuture(false);
+            }
+        }
+
+        public CompletableFuture<Boolean> bloomAdd(Cid cid) {
+            return CompletableFuture.completedFuture(false);
+        }
+
+        public CompletableFuture<List<Cid>> refs() {
+            return CompletableFuture.completedFuture(new ArrayList(this.blocks.keySet()));
+        }
+    }
+
+    public static Blockstore buildMemoryBlockStore(Config config, Path path) {
+        Blockstore blocks = new MemBlockstore();
+        Object blockStore;
+        if (config.datastore.filter.type == FilterType.BLOOM) {
+            blockStore = FilteredBlockstore.bloomBased(blocks, config.datastore.filter.falsePositiveRate);
+        } else if (config.datastore.filter.type == FilterType.INFINI) {
+            blockStore = FilteredBlockstore.infiniBased(blocks, config.datastore.filter.falsePositiveRate);
+        } else {
+            if (config.datastore.filter.type != FilterType.NONE) {
+                throw new IllegalStateException("Unhandled filter type: " + config.datastore.filter.type);
+            }
+            blockStore = blocks;
+        }
+        return (Blockstore)(config.datastore.allowedCodecs.codecs.isEmpty() ? blockStore : new TypeLimitedBlockstore((Blockstore)blockStore, config.datastore.allowedCodecs.codecs));
+    }
+
 
     public Config configure() {
         Config config = null;
