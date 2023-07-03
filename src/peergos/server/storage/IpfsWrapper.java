@@ -1,7 +1,10 @@
 package peergos.server.storage;
 
+import com.sun.net.httpserver.Headers;
+import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import io.ipfs.cid.Cid;
+import io.ipfs.multihash.Multihash;
 import io.libp2p.core.PeerId;
 import io.libp2p.core.crypto.PrivKey;
 import io.netty.handler.codec.http.FullHttpRequest;
@@ -13,23 +16,18 @@ import org.peergos.blockstore.TypeLimitedBlockstore;
 import org.peergos.client.RequestSender;
 import org.peergos.config.*;
 import org.peergos.config.Filter;
-import org.peergos.net.APIHandler;
-import org.peergos.net.HttpProxyHandler;
+import org.peergos.net.*;
+import org.peergos.net.Handler;
 import org.peergos.protocol.http.HttpProtocol;
 import peergos.server.util.*;
 import peergos.server.util.Args;
-import peergos.shared.io.ipfs.api.*;
 import peergos.shared.io.ipfs.multiaddr.MultiAddress;
-import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.storage.*;
 import peergos.shared.util.*;
 
 import java.io.*;
 import java.net.*;
-import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.nio.file.StandardOpenOption;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
@@ -65,13 +63,14 @@ public class IpfsWrapper implements AutoCloseable {
          */
         public final Optional<List<MultiAddress>> bootstrapNode;
         public final int swarmPort;
-        public final String apiAddress, gatewayAddress, allowTarget;
+        public final String apiAddress, gatewayAddress, allowTarget, proxyTarget;
         public final List<IpfsInstaller.Plugin> plugins;
         public final Optional<String> metricsAddress;
 
         public ConfigParams(Optional<List<MultiAddress>> bootstrapNode,
                       String apiAddress,
                       String gatewayAddress,
+                      String proxyTarget,
                       String allowTarget,
                       int swarmPort,
                       Optional<String> metricsAddress,
@@ -79,6 +78,7 @@ public class IpfsWrapper implements AutoCloseable {
             this.bootstrapNode = bootstrapNode;
             this.apiAddress = apiAddress;
             this.gatewayAddress = gatewayAddress;
+            this.proxyTarget = proxyTarget;
             this.allowTarget = allowTarget;
             this.swarmPort = swarmPort;
             this.metricsAddress = metricsAddress;
@@ -101,6 +101,8 @@ public class IpfsWrapper implements AutoCloseable {
 
         String apiAddress = args.getArg("ipfs-api-address");
         String gatewayAddress = args.getArg("ipfs-gateway-address");
+
+        String proxyTarget = args.getArg("proxy-target");
         MultiAddress allowTarget = new MultiAddress(args.getArg("allow-target"));
         int swarmPort = args.getInt("ipfs-swarm-port", 4001);
 
@@ -112,6 +114,7 @@ public class IpfsWrapper implements AutoCloseable {
 
 
         return new ConfigParams(bootstrapNodes, apiAddress, gatewayAddress,
+                proxyTarget,
                 "http://" + allowTarget.getHost() + ":" + allowTarget.getTCPPort(),
                 swarmPort, metricsAddress, plugins);
     }
@@ -121,12 +124,12 @@ public class IpfsWrapper implements AutoCloseable {
 
     public final Path ipfsDir;
     public final ConfigParams configParams;
-    public final MultiAddress proxyTarget;
 
-    private static EmbeddedIpfs embeddedIpfs;
-    private static HttpServer apiServer;
+    private EmbeddedIpfs embeddedIpfs;
+    private HttpServer apiServer;
+    private HttpServer p2pServer;
 
-    public IpfsWrapper(Path ipfsDir, ConfigParams configParams, MultiAddress proxytarget) {
+    public IpfsWrapper(Path ipfsDir, ConfigParams configParams) {
 
         File ipfsDirF = ipfsDir.toFile();
         if (! ipfsDirF.isDirectory() && ! ipfsDirF.mkdirs()) {
@@ -135,7 +138,6 @@ public class IpfsWrapper implements AutoCloseable {
 
         this.ipfsDir = ipfsDir;
         this.configParams = configParams;
-        this.proxyTarget = proxytarget;
     }
 
     /**
@@ -188,7 +190,8 @@ public class IpfsWrapper implements AutoCloseable {
         LOG.info("Stopping server...");
         try {
             embeddedIpfs.stop().join();
-            apiServer.stop(3); //wait max 3 seconds
+            apiServer.stop(0);
+            p2pServer.stop(0);
         } catch (Exception ex) {
             ex.printStackTrace();
         }
@@ -206,33 +209,15 @@ public class IpfsWrapper implements AutoCloseable {
 
         LOG().info("Using IPFS dir " + ipfsDir);
         ConfigParams configParams = buildConfig(args);
-        return new IpfsWrapper(ipfsDir, configParams, new MultiAddress(args.getArg("proxy-target")));
+        return new IpfsWrapper(ipfsDir, configParams);
     }
-
-    /**
-     * Build an IpfsWrapper based on args.
-     * <p>
-     * Start running it in a sub-process.
-     *
-     * Block until the ipfs-daemon is ready for requests.
-     *
-     * Restart the daemon if it dies.
-     *
-     * @param args
-     * @return
-     */
-    public static IpfsWrapper launch(Args args) {
-        IpfsWrapper ipfs = IpfsWrapper.build(args);
-        return launch(ipfs);
-    }
-
 
     public static IpfsWrapper launch(IpfsWrapper ipfsWrapper) {
         Config config = ipfsWrapper.configure();
         LOG.info("Starting Nabu version: " + APIHandler.CURRENT_VERSION);
         BlockRequestAuthoriser authoriser = (c, b, p, a) -> CompletableFuture.completedFuture(true);
 
-        embeddedIpfs = EmbeddedIpfs.build(ipfsWrapper.ipfsDir,
+        ipfsWrapper.embeddedIpfs = EmbeddedIpfs.build(ipfsWrapper.ipfsDir,
                 buildMemoryBlockStore(config, ipfsWrapper.ipfsDir),
                 List.of(config.addresses.getSwarmAddresses().stream().findFirst().get()),
                 config.bootstrap.getBootstrapAddresses(),
@@ -240,8 +225,7 @@ public class IpfsWrapper implements AutoCloseable {
                 authoriser,
                 config.addresses.proxyTargetAddress.map(IpfsWrapper::proxyHandler)
         );
-        embeddedIpfs.start();
-        String apiAddressArg = "Addresses.API";
+        ipfsWrapper.embeddedIpfs.start();
         io.ipfs.multiaddr.MultiAddress apiAddress = config.addresses.apiAddress;
         InetSocketAddress localAPIAddress = new InetSocketAddress(apiAddress.getHost(), apiAddress.getPort());
 
@@ -249,16 +233,22 @@ public class IpfsWrapper implements AutoCloseable {
         int handlerThreads = 50;
         LOG.info("Starting RPC API server at " + apiAddress.getHost() + ":" + localAPIAddress.getPort());
         try {
-            apiServer = HttpServer.create(localAPIAddress, maxConnectionQueue);
-        } catch (IOException ioe) {
-            throw new IllegalStateException("Unable to start APIServer");
-        }
-        apiServer.createContext(APIHandler.API_URL, new APIHandler(embeddedIpfs));
-        if (config.addresses.proxyTargetAddress.isPresent())
-            apiServer.createContext(HttpProxyService.API_URL, new HttpProxyHandler(new HttpProxyService(embeddedIpfs.node, embeddedIpfs.p2pHttp.get(), embeddedIpfs.dht)));
-        apiServer.setExecutor(Executors.newFixedThreadPool(handlerThreads));
-        apiServer.start();
+            ipfsWrapper.apiServer = HttpServer.create(localAPIAddress, maxConnectionQueue);
+            ipfsWrapper.apiServer.createContext(APIHandler.API_URL, new APIHandler(ipfsWrapper.embeddedIpfs));
+            ipfsWrapper.apiServer.setExecutor(Executors.newFixedThreadPool(handlerThreads));
+            ipfsWrapper.apiServer.start();
 
+            io.ipfs.multiaddr.MultiAddress p2pAddress = config.addresses.gatewayAddress;
+            InetSocketAddress localP2pAddress = new InetSocketAddress(p2pAddress.getHost(), p2pAddress.getPort());
+            ipfsWrapper.p2pServer = HttpServer.create(localP2pAddress, maxConnectionQueue);
+            ipfsWrapper.p2pServer.createContext(HttpProxyService.API_URL, new PeergosHttpProxyHandler(
+                    new HttpProxyService(ipfsWrapper.embeddedIpfs.node, ipfsWrapper.embeddedIpfs.p2pHttp.get(),
+                            ipfsWrapper.embeddedIpfs.dht)));
+            ipfsWrapper.p2pServer.setExecutor(Executors.newFixedThreadPool(handlerThreads));
+            ipfsWrapper.p2pServer.start();
+        } catch (IOException ioe) {
+            throw new IllegalStateException("Unable to start Server: " + ioe);
+        }
         Thread shutdownHook = new Thread(() -> {
             ipfsWrapper.stop();
         });
@@ -324,8 +314,7 @@ public class IpfsWrapper implements AutoCloseable {
     public Config configure() {
         Config config = null;
         Path configFilePath = ipfsDir.resolve("config");
-        if (! configFilePath.toFile().exists()) {
-            LOG().info("Initializing ipfs");
+        LOG().info("Initializing ipfs");
     /*
             public final Optional<List<MultiAddress>> bootstrapNode*;
             public final int swarmPort*;
@@ -333,54 +322,41 @@ public class IpfsWrapper implements AutoCloseable {
             public final List<IpfsInstaller.Plugin> plugins;
             public final Optional<String> metricsAddress;
     */
-            HostBuilder builder = new HostBuilder().generateIdentity();
-            PrivKey privKey = builder.getPrivateKey();
-            PeerId peerId = builder.getPeerId();
+        HostBuilder builder = new HostBuilder().generateIdentity();
+        PrivKey privKey = builder.getPrivateKey();
+        PeerId peerId = builder.getPeerId();
 
-            List<io.ipfs.multiaddr.MultiAddress> swarmAddresses = List.of(new io.ipfs.multiaddr.MultiAddress("/ip6/::/tcp/" + configParams.swarmPort));
-            io.ipfs.multiaddr.MultiAddress apiAddress = new io.ipfs.multiaddr.MultiAddress(configParams.apiAddress);
-            io.ipfs.multiaddr.MultiAddress gatewayAddress = new io.ipfs.multiaddr.MultiAddress(configParams.gatewayAddress);
-            Optional<io.ipfs.multiaddr.MultiAddress> proxyTargetAddress = Optional.of(new io.ipfs.multiaddr.MultiAddress(proxyTarget.toString()));
+        List<io.ipfs.multiaddr.MultiAddress> swarmAddresses = List.of(new io.ipfs.multiaddr.MultiAddress("/ip6/::/tcp/" + configParams.swarmPort));
+        io.ipfs.multiaddr.MultiAddress apiAddress = new io.ipfs.multiaddr.MultiAddress(configParams.apiAddress);
+        io.ipfs.multiaddr.MultiAddress gatewayAddress = new io.ipfs.multiaddr.MultiAddress(configParams.gatewayAddress);
+        Optional<io.ipfs.multiaddr.MultiAddress> proxyTargetAddress = Optional.of(new io.ipfs.multiaddr.MultiAddress(configParams.proxyTarget));
 
-            Optional<String> allowTarget = Optional.of(configParams.allowTarget);
-            List<io.ipfs.multiaddr.MultiAddress> bootstrapNodes = configParams.bootstrapNode.isPresent() ? configParams.bootstrapNode.get().stream()
-                    .map(b -> new io.ipfs.multiaddr.MultiAddress(b.toString()))
-                    .collect(Collectors.toList()) : Collections.emptyList();
+        Optional<String> allowTarget = Optional.of(configParams.allowTarget);
+        List<io.ipfs.multiaddr.MultiAddress> bootstrapNodes = configParams.bootstrapNode.isPresent() ? configParams.bootstrapNode.get().stream()
+                .map(b -> new io.ipfs.multiaddr.MultiAddress(b.toString()))
+                .collect(Collectors.toList()) : Collections.emptyList();
 
-            Map<String, Object> blockChildMap = new LinkedHashMap<>();
-            blockChildMap.put("path", "blocks");
-            blockChildMap.put("shardFunc", "/repo/flatfs/shard/v1/next-to-last/2");
-            blockChildMap.put("sync", "true");
-            blockChildMap.put("type", "flatfs");
-            Mount blockMount = new Mount("/blocks", "flatfs.datastore", "measure", blockChildMap);
+        Map<String, Object> blockChildMap = new LinkedHashMap<>();
+        blockChildMap.put("path", "blocks");
+        blockChildMap.put("shardFunc", "/repo/flatfs/shard/v1/next-to-last/2");
+        blockChildMap.put("sync", "true");
+        blockChildMap.put("type", "flatfs");
+        Mount blockMount = new Mount("/blocks", "flatfs.datastore", "measure", blockChildMap);
 
-            Map<String, Object> dataChildMap = new LinkedHashMap<>();
-            dataChildMap.put("compression", "none");
-            dataChildMap.put("path", "datastore");
-            dataChildMap.put("type", "h2");
-            Mount rootMount = new Mount("/", "h2.datastore", "measure", dataChildMap);
+        Map<String, Object> dataChildMap = new LinkedHashMap<>();
+        dataChildMap.put("compression", "none");
+        dataChildMap.put("path", "datastore");
+        dataChildMap.put("type", "h2");
+        Mount rootMount = new Mount("/", "h2.datastore", "measure", dataChildMap);
 
-            AddressesSection addressesSection = new AddressesSection(swarmAddresses, apiAddress, gatewayAddress,
-                    proxyTargetAddress, allowTarget);
-            org.peergos.config.Filter filter = new Filter(FilterType.NONE, 0.0);
-            CodecSet codecSet = CodecSet.empty();
-            DatastoreSection datastoreSection = new DatastoreSection(blockMount, rootMount, filter, codecSet);
-            BootstrapSection bootstrapSection = new BootstrapSection(bootstrapNodes);
-            IdentitySection identity = new IdentitySection(privKey.bytes(), peerId);
-            config = new org.peergos.config.Config(addressesSection, bootstrapSection, datastoreSection, identity);
-            try {
-                Files.write(configFilePath, config.toString().getBytes(), StandardOpenOption.CREATE);
-            } catch (IOException ioe) {
-                throw new IllegalStateException("Unable to write ipfs config file");
-            }
-        } else {
-            try {
-                config = Config.build(Files.readString(configFilePath));
-            } catch (IOException ioe) {
-                throw new IllegalStateException("Unable to write ipfs config file");
-            }
-            //TODO apply the overridden params and write config file
-        }
+        AddressesSection addressesSection = new AddressesSection(swarmAddresses, apiAddress, gatewayAddress,
+                proxyTargetAddress, allowTarget);
+        org.peergos.config.Filter filter = new Filter(FilterType.NONE, 0.0);
+        CodecSet codecSet = CodecSet.empty();
+        DatastoreSection datastoreSection = new DatastoreSection(blockMount, rootMount, filter, codecSet);
+        BootstrapSection bootstrapSection = new BootstrapSection(bootstrapNodes);
+        IdentitySection identity = new IdentitySection(privKey.bytes(), peerId);
+        config = new org.peergos.config.Config(addressesSection, bootstrapSection, datastoreSection, identity);
         /*
         if (config.metricsAddress.isPresent()) {
             String[] parts = config.metricsAddress.get().split(":");

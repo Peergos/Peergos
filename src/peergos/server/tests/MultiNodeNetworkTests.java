@@ -38,6 +38,7 @@ import static peergos.server.tests.PeergosNetworkUtils.*;
 public class MultiNodeNetworkTests {
     private static Args args = UserTests.buildArgs()
             .with("useIPFS", "true")
+            .with("enable-gc", "false")
             .with(IpfsWrapper.IPFS_BOOTSTRAP_NODES, ""); // no bootstrapping
 
     private static Random random = new Random(0);
@@ -115,6 +116,7 @@ public class MultiNodeNetworkTests {
             int allowPort = 9000 + random.nextInt(8000);
             Args normalNode = UserTests.buildArgs()
                     .with("useIPFS", "true")
+                    .with("enable-gc", "false")
                     .with("port", "" + peergosPort)
                     .with("pki-node-id", pkiNodeId.toString())
                     .with("peergos.identity.hash", peergosId.toString())
@@ -140,12 +142,12 @@ public class MultiNodeNetworkTests {
         return Builder.buildNonCachingJavaNetworkAccess(local, false, 1_000, Optional.empty()).get();
     }
 
-    @Before
+    /*@Before
     public void gc() {
         for (UserService service : services) {
             service.gc.collect(s -> Futures.of(true));
         }
-    }
+    }*/
 
     @Test
     public void signUp() {
