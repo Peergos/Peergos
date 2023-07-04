@@ -40,7 +40,11 @@ public class MultiNodeNetworkTests {
             .with("useIPFS", "true")
             .with("enable-gc", "false")
             .with(IpfsWrapper.IPFS_BOOTSTRAP_NODES, ""); // no bootstrapping
-
+            /*.with(IpfsWrapper.IPFS_BOOTSTRAP_NODES,
+                    org.peergos.config.Config.defaultBootstrapNodes.stream()
+                            .map(ma -> ma.toString())
+                            .collect(Collectors.joining(","))
+            );*/
     private static Random random = new Random(0);
     private static List<NetworkAccess> nodes = new ArrayList<>();
     private static List<UserService> services = new ArrayList<>();

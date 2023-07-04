@@ -19,6 +19,7 @@ import org.peergos.config.Filter;
 import org.peergos.net.*;
 import org.peergos.net.Handler;
 import org.peergos.protocol.http.HttpProtocol;
+import peergos.server.Builder;
 import peergos.server.util.*;
 import peergos.server.util.Args;
 import peergos.shared.io.ipfs.multiaddr.MultiAddress;
@@ -32,6 +33,7 @@ import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
+import java.util.function.Function;
 import java.util.logging.*;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -44,6 +46,12 @@ public class IpfsWrapper implements AutoCloseable {
     private static final Logger LOG = Logger.getLogger(IpfsWrapper.class.getName());
 
     public static final String IPFS_BOOTSTRAP_NODES = "ipfs-config-bootstrap-node-list";
+
+    private static final Function<String, Multihash> peerIdToMultiHashExtractor = (peerIdStr) -> {
+        peergos.shared.io.ipfs.cid.Cid pkiIpfsNodeId = peergos.shared.io.ipfs.cid.Cid.decodePeerId(peerIdStr);
+        return new Multihash(io.ipfs.multihash.Multihash.Type.lookup(pkiIpfsNodeId.type.index),
+                pkiIpfsNodeId.getHash());
+    };
 
     private static HttpProtocol.HttpRequestProcessor proxyHandler(io.ipfs.multiaddr.MultiAddress target) {
         return (s, req, h) -> {
@@ -61,13 +69,13 @@ public class IpfsWrapper implements AutoCloseable {
         /**
          * Encapsulate IPFS configuration state.
          */
-        public final Optional<List<MultiAddress>> bootstrapNode;
+        public final List<MultiAddress> bootstrapNode;
         public final int swarmPort;
         public final String apiAddress, gatewayAddress, allowTarget, proxyTarget;
         public final List<IpfsInstaller.Plugin> plugins;
         public final Optional<String> metricsAddress;
 
-        public ConfigParams(Optional<List<MultiAddress>> bootstrapNode,
+        public ConfigParams(List<MultiAddress> bootstrapNode,
                       String apiAddress,
                       String gatewayAddress,
                       String proxyTarget,
@@ -94,17 +102,26 @@ public class IpfsWrapper implements AutoCloseable {
     }
 
     public static ConfigParams buildConfig(Args args) {
-        Optional<List<MultiAddress>> bootstrapNodes = args.hasArg(IPFS_BOOTSTRAP_NODES)
-                && args.getArg(IPFS_BOOTSTRAP_NODES).trim().length() > 0 ?
-                Optional.of(parseMultiAddresses(args.getArg(IPFS_BOOTSTRAP_NODES))) :
-                Optional.empty();
 
+        List<MultiAddress> bootstrapNodes = args.hasArg(IPFS_BOOTSTRAP_NODES)
+                && args.getArg(IPFS_BOOTSTRAP_NODES).trim().length() > 0 ?
+                new ArrayList<>(parseMultiAddresses(args.getArg(IPFS_BOOTSTRAP_NODES))) :
+                new ArrayList<>();
+
+        int swarmPort = args.getInt("ipfs-swarm-port", 4001);
+        Optional<MultiAddress> pkiNode = args.hasArg("pki-node-id") ?
+                Optional.of(new MultiAddress("/ip4/127.0.0.1/tcp/" + swarmPort + "/ipfs/"+ args.getArg("pki-node-id")))
+                : Optional.empty();
+        if (pkiNode.isPresent()) {
+            if (!bootstrapNodes.contains(pkiNode.get())) {
+                bootstrapNodes.add(pkiNode.get());
+            }
+        }
         String apiAddress = args.getArg("ipfs-api-address");
         String gatewayAddress = args.getArg("ipfs-gateway-address");
 
         String proxyTarget = args.getArg("proxy-target");
         MultiAddress allowTarget = new MultiAddress(args.getArg("allow-target"));
-        int swarmPort = args.getInt("ipfs-swarm-port", 4001);
 
         boolean enableMetrics = args.getBoolean("collect-metrics", false);
         Optional<String> metricsAddress = enableMetrics ?
@@ -219,7 +236,7 @@ public class IpfsWrapper implements AutoCloseable {
 
         ipfsWrapper.embeddedIpfs = EmbeddedIpfs.build(ipfsWrapper.ipfsDir,
                 buildMemoryBlockStore(config, ipfsWrapper.ipfsDir),
-                List.of(config.addresses.getSwarmAddresses().stream().findFirst().get()),
+                config.addresses.getSwarmAddresses(),
                 config.bootstrap.getBootstrapAddresses(),
                 config.identity,
                 authoriser,
@@ -241,9 +258,10 @@ public class IpfsWrapper implements AutoCloseable {
             io.ipfs.multiaddr.MultiAddress p2pAddress = config.addresses.gatewayAddress;
             InetSocketAddress localP2pAddress = new InetSocketAddress(p2pAddress.getHost(), p2pAddress.getPort());
             ipfsWrapper.p2pServer = HttpServer.create(localP2pAddress, maxConnectionQueue);
-            ipfsWrapper.p2pServer.createContext(HttpProxyService.API_URL, new PeergosHttpProxyHandler(
+
+            ipfsWrapper.p2pServer.createContext(HttpProxyService.API_URL, new HttpProxyHandler(
                     new HttpProxyService(ipfsWrapper.embeddedIpfs.node, ipfsWrapper.embeddedIpfs.p2pHttp.get(),
-                            ipfsWrapper.embeddedIpfs.dht)));
+                            ipfsWrapper.embeddedIpfs.dht), peerIdToMultiHashExtractor));
             ipfsWrapper.p2pServer.setExecutor(Executors.newFixedThreadPool(handlerThreads));
             ipfsWrapper.p2pServer.start();
         } catch (IOException ioe) {
@@ -332,9 +350,9 @@ public class IpfsWrapper implements AutoCloseable {
         Optional<io.ipfs.multiaddr.MultiAddress> proxyTargetAddress = Optional.of(new io.ipfs.multiaddr.MultiAddress(configParams.proxyTarget));
 
         Optional<String> allowTarget = Optional.of(configParams.allowTarget);
-        List<io.ipfs.multiaddr.MultiAddress> bootstrapNodes = configParams.bootstrapNode.isPresent() ? configParams.bootstrapNode.get().stream()
+        List<io.ipfs.multiaddr.MultiAddress> bootstrapNodes = configParams.bootstrapNode.stream()
                 .map(b -> new io.ipfs.multiaddr.MultiAddress(b.toString()))
-                .collect(Collectors.toList()) : Collections.emptyList();
+                .collect(Collectors.toList());
 
         Map<String, Object> blockChildMap = new LinkedHashMap<>();
         blockChildMap.put("path", "blocks");
