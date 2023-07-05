@@ -1,7 +1,5 @@
 package peergos.server.storage;
 
-import com.sun.net.httpserver.Headers;
-import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import io.ipfs.cid.Cid;
 import io.ipfs.multihash.Multihash;
@@ -17,9 +15,7 @@ import org.peergos.client.RequestSender;
 import org.peergos.config.*;
 import org.peergos.config.Filter;
 import org.peergos.net.*;
-import org.peergos.net.Handler;
 import org.peergos.protocol.http.HttpProtocol;
-import peergos.server.Builder;
 import peergos.server.util.*;
 import peergos.server.util.Args;
 import peergos.shared.io.ipfs.multiaddr.MultiAddress;
@@ -109,6 +105,7 @@ public class IpfsWrapper implements AutoCloseable {
                 new ArrayList<>();
 
         int swarmPort = args.getInt("ipfs-swarm-port", 4001);
+        /*
         Optional<MultiAddress> pkiNode = args.hasArg("pki-node-id") ?
                 Optional.of(new MultiAddress("/ip4/127.0.0.1/tcp/" + swarmPort + "/ipfs/"+ args.getArg("pki-node-id")))
                 : Optional.empty();
@@ -116,7 +113,7 @@ public class IpfsWrapper implements AutoCloseable {
             if (!bootstrapNodes.contains(pkiNode.get())) {
                 bootstrapNodes.add(pkiNode.get());
             }
-        }
+        }*/
         String apiAddress = args.getArg("ipfs-api-address");
         String gatewayAddress = args.getArg("ipfs-gateway-address");
 
@@ -145,6 +142,8 @@ public class IpfsWrapper implements AutoCloseable {
     private EmbeddedIpfs embeddedIpfs;
     private HttpServer apiServer;
     private HttpServer p2pServer;
+
+    private static final Map<Integer, IdentitySection> ipfsSwarmPortToIdentity = new HashMap<>();
 
     public IpfsWrapper(Path ipfsDir, ConfigParams configParams) {
 
@@ -340,9 +339,14 @@ public class IpfsWrapper implements AutoCloseable {
             public final List<IpfsInstaller.Plugin> plugins;
             public final Optional<String> metricsAddress;
     */
-        HostBuilder builder = new HostBuilder().generateIdentity();
-        PrivKey privKey = builder.getPrivateKey();
-        PeerId peerId = builder.getPeerId();
+        IdentitySection identity = ipfsSwarmPortToIdentity.get(configParams.swarmPort);
+        if (identity == null) {
+            HostBuilder builder = new HostBuilder().generateIdentity();
+            PrivKey privKey = builder.getPrivateKey();
+            PeerId peerId = builder.getPeerId();
+            identity = new IdentitySection(privKey.bytes(), peerId);
+            ipfsSwarmPortToIdentity.put(configParams.swarmPort, identity);
+        }
 
         List<io.ipfs.multiaddr.MultiAddress> swarmAddresses = List.of(new io.ipfs.multiaddr.MultiAddress("/ip6/::/tcp/" + configParams.swarmPort));
         io.ipfs.multiaddr.MultiAddress apiAddress = new io.ipfs.multiaddr.MultiAddress(configParams.apiAddress);
@@ -373,7 +377,6 @@ public class IpfsWrapper implements AutoCloseable {
         CodecSet codecSet = CodecSet.empty();
         DatastoreSection datastoreSection = new DatastoreSection(blockMount, rootMount, filter, codecSet);
         BootstrapSection bootstrapSection = new BootstrapSection(bootstrapNodes);
-        IdentitySection identity = new IdentitySection(privKey.bytes(), peerId);
         config = new org.peergos.config.Config(addressesSection, bootstrapSection, datastoreSection, identity);
         /*
         if (config.metricsAddress.isPresent()) {
