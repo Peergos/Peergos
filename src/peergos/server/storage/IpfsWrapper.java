@@ -273,6 +273,12 @@ public class IpfsWrapper implements AutoCloseable {
         public MemBlockstore() {
         }
 
+        @Override
+        public CompletableFuture<Boolean> hasAny(Multihash h) {
+            return Futures.of(Stream.of(Cid.Codec.DagCbor, Cid.Codec.Raw, Cid.Codec.DagProtobuf)
+                    .anyMatch(c -> has(new Cid(1, c, h.getType(), h.getHash())).join()));
+        }
+
         public CompletableFuture<Boolean> has(Cid c) {
             return CompletableFuture.completedFuture(this.blocks.containsKey(c));
         }
