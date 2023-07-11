@@ -25,6 +25,7 @@ import static peergos.server.tests.UserTests.randomString;
 public class P2pStreamNetworkTests {
     private static Args args = UserTests
             .buildArgs().with("useIPFS", "true")
+            .with("enable-gc", "false")
             .with(IpfsWrapper.IPFS_BOOTSTRAP_NODES, ""); // no bootstrapping
 
     private static Random random = new Random(0);
@@ -47,6 +48,7 @@ public class P2pStreamNetworkTests {
         int ipfsSwarmPort = 9000 + random.nextInt(8000);
         int allowPort = 9000 + random.nextInt(8000);
         Args normalNode = UserTests.buildArgs()
+                .with("enable-gc", "false")
                 .with("ipfs-api-address", "/ip4/127.0.0.1/tcp/" + ipfsApiPort)
                 .with("ipfs-gateway-address", "/ip4/127.0.0.1/tcp/" + ipfsGatewayPort)
                 .with("allow-target", "/ip4/127.0.0.1/tcp/" + allowPort)
