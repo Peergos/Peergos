@@ -43,12 +43,6 @@ public class IpfsWrapper implements AutoCloseable {
 
     public static final String IPFS_BOOTSTRAP_NODES = "ipfs-config-bootstrap-node-list";
 
-    private static final Function<String, Multihash> peerIdToMultiHashExtractor = (peerIdStr) -> {
-        peergos.shared.io.ipfs.cid.Cid pkiIpfsNodeId = peergos.shared.io.ipfs.cid.Cid.decodePeerId(peerIdStr);
-        return new Multihash(io.ipfs.multihash.Multihash.Type.lookup(pkiIpfsNodeId.type.index),
-                pkiIpfsNodeId.getHash());
-    };
-
     private static HttpProtocol.HttpRequestProcessor proxyHandler(io.ipfs.multiaddr.MultiAddress target) {
         return (s, req, h) -> {
             try {
@@ -234,7 +228,7 @@ public class IpfsWrapper implements AutoCloseable {
         BlockRequestAuthoriser authoriser = (c, b, p, a) -> CompletableFuture.completedFuture(true);
 
         ipfsWrapper.embeddedIpfs = EmbeddedIpfs.build(ipfsWrapper.ipfsDir,
-                buildMemoryBlockStore(config, ipfsWrapper.ipfsDir),
+                EmbeddedIpfs.buildBlockStore(config, ipfsWrapper.ipfsDir),
                 config.addresses.getSwarmAddresses(),
                 config.bootstrap.getBootstrapAddresses(),
                 config.identity,
@@ -260,7 +254,7 @@ public class IpfsWrapper implements AutoCloseable {
 
             ipfsWrapper.p2pServer.createContext(HttpProxyService.API_URL, new HttpProxyHandler(
                     new HttpProxyService(ipfsWrapper.embeddedIpfs.node, ipfsWrapper.embeddedIpfs.p2pHttp.get(),
-                            ipfsWrapper.embeddedIpfs.dht), peerIdToMultiHashExtractor));
+                            ipfsWrapper.embeddedIpfs.dht)));
             ipfsWrapper.p2pServer.setExecutor(Executors.newFixedThreadPool(handlerThreads));
             ipfsWrapper.p2pServer.start();
         } catch (IOException ioe) {
