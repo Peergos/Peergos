@@ -84,7 +84,7 @@ public class MirrorCoreNode implements CoreNode {
         try {
             this.state = load(statePath, pkiOwnerIdentity);
         } catch (IOException e) {
-            e.printStackTrace();
+            Logging.LOG().info("No previous pki state file present");
             // load empty
             this.state = CorenodeState.buildEmpty(pkiOwnerIdentity, pkiOwnerIdentity, MaybeMultihash.empty(), MaybeMultihash.empty());
         }
