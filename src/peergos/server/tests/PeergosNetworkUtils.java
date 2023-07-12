@@ -198,7 +198,8 @@ public class PeergosNetworkUtils {
         FileWrapper u1Root = sharerUser.getUserRoot().join();
         String filename = "somefile.txt";
         File f = File.createTempFile("peergos", "");
-        byte[] originalFileContents = sharerUser.crypto.random.randomBytes(10*1024*1024);
+        byte[] originalFileContents = new byte[10*1024*1024];
+        random.nextBytes(originalFileContents);
         Files.write(f.toPath(), originalFileContents);
         ResetableFileInputStream resetableFileInputStream = new ResetableFileInputStream(f);
         FileWrapper uploaded = u1Root.uploadOrReplaceFile(filename, resetableFileInputStream, f.length(),
