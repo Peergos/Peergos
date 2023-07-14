@@ -63,45 +63,11 @@ public class Main extends Builder {
     public static final Command.Arg ARG_IPFS_PROXY_TARGET =
         new Command.Arg("proxy-target", "Proxy target for p2p http requests", false, "/ip4/127.0.0.1/tcp/8003");
 
-    public static Command<Boolean> ENSURE_IPFS_INSTALLED = new Command<>("install-ipfs",
-            "Download/update IPFS binary. Does nothing if current IPFS binary is up-to-date.",
-            args -> {
-                /*
-                Path ipfsExePath = IpfsWrapper.getIpfsExePath(args);
-                File dir = ipfsExePath.getParent().toFile();
-                if (!  dir.isDirectory() && ! dir.mkdirs())
-                    throw new IllegalStateException("Specified install directory "+ dir +" doesn't exist and can't be created");
-
-                IpfsInstaller.ensureInstalled(ipfsExePath);
-
-                List<IpfsInstaller.Plugin> plugins = IpfsInstaller.Plugin.parseAll(args);
-                Path ipfsDir = IpfsWrapper.getIpfsDir(args);
-                if (! plugins.isEmpty())
-                    if (! ipfsDir.toFile().exists() && ! ipfsDir.toFile().mkdirs())
-                        throw new IllegalStateException("Couldn't create ipfs dir: " + ipfsDir);
-
-                for (IpfsInstaller.Plugin plugin : plugins) {
-                    plugin.ensureInstalled(ipfsDir);
-                }*/
-                return true;
-            },
-            Arrays.asList(
-                    new Command.Arg("ipfs-exe-path", "Desired path to IPFS executable. Defaults to $PEERGOS_PATH/ipfs", false),
-                    new Command.Arg("ipfs-plugins", "comma separated list of ipfs plugins to install, currently only go-ds-s3 is supported", false),
-                    new Command.Arg("s3.path", "Path of data store in S3", false),
-                    new Command.Arg("s3.bucket", "S3 bucket name", false),
-                    new Command.Arg("s3.region", "S3 region", false),
-                    new Command.Arg("s3.accessKey", "S3 access key", false),
-                    new Command.Arg("s3.secretKey", "S3 secret key", false),
-                    new Command.Arg("s3.region.endpoint", "Base url for S3 service", false)
-            )
-    );
     public static Command<IpfsWrapper> IPFS = new Command<>("ipfs",
             "Configure and start IPFS daemon",
             Main::startIpfs,
             Arrays.asList(
                     new Command.Arg("IPFS_PATH", "Path to IPFS directory. Defaults to $PEERGOS_PATH/.ipfs, or ~/.peergos/.ipfs", false),
-                    new Command.Arg("ipfs-exe-path", "Path to IPFS executable. Defaults to $PEERGOS_PATH/ipfs", false),
                     new Command.Arg("ipfs-api-address", "IPFS API port", false, "/ip4/127.0.0.1/tcp/5001"),
                     new Command.Arg("ipfs-gateway-address", "IPFS Gateway port", false, "/ip4/127.0.0.1/tcp/8080"),
                     new Command.Arg("ipfs-swarm-port", "IPFS Swarm port", false, "4001"),
@@ -129,21 +95,16 @@ public class Main extends Builder {
                             ).collect(Collectors.joining(","))),
                     new Command.Arg("collect-metrics", "Export aggregated metrics", false, "false"),
                     new Command.Arg("metrics.address", "Listen address for serving aggregated metrics", false, "localhost"),
-                    new Command.Arg("ipfs.metrics.port", "Port for serving aggregated ipfs metrics", false, "8101")
+                    new Command.Arg("ipfs.metrics.port", "Port for serving aggregated ipfs metrics", false, "8101"),
+                    new Command.Arg("s3.path", "Path of data store in S3", false),
+                    new Command.Arg("s3.bucket", "S3 bucket name", false),
+                    new Command.Arg("s3.region", "S3 region", false),
+                    new Command.Arg("s3.accessKey", "S3 access key", false),
+                    new Command.Arg("s3.secretKey", "S3 secret key", false),
+                    new Command.Arg("s3.region.endpoint", "Base url for S3 service", false)
             )
     );
 
-    public static Command<IpfsWrapper> INSTALL_AND_RUN_IPFS = new Command<>("ipfs",
-            "Install, configure and start IPFS daemon",
-            a -> {
-                ENSURE_IPFS_INSTALLED.main(a);
-                return IPFS.main(a);
-            },
-            Stream.concat(
-                    ENSURE_IPFS_INSTALLED.params.stream(),
-                    IPFS.params.stream())
-                    .collect(Collectors.toList())
-    );
 
     public static final Command<UserService> PEERGOS = new Command<>("daemon",
             "The user facing Peergos server",
@@ -312,7 +273,6 @@ public class Main extends Builder {
                     IpfsWrapper ipfs = null;
                     boolean useIPFS = args.getBoolean("useIPFS");
                     if (useIPFS) {
-                        ENSURE_IPFS_INSTALLED.main(args);
                         ipfs = startIpfs(args);
                     }
 
@@ -370,7 +330,6 @@ public class Main extends Builder {
                     IpfsWrapper ipfs = null;
                     boolean useIPFS = args.getBoolean("useIPFS");
                     if (useIPFS) {
-                        ENSURE_IPFS_INSTALLED.main(args);
                         ipfs = startIpfs(args);
                     }
 
@@ -544,7 +503,6 @@ public class Main extends Builder {
             Args a = S3Config.useS3(args) && useIPFS ? args.setArg("ipfs-plugins", "go-ds-s3") : args;
             IpfsWrapper ipfsWrapper = null;
             if (useIPFS) {
-                ENSURE_IPFS_INSTALLED.main(a);
                 ipfsWrapper = IPFS.main(a);
             }
             boolean doExportAggregatedMetrics = a.getBoolean("collect-metrics");
@@ -932,7 +890,6 @@ public class Main extends Builder {
                     MIGRATE,
                     VERSION,
                     IDENTITY,
-                    INSTALL_AND_RUN_IPFS,
                     PKI,
                     PKI_INIT
             )

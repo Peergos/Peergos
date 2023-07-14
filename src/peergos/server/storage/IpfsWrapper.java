@@ -62,7 +62,6 @@ public class IpfsWrapper implements AutoCloseable {
         public final List<MultiAddress> bootstrapNode;
         public final int swarmPort;
         public final String apiAddress, gatewayAddress, allowTarget, proxyTarget;
-        public final List<IpfsInstaller.Plugin> plugins;
         public final Optional<String> metricsAddress;
 
         public ConfigParams(List<MultiAddress> bootstrapNode,
@@ -71,8 +70,7 @@ public class IpfsWrapper implements AutoCloseable {
                       String proxyTarget,
                       String allowTarget,
                       int swarmPort,
-                      Optional<String> metricsAddress,
-                      List<IpfsInstaller.Plugin> plugins) {
+                      Optional<String> metricsAddress) {
             this.bootstrapNode = bootstrapNode;
             this.apiAddress = apiAddress;
             this.gatewayAddress = gatewayAddress;
@@ -80,7 +78,6 @@ public class IpfsWrapper implements AutoCloseable {
             this.allowTarget = allowTarget;
             this.swarmPort = swarmPort;
             this.metricsAddress = metricsAddress;
-            this.plugins = plugins;
         }
     }
 
@@ -118,13 +115,11 @@ public class IpfsWrapper implements AutoCloseable {
         Optional<String> metricsAddress = enableMetrics ?
                 Optional.of(args.getArg("metrics.address") + ":" + args.getInt("ipfs.metrics.port")) :
                 Optional.empty();
-        List<IpfsInstaller.Plugin> plugins = IpfsInstaller.Plugin.parseAll(args);
-
 
         return new ConfigParams(bootstrapNodes, apiAddress, gatewayAddress,
                 proxyTarget,
                 "http://" + allowTarget.getHost() + ":" + allowTarget.getTCPPort(),
-                swarmPort, metricsAddress, plugins);
+                swarmPort, metricsAddress);
     }
 
     private static final String IPFS_DIR = "IPFS_PATH";
