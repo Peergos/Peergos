@@ -14,9 +14,7 @@ public interface HttpPoster {
     CompletableFuture<byte[]> postUnzip(String url, byte[] payload, int timeoutMillis);
 
     default CompletableFuture<byte[]> postUnzip(String url, byte[] payload) {
-        String url1 = url.startsWith("/") ? url.substring(1) : url;
-        //System.out.println("DEBUGGING URL=" + this.toString() + "/" + url1);
-        return postUnzip(url1, payload, 15_000);
+        return postUnzip(url, payload, 15_000);
     }
 
     CompletableFuture<byte[]> postMultipart(String url, List<byte[]> files);

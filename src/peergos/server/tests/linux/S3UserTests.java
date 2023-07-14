@@ -84,7 +84,7 @@ public class S3UserTests extends UserTests {
                 .with(IpfsWrapper.IPFS_BOOTSTRAP_NODES, "" + Main.getLocalBootstrapAddress(bootstrapSwarmPort, pkiNodeId))
                 .with("proxy-target", Main.getLocalMultiAddress(proxyTargetPort).toString())
                 .with("ipfs-api-address", Main.getLocalMultiAddress(ipfsApiPort).toString());
-        IpfsWrapper ipfs = Main.INSTALL_AND_RUN_IPFS.main(ipfsArgs);
+        IpfsWrapper ipfs = Main.IPFS.main(ipfsArgs);
         argsToCleanUp.add(ipfsArgs);
 
         // start direct S3 node
