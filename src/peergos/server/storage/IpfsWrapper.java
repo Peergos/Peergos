@@ -16,7 +16,10 @@ import org.peergos.util.JsonHelper;
 import peergos.server.Command;
 import peergos.server.util.*;
 import peergos.server.util.Args;
+import peergos.shared.io.ipfs.cid.Cid;
 import peergos.shared.io.ipfs.multiaddr.MultiAddress;
+import peergos.shared.io.ipfs.multibase.Base58;
+import peergos.shared.io.ipfs.multihash.Multihash;
 import peergos.shared.storage.*;
 import peergos.shared.util.*;
 
@@ -215,7 +218,24 @@ public class IpfsWrapper implements AutoCloseable {
 
         Config config = ipfsWrapper.configure();
         LOG.info("Starting Nabu version: " + APIHandler.CURRENT_VERSION);
-        BlockRequestAuthoriser authoriser = (c, b, p, a) -> CompletableFuture.completedFuture(true);
+        BlockRequestAuthoriser authoriser = (c, b, p, a) -> {
+            /*if (config.addresses.allowTarget.isEmpty()) {
+                CompletableFuture.completedFuture(false);
+            }
+            try {
+                Multihash hash = Multihash.decode(p.bareMultihash().toBytes());
+                Cid peer = new Cid(1, Cid.Codec.LibP2pKey, hash.type, hash.getHash());
+                String uri = config.addresses.allowTarget.get() + "?cid=" + c.toString() + "&peer=" + peer.toString() + "&auth=" + a;
+                Map<String, String> fields = new HashMap<>();
+                fields.put("Host", peer.toString());
+                byte[] resp = org.peergos.util.HttpUtil.post(uri, fields, b);
+                CompletableFuture.completedFuture((new String(resp)).equals("true"));
+            } catch (IOException ioe) {
+                return CompletableFuture.completedFuture(false);
+            }*/
+            return CompletableFuture.completedFuture(true);
+        };
+
 
         ipfsWrapper.embeddedIpfs = EmbeddedIpfs.build(ipfsWrapper.ipfsDir,
                 EmbeddedIpfs.buildBlockStore(config, ipfsWrapper.ipfsDir),
