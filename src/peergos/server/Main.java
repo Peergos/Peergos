@@ -491,7 +491,7 @@ public class Main extends Builder {
             )
     );
 
-    public static UserService startPeergos(Args args) {
+    public static UserService startPeergos(Args a) {
         try {
             Crypto crypto = initCrypto();
             Hasher hasher = crypto.hasher;
@@ -499,12 +499,9 @@ public class Main extends Builder {
 
             System.out.println("Starting Peergos daemon version: " + new InstanceAdmin.VersionInfo(UserService.CURRENT_VERSION, Admin.getSourceVersion()));
 
-            boolean useIPFS = args.getBoolean("useIPFS");
-            Args a = S3Config.useS3(args) && useIPFS ? args.setArg("ipfs-plugins", "go-ds-s3") : args;
-            IpfsWrapper ipfsWrapper = null;
-            if (useIPFS) {
-                ipfsWrapper = IPFS.main(a);
-            }
+            boolean useIPFS = a.getBoolean("useIPFS");
+            IpfsWrapper ipfsWrapper = useIPFS ? IPFS.main(a) : null;
+
             boolean doExportAggregatedMetrics = a.getBoolean("collect-metrics");
             if (doExportAggregatedMetrics) {
                 int exporterPort = a.getInt("metrics.port");
@@ -818,11 +815,7 @@ public class Main extends Builder {
         if (IpfsWrapper.isHttpApiListening(ipfsApiAddress)) {
             throw new IllegalStateException("IPFS is already running on api " + ipfsApiAddress);
         }
-
-        IpfsWrapper ipfs = IpfsWrapper.build(a);
-        IpfsWrapper.launch(ipfs);
-        ipfs.waitForDaemon(10);
-        return ipfs;
+        return IpfsWrapper.launch(a);
     }
 
     public static Boolean startShell(Args args) {
