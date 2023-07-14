@@ -219,7 +219,7 @@ public class IpfsWrapper implements AutoCloseable {
         Config config = ipfsWrapper.configure();
         LOG.info("Starting Nabu version: " + APIHandler.CURRENT_VERSION);
         BlockRequestAuthoriser authoriser = (c, b, p, a) -> {
-            /*if (config.addresses.allowTarget.isEmpty()) {
+            if (config.addresses.allowTarget.isEmpty()) {
                 CompletableFuture.completedFuture(false);
             }
             try {
@@ -229,11 +229,10 @@ public class IpfsWrapper implements AutoCloseable {
                 Map<String, String> fields = new HashMap<>();
                 fields.put("Host", peer.toString());
                 byte[] resp = org.peergos.util.HttpUtil.post(uri, fields, b);
-                CompletableFuture.completedFuture((new String(resp)).equals("true"));
+                return CompletableFuture.completedFuture((new String(resp)).equals("true"));
             } catch (IOException ioe) {
                 return CompletableFuture.completedFuture(false);
-            }*/
-            return CompletableFuture.completedFuture(true);
+            }
         };
 
 
