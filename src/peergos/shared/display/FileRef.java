@@ -2,8 +2,7 @@ package peergos.shared.display;
 
 import jsinterop.annotations.*;
 import peergos.shared.cbor.*;
-import peergos.shared.io.ipfs.multihash.*;
-import peergos.shared.social.*;
+import peergos.shared.io.ipfs.Multihash;
 import peergos.shared.user.fs.*;
 
 import java.util.*;

@@ -3,7 +3,6 @@ import java.util.*;
 import java.util.logging.Logger;
 
 import peergos.server.storage.*;
-import peergos.server.messages.*;
 import peergos.server.storage.admin.*;
 import peergos.server.util.*;
 
@@ -12,7 +11,7 @@ import java.util.logging.Level;
 import com.sun.net.httpserver.*;
 import peergos.shared.*;
 import peergos.shared.corenode.*;
-import peergos.shared.io.ipfs.multihash.*;
+import peergos.shared.io.ipfs.Multihash;
 import peergos.shared.mutable.*;
 import peergos.shared.social.*;
 import peergos.shared.storage.*;

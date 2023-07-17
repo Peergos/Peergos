@@ -1,5 +1,4 @@
 package peergos.shared;
-import java.net.URL;
 import java.util.function.*;
 import java.util.logging.*;
 
@@ -9,8 +8,8 @@ import peergos.shared.corenode.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.hamt.*;
-import peergos.shared.io.ipfs.cid.*;
-import peergos.shared.io.ipfs.multihash.*;
+import peergos.shared.io.ipfs.Cid;
+import peergos.shared.io.ipfs.Multihash;
 import peergos.shared.login.*;
 import peergos.shared.mutable.*;
 import peergos.shared.social.*;

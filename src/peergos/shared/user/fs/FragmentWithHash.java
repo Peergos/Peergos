@@ -1,6 +1,6 @@
 package peergos.shared.user.fs;
 
-import peergos.shared.io.ipfs.cid.*;
+import peergos.shared.io.ipfs.Cid;
 
 import java.util.*;
 

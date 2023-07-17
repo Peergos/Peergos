@@ -2,12 +2,9 @@ package peergos.shared.social;
 
 import peergos.shared.corenode.*;
 import peergos.shared.crypto.hash.*;
-import peergos.shared.io.ipfs.multihash.*;
-import peergos.shared.mutable.*;
+import peergos.shared.io.ipfs.Multihash;
 
-import java.util.*;
 import java.util.concurrent.*;
-import java.util.function.*;
 
 public class ProxyingSocialNetwork implements SocialNetwork {
 

@@ -1,14 +1,10 @@
 package peergos.shared.storage.auth;
 
 import peergos.shared.cbor.*;
-import peergos.shared.crypto.hash.*;
-import peergos.shared.io.ipfs.multihash.*;
-import peergos.shared.storage.*;
+import peergos.shared.io.ipfs.Multihash;
 import peergos.shared.user.*;
 import peergos.shared.util.*;
 
-import java.io.*;
-import java.net.*;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.logging.*;

@@ -2,7 +2,7 @@ package peergos.server.space;
 
 import peergos.shared.*;
 import peergos.shared.crypto.hash.*;
-import peergos.shared.io.ipfs.multihash.*;
+import peergos.shared.io.ipfs.Multihash;
 
 import java.util.*;
 

@@ -3,7 +3,7 @@ import java.util.logging.*;
 
 import peergos.shared.corenode.*;
 import peergos.shared.crypto.hash.*;
-import peergos.shared.io.ipfs.multihash.*;
+import peergos.shared.io.ipfs.Multihash;
 import peergos.shared.user.*;
 import peergos.shared.util.*;
 

@@ -1,6 +1,6 @@
 package peergos.shared.storage;
 
-import peergos.shared.io.ipfs.cid.Cid;
+import peergos.shared.io.ipfs.Cid;
 import peergos.shared.user.NativeJSCache;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;

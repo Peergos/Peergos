@@ -4,14 +4,13 @@ import peergos.server.storage.auth.*;
 import peergos.server.util.Logging;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.hash.*;
-import peergos.shared.io.ipfs.cid.*;
-import peergos.shared.io.ipfs.multihash.*;
+import peergos.shared.io.ipfs.Cid;
+import peergos.shared.io.ipfs.Multihash;
 import peergos.shared.storage.*;
 import peergos.shared.storage.auth.*;
 import peergos.shared.util.*;
 
 import java.io.*;
-import java.nio.channels.*;
 import java.nio.file.*;
 import java.nio.file.attribute.*;
 import java.util.*;

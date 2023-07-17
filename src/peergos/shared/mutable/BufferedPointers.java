@@ -3,7 +3,7 @@ package peergos.shared.mutable;
 import peergos.shared.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
-import peergos.shared.io.ipfs.cid.*;
+import peergos.shared.io.ipfs.Cid;
 import peergos.shared.storage.*;
 import peergos.shared.util.*;
 

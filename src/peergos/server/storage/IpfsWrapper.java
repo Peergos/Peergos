@@ -11,15 +11,9 @@ import org.peergos.config.*;
 import org.peergos.config.Filter;
 import org.peergos.net.*;
 import org.peergos.protocol.http.HttpProtocol;
-import org.peergos.util.JSONParser;
-import org.peergos.util.JsonHelper;
-import peergos.server.Command;
 import peergos.server.util.*;
 import peergos.server.util.Args;
-import peergos.shared.io.ipfs.cid.Cid;
-import peergos.shared.io.ipfs.multiaddr.MultiAddress;
-import peergos.shared.io.ipfs.multibase.Base58;
-import peergos.shared.io.ipfs.multihash.Multihash;
+import peergos.shared.io.ipfs.MultiAddress;
 import peergos.shared.storage.*;
 import peergos.shared.util.*;
 

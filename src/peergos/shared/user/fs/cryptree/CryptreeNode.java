@@ -7,8 +7,8 @@ import peergos.shared.crypto.hash.*;
 import peergos.shared.crypto.random.*;
 import peergos.shared.crypto.symmetric.*;
 import peergos.shared.inode.*;
-import peergos.shared.io.ipfs.cid.*;
-import peergos.shared.io.ipfs.multihash.*;
+import peergos.shared.io.ipfs.Cid;
+import peergos.shared.io.ipfs.Multihash;
 import peergos.shared.storage.*;
 import peergos.shared.storage.auth.*;
 import peergos.shared.user.*;
@@ -183,9 +183,9 @@ public class CryptreeNode implements Cborable {
         }
 
         public CompletableFuture<List<Cid>> commitChildrenLinks(WritableAbsoluteCapability us,
-                                                                      Optional<SigningPrivateKeyAndPublicHash> entryWriter,
-                                                                      NetworkAccess network,
-                                                                      TransactionId tid) {
+                                                                Optional<SigningPrivateKeyAndPublicHash> entryWriter,
+                                                                NetworkAccess network,
+                                                                TransactionId tid) {
             SigningPrivateKeyAndPublicHash signer = dir.getSigner(us.rBaseKey, us.wBaseKey.get(), entryWriter);
             return commitChildrenLinks(us, signer, network, tid);
         }
