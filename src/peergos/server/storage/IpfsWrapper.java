@@ -223,12 +223,8 @@ public class IpfsWrapper implements AutoCloseable {
                 CompletableFuture.completedFuture(false);
             }
             try {
-                Multihash hash = Multihash.decode(p.bareMultihash().toBytes());
-                Cid peer = new Cid(1, Cid.Codec.LibP2pKey, hash.type, hash.getHash());
-                String uri = config.addresses.allowTarget.get() + "?cid=" + c.toString() + "&peer=" + peer.toString() + "&auth=" + a;
-                Map<String, String> fields = new HashMap<>();
-                fields.put("Host", peer.toString());
-                byte[] resp = org.peergos.util.HttpUtil.post(uri, fields, b);
+                String uri = config.addresses.allowTarget.get() + "?cid=" + c.toString() + "&peer=" + p.toString() + "&auth=" + a;
+                byte[] resp = org.peergos.util.HttpUtil.post(uri, Collections.emptyMap(), b);
                 return CompletableFuture.completedFuture((new String(resp)).equals("true"));
             } catch (IOException ioe) {
                 return CompletableFuture.completedFuture(false);
