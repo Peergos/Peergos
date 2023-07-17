@@ -305,7 +305,8 @@ public class PeergosNetworkUtils {
         FileWrapper u1Root = sharer.getUserRoot().join();
         String filename = "somefile.txt";
         File f = File.createTempFile("peergos", "");
-        byte[] originalFileContents = sharer.crypto.random.randomBytes(10*1024*1024);
+        byte[] originalFileContents = new byte[10*1024*1024];
+        random.nextBytes(originalFileContents);
         Files.write(f.toPath(), originalFileContents);
         ResetableFileInputStream resetableFileInputStream = new ResetableFileInputStream(f);
         FileWrapper uploaded = u1Root.uploadOrReplaceFile(filename, resetableFileInputStream, f.length(),
@@ -361,7 +362,8 @@ public class PeergosNetworkUtils {
         // upload a file to "a"'s space
         FileWrapper u1Root = sharerUser.getUserRoot().join();
         String filename = "somefile.txt";
-        byte[] originalFileContents = sharerUser.crypto.random.randomBytes(10*1024*1024);
+        byte[] originalFileContents = new byte[10*1024*1024];
+        random.nextBytes(originalFileContents);
         AsyncReader resetableFileInputStream = AsyncReader.build(originalFileContents);
         FileWrapper uploaded = u1Root.uploadOrReplaceFile(filename, resetableFileInputStream, originalFileContents.length,
                 sharerUser.network, crypto, l -> {}).join();
@@ -510,7 +512,8 @@ public class PeergosNetworkUtils {
         // upload a file to the dir
         FileWrapper dir = sharer.getByPath(dirPath).join().get();
         String filename = "somefile.txt";
-        byte[] originalFileContents = sharer.crypto.random.randomBytes(10*1024*1024);
+        byte[] originalFileContents = new byte[10*1024*1024];
+        random.nextBytes(originalFileContents);
         AsyncReader resetableFileInputStream = AsyncReader.build(originalFileContents);
         FileWrapper uploaded = dir.uploadOrReplaceFile(filename, resetableFileInputStream, originalFileContents.length,
                 sharer.network, crypto, l -> {}).join();
@@ -1137,7 +1140,8 @@ public class PeergosNetworkUtils {
 
         String filename = "somefile.txt";
         File f = File.createTempFile("peergos", "");
-        byte[] originalFileContents = sharer.crypto.random.randomBytes(1*1024*1024);
+        byte[] originalFileContents = new byte[1*1024*1024];
+        random.nextBytes(originalFileContents);
         Files.write(f.toPath(), originalFileContents);
         ResetableFileInputStream resetableFileInputStream = new ResetableFileInputStream(f);
 
@@ -1186,7 +1190,8 @@ public class PeergosNetworkUtils {
 
         String filename = "somefile.txt";
         File f = File.createTempFile("peergos", "");
-        byte[] originalFileContents = sharer.crypto.random.randomBytes(1*1024*1024);
+        byte[] originalFileContents = new byte[1*1024*1024];
+        random.nextBytes(originalFileContents);
         Files.write(f.toPath(), originalFileContents);
         ResetableFileInputStream resetableFileInputStream = new ResetableFileInputStream(f);
 
@@ -1393,7 +1398,8 @@ public class PeergosNetworkUtils {
 
         // friends are now connected
         // share a file from u1 to u2
-        byte[] fileData = sharer.crypto.random.randomBytes(1*1024*1024);
+        byte[] fileData = new byte[1*1024*1024];
+        random.nextBytes(fileData);
         Path file1 = PathUtil.get(sharer.username, "first-file.txt");
         uploadAndShare(fileData, file1, sharer, a.username);
 
@@ -1537,8 +1543,8 @@ public class PeergosNetworkUtils {
         // friend sharer with others
         friendBetweenGroups(Arrays.asList(sharer), shareeUsers);
 
-
-        byte[] fileData = sharer.crypto.random.randomBytes(1*1024*1024);
+        byte[] fileData = new byte[1*1024*1024];
+        random.nextBytes(fileData);
         AsyncReader reader = new AsyncReader.ArrayBacked(fileData);
 
         SocialFeed feed = sharer.getSocialFeed().join();
