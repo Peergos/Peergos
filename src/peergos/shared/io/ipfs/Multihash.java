@@ -1,4 +1,4 @@
-package peergos.shared.io.ipfs.multihash;
+package peergos.shared.io.ipfs;
 
 import jsinterop.annotations.JsConstructor;
 import jsinterop.annotations.JsIgnore;

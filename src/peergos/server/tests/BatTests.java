@@ -6,8 +6,8 @@ import peergos.server.storage.*;
 import peergos.shared.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.crypto.random.*;
-import peergos.shared.io.ipfs.cid.*;
-import peergos.shared.io.ipfs.multihash.*;
+import peergos.shared.io.ipfs.Cid;
+import peergos.shared.io.ipfs.Multihash;
 import peergos.shared.storage.auth.*;
 
 import java.time.*;

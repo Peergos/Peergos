@@ -1,8 +1,8 @@
 package peergos.shared;
 
 import peergos.shared.cbor.*;
-import peergos.shared.io.ipfs.multihash.*;
-import peergos.shared.io.ipfs.cid.*;
+import peergos.shared.io.ipfs.Cid;
+import peergos.shared.io.ipfs.Multihash;
 
 import java.util.*;
 import java.util.concurrent.*;

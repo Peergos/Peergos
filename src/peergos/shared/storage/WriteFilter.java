@@ -1,7 +1,7 @@
 package peergos.shared.storage;
 
 import peergos.shared.crypto.hash.*;
-import peergos.shared.io.ipfs.cid.*;
+import peergos.shared.io.ipfs.Cid;
 import peergos.shared.user.fs.*;
 import peergos.shared.util.*;
 

@@ -2,7 +2,7 @@ package peergos.server.storage.auth;
 
 import com.sun.net.httpserver.*;
 import peergos.server.util.*;
-import peergos.shared.io.ipfs.cid.*;
+import peergos.shared.io.ipfs.Cid;
 import peergos.shared.storage.*;
 import peergos.shared.util.*;
 

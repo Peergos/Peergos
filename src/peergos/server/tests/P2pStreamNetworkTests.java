@@ -7,9 +7,8 @@ import peergos.server.*;
 import peergos.server.storage.*;
 import peergos.server.util.*;
 import peergos.shared.*;
-import peergos.shared.io.ipfs.multiaddr.*;
-import peergos.shared.io.ipfs.multihash.Multihash;
-import peergos.shared.storage.auth.*;
+import peergos.shared.io.ipfs.MultiAddress;
+import peergos.shared.io.ipfs.Multihash;
 import peergos.shared.user.UserContext;
 import peergos.shared.user.fs.*;
 

@@ -1,7 +1,7 @@
 package peergos.shared.social;
 
 import peergos.shared.crypto.hash.*;
-import peergos.shared.io.ipfs.multihash.*;
+import peergos.shared.io.ipfs.Multihash;
 
 import java.util.concurrent.*;
 
