@@ -1,7 +1,7 @@
 package peergos.shared.user;
 
 import jsinterop.annotations.JsType;
-import peergos.shared.io.ipfs.cid.Cid;
+import peergos.shared.io.ipfs.Cid;
 
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;

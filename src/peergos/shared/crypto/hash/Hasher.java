@@ -2,8 +2,8 @@ package peergos.shared.crypto.hash;
 
 import jsinterop.annotations.JsType;
 import peergos.shared.crypto.*;
-import peergos.shared.io.ipfs.cid.*;
-import peergos.shared.io.ipfs.multihash.*;
+import peergos.shared.io.ipfs.Cid;
+import peergos.shared.io.ipfs.Multihash;
 import peergos.shared.storage.auth.*;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.*;

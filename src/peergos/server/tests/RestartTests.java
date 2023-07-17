@@ -7,7 +7,7 @@ import peergos.server.util.*;
 import peergos.shared.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.crypto.symmetric.*;
-import peergos.shared.io.ipfs.multihash.*;
+import peergos.shared.io.ipfs.Multihash;
 import peergos.shared.social.*;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.*;

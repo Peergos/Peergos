@@ -5,7 +5,7 @@ import java.util.logging.*;
 
 import peergos.shared.fingerprint.*;
 import peergos.shared.inode.*;
-import peergos.shared.io.ipfs.cid.*;
+import peergos.shared.io.ipfs.Cid;
 import peergos.shared.login.mfa.*;
 import peergos.shared.storage.auth.*;
 import peergos.shared.user.fs.cryptree.*;
@@ -17,7 +17,7 @@ import peergos.shared.crypto.*;
 import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.crypto.symmetric.*;
-import peergos.shared.io.ipfs.multihash.Multihash;
+import peergos.shared.io.ipfs.Multihash;
 import peergos.shared.mutable.*;
 import peergos.shared.social.*;
 import peergos.shared.storage.*;

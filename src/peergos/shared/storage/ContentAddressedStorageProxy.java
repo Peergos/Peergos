@@ -2,10 +2,9 @@ package peergos.shared.storage;
 
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.hash.*;
+import peergos.shared.io.ipfs.Cid;
+import peergos.shared.io.ipfs.Multihash;
 import peergos.shared.io.ipfs.api.*;
-import peergos.shared.io.ipfs.cid.*;
-import peergos.shared.io.ipfs.multiaddr.*;
-import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.storage.auth.*;
 import peergos.shared.user.*;
 import peergos.shared.util.*;

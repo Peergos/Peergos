@@ -7,7 +7,7 @@ import java.util.concurrent.CompletableFuture;
 
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
-import peergos.shared.io.ipfs.multihash.*;
+import peergos.shared.io.ipfs.Multihash;
 import peergos.server.crypto.hash.lambdaworks.crypto.SCrypt;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.*;

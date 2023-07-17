@@ -4,8 +4,8 @@ import peergos.server.sql.*;
 import peergos.server.util.Logging;
 import peergos.shared.*;
 import peergos.shared.crypto.hash.*;
-import peergos.shared.io.ipfs.cid.*;
-import peergos.shared.io.ipfs.multihash.*;
+import peergos.shared.io.ipfs.Cid;
+import peergos.shared.io.ipfs.Multihash;
 import peergos.shared.util.*;
 
 import java.sql.*;

@@ -5,7 +5,7 @@ import peergos.server.sql.*;
 import peergos.server.storage.*;
 import peergos.server.storage.admin.*;
 import peergos.shared.*;
-import peergos.shared.io.ipfs.cid.*;
+import peergos.shared.io.ipfs.Cid;
 import peergos.shared.storage.*;
 import peergos.shared.util.*;
 
