@@ -2,7 +2,7 @@ package peergos.shared.user;
 
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
-import peergos.shared.io.ipfs.multihash.*;
+import peergos.shared.io.ipfs.Multihash;
 import peergos.shared.MaybeMultihash;
 import peergos.shared.storage.*;
 

@@ -6,9 +6,8 @@ import peergos.shared.Crypto;
 import peergos.shared.MaybeMultihash;
 import peergos.shared.cbor.CborObject;
 import peergos.shared.crypto.hash.PublicKeyHash;
-import peergos.shared.io.ipfs.cid.*;
-import peergos.shared.io.ipfs.multihash.Multihash;
-import peergos.server.space.*;
+import peergos.shared.io.ipfs.Cid;
+import peergos.shared.io.ipfs.Multihash;
 
 import java.util.HashSet;
 import java.util.Random;

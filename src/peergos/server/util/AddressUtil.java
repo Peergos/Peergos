@@ -1,6 +1,6 @@
 package peergos.server.util;
 
-import peergos.shared.io.ipfs.multiaddr.*;
+import peergos.shared.io.ipfs.MultiAddress;
 
 import java.net.*;
 

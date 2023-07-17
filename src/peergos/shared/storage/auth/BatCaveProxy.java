@@ -1,6 +1,6 @@
 package peergos.shared.storage.auth;
 
-import peergos.shared.io.ipfs.multihash.*;
+import peergos.shared.io.ipfs.Multihash;
 
 import java.util.*;
 import java.util.concurrent.*;

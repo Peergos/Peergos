@@ -3,8 +3,8 @@ package peergos.server.storage;
 import peergos.server.sql.*;
 import peergos.server.util.*;
 import peergos.shared.cbor.*;
-import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.storage.auth.*;
+import peergos.shared.io.ipfs.Cid;
 
 import java.sql.*;
 import java.util.*;

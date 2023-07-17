@@ -4,7 +4,7 @@ import jsinterop.annotations.*;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.display.*;
-import peergos.shared.io.ipfs.multihash.*;
+import peergos.shared.io.ipfs.Multihash;
 import peergos.shared.user.fs.*;
 
 import java.time.*;

@@ -1,9 +1,9 @@
 package peergos.server.tests;
 
 import org.junit.*;
-import peergos.shared.io.ipfs.cid.*;
+import peergos.shared.io.ipfs.Cid;
+import peergos.shared.io.ipfs.Multihash;
 import peergos.shared.io.ipfs.multibase.*;
-import peergos.shared.io.ipfs.multihash.*;
 
 import java.util.*;
 

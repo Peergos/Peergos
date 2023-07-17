@@ -2,7 +2,7 @@ package peergos.shared.crypto;
 
 import jsinterop.annotations.*;
 import peergos.shared.cbor.*;
-import peergos.shared.io.ipfs.multihash.*;
+import peergos.shared.io.ipfs.Multihash;
 
 import java.util.*;
 

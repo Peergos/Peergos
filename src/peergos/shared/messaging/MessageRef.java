@@ -2,7 +2,7 @@ package peergos.shared.messaging;
 
 import jsinterop.annotations.JsType;
 import peergos.shared.cbor.*;
-import peergos.shared.io.ipfs.multihash.*;
+import peergos.shared.io.ipfs.Multihash;
 
 import java.util.*;
 @JsType

@@ -1,7 +1,6 @@
-package peergos.shared.io.ipfs.cid;
+package peergos.shared.io.ipfs;
 
 import peergos.shared.io.ipfs.multibase.*;
-import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.util.*;
 
 import java.io.*;

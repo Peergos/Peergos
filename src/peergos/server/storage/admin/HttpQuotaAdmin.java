@@ -2,7 +2,7 @@ package peergos.server.storage.admin;
 
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.hash.*;
-import peergos.shared.io.ipfs.multihash.*;
+import peergos.shared.io.ipfs.Multihash;
 import peergos.shared.storage.*;
 import peergos.shared.storage.controller.*;
 import peergos.shared.user.*;
