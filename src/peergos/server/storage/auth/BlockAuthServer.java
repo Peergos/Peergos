@@ -33,10 +33,7 @@ public class BlockAuthServer {
             Map<String, List<String>> params = HttpUtil.parseQuery(httpExchange.getRequestURI().getQuery());
             Function<String, String> last = key -> params.get(key).get(params.get(key).size() - 1);
 
-            Cid host = Cid.decodePeerId(httpExchange.getRequestHeaders().getFirst("Host"));
             Cid source = Cid.decodePeerId(last.apply("peer"));
-            if (!host.equals(source))
-                throw new IllegalStateException("Host doesn't match!");
             String auth = last.apply("auth");
             Cid cid = Cid.decode(last.apply("cid"));
             byte[] block = Serialize.readFully(httpExchange.getRequestBody());
