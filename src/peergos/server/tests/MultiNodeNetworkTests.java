@@ -5,6 +5,7 @@ import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
 import peergos.server.*;
 import peergos.server.storage.*;
+import peergos.server.tests.util.*;
 import peergos.server.util.*;
 import peergos.shared.*;
 import peergos.shared.cbor.*;
@@ -112,12 +113,12 @@ public class MultiNodeNetworkTests {
 
         // create two other nodes that use the first as a PKI-node
         for (int i = 0; i < 2; i++) {
-            int ipfsApiPort = 9000 + random.nextInt(8000);
-            int ipfsGatewayPort = 9000 + random.nextInt(8000);
-            int ipfsSwarmPort = 9000 + random.nextInt(8000);
-            int peergosPort = 9000 + random.nextInt(8000);
-            int proxyTargetPort = 9000 + random.nextInt(8000);
-            int allowPort = 9000 + random.nextInt(8000);
+            int ipfsApiPort = TestPorts.getPort();System.out.println("node" + (i+1) + " base port: " + ipfsApiPort);
+            int ipfsGatewayPort = TestPorts.getPort();
+            int ipfsSwarmPort = TestPorts.getPort();
+            int peergosPort = TestPorts.getPort();
+            int proxyTargetPort = TestPorts.getPort();
+            int allowPort = TestPorts.getPort();
             Args normalNode = UserTests.buildArgs()
                     .with("useIPFS", "true")
                     .with("enable-gc", "false")

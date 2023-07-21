@@ -113,10 +113,11 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
         List<Multihash> newLinks = newBlock.links().stream()
                 .filter(h -> !h.isIdentity())
                 .collect(Collectors.toList());
-        List<Multihash> existingLinks = existing.map(h -> get(h, mirrorBat, ourNodeId, hasher).join())
-                .flatMap(copt -> copt.map(CborObject::links).map(links -> links.stream()
-                        .filter(h -> !h.isIdentity())
-                        .collect(Collectors.toList())))
+        List<Multihash> existingLinks = existing.map(h -> getLinks(h, "mirror").join()
+                        .stream()
+                        .filter(c -> ! c.isIdentity())
+                        .map(c -> (Multihash) c)
+                        .collect(Collectors.toList()))
                 .orElse(Collections.emptyList());
 
         for (int i=0; i < newLinks.size(); i++) {
