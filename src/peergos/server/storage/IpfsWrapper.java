@@ -3,10 +3,7 @@ package peergos.server.storage;
 import com.sun.net.httpserver.HttpServer;
 import io.libp2p.core.PeerId;
 import io.libp2p.core.crypto.PrivKey;
-import io.netty.handler.codec.http.FullHttpRequest;
-import io.netty.handler.codec.http.FullHttpResponse;
 import org.peergos.*;
-import org.peergos.client.RequestSender;
 import org.peergos.config.*;
 import org.peergos.config.Filter;
 import org.peergos.net.*;
@@ -37,15 +34,11 @@ public class IpfsWrapper implements AutoCloseable {
     public static final String IPFS_BOOTSTRAP_NODES = "ipfs-config-bootstrap-node-list";
 
     private static HttpProtocol.HttpRequestProcessor proxyHandler(io.ipfs.multiaddr.MultiAddress target) {
-        return (s, req, h) -> {
-            try {
-                FullHttpResponse reply = RequestSender.proxy(target, (FullHttpRequest) req);
-                h.accept(reply.retain());
-            } catch (IOException ioe) {
-                FullHttpResponse exceptionReply = org.peergos.util.HttpUtil.replyError(ioe);
-                h.accept(exceptionReply.retain());
-            }
-        };
+        return (s, req, h) -> HttpProtocol.proxyRequest(req, convert(target), h);
+    }
+
+    private static SocketAddress convert(io.ipfs.multiaddr.MultiAddress target) {
+        return new InetSocketAddress(target.getHost(), target.getPort());
     }
 
     public static class S3ConfigParams {
