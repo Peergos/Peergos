@@ -256,7 +256,7 @@ public interface ContentAddressedStorage {
         public static final String BLOCK_STAT = "block/stat";
         public static final String REFS_LOCAL = "refs/local";
 
-        private final boolean isPeergosServer;
+        protected final boolean isPeergosServer;
         private final Hasher hasher;
         private final Random r = new Random();
 
@@ -433,7 +433,7 @@ public interface ContentAddressedStorage {
                             .flatMap(g -> g.stream()).collect(Collectors.toList()));
         }
 
-        private CompletableFuture<List<Cid>> put(PublicKeyHash owner,
+        protected CompletableFuture<List<Cid>> put(PublicKeyHash owner,
                                                  PublicKeyHash writer,
                                                  List<byte[]> signatures,
                                                  List<byte[]> blocks,

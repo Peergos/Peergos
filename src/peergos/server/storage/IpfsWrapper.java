@@ -4,6 +4,7 @@ import com.sun.net.httpserver.HttpServer;
 import io.libp2p.core.PeerId;
 import io.libp2p.core.crypto.PrivKey;
 import org.peergos.*;
+import org.peergos.blockstore.Blockstore;
 import org.peergos.config.*;
 import org.peergos.config.Filter;
 import org.peergos.net.*;
@@ -158,6 +159,13 @@ public class IpfsWrapper implements AutoCloseable {
 
         this.ipfsDir = ipfsDir;
         this.ipfsConfigParams = ipfsConfigParams;
+    }
+
+    public EmbeddedIpfs getEmbeddedIpfs() {
+        if (this.embeddedIpfs == null) {
+            throw new IllegalStateException("embeddedIpfs not set yet!");
+        }
+        return this.embeddedIpfs;
     }
 
     public static boolean isHttpApiListening(String ipfsApiAddress) {

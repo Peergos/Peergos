@@ -104,7 +104,7 @@ public class ServerMessages extends Builder {
         Hasher hasher = Main.initCrypto().hasher;
         BlockRequestAuthoriser blockRequestAuthoriser = (b, d, s, auth) -> Futures.of(true); // not relevant for local only use here
         try {
-            DeletableContentAddressedStorage localStorage = buildLocalStorage(a, transactions, blockRequestAuthoriser, hasher);
+            DeletableContentAddressedStorage localStorage = buildLocalStorage(Optional.empty(), a, transactions, blockRequestAuthoriser, hasher);
             JdbcIpnsAndSocial rawPointers = buildRawPointers(a, getDBConnector(a, "mutable-pointers-file", dbConnectionPool));
             MutablePointers localPointers = UserRepository.build(localStorage, rawPointers);
             MutablePointersProxy proxingMutable = new HttpMutablePointers(buildP2pHttpProxy(a), getPkiServerId(a));
