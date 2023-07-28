@@ -73,7 +73,7 @@ public class LazyInputStreamCombiner implements AsyncReader {
     }
 
     public void prefetch(int nChunks) {
-        ForkJoinPool.commonPool().execute(() -> syncPrefetch(nBufferedChunks));
+        ForkJoinPool.commonPool().execute(() -> syncPrefetch(nChunks));
     }
 
     public void syncPrefetch(int nChunks) {
