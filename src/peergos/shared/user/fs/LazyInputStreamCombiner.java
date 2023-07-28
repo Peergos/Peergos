@@ -119,16 +119,21 @@ public class LazyInputStreamCombiner implements AsyncReader {
         AbsoluteCapability nextChunkCap = bufferedChunks.get(lastBufferedChunk).right;
 
         System.out.println("Prefetching " + finalCount + " chunks");
-        FileProperties.calculateSubsequentMapKeys(streamSecret.get(), nextChunkCap.getMapKey(), nextChunkCap.bat, finalCount, crypto.hasher)
-                .thenAccept(mapKeys -> {
-                    for (int i=1; i < finalCount + 1; i++) {
-                        int size = globalIndexCopy / Chunk.MAX_SIZE + i < totalChunks ? Chunk.MAX_SIZE : (int) (totalLength % Chunk.MAX_SIZE);
-                        Pair<byte[], Optional<Bat>> mapKey = mapKeys.get(i - 1);
-                        long chunkOffset = lastBufferedChunk + (i * Chunk.MAX_SIZE);
-                        System.out.println("Submitting chunk download " + i);
-                        ForkJoinPool.commonPool().execute(() -> getChunk(nextChunkCap.withMapKey(mapKey.left, mapKey.right), chunkOffset, size));
-                    }
-                });
+        FileProperties.calculateSubsequentMapKeys(streamSecret.get(), nextChunkCap.getMapKey(), nextChunkCap.bat, finalCount - 1, crypto.hasher)
+                .thenAccept(mapKeys -> parallelChunksDownload(finalCount, lastBufferedChunk, mapKeys, nextChunkCap));
+    }
+
+    private void parallelChunksDownload(int finalCount,
+                                        long lastBufferedChunk,
+                                        List<Pair<byte[], Optional<Bat>>> mapKeys,
+                                        AbsoluteCapability nextChunkCap) {
+        for (int i=1; i < finalCount + 1; i++) {
+            int size = lastBufferedChunk / Chunk.MAX_SIZE + i < totalChunks ? Chunk.MAX_SIZE : (int) (totalLength % Chunk.MAX_SIZE);
+            Pair<byte[], Optional<Bat>> mapKey = mapKeys.get(i - 1);
+            long chunkOffset = lastBufferedChunk + (i * Chunk.MAX_SIZE);
+            System.out.println("Submitting chunk download " + i);
+            ForkJoinPool.commonPool().execute(() -> getChunk(nextChunkCap.withMapKey(mapKey.left, mapKey.right), chunkOffset, size));
+        }
     }
 
     private CompletableFuture<Boolean> getChunk(AbsoluteCapability cap, long chunkOffset, int len) {
