@@ -278,12 +278,12 @@ public class LazyInputStreamCombiner implements AsyncReader {
         int nextChunkSize = totalLength - globalOffset > Chunk.MAX_SIZE ?
                 Chunk.MAX_SIZE :
                 (int) (totalLength - globalOffset);
-        long currentChunk = globalIndex;
         long nextChunk = globalIndex + Chunk.MAX_SIZE;
         return getChunk(nextChunkPointer(), nextChunk, nextChunkSize).thenCompose(done -> {
             index = 0;
             globalIndex = nextChunk;
-            bufferedChunks.remove(currentChunk);
+            if (bufferedChunks.size() > nBufferedChunks)
+                bufferedChunks.remove(bufferedChunks.firstKey());
             prefetch(nBufferedChunks);
             return this.readIntoArray(res, offset + toRead, length - toRead).thenApply(bytesRead -> bytesRead + toRead);
         });
