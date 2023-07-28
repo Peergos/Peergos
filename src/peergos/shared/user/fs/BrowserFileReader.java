@@ -1,6 +1,7 @@
 package peergos.shared.user.fs;
 
 import jsinterop.annotations.*;
+import peergos.shared.util.*;
 
 import java.util.concurrent.*;
 
@@ -35,6 +36,9 @@ public class BrowserFileReader implements AsyncReader {
     public CompletableFuture<AsyncReader> reset() {
         return reader.reset().thenApply(x -> this);
     }
+
+    @Override
+    public void prefetch(int nChunks) {}
 
     /**
      * Close and dispose of any resources

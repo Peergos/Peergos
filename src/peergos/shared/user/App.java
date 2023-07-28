@@ -127,7 +127,7 @@ public class App implements StoreAppData {
                 throw new IllegalStateException("File not found:" + path.toString());
             }
             long len = optFile.get().getSize();
-            return optFile.get().getInputStream(ctx.network, ctx.crypto, len, l-> {})
+            return optFile.get().getInputStream(ctx.network, ctx.crypto, len, 1, l-> {})
                     .thenCompose(is -> Serialize.readFully(is, len)
                             .thenApply(bytes -> bytes));
         });

@@ -1,6 +1,7 @@
 package peergos.server.storage;
 
 import peergos.shared.user.fs.*;
+import peergos.shared.util.*;
 
 import java.io.*;
 import java.util.concurrent.*;
@@ -52,6 +53,9 @@ public class ResetableFileInputStream implements AsyncReader {
             return err;
         }
     }
+
+    @Override
+    public void prefetch(int nChunks) {}
 
     @Override
     public void close() {
