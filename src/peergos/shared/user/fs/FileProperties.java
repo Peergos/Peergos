@@ -112,6 +112,11 @@ public class FileProperties implements Cborable {
         res.add(elem);
         return res;
     }
+
+    private static <V> List<V> add(List<V> start, V elem) { // needed for gwt
+        start.add(elem);
+        return start;
+    }
     public static CompletableFuture<List<Pair<byte[], Optional<Bat>>>> calculateSubsequentMapKeys(byte[] streamSecret,
                                                                                                   byte[] firstMapKey,
                                                                                                   Optional<Bat> firstBat,
@@ -124,8 +129,8 @@ public class FileProperties implements Cborable {
         return Futures.reduceAll(counter, first,
                 (current, i) -> calculateNextMapKey(streamSecret,
                         current.get(current.size() - 1).left,
-                        current.get(current.size() - 1).right, h).thenApply(next ->
-                        Stream.concat(current.stream(), Stream.of(next)).collect(Collectors.toList())),
+                        current.get(current.size() - 1).right, h)
+                        .thenApply(next -> add(current, next)),
         (a, b) -> Stream.concat(a.stream(), b.stream()).collect(Collectors.toList()));
     }
 
