@@ -265,7 +265,7 @@ public class RamUserTests extends UserTests {
         final int maxBlockSize = 1024 * 1024 * 5;
 
         List<byte[]> resultBytes = new ArrayList<>();
-        boolean result = file.getBufferedInputStream(network, crypto, sizeHigh, sizeLow, 1, l -> {}).thenCompose(reader -> {
+        boolean result = file.getBufferedInputStream(network, crypto, sizeHigh, sizeLow, 4, l -> {}).thenCompose(reader -> {
             return reader.seekJS(seekHi, seekLo).thenApply(seekReader -> {
                 final int blockSize = length > maxBlockSize ? maxBlockSize : length;
                 return pump(seekReader, length, blockSize, resultBytes);

@@ -124,7 +124,8 @@ public class FileProperties implements Cborable {
         return Futures.reduceAll(counter, first,
                 (current, i) -> calculateNextMapKey(streamSecret,
                         current.get(current.size() - 1).left,
-                        current.get(current.size() - 1).right, h).thenApply(FileProperties::list),
+                        current.get(current.size() - 1).right, h).thenApply(next ->
+                        Stream.concat(current.stream(), Stream.of(next)).collect(Collectors.toList())),
         (a, b) -> Stream.concat(a.stream(), b.stream()).collect(Collectors.toList()));
     }
 

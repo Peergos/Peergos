@@ -69,6 +69,7 @@ public class LazyInputStreamCombiner implements AsyncReader {
         this.globalIndex = globalIndex;
         this.index = 0;
         this.nBufferedChunks = nBufferedChunks;
+        prefetch(nBufferedChunks);
     }
 
     private LazyInputStreamCombiner(WriterData version, NetworkAccess network, Crypto crypto, SymmetricKey baseKey,
@@ -104,35 +105,41 @@ public class LazyInputStreamCombiner implements AsyncReader {
         ForkJoinPool.commonPool().execute(() -> syncPrefetch(nBufferedChunks));
     }
 
-    public CompletableFuture<Boolean> syncPrefetch(int nChunks) {
+    public void syncPrefetch(int nChunks) {
         if (streamSecret.isEmpty()) // can only parallelise download in non legacy files
-            return Futures.of(true);
+            return;
 
         long globalIndexCopy = globalIndex;
-
         if (globalIndexCopy + Chunk.MAX_SIZE > totalLength)
-            return Futures.of(true);
+            return;
         if (globalIndexCopy + nChunks * Chunk.MAX_SIZE > totalLength)
             nChunks = (int) ((totalLength - globalIndexCopy + Chunk.MAX_SIZE - 1) / Chunk.MAX_SIZE);
         long lastBufferedChunk = bufferedChunks.lastKey();
         int finalCount = nChunks - (int)((lastBufferedChunk - globalIndexCopy) / Chunk.MAX_SIZE);
         AbsoluteCapability nextChunkCap = bufferedChunks.get(lastBufferedChunk).right;
 
-        return FileProperties.calculateSubsequentMapKeys(streamSecret.get(), nextChunkCap.getMapKey(), nextChunkCap.bat, nChunks, crypto.hasher)
-                .thenCompose(mapKeys -> Futures.combineAll(IntStream.range(1, finalCount + 1).parallel().mapToObj(i -> {
-                    int size = globalIndexCopy / Chunk.MAX_SIZE + i < totalChunks ? Chunk.MAX_SIZE : (int) (totalLength % Chunk.MAX_SIZE);
-                    return getChunk(nextChunkCap.withMapKey(mapKeys.get(i).left, mapKeys.get(i).right), lastBufferedChunk + (i * Chunk.MAX_SIZE), size);
-                }).collect(Collectors.toList())))
-                .thenApply(x -> true);
+        System.out.println("Prefetching " + finalCount + " chunks");
+        FileProperties.calculateSubsequentMapKeys(streamSecret.get(), nextChunkCap.getMapKey(), nextChunkCap.bat, finalCount, crypto.hasher)
+                .thenAccept(mapKeys -> {
+                    for (int i=1; i < finalCount + 1; i++) {
+                        int size = globalIndexCopy / Chunk.MAX_SIZE + i < totalChunks ? Chunk.MAX_SIZE : (int) (totalLength % Chunk.MAX_SIZE);
+                        Pair<byte[], Optional<Bat>> mapKey = mapKeys.get(i - 1);
+                        long chunkOffset = lastBufferedChunk + (i * Chunk.MAX_SIZE);
+                        System.out.println("Submitting chunk download " + i);
+                        ForkJoinPool.commonPool().execute(() -> getChunk(nextChunkCap.withMapKey(mapKey.left, mapKey.right), chunkOffset, size));
+                    }
+                });
     }
 
     private CompletableFuture<Boolean> getChunk(AbsoluteCapability cap, long chunkOffset, int len) {
         if (bufferedChunks.containsKey(chunkOffset))
             return Futures.of(true);
+        System.out.println("Downloading chunk " + (chunkOffset / Chunk.MAX_SIZE));
         return getSubsequentMetadata(cap, 0)
                 .thenCompose(access -> getChunk(access, cap.getMapKey(), cap.bat, len))
                 .thenApply(p -> {
                     bufferedChunks.put(chunkOffset, new Pair<>(p.left, p.right));
+                    System.out.println("Completed chunk " + (chunkOffset / Chunk.MAX_SIZE));
                     return true;
                 });
     }
@@ -182,7 +189,6 @@ public class LazyInputStreamCombiner implements AsyncReader {
     }
 
     private CompletableFuture<AsyncReader> skip(long skip) {
-        bufferedChunks.clear();
         long available = bytesReady();
 
         if (skip <= available) {
@@ -208,6 +214,7 @@ public class LazyInputStreamCombiner implements AsyncReader {
                             return getSubsequentMetadata(targetPointer, 0)
                                     .thenCompose(access -> getChunk(access, targetPointer.getMapKey(), targetPointer.bat, truncateTo))
                                     .thenCompose(p -> {
+                                        bufferedChunks.clear();
                                         updateState(index, finalOffset, p.left, p.right);
                                         return skip(finalInternalIndex);});
                         });
@@ -215,6 +222,7 @@ public class LazyInputStreamCombiner implements AsyncReader {
             return getSubsequentMetadata(nextChunkPointer(), chunksToSkip)
                     .thenCompose(access -> getChunk(access, nextChunkPointer().getMapKey(), nextChunkPointer().bat, truncateTo))
                     .thenCompose(p -> {
+                        bufferedChunks.clear();
                         updateState(index, finalOffset, p.left, p.right);
                         return skip(finalInternalIndex);
                     });
