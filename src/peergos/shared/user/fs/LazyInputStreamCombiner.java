@@ -72,35 +72,6 @@ public class LazyInputStreamCombiner implements AsyncReader {
         prefetch(nBufferedChunks);
     }
 
-    private LazyInputStreamCombiner(WriterData version, NetworkAccess network, Crypto crypto, SymmetricKey baseKey,
-                                    ProgressConsumer<Long> monitor, long totalLength, byte[] originalChunk,
-                                    byte[] originalChunkLocation, Optional<Bat> originalChunkBat, Optional<byte[]> streamSecret,
-                                    AbsoluteCapability originalNextPointer, byte[] currentChunk,
-                                    AbsoluteCapability nextChunkPointer, long globalIndex, int index, int nBufferedChunks) {
-        this.version = version;
-        this.network = network;
-        this.crypto = crypto;
-        this.baseKey = baseKey;
-        this.monitor = monitor;
-        this.totalLength = totalLength;
-        this.totalChunks = (totalLength + Chunk.MAX_SIZE - 1) / Chunk.MAX_SIZE;
-        this.originalChunk = originalChunk;
-        this.originalChunkLocation = originalChunkLocation;
-        this.originalChunkBat = originalChunkBat;
-        this.streamSecret = streamSecret;
-        this.originalNextPointer = originalNextPointer;
-        bufferedChunks.put(globalIndex, new Pair<>(currentChunk, nextChunkPointer));
-        this.globalIndex = globalIndex;
-        this.index = index;
-        this.nBufferedChunks = nBufferedChunks;
-        prefetch(nBufferedChunks);
-    }
-
-    private LazyInputStreamCombiner copy() {
-        return new LazyInputStreamCombiner( version, network, crypto, baseKey, monitor, totalLength, originalChunk, originalChunkLocation,
-                originalChunkBat, streamSecret, originalNextPointer, currentChunk(), nextChunkPointer(), globalIndex, index, nBufferedChunks);
-    }
-
     public void prefetch(int nChunks) {
         ForkJoinPool.commonPool().execute(() -> syncPrefetch(nBufferedChunks));
     }
@@ -241,8 +212,8 @@ public class LazyInputStreamCombiner implements AsyncReader {
             throw new IllegalStateException("Cannot seek to position "+ seek + " in file of length " + totalLength);
         long globalOffset = globalIndex + index;
         if (seek > globalOffset)
-            return copy().skip(seek - globalOffset);
-        return copy().reset().thenCompose(x -> ((LazyInputStreamCombiner)x).skip(seek));
+            return skip(seek - globalOffset);
+        return reset().thenCompose(x -> ((LazyInputStreamCombiner)x).skip(seek));
     }
 
     private byte[] currentChunk() {
