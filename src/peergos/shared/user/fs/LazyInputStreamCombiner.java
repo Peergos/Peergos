@@ -69,11 +69,11 @@ public class LazyInputStreamCombiner implements AsyncReader {
         prefetch(nBufferedChunks);
     }
 
-    public void prefetch(int nChunks) {
+    private void prefetch(int nChunks) {
         ForkJoinPool.commonPool().execute(() -> syncPrefetch(nChunks));
     }
 
-    public void syncPrefetch(int nChunks) {
+    private void syncPrefetch(int nChunks) {
         if (streamSecret.isEmpty()) // can only parallelise download in non legacy files
             return;
 
@@ -187,7 +187,7 @@ public class LazyInputStreamCombiner implements AsyncReader {
                             return getSubsequentMetadata(targetPointer, 0)
                                     .thenCompose(access -> getChunk(access, targetPointer.getMapKey(), targetPointer.bat, truncateTo))
                                     .thenCompose(p -> {
-                                        bufferedChunks.clear();
+                                        resetBuffer();
                                         updateState(index, finalOffset, p.left, p.right);
                                         return skip(finalInternalIndex);});
                         });
@@ -195,7 +195,7 @@ public class LazyInputStreamCombiner implements AsyncReader {
             return getSubsequentMetadata(nextChunkPointer(), chunksToSkip)
                     .thenCompose(access -> getChunk(access, nextChunkPointer().getMapKey(), nextChunkPointer().bat, truncateTo))
                     .thenCompose(p -> {
-                        bufferedChunks.clear();
+                        resetBuffer();
                         updateState(index, finalOffset, p.left, p.right);
                         return skip(finalInternalIndex);
                     });
@@ -227,10 +227,14 @@ public class LazyInputStreamCombiner implements AsyncReader {
 
     public void close() {}
 
-    public CompletableFuture<AsyncReader> reset() {
-        this.globalIndex = 0;
+    private void resetBuffer() {
         bufferedChunks.clear();
         bufferedChunks.put(0L, new Pair<>(originalChunk, originalNextPointer));
+    }
+
+    public CompletableFuture<AsyncReader> reset() {
+        resetBuffer();
+        this.globalIndex = 0;
         this.index = 0;
         return CompletableFuture.completedFuture(this);
     }

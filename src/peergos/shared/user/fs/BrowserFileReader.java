@@ -1,7 +1,6 @@
 package peergos.shared.user.fs;
 
 import jsinterop.annotations.*;
-import peergos.shared.util.*;
 
 import java.util.concurrent.*;
 
