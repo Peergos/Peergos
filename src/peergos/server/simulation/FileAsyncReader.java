@@ -44,9 +44,6 @@ public class FileAsyncReader implements AsyncReader {
     }
 
     @Override
-    public void prefetch(int nChunks) {}
-
-    @Override
     public void close() {
         try {
             file.close();

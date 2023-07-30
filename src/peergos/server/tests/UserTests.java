@@ -996,9 +996,6 @@ public abstract class UserTests {
         }
 
         @Override
-        public void prefetch(int nChunks) {}
-
-        @Override
         public void close() {}
     }
 

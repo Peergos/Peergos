@@ -37,13 +37,6 @@ public interface AsyncReader extends AutoCloseable {
     CompletableFuture<AsyncReader> reset();
 
     /**
-     * Prefetch chunks in parallel and buffer them ready for reading;
-     * @param nChunks
-     * @return
-     */
-    void prefetch(int nChunks);
-
-    /**
      * Close and dispose of any resources
      */
     void close();
@@ -179,9 +172,6 @@ public interface AsyncReader extends AutoCloseable {
             index = 0;
             return CompletableFuture.completedFuture(this);
         }
-
-        @Override
-        public void prefetch(int nChunks) {}
 
         @Override
         public void close() {

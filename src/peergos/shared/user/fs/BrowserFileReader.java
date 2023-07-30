@@ -37,9 +37,6 @@ public class BrowserFileReader implements AsyncReader {
         return reader.reset().thenApply(x -> this);
     }
 
-    @Override
-    public void prefetch(int nChunks) {}
-
     /**
      * Close and dispose of any resources
      */

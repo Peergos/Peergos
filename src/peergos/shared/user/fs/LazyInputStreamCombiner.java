@@ -1,8 +1,6 @@
 package peergos.shared.user.fs;
 
 import peergos.shared.*;
-import peergos.shared.crypto.hash.*;
-import peergos.shared.crypto.random.*;
 import peergos.shared.crypto.symmetric.*;
 import peergos.shared.storage.auth.*;
 import peergos.shared.user.*;
@@ -12,7 +10,6 @@ import peergos.shared.util.*;
 import java.io.*;
 import java.util.*;
 import java.util.concurrent.*;
-import java.util.stream.*;
 
 public class LazyInputStreamCombiner implements AsyncReader {
     private final WriterData version;
