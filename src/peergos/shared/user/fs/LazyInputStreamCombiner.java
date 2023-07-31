@@ -81,13 +81,21 @@ public class LazyInputStreamCombiner implements AsyncReader {
             return;
         if (globalIndexCopy + nChunks * Chunk.MAX_SIZE > totalLength)
             nChunks = (int) ((totalLength - globalIndexCopy + Chunk.MAX_SIZE - 1) / Chunk.MAX_SIZE);
-        long lastBufferedChunk = bufferedChunks.lastKey();
-        int finalCount = nChunks - (int)((lastBufferedChunk - globalIndexCopy) / Chunk.MAX_SIZE);
-        AbsoluteCapability nextChunkCap = bufferedChunks.get(lastBufferedChunk).right;
+        long lastBufferedChunkInSequence = globalIndexCopy;
+        for (int i=0; i < nChunks; i++) {
+            if (! bufferedChunks.containsKey(lastBufferedChunkInSequence + i * Chunk.MAX_SIZE)) {
+                lastBufferedChunkInSequence = lastBufferedChunkInSequence + (i-1) * Chunk.MAX_SIZE;
+                break;
+            }
+        }
 
+        int finalCount = nChunks - (int)((lastBufferedChunkInSequence - globalIndexCopy) / Chunk.MAX_SIZE);
+        AbsoluteCapability nextChunkCap = bufferedChunks.get(lastBufferedChunkInSequence).right;
+
+        long finalBufferedChunk = lastBufferedChunkInSequence;
         System.out.println("Prefetching " + finalCount + " chunks");
         FileProperties.calculateSubsequentMapKeys(streamSecret.get(), nextChunkCap.getMapKey(), nextChunkCap.bat, finalCount - 1, crypto.hasher)
-                .thenAccept(mapKeys -> parallelChunksDownload(finalCount, lastBufferedChunk, mapKeys, nextChunkCap));
+                .thenAccept(mapKeys -> parallelChunksDownload(finalCount, finalBufferedChunk, mapKeys, nextChunkCap));
     }
 
     private void parallelChunksDownload(int finalCount,
