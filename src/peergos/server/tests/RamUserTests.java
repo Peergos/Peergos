@@ -284,7 +284,6 @@ public class RamUserTests extends UserTests {
 
     @Test
     public void bufferedReaderSeek() {
-
         String username = generateUsername();
         String password = "test";
         UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
@@ -309,12 +308,12 @@ public class RamUserTests extends UserTests {
         final int maxBlockSize = 1024 * 1024 * 5;
 
         List<byte[]> resultBytes = new ArrayList<>();
-        boolean result = file.getBufferedInputStream(network, crypto, sizeHigh, sizeLow, 4, l -> {}).thenCompose(reader -> {
-            return reader.seekJS(seekHi, seekLo).thenApply(seekReader -> {
-                final int blockSize = length > maxBlockSize ? maxBlockSize : length;
-                return pump(seekReader, length, blockSize, resultBytes);
-            });
-        }).join().join();
+        AsyncReader reader = file.getBufferedInputStream(network, crypto, sizeHigh, sizeLow, 4, l -> {}).join();
+        reader.readIntoArray(new byte[1024*1024], 0, 1024*1024).join();
+        reader.seekJS(seekHi, seekLo).thenApply(seekReader -> {
+            final int blockSize = length > maxBlockSize ? maxBlockSize : length;
+            return pump(seekReader, length, blockSize, resultBytes);
+        }).join();
 
         List<byte[]> resultBytes2 = new ArrayList<>();
         resultBytes2.add(Arrays.copyOfRange(fileData, seekLo, seekLo + maxBlockSize));

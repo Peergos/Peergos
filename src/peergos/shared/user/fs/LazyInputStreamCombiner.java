@@ -194,14 +194,14 @@ public class LazyInputStreamCombiner implements AsyncReader {
                             return getSubsequentMetadata(targetPointer, 0)
                                     .thenCompose(access -> getChunk(access, targetPointer.getMapKey(), targetPointer.bat, truncateTo))
                                     .thenCompose(p -> {
-                                        updateState(index, finalOffset, p.left, p.right);
+                                        updateState(0, finalOffset, p.left, p.right);
                                         return skip(finalInternalIndex);});
                         });
             }
             return getSubsequentMetadata(nextChunkPointer(), chunksToSkip)
                     .thenCompose(access -> getChunk(access, nextChunkPointer().getMapKey(), nextChunkPointer().bat, truncateTo))
                     .thenCompose(p -> {
-                        updateState(index, finalOffset, p.left, p.right);
+                        updateState(0, finalOffset, p.left, p.right);
                         return skip(finalInternalIndex);
                     });
     }
