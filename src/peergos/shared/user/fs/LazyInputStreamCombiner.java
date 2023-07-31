@@ -66,7 +66,6 @@ public class LazyInputStreamCombiner implements AsyncReader {
         this.globalIndex = globalIndex;
         this.index = 0;
         this.nBufferedChunks = nBufferedChunks;
-        prefetch(nBufferedChunks);
     }
 
     private void prefetch(int nChunks) {
@@ -228,7 +227,6 @@ public class LazyInputStreamCombiner implements AsyncReader {
     public void close() {}
 
     private void resetBuffer() {
-        bufferedChunks.clear();
         bufferedChunks.put(0L, new Pair<>(originalChunk, originalNextPointer));
     }
 
@@ -253,6 +251,8 @@ public class LazyInputStreamCombiner implements AsyncReader {
         index += toRead;
         long globalOffset = globalIndex + index;
 
+        prefetch(nBufferedChunks);
+
         if (available >= length) // we are done
             return CompletableFuture.completedFuture(length);
         if (globalOffset > totalLength) {
@@ -267,11 +267,22 @@ public class LazyInputStreamCombiner implements AsyncReader {
         return getChunk(nextChunkPointer(), nextChunk, nextChunkSize).thenCompose(done -> {
             index = 0;
             globalIndex = nextChunk;
-            if (bufferedChunks.size() > nBufferedChunks)
-                bufferedChunks.remove(bufferedChunks.firstKey());
-            prefetch(nBufferedChunks);
+            ensureBufferWithinLimit();
             return this.readIntoArray(res, offset + toRead, length - toRead).thenApply(bytesRead -> bytesRead + toRead);
         });
+    }
+
+    private void ensureBufferWithinLimit() {
+        if (bufferedChunks.size() > nBufferedChunks) {
+            long first = bufferedChunks.firstKey();
+            if (first < globalIndex)
+                bufferedChunks.remove(first);
+            else {
+                long last = bufferedChunks.lastKey();
+                if (last > globalIndex)
+                    bufferedChunks.remove(last);
+            }
+        }
     }
 
     private void updateState(int index,
