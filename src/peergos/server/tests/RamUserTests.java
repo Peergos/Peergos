@@ -283,6 +283,45 @@ public class RamUserTests extends UserTests {
     }
 
     @Test
+    public void bufferedReaderSeek() {
+
+        String username = generateUsername();
+        String password = "test";
+        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
+        FileWrapper userRoot = context.getUserRoot().join();
+
+        String filename = "data.bin";
+        Random random = new Random(666);
+        byte[] fileData = new byte[20*1024*1024];
+        random.nextBytes(fileData);
+
+        FileWrapper userRoot2 = userRoot.uploadOrReplaceFile(filename, new AsyncReader.ArrayBacked(fileData), fileData.length,
+                context.network, context.crypto, l -> {}).join();
+
+        FileWrapper file = context.getByPath(PathUtil.get(username, filename)).join().get();
+        FileProperties props = file.getFileProperties();
+        int sizeHigh = props.sizeHigh();
+        int sizeLow = props.sizeLow();
+
+        int seekHi = 0;
+        int seekLo = 10*1024*1024;
+        int length = 5242880;
+        final int maxBlockSize = 1024 * 1024 * 5;
+
+        List<byte[]> resultBytes = new ArrayList<>();
+        boolean result = file.getBufferedInputStream(network, crypto, sizeHigh, sizeLow, 4, l -> {}).thenCompose(reader -> {
+            return reader.seekJS(seekHi, seekLo).thenApply(seekReader -> {
+                final int blockSize = length > maxBlockSize ? maxBlockSize : length;
+                return pump(seekReader, length, blockSize, resultBytes);
+            });
+        }).join().join();
+
+        List<byte[]> resultBytes2 = new ArrayList<>();
+        resultBytes2.add(Arrays.copyOfRange(fileData, seekLo, seekLo + maxBlockSize));
+        compare(resultBytes, resultBytes2);
+    }
+
+    @Test
     public void testReuseOfAsyncReader() throws Exception {
 
         String username = "test";
