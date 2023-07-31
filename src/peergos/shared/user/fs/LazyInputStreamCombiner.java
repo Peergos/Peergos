@@ -82,7 +82,7 @@ public class LazyInputStreamCombiner implements AsyncReader {
         if (globalIndexCopy + nChunks * Chunk.MAX_SIZE > totalLength)
             nChunks = (int) ((totalLength - globalIndexCopy + Chunk.MAX_SIZE - 1) / Chunk.MAX_SIZE);
         long lastBufferedChunkInSequence = globalIndexCopy;
-        for (int i=0; i < nChunks; i++) {
+        for (int i=1; i < nChunks; i++) {
             if (! bufferedChunks.containsKey(lastBufferedChunkInSequence + i * Chunk.MAX_SIZE)) {
                 lastBufferedChunkInSequence = lastBufferedChunkInSequence + (i-1) * Chunk.MAX_SIZE;
                 break;
@@ -194,7 +194,6 @@ public class LazyInputStreamCombiner implements AsyncReader {
                             return getSubsequentMetadata(targetPointer, 0)
                                     .thenCompose(access -> getChunk(access, targetPointer.getMapKey(), targetPointer.bat, truncateTo))
                                     .thenCompose(p -> {
-                                        resetBuffer();
                                         updateState(index, finalOffset, p.left, p.right);
                                         return skip(finalInternalIndex);});
                         });
@@ -202,7 +201,6 @@ public class LazyInputStreamCombiner implements AsyncReader {
             return getSubsequentMetadata(nextChunkPointer(), chunksToSkip)
                     .thenCompose(access -> getChunk(access, nextChunkPointer().getMapKey(), nextChunkPointer().bat, truncateTo))
                     .thenCompose(p -> {
-                        resetBuffer();
                         updateState(index, finalOffset, p.left, p.right);
                         return skip(finalInternalIndex);
                     });
