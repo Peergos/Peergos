@@ -92,7 +92,8 @@ public class DirectS3BlockStore implements ContentAddressedStorage {
                                             List<byte[]> blocks,
                                             TransactionId tid) {
         return onOwnersNode(owner).thenCompose(ownersNode -> {
-            if (ownersNode && directWrites) {
+            boolean allSmallBlocks = blocks.stream().map(b -> b.length).filter(len -> len > 8*1024).findAny().isEmpty();
+            if (ownersNode && directWrites && ! allSmallBlocks) {
                 CompletableFuture<List<Cid>> res = new CompletableFuture<>();
                 fallback.authWrites(owner, writer, signedHashes, blocks.stream().map(x -> x.length).collect(Collectors.toList()), false, tid)
                         .thenCompose(preAuthed -> {
