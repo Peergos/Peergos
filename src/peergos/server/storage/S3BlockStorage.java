@@ -562,6 +562,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                                              boolean isRaw,
                                              TransactionId tid) {
         return CompletableFuture.completedFuture(blocks.stream()
+                .parallel()
                 .map(b -> getWithBackoff(() -> put(b, isRaw, tid, owner)))
                 .collect(Collectors.toList()));
     }
