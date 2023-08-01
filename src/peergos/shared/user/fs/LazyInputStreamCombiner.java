@@ -123,9 +123,7 @@ public class LazyInputStreamCombiner implements AsyncReader {
     private CompletableFuture<Boolean> getChunk(AbsoluteCapability cap, long chunkOffset, int len) {
         if (bufferedChunks.containsKey(chunkOffset))
             return Futures.of(true);
-        CompletableFuture<Boolean> pending = inProgress.get(chunkOffset);
-        if (pending != null)
-            return pending;
+
         System.out.println("Downloading chunk " + (chunkOffset / Chunk.MAX_SIZE));
         return getSubsequentMetadata(cap, 0)
                 .thenCompose(access -> getChunk(access, cap.getMapKey(), cap.bat, len))
@@ -282,7 +280,8 @@ public class LazyInputStreamCombiner implements AsyncReader {
                 Chunk.MAX_SIZE :
                 (int) (totalLength - globalOffset);
         long nextChunk = globalIndex + Chunk.MAX_SIZE;
-        return getChunk(nextChunkPointer(), nextChunk, nextChunkSize).thenCompose(done -> {
+        CompletableFuture<Boolean> pending = inProgress.get(nextChunk);
+        return (pending != null ? pending : getChunk(nextChunkPointer(), nextChunk, nextChunkSize)).thenCompose(done -> {
             index = 0;
             globalIndex = nextChunk;
             ensureBufferWithinLimit();
