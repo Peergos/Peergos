@@ -107,12 +107,12 @@ public class LazyInputStreamCombiner implements AsyncReader {
             int size = lastBufferedChunk / Chunk.MAX_SIZE + i < totalChunks ? Chunk.MAX_SIZE : (int) (totalLength % Chunk.MAX_SIZE);
             Pair<byte[], Optional<Bat>> mapKey = mapKeys.get(i - 1);
             long chunkOffset = lastBufferedChunk + (i * Chunk.MAX_SIZE);
-            if (inProgress.containsKey(chunkOffset))
+            if (inProgress.containsKey(chunkOffset) || bufferedChunks.containsKey(chunkOffset))
                 continue;
             inProgress.put(chunkOffset, true);
-                ForkJoinPool.commonPool().execute(() -> getChunk(nextChunkCap.withMapKey(mapKey.left, mapKey.right), chunkOffset, size)
-                        .thenAccept(x ->  inProgress.remove(chunkOffset)));
             System.out.println("Submitting chunk download " + i);
+            ForkJoinPool.commonPool().execute(() -> getChunk(nextChunkCap.withMapKey(mapKey.left, mapKey.right), chunkOffset, size)
+                        .thenAccept(x ->  inProgress.remove(chunkOffset)));
         }
     }
 
