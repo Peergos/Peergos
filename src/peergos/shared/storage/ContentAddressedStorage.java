@@ -445,11 +445,12 @@ public interface ContentAddressedStorage {
                     throw new IllegalStateException("Invalid block size: " + block.length
                             + ", blocks must be smaller than 1MiB!");
             }
+            int timeoutMillis = blocks.size() > 1 ? 30_000 : -1;
             return poster.postMultipart(apiPrefix + BLOCK_PUT + "?format=" + format
                     + "&owner=" + encode(owner.toString())
                     + "&transaction=" + encode(tid.toString())
                     + "&writer=" + encode(writer.toString())
-                    + "&signatures=" + signatures.stream().map(ArrayOps::bytesToHex).reduce("", (a, b) -> a + "," + b).substring(1), blocks)
+                    + "&signatures=" + signatures.stream().map(ArrayOps::bytesToHex).reduce("", (a, b) -> a + "," + b).substring(1), blocks, timeoutMillis)
                     .thenApply(bytes -> JSONParser.parseStream(new String(bytes))
                             .stream()
                             .map(json -> getObjectHash(json))

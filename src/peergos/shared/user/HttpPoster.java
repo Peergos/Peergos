@@ -17,7 +17,11 @@ public interface HttpPoster {
         return postUnzip(url, payload, 15_000);
     }
 
-    CompletableFuture<byte[]> postMultipart(String url, List<byte[]> files);
+    default CompletableFuture<byte[]> postMultipart(String url, List<byte[]> files) {
+        return postMultipart(url, files, -1);
+    }
+
+    CompletableFuture<byte[]> postMultipart(String url, List<byte[]> files, int timeoutMillis);
 
     CompletableFuture<byte[]> put(String url, byte[] payload, Map<String, String> headers);
 

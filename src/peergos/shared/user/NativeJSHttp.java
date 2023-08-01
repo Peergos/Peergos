@@ -80,7 +80,7 @@ public class NativeJSHttp {
 
     public native CompletableFuture<byte[]> getWithHeaders(String url, String[] headers);
 
-    public native CompletableFuture<byte[]> postMultipart(String url, List<byte[]> payload);
+    public native CompletableFuture<byte[]> postMultipart(String url, List<byte[]> payload, int timeoutMillis);
 
     public native CompletableFuture<byte[]> put(String url, byte[] payload, String[] headers);
 }

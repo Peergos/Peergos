@@ -91,7 +91,7 @@ public class JavaPoster implements HttpPoster {
     }
 
     @Override
-    public CompletableFuture<byte[]> postMultipart(String url, List<byte[]> files) {
+    public CompletableFuture<byte[]> postMultipart(String url, List<byte[]> files, int timeoutMillis) {
         try {
             Map<String, String> headers = new HashMap<>();
             if (basicAuth.isPresent())
@@ -103,6 +103,11 @@ public class JavaPoster implements HttpPoster {
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
+    }
+
+    @Override
+    public CompletableFuture<byte[]> postMultipart(String url, List<byte[]> files) {
+        return postMultipart(url, files, -1);
     }
 
     @Override
