@@ -27,7 +27,7 @@ public class LazyInputStreamCombiner implements AsyncReader {
     private final AbsoluteCapability originalNextPointer;
 
     private final SortedMap<Long, Pair<byte[], AbsoluteCapability>> bufferedChunks = new TreeMap<>(); // and next chunk pointer
-    private final Map<Long, Boolean> inProgress = new ConcurrentHashMap<>();
+    private final Map<Long, CompletableFuture<Boolean>> inProgress = new ConcurrentHashMap<>();
     private final int nBufferedChunks;
     private long globalIndex; // index of beginning of current chunk in file
     private int index; // index within current chunk
@@ -109,16 +109,23 @@ public class LazyInputStreamCombiner implements AsyncReader {
             long chunkOffset = lastBufferedChunk + (i * Chunk.MAX_SIZE);
             if (inProgress.containsKey(chunkOffset) || bufferedChunks.containsKey(chunkOffset))
                 continue;
-            inProgress.put(chunkOffset, true);
+            inProgress.put(chunkOffset, new CompletableFuture<>());
             System.out.println("Submitting chunk download " + (chunkOffset / Chunk.MAX_SIZE));
             ForkJoinPool.commonPool().execute(() -> getChunk(nextChunkCap.withMapKey(mapKey.left, mapKey.right), chunkOffset, size)
-                        .thenAccept(x ->  inProgress.remove(chunkOffset)));
+                        .thenAccept(x ->  inProgress.remove(chunkOffset).complete(true))
+                    .exceptionally(t -> {
+                        inProgress.remove(chunkOffset).completeExceptionally(t);
+                        return null;
+                    }));
         }
     }
 
     private CompletableFuture<Boolean> getChunk(AbsoluteCapability cap, long chunkOffset, int len) {
         if (bufferedChunks.containsKey(chunkOffset))
             return Futures.of(true);
+        CompletableFuture<Boolean> pending = inProgress.get(chunkOffset);
+        if (pending != null)
+            return pending;
         System.out.println("Downloading chunk " + (chunkOffset / Chunk.MAX_SIZE));
         return getSubsequentMetadata(cap, 0)
                 .thenCompose(access -> getChunk(access, cap.getMapKey(), cap.bat, len))
