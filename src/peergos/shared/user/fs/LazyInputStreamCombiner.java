@@ -180,7 +180,7 @@ public class LazyInputStreamCombiner implements AsyncReader {
 
         long toSkipAfterThisChunk = skip - toRead;
             // skip through the cryptree nodes without downloading the data
-            long finalOffset = globalIndex + skip;
+            long finalOffset = index + globalIndex + skip;
             long finalInternalIndex = finalOffset % Chunk.MAX_SIZE;
             long startOfTargetChunk = finalOffset - finalInternalIndex;
             long chunksToSkip = toSkipAfterThisChunk / Chunk.MAX_SIZE;
