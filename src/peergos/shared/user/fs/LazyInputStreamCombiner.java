@@ -109,27 +109,30 @@ public class LazyInputStreamCombiner implements AsyncReader {
             long chunkOffset = lastBufferedChunk + (i * Chunk.MAX_SIZE);
             if (inProgress.containsKey(chunkOffset) || bufferedChunks.containsKey(chunkOffset))
                 continue;
-            inProgress.put(chunkOffset, new CompletableFuture<>());
+
             System.out.println("Submitting chunk download " + (chunkOffset / Chunk.MAX_SIZE));
-            ForkJoinPool.commonPool().execute(() -> getChunk(nextChunkCap.withMapKey(mapKey.left, mapKey.right), chunkOffset, size)
-                        .thenAccept(x ->  inProgress.remove(chunkOffset).complete(true))
-                    .exceptionally(t -> {
-                        inProgress.remove(chunkOffset).completeExceptionally(t);
-                        return null;
-                    }));
+            ForkJoinPool.commonPool().execute(() -> getChunk(nextChunkCap.withMapKey(mapKey.left, mapKey.right), chunkOffset, size));
         }
     }
 
     private CompletableFuture<Boolean> getChunk(AbsoluteCapability cap, long chunkOffset, int len) {
         if (bufferedChunks.containsKey(chunkOffset))
             return Futures.of(true);
+        CompletableFuture<Boolean> pending = inProgress.get(chunkOffset);
+        if (pending != null)
+            return pending;
+        inProgress.put(chunkOffset, new CompletableFuture<>());
 
         System.out.println("Downloading chunk " + (chunkOffset / Chunk.MAX_SIZE));
         return getSubsequentMetadata(cap, 0)
                 .thenCompose(access -> getChunk(access, cap.getMapKey(), cap.bat, len))
                 .thenApply(p -> {
                     bufferedChunks.put(chunkOffset, new Pair<>(p.left, p.right));
+                    inProgress.remove(chunkOffset).complete(true);
                     System.out.println("Completed chunk " + (chunkOffset / Chunk.MAX_SIZE));
+                    return true;
+                }).exceptionally(t -> {
+                    inProgress.remove(chunkOffset).completeExceptionally(t);
                     return true;
                 });
     }
@@ -280,8 +283,7 @@ public class LazyInputStreamCombiner implements AsyncReader {
                 Chunk.MAX_SIZE :
                 (int) (totalLength - globalOffset);
         long nextChunk = globalIndex + Chunk.MAX_SIZE;
-        CompletableFuture<Boolean> pending = inProgress.get(nextChunk);
-        return (pending != null ? pending : getChunk(nextChunkPointer(), nextChunk, nextChunkSize)).thenCompose(done -> {
+        return getChunk(nextChunkPointer(), nextChunk, nextChunkSize).thenCompose(done -> {
             index = 0;
             globalIndex = nextChunk;
             ensureBufferWithinLimit();
