@@ -21,6 +21,7 @@ public interface FileRetriever {
                                            Optional<byte[]> streamSecret,
                                            long fileSize,
                                            MaybeMultihash ourExistingHash,
+                                           int nBufferedChunks,
                                            ProgressConsumer<Long> monitor);
 
     CompletableFuture<Optional<Pair<byte[], Optional<Bat>>>> getMapLabelAt(WriterData version,

@@ -30,7 +30,7 @@ public interface AsyncReader extends AutoCloseable {
      */
     CompletableFuture<Integer> readIntoArray(byte[] res, int offset, int length);
 
-    /**Files
+    /**
      *  reset to original starting position
      * @return
      */

@@ -42,6 +42,7 @@ public class EncryptedChunkRetriever implements FileRetriever {
                                                   Optional<byte[]> streamSecret,
                                                   long fileSize,
                                                   MaybeMultihash ourExistingHash,
+                                                  int nBufferedChunks,
                                                   ProgressConsumer<Long> monitor) {
         return getChunk(version, network, crypto, 0, fileSize, ourCap, streamSecret, ourExistingHash, monitor)
                 .thenApply(chunk -> {
@@ -50,7 +51,7 @@ public class EncryptedChunkRetriever implements FileRetriever {
                     return new LazyInputStreamCombiner(version, 0,
                             chunk.get().chunk.data(), nextChunkPointer, nextChunkBat,
                             chunk.get().chunk.data(), ourCap.getMapKey(), ourCap.bat, streamSecret, nextChunkPointer,
-                            nextChunkBat, network, crypto, ourCap.rBaseKey, fileSize, monitor);
+                            nextChunkBat, network, crypto, ourCap.rBaseKey, fileSize, nBufferedChunks, monitor);
                 });
     }
 

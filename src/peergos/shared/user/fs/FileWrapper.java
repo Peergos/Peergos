@@ -517,7 +517,7 @@ public class FileWrapper {
 
         return initialVersion.withWriter(owner(), writer(), network)
                 .thenCompose(snapshot -> getMapKey(newSize, network, crypto).thenCompose(endMapKey ->
-                        getInputStream(snapshot.get(writer()).props, network, crypto, props.size, x -> {}).thenCompose(originalReader -> {
+                        getInputStream(snapshot.get(writer()).props, network, crypto, props.size, 1, x -> {}).thenCompose(originalReader -> {
                             long startOfLastChunk = newSize - (newSize % Chunk.MAX_SIZE);
                             return originalReader.seek(startOfLastChunk).thenCompose(seekedOriginal -> {
                                 byte[] lastChunk = new byte[(int)(newSize % Chunk.MAX_SIZE)];
@@ -2031,14 +2031,14 @@ public class FileWrapper {
                                                                    Crypto crypto,
                                                                    ProgressConsumer<Long> monitor) {
         return network.synchronizer.getValue(owner(), writer())
-                .thenCompose(state -> getInputStream(state.get(writer()).props, network, crypto, getFileProperties().size, monitor));
+                .thenCompose(state -> getInputStream(state.get(writer()).props, network, crypto, getFileProperties().size, 1, monitor));
     }
 
     public CompletableFuture<? extends AsyncReader> getInputStream(WriterData version,
                                                                    NetworkAccess network,
                                                                    Crypto crypto,
                                                                    ProgressConsumer<Long> monitor) {
-        return getInputStream(version, network, crypto, getFileProperties().size, monitor);
+        return getInputStream(version, network, crypto, getFileProperties().size, 1, monitor);
     }
 
     @JsMethod
@@ -2046,11 +2046,13 @@ public class FileWrapper {
                                                                            Crypto crypto,
                                                                            int fileSizeHi,
                                                                            int fileSizeLow,
-                                                                           int bufferChunks,
+                                                                           int nBufferedChunks,
                                                                            ProgressConsumer<Long> monitor) {
-        long fileSize = (fileSizeLow & 0xFFFFFFFFL) + ((fileSizeHi & 0xFFFFFFFFL) << 32);
-        return getInputStream(network, crypto, fileSizeHi, fileSizeLow, monitor)
-                .thenApply(r -> new BufferedAsyncReader(r, bufferChunks, fileSize));
+        return getInputStream(network, crypto, fileSize(fileSizeHi, fileSizeLow), nBufferedChunks, monitor);
+    }
+
+    private static long fileSize(int fileSizeHi, int fileSizeLow) {
+        return (fileSizeLow & 0xFFFFFFFFL) + ((fileSizeHi & 0xFFFFFFFFL) << 32);
     }
 
     @JsMethod
@@ -2059,23 +2061,31 @@ public class FileWrapper {
                                                                    int fileSizeHi,
                                                                    int fileSizeLow,
                                                                    ProgressConsumer<Long> monitor) {
-        long fileSize = (fileSizeLow & 0xFFFFFFFFL) + ((fileSizeHi & 0xFFFFFFFFL) << 32);
         return network.synchronizer.getValue(owner(), writer())
-                .thenCompose(state -> getInputStream(state.get(writer()).props, network, crypto, fileSize, monitor));
+                .thenCompose(state -> getInputStream(state.get(writer()).props, network, crypto, fileSize(fileSizeHi, fileSizeLow), 1, monitor));
     }
 
     public CompletableFuture<? extends AsyncReader> getInputStream(NetworkAccess network,
                                                                    Crypto crypto,
                                                                    long fileSize,
                                                                    ProgressConsumer<Long> monitor) {
+        return getInputStream(network, crypto, fileSize, 1, monitor);
+    }
+
+    public CompletableFuture<? extends AsyncReader> getInputStream(NetworkAccess network,
+                                                                   Crypto crypto,
+                                                                   long fileSize,
+                                                                   int nBufferedChunks,
+                                                                   ProgressConsumer<Long> monitor) {
         return network.synchronizer.getValue(owner(), writer())
-                .thenCompose(state -> getInputStream(state.get(writer()).props, network, crypto, fileSize, monitor));
+                .thenCompose(state -> getInputStream(state.get(writer()).props, network, crypto, fileSize, nBufferedChunks, monitor));
     }
 
     public CompletableFuture<? extends AsyncReader> getInputStream(WriterData version,
                                                                    NetworkAccess network,
                                                                    Crypto crypto,
                                                                    long fileSize,
+                                                                   int nBufferedChunks,
                                                                    ProgressConsumer<Long> monitor) {
         ensureUnmodified();
         if (pointer.fileAccess.isDirectory())
@@ -2084,7 +2094,7 @@ public class FileWrapper {
         return fileAccess.retriever(pointer.capability.rBaseKey, props.streamSecret, getLocation().getMapKey(), pointer.capability.bat, crypto.hasher)
                 .thenCompose(retriever ->
                         retriever.getFile(version, network, crypto, pointer.capability, props.streamSecret,
-                                fileSize, fileAccess.committedHash(), monitor));
+                                fileSize, fileAccess.committedHash(), nBufferedChunks, monitor));
     }
 
     private CompletableFuture<FileRetriever> getRetriever(Hasher hasher) {

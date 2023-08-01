@@ -10,6 +10,7 @@ import java.nio.file.*;
 import java.time.*;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.stream.*;
 
 /** The FileProperties class represents metadata for a file or directory
  *
@@ -104,6 +105,33 @@ public class FileProperties implements Cborable {
             counter.add(i);
         return Futures.reduceAll(counter, new Pair<>(firstMapKey, firstBat),
                 (current, i) -> calculateNextMapKey(streamSecret, current.left, current.right, h), (a, b) -> b);
+    }
+
+    private static <V> List<V> list(V elem) {
+        List<V> res = new ArrayList<>();
+        res.add(elem);
+        return res;
+    }
+
+    private static <V> List<V> add(List<V> start, V elem) { // needed for gwt
+        start.add(elem);
+        return start;
+    }
+    public static CompletableFuture<List<Pair<byte[], Optional<Bat>>>> calculateSubsequentMapKeys(byte[] streamSecret,
+                                                                                                  byte[] firstMapKey,
+                                                                                                  Optional<Bat> firstBat,
+                                                                                                  int nChunks,
+                                                                                                  Hasher h) {
+        List<Long> counter = new ArrayList<>();
+        for (long i=0; i < nChunks; i++)
+            counter.add(i);
+        List<Pair<byte[], Optional<Bat>>> first = list(new Pair<>(firstMapKey, firstBat));
+        return Futures.reduceAll(counter, first,
+                (current, i) -> calculateNextMapKey(streamSecret,
+                        current.get(current.size() - 1).left,
+                        current.get(current.size() - 1).right, h)
+                        .thenApply(next -> add(current, next)),
+        (a, b) -> Stream.concat(a.stream(), b.stream()).collect(Collectors.toList()));
     }
 
     public static CompletableFuture<Pair<byte[], Optional<Bat>>> calculateNextMapKey(byte[] streamSecret,
