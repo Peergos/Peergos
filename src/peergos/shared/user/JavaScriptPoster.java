@@ -32,8 +32,8 @@ public class JavaScriptPoster implements HttpPoster {
     }
 
     @Override
-    public CompletableFuture<byte[]> postMultipart(String url, List<byte[]> files) {
-        return http.postMultipart(canonicalise(url), files);
+    public CompletableFuture<byte[]> postMultipart(String url, List<byte[]> files, int timeoutMillis) {
+        return http.postMultipart(canonicalise(url), files,  timeoutMillis);
     }
 
     @Override
