@@ -94,7 +94,7 @@ public class LazyInputStreamCombiner implements AsyncReader {
         AbsoluteCapability nextChunkCap = bufferedChunks.get(lastBufferedChunkInSequence).right;
 
         long finalBufferedChunk = lastBufferedChunkInSequence;
-        System.out.println("Prefetching " + finalCount + " chunks");
+        System.out.println("Prefetching " + finalCount + " chunks, starting from chunk " + (lastBufferedChunkInSequence / Chunk.MAX_SIZE + 1));
         FileProperties.calculateSubsequentMapKeys(streamSecret.get(), nextChunkCap.getMapKey(), nextChunkCap.bat, finalCount - 1, crypto.hasher)
                 .thenAccept(mapKeys -> parallelChunksDownload(finalCount, finalBufferedChunk, mapKeys, nextChunkCap));
     }
@@ -110,7 +110,7 @@ public class LazyInputStreamCombiner implements AsyncReader {
             if (inProgress.containsKey(chunkOffset) || bufferedChunks.containsKey(chunkOffset))
                 continue;
             inProgress.put(chunkOffset, true);
-            System.out.println("Submitting chunk download " + i);
+            System.out.println("Submitting chunk download " + (chunkOffset / Chunk.MAX_SIZE));
             ForkJoinPool.commonPool().execute(() -> getChunk(nextChunkCap.withMapKey(mapKey.left, mapKey.right), chunkOffset, size)
                         .thenAccept(x ->  inProgress.remove(chunkOffset)));
         }
@@ -262,7 +262,7 @@ public class LazyInputStreamCombiner implements AsyncReader {
         index += toRead;
         long globalOffset = globalIndex + index;
 
-        prefetch(nBufferedChunks);
+        prefetch(5);
 
         if (available >= length) // we are done
             return CompletableFuture.completedFuture(length);
