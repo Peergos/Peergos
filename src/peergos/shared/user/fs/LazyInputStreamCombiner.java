@@ -80,8 +80,7 @@ public class LazyInputStreamCombiner implements AsyncReader {
         long globalIndexCopy = globalIndex;
         if (globalIndexCopy + Chunk.MAX_SIZE > totalLength)
             return;
-        if (globalIndexCopy + nChunks * Chunk.MAX_SIZE > totalLength)
-            nChunks = (int) ((totalLength - globalIndexCopy + Chunk.MAX_SIZE - 1) / Chunk.MAX_SIZE);
+
         long lastBufferedChunkInSequence = globalIndexCopy;
         for (int i=1; i < nChunks; i++) {
             if (! bufferedChunks.containsKey(lastBufferedChunkInSequence + i * Chunk.MAX_SIZE)) {
@@ -89,8 +88,10 @@ public class LazyInputStreamCombiner implements AsyncReader {
                 break;
             }
         }
+        if (lastBufferedChunkInSequence + nChunks * Chunk.MAX_SIZE > totalLength)
+            nChunks = (int) ((totalLength - lastBufferedChunkInSequence + Chunk.MAX_SIZE - 1) / Chunk.MAX_SIZE);
 
-        int finalCount = nChunks - (int)((lastBufferedChunkInSequence - globalIndexCopy) / Chunk.MAX_SIZE);
+        int finalCount = nChunks;
         AbsoluteCapability nextChunkCap = bufferedChunks.get(lastBufferedChunkInSequence).right;
 
         long finalBufferedChunk = lastBufferedChunkInSequence;
