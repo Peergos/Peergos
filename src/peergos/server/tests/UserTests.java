@@ -1820,7 +1820,7 @@ public abstract class UserTests {
         List<FileWrapper> remaining = userRoot2.getChildren(crypto.hasher, context2.network).join().stream()
                 .filter(f -> filenames.contains(f.getName()))
                 .collect(Collectors.toList());
-        Assert.assertFalse("uploaded files are deleted", remaining.isEmpty());
+        Assert.assertTrue("uploaded files are deleted", remaining.isEmpty());
     }
 
     @Test
