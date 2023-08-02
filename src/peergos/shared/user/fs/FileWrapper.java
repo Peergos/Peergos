@@ -1970,6 +1970,54 @@ public class FileWrapper {
                 (a, b) -> b);
     }
 
+    @JsMethod
+    public static CompletableFuture<FileWrapper> deleteChildren(FileWrapper parent,
+                                                                Collection<FileWrapper> childrenToDelete,
+                                                                Path parentPath,
+                                                                UserContext context) {
+        NetworkAccess network = context.network;
+        Hasher hasher = context.crypto.hasher;
+        parent.ensureUnmodified();
+        if (! parent.pointer.capability.isWritable())
+            return Futures.errored(new IllegalStateException("Cannot delete file without write access to it"));
+
+        parent.setModified();
+        network.disableCommits();
+        PublicKeyHash owner = parent.owner();
+        return network.synchronizer.applyComplexUpdate(owner, parent.signingPair(),
+                (version, c) -> version.withWriter(owner, parent.writer(), network)
+                .thenCompose(v2 -> parent.pointer.fileAccess
+                        .removeChildren(v2, c, childrenToDelete.stream()
+                                        .map(f -> f.getPointer().capability)
+                                        .collect(Collectors.toList()), parent.writableFilePointer(),
+                                parent.entryWriter, network, context.crypto.random, hasher))
+                        .thenCompose(v3 -> Futures.reduceAll(childrenToDelete, v3,
+                        (s, f) ->  deleteChild(owner, parent, parentPath, f, s, c, context),
+                        (a, b) -> a.mergeAndOverwriteWith(b))))
+                .thenCompose(s -> parent.getUpdated(s, network));
+    }
+
+    private static CompletableFuture<Snapshot> deleteChild(PublicKeyHash owner,
+                                                           FileWrapper parent,
+                                                           Path parentPath,
+                                                           FileWrapper child,
+                                                           Snapshot version,
+                                                           Committer c,
+                                                           UserContext context) {
+        Hasher hasher = context.crypto.hasher;
+        NetworkAccess network = context.network;
+        return IpfsTransaction.call(owner,
+                        tid -> FileWrapper.deleteAllChunks(
+                                child.isLink() ?
+                                        (WritableAbsoluteCapability) child.getLinkPointer().capability :
+                                        child.writableFilePointer(),
+                                parent.isWritable() ?
+                                        parent.signingPair() :
+                                        child.signingPair(), tid, hasher, network, version, c), network.dhtClient)
+                .thenCompose(s -> context.isSecretLink() ? Futures.of(s) :
+                        context.sharedWithCache.clearSharedWith(parentPath.resolve(child.getName()), s, c, network));
+    }
+
     /**
      * @param parent
      * @param userContext

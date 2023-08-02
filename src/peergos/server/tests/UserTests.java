@@ -1780,6 +1780,50 @@ public abstract class UserTests {
     }
 
     @Test
+    public void bulkDeleteTest() {
+        String username = generateUsername();
+        String password = "test01";
+        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network.clear(), crypto);
+        FileWrapper userRoot = context.getUserRoot().join();
+
+        Set<String> filenames = new HashSet<>();
+
+        for (int i=0; i < 20; i++) {
+            String name = randomString();
+            byte[] data = randomData(8 * 1024);
+
+            AsyncReader fileData = new AsyncReader.ArrayBacked(data);
+            userRoot = userRoot.uploadOrReplaceFile(name, fileData, data.length,
+                    context.network, context.crypto, l -> {}).join();
+            filenames.add(name);
+        }
+
+        Set<FileWrapper> kids = userRoot.getChildren(crypto.hasher, context.network).join();
+        Set<String> kidNames = kids
+                .stream()
+                .map(f -> f.getName())
+                .collect(Collectors.toSet());
+
+        assertTrue("found uploaded files", kidNames.containsAll(filenames));
+
+        //delete the files
+        List<FileWrapper> toDelete = kids.stream()
+                .filter(f -> filenames.contains(f.getName()))
+                .collect(Collectors.toList());
+        FileWrapper.deleteChildren(userRoot, toDelete, PathUtil.get(username), context).join();
+
+        //re-create user-context
+        UserContext context2 = PeergosNetworkUtils.ensureSignedUp(username, password, network.clear(), crypto);
+        FileWrapper userRoot2 = context2.getUserRoot().join();
+
+        //check the files are no longer present
+        List<FileWrapper> remaining = userRoot2.getChildren(crypto.hasher, context2.network).join().stream()
+                .filter(f -> filenames.contains(f.getName()))
+                .collect(Collectors.toList());
+        Assert.assertTrue("uploaded files are deleted", remaining.isEmpty());
+    }
+
+    @Test
     public void internalCopy() {
         String username = generateUsername();
         String password = "test01";
