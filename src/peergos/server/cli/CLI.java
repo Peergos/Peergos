@@ -645,8 +645,10 @@ public class CLI implements Runnable {
                 writer.println("Passwords don't match!");
                 System.exit(0);
             }
+            writer.println("Enter any signup token (or press enter if none):");
+            String token = reader.readLine(PROMPT).trim();;
 
-            UserContext userContext = UserContext.signUp(username, password, "", Optional.empty(), s -> {},
+            UserContext userContext = UserContext.signUp(username, password, token, Optional.empty(), s -> {},
                     Optional.empty(), network, CRYPTO, progressConsumer).join();
             return new CLIContext(userContext, serverURL.toString(), username);
         } else {
