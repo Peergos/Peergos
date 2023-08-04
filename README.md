@@ -29,6 +29,10 @@ Tech book
 ---------
 You can read more detail about our features and architecture in our [tech book](https://book.peergos.org).
 
+Recent progress
+---------
+To see recent developments read the latest [release notes](https://peergos.net/public/peergos/releases) or see our [web-ui repo releases](https://github.com/Peergos/web-ui/releases).
+
 Media
 ---------
 The slides of a talk introducing Peergos are [here](https://speakerdeck.com/ianopolous/peergos-architecture) 
