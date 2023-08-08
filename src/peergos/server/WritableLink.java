@@ -39,6 +39,6 @@ public class WritableLink {
         FileWrapper file = context.getByPath(path).join().get();
         String link = file.writableFilePointer().toLink();
         System.out.println("***** Writable secret link, only share with people you trust *****");
-        System.out.println("https://peergos.net/"+link);
+        System.out.println("https://peergos.net/#" + URLEncoder.encode("{\"secretLink\":true,\"link\":\""+link.substring(1) + "\"}"));
     }
 }
