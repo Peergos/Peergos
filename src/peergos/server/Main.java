@@ -715,7 +715,7 @@ public class Main extends Builder {
                         .with("peergos-url", "http://localhost:" + a.getArg("port"));
                 GATEWAY.main(gatewayArgs);
             }
-            a.saveToFile();
+            a.saveToFileIfAbsent();
             System.out.println("\n" +
                     "█╗█╗█╗█╗   ██████╗ ███████╗███████╗██████╗  ██████╗  ██████╗ ███████╗   █╗█╗█╗█╗\n" +
                     " █████╔╝   ██╔══██╗██╔════╝██╔════╝██╔══██╗██╔════╝ ██╔═══██╗██╔════╝    █████╔╝\n" +

@@ -151,10 +151,10 @@ public class IpfsWrapper implements AutoCloseable {
                 args.getOptionalArg("s3.region.endpoint"))
             ) : Optional.empty();
         Optional<IdentitySection> peergosIdentity =
-                args.hasArg("identity.privKey") && args.hasArg("identity.peerId") ?
+                args.hasArg("ipfs.identity.privKey") && args.hasArg("ipfs.identity.peerId") ?
                     Optional.of(new IdentitySection(
-                            io.ipfs.multibase.binary.Base64.decodeBase64(args.getArg("identity.privKey")),
-                            PeerId.fromBase58(args.getArg("identity.peerId")))
+                            io.ipfs.multibase.binary.Base64.decodeBase64(args.getArg("ipfs.identity.privKey")),
+                            PeerId.fromBase58(args.getArg("ipfs.identity.peerId")))
                     ) : Optional.empty();
         return new IpfsConfigParams(bootstrapNodes, apiAddress, gatewayAddress,
                 proxyTarget,
@@ -244,8 +244,11 @@ public class IpfsWrapper implements AutoCloseable {
         IpfsConfigParams ipfsConfigParams = buildConfig(args);
         IpfsWrapper ipfsWrapper = new IpfsWrapper(ipfsDir, ipfsConfigParams);
         Config config = ipfsWrapper.configure();
-        args.setArg("identity.peerId", config.identity.peerId.toBase58());
-        args.setArg("identity.privKey", Base64.getEncoder().encodeToString(config.identity.privKeyProtobuf));
+        if (!args.hasArg("ipfs.identity.peerId")) {
+            args = args.setArg("ipfs.identity.peerId", config.identity.peerId.toBase58());
+            args = args.setArg("ipfs.identity.privKey", Base64.getEncoder().encodeToString(config.identity.privKeyProtobuf));
+            args.saveToFile();
+        }
         LOG.info("Starting Nabu version: " + APIHandler.CURRENT_VERSION);
         BlockRequestAuthoriser authoriser = (c, b, p, a) -> {
             if (config.addresses.allowTarget.isEmpty()) {
