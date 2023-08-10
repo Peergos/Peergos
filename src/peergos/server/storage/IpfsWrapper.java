@@ -16,6 +16,7 @@ import peergos.shared.util.*;
 
 import java.io.*;
 import java.net.*;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
@@ -77,6 +78,7 @@ public class IpfsWrapper implements AutoCloseable {
         public final String apiAddress, gatewayAddress, allowTarget, proxyTarget;
         public final Optional<String> metricsAddress;
         public final  Optional<S3ConfigParams> s3ConfigParams;
+        public final  Optional<IdentitySection> identity;
 
         public IpfsConfigParams(List<MultiAddress> bootstrapNode,
                                 String apiAddress,
@@ -86,6 +88,18 @@ public class IpfsWrapper implements AutoCloseable {
                                 int swarmPort,
                                 Optional<String> metricsAddress,
                                 Optional<S3ConfigParams> s3ConfigParams) {
+            this(bootstrapNode, apiAddress, gatewayAddress, proxyTarget, allowTarget, swarmPort, metricsAddress,
+                    s3ConfigParams, Optional.empty());
+        }
+        public IpfsConfigParams(List<MultiAddress> bootstrapNode,
+                                String apiAddress,
+                                String gatewayAddress,
+                                String proxyTarget,
+                                String allowTarget,
+                                int swarmPort,
+                                Optional<String> metricsAddress,
+                                Optional<S3ConfigParams> s3ConfigParams,
+                                Optional<IdentitySection> identity) {
             this.bootstrapNode = bootstrapNode;
             this.apiAddress = apiAddress;
             this.gatewayAddress = gatewayAddress;
@@ -94,6 +108,11 @@ public class IpfsWrapper implements AutoCloseable {
             this.swarmPort = swarmPort;
             this.metricsAddress = metricsAddress;
             this.s3ConfigParams = s3ConfigParams;
+            this.identity = identity;
+        }
+        public IpfsConfigParams withIdentity(Optional<IdentitySection> identity) {
+            return new IpfsConfigParams(this.bootstrapNode, this.apiAddress, this.gatewayAddress, this.proxyTarget,
+                    this.allowTarget, this.swarmPort, this.metricsAddress, this.s3ConfigParams, identity);
         }
     }
 
@@ -131,10 +150,16 @@ public class IpfsWrapper implements AutoCloseable {
                 args.getOptionalArg("s3.region"), args.getOptionalArg("s3.accessKey"), args.getOptionalArg("s3.secretKey"),
                 args.getOptionalArg("s3.region.endpoint"))
             ) : Optional.empty();
+        Optional<IdentitySection> peergosIdentity =
+                args.hasArg("identity.privKey") && args.hasArg("identity.peerId") ?
+                    Optional.of(new IdentitySection(
+                            io.ipfs.multibase.binary.Base64.decodeBase64(args.getArg("identity.privKey")),
+                            PeerId.fromBase58(args.getArg("identity.peerId")))
+                    ) : Optional.empty();
         return new IpfsConfigParams(bootstrapNodes, apiAddress, gatewayAddress,
                 proxyTarget,
                 "http://" + allowTarget.getHost() + ":" + allowTarget.getTCPPort(),
-                swarmPort, metricsAddress, s3Params);
+                swarmPort, metricsAddress, s3Params, peergosIdentity);
     }
 
     private static final String IPFS_DIR = "IPFS_PATH";
@@ -155,9 +180,9 @@ public class IpfsWrapper implements AutoCloseable {
         if (! ipfsDirF.isDirectory() && ! ipfsDirF.mkdirs()) {
             throw new IllegalStateException("Specified IPFS_PATH '" + ipfsDir + " is not a directory and/or could not be created");
         }
-
         this.ipfsDir = ipfsDir;
-        this.ipfsConfigParams = ipfsConfigParams;
+        this.ipfsConfigParams = ipfsConfigParams.identity.isPresent() ? ipfsConfigParams :
+                 ipfsConfigParams.withIdentity(readIPFSIdentity(ipfsDir));
     }
 
     public static boolean isHttpApiListening(String ipfsApiAddress) {
@@ -196,14 +221,31 @@ public class IpfsWrapper implements AutoCloseable {
                 args.fromPeergosDir(IPFS_DIR, DEFAULT_DIR_NAME);
     }
 
+    private static Optional<IdentitySection> readIPFSIdentity(Path ipfsDir) {
+        Path configFilePath = ipfsDir.resolve("config");
+        File configFile = configFilePath.toFile();
+        if (!configFile.exists()) {
+            return Optional.empty();
+        }
+        try {
+            Config ipfsConfig = Config.build(Files.readString(configFilePath));
+            return Optional.of(ipfsConfig.identity);
+        }  catch (IOException ioe) {
+            return Optional.empty();
+        }
+    }
+
     public static IpfsWrapper launch(Args args) {
 
         Path ipfsDir = getIpfsDir(args);
         LOG().info("Using IPFS dir " + ipfsDir);
+        org.peergos.util.Logging.init(ipfsDir, args.getBoolean("log-to-console", false));
+
         IpfsConfigParams ipfsConfigParams = buildConfig(args);
         IpfsWrapper ipfsWrapper = new IpfsWrapper(ipfsDir, ipfsConfigParams);
-
         Config config = ipfsWrapper.configure();
+        args.setArg("identity.peerId", config.identity.peerId.toBase58());
+        args.setArg("identity.privKey", Base64.getEncoder().encodeToString(config.identity.privKeyProtobuf));
         LOG.info("Starting Nabu version: " + APIHandler.CURRENT_VERSION);
         BlockRequestAuthoriser authoriser = (c, b, p, a) -> {
             if (config.addresses.allowTarget.isEmpty()) {
@@ -264,11 +306,15 @@ public class IpfsWrapper implements AutoCloseable {
         LOG().info("Initializing ipfs");
         IdentitySection identity = ipfsSwarmPortToIdentity.get(ipfsConfigParams.swarmPort);
         if (identity == null) {
-            HostBuilder builder = new HostBuilder().generateIdentity();
-            PrivKey privKey = builder.getPrivateKey();
-            PeerId peerId = builder.getPeerId();
-            identity = new IdentitySection(privKey.bytes(), peerId);
-            ipfsSwarmPortToIdentity.put(ipfsConfigParams.swarmPort, identity);
+            if (ipfsConfigParams.identity.isPresent()) {
+                ipfsSwarmPortToIdentity.put(ipfsConfigParams.swarmPort, ipfsConfigParams.identity.get());
+            } else {
+                HostBuilder builder = new HostBuilder().generateIdentity();
+                PrivKey privKey = builder.getPrivateKey();
+                PeerId peerId = builder.getPeerId();
+                identity = new IdentitySection(privKey.bytes(), peerId);
+                ipfsSwarmPortToIdentity.put(ipfsConfigParams.swarmPort, identity);
+            }
         }
 
         List<io.ipfs.multiaddr.MultiAddress> swarmAddresses = List.of(new io.ipfs.multiaddr.MultiAddress("/ip6/::/tcp/" + ipfsConfigParams.swarmPort));
@@ -312,18 +358,10 @@ public class IpfsWrapper implements AutoCloseable {
         CodecSet codecSet = CodecSet.empty();
         DatastoreSection datastoreSection = new DatastoreSection(blockMount, rootMount, filter, codecSet);
         BootstrapSection bootstrapSection = new BootstrapSection(bootstrapNodes);
-        Config config = new org.peergos.config.Config(addressesSection, bootstrapSection, datastoreSection, identity);
-        /*
-        if (config.metricsAddress.isPresent()) {
-            String[] parts = config.metricsAddress.get().split(":");
-            runIpfsCmd("config", "--json", "Metrics.Enabled", "true");
-            runIpfsCmd("config", "Metrics.Address", parts[0]);
-            runIpfsCmd("config", "--json", "Metrics.Port", parts[1]);
-        } else {
-            runIpfsCmd("config", "--json", "Metrics.Enabled", "false");
-            runIpfsCmd("config", "Metrics.Address", "localhost");
-            runIpfsCmd("config", "--json", "Metrics.Port", "0");
-        }*/
+        // ipfs metrics are merged with peergos metrics. only need to init once, so set to false here
+        MetricsSection metrics = new MetricsSection(false, "localhost", 9100);
+        Config config = new org.peergos.config.Config(addressesSection, bootstrapSection, datastoreSection,
+                identity, metrics);
         return config;
     }
 }
