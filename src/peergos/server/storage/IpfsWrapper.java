@@ -172,8 +172,6 @@ public class IpfsWrapper implements AutoCloseable {
     private HttpServer apiServer;
     private HttpServer p2pServer;
 
-    private static final Map<Integer, IdentitySection> ipfsSwarmPortToIdentity = new HashMap<>();
-
     public IpfsWrapper(Path ipfsDir, IpfsConfigParams ipfsConfigParams) {
 
         File ipfsDirF = ipfsDir.toFile();
@@ -181,8 +179,19 @@ public class IpfsWrapper implements AutoCloseable {
             throw new IllegalStateException("Specified IPFS_PATH '" + ipfsDir + " is not a directory and/or could not be created");
         }
         this.ipfsDir = ipfsDir;
-        this.ipfsConfigParams = ipfsConfigParams.identity.isPresent() ? ipfsConfigParams :
-                 ipfsConfigParams.withIdentity(readIPFSIdentity(ipfsDir));
+        Optional<IdentitySection> identityOpt = Optional.empty();
+        if (ipfsConfigParams.identity.isPresent()) {
+            identityOpt = ipfsConfigParams.identity;
+        } else {
+            identityOpt = readIPFSIdentity(ipfsDir);
+            if (identityOpt.isEmpty()) {
+                HostBuilder builder = new HostBuilder().generateIdentity();
+                PrivKey privKey = builder.getPrivateKey();
+                PeerId peerId = builder.getPeerId();
+                identityOpt = Optional.of(new IdentitySection(privKey.bytes(), peerId));
+            }
+        }
+        this.ipfsConfigParams= ipfsConfigParams.withIdentity(identityOpt);
     }
 
     public static boolean isHttpApiListening(String ipfsApiAddress) {
@@ -244,11 +253,6 @@ public class IpfsWrapper implements AutoCloseable {
         IpfsConfigParams ipfsConfigParams = buildConfig(args);
         IpfsWrapper ipfsWrapper = new IpfsWrapper(ipfsDir, ipfsConfigParams);
         Config config = ipfsWrapper.configure();
-        if (!args.hasArg("ipfs.identity.peerId")) {
-            args = args.setArg("ipfs.identity.peerId", config.identity.peerId.toBase58());
-            args = args.setArg("ipfs.identity.privKey", Base64.getEncoder().encodeToString(config.identity.privKeyProtobuf));
-            args.saveToFile();
-        }
         LOG.info("Starting Nabu version: " + APIHandler.CURRENT_VERSION);
         BlockRequestAuthoriser authoriser = (c, b, p, a) -> {
             if (config.addresses.allowTarget.isEmpty()) {
@@ -307,18 +311,7 @@ public class IpfsWrapper implements AutoCloseable {
     private Config configure() {
 
         LOG().info("Initializing ipfs");
-        IdentitySection identity = ipfsSwarmPortToIdentity.get(ipfsConfigParams.swarmPort);
-        if (identity == null) {
-            if (ipfsConfigParams.identity.isPresent()) {
-                ipfsSwarmPortToIdentity.put(ipfsConfigParams.swarmPort, ipfsConfigParams.identity.get());
-            } else {
-                HostBuilder builder = new HostBuilder().generateIdentity();
-                PrivKey privKey = builder.getPrivateKey();
-                PeerId peerId = builder.getPeerId();
-                identity = new IdentitySection(privKey.bytes(), peerId);
-                ipfsSwarmPortToIdentity.put(ipfsConfigParams.swarmPort, identity);
-            }
-        }
+        IdentitySection identity = ipfsConfigParams.identity.get();
 
         List<io.ipfs.multiaddr.MultiAddress> swarmAddresses = List.of(new io.ipfs.multiaddr.MultiAddress("/ip6/::/tcp/" + ipfsConfigParams.swarmPort));
         io.ipfs.multiaddr.MultiAddress apiAddress = new io.ipfs.multiaddr.MultiAddress(ipfsConfigParams.apiAddress);
