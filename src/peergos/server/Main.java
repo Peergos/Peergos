@@ -289,6 +289,15 @@ public class Main extends Builder {
                     if (ipfs != null)
                         ipfs.stop();
                     args = args.setIfAbsent("pki-node-id", pkiIpfsNodeId.toString());
+                    if (useIPFS) {
+                        boolean saveConfigFile = !args.hasArg("ipfs.identity.peerId");
+                        args = args.setArg("ipfs.identity.peerId", ipfs.ipfsConfigParams.identity.get().peerId.toBase58());
+                        args = args.setArg("ipfs.identity.privKey", Base64.getEncoder().encodeToString(ipfs.ipfsConfigParams.identity.get().privKeyProtobuf));
+                        if (saveConfigFile) {
+                            args.saveToFile();
+                        }
+                    }
+
                     UserService daemon = PEERGOS.main(args);
                     poststrap(args);
                     return daemon;
