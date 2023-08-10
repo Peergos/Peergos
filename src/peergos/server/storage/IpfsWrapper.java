@@ -8,6 +8,7 @@ import org.peergos.config.*;
 import org.peergos.config.Filter;
 import org.peergos.net.*;
 import org.peergos.protocol.http.HttpProtocol;
+import org.peergos.util.JSONParser;
 import peergos.server.util.*;
 import peergos.server.util.Args;
 import peergos.shared.io.ipfs.MultiAddress;
@@ -237,8 +238,9 @@ public class IpfsWrapper implements AutoCloseable {
             return Optional.empty();
         }
         try {
-            Config ipfsConfig = Config.build(Files.readString(configFilePath));
-            return Optional.of(ipfsConfig.identity);
+            Map<String, Object> json = (Map) JSONParser.parse(Files.readString(configFilePath));
+            IdentitySection identitySection = Jsonable.parse(json, p -> IdentitySection.fromJson(p));
+            return Optional.of(identitySection);
         }  catch (IOException ioe) {
             return Optional.empty();
         }
