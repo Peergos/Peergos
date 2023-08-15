@@ -3,7 +3,7 @@ package peergos.shared.user;
 import jsinterop.annotations.JsMethod;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.Multihash;
-import peergos.shared.io.ipfs.multibase.*;
+import peergos.shared.io.ipfs.bases.*;
 import peergos.shared.user.app.*;
 import peergos.shared.user.fs.AsyncReader;
 import peergos.shared.user.fs.FileWrapper;

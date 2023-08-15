@@ -4,7 +4,7 @@ import peergos.shared.cbor.CborObject;
 import peergos.shared.corenode.PkiCache;
 import peergos.shared.corenode.UserPublicKeyLink;
 import peergos.shared.crypto.hash.PublicKeyHash;
-import peergos.shared.io.ipfs.multibase.Multibase;
+import peergos.shared.io.ipfs.bases.Multibase;
 import peergos.shared.user.NativeJSPkiCache;
 
 import java.util.ArrayList;

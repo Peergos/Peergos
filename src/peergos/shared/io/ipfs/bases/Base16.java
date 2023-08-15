@@ -1,4 +1,4 @@
-package peergos.shared.io.ipfs.multibase;
+package peergos.shared.io.ipfs.bases;
 
 import peergos.shared.util.*;
 

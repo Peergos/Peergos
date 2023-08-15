@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-package peergos.shared.io.ipfs.multibase;
+package peergos.shared.io.ipfs.bases;
 
 /**
  * Provides Base32 encoding and decoding as defined by <a href="http://www.ietf.org/rfc/rfc4648.txt">RFC 4648</a>.

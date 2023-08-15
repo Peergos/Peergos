@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-package peergos.shared.io.ipfs.multibase;
+package peergos.shared.io.ipfs.bases;
 
 /**
  * Character encoding names required of every implementation of the Java platform.

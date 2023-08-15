@@ -1,4 +1,4 @@
-package peergos.shared.io.ipfs.multibase;
+package peergos.shared.io.ipfs.bases;
 
 /*
  * Copyright 2011 Google Inc.

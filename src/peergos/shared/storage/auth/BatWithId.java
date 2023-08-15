@@ -2,7 +2,7 @@ package peergos.shared.storage.auth;
 
 import peergos.shared.cbor.*;
 import peergos.shared.io.ipfs.Cid;
-import peergos.shared.io.ipfs.multibase.*;
+import peergos.shared.io.ipfs.bases.*;
 
 import java.util.*;
 

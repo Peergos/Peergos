@@ -5,7 +5,7 @@ import peergos.shared.crypto.asymmetric.PublicSigningKey;
 import peergos.shared.crypto.asymmetric.SecretSigningKey;
 import peergos.shared.crypto.asymmetric.curve25519.*;
 import peergos.shared.crypto.random.*;
-import peergos.shared.io.ipfs.multibase.*;
+import peergos.shared.io.ipfs.bases.*;
 
 import java.util.*;
 
