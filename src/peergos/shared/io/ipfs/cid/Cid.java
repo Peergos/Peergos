@@ -65,7 +65,7 @@ public class Cid extends Multihash {
             ByteArrayOutputStream res = new ByteArrayOutputStream();
             putUvarint(res, version);
             putUvarint(res, codec.type);
-            super.serialize(res);
+            super.serializeObj(res);
             return res.toByteArray();
         } catch (IOException e) {
             throw new RuntimeException(e);
@@ -161,7 +161,7 @@ public class Cid extends Multihash {
                 throw new CidEncodingException("Invalid Cid version number: " + version);
 
             long codec = readVarint(in);
-            Multihash hash = Multihash.deserialize(in);
+            Multihash hash = Multihash.deserializeObj(in);
 
             return new Cid(version, Codec.lookup(codec), hash.type, hash.getHash());
         } catch (Exception e) {

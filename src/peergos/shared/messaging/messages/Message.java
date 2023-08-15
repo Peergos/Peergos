@@ -29,6 +29,7 @@ public interface Message extends Cborable {
     }
 
     Map<Integer, Type> byValue = new HashMap<>();
+    @JsType
     enum Type {
         Join(0),
         Invite(1),

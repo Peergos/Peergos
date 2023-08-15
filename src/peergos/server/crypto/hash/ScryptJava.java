@@ -93,7 +93,7 @@ public class ScryptJava implements Hasher {
     }
 
     @Override
-    public CompletableFuture<Multihash> hash(AsyncReader stream, long length) {
+    public CompletableFuture<Multihash> hashFromStream(AsyncReader stream, long length) {
         return Hash.sha256(stream, length)
                 .thenApply(h -> new Multihash(Multihash.Type.sha2_256, h));
     }

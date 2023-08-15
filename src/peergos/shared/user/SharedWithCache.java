@@ -1,5 +1,6 @@
 package peergos.shared.user;
 
+import jsinterop.annotations.JsType;
 import peergos.shared.*;
 import peergos.shared.cbor.*;
 import peergos.shared.storage.auth.*;
@@ -18,6 +19,7 @@ import java.util.stream.*;
  */
 public class SharedWithCache {
 
+    @JsType
     public enum Access { READ, WRITE }
 
     private static final String DIR_CACHE_FILENAME = "sharedWith.cbor";

@@ -1,5 +1,6 @@
 package peergos.shared.crypto.hash;
 
+import jsinterop.annotations.JsType;
 import peergos.shared.crypto.*;
 import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.io.ipfs.multihash.*;
@@ -10,7 +11,7 @@ import peergos.shared.util.*;
 
 import java.nio.charset.*;
 import java.util.concurrent.CompletableFuture;
-
+@JsType
 public interface Hasher {
 
     CompletableFuture<byte[]> hashToKeyBytes(String username, String password, SecretGenerationAlgorithm algorithm);
@@ -21,7 +22,8 @@ public interface Hasher {
 
     CompletableFuture<byte[]> hmacSha256(byte[] secretKey, byte[] message);
 
-    CompletableFuture<Multihash> hash(AsyncReader stream, long length);
+    @SuppressWarnings("unusable-by-js")
+    CompletableFuture<Multihash> hashFromStream(AsyncReader stream, long length);
 
     byte[] blake2b(byte[] input, int outputBytes);
 

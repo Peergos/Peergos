@@ -16,11 +16,6 @@ import peergos.shared.user.fs.cryptree.*;
 import peergos.shared.user.fs.transaction.*;
 import peergos.shared.util.*;
 
-import javax.imageio.ImageIO;
-import java.awt.image.BufferedImage;
-import java.awt.Graphics2D;
-import java.awt.AlphaComposite;
-import java.awt.RenderingHints;
 import java.io.*;
 import java.time.*;
 import java.util.*;
@@ -181,7 +176,7 @@ public class FileWrapper {
     @JsMethod
     public CompletableFuture<Multihash> getContentHash(NetworkAccess network, Crypto crypto) {
         return getInputStream(network, crypto, x -> {})
-                .thenCompose(reader -> crypto.hasher.hash(reader, getSize()));
+                .thenCompose(reader -> crypto.hasher.hashFromStream(reader, getSize()));
     }
 
     public CompletableFuture<Optional<FileWrapper>> getDescendentByPath(String path,

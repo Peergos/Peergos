@@ -44,7 +44,6 @@ public class PublicKeyHash extends Cid implements Cborable {
     }
 
     @Override
-    @SuppressWarnings("unusable-by-js")
     public CborObject toCbor() {
         return new CborObject.CborMerkleLink(target);
     }
@@ -53,7 +52,6 @@ public class PublicKeyHash extends Cid implements Cborable {
         return new PublicKeyHash(Cid.cast(raw));
     }
 
-    @SuppressWarnings("unusable-by-js")
     public static PublicKeyHash fromCbor(Cborable cbor) {
         if (! (cbor instanceof CborObject.CborMerkleLink))
             throw new IllegalStateException("Invalid cbor for PublicKeyHash! " + cbor);
