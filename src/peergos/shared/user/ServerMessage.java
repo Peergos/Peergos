@@ -10,6 +10,7 @@ import java.util.*;
 public class ServerMessage implements Comparable<ServerMessage>, Cborable {
     public static final int MAX_CONTENT_SIZE = 4096;
     private static final Map<Integer, Type> byValue = new HashMap<>();
+    @JsType
     public enum Type {
         FromServer(1),
         FromUser(2),

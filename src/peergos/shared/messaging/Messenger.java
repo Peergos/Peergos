@@ -2,11 +2,9 @@ package peergos.shared.messaging;
 
 import jsinterop.annotations.*;
 import peergos.shared.*;
-import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.display.*;
 import peergos.shared.messaging.messages.*;
-import peergos.shared.storage.*;
 import peergos.shared.storage.auth.*;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
@@ -242,7 +240,7 @@ public class Messenger {
         return getOrMkdirToStoreMedia(current, postTime)
                 .thenCompose(p -> p.right.uploadAndReturnFile(uuid, media, length, false, monitor,
                         p.right.mirrorBatId(), network, crypto)
-                        .thenCompose(f ->  media.reset().thenCompose(r -> crypto.hasher.hash(r, length))
+                        .thenCompose(f ->  media.reset().thenCompose(r -> crypto.hasher.hashFromStream(r, length))
                                 .thenApply(hash -> new Pair<>(f.getFileProperties().getType(),
                                         new FileRef(p.left.resolve(uuid).toString(), f.readOnlyPointer(), hash)))));
     }

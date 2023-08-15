@@ -1,7 +1,9 @@
 package peergos.shared.user;
 
-import java.util.*;
+import jsinterop.annotations.JsType;
 
+import java.util.*;
+@JsType
 public class FileSharedWithState {
     public static final FileSharedWithState EMPTY = new FileSharedWithState(Collections.emptySet(), Collections.emptySet());
     public final Set<String> readAccess, writeAccess;

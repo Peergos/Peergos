@@ -99,7 +99,7 @@ public class SocialFeed {
         return getOrMkdirToStoreMedia("media", postTime)
                 .thenCompose(p -> p.right.uploadAndReturnFile(uuid, media, length, false, monitor,
                         p.right.mirrorBatId(), network, crypto)
-                        .thenCompose(f ->  media.reset().thenCompose(r -> crypto.hasher.hash(r, length))
+                        .thenCompose(f ->  media.reset().thenCompose(r -> crypto.hasher.hashFromStream(r, length))
                                 .thenApply(hash -> new Pair<>(f.getFileProperties().getType(),
                                         new FileRef(p.left.resolve(uuid).toString(), f.readOnlyPointer(), hash)))));
     }
@@ -197,7 +197,7 @@ public class SocialFeed {
     private CompletableFuture<Boolean> mergeCommentsIntoParent(String parentPath,
                                                                List<Triple<SharedItem, FileWrapper, SocialPost>> comments) {
         return Futures.combineAllInOrder(comments.stream().map(t -> t.middle.getInputStream(network, crypto, x -> {})
-                .thenCompose(reader -> crypto.hasher.hash(reader, t.middle.getSize())
+                .thenCompose(reader -> crypto.hasher.hashFromStream(reader, t.middle.getSize())
                         .thenApply(h -> new FileRef(t.left.path, t.left.cap, h))))
                 .collect(Collectors.toList())).thenCompose(refs ->
                 context.getByPath(parentPath).thenCompose(fopt -> {

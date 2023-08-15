@@ -96,9 +96,8 @@ public class Multihash implements Comparable<Multihash> {
     public byte[] getHash() {
         return Arrays.copyOfRange(hash, 0, hash.length);
     }
-
     @SuppressWarnings("unusable-by-js")
-    public void serialize(OutputStream out) {
+    public void serializeObj(OutputStream out) {
         try {
             putUvarint(out, type.index);
             putUvarint(out, hash.length);
@@ -107,9 +106,8 @@ public class Multihash implements Comparable<Multihash> {
             throw new RuntimeException(e);
         }
     }
-
     @SuppressWarnings("unusable-by-js")
-    public static Multihash deserialize(InputStream din) throws IOException {
+    public static Multihash deserializeObj(InputStream din) throws IOException {
         int type = (int)readVarint(din);
         int len = (int)readVarint(din);
         Type t = Type.lookup(type);

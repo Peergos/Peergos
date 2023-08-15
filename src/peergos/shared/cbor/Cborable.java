@@ -1,7 +1,10 @@
 package peergos.shared.cbor;
 
+import jsinterop.annotations.JsType;
+
 import java.util.function.*;
 
+@JsType
 public interface Cborable {
 
     CborObject toCbor();

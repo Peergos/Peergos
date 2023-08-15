@@ -7,7 +7,7 @@ import peergos.shared.social.*;
 import peergos.shared.user.fs.*;
 
 import java.util.*;
-
+@JsType
 public class FileRef implements Cborable {
     public final String path;
     public final AbsoluteCapability cap;

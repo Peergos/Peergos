@@ -37,7 +37,8 @@ public class ScryptJS implements Hasher {
     }
 
     @Override
-    public CompletableFuture<Multihash> hash(AsyncReader stream, long length) {
+    @SuppressWarnings("unusable-by-js")
+    public CompletableFuture<Multihash> hashFromStream(AsyncReader stream, long length) {
         return scriptJS.streamSha256(stream, (int) length)
                 .thenApply(h -> new Multihash(Multihash.Type.sha2_256, h));
     }
