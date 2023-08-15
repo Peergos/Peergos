@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-package peergos.shared.io.ipfs.multibase.binary;
+package peergos.shared.io.ipfs.multibase;
 
 import java.nio.charset.Charset;
 

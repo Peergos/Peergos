@@ -6,7 +6,7 @@ import peergos.shared.corenode.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.Cid;
 import peergos.shared.io.ipfs.Multihash;
-import peergos.shared.io.ipfs.multibase.binary.*;
+import peergos.shared.io.ipfs.multibase.Base32;
 import peergos.shared.storage.auth.*;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
