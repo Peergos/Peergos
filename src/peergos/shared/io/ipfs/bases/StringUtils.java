@@ -15,12 +15,9 @@
  * limitations under the License.
  */
 
-package peergos.shared.io.ipfs.multibase;
+package peergos.shared.io.ipfs.bases;
 
 import java.nio.charset.Charset;
-
-import peergos.shared.io.ipfs.multibase.CharEncoding;
-import peergos.shared.io.ipfs.multibase.Charsets;
 
 /**
  * Converts String to and from bytes using the encodings required by the Java specification. These encodings are

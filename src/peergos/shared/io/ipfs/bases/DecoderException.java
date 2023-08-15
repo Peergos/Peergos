@@ -15,16 +15,15 @@
  * limitations under the License.
  */
 
-package peergos.shared.io.ipfs.multibase;
+package peergos.shared.io.ipfs.bases;
 
 /**
- * Thrown when there is a failure condition during the encoding process. This exception is thrown when an
- * {@link Encoder} encounters a encoding specific exception such as invalid data, inability to calculate a checksum,
- * characters outside of the expected range.
+ * Thrown when there is a failure condition during the decoding process. This exception is thrown when a {@link Decoder}
+ * encounters a decoding specific exception such as invalid data, or characters outside of the expected range.
  *
  * @version $Id$
  */
-public class EncoderException extends Exception {
+public class DecoderException extends Exception {
 
     /**
      * Declares the Serial Version Uid.
@@ -39,7 +38,7 @@ public class EncoderException extends Exception {
      *
      * @since 1.4
      */
-    public EncoderException() {
+    public DecoderException() {
         super();
     }
 
@@ -48,19 +47,17 @@ public class EncoderException extends Exception {
      * be initialized by a call to {@link #initCause}.
      *
      * @param message
-     *            a useful message relating to the encoder specific error.
+     *            The detail message which is saved for later retrieval by the {@link #getMessage()} method.
      */
-    public EncoderException(final String message) {
+    public DecoderException(final String message) {
         super(message);
     }
 
     /**
      * Constructs a new exception with the specified detail message and cause.
-     *
      * <p>
      * Note that the detail message associated with <code>cause</code> is not automatically incorporated into this
      * exception's detail message.
-     * </p>
      *
      * @param message
      *            The detail message which is saved for later retrieval by the {@link #getMessage()} method.
@@ -69,7 +66,7 @@ public class EncoderException extends Exception {
      *            value is permitted, and indicates that the cause is nonexistent or unknown.
      * @since 1.4
      */
-    public EncoderException(final String message, final Throwable cause) {
+    public DecoderException(final String message, final Throwable cause) {
         super(message, cause);
     }
 
@@ -83,7 +80,7 @@ public class EncoderException extends Exception {
      *            value is permitted, and indicates that the cause is nonexistent or unknown.
      * @since 1.4
      */
-    public EncoderException(final Throwable cause) {
+    public DecoderException(final Throwable cause) {
         super(cause);
     }
 }

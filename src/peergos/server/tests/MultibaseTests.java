@@ -1,7 +1,7 @@
 package peergos.server.tests;
 
 import org.junit.*;
-import peergos.shared.io.ipfs.multibase.*;
+import peergos.shared.io.ipfs.bases.*;
 import peergos.shared.util.*;
 
 import java.util.*;

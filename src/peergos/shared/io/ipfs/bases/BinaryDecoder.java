@@ -15,30 +15,24 @@
  * limitations under the License.
  */
 
-package peergos.shared.io.ipfs.multibase;
+package peergos.shared.io.ipfs.bases;
 
 /**
- * Provides the highest level of abstraction for Encoders.
- * <p>
- * This is the sister interface of {@link Decoder}.  Every implementation of Encoder provides this
- * common generic interface which allows a user to pass a generic Object to any Encoder implementation
- * in the codec package.
+ * Defines common decoding methods for byte array decoders.
  *
  * @version $Id$
  */
-public interface Encoder {
+public interface BinaryDecoder extends Decoder {
 
     /**
-     * Encodes an "Object" and returns the encoded content as an Object. The Objects here may just be
-     * <code>byte[]</code> or <code>String</code>s depending on the implementation used.
+     * Decodes a byte array and returns the results as a byte array.
      *
      * @param source
-     *            An object to encode
-     * @return An "encoded" Object
-     * @throws EncoderException
-     *             An encoder exception is thrown if the encoder experiences a failure condition during the encoding
-     *             process.
+     *            A byte array which has been encoded with the appropriate encoder
+     * @return a byte array that contains decoded content
+     * @throws DecoderException
+     *             A decoder exception is thrown if a Decoder encounters a failure condition during the decode process.
      */
-    Object encode(Object source) throws EncoderException;
+    byte[] decode(byte[] source) throws DecoderException;
 }
 

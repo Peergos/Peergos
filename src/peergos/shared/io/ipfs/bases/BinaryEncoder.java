@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-package peergos.shared.io.ipfs.multibase;
+package peergos.shared.io.ipfs.bases;
 
 /**
  * Defines common encoding methods for byte array encoders.

@@ -3,7 +3,7 @@ package peergos.server.tests;
 import com.eatthepath.otp.*;
 import org.junit.*;
 import peergos.shared.fingerprint.*;
-import peergos.shared.io.ipfs.multibase.Base32;
+import peergos.shared.io.ipfs.bases.Base32;
 import peergos.shared.login.mfa.*;
 import peergos.shared.zxing.*;
 import peergos.shared.zxing.common.*;
