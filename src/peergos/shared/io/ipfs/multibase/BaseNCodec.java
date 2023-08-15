@@ -15,12 +15,7 @@
  * limitations under the License.
  */
 
-package peergos.shared.io.ipfs.multibase.binary;
-
-import peergos.shared.io.ipfs.multibase.BinaryDecoder;
-import peergos.shared.io.ipfs.multibase.BinaryEncoder;
-import peergos.shared.io.ipfs.multibase.DecoderException;
-import peergos.shared.io.ipfs.multibase.EncoderException;
+package peergos.shared.io.ipfs.multibase;
 
 /**
  * Abstract superclass for Base-N encoders and decoders.
