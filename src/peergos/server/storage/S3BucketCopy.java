@@ -5,6 +5,7 @@ import peergos.server.util.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.storage.*;
 import peergos.shared.storage.auth.*;
+import peergos.shared.util.*;
 
 import java.io.*;
 import java.time.*;
@@ -80,26 +81,53 @@ public class S3BucketCopy {
         }
     }
 
+    private static void copyObjectInterProvider(String key,
+                                                S3Config source,
+                                                S3Config target,
+                                                Hasher h) {
+        PresignedUrl getUrl = S3Request.preSignGet(key, Optional.of(600), Optional.empty(),
+                S3AdminRequests.asAwsDate(ZonedDateTime.now()), source.getHost(),
+                source.region, source.accessKey, source.secretKey, true, h).join();
+        try {
+            System.out.println("Copying s3://"+source.getHost() + "/" + source.bucket + "/" + key + " to s3://" + target.getHost() + "/" + target.bucket);
+            byte[] res = HttpUtil.get(getUrl);
+            Map<String, String> extraHeaders = new TreeMap<>();
+            extraHeaders.put("Content-Type", "application/octet-stream");
+            boolean hashContent = true;
+            String contentHash = hashContent ? ArrayOps.bytesToHex(DirectS3BlockStore.keyToHash(key).getHash()) : "UNSIGNED-PAYLOAD";
+            HttpUtil.put(S3Request.preSignPut(key, res.length, contentHash, false,
+                    S3AdminRequests.asAwsDate(ZonedDateTime.now()), target.getHost(), extraHeaders, target.region, target.accessKey, target.secretKey,  true,h).join(), res);
+        } catch (IOException e) {
+            System.err.println(e.getMessage());
+        }
+    }
+
     private static void copyRange(String startPrefix,
                                   Optional<String> endPrefix,
-                                  S3Config sourceConfig,
-                                  S3Config destConfig,
+                                  S3Config source,
+                                  S3Config dest,
                                   AtomicLong counter,
                                   AtomicLong copyCounter,
                                   int parallelism,
                                   Hasher h) {
         System.out.println("Listing destination bucket...");
-        Set<String> targetKeys = getFilenames(destConfig, h);
+        Set<String> targetKeys = getFilenames(dest, h);
         ForkJoinPool pool = new ForkJoinPool(parallelism);
+        boolean sameHost = source.regionEndpoint.equals(dest.regionEndpoint);
         System.out.println("Copying objects...");
         applyToAllInRange(obj -> {
             if (!targetKeys.contains(obj.key)) {
                 while (pool.getQueuedSubmissionCount() > 100)
                     try {Thread.sleep(100);} catch (InterruptedException e) {}
                 copyCounter.incrementAndGet();
-                pool.submit(() -> copyObject(obj.key, sourceConfig.bucket, destConfig, h));
+                pool.submit(() -> {
+                    if (sameHost)
+                        copyObject(obj.key, source.bucket, dest, h);
+                    else
+                        copyObjectInterProvider(obj.key, source, dest, h);
+                });
             }
-        }, startPrefix, endPrefix, sourceConfig, counter, h);
+        }, startPrefix, endPrefix, source, counter, h);
         while (! pool.isQuiescent())
             try {Thread.sleep(100);} catch (InterruptedException e) {}
         System.out.println("Objects copied: " + copyCounter.get());
