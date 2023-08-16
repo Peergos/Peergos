@@ -102,7 +102,7 @@ public class S3DeleteOld {
     public static void main(String[] args) {
         Crypto crypto = JavaCrypto.init();
         Args a = Args.parse(args);
-        S3Config config = S3Config.build(a);
+        S3Config config = S3Config.build(a, Optional.empty());
 
         String startPrefix = "";
         Optional<String> endPrefix = Optional.empty();

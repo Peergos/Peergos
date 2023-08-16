@@ -178,7 +178,7 @@ public class Builder {
     }
 
     private static BlockStoreProperties buildS3Properties(Args a) {
-        S3Config config = S3Config.build(a);
+        S3Config config = S3Config.build(a, Optional.empty());
         Optional<String> publicReadUrl = S3Config.getPublicReadUrl(a);
         boolean directWrites = a.getBoolean("direct-s3-writes", false);
         boolean publicReads = a.getBoolean("public-s3-reads", false);
@@ -216,7 +216,7 @@ public class Builder {
             DeletableContentAddressedStorage.HTTP ipfs = new DeletableContentAddressedStorage.HTTP(ipfsApi, false, hasher);
             if (useS3) {
                 // IPFS is already running separately, we can still use an S3BlockStorage
-                S3Config config = S3Config.build(a);
+                S3Config config = S3Config.build(a, Optional.empty());
                 BlockStoreProperties props = buildS3Properties(a);
                 TransactionalIpfs p2pBlockRetriever = new TransactionalIpfs(ipfs, transactions, authoriser, ipfs.id().join(), hasher);
 
@@ -234,7 +234,7 @@ public class Builder {
                 DeletableContentAddressedStorage.HTTP ipfs = new DeletableContentAddressedStorage.HTTP(ipfsApi, false, hasher);
                 Cid ourId = Cid.decode(a.getArg("ipfs.id"));
                 TransactionalIpfs p2pBlockRetriever = new TransactionalIpfs(ipfs, transactions, authoriser, ipfs.id().join(), hasher);
-                S3Config config = S3Config.build(a);
+                S3Config config = S3Config.build(a, Optional.empty());
                 BlockStoreProperties props = buildS3Properties(a);
 
                 JavaPoster bloomApiTarget = buildBloomApiTarget(a);

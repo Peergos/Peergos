@@ -722,7 +722,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         Args a = Args.parse(args);
         Crypto crypto = Main.initCrypto();
         Hasher hasher = crypto.hasher;
-        S3Config config = S3Config.build(a);
+        S3Config config = S3Config.build(a, Optional.empty());
         boolean usePostgres = a.getBoolean("use-postgres", false);
         SqlSupplier sqlCommands = usePostgres ?
                 new PostgresCommands() :

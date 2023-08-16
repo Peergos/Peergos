@@ -383,7 +383,7 @@ public class Main extends Builder {
                     ContentAddressedStorage storage = useIPFS ?
                             new ContentAddressedStorage.HTTP(Builder.buildIpfsApi(args), false, crypto.hasher) :
                             S3Config.useS3(args) ?
-                                    new S3BlockStorage(S3Config.build(args), Cid.decode(args.getArg("ipfs.id")),
+                                    new S3BlockStorage(S3Config.build(args, Optional.empty()), Cid.decode(args.getArg("ipfs.id")),
                                             BlockStoreProperties.empty(), transactions, authoriser, new RamBlockMetadataStore(),
                                             crypto.hasher, new DeletableContentAddressedStorage.HTTP(Builder.buildIpfsApi(args), false, crypto.hasher),
                                             new DeletableContentAddressedStorage.HTTP(Builder.buildIpfsApi(args), false, crypto.hasher)) :

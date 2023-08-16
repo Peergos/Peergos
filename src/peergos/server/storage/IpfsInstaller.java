@@ -95,7 +95,7 @@ public class IpfsInstaller {
             }
 
             public static S3 build(Args a) {
-                S3Config config = S3Config.build(a);
+                S3Config config = S3Config.build(a, Optional.empty());
                 int workers = Integer.parseInt(a.getArg("ipfs-s3-workers", "5"));
                 return new S3(config, workers);
             }

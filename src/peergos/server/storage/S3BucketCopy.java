@@ -135,16 +135,14 @@ public class S3BucketCopy {
 
     public static void main(String[] args) {
         Args a = Args.parse(args);
-        S3Config destConfig = S3Config.build(a);
-        String sourceBucket = a.getArg("source-bucket");
-        S3Config sourceConfig = new S3Config(destConfig.path, sourceBucket, destConfig.region, destConfig.accessKey,
-                destConfig.secretKey, destConfig.regionEndpoint);
+        S3Config source = S3Config.build(a, Optional.empty());
+        S3Config dest = S3Config.build(a, Optional.of("dest."));
 
         String startPrefix = "";
         Optional<String> endPrefix = Optional.empty();
 
-        System.out.println("Copying S3 bucket " + sourceBucket + " to " + destConfig.bucket);
-        copyRange(startPrefix, endPrefix, sourceConfig, destConfig, new AtomicLong(0),
+        System.out.println("Copying S3 bucket " + source.getHost() + "/" + source.bucket + " to " + dest.getHost() + "/" + dest.bucket);
+        copyRange(startPrefix, endPrefix, source, dest, new AtomicLong(0),
                 new AtomicLong(0), a.getInt("parallelism"), Main.initCrypto().hasher);
     }
 }
