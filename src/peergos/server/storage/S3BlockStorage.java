@@ -557,14 +557,16 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         return put(owner, blocks, true, tid);
     }
 
+    private final ForkJoinPool bulkPutPool = new ForkJoinPool(1_000);
+
     private CompletableFuture<List<Cid>> put(PublicKeyHash owner,
                                              List<byte[]> blocks,
                                              boolean isRaw,
                                              TransactionId tid) {
-        return CompletableFuture.completedFuture(blocks.stream()
-                .parallel()
-                .map(b -> getWithBackoff(() -> put(b, isRaw, tid, owner)))
-                .collect(Collectors.toList()));
+        List<ForkJoinTask<Cid>> puts = blocks.stream()
+                .map(b -> bulkPutPool.submit(() -> getWithBackoff(() -> put(b, isRaw, tid, owner))))
+                .collect(Collectors.toList());
+        return Futures.of(puts.stream().map(f ->  f.join()).collect(Collectors.toList()));
     }
 
     /** Must be atomic relative to reads of the same key
