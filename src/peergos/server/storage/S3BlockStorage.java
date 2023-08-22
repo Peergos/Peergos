@@ -327,7 +327,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                 S3BlockStorage.rateLimited.inc();
                 throw new RateLimitException();
             }
-            boolean notFound = msg.startsWith("<?xml version=\"1.0\" encoding=\"UTF-8\"?><Error><Code>NoSuchKey</Code>");
+            boolean notFound = msg.contains("<Code>NoSuchKey</Code>");
             if (! notFound) {
                 LOG.warning("S3 error reading " + path);
                 LOG.log(Level.WARNING, msg, e);
