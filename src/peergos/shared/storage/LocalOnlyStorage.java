@@ -30,7 +30,6 @@ public class LocalOnlyStorage implements ContentAddressedStorage {
                 .thenCompose(opt -> {
                     if (opt.isPresent())
                         return Futures.of(opt);
-                    System.out.println("Bulk fetcher call, missing " + hash);
                     return bulkFetcher.get()
                             .thenCompose(blocks -> Futures.combineAll(blocks.stream().map(data ->
                                             h.sha256(data).thenApply(hashb -> cache.put(new Cid(1, Cid.Codec.DagCbor, Multihash.Type.sha2_256, hashb), data)))

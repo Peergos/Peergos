@@ -554,7 +554,6 @@ public class NetworkAccess {
                         .thenApply(c -> c.map(x -> x.target))
                         .thenCompose(btreeValue -> {
                             if (btreeValue.isPresent()) {
-                                System.out.println("Getting champ value " + DirectS3BlockStore.hashToKey(btreeValue.get()));
                                 return dhtClient.get((Cid) btreeValue.get(), bat)
                                         .thenApply(value -> value.map(cbor -> CryptreeNode.fromCbor(cbor, cap.rBaseKey, btreeValue.get())))
                                         .thenApply(res -> {

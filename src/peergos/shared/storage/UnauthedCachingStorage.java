@@ -100,15 +100,10 @@ public class UnauthedCachingStorage extends DelegatingStorage {
                                                             Optional<BatWithId> bat,
                                                             Optional<Cid> committedRoot,
                                                             Hasher hasher) {
-        System.out.println("UCS::localChampLookup");
         CachingStorage cache = new CachingStorage(new LocalOnlyStorage(this.cache,
                 () -> (committedRoot.isPresent() ?
                         get(committedRoot.get(), Optional.empty())
                                 .thenApply(ropt -> ropt.map(WriterData::fromCbor).flatMap(wd ->  wd.tree))
-                                .thenApply(x -> {
-                                    System.out.println("UCS::localChampLookup got WriterData");
-                                    return x;
-                                })
                                 .thenCompose(champRoot -> target.getChampLookup(owner, (Cid) champRoot.get(), champKey, bat, Optional.empty())) :
                         target.getChampLookup(owner, root, champKey, bat, Optional.empty()))
                         .thenApply(blocks -> cacheBlocks(blocks, hasher)), hasher),
@@ -117,7 +112,6 @@ public class UnauthedCachingStorage extends DelegatingStorage {
                 .thenCompose(tree -> tree.get(champKey))
                 .thenApply(c -> c.map(x -> x.target).map(MaybeMultihash::of).orElse(MaybeMultihash.empty()))
                 .thenApply(btreeValue -> {
-                    System.out.println("UCS::localChampLookup get value block");
                     if (btreeValue.isPresent())
                         return cache.get((Cid) btreeValue.get(), bat);
                     return Optional.empty();

@@ -60,30 +60,21 @@ public class BufferedStorage extends DelegatingStorage {
                                                           Optional<BatWithId> bat,
                                                           Optional<Cid> committedRoot) {
         if (storage.isEmpty())
-            return target.getChampLookup(owner, root, champKey, bat, committedRoot).thenApply(x -> {
-                System.out.println("BufferedStorage::getChampLookup END");
-                return x;
-            });
+            return target.getChampLookup(owner, root, champKey, bat, committedRoot);
         // If we are in a write transaction try to perform a local champ lookup from the buffer,
         // falling back to a direct champ get
         return Futures.asyncExceptionally(
                 () -> getChampLookup(owner, root, champKey, bat, committedRoot, hasher),
                 t -> target.getChampLookup(owner, root, champKey, bat, committedRoot)
-        ).thenApply(x -> {
-            System.out.println("BufferedStorage::getChampLookup END");
-            return x;
-        });
+        );
     }
 
-//    @Override
     public CompletableFuture<List<byte[]>> getChampLookup(PublicKeyHash owner,
                                                           Cid root,
                                                           byte[] champKey,
                                                           Optional<BatWithId> bat,
                                                           Optional<Cid> committedRoot,
                                                           Hasher hasher) {
-        System.out.println("BufferedStorage::getChampLookup " + root);
-
         CachingStorage cache = new CachingStorage(new LocalOnlyStorage(new BlockCache() {
             Map<Cid, byte[]> localCache = new HashMap<>();
             @Override
