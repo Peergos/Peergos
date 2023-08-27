@@ -372,7 +372,6 @@ public interface ContentAddressedStorage {
             if (! isPeergosServer) {
                 return getChampLookup(root, champKey, bat, committedRoot, hasher);
             }
-            System.out.println("HTTP champ.get " + root + "::" + ArrayOps.bytesToHex(champKey));
             return poster.get(apiPrefix + CHAMP_GET + "?arg=" + root.toString()
                     + "&arg=" + ArrayOps.bytesToHex(champKey)
                     + "&owner=" + encode(owner.toString())

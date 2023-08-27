@@ -79,19 +79,10 @@ public class UnauthedCachingStorage extends DelegatingStorage {
                                                           byte[] champKey,
                                                           Optional<BatWithId> bat,
                                                           Optional<Cid> committedRoot) {
-        System.out.println("UCS::getChampLookup " + root + "::" + ArrayOps.bytesToHex(champKey));
         return Futures.asyncExceptionally(
                 () -> localChampLookup(owner, root, champKey, bat, committedRoot, hasher),
-                t -> {
-                    System.out.println("UCS::getChampLookup error clause " + t.getMessage());
-                    t.printStackTrace();
-                    return target.getChampLookup(owner, root, champKey, bat,  committedRoot)
-                            .thenApply(blocks -> cacheBlocks(blocks, hasher));
-                }
-        ).thenApply(x -> {
-            System.out.println("UCS::getChampLookup END");
-            return x;
-        });
+                t -> target.getChampLookup(owner, root, champKey, bat,  committedRoot)
+                        .thenApply(blocks -> cacheBlocks(blocks, hasher)));
     }
 
     public CompletableFuture<List<byte[]>> localChampLookup(PublicKeyHash owner,
