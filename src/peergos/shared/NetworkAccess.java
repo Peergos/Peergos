@@ -536,6 +536,10 @@ public class NetworkAccess {
     }
 
     public CompletableFuture<Optional<CryptreeNode>> getMetadata(WriterData base, AbsoluteCapability cap) {
+        return getMetadata(base, cap, Optional.empty());
+    }
+
+    public CompletableFuture<Optional<CryptreeNode>> getMetadata(WriterData base, AbsoluteCapability cap, Optional<Cid> committedRoot) {
         if (base.tree.isEmpty())
             return Futures.of(Optional.empty());
         Pair<Multihash, ByteArrayWrapper> cacheKey = new Pair<>(base.tree.get(), new ByteArrayWrapper(cap.getMapKey()));
@@ -543,19 +547,21 @@ public class NetworkAccess {
             return Futures.of(cache.get(cacheKey));
         return cap.bat.map(b -> b.calculateId(hasher).thenApply(id -> Optional.of(new BatWithId(b, id.id)))).orElse(Futures.of(Optional.empty()))
                 .thenCompose(bat -> Futures.asyncExceptionally(
-                        () -> dhtClient.getChampLookup(cap.owner, (Cid) base.tree.get(), cap.getMapKey(), bat),
-                        t -> dhtClient.getChampLookup((Cid) base.tree.get(), cap.getMapKey(), bat, hasher)
+                        () -> dhtClient.getChampLookup(cap.owner, (Cid) base.tree.get(), cap.getMapKey(), bat,committedRoot),
+                        t -> dhtClient.getChampLookup((Cid) base.tree.get(), cap.getMapKey(), bat, committedRoot, hasher)
                 ).thenCompose(blocks -> ChampWrapper.create((Cid)base.tree.get(), x -> Futures.of(x.data), dhtClient, hasher, c -> (CborObject.CborMerkleLink) c)
                         .thenCompose(tree -> tree.get(cap.getMapKey()))
                         .thenApply(c -> c.map(x -> x.target))
                         .thenCompose(btreeValue -> {
-                            if (btreeValue.isPresent())
-                                return dhtClient.get((Cid)btreeValue.get(), bat)
+                            if (btreeValue.isPresent()) {
+                                System.out.println("Getting champ value " + DirectS3BlockStore.hashToKey(btreeValue.get()));
+                                return dhtClient.get((Cid) btreeValue.get(), bat)
                                         .thenApply(value -> value.map(cbor -> CryptreeNode.fromCbor(cbor, cap.rBaseKey, btreeValue.get())))
                                         .thenApply(res -> {
                                             cache.put(cacheKey, res);
                                             return res;
                                         });
+                            }
                             return CompletableFuture.completedFuture(Optional.empty());
                         })));
     }

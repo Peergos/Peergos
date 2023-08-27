@@ -43,6 +43,13 @@ public class BufferedPointers implements MutablePointers {
         this.target = target;
     }
 
+    public Optional<Cid> getCommittedPointerTarget(PublicKeyHash writer) {
+        return writerUpdates.stream()
+                .filter(u ->  u.writer.equals(writer)).map(u -> u.prevHash)
+                .findFirst()
+                .flatMap(m -> m.toOptional().map(h ->  (Cid) h));
+    }
+
     public List<WriterUpdate> getUpdates() {
         return writerUpdates;
     }

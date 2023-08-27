@@ -10,20 +10,33 @@ import peergos.shared.util.*;
 
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.function.*;
+import java.util.stream.*;
 
 public class LocalOnlyStorage implements ContentAddressedStorage {
-    public static final IllegalStateException ABSENT_BLOCK = new IllegalStateException("Block not present locally!");
-
     private final BlockCache cache;
+    private final Supplier<CompletableFuture<List<byte[]>>> bulkFetcher;
+    private final Hasher h;
 
-    public LocalOnlyStorage(BlockCache cache) {
+    public LocalOnlyStorage(BlockCache cache, Supplier<CompletableFuture<List<byte[]>>> bulkFetcher, Hasher h) {
         this.cache = cache;
+        this.bulkFetcher = bulkFetcher;
+        this.h = h;
     }
 
     @Override
     public CompletableFuture<Optional<byte[]>> getRaw(Cid hash, Optional<BatWithId> bat) {
         return cache.get(hash)
-                .thenApply(opt -> Optional.of(opt.orElseThrow(() -> ABSENT_BLOCK)));
+                .thenCompose(opt -> {
+                    if (opt.isPresent())
+                        return Futures.of(opt);
+                    System.out.println("Bulk fetcher call, missing " + hash);
+                    return bulkFetcher.get()
+                            .thenCompose(blocks -> Futures.combineAll(blocks.stream().map(data ->
+                                            h.sha256(data).thenApply(hashb -> cache.put(new Cid(1, Cid.Codec.DagCbor, Multihash.Type.sha2_256, hashb), data)))
+                                    .collect(Collectors.toList())))
+                            .thenCompose(x ->  cache.get(hash));
+                });
     }
 
     @Override
@@ -77,7 +90,7 @@ public class LocalOnlyStorage implements ContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<List<byte[]>> getChampLookup(PublicKeyHash owner, Cid root, byte[] champKey, Optional<BatWithId> bat) {
+    public CompletableFuture<List<byte[]>> getChampLookup(PublicKeyHash owner, Cid root, byte[] champKey, Optional<BatWithId> bat, Optional<Cid> committedRoot) {
         throw new IllegalStateException("Unimplemented!");
     }
 

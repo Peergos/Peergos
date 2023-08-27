@@ -8,6 +8,7 @@ import peergos.server.storage.*;
 import peergos.server.tests.*;
 import peergos.server.util.*;
 import peergos.shared.*;
+import peergos.shared.storage.*;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
 import peergos.shared.util.*;
@@ -22,18 +23,18 @@ public class DeleteBenchmark {
 
     private static int RANDOM_SEED = 666;
     private final NetworkAccess network;
-    private final Crypto crypto = Main.initCrypto();
+    private static final Crypto crypto = Main.initCrypto();
+    private static final Random random = new Random(RANDOM_SEED);
+    private static final Args args = UserTests.buildArgs().with("useIPFS", "false");
 
-    private static Random random = new Random(RANDOM_SEED);
-
-    public DeleteBenchmark(String useIPFS, Random r) throws Exception {
-        this.network = buildHttpNetworkAccess(useIPFS.equals("IPFS"), r);
+    public DeleteBenchmark() throws Exception {
+        Main.PKI_INIT.main(args);
+        this.network = buildHttpNetworkAccess();
     }
 
-    private static NetworkAccess buildHttpNetworkAccess(boolean useIpfs, Random r) throws Exception {
-        Args args = UserTests.buildArgs().with("useIPFS", "" + useIpfs);
-        Main.PKI_INIT.main(args);
-        NetworkAccess base = Builder.buildJavaNetworkAccess(new URL("http://localhost:" + args.getInt("port")), false).get();
+    private static NetworkAccess buildHttpNetworkAccess() throws Exception {
+        NetworkAccess base = Builder.buildJavaNetworkAccess(new URL("http://localhost:" + args.getInt("port")), false).get()
+                .withStorage(s -> new UnauthedCachingStorage(s, new RamBlockCache(1024*1204, 1000), crypto.hasher));
         int delayMillis = 50;
         return base.withStorage(s -> new DelayingStorage(s, delayMillis, delayMillis));
     }
@@ -41,8 +42,7 @@ public class DeleteBenchmark {
     @Parameterized.Parameters()
     public static Collection<Object[]> parameters() {
         return Arrays.asList(new Object[][] {
-//                {"IPFS", new Random(0)}
-                {"NOTIPFS", new Random(0)}
+                {}
         });
     }
 
@@ -75,6 +75,34 @@ public class DeleteBenchmark {
         Path dirPath = PathUtil.get(username, dirName);
         FileWrapper folder = context.getByPath(dirPath).join().get();
 
+        long start = System.currentTimeMillis();
+        folder.remove(context.getUserRoot().join(), dirPath, context).join();
+        long duration = System.currentTimeMillis() - start;
+        System.err.printf("DELETE("+names.size()+") duration: %d mS\n", duration);
+    }
+
+    @Test
+    public void deleteFolderOfSmallFilesWithEmptyCache() throws Exception {
+        String username = generateUsername();
+        String password = "test01";
+        UserContext context = ensureSignedUp(username, password, network, crypto);
+        FileWrapper userRoot = context.getUserRoot().get();
+        List<String> names = new ArrayList<>();
+        IntStream.range(0, 100).forEach(i -> names.add(randomString()));
+        byte[] data = new byte[1024];
+        random.nextBytes(data);
+
+        List<FileWrapper.FileUploadProperties> files = names.stream()
+                .map(n -> new FileWrapper.FileUploadProperties(n, AsyncReader.build(data), 0, data.length, false, false, x -> {}))
+                .collect(Collectors.toList());
+        String dirName = "folder";
+        userRoot.uploadSubtree(Stream.of(new FileWrapper.FolderUploadProperties(Arrays.asList(dirName), files)),
+                userRoot.mirrorBatId(), context.network, crypto, context.getTransactionService(), f -> Futures.of(false), () -> true).join();
+        Path dirPath = PathUtil.get(username, dirName);
+        FileWrapper folder = context.getByPath(dirPath).join().get();
+
+        context = ensureSignedUp(username, password, buildHttpNetworkAccess(), crypto);
+        System.out.println("Start DELETE");
         long start = System.currentTimeMillis();
         folder.remove(context.getUserRoot().join(), dirPath, context).join();
         long duration = System.currentTimeMillis() - start;

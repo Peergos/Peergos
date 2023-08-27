@@ -7,6 +7,7 @@ import peergos.shared.hamt.*;
 import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.storage.auth.*;
+import peergos.shared.user.*;
 import peergos.shared.util.*;
 
 import java.util.*;
@@ -73,20 +74,50 @@ public class UnauthedCachingStorage extends DelegatingStorage {
     }
 
     @Override
-    public CompletableFuture<List<byte[]>> getChampLookup(PublicKeyHash owner, Cid root, byte[] champKey, Optional<BatWithId> bat) {
+    public CompletableFuture<List<byte[]>> getChampLookup(PublicKeyHash owner,
+                                                          Cid root,
+                                                          byte[] champKey,
+                                                          Optional<BatWithId> bat,
+                                                          Optional<Cid> committedRoot) {
+        System.out.println("UCS::getChampLookup " + root + "::" + ArrayOps.bytesToHex(champKey));
         return Futures.asyncExceptionally(
-                () -> localChampLookup(root, champKey, bat, hasher),
-                t -> target.getChampLookup(owner, root, champKey, bat)
-                        .thenApply(blocks -> cacheBlocks(blocks, hasher))
-        );
+                () -> localChampLookup(owner, root, champKey, bat, committedRoot, hasher),
+                t -> {
+                    System.out.println("UCS::getChampLookup error clause " + t.getMessage());
+                    t.printStackTrace();
+                    return target.getChampLookup(owner, root, champKey, bat,  committedRoot)
+                            .thenApply(blocks -> cacheBlocks(blocks, hasher));
+                }
+        ).thenApply(x -> {
+            System.out.println("UCS::getChampLookup END");
+            return x;
+        });
     }
 
-    public CompletableFuture<List<byte[]>> localChampLookup(Cid root, byte[] champKey, Optional<BatWithId> bat, Hasher hasher) {
-        CachingStorage cache = new CachingStorage(new LocalOnlyStorage(this.cache), 100, 1024*1024);
-        return ChampWrapper.create((Cid)root, x -> Futures.of(x.data), cache, hasher, c -> (CborObject.CborMerkleLink) c)
+    public CompletableFuture<List<byte[]>> localChampLookup(PublicKeyHash owner,
+                                                            Cid root,
+                                                            byte[] champKey,
+                                                            Optional<BatWithId> bat,
+                                                            Optional<Cid> committedRoot,
+                                                            Hasher hasher) {
+        System.out.println("UCS::localChampLookup");
+        CachingStorage cache = new CachingStorage(new LocalOnlyStorage(this.cache,
+                () -> (committedRoot.isPresent() ?
+                        get(committedRoot.get(), Optional.empty())
+                                .thenApply(ropt -> ropt.map(WriterData::fromCbor).flatMap(wd ->  wd.tree))
+                                .thenApply(x -> {
+                                    System.out.println("UCS::localChampLookup got WriterData");
+                                    return x;
+                                })
+                                .thenCompose(champRoot -> target.getChampLookup(owner, (Cid) champRoot.get(), champKey, bat, Optional.empty())) :
+                        target.getChampLookup(owner, root, champKey, bat, Optional.empty()))
+                        .thenApply(blocks -> cacheBlocks(blocks, hasher)), hasher),
+                100, 1024*1024);
+        return ChampWrapper.create(root, x -> Futures.of(x.data), cache, hasher, c -> (CborObject.CborMerkleLink) c)
                 .thenCompose(tree -> tree.get(champKey))
                 .thenApply(c -> c.map(x -> x.target).map(MaybeMultihash::of).orElse(MaybeMultihash.empty()))
                 .thenApply(btreeValue -> {
+                    System.out.println("UCS::localChampLookup get value block");
                     if (btreeValue.isPresent())
                         return cache.get((Cid) btreeValue.get(), bat);
                     return Optional.empty();
@@ -94,10 +125,15 @@ public class UnauthedCachingStorage extends DelegatingStorage {
     }
 
     @Override
-    public CompletableFuture<List<byte[]>> getChampLookup(Cid root, byte[] champKey, Optional<BatWithId> bat, Hasher hasher) {
+    public CompletableFuture<List<byte[]>> getChampLookup(Cid root,
+                                                          byte[] champKey,
+                                                          Optional<BatWithId> bat,
+                                                          Optional<Cid> committedRoot,
+                                                          Hasher hasher) {
+        System.out.println("UnauthedCachingStorage::getChampLookup " + root);
         return Futures.asyncExceptionally(
-                () -> target.getChampLookup(root, champKey, bat, hasher),
-                        t -> super.getChampLookup(root, champKey, bat, hasher)
+                () -> target.getChampLookup(root, champKey, bat, committedRoot, hasher),
+                        t -> super.getChampLookup(root, champKey, bat, committedRoot, hasher)
         ).thenApply(blocks -> cacheBlocks(blocks, hasher));
     }
 

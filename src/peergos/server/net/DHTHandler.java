@@ -129,7 +129,7 @@ public class DHTHandler implements HttpHandler {
                             Optional.of(BatWithId.decode(last.apply("bat"))) :
                             Optional.empty();
                     try {
-                        dht.getChampLookup(ownerHash, root, champKey, bat).thenAccept(blocks -> {
+                        dht.getChampLookup(ownerHash, root, champKey, bat, Optional.empty()).thenAccept(blocks -> {
                             replyBytes(httpExchange, new CborObject.CborList(blocks.stream()
                                     .map(CborObject.CborByteArray::new).collect(Collectors.toList())).serialize(), Optional.of(root));
                         }).exceptionally(Futures::logAndThrow).get();
