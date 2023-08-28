@@ -101,7 +101,9 @@ public class Main extends Builder {
                     new Command.Arg("s3.region", "S3 region", false),
                     new Command.Arg("s3.accessKey", "S3 access key", false),
                     new Command.Arg("s3.secretKey", "S3 secret key", false),
-                    new Command.Arg("s3.region.endpoint", "Base url for S3 service", false)
+                    new Command.Arg("s3.region.endpoint", "Base url for S3 service", false),
+                    new Command.Arg("block-store-filter", "Indicate blockstore filter type. Can be 'none', 'bloom', 'infini'", false),
+                    new Command.Arg("block-store-filter-false-positive-rate", "The false positive rate to apply to the block-store-filter. ", false)
             )
     );
 

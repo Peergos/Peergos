@@ -78,9 +78,9 @@ public class IpfsWrapper implements AutoCloseable {
         public final int swarmPort;
         public final String apiAddress, gatewayAddress, allowTarget, proxyTarget;
         public final Optional<String> metricsAddress;
-        public final  Optional<S3ConfigParams> s3ConfigParams;
-        public final  Optional<IdentitySection> identity;
-
+        public final Optional<S3ConfigParams> s3ConfigParams;
+        public final Optional<IdentitySection> identity;
+        public final Filter blockFilter;
         public IpfsConfigParams(List<MultiAddress> bootstrapNode,
                                 String apiAddress,
                                 String gatewayAddress,
@@ -88,9 +88,10 @@ public class IpfsWrapper implements AutoCloseable {
                                 String allowTarget,
                                 int swarmPort,
                                 Optional<String> metricsAddress,
-                                Optional<S3ConfigParams> s3ConfigParams) {
+                                Optional<S3ConfigParams> s3ConfigParams,
+                                Filter blockFilter) {
             this(bootstrapNode, apiAddress, gatewayAddress, proxyTarget, allowTarget, swarmPort, metricsAddress,
-                    s3ConfigParams, Optional.empty());
+                    s3ConfigParams, blockFilter, Optional.empty());
         }
         public IpfsConfigParams(List<MultiAddress> bootstrapNode,
                                 String apiAddress,
@@ -100,6 +101,7 @@ public class IpfsWrapper implements AutoCloseable {
                                 int swarmPort,
                                 Optional<String> metricsAddress,
                                 Optional<S3ConfigParams> s3ConfigParams,
+                                Filter blockFilter,
                                 Optional<IdentitySection> identity) {
             this.bootstrapNode = bootstrapNode;
             this.apiAddress = apiAddress;
@@ -109,11 +111,13 @@ public class IpfsWrapper implements AutoCloseable {
             this.swarmPort = swarmPort;
             this.metricsAddress = metricsAddress;
             this.s3ConfigParams = s3ConfigParams;
+            this.blockFilter = blockFilter;
             this.identity = identity;
         }
         public IpfsConfigParams withIdentity(Optional<IdentitySection> identity) {
             return new IpfsConfigParams(this.bootstrapNode, this.apiAddress, this.gatewayAddress, this.proxyTarget,
-                    this.allowTarget, this.swarmPort, this.metricsAddress, this.s3ConfigParams, identity);
+                    this.allowTarget, this.swarmPort, this.metricsAddress, this.s3ConfigParams, this.blockFilter,
+                    identity);
         }
     }
 
@@ -157,10 +161,34 @@ public class IpfsWrapper implements AutoCloseable {
                             io.ipfs.multibase.binary.Base64.decodeBase64(args.getArg("ipfs.identity.privKey")),
                             PeerId.fromBase58(args.getArg("ipfs.identity.peerId")))
                     ) : Optional.empty();
+
+        Optional<String> blockStoreFilterOpt = args.getOptionalArg("block-store-filter");
+        Filter filter = new Filter(FilterType.NONE, 0.0);
+        if (blockStoreFilterOpt.isPresent()) {
+            String blockStoreFilterName = blockStoreFilterOpt.get().toLowerCase().trim();
+            FilterType type = FilterType.NONE;
+            try {
+                type = FilterType.lookup(blockStoreFilterName);
+            } catch (IllegalArgumentException iae) {
+                LOG.warning("Provided block-store-filter parameter is invalid. Defaulting to no filter");
+            }
+            Optional<String> blockStoreFilterFalsePositiveRateOpt = args.getOptionalArg("block-store-filter-false-positive-rate");
+            Double falsePositiveRate = 0.0;
+            if (blockStoreFilterFalsePositiveRateOpt.isPresent()) {
+                String blockStoreFilterFalsePositiveRateStr = blockStoreFilterFalsePositiveRateOpt.get().trim();
+                try {
+                    falsePositiveRate = Double.parseDouble(blockStoreFilterFalsePositiveRateStr);
+                } catch (NumberFormatException nfe) {
+                    LOG.warning("Provided block-store-filter-false-positive-rate parameter is invalid. Defaulting to no filter");
+                    type = FilterType.NONE;
+                }
+            }
+            filter = new Filter(type, falsePositiveRate);
+        }
         return new IpfsConfigParams(bootstrapNodes, apiAddress, gatewayAddress,
                 proxyTarget,
                 "http://" + allowTarget.getHost() + ":" + allowTarget.getTCPPort(),
-                swarmPort, metricsAddress, s3Params, peergosIdentity);
+                swarmPort, metricsAddress, s3Params, filter, peergosIdentity);
     }
 
     private static final String IPFS_DIR = "IPFS_PATH";
@@ -352,7 +380,9 @@ public class IpfsWrapper implements AutoCloseable {
 
         AddressesSection addressesSection = new AddressesSection(swarmAddresses, apiAddress, gatewayAddress,
                 proxyTargetAddress, allowTarget);
-        org.peergos.config.Filter filter = new Filter(FilterType.NONE, 0.0);
+
+        org.peergos.config.Filter filter = ipfsConfigParams.blockFilter;
+
         CodecSet codecSet = CodecSet.empty();
         DatastoreSection datastoreSection = new DatastoreSection(blockMount, rootMount, filter, codecSet);
         BootstrapSection bootstrapSection = new BootstrapSection(bootstrapNodes);
