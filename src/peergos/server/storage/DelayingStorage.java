@@ -92,9 +92,9 @@ public class DelayingStorage implements ContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<List<byte[]>> getChampLookup(PublicKeyHash owner, Cid root, byte[] champKey, Optional<BatWithId> bat) {
+    public CompletableFuture<List<byte[]>> getChampLookup(PublicKeyHash owner, Cid root, byte[] champKey, Optional<BatWithId> bat, Optional<Cid> committedRoot) {
         sleep(4*readDelay);
-        return source.getChampLookup(owner, root, champKey, bat);
+        return source.getChampLookup(owner, root, champKey, bat, committedRoot);
     }
 
     @Override

@@ -49,8 +49,8 @@ public class RAMStorage implements DeletableContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<List<byte[]>> getChampLookup(PublicKeyHash owner, Cid root, byte[] champKey, Optional<BatWithId> bat) {
-        return getChampLookup(root, champKey, bat, hasher);
+    public CompletableFuture<List<byte[]>> getChampLookup(PublicKeyHash owner, Cid root, byte[] champKey, Optional<BatWithId> bat, Optional<Cid> committedRoot) {
+        return getChampLookup(root, champKey, bat, committedRoot,hasher);
     }
 
     @Override

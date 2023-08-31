@@ -155,10 +155,18 @@ public interface ContentAddressedStorage {
      */
     CompletableFuture<Optional<byte[]>> getRaw(Cid hash, Optional<BatWithId> bat);
 
-    CompletableFuture<List<byte[]>> getChampLookup(PublicKeyHash owner, Cid root, byte[] champKey, Optional<BatWithId> bat);
+    CompletableFuture<List<byte[]>> getChampLookup(PublicKeyHash owner,
+                                                   Cid root,
+                                                   byte[] champKey,
+                                                   Optional<BatWithId> bat,
+                                                   Optional<Cid> committedRoot);
 
-    default CompletableFuture<List<byte[]>> getChampLookup(Cid root, byte[] champKey, Optional<BatWithId> bat, Hasher hasher) {
-        CachingStorage cache = new CachingStorage(this, 100, 100 * 1024);
+    default CompletableFuture<List<byte[]>> getChampLookup(Cid root,
+                                                           byte[] champKey,
+                                                           Optional<BatWithId> bat,
+                                                           Optional<Cid> committedRoot,
+                                                           Hasher hasher) {
+        CachingStorage cache = new CachingStorage(this, 100, 1024 * 1024);
         return ChampWrapper.create((Cid)root, x -> Futures.of(x.data), cache, hasher, c -> (CborObject.CborMerkleLink) c)
                 .thenCompose(tree -> tree.get(champKey))
                 .thenApply(c -> c.map(x -> x.target).map(MaybeMultihash::of).orElse(MaybeMultihash.empty()))
@@ -360,9 +368,9 @@ public interface ContentAddressedStorage {
         }
 
         @Override
-        public CompletableFuture<List<byte[]>> getChampLookup(PublicKeyHash owner, Cid root, byte[] champKey, Optional<BatWithId> bat) {
+        public CompletableFuture<List<byte[]>> getChampLookup(PublicKeyHash owner, Cid root, byte[] champKey, Optional<BatWithId> bat, Optional<Cid> committedRoot) {
             if (! isPeergosServer) {
-                return getChampLookup(root, champKey, bat, hasher);
+                return getChampLookup(root, champKey, bat, committedRoot, hasher);
             }
             return poster.get(apiPrefix + CHAMP_GET + "?arg=" + root.toString()
                     + "&arg=" + ArrayOps.bytesToHex(champKey)
@@ -409,7 +417,7 @@ public interface ContentAddressedStorage {
             // support more than one, and to maximise use of browsers 5 connections.
             //int FRAGMENTs_PER_QUERY = isPeergosServer ? (blocks.size() > 10 ? 10 : 1) : 1;
             // multi fragment seems to break things, for now just use 1
-            int FRAGMENTs_PER_QUERY = isPeergosServer ? 10 : 1;
+            int FRAGMENTs_PER_QUERY = isPeergosServer ? 1 : 1;
             List<List<byte[]>> grouped = ArrayOps.group(blocks, FRAGMENTs_PER_QUERY);
             List<List<byte[]>> groupedSignatures = ArrayOps.group(signatures, FRAGMENTs_PER_QUERY);
             List<Integer> sizes = grouped.stream()
@@ -563,11 +571,11 @@ public interface ContentAddressedStorage {
         }
 
         @Override
-        public CompletableFuture<List<byte[]>> getChampLookup(PublicKeyHash owner, Cid root, byte[] champKey, Optional<BatWithId> bat) {
+        public CompletableFuture<List<byte[]>> getChampLookup(PublicKeyHash owner, Cid root, byte[] champKey, Optional<BatWithId> bat, Optional<Cid> committedRoot) {
             return Proxy.redirectCall(core,
                     ourNodeId,
                     owner,
-                    () -> local.getChampLookup(owner, root, champKey, bat),
+                    () -> local.getChampLookup(owner, root, champKey, bat, committedRoot),
                     target -> p2p.getChampLookup(target, owner, root, champKey, bat));
         }
 

@@ -54,28 +54,66 @@ public class BufferedStorage extends DelegatingStorage {
     }
 
     @Override
-    public CompletableFuture<List<byte[]>> getChampLookup(PublicKeyHash owner, Cid root, byte[] champKey, Optional<BatWithId> bat) {
+    public CompletableFuture<List<byte[]>> getChampLookup(PublicKeyHash owner,
+                                                          Cid root,
+                                                          byte[] champKey,
+                                                          Optional<BatWithId> bat,
+                                                          Optional<Cid> committedRoot) {
         if (storage.isEmpty())
-            return target.getChampLookup(owner, root, champKey, bat);
+            return target.getChampLookup(owner, root, champKey, bat, committedRoot);
         // If we are in a write transaction try to perform a local champ lookup from the buffer,
         // falling back to a direct champ get
         return Futures.asyncExceptionally(
-                () -> getChampLookup(root, champKey, bat, hasher),
-                t -> target.getChampLookup(owner, root, champKey, bat)
+                () -> getChampLookup(owner, root, champKey, bat, committedRoot, hasher),
+                t -> target.getChampLookup(owner, root, champKey, bat, committedRoot)
         );
     }
 
-    @Override
-    public CompletableFuture<List<byte[]>> getChampLookup(Cid root, byte[] champKey, Optional<BatWithId> bat, Hasher hasher) {
-        CachingStorage cache = new CachingStorage(this, 100, 100 * 1024);
-        return ChampWrapper.create((Cid)root, x -> Futures.of(x.data), cache, hasher, c -> (CborObject.CborMerkleLink) c)
-                        .thenCompose(tree -> tree.get(champKey))
-                        .thenApply(c -> c.map(x -> x.target).map(MaybeMultihash::of).orElse(MaybeMultihash.empty()))
-                        .thenApply(btreeValue -> {
-                            if (btreeValue.isPresent())
-                                return cache.get((Cid) btreeValue.get(), bat);
-                            return Optional.empty();
-                        }).thenApply(x -> new ArrayList<>(cache.getCached()));
+    public CompletableFuture<List<byte[]>> getChampLookup(PublicKeyHash owner,
+                                                          Cid root,
+                                                          byte[] champKey,
+                                                          Optional<BatWithId> bat,
+                                                          Optional<Cid> committedRoot,
+                                                          Hasher hasher) {
+        CachingStorage cache = new CachingStorage(new LocalOnlyStorage(new BlockCache() {
+            Map<Cid, byte[]> localCache = new HashMap<>();
+            @Override
+            public CompletableFuture<Boolean> put(Cid hash, byte[] data) {
+                localCache.put(hash, data);
+                return Futures.of(true);
+            }
+
+            @Override
+            public CompletableFuture<Optional<byte[]>> get(Cid hash) {
+                return Futures.of(Optional.ofNullable(storage.get(hash))
+                        .map(b -> b.block)
+                        .or(() -> Optional.ofNullable(localCache.get(hash))));
+            }
+
+            @Override
+            public boolean hasBlock(Cid hash) {
+                return storage.containsKey(hash) || localCache.containsKey(hash);
+            }
+
+            @Override
+            public CompletableFuture<Boolean> clear() {
+                throw new IllegalStateException("Unimplemented!");
+            }
+        },
+                () -> committedRoot.isPresent() ?
+                        get(committedRoot.get(), Optional.empty())
+                                .thenApply(ropt -> ropt.map(WriterData::fromCbor).flatMap(wd ->  wd.tree))
+                                .thenCompose(champRoot -> target.getChampLookup(owner, (Cid) champRoot.get(), champKey, bat, Optional.empty())) :
+                        target.getChampLookup(owner, root, champKey, bat, Optional.empty()), hasher),
+                100, 1024 * 1024);
+        return ChampWrapper.create(root, x -> Futures.of(x.data), cache, hasher, c -> (CborObject.CborMerkleLink) c)
+                .thenCompose(tree -> tree.get(champKey))
+                .thenApply(c -> c.map(x -> x.target).map(MaybeMultihash::of).orElse(MaybeMultihash.empty()))
+                .thenApply(btreeValue -> {
+                    if (btreeValue.isPresent())
+                        return cache.get((Cid) btreeValue.get(), bat);
+                    return Optional.empty();
+                }).thenApply(x -> new ArrayList<>(cache.getCached()));
     }
 
     @Override

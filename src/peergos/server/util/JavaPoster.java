@@ -97,8 +97,11 @@ public class JavaPoster implements HttpPoster {
             if (basicAuth.isPresent())
                 headers.put("Authorization", basicAuth.get());
             Multipart mPost = new Multipart(buildURL(url).toString(), "UTF-8", headers);
-            for (byte[] file : files)
-                mPost.addFilePart("file", new NamedStreamable.ByteArrayWrapper(file));
+            int i = 0;
+            for (byte[] file : files) {
+                String fieldName = "file" + i++;
+                mPost.addFilePart(fieldName, new NamedStreamable.ByteArrayWrapper(Optional.of(fieldName), file));
+            }
             return CompletableFuture.completedFuture(mPost.finish().getBytes());
         } catch (IOException e) {
             throw new RuntimeException(e);

@@ -60,8 +60,8 @@ public class MetadataCachingStorage extends DelegatingDeletableStorage {
     }
 
     @Override
-    public CompletableFuture<List<byte[]>> getChampLookup(PublicKeyHash owner, Cid root, byte[] champKey, Optional<BatWithId> bat) {
-        return target.getChampLookup(owner, root, champKey, bat).thenApply(blocks -> {
+    public CompletableFuture<List<byte[]>> getChampLookup(PublicKeyHash owner, Cid root, byte[] champKey, Optional<BatWithId> bat, Optional<Cid> committedRoot) {
+        return target.getChampLookup(owner, root, champKey, bat,committedRoot).thenApply(blocks -> {
             for (byte[] block : blocks) {
                 cacheBlockMetadata(block, false);
             }

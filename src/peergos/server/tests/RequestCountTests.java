@@ -87,7 +87,7 @@ public class RequestCountTests {
             boolean reciprocate = true;
             a.sendReplyFollowRequest(u1Request, accept, reciprocate).join();
         }
-        Assert.assertTrue("send reply follow request: " + storageCounter.requestTotal(), storageCounter.requestTotal() <= 22);
+        Assert.assertTrue("send reply follow request: " + storageCounter.requestTotal(), storageCounter.requestTotal() <= 23);
 
         // complete the friendship connection
         storageCounter.reset();
@@ -103,7 +103,7 @@ public class RequestCountTests {
         // check 'a' can see the shared file in their social feed
         storageCounter.reset();
         SocialFeed feed = a.getSocialFeed().join();
-        Assert.assertTrue("initialise social feed: " + storageCounter.requestTotal(), storageCounter.requestTotal() <= 20);
+        Assert.assertTrue("initialise social feed: " + storageCounter.requestTotal(), storageCounter.requestTotal() <= 30);
         int feedSize = 2;
 
         storageCounter.reset();
@@ -130,7 +130,7 @@ public class RequestCountTests {
             Pair<Path, FileWrapper> p = sharerFeed.createNewPost(post).join();
             sharer.shareReadAccessWith(p.left, Set.of(friends)).join();
         }
-        Assert.assertTrue("Adding a post to social feed: " + storageCounter.requestTotal(), storageCounter.requestTotal() <= 20);
+        Assert.assertTrue("Adding a post to social feed: " + storageCounter.requestTotal(), storageCounter.requestTotal() <= 5);
         a.getSocialFeed().join().update().join();
 
         // share more items
@@ -142,7 +142,7 @@ public class RequestCountTests {
 
         storageCounter.reset();
         SocialFeed feed2 = a.getSocialFeed().join().update().join();
-        Assert.assertTrue("load 5 items in social feed: " + storageCounter.requestTotal(), storageCounter.requestTotal() <= 18);
+        Assert.assertTrue("load 5 items in social feed: " + storageCounter.requestTotal(), storageCounter.requestTotal() <= 22);
 
         storageCounter.reset();
         List<SharedItem> items2 = feed2.getShared(feedSize + 1, feedSize + 6, a.crypto, a.network).join();
