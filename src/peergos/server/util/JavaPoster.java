@@ -96,7 +96,7 @@ public class JavaPoster implements HttpPoster {
             Map<String, String> headers = new HashMap<>();
             if (basicAuth.isPresent())
                 headers.put("Authorization", basicAuth.get());
-            Multipart mPost = new Multipart(buildURL(url).toString(), "UTF-8", headers);
+            Multipart mPost = new Multipart(buildURL(url).toString(), "UTF-8", headers, timeoutMillis);
             int i = 0;
             for (byte[] file : files) {
                 String fieldName = "file" + i++;

@@ -469,7 +469,7 @@ public interface ContentAddressedStorage {
                         if (hashes.size() != blocks.size())
                             throw new IllegalStateException("Incorrect number of hashes returned from bulk write: " + hashes.size() + " != " + blocks.size());
                         return hashes;
-                    }).orTimeout(30, TimeUnit.SECONDS);
+                    });
         }
 
         @Override
