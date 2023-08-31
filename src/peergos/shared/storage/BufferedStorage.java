@@ -186,7 +186,7 @@ public class BufferedStorage extends DelegatingStorage {
                 .thenApply(hashes -> hashes.get(0));
     }
 
-    public CompletableFuture<Boolean> signBlocks(Map<PublicKeyHash, SigningPrivateKeyAndPublicHash> writers) {
+    public synchronized CompletableFuture<Boolean> signBlocks(Map<PublicKeyHash, SigningPrivateKeyAndPublicHash> writers) {
         storage.putAll(storage.entrySet().stream()
                 .map(e -> {
                     OpLog.BlockWrite block = e.getValue();
