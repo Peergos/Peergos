@@ -42,7 +42,7 @@ public class DelegatingDeletableStorage implements DeletableContentAddressedStor
     }
 
     @Override
-    public void delete(Multihash hash) {
+    public void delete(Cid hash) {
         target.delete(hash);
     }
 
@@ -52,7 +52,7 @@ public class DelegatingDeletableStorage implements DeletableContentAddressedStor
     }
 
     @Override
-    public void bulkDelete(List<Multihash> blocks) {
+    public void bulkDelete(List<Pair<Cid, String>> blocks) {
         target.bulkDelete(blocks);
     }
 

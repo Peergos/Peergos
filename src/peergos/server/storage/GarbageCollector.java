@@ -72,7 +72,8 @@ public class GarbageCollector {
         // TODO: do this more efficiently with a bloom filter, and actual streaming and multithreading
         storage.clearOldTransactions(System.currentTimeMillis() - 24*3600*1000L);
         long t0 = System.nanoTime();
-        List<Multihash> present = storage.getAllBlockHashes().collect(Collectors.toList());
+        // current versions are returned first. This is only relevant for versioned S3 buckets, otherwise version is null
+        List<Pair<Cid, String>> present = storage.getAllBlockHashVersions().collect(Collectors.toList());
         long t1 = System.nanoTime();
         System.out.println("Listing " + present.size() + " blocks took " + (t1-t0)/1_000_000_000 + "s");
 
@@ -89,8 +90,9 @@ public class GarbageCollector {
         List<Multihash> usageRoots = usage.getAllTargets();
 
         Map<Multihash, Integer> toIndex = new HashMap<>();
-        for (int i=0; i < present.size(); i++)
-            toIndex.put(present.get(i), i);
+        // we traverse this in reverse order because the current versions are first
+        for (int i = present.size() - 1; i >= 0; i--)
+            toIndex.put(present.get(i).left, i);
         BitSet reachable = new BitSet(present.size());
 
         int markParallelism = 10;
@@ -163,27 +165,27 @@ public class GarbageCollector {
     private static Pair<Long, Long> deleteUnreachableBlocks(int startIndex,
                                                             int endIndex,
                                                             BitSet reachable,
-                                                            List<Multihash> present,
+                                                            List<Pair<Cid, String>> present,
                                                             AtomicLong progress,
                                                             DeletableContentAddressedStorage storage,
                                                             BlockMetadataStore metadata) {
         long deletedCborBlocks = 0, deletedRawBlocks = 0;
         long logPoint = startIndex;
         final int maxDeleteCount = 1000;
-        List<Multihash> pendingDeletes = new ArrayList<>();
+        List<Pair<Cid, String>> pendingDeletes = new ArrayList<>();
         for (int i = reachable.nextClearBit(startIndex); i >= startIndex && i < endIndex; i = reachable.nextClearBit(i + 1)) {
-            Multihash hash = present.get(i);
-            if (hash instanceof Cid && ((Cid) hash).isRaw())
+            Pair<Cid, String> version = present.get(i);
+            Cid hash = version.left;
+            if (hash.isRaw())
                 deletedRawBlocks++;
             else
                 deletedCborBlocks++;
-            pendingDeletes.add(hash);
+            pendingDeletes.add(version);
 
             if (pendingDeletes.size() >= maxDeleteCount) {
                 getWithBackoff(() -> {storage.bulkDelete(pendingDeletes); return true;});
-                for (Multihash block : pendingDeletes) {
-                    if (block instanceof Cid)
-                        metadata.remove((Cid)block);
+                for (Pair<Cid, String> block : pendingDeletes) {
+                    metadata.remove(block.left);
                 }
                 pendingDeletes.clear();
             }

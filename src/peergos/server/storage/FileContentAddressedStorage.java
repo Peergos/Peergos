@@ -243,8 +243,8 @@ public class FileContentAddressedStorage implements DeletableContentAddressedSto
     }
 
     @Override
-    public void delete(Multihash h) {
-        Path path = getFilePath((Cid)h);
+    public void delete(Cid h) {
+        Path path = getFilePath(h);
         File file = root.resolve(path).toFile();
         if (file.exists())
             file.delete();

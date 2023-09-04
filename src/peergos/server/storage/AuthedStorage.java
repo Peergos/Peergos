@@ -106,7 +106,7 @@ public class AuthedStorage extends DelegatingStorage implements DeletableContent
     }
 
     @Override
-    public void delete(Multihash hash) {
+    public void delete(Cid hash) {
         target.delete(hash);
     }
 }

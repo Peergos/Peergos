@@ -117,19 +117,6 @@ public class S3Request {
         return preSignNulliPotent("GET", key, expirySeconds, range, datetime, host, region, accessKeyId, s3SecretKey, useHttps, h);
     }
 
-    public static CompletableFuture<PresignedUrl> preSignDelete(String key,
-                                                                String datetime,
-                                                                String host,
-                                                                String region,
-                                                                String accessKeyId,
-                                                                String s3SecretKey,
-                                                                boolean useHttps,
-                                                                Hasher h) {
-        S3Request policy = new S3Request("DELETE", host, key, UNSIGNED, Optional.empty(), false, true,
-                Collections.emptyMap(), Collections.emptyMap(), accessKeyId, region, datetime);
-        return preSignRequest(policy, key, host, s3SecretKey, useHttps, h);
-    }
-
     public static CompletableFuture<PresignedUrl> preSignHead(String key,
                                                               Optional<Integer> expirySeconds,
                                                               String datetime,

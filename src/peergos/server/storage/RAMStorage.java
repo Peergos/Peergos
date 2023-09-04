@@ -59,7 +59,7 @@ public class RAMStorage implements DeletableContentAddressedStorage {
     }
 
     @Override
-    public void delete(Multihash hash) {
+    public void delete(Cid hash) {
         storage.remove(hash);
     }
 

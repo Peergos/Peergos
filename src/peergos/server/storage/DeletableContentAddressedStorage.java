@@ -24,13 +24,21 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
 
     Stream<Cid> getAllBlockHashes();
 
+    default Stream<Pair<Cid, String>> getAllBlockHashVersions() {
+        return getAllBlockHashes().map(c -> new Pair<>(c, null));
+    }
+
     List<Multihash> getOpenTransactionBlocks();
 
     void clearOldTransactions(long cutoffMillis);
 
     boolean hasBlock(Cid hash);
 
-    void delete(Multihash hash);
+    void delete(Cid block);
+
+    default void delete(Pair<Cid, String> blockVersion) {
+        delete(blockVersion.left);
+    }
 
     default void bloomAdd(Multihash hash) {}
 
@@ -38,9 +46,9 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
         return Optional.empty();
     }
 
-    default void bulkDelete(List<Multihash> blocks) {
-        for (Multihash block : blocks) {
-            delete(block);
+    default void bulkDelete(List<Pair<Cid, String>> blockVersions) {
+        for (Pair<Cid, String> version : blockVersions) {
+            delete(version);
         }
     }
 
@@ -234,7 +242,7 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
         }
 
         @Override
-        public void delete(Multihash hash) {
+        public void delete(Cid hash) {
             poster.get(apiPrefix + BLOCK_RM + "?stream-channels=true&arg=" + hash.toString()).join();
         }
 
