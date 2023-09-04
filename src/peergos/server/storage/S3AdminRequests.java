@@ -387,8 +387,8 @@ public class S3AdminRequests {
         Map<String, String> extraQueryParameters = new TreeMap<>();
         extraQueryParameters.put("delete", "true");
         Instant normalised = normaliseDate(now);
-        String key = host.substring(0, host.indexOf("."));
-//        String b2Host = host.substring(host.indexOf(".") + 1);
+        // backblaze broke S3 compatibility and require bucket in path
+        String key = host.endsWith("backblazeb2.com") ? host.substring(0, host.indexOf(".")) : "";
         S3Request policy = new S3Request("POST", host, key, contentSha256, Optional.empty(), false, true,
                 extraQueryParameters, extraHeaders, accessKeyId, region, asAwsDate(normalised));
         PresignedUrl reqUrl = S3Request.preSignRequest(policy, key, host, s3SecretKey, useHttps, h).join();
