@@ -24,9 +24,7 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
 
     Stream<Cid> getAllBlockHashes();
 
-    default Stream<Pair<Cid, String>> getAllBlockHashVersions() {
-        return getAllBlockHashes().map(c -> new Pair<>(c, null));
-    }
+    Stream<Pair<Cid, String>> getAllBlockHashVersions();
 
     List<Multihash> getOpenTransactionBlocks();
 
@@ -239,6 +237,11 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
             return JSONParser.parseStream(jsonStream).stream()
                     .map(m -> (String) (((Map) m).get("Ref")))
                     .map(Cid::decode);
+        }
+
+        @Override
+        public Stream<Pair<Cid, String>> getAllBlockHashVersions() {
+            return getAllBlockHashes().map(c -> new Pair<>(c, null));
         }
 
         @Override

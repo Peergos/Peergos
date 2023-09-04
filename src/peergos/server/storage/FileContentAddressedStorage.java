@@ -243,6 +243,11 @@ public class FileContentAddressedStorage implements DeletableContentAddressedSto
     }
 
     @Override
+    public Stream<Pair<Cid, String>> getAllBlockHashVersions() {
+        return getAllBlockHashes().map(c -> new Pair<>(c, null));
+    }
+
+    @Override
     public void delete(Cid h) {
         Path path = getFilePath(h);
         File file = root.resolve(path).toFile();

@@ -58,6 +58,12 @@ public class RAMStorage implements DeletableContentAddressedStorage {
         return storage.keySet().stream();
     }
 
+
+    @Override
+    public Stream<Pair<Cid, String>> getAllBlockHashVersions() {
+        return getAllBlockHashes().map(c -> new Pair<>(c, null));
+    }
+
     @Override
     public void delete(Cid hash) {
         storage.remove(hash);

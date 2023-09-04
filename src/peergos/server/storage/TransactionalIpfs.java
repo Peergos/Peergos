@@ -145,6 +145,11 @@ public class TransactionalIpfs extends DelegatingStorage implements DeletableCon
     }
 
     @Override
+    public Stream<Pair<Cid, String>> getAllBlockHashVersions() {
+        return target.getAllBlockHashVersions();
+    }
+
+    @Override
     public void delete(Cid hash) {
         target.delete(hash);
     }
