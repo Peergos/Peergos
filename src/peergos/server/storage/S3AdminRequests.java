@@ -384,11 +384,11 @@ public class S3AdminRequests {
         String contentSha256 = sha256.apply(body);
         Map<String, String> extraHeaders = new TreeMap<>();
         extraHeaders.put("Content-Length", "" + body.length);
+        extraHeaders.put("Content-Type", "text/xml");
         Map<String, String> extraQueryParameters = new TreeMap<>();
         extraQueryParameters.put("delete", "true");
         Instant normalised = normaliseDate(now);
-        // backblaze broke S3 compatibility and require bucket in path
-        String key = host.endsWith("backblazeb2.com") ? host.substring(0, host.indexOf(".")) : "";
+        String key = "";
         S3Request policy = new S3Request("POST", host, key, contentSha256, Optional.empty(), false, true,
                 extraQueryParameters, extraHeaders, accessKeyId, region, asAwsDate(normalised));
         PresignedUrl reqUrl = S3Request.preSignRequest(policy, key, host, s3SecretKey, useHttps, h).join();

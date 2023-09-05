@@ -14,6 +14,7 @@ import java.io.*;
 import java.net.*;
 import java.time.*;
 import java.util.*;
+import java.util.stream.*;
 
 class S3Exploration {
     public static void main(String[] a) throws Exception {
@@ -53,7 +54,7 @@ class S3Exploration {
         new String(write(new URI(putUrl.base).toURL(), "PUT", putUrl.fields, useIllegalPayload ? new byte[payload.length] : payload));
 
         // list bucket to get all files and latest versions
-        S3AdminRequests.ListObjectVersionsReply listing = S3AdminRequests.listObjectVersions("", 20, Optional.empty(),
+        S3AdminRequests.ListObjectVersionsReply listing = S3AdminRequests.listObjectVersions(s3Key, 20, Optional.empty(),
                 Optional.empty(), ZonedDateTime.now(), host, region, accessKey, secretKey, url -> get(url),
                 S3AdminRequests.builder::get, useHttps, h);
         System.out.println();
@@ -62,21 +63,54 @@ class S3Exploration {
         PresignedUrl delUrl = S3AdminRequests.preSignDelete(s3Key, Optional.empty(), S3AdminRequests.asAwsDate(ZonedDateTime.now()), host, region, accessKey, secretKey, useHttps, h).join();
         delete(new URI(delUrl.base).toURL(), delUrl.fields);
 
-//        // check versions include delete version
-        S3AdminRequests.ListObjectVersionsReply listing2 = S3AdminRequests.listObjectVersions("", 20, Optional.empty(),
+        // check versions include delete version
+        S3AdminRequests.ListObjectVersionsReply listing2 = S3AdminRequests.listObjectVersions(s3Key, 20, Optional.empty(),
                 Optional.empty(), ZonedDateTime.now(), host, region, accessKey, secretKey, url -> get(url),
                 S3AdminRequests.builder::get, useHttps, h);
         if (listing2.deletes.size() != listing.deletes.size() + 1)
             throw new IllegalStateException("Where's delete?");
 
-//        // delete all versions WARNING - will delete all bucket contents
+        List<Pair<String, String>> versionsToDelete = new ArrayList<>();
+        versionsToDelete.addAll(listing2.versions.stream()
+                .filter(m -> m.key.equals(s3Key))
+                .map(m -> new Pair<>(m.key, m.version))
+                .collect(Collectors.toList()));
+        versionsToDelete.addAll(listing2.deletes.stream()
+                .filter(m -> m.key.equals(s3Key))
+                .map(m -> new Pair<>(m.key, m.version))
+                .collect(Collectors.toList()));
+        // delete all versions of the key and delete markers using a bulk delete call
+        S3AdminRequests.BulkDeleteReply bulkDelete = S3AdminRequests.bulkDelete(
+                versionsToDelete, ZonedDateTime.now(), host, region, accessKey, secretKey, b -> ArrayOps.bytesToHex(Hash.sha256(b)),
+                (url, body) -> {
+                    try {
+                        System.out.println("URL: " + url.base);
+                        url.fields.entrySet().forEach(e -> System.out.println("HEADER: " + e.getKey() + ": " + e.getValue()));
+                        System.out.println("BODY: " + new String(body));
+                        return write(toURL(url.base), "POST", url.fields, body);
+                    } catch (Exception e) {
+                        throw new RuntimeException(e);
+                    }
+                }, S3AdminRequests.builder::get, useHttps, h);
+
+        S3AdminRequests.ListObjectVersionsReply afterDelete = S3AdminRequests.listObjectVersions(s3Key, 20, Optional.empty(),
+                Optional.empty(), ZonedDateTime.now(), host, region, accessKey, secretKey, url -> get(url),
+                S3AdminRequests.builder::get, useHttps, h);
+        if (afterDelete.versions.stream().anyMatch(m -> m.key.equals(s3Key)) || afterDelete.deletes.stream().anyMatch(d -> d.key.equals(s3Key)))
+            throw new IllegalStateException("Bulk delete failed");
+
+        // delete all versions and delete markers of the key
 //        for (S3AdminRequests.ObjectMetadataVersion version : listing2.versions) {
-//            PresignedUrl delUrl2 = S3Request.preSignDelete(version.key, Optional.of(version.version), S3AdminRequests.asAwsDate(ZonedDateTime.now()), host, region, accessKey, secretKey, useHttps, h).join();
-//            delete(new URI(delUrl2.base).toURL(), delUrl2.fields);
+//            if (version.key.equals(s3Key)) {
+//                PresignedUrl delUrl2 = S3AdminRequests.preSignDelete(version.key, Optional.of(version.version), S3AdminRequests.asAwsDate(ZonedDateTime.now()), host, region, accessKey, secretKey, useHttps, h).join();
+//                delete(new URI(delUrl2.base).toURL(), delUrl2.fields);
+//            }
 //        }
 //        for (S3AdminRequests.DeleteMarker delete : listing2.deletes) {
-//            PresignedUrl delUrl2 = S3Request.preSignDelete(delete.key, Optional.of(delete.version), S3AdminRequests.asAwsDate(ZonedDateTime.now()), host, region, accessKey, secretKey, useHttps, h).join();
-//            delete(new URI(delUrl2.base).toURL(), delUrl2.fields);
+//            if (delete.key.equals(s3Key)) {
+//                PresignedUrl delUrl2 = S3AdminRequests.preSignDelete(delete.key, Optional.of(delete.version), S3AdminRequests.asAwsDate(ZonedDateTime.now()), host, region, accessKey, secretKey, useHttps, h).join();
+//                delete(new URI(delUrl2.base).toURL(), delUrl2.fields);
+//            }
 //        }
 //
 //        // check bucket is empty
