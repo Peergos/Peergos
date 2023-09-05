@@ -17,6 +17,77 @@ import java.util.*;
 
 class S3Exploration {
     public static void main(String[] a) throws Exception {
+        testVersionedBucket(a);
+    }
+
+    public static void testVersionedBucket(String[] a) throws Exception {
+        Crypto crypto = Main.initCrypto();
+        String accessKey = a[0];
+        String secretKey = a[1];
+        String bucketName = a[2];
+        String region = "us-east-1";
+        String regionEndpoint = "s3." + region + ".linodeobjects.com";
+
+        String host = bucketName + "." + regionEndpoint;
+
+        byte[] payload = new byte[4096];
+        new Random(1).nextBytes(payload);
+        Hasher h = crypto.hasher;
+        RAMStorage ram = new RAMStorage(h);
+        TransactionId tid = ram.startTransaction(null).join();
+        Multihash content = ram.put(null, null, null, Collections.singletonList(payload), tid).join().get(0);
+        String s3Key = DirectS3BlockStore.hashToKey(content);// "AFYREIBF5Y4OUJXNGRCHBAR2ZMPQBSW62SZDHFNX2GA6V4J3W7I63LA4UQ"
+        boolean useHttps = true;
+
+        // test an authed PUT
+        Map<String, String> extraHeaders = new TreeMap<>();
+        extraHeaders.put("Content-Type", "application/octet-stream");
+        extraHeaders.put("User-Agent", "Bond, James Bond");
+        boolean useIllegalPayload = false;
+        boolean hashContent = true;
+        String contentHash = hashContent ? ArrayOps.bytesToHex(content.getHash()) : "UNSIGNED-PAYLOAD";
+        PresignedUrl putUrl = S3Request.preSignPut(s3Key, payload.length, contentHash, false,
+                S3AdminRequests.asAwsDate(ZonedDateTime.now().minusMinutes(14)), host, extraHeaders, region, accessKey, secretKey, useHttps, h).join();
+        // put same object twice to create two identical versions
+        new String(write(new URI(putUrl.base).toURL(), "PUT", putUrl.fields, useIllegalPayload ? new byte[payload.length] : payload));
+        new String(write(new URI(putUrl.base).toURL(), "PUT", putUrl.fields, useIllegalPayload ? new byte[payload.length] : payload));
+
+        // list bucket to get all files and latest versions
+        S3AdminRequests.ListObjectVersionsReply listing = S3AdminRequests.listObjectVersions("", 20, Optional.empty(),
+                Optional.empty(), ZonedDateTime.now(), host, region, accessKey, secretKey, url -> get(url),
+                S3AdminRequests.builder::get, useHttps, h);
+        System.out.println();
+
+        // do a normal delete (adds a delete marker, leaving old versions)
+        PresignedUrl delUrl = S3AdminRequests.preSignDelete(s3Key, Optional.empty(), S3AdminRequests.asAwsDate(ZonedDateTime.now()), host, region, accessKey, secretKey, useHttps, h).join();
+        delete(new URI(delUrl.base).toURL(), delUrl.fields);
+
+//        // check versions include delete version
+        S3AdminRequests.ListObjectVersionsReply listing2 = S3AdminRequests.listObjectVersions("", 20, Optional.empty(),
+                Optional.empty(), ZonedDateTime.now(), host, region, accessKey, secretKey, url -> get(url),
+                S3AdminRequests.builder::get, useHttps, h);
+        if (listing2.deletes.size() != listing.deletes.size() + 1)
+            throw new IllegalStateException("Where's delete?");
+
+//        // delete all versions WARNING - will delete all bucket contents
+//        for (S3AdminRequests.ObjectMetadataVersion version : listing2.versions) {
+//            PresignedUrl delUrl2 = S3Request.preSignDelete(version.key, Optional.of(version.version), S3AdminRequests.asAwsDate(ZonedDateTime.now()), host, region, accessKey, secretKey, useHttps, h).join();
+//            delete(new URI(delUrl2.base).toURL(), delUrl2.fields);
+//        }
+//        for (S3AdminRequests.DeleteMarker delete : listing2.deletes) {
+//            PresignedUrl delUrl2 = S3Request.preSignDelete(delete.key, Optional.of(delete.version), S3AdminRequests.asAwsDate(ZonedDateTime.now()), host, region, accessKey, secretKey, useHttps, h).join();
+//            delete(new URI(delUrl2.base).toURL(), delUrl2.fields);
+//        }
+//
+//        // check bucket is empty
+//        S3AdminRequests.ListObjectVersionsReply listing3 = S3AdminRequests.listObjectVersions("", 20, Optional.empty(),
+//                Optional.empty(), ZonedDateTime.now(), host, region, accessKey, secretKey, url -> get(url),
+//                S3AdminRequests.builder::get, useHttps, h);
+//        if (! listing3.versions.isEmpty() || ! listing3.deletes.isEmpty())
+//            throw new IllegalStateException("Not all versions deleted!");
+    }
+
+    public static void explore(String[] a) throws Exception {
         Crypto crypto = Main.initCrypto();
         String accessKey = a[0];
         String secretKey = a[1];
@@ -67,7 +138,7 @@ class S3Exploration {
             get(new URI(getaUrl.base).toURL(), getaUrl.fields);
 
             // test a delete
-            PresignedUrl delUrl = S3Request.preSignDelete(tempKey, S3AdminRequests.asAwsDate(ZonedDateTime.now()), host, region, accessKey, secretKey, useHttps, h).join();
+            PresignedUrl delUrl = S3AdminRequests.preSignDelete(tempKey, Optional.empty(), S3AdminRequests.asAwsDate(ZonedDateTime.now()), host, region, accessKey, secretKey, useHttps, h).join();
             delete(new URI(delUrl.base).toURL(), delUrl.fields);
             System.out.println();
 
@@ -85,16 +156,20 @@ class S3Exploration {
                 System.out.println(res);
             }
             String nonExistentKey = tempKey2 + "ZZ";
-            S3AdminRequests.BulkDeleteReply bulkDelete = S3AdminRequests.bulkDelete(Arrays.asList(tempKey, tempKey2, nonExistentKey),
+            S3AdminRequests.BulkDeleteReply bulkDelete = S3AdminRequests.bulkDelete(
+                    Arrays.asList(new Pair<>(tempKey, null), new Pair<>(tempKey2, null), new Pair<>(nonExistentKey, null)),
                     ZonedDateTime.now(), host, region, accessKey, secretKey, b -> ArrayOps.bytesToHex(Hash.sha256(b)),
                     (url, body) -> {
                         try {
+                            System.out.println("URL: " + url.base);
+                            url.fields.entrySet().forEach(e -> System.out.println("HEADER: " + e.getKey() + ": " + e.getValue()));
+                            System.out.println("BODY: " + new String(body));
                             return write(toURL(url.base), "POST", url.fields, body);
                         } catch (Exception e) {
                             throw new RuntimeException(e);
                         }
                     }, S3AdminRequests.builder::get, useHttps, h);
-            if (! bulkDelete.deletedKeys.containsAll(Arrays.asList(tempKey, tempKey2, nonExistentKey)))
+            if (! bulkDelete.deletedKeys.containsAll(Arrays.asList(tempKey, tempKey2)))
                 throw new IllegalStateException("Delete failed");
         }
 

@@ -96,6 +96,11 @@ public class AuthedStorage extends DelegatingStorage implements DeletableContent
     }
 
     @Override
+    public Stream<Pair<Cid, String>> getAllBlockHashVersions() {
+        return target.getAllBlockHashVersions();
+    }
+
+    @Override
     public List<Multihash> getOpenTransactionBlocks() {
         return target.getOpenTransactionBlocks();
     }
@@ -106,7 +111,7 @@ public class AuthedStorage extends DelegatingStorage implements DeletableContent
     }
 
     @Override
-    public void delete(Multihash hash) {
+    public void delete(Cid hash) {
         target.delete(hash);
     }
 }

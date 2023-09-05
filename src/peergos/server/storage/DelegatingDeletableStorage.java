@@ -27,6 +27,11 @@ public class DelegatingDeletableStorage implements DeletableContentAddressedStor
     }
 
     @Override
+    public Stream<Pair<Cid, String>> getAllBlockHashVersions() {
+        return target.getAllBlockHashVersions();
+    }
+
+    @Override
     public List<Multihash> getOpenTransactionBlocks() {
         return target.getOpenTransactionBlocks();
     }
@@ -42,7 +47,7 @@ public class DelegatingDeletableStorage implements DeletableContentAddressedStor
     }
 
     @Override
-    public void delete(Multihash hash) {
+    public void delete(Cid hash) {
         target.delete(hash);
     }
 
@@ -52,7 +57,7 @@ public class DelegatingDeletableStorage implements DeletableContentAddressedStor
     }
 
     @Override
-    public void bulkDelete(List<Multihash> blocks) {
+    public void bulkDelete(List<Pair<Cid, String>> blocks) {
         target.bulkDelete(blocks);
     }
 

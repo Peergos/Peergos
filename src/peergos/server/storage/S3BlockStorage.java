@@ -631,9 +631,34 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         return Futures.of(new Pair<>(size, links));
     }
 
+    @Override
     public Stream<Cid> getAllBlockHashes() {
         // todo make this actually streaming
         return getFiles(Long.MAX_VALUE).stream();
+    }
+
+    @Override
+    public Stream<Pair<Cid, String>> getAllBlockHashVersions() {
+        // todo make this actually streaming
+        return getFileVersions(Long.MAX_VALUE).stream();
+    }
+
+    private List<Pair<Cid, String>> getFileVersions(long maxReturned) {
+        List<Pair<Cid, String>> results = new ArrayList<>();
+        applyToAllVersions(obj -> {
+            try {
+                results.add(new Pair<>(keyToHash(obj.key), obj.version));
+            } catch (Exception e) {
+                LOG.warning("Couldn't parse S3 key to Cid: " + obj.key);
+            }
+        }, del -> {
+            try {
+                results.add(new Pair<>(keyToHash(del.key), del.version));
+            } catch (Exception e) {
+                LOG.warning("Couldn't parse S3 key to Cid: " + del.key);
+            }
+        }, maxReturned);
+        return results;
     }
 
     private List<Cid> getFiles(long maxReturned) {
@@ -688,35 +713,99 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         }
     }
 
-    public void delete(Multihash hash) {
+    private void applyToAllVersions(Consumer<S3AdminRequests.ObjectMetadataVersion> processor,
+                                    Consumer<S3AdminRequests.DeleteMarker> deleteProcessor, long maxObjects) {
         try {
-            PresignedUrl delUrl = S3Request.preSignDelete(folder + hashToKey(hash), S3AdminRequests.asAwsDate(ZonedDateTime.now()), host,
-                    region, accessKeyId, secretKey, useHttps, hasher).join();
+            Optional<String> keyMarker = Optional.empty();
+            Optional<String> versionIdMarker = Optional.empty();
+            S3AdminRequests.ListObjectVersionsReply result;
+            long processedObjects = 0;
+            do {
+                result = S3AdminRequests.listObjectVersions(folder, 1_000, keyMarker, versionIdMarker,
+                        ZonedDateTime.now(), host, region, accessKeyId, secretKey, url -> {
+                            try {
+                                return HttpUtil.get(url);
+                            } catch (IOException e) {
+                                throw new RuntimeException(e);
+                            }
+                        }, S3AdminRequests.builder::get, useHttps, hasher);
+
+                for (S3AdminRequests.ObjectMetadataVersion objectSummary : result.versions) {
+                    if (objectSummary.key.endsWith("/")) {
+                        LOG.fine(" - " + objectSummary.key + "  " + "(directory)");
+                        continue;
+                    }
+                    processor.accept(objectSummary);
+                    processedObjects++;
+                    if (processedObjects >= maxObjects)
+                        return;
+                }
+                for (S3AdminRequests.DeleteMarker deleteSummary : result.deletes) {
+                    if (deleteSummary.key.endsWith("/")) {
+                        LOG.fine(" - " + deleteSummary.key + "  " + "(directory)");
+                        continue;
+                    }
+                    deleteProcessor.accept(deleteSummary);
+                    processedObjects++;
+                    if (processedObjects >= maxObjects)
+                        return;
+                }
+                LOG.log(Level.FINE, "Next key marker : " + result.nextKeyMarker);
+                LOG.log(Level.FINE, "Next version id marker : " + result.nextVersionIdMarker);
+                keyMarker = result.nextKeyMarker;
+                versionIdMarker = result.nextVersionIdMarker;
+            } while (result.isTruncated);
+
+        } catch (Exception e) {
+            LOG.log(Level.SEVERE, e.getMessage(), e);
+        }
+    }
+
+    @Override
+    public void delete(Cid hash) {
+        delete(new Pair<>(hash, null));
+    }
+
+    @Override
+    public void delete(Pair<Cid, String> version) {
+        try {
+            PresignedUrl delUrl = S3AdminRequests.preSignDelete(folder + hashToKey(version.left), Optional.ofNullable(version.right),
+                    S3AdminRequests.asAwsDate(ZonedDateTime.now()), host, region, accessKeyId, secretKey, useHttps, hasher).join();
             HttpUtil.delete(delUrl);
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
     }
 
-    public void bulkDelete(List<Multihash> hash) {
-        List<String> keys = hash.stream()
-                .map(h -> folder + hashToKey(h))
+    @Override
+    public void bulkDelete(List<Pair<Cid, String>> versions) {
+        List<Pair<String, String>> keyVersions = versions.stream()
+                .map(v -> new Pair<>(folder + hashToKey(v.left), v.right))
                 .collect(Collectors.toList());
-        S3AdminRequests.bulkDelete(keys, ZonedDateTime.now(), host, region, accessKeyId, secretKey,
-                b -> ArrayOps.bytesToHex(Hash.sha256(b)),
-                (url, body) -> {
-                    try {
-                        return HttpUtil.post(url, body);
-                    } catch (IOException e) {
-                        String msg = e.getMessage();
-                        boolean rateLimited = msg.startsWith("<?xml version=\"1.0\" encoding=\"UTF-8\"?><Error><Code>SlowDown</Code>");
-                        if (rateLimited) {
-                            S3BlockStorage.rateLimited.inc();
-                            throw new RateLimitException();
+        try {
+            S3AdminRequests.bulkDelete(keyVersions, ZonedDateTime.now(), host, region, accessKeyId, secretKey,
+                    b -> ArrayOps.bytesToHex(Hash.sha256(b)),
+                    (url, body) -> {
+                        try {
+                            return HttpUtil.post(url, body);
+                        } catch (IOException e) {
+                            String msg = e.getMessage();
+                            boolean rateLimited = msg.startsWith("<?xml version=\"1.0\" encoding=\"UTF-8\"?><Error><Code>SlowDown</Code>");
+                            if (rateLimited) {
+                                S3BlockStorage.rateLimited.inc();
+                                throw new RateLimitException();
+                            }
+                            throw new RuntimeException(e);
                         }
-                        throw new RuntimeException(e);
-                    }
-                }, S3AdminRequests.builder::get, useHttps, hasher);
+                    }, S3AdminRequests.builder::get, useHttps, hasher);
+        } catch (Exception e) {
+            // fallback to doing deletes with parallel single calls
+            // This is necessary because B2 doesn't implement the bulk delete call!!
+            System.out.println("Falling back to parallel individual block deletes...");
+            for (Pair<Cid, String> version : versions) {
+                new Thread(() -> delete(version)).start();
+            }
+        }
     }
 
     public static void main(String[] args) throws Exception {
