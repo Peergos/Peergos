@@ -281,7 +281,9 @@ public class UserService {
                     .map(ba -> (HttpHandler) new BasicAuthHandler(ba, handler))
                     .orElse(handler);
         // Allow local requests, ones to the public host, and p2p reqs to our node
-        List<String> allowedHosts = Arrays.asList("127.0.0.1:" + local.getPort(), host.host(), nodeId.toString());
+        String barePeerId = new Multihash(nodeId.type, nodeId.getHash()).toBase58();
+        String wrappedPeerId = nodeId.toBase58();
+        List<String> allowedHosts = Arrays.asList("127.0.0.1:" + local.getPort(), host.host(), barePeerId, wrappedPeerId);
         SubdomainHandler subdomainHandler = new SubdomainHandler(allowedHosts, withAuth, allowSubdomains);
         localhostServer.createContext(path, subdomainHandler);
         if (tlsServer != null) {
