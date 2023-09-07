@@ -4,6 +4,7 @@ import peergos.server.sql.*;
 import peergos.server.util.*;
 import peergos.shared.cbor.*;
 import peergos.shared.io.ipfs.cid.*;
+import peergos.shared.storage.auth.*;
 
 import java.io.*;
 import java.sql.*;
@@ -15,8 +16,7 @@ import java.util.stream.*;
 public class SqliteBlockMetadataStorage implements BlockMetadataStore {
 
     private static final Logger LOG = Logging.LOG();
-    private static final String CREATE = "INSERT OR IGNORE INTO blockmetadata (cid, size, links, accesstime) VALUES(?, ?, ?, ?)";
-    private static final String TOUCH = "UPDATE blockmetadata set accesstime=? WHERE cid = ?";
+    private static final String CREATE = "INSERT OR IGNORE INTO blockmetadata (cid, size, links, batids, accesstime) VALUES(?, ?, ?, ?, ?)";
     private static final String GET_INFO = "SELECT * FROM blockmetadata WHERE cid = ?;";
     private static final String OLDEST = "SELECT * FROM blockmetadata ORDER BY accesstime;";
     private static final String REMOVE = "DELETE FROM blockmetadata where cid = ?;";
@@ -113,23 +113,11 @@ public class SqliteBlockMetadataStorage implements BlockMetadataStore {
             while (rs.next()) {
                 List<Cid> links = ((CborObject.CborList) CborObject.fromByteArray(rs.getBytes("links")))
                         .map(cbor -> Cid.cast(((CborObject.CborByteArray)cbor).value));
-                touch(block);
-                return Optional.of(new BlockMetadata(rs.getInt("size"), links));
+                List<BatId> batIds = ((CborObject.CborList) CborObject.fromByteArray(rs.getBytes("batids")))
+                        .map(BatId::fromCbor);
+                return Optional.of(new BlockMetadata(rs.getInt("size"), links, batIds));
             }
             return Optional.empty();
-        } catch (SQLException sqe) {
-            LOG.log(Level.WARNING, sqe.getMessage(), sqe);
-            throw new RuntimeException(sqe);
-        }
-    }
-
-    private void touch(Cid block) {
-        try (Connection conn = getConnection();
-             PreparedStatement insert = conn.prepareStatement(TOUCH)) {
-
-            insert.setBytes(1, block.toBytes());
-            insert.setLong(2, System.currentTimeMillis());
-            insert.executeUpdate();
         } catch (SQLException sqe) {
             LOG.log(Level.WARNING, sqe.getMessage(), sqe);
             throw new RuntimeException(sqe);
@@ -148,7 +136,9 @@ public class SqliteBlockMetadataStorage implements BlockMetadataStore {
                     .map(CborObject.CborByteArray::new)
                     .collect(Collectors.toList()))
                     .toByteArray());
-            insert.setLong(4, System.currentTimeMillis());
+            insert.setBytes(4, new CborObject.CborList(meta.batids)
+                    .toByteArray());
+            insert.setLong(5, System.currentTimeMillis());
             insert.executeUpdate();
         } catch (SQLException sqe) {
             LOG.log(Level.WARNING, sqe.getMessage(), sqe);

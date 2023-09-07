@@ -3,6 +3,7 @@ package peergos.server.storage;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.io.ipfs.multihash.*;
+import peergos.shared.storage.*;
 import peergos.shared.storage.auth.*;
 import peergos.shared.util.*;
 
@@ -28,6 +29,26 @@ public class MetadataCachingStorage extends DelegatingDeletableStorage {
     }
 
     @Override
+    public CompletableFuture<List<Cid>> put(PublicKeyHash owner, PublicKeyHash writer, List<byte[]> signedHashes, List<byte[]> blocks, TransactionId tid) {
+        return target.put(owner, writer, signedHashes, blocks, tid)
+                .thenApply(cids -> {
+                    for (int i=0; i < cids.size(); i++)
+                        metadata.put(cids.get(i), blocks.get(i));
+                    return cids;
+                });
+    }
+
+    @Override
+    public CompletableFuture<List<Cid>> putRaw(PublicKeyHash owner, PublicKeyHash writer, List<byte[]> signedHashes, List<byte[]> blocks, TransactionId tid, ProgressConsumer<Long> progressCounter) {
+        return target.putRaw(owner, writer, signedHashes, blocks, tid, progressCounter)
+                .thenApply(cids -> {
+                    for (int i=0; i < cids.size(); i++)
+                        metadata.put(cids.get(i), blocks.get(i));
+                    return cids;
+                });
+    }
+
+    @Override
     public CompletableFuture<Optional<Integer>> getSize(Multihash block) {
         Optional<BlockMetadata> meta = metadata.get((Cid) block);
         if (meta.isPresent())
@@ -40,18 +61,16 @@ public class MetadataCachingStorage extends DelegatingDeletableStorage {
         Optional<BlockMetadata> meta = metadata.get(block);
         if (meta.isPresent())
             return Futures.of(meta.get().links);
-        return getLinksAndSize(block, auth).thenApply(res -> res.right);
+        return getBlockMetadata(block, auth).thenApply(res -> res.links);
     }
 
     @Override
-    public CompletableFuture<Pair<Integer, List<Cid>>> getLinksAndSize(Cid block, String auth) {
+    public CompletableFuture<BlockMetadata> getBlockMetadata(Cid block, String auth) {
         Optional<BlockMetadata> meta = metadata.get(block);
         if (meta.isPresent())
-            return Futures.of(new Pair<>(meta.get().size, meta.get().links));
-        return target.getLinksAndSize(block, auth).thenApply(res -> {
-            metadata.put(block, new BlockMetadata(res.left, res.right));
-            return res;
-        });
+            return Futures.of(meta.get());
+        return target.getRaw(block, auth)
+                .thenApply(dataOpt -> metadata.put(block, dataOpt.get()));
     }
 
     private void cacheBlockMetadata(byte[] block, boolean isRaw) {

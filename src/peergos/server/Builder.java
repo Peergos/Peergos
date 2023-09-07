@@ -189,7 +189,7 @@ public class Builder {
 
     private static SqliteBlockMetadataStorage buildBlockMetadata(Args a) {
         try {
-            File metaFile = a.fromPeergosDir("block-metadata-sql-file", "blockmetadata.sql").toFile();
+            File metaFile = a.fromPeergosDir("block-metadata-sql-file", "blockmetadata-v2.sql").toFile();
             Connection instance = new Sqlite.UncloseableConnection(Sqlite.build(metaFile.getPath()));
             int maxMetadataStoreSize = a.getInt("max-block-metadata-store-size", 0); // 0 means unlimited
             return new SqliteBlockMetadataStorage(() -> instance, new SqliteCommands(), maxMetadataStoreSize, metaFile);

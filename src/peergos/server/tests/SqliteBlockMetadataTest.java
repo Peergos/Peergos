@@ -42,7 +42,7 @@ public class SqliteBlockMetadataTest {
         long initialSize = store.currentSize();
         assertTrue(initialSize == 16384);
         Cid cid = randomCid();
-        BlockMetadata meta = new BlockMetadata(10240, randomCids(20));
+        BlockMetadata meta = new BlockMetadata(10240, randomCids(20), Collections.emptyList());
         store.put(cid, meta);
         long sizeWithBlock = store.currentSize();
         store.ensureWithinSize();
@@ -63,7 +63,7 @@ public class SqliteBlockMetadataTest {
         long initialSize = store.currentSize();
         assertTrue(initialSize == 16384);
         for (int i=0; i < 1500; i++)
-            store.put(randomCid(), new BlockMetadata(10240, randomCids(20)));
+            store.put(randomCid(), new BlockMetadata(10240, randomCids(20), Collections.emptyList()));
         long sizeWithBlocks = store.currentSize();
         assertTrue(sizeWithBlocks > maxFileSize);
         store.ensureWithinSize();

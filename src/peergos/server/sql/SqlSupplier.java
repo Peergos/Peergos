@@ -68,8 +68,8 @@ public interface SqlSupplier {
         return "CREATE TABLE IF NOT EXISTS blockmetadata (cid " + getByteArrayType() + " primary key not null, " +
                 "size " + sqlInteger() + " not null, " +
                 "links " + getByteArrayType() + " not null, " +
-                "accesstime " + sqlInteger() + " not null); " +
-                "CREATE INDEX IF NOT EXISTS blockmetadata_accessindex ON blockmetadata (accesstime);";
+                "batids " + getByteArrayType() + " not null, " +
+                "accesstime " + sqlInteger() + " not null);";
     }
 
     default String createServerMessageTableCommand() {

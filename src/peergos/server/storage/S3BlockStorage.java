@@ -212,6 +212,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                                                             PublicKeyHash writerHash,
                                                             List<byte[]> signedHashes,
                                                             List<Integer> blockSizes,
+                                                            List<List<BatId>> batIds,
                                                             boolean isRaw,
                                                             TransactionId tid) {
         try {
@@ -219,15 +220,19 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                 throw new IllegalStateException("Too many writes to auth!");
             if (blockSizes.size() != signedHashes.size())
                 throw new IllegalStateException("Number of sizes doesn't match number of signed hashes!");
+            if (blockSizes.size() != batIds.size())
+                throw new IllegalStateException("Number of sizes doesn't match number of bats!");
             PublicSigningKey writer = getSigningKey(writerHash).get().get();
-            List<Pair<Cid, Integer>> blockProps = new ArrayList<>();
+            List<Pair<Cid, BlockMetadata>> blockProps = new ArrayList<>();
             for (int i=0; i < signedHashes.size(); i++) {
                 Cid.Codec codec = isRaw ? Cid.Codec.Raw : Cid.Codec.DagCbor;
+                if (! isRaw)
+                    throw new IllegalStateException("Only raw blocks can be pre-auther for writes");
                 Cid cid = new Cid(1, codec, Multihash.Type.sha2_256, writer.unsignMessage(signedHashes.get(i)));
-                blockProps.add(new Pair<>(cid, blockSizes.get(i)));
+                blockProps.add(new Pair<>(cid, new BlockMetadata(blockSizes.get(i), Collections.emptyList(), batIds.get(i))));
             }
             List<PresignedUrl> res = new ArrayList<>();
-            for (Pair<Cid, Integer> props : blockProps) {
+            for (Pair<Cid, BlockMetadata> props : blockProps) {
                 if (props.left.type != Multihash.Type.sha2_256)
                     throw new IllegalStateException("Can only pre-auth writes of sha256 hashed blocks!");
                 transactions.addBlock(props.left, tid, owner);
@@ -235,12 +240,12 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                 String contentSha256 = ArrayOps.bytesToHex(props.left.getHash());
                 Map<String, String> extraHeaders = new LinkedHashMap<>();
                 extraHeaders.put("Content-Type", "application/octet-stream");
-                res.add(S3Request.preSignPut(folder + s3Key, props.right, contentSha256, false,
+                res.add(S3Request.preSignPut(folder + s3Key, props.right.size, contentSha256, false,
                         S3AdminRequests.asAwsDate(ZonedDateTime.now()), host, extraHeaders, region, accessKeyId, secretKey, useHttps, hasher).join());
                 blockPutAuths.inc();
                 bloomAdds.add(props.left);
                 if (isRaw)
-                    blockMetadata.put(props.left, new BlockMetadata(props.right, Collections.emptyList()));
+                    blockMetadata.put(props.left, props.right);
             }
             return Futures.of(res);
         } catch (Exception e) {
@@ -618,17 +623,14 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<Pair<Integer, List<Cid>>> getLinksAndSize(Cid block, String auth) {
-        if (block.isRaw()) {
-            return getSize(block)
-                    .thenApply(s -> new Pair<>(s.orElse(0), Collections.emptyList()));
-        }
+    public CompletableFuture<BlockMetadata> getBlockMetadata(Cid block, String auth) {
+        Optional<BlockMetadata> cached = blockMetadata.get(block);
+        if (cached.isPresent())
+            return Futures.of(cached.get());
         Optional<byte[]> data = getRaw(block, Optional.empty(), "", false, Optional.empty()).join();
-        List<Cid> links = data.map(CborObject::fromByteArray)
-                .map(cbor -> cbor.links().stream().map(c -> (Cid) c).collect(Collectors.toList()))
-                .orElse(Collections.emptyList());
-        int size = data.map(a -> a.length).orElse(0);
-        return Futures.of(new Pair<>(size, links));
+        if (data.isEmpty())
+            throw new IllegalStateException("Block not present locally: " + block);
+        return Futures.of(blockMetadata.put(block, data.get()));
     }
 
     @Override
@@ -828,7 +830,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         JdbcIpnsAndSocial rawPointers = new JdbcIpnsAndSocial(database, sqlCommands);
         Supplier<Connection> usageDb = Main.getDBConnector(a, "space-usage-sql-file");
         UsageStore usageStore = new JdbcUsageStore(usageDb, sqlCommands);
-        File storeFile = new File("blockmetadata.sql");
+        File storeFile = new File("blockmetadata-v2.sql");
         String sqlFilePath = storeFile.getPath();
         Connection memory = Sqlite.build(sqlFilePath);
         Connection instance = new Sqlite.UncloseableConnection(memory);
