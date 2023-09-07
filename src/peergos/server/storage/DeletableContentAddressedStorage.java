@@ -1,5 +1,6 @@
 package peergos.server.storage;
 
+import peergos.server.util.*;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.Cid;
@@ -20,7 +21,7 @@ import java.util.stream.*;
  */
 public interface DeletableContentAddressedStorage extends ContentAddressedStorage {
 
-    ForkJoinPool usagePool = new ForkJoinPool(100);
+    ForkJoinPool usagePool = Threads.newPool(100, "Usage-updater-");
 
     Stream<Cid> getAllBlockHashes();
 

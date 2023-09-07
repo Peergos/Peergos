@@ -257,11 +257,11 @@ public class UserService {
                 basicAuth, local, host, nodeId, false);
         addHandler(localhostServer, tlsServer, UI_URL, handler, basicAuth, local, host, nodeId, true);
 
-        localhostServer.setExecutor(Executors.newFixedThreadPool(handlerPoolSize));
+        localhostServer.setExecutor(Threads.newPool(handlerPoolSize, "api-handler-"));
         localhostServer.start();
 
         if (tlsServer != null) {
-            tlsServer.setExecutor(Executors.newFixedThreadPool(handlerPoolSize));
+            tlsServer.setExecutor(Threads.newPool(handlerPoolSize, "api-handler-"));
             tlsServer.start();
         }
 

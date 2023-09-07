@@ -21,7 +21,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.Executors;
 import java.util.logging.*;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -316,7 +315,7 @@ public class IpfsWrapper implements AutoCloseable {
         try {
             ipfsWrapper.apiServer = HttpServer.create(localAPIAddress, maxConnectionQueue);
             ipfsWrapper.apiServer.createContext(APIHandler.API_URL, new APIHandler(ipfsWrapper.embeddedIpfs));
-            ipfsWrapper.apiServer.setExecutor(Executors.newFixedThreadPool(handlerThreads));
+            ipfsWrapper.apiServer.setExecutor(Threads.newPool(handlerThreads, "Nabu-api-handler-"));
             ipfsWrapper.apiServer.start();
 
             io.ipfs.multiaddr.MultiAddress p2pAddress = config.addresses.gatewayAddress;
@@ -326,7 +325,7 @@ public class IpfsWrapper implements AutoCloseable {
             ipfsWrapper.p2pServer.createContext(HttpProxyService.API_URL, new HttpProxyHandler(
                     new HttpProxyService(ipfsWrapper.embeddedIpfs.node, ipfsWrapper.embeddedIpfs.p2pHttp.get(),
                             ipfsWrapper.embeddedIpfs.dht)));
-            ipfsWrapper.p2pServer.setExecutor(Executors.newFixedThreadPool(handlerThreads));
+            ipfsWrapper.p2pServer.setExecutor(Threads.newPool(handlerThreads, "Nabu-proxy-handler-"));
             ipfsWrapper.p2pServer.start();
         } catch (IOException ioe) {
             throw new IllegalStateException("Unable to start Server: " + ioe);
