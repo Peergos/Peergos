@@ -30,12 +30,14 @@ public class LazyInputStreamCombiner implements AsyncReader {
     private final Map<Long, CompletableFuture<Boolean>> inProgress = new ConcurrentHashMap<>();
     private final int nBufferedChunks;
     private long globalIndex; // index of beginning of current chunk in file
+    private byte[] currentChunk;
+    private AbsoluteCapability currentNextChunkPointer;
     private int index; // index within current chunk
 
     public LazyInputStreamCombiner(WriterData version,
                                    long globalIndex,
                                    byte[] chunk,
-                                   Location nextChunkPointer,
+                                   Location nextChunkLoc,
                                    Optional<Bat> nextChunkBat,
                                    byte[] originalChunk,
                                    byte[] originalChunkLocation,
@@ -63,8 +65,10 @@ public class LazyInputStreamCombiner implements AsyncReader {
         this.originalChunkBat = originalChunkBat;
         this.streamSecret = streamSecret;
         this.originalNextPointer = AbsoluteCapability.build(originalNextChunkPointer, originalNextChunkBat, baseKey);
-        bufferedChunks.put(globalIndex, new Pair<>(chunk, AbsoluteCapability.build(nextChunkPointer, nextChunkBat, baseKey)));
         this.globalIndex = globalIndex;
+        this.currentChunk = chunk;
+        this.currentNextChunkPointer = AbsoluteCapability.build(nextChunkLoc, nextChunkBat, baseKey);
+        bufferedChunks.put(globalIndex, new Pair<>(chunk, this.currentNextChunkPointer));
         this.index = 0;
         this.nBufferedChunks = nBufferedChunks;
     }
@@ -234,16 +238,12 @@ public class LazyInputStreamCombiner implements AsyncReader {
         return reset().thenCompose(x -> ((LazyInputStreamCombiner)x).skip(seek));
     }
 
-    private byte[] currentChunk() {
-        return bufferedChunks.get(globalIndex).left;
-    }
-
     private AbsoluteCapability nextChunkPointer() {
         return bufferedChunks.get(globalIndex).right;
     }
 
-    private int bytesReady() {
-        return this.currentChunk().length - this.index;
+    private synchronized int bytesReady() {
+        return currentChunk.length - index;
     }
 
     public void close() {}
@@ -252,9 +252,11 @@ public class LazyInputStreamCombiner implements AsyncReader {
         bufferedChunks.put(0L, new Pair<>(originalChunk, originalNextPointer));
     }
 
-    public CompletableFuture<AsyncReader> reset() {
+    public synchronized CompletableFuture<AsyncReader> reset() {
         resetBuffer();
         this.globalIndex = 0;
+        this.currentChunk = originalChunk;
+        this.currentNextChunkPointer = originalNextPointer;
         this.index = 0;
         return CompletableFuture.completedFuture(this);
     }
@@ -269,8 +271,10 @@ public class LazyInputStreamCombiner implements AsyncReader {
     public CompletableFuture<Integer> readIntoArray(byte[] res, int offset, int length) {
         int available = bytesReady();
         int toRead = Math.min(available, length);
-        System.arraycopy(currentChunk(), index, res, offset, toRead);
-        index += toRead;
+        synchronized (this) {
+            System.arraycopy(currentChunk, index, res, offset, toRead);
+            index += toRead;
+        }
         long globalOffset = globalIndex + index;
 
         prefetch(5);
@@ -289,6 +293,9 @@ public class LazyInputStreamCombiner implements AsyncReader {
         return getChunk(nextChunkPointer(), nextChunk, nextChunkSize).thenCompose(done -> {
             index = 0;
             globalIndex = nextChunk;
+            Pair<byte[], AbsoluteCapability> current = bufferedChunks.get(globalIndex);
+            currentChunk = current.left;
+            currentNextChunkPointer = current.right;
             ensureBufferWithinLimit();
             return this.readIntoArray(res, offset + toRead, length - toRead).thenApply(bytesRead -> bytesRead + toRead);
         });
@@ -307,12 +314,14 @@ public class LazyInputStreamCombiner implements AsyncReader {
         }
     }
 
-    private void updateState(int index,
-                             long globalIndex,
-                             byte[] chunk,
-                             AbsoluteCapability nextChunkPointer) {
+    private synchronized void updateState(int index,
+                                          long globalIndex,
+                                          byte[] chunk,
+                                          AbsoluteCapability nextChunkPointer) {
         this.index = index;
         this.globalIndex = globalIndex;
+        this.currentChunk = chunk;
+        this.currentNextChunkPointer = nextChunkPointer;
         bufferedChunks.put(globalIndex, new Pair<>(chunk, nextChunkPointer));
     }
 }
