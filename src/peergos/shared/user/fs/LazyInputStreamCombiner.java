@@ -10,6 +10,7 @@ import peergos.shared.util.*;
 import java.io.*;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.stream.*;
 
 public class LazyInputStreamCombiner implements AsyncReader {
     private final WriterData version;
@@ -26,8 +27,8 @@ public class LazyInputStreamCombiner implements AsyncReader {
     private final Optional<byte[]> streamSecret;
     private final AbsoluteCapability originalNextPointer;
 
-    private final SortedMap<Long, Pair<byte[], AbsoluteCapability>> bufferedChunks = new TreeMap<>(); // and next chunk pointer
-    private final Map<Long, CompletableFuture<Boolean>> inProgress = new ConcurrentHashMap<>();
+    private final Map<Long, Pair<byte[], AbsoluteCapability>> bufferedChunks = new ConcurrentHashMap<>(); // and next chunk pointer
+    private final Map<Long, CompletableFuture<Pair<byte[], AbsoluteCapability>>> inProgress = new ConcurrentHashMap<>();
     private final int nBufferedChunks;
     private long globalIndex; // index of beginning of current chunk in file
     private byte[] currentChunk;
@@ -122,10 +123,11 @@ public class LazyInputStreamCombiner implements AsyncReader {
         }
     }
 
-    private CompletableFuture<Boolean> getChunk(AbsoluteCapability cap, long chunkOffset, int len) {
-        if (bufferedChunks.containsKey(chunkOffset))
-            return Futures.of(true);
-        CompletableFuture<Boolean> pending = inProgress.get(chunkOffset);
+    private CompletableFuture<Pair<byte[], AbsoluteCapability>> getChunk(AbsoluteCapability cap, long chunkOffset, int len) {
+        Pair<byte[], AbsoluteCapability> existing = bufferedChunks.get(chunkOffset);
+        if (existing != null)
+            return Futures.of(existing);
+        CompletableFuture<Pair<byte[], AbsoluteCapability>> pending = inProgress.get(chunkOffset);
         if (pending != null)
             return pending;
         inProgress.put(chunkOffset, new CompletableFuture<>());
@@ -134,13 +136,14 @@ public class LazyInputStreamCombiner implements AsyncReader {
         return getSubsequentMetadata(cap, 0)
                 .thenCompose(access -> getChunk(access, cap.getMapKey(), cap.bat, len))
                 .thenApply(p -> {
-                    bufferedChunks.put(chunkOffset, new Pair<>(p.left, p.right));
-                    inProgress.remove(chunkOffset).complete(true);
+                    Pair<byte[], AbsoluteCapability> res = new Pair<>(p.left, p.right);
+                    bufferedChunks.put(chunkOffset, res);
+                    inProgress.remove(chunkOffset).complete(res);
                     System.out.println("Completed chunk " + (chunkOffset / Chunk.MAX_SIZE));
-                    return true;
+                    return res;
                 }).exceptionally(t -> {
                     inProgress.remove(chunkOffset).completeExceptionally(t);
-                    return true;
+                    throw new RuntimeException(t);
                 });
     }
 
@@ -290,10 +293,9 @@ public class LazyInputStreamCombiner implements AsyncReader {
                 Chunk.MAX_SIZE :
                 (int) (totalLength - globalOffset);
         long nextChunk = globalIndex + Chunk.MAX_SIZE;
-        return getChunk(nextChunkPointer(), nextChunk, nextChunkSize).thenCompose(done -> {
+        return getChunk(nextChunkPointer(), nextChunk, nextChunkSize).thenCompose(current -> {
             index = 0;
             globalIndex = nextChunk;
-            Pair<byte[], AbsoluteCapability> current = bufferedChunks.get(globalIndex);
             currentChunk = current.left;
             currentNextChunkPointer = current.right;
             ensureBufferWithinLimit();
@@ -303,11 +305,14 @@ public class LazyInputStreamCombiner implements AsyncReader {
 
     private void ensureBufferWithinLimit() {
         if (bufferedChunks.size() > nBufferedChunks) {
-            long first = bufferedChunks.firstKey();
+            List<Long> sorted = bufferedChunks.keySet().stream()
+                    .sorted()
+                    .collect(Collectors.toList());
+            long first = sorted.get(0);
             if (first < globalIndex)
                 bufferedChunks.remove(first);
             else {
-                long last = bufferedChunks.lastKey();
+                long last = sorted.get(sorted.size() - 1);
                 if (last > globalIndex)
                     bufferedChunks.remove(last);
             }
