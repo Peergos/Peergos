@@ -569,7 +569,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         return put(owner, blocks, true, tid);
     }
 
-    private final ForkJoinPool bulkPutPool = new ForkJoinPool(1_000);
+    private final ForkJoinPool bulkPutPool = Threads.newPool(1_000, "S3-bulk-put-");
 
     private CompletableFuture<List<Cid>> put(PublicKeyHash owner,
                                              List<byte[]> blocks,

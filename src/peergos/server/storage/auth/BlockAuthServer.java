@@ -23,7 +23,7 @@ public class BlockAuthServer {
                                      int handlerPoolSize) throws IOException {
         HttpServer localhostServer = HttpServer.create(listen, connectionBacklog);
         localhostServer.createContext("/", ex -> handle(ex, author));
-        localhostServer.setExecutor(Executors.newFixedThreadPool(handlerPoolSize));
+        localhostServer.setExecutor(Threads.newPool(handlerPoolSize, "Block-auth-handler-"));
         localhostServer.start();
     }
 

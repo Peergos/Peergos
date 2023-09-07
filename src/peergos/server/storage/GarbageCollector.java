@@ -2,6 +2,7 @@ package peergos.server.storage;
 
 import peergos.server.corenode.*;
 import peergos.server.space.*;
+import peergos.server.util.*;
 import peergos.shared.*;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.asymmetric.*;
@@ -109,7 +110,7 @@ public class GarbageCollector {
         BitSet reachable = new BitSet(present.size());
 
         int markParallelism = 10;
-        ForkJoinPool markPool = new ForkJoinPool(markParallelism);
+        ForkJoinPool markPool = Threads.newPool(markParallelism, "GC-mark-");
         List<ForkJoinTask<Boolean>> usageMarked = usageRoots.stream()
                 .map(r -> markPool.submit(() -> markReachable(storage, (Cid)r, toIndex, reachable, metadata)))
                 .collect(Collectors.toList());
@@ -137,7 +138,7 @@ public class GarbageCollector {
         snapshotSaver.apply(allPointers.entrySet().stream()).join();
 
         int deleteParallelism = 4;
-        ForkJoinPool pool = new ForkJoinPool(deleteParallelism);
+        ForkJoinPool pool = Threads.newPool(deleteParallelism, "GC-delete-");
         int batchSize = present.size() / deleteParallelism;
         AtomicLong progressCounter = new AtomicLong(0);
         List<ForkJoinTask<Pair<Long, Long>>> futures = IntStream.range(0, deleteParallelism)

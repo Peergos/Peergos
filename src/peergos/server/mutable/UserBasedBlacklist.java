@@ -1,6 +1,7 @@
 package peergos.server.mutable;
 import java.util.logging.*;
-import peergos.server.util.Logging;
+
+import peergos.server.util.*;
 
 import peergos.shared.corenode.*;
 import peergos.shared.crypto.hash.*;
@@ -25,7 +26,7 @@ public class UserBasedBlacklist implements PublicKeyBlackList {
     private final ContentAddressedStorage dht;
     private final Hasher hasher;
     private final Path source;
-    private final ForkJoinPool pool = new ForkJoinPool(1);
+    private final ForkJoinPool pool = Threads.newPool(1, "User-blocklist-");
     private long lastModified, lastReloaded;
 
     public UserBasedBlacklist(Path source,

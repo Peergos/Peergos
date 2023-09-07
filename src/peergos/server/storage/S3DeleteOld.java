@@ -86,7 +86,7 @@ public class S3DeleteOld {
                                      AtomicLong doneCounter,
                                      int parallelism,
                                      Hasher h) {
-        ForkJoinPool pool = new ForkJoinPool(parallelism);
+        ForkJoinPool pool = Threads.newPool(parallelism, "S3-delete-");
         System.out.println("Processing objects...");
         applyToAllInRange(obj -> {
                 while (pool.getQueuedSubmissionCount() > 100)
