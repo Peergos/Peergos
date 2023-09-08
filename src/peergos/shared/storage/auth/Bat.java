@@ -104,6 +104,13 @@ public class Bat implements Cborable {
         return ((CborObject.CborList) CborObject.read(bin, block.length)).map(BatId::fromCbor);
     }
 
+    public static List<BatId> getCborBlockBats(byte[] data) {
+        CborObject cbor = CborObject.fromByteArray(data);
+        if (! (cbor instanceof CborObject.CborMap))
+            return Collections.emptyList();
+        return ((CborObject.CborMap) cbor).getList("bats", BatId::fromCbor);
+    }
+
     public static byte[] removeRawBlockBatPrefix(byte[] block) {
         int magicLength = RAW_BLOCK_MAGIC_PREFIX.length;
         if (! ArrayOps.equalArrays(block, 0, magicLength, RAW_BLOCK_MAGIC_PREFIX, 0, magicLength))

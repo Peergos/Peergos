@@ -1,5 +1,6 @@
 package peergos.server.storage.auth;
 
+import peergos.server.util.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.storage.auth.*;
@@ -11,7 +12,67 @@ import java.util.concurrent.*;
 
 public interface BlockRequestAuthoriser {
 
-    CompletableFuture<Boolean> allowRead(Cid block, byte[] blockData, Cid sourceNodeId, String auth);
+    default CompletableFuture<Boolean> allowRead(Cid block, byte[] blockData, Cid sourceNodeId, String auth) {
+        List<BatId> batIds = block.isRaw() ?
+                Bat.getRawBlockBats(blockData) :
+                block.codec == Cid.Codec.DagCbor ?
+                        Bat.getCborBlockBats(blockData) :
+                        Collections.emptyList();
+        return allowRead(block, batIds, sourceNodeId, auth);
+    }
+
+    CompletableFuture<Boolean> allowRead(Cid block, List<BatId> blockBats, Cid sourceNodeId, String auth);
+
+    static boolean allowRead(Cid b,
+                             List<BatId> batids,
+                             Cid s,
+                             Optional<BlockAuth> auth,
+                             BatCave batStore,
+                             Optional<BatWithId> instanceBat,
+                             Hasher h) {
+        Logging.LOG().fine("Allow: " + b + ", auth=" + auth + ", from: " + s);
+        if (batids.isEmpty()) // public block
+            return true;
+        if (auth.isEmpty()) {
+            Logging.LOG().info("INVALID AUTH: EMPTY");
+            return false;
+        }
+        BlockAuth blockAuth = auth.get();
+        if (b.isRaw()) {
+            for (BatId bid : batids) {
+                Optional<Bat> bat = bid.getInline()
+                        .or(() -> bid.id.equals(blockAuth.batId) ?
+                                batStore.getBat(bid) :
+                                Optional.empty());
+                if (bat.isPresent() && BlockRequestAuthoriser.isValidAuth(blockAuth, b, s, bat.get(), h))
+                    return true;
+            }
+            if (instanceBat.isPresent()) {
+                if (BlockRequestAuthoriser.isValidAuth(blockAuth, b, s, instanceBat.get().bat, h))
+                    return true;
+            }
+            return false;
+        } else if (b.codec == Cid.Codec.DagCbor) {
+            for (BatId bid : batids) {
+                Optional<Bat> bat = bid.getInline()
+                        .or(() -> bid.id.equals(blockAuth.batId) ?
+                                batStore.getBat(bid) :
+                                Optional.empty());
+                if (bat.isPresent() && BlockRequestAuthoriser.isValidAuth(blockAuth, b, s, bat.get(), h))
+                    return true;
+            }
+            if (instanceBat.isPresent()) {
+                if (BlockRequestAuthoriser.isValidAuth(blockAuth, b, s, instanceBat.get().bat, h))
+                    return true;
+            }
+            if (! batids.isEmpty()) {
+                String reason = BlockRequestAuthoriser.invalidReason(blockAuth, b, s, batids, h);
+                Logging.LOG().info("INVALID AUTH: source: " + s + ", cid: " + b + " reason: " + reason);
+            }
+            return false;
+        }
+        return false;
+    }
 
     static boolean isValidAuth(BlockAuth auth, Cid block, Cid sourceNode, Bat bat, Hasher h) {
         S3Request req = new S3Request("GET", sourceNode.toBase58(), "api/v0/block/get?arg=" + block.toBase58(), S3Request.UNSIGNED,

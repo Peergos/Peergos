@@ -181,17 +181,19 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
 
         if (! blocks.stream().allMatch(c -> hasBlock(c.hash)))
             return Futures.errored(new IllegalStateException("Blocks not present locally"));
+        if (! blocks.stream().allMatch(c -> c.hash.isRaw()))
+            return Futures.errored(new IllegalStateException("Can only auth read for raw blocks, not cbor!"));
 
-        // retrieve all blocks and verify BATs in parallel
-        List<CompletableFuture<Optional<byte[]>>> data = blocks.stream()
+        // verify all BATs in parallel
+        List<CompletableFuture<Boolean>> auths = blocks.stream()
                 .parallel()
-                .map(b -> authRaw(b.hash, b.hash.isRaw() ?
-                        Optional.of(new Pair<>(0, Bat.MAX_RAW_BLOCK_PREFIX_SIZE - 1)) :
-                        Optional.empty(), b.bat, id, hasher)
-                        .thenApply(bopt -> {
-                            if (bopt.isPresent())
-                                blockMetadata.put(b.hash, bopt.get());
-                            return bopt;
+                .map(b -> getBlockMetadata(b.hash, "")
+                        .thenApply(meta -> {
+                            String auth = b.bat.map(bat -> bat.bat.generateAuth(b.hash, id, 300, S3Request.currentDatetime(), bat.id, hasher)
+                                    .thenApply(BlockAuth::encode).join()).orElse("");
+                            if (!authoriser.allowRead(b.hash, meta.batids, id, auth).join())
+                                throw new IllegalStateException("Unauthorised!");
+                            return true;
                         }))
                 .collect(Collectors.toList());
 
@@ -199,7 +201,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
             String s3Key = hashToKey(block.hash);
             res.add(S3Request.preSignGet(folder + s3Key, Optional.of(600), Optional.empty(), S3AdminRequests.asAwsDate(ZonedDateTime.now()), host, region, accessKeyId, secretKey, useHttps, hasher).join());
         }
-        for (CompletableFuture<Optional<byte[]>> fut : data) {
+        for (CompletableFuture<Boolean> fut : auths) {
             fut.join(); // Any invalids BATs will cause this to throw
         }
         for (int i=0; i < blocks.size(); i++)

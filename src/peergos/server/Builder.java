@@ -250,67 +250,15 @@ public class Builder {
         }
     }
 
-
-    private static CompletableFuture<Boolean> ALLOW = Futures.of(true);
-    private static CompletableFuture<Boolean> BLOCK = Futures.of(false);
     public static BlockRequestAuthoriser blockAuthoriser(Args a,
                                                          BatCave batStore,
                                                          Hasher hasher) {
         Optional<BatWithId> instanceBat = a.getOptionalArg("instance-bat").map(BatWithId::decode);
-        return (b, d, s, auth) -> {
-            Logging.LOG().fine("Allow: " + b + ", auth=" + auth + ", from: " + s);
-            if (b.isRaw()) {
-                List<BatId> batids = Bat.getRawBlockBats(d);
-                if (batids.isEmpty()) // legacy raw block
-                    return ALLOW;
-                if (auth.isEmpty())
-                    return BLOCK;
-                BlockAuth blockAuth = BlockAuth.fromString(auth);
-                for (BatId bid : batids) {
-                    Optional<Bat> bat = bid.getInline()
-                            .or(() -> bid.id.equals(blockAuth.batId) ?
-                                    batStore.getBat(bid) :
-                                    Optional.empty());
-                    if (bat.isPresent() && BlockRequestAuthoriser.isValidAuth(blockAuth, b, s, bat.get(), hasher))
-                        return ALLOW;
-                }
-                if (instanceBat.isPresent()) {
-                    if (BlockRequestAuthoriser.isValidAuth(blockAuth, b, s, instanceBat.get().bat, hasher))
-                        return ALLOW;
-                }
-                return BLOCK;
-            } else if (b.codec == Cid.Codec.DagCbor) {
-                CborObject block = CborObject.fromByteArray(d);
-                if (block instanceof CborObject.CborMap) {
-                    if (((CborObject.CborMap) block).containsKey("bats")) {
-                        List<BatId> batids = ((CborObject.CborMap) block).getList("bats", BatId::fromCbor);
-                        if (auth.isEmpty()) {
-                            Logging.LOG().info("INVALID AUTH: EMPTY");
-                            return BLOCK;
-                        }
-                        BlockAuth blockAuth = BlockAuth.fromString(auth);
-                        for (BatId bid : batids) {
-                            Optional<Bat> bat = bid.getInline()
-                                    .or(() -> bid.id.equals(blockAuth.batId) ?
-                                            batStore.getBat(bid) :
-                                            Optional.empty());
-                            if (bat.isPresent() && BlockRequestAuthoriser.isValidAuth(blockAuth, b, s, bat.get(), hasher))
-                                return ALLOW;
-                        }
-                        if (instanceBat.isPresent()) {
-                            if (BlockRequestAuthoriser.isValidAuth(blockAuth, b, s, instanceBat.get().bat, hasher))
-                                return ALLOW;
-                        }
-                        if (! batids.isEmpty()) {
-                            String reason = BlockRequestAuthoriser.invalidReason(blockAuth, b, s, batids, hasher);
-                            Logging.LOG().info("INVALID AUTH: source: " + s + ", cid: " + b + " reason: " + reason);
-                        }
-                        return BLOCK;
-                    } else return ALLOW; // This is a public block
-                } else // e.g. inner CHAMP nodes
-                    return ALLOW;
-            }
-            return BLOCK;
+        return (b, blockBats, s, auth) -> {
+            Optional<BlockAuth> blockAuth = auth.isEmpty() ?
+                    Optional.empty() :
+                    Optional.of(BlockAuth.fromString(auth));
+            return Futures.of(BlockRequestAuthoriser.allowRead(b, blockBats, s, blockAuth, batStore, instanceBat, hasher));
         };
     }
 
