@@ -38,14 +38,13 @@ public class SqliteBlockMetadataTest {
         String sqlFilePath = storeFile.getPath();
         Connection memory = Sqlite.build(sqlFilePath);
         Connection instance = new Sqlite.UncloseableConnection(memory);
-        SqliteBlockMetadataStorage store = new SqliteBlockMetadataStorage(() -> instance, new SqliteCommands(), 1024 * 1024, storeFile);
+        SqliteBlockMetadataStorage store = new SqliteBlockMetadataStorage(() -> instance, new SqliteCommands(), storeFile);
         long initialSize = store.currentSize();
-        assertTrue(initialSize == 16384);
+        assertTrue(initialSize == 12288);
         Cid cid = randomCid();
         BlockMetadata meta = new BlockMetadata(10240, randomCids(20), Collections.emptyList());
         store.put(cid, meta);
         long sizeWithBlock = store.currentSize();
-        store.ensureWithinSize();
 
         // add same cid again
         store.put(cid, meta);
@@ -58,16 +57,14 @@ public class SqliteBlockMetadataTest {
         String sqlFilePath = storeFile.getPath();
         Connection memory = Sqlite.build(sqlFilePath);
         Connection instance = new Sqlite.UncloseableConnection(memory);
-        int maxFileSize = 1024 * 1024;
-        SqliteBlockMetadataStorage store = new SqliteBlockMetadataStorage(() -> instance, new SqliteCommands(), maxFileSize, storeFile);
+        SqliteBlockMetadataStorage store = new SqliteBlockMetadataStorage(() -> instance, new SqliteCommands(), storeFile);
         long initialSize = store.currentSize();
-        assertTrue(initialSize == 16384);
+        assertTrue(initialSize == 12288);
         for (int i=0; i < 1500; i++)
             store.put(randomCid(), new BlockMetadata(10240, randomCids(20), Collections.emptyList()));
         long sizeWithBlocks = store.currentSize();
-        assertTrue(sizeWithBlocks > maxFileSize);
-        store.ensureWithinSize();
+        store.compact();
         long sizeAfterCompaction = store.currentSize();
-        assertTrue(sizeAfterCompaction < 0.6 * maxFileSize);
+        assertTrue(sizeAfterCompaction < sizeWithBlocks);
     }
 }

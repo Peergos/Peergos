@@ -18,49 +18,20 @@ public class SqliteBlockMetadataStorage implements BlockMetadataStore {
     private static final Logger LOG = Logging.LOG();
     private static final String CREATE = "INSERT OR IGNORE INTO blockmetadata (cid, size, links, batids, accesstime) VALUES(?, ?, ?, ?, ?)";
     private static final String GET_INFO = "SELECT * FROM blockmetadata WHERE cid = ?;";
-    private static final String OLDEST = "SELECT * FROM blockmetadata ORDER BY accesstime;";
     private static final String REMOVE = "DELETE FROM blockmetadata where cid = ?;";
     private static final String VACUUM = "VACUUM;";
 
     private Supplier<Connection> conn;
-    private final long maxFileSize;
     private final File sqlFile;
 
-    public SqliteBlockMetadataStorage(Supplier<Connection> conn, SqlSupplier commands, long maxFileSize, File sqlFile) {
+    public SqliteBlockMetadataStorage(Supplier<Connection> conn, SqlSupplier commands, File sqlFile) {
         this.conn = conn;
-        this.maxFileSize = maxFileSize;
         this.sqlFile = sqlFile;
         init(commands);
     }
 
     public long currentSize() {
         return sqlFile.length();
-    }
-
-    public void ensureWithinSize() {
-        if (maxFileSize == 0)
-            return;
-        long currentSize = currentSize();
-        if (currentSize < maxFileSize * 0.9)
-            return;
-        long toRecover = currentSize / 2;
-        long recovered = 0;
-        try (Connection conn = getConnection();
-             PreparedStatement stmt = conn.prepareStatement(OLDEST)) {
-            ResultSet rs = stmt.executeQuery();
-            while (rs.next() && recovered < toRecover) {
-                byte[] rawCid = rs.getBytes("cid");
-                recovered += rawCid.length;
-                Cid block = Cid.cast(rawCid);
-                byte[] rawLinks = rs.getBytes("links");
-                recovered += rawLinks.length;
-                remove(block);
-            }
-        } catch (SQLException sqe) {
-            LOG.log(Level.WARNING, sqe.getMessage(), sqe);
-            throw new RuntimeException(sqe);
-        }
-        compact();
     }
 
     public void compact() {

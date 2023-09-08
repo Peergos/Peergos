@@ -834,7 +834,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         String sqlFilePath = storeFile.getPath();
         Connection memory = Sqlite.build(sqlFilePath);
         Connection instance = new Sqlite.UncloseableConnection(memory);
-        SqliteBlockMetadataStorage store = new SqliteBlockMetadataStorage(() -> instance, new SqliteCommands(), 0, storeFile);
+        SqliteBlockMetadataStorage store = new SqliteBlockMetadataStorage(() -> instance, new SqliteCommands(), storeFile);
         s3.collectGarbage(rawPointers, usageStore, store);
     }
 
