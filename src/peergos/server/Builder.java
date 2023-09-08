@@ -244,7 +244,9 @@ public class Builder {
                         hasher, p2pBlockRetriever, bloomTarget);
                 return new MetadataCachingStorage(s3, metadata, hasher);
             } else {
-                return new FileContentAddressedStorage(blockstorePath(a), transactions, authoriser, hasher);
+                SqliteBlockMetadataStorage metadata = buildBlockMetadata(a);
+                FileContentAddressedStorage fileBacked = new FileContentAddressedStorage(blockstorePath(a), transactions, authoriser, hasher);
+                return new MetadataCachingStorage(fileBacked, metadata, hasher);
             }
         }
     }
