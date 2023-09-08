@@ -13,14 +13,14 @@ runs:
         echo 'MINIO_ROOT_USER=test' >> $GITHUB_ENV
         echo 'MINIO_ROOT_PASSWORD=testdslocal' >> $GITHUB_ENV
         if [[ '${{ runner.os }}' == 'Linux' ]]; then
-          echo '::set-output name=release::linux-amd64'
-          echo '::set-output name=home::/usr/local/bin'
+          echo 'release=linux-amd64' >> $GITHUB_OUTPUT
+          echo 'home=/usr/local/bin' >> $GITHUB_OUTPUT
         elif [[ '${{ runner.os }}' == 'Windows' ]]; then
-          echo '::set-output name=release::windows-amd64'
-          echo "::set-output name=home::/usr/bin"
+          echo 'release=windows-amd64' >> $GITHUB_OUTPUT
+          echo "home=/usr/bin" >> $GITHUB_OUTPUT
         elif [[ '${{ runner.os }}' == 'macOS' ]]; then
-          echo '::set-output name=release::darwin-amd64'
-          echo '::set-output name=home::/usr/local/bin'
+          echo 'release=darwin-amd64' >> $GITHUB_OUTPUT
+          echo 'home=/usr/local/bin' >> $GITHUB_OUTPUT
         fi
     - name: Download minio
       shell: bash
