@@ -221,7 +221,8 @@ public class MultiNodeNetworkTests {
         long usageVia2 = postMigration.getSpaceUsage().join();
         // Note we currently don't remove the old pointer after changing password,
         // so there is a 5kib reduction after migration per password change
-        Assert.assertTrue(usageVia2 == usageVia1 || (nPasswordChanges > 0 && usageVia2 < usageVia1));
+        Assert.assertTrue("Usage after migrate: " + usageVia2 + ", usage before: " + usageVia1,
+                usageVia2 == usageVia1 || (nPasswordChanges > 0 && usageVia2 < usageVia1));
 
         // check pending followRequest was transferred
         List<FollowRequestWithCipherText> followRequests = postMigration.processFollowRequests().join();

@@ -1,5 +1,6 @@
 package peergos.server.storage;
 
+import peergos.shared.cbor.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.io.ipfs.multihash.*;
@@ -69,8 +70,11 @@ public class MetadataCachingStorage extends DelegatingDeletableStorage {
         Optional<BlockMetadata> meta = metadata.get(block);
         if (meta.isPresent())
             return Futures.of(meta.get());
-        return target.getRaw(block, auth)
-                .thenApply(dataOpt -> metadata.put(block, dataOpt.get()));
+        return target.getBlockMetadata(block, auth)
+                .thenApply(blockmeta -> {
+                    metadata.put(block, blockmeta);
+                    return blockmeta;
+                });
     }
 
     private void cacheBlockMetadata(byte[] block, boolean isRaw) {
@@ -85,6 +89,14 @@ public class MetadataCachingStorage extends DelegatingDeletableStorage {
                 cacheBlockMetadata(block, false);
             }
             return blocks;
+        });
+    }
+
+    @Override
+    public CompletableFuture<Optional<CborObject>> get(Cid hash, Optional<BatWithId> bat) {
+        return target.get(hash, bat).thenApply(res -> {
+            res.ifPresent(cbor -> cacheBlockMetadata(cbor.toByteArray(), hash.isRaw()));
+            return res;
         });
     }
 

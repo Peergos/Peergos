@@ -627,9 +627,18 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         Optional<BlockMetadata> cached = blockMetadata.get(block);
         if (cached.isPresent())
             return Futures.of(cached.get());
-        Optional<byte[]> data = getRaw(block, Optional.empty(), "", false, Optional.empty()).join();
+        Optional<byte[]> data = getRaw(block, block.isRaw() ?
+                Optional.of(new Pair<>(0, Bat.MAX_RAW_BLOCK_PREFIX_SIZE - 1)) :
+                Optional.empty(), "", false, Optional.empty()).join();
         if (data.isEmpty())
             throw new IllegalStateException("Block not present locally: " + block);
+        if (block.isRaw()) {
+            // we should avoid this by populated the metadata store, as it means two S3 calls, a ranged GET and a HEAD
+            int size = getSize(block).join().get();
+            BlockMetadata meta = new BlockMetadata(size, Collections.emptyList(), Bat.getRawBlockBats(data.get()));
+            blockMetadata.put(block, meta);
+            return Futures.of(meta);
+        }
         return Futures.of(blockMetadata.put(block, data.get()));
     }
 
