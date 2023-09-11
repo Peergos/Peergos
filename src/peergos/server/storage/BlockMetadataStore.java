@@ -15,6 +15,8 @@ public interface BlockMetadataStore {
 
     void remove(Cid block);
 
+    Stream<Cid> list();
+
     default BlockMetadata put(Cid block, byte[] data) {
         BlockMetadata meta = extractMetadata(block, data);
         put(block, meta);

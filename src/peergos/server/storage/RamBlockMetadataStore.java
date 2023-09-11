@@ -1,31 +1,36 @@
 package peergos.server.storage;
 
 import peergos.shared.io.ipfs.cid.*;
-import peergos.shared.util.*;
 
 import java.util.*;
+import java.util.stream.*;
 
 public class RamBlockMetadataStore implements BlockMetadataStore {
 
-    private final LRUCache<Cid, BlockMetadata> cache;
+    private final Map<Cid, BlockMetadata> store;
 
     public RamBlockMetadataStore() {
-        this.cache = new LRUCache<>(50_000);
+        this.store = new HashMap<>(50_000);
     }
 
     @Override
     public Optional<BlockMetadata> get(Cid block) {
-        return Optional.ofNullable(cache.get(block));
+        return Optional.ofNullable(store.get(block));
     }
 
     @Override
     public void put(Cid block, BlockMetadata meta) {
-        cache.put(block, meta);
+        store.put(block, meta);
     }
 
     @Override
     public void remove(Cid block) {
-        cache.remove(block);
+        store.remove(block);
+    }
+
+    @Override
+    public Stream<Cid> list() {
+        return store.keySet().stream();
     }
 
     @Override

@@ -19,6 +19,7 @@ public class SqliteBlockMetadataStorage implements BlockMetadataStore {
     private static final String CREATE = "INSERT OR IGNORE INTO blockmetadata (cid, size, links, batids, accesstime) VALUES(?, ?, ?, ?, ?)";
     private static final String GET_INFO = "SELECT * FROM blockmetadata WHERE cid = ?;";
     private static final String REMOVE = "DELETE FROM blockmetadata where cid = ?;";
+    private static final String LIST = "SELECT cid FROM blockmetadata;";
     private static final String VACUUM = "VACUUM;";
 
     private Supplier<Connection> conn;
@@ -111,6 +112,22 @@ public class SqliteBlockMetadataStorage implements BlockMetadataStore {
                     .toByteArray());
             insert.setLong(5, System.currentTimeMillis());
             insert.executeUpdate();
+        } catch (SQLException sqe) {
+            LOG.log(Level.WARNING, sqe.getMessage(), sqe);
+            throw new RuntimeException(sqe);
+        }
+    }
+
+    @Override
+    public Stream<Cid> list() {
+        try (Connection conn = getConnection();
+             PreparedStatement stmt = conn.prepareStatement(LIST)) {
+            ResultSet rs = stmt.executeQuery();
+            List<Cid> res = new ArrayList<>();
+            while (rs.next()) {
+                res.add(Cid.cast(rs.getBytes("cid")));
+            }
+            return res.stream();
         } catch (SQLException sqe) {
             LOG.log(Level.WARNING, sqe.getMessage(), sqe);
             throw new RuntimeException(sqe);
