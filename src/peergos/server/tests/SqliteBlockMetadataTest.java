@@ -1,11 +1,14 @@
 package peergos.server.tests;
 
 import org.junit.*;
+import peergos.server.*;
 import peergos.server.sql.*;
 import peergos.server.storage.*;
 import peergos.server.util.*;
+import peergos.shared.*;
 import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.io.ipfs.multihash.*;
+import peergos.shared.storage.auth.*;
 
 import java.io.*;
 import java.nio.file.*;
@@ -18,6 +21,7 @@ import static org.junit.Assert.assertTrue;
 public class SqliteBlockMetadataTest {
 
     private static final Random r = new Random(666);
+    private static Crypto crypto = Main.initCrypto();
 
     private static Cid randomCid() {
         byte[] hash = new byte[32];
@@ -48,6 +52,13 @@ public class SqliteBlockMetadataTest {
 
         // add same cid again
         store.put(cid, meta);
+        Cid cid2 = randomCid();
+        BlockMetadata meta2 = new BlockMetadata(10240, randomCids(20),
+                List.of(BatId.inline(Bat.random(crypto.random)), BatId.inline(Bat.random(crypto.random))));
+        store.put(cid2, meta2);
+
+        List<Cid> ls = store.list().collect(Collectors.toList());
+        Assert.assertTrue(ls.size() == 2);
     }
 
     @Test
