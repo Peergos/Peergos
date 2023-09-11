@@ -243,8 +243,8 @@ public class FileContentAddressedStorage implements DeletableContentAddressedSto
     }
 
     @Override
-    public Stream<Pair<Cid, String>> getAllBlockHashVersions() {
-        return getAllBlockHashes().map(c -> new Pair<>(c, null));
+    public Stream<BlockVersion> getAllBlockHashVersions() {
+        return getAllBlockHashes().map(c -> new BlockVersion(c, null, true));
     }
 
     @Override

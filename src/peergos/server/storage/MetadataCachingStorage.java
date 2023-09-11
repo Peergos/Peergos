@@ -34,7 +34,7 @@ public class MetadataCachingStorage extends DelegatingDeletableStorage {
         return target.put(owner, writer, signedHashes, blocks, tid)
                 .thenApply(cids -> {
                     for (int i=0; i < cids.size(); i++)
-                        metadata.put(cids.get(i), blocks.get(i));
+                        metadata.put(cids.get(i), null, blocks.get(i));
                     return cids;
                 });
     }
@@ -44,7 +44,7 @@ public class MetadataCachingStorage extends DelegatingDeletableStorage {
         return target.putRaw(owner, writer, signedHashes, blocks, tid, progressCounter)
                 .thenApply(cids -> {
                     for (int i=0; i < cids.size(); i++)
-                        metadata.put(cids.get(i), blocks.get(i));
+                        metadata.put(cids.get(i), null, blocks.get(i));
                     return cids;
                 });
     }
@@ -72,14 +72,14 @@ public class MetadataCachingStorage extends DelegatingDeletableStorage {
             return Futures.of(meta.get());
         return target.getBlockMetadata(block, auth)
                 .thenApply(blockmeta -> {
-                    metadata.put(block, blockmeta);
+                    metadata.put(block, null, blockmeta);
                     return blockmeta;
                 });
     }
 
     private void cacheBlockMetadata(byte[] block, boolean isRaw) {
         Cid cid = hashToCid(block, isRaw, hasher).join();
-        metadata.put(cid, block);
+        metadata.put(cid, null, block);
     }
 
     @Override

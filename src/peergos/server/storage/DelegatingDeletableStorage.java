@@ -27,7 +27,7 @@ public class DelegatingDeletableStorage implements DeletableContentAddressedStor
     }
 
     @Override
-    public Stream<Pair<Cid, String>> getAllBlockHashVersions() {
+    public Stream<BlockVersion> getAllBlockHashVersions() {
         return target.getAllBlockHashVersions();
     }
 
@@ -57,7 +57,7 @@ public class DelegatingDeletableStorage implements DeletableContentAddressedStor
     }
 
     @Override
-    public void bulkDelete(List<Pair<Cid, String>> blocks) {
+    public void bulkDelete(List<BlockVersion> blocks) {
         target.bulkDelete(blocks);
     }
 

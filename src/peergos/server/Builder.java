@@ -197,12 +197,6 @@ public class Builder {
         }
     }
 
-    private static MetadataCachingStorage buildMetadataStorage(Args a,
-                                                               DeletableContentAddressedStorage target,
-                                                               Hasher hasher) {
-        return new MetadataCachingStorage(target, buildBlockMetadata(a), hasher);
-    }
-
     public static DeletableContentAddressedStorage buildLocalStorage(Args a,
                                                                      TransactionStore transactions,
                                                                      BlockRequestAuthoriser authoriser,
@@ -211,6 +205,7 @@ public class Builder {
         boolean enableGC = a.getBoolean("enable-gc", false);
         boolean useS3 = S3Config.useS3(a);
         JavaPoster ipfsApi = buildIpfsApi(a);
+        BlockMetadataStore meta = buildBlockMetadata(a);
         if (useIPFS) {
             DeletableContentAddressedStorage.HTTP ipfs = new DeletableContentAddressedStorage.HTTP(ipfsApi, false, hasher);
             if (useS3) {
@@ -219,12 +214,17 @@ public class Builder {
                 BlockStoreProperties props = buildS3Properties(a);
                 TransactionalIpfs p2pBlockRetriever = new TransactionalIpfs(ipfs, transactions, authoriser, ipfs.id().join(), hasher);
 
-                return buildMetadataStorage(a, new S3BlockStorage(config, ipfs.id().join(), props, transactions, authoriser,
-                        new RamBlockMetadataStore(), hasher, p2pBlockRetriever, ipfs), hasher);
+                S3BlockStorage s3 = new S3BlockStorage(config, ipfs.id().join(), props, transactions, authoriser,
+                        meta, hasher, p2pBlockRetriever, ipfs);
+                s3.updateMetadataStoreIfEmpty();
+                return s3;
             } else if (enableGC) {
-                return buildMetadataStorage(a, new TransactionalIpfs(ipfs, transactions, authoriser, ipfs.id().join(), hasher), hasher);
-            } else
-                return buildMetadataStorage(a, new AuthedStorage(ipfs, authoriser, hasher), hasher);
+                TransactionalIpfs txns = new TransactionalIpfs(ipfs, transactions, authoriser, ipfs.id().join(), hasher);
+                return new MetadataCachingStorage(txns, meta, hasher);
+            } else {
+                AuthedStorage target = new AuthedStorage(ipfs, authoriser, hasher);
+                return new MetadataCachingStorage(target, meta, hasher);
+            }
         } else {
             // In S3 mode of operation we require the ipfs id to be supplied as we don't have a local ipfs running
             if (useS3) {
@@ -238,14 +238,13 @@ public class Builder {
 
                 JavaPoster bloomApiTarget = buildBloomApiTarget(a);
                 DeletableContentAddressedStorage.HTTP bloomTarget = new DeletableContentAddressedStorage.HTTP(bloomApiTarget, false, hasher);
-                SqliteBlockMetadataStorage metadata = buildBlockMetadata(a);
-                S3BlockStorage s3 = new S3BlockStorage(config, ourId, props, transactions, authoriser, metadata,
-                        hasher, p2pBlockRetriever, bloomTarget);
-                return new MetadataCachingStorage(s3, metadata, hasher);
+
+                S3BlockStorage s3 = new S3BlockStorage(config, ourId, props, transactions, authoriser, meta, hasher, p2pBlockRetriever, bloomTarget);
+                s3.updateMetadataStoreIfEmpty();
+                return s3;
             } else {
-                SqliteBlockMetadataStorage metadata = buildBlockMetadata(a);
                 FileContentAddressedStorage fileBacked = new FileContentAddressedStorage(blockstorePath(a), transactions, authoriser, hasher);
-                return new MetadataCachingStorage(fileBacked, metadata, hasher);
+                return new MetadataCachingStorage(fileBacked, meta, hasher);
             }
         }
     }

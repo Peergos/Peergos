@@ -19,7 +19,7 @@ public class RamBlockMetadataStore implements BlockMetadataStore {
     }
 
     @Override
-    public void put(Cid block, BlockMetadata meta) {
+    public void put(Cid block, String version, BlockMetadata meta) {
         store.put(block, meta);
     }
 
@@ -29,8 +29,13 @@ public class RamBlockMetadataStore implements BlockMetadataStore {
     }
 
     @Override
-    public Stream<Cid> list() {
-        return store.keySet().stream();
+    public Stream<BlockVersion> list() {
+        return store.keySet().stream().map(c -> new BlockVersion(c, null, true));
+    }
+
+    @Override
+    public long size() {
+        return store.size();
     }
 
     @Override

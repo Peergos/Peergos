@@ -11,15 +11,17 @@ public interface BlockMetadataStore {
 
     Optional<BlockMetadata> get(Cid block);
 
-    void put(Cid block, BlockMetadata meta);
+    void put(Cid block, String version, BlockMetadata meta);
 
     void remove(Cid block);
 
-    Stream<Cid> list();
+    long size();
 
-    default BlockMetadata put(Cid block, byte[] data) {
+    Stream<BlockVersion> list();
+
+    default BlockMetadata put(Cid block, String version, byte[] data) {
         BlockMetadata meta = extractMetadata(block, data);
-        put(block, meta);
+        put(block, version, meta);
         return meta;
     }
 
