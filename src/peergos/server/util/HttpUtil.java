@@ -163,6 +163,7 @@ public class HttpUtil {
             InputStream in = conn.getInputStream();
             Map<String, String> headers = conn.getHeaderFields().entrySet()
                     .stream()
+                    .filter(e -> e.getKey() != null)
                     .collect(Collectors.toMap(e -> e.getKey().toLowerCase(), e -> e.getValue().get(0)));
             String version = headers.getOrDefault("x-amz-version-id", null);
             return new Pair(Serialize.readFully(in), version);
