@@ -3,6 +3,11 @@ package peergos.server.sql;
 public class PostgresCommands implements SqlSupplier {
 
     @Override
+    public String vacuumCommand() {
+        return "";
+    }
+
+    @Override
     public String listTablesCommand() {
         return "SELECT tablename FROM pg_catalog.pg_tables " +
                 "WHERE schemaname != 'pg_catalog' AND schemaname != 'information_schema';";

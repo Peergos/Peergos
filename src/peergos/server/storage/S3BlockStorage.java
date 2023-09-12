@@ -882,18 +882,14 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         Supplier<Connection> transactionsDb = Main.getDBConnector(a, "transactions-sql-file");
         TransactionStore transactions = JdbcTransactionStore.build(transactionsDb, sqlCommands);
         BlockRequestAuthoriser authoriser = (c, b, s, auth) -> Futures.of(true);
+        BlockMetadataStore meta = Builder.buildBlockMetadata(a);
         S3BlockStorage s3 = new S3BlockStorage(config, Cid.decode(a.getArg("ipfs.id")),
-                BlockStoreProperties.empty(), transactions, authoriser, new RamBlockMetadataStore(),
+                BlockStoreProperties.empty(), transactions, authoriser, meta,
                 hasher, new RAMStorage(hasher), new RAMStorage(hasher));
         JdbcIpnsAndSocial rawPointers = new JdbcIpnsAndSocial(database, sqlCommands);
         Supplier<Connection> usageDb = Main.getDBConnector(a, "space-usage-sql-file");
         UsageStore usageStore = new JdbcUsageStore(usageDb, sqlCommands);
-        File storeFile = new File("blockmetadata-v2.sql");
-        String sqlFilePath = storeFile.getPath();
-        Connection memory = Sqlite.build(sqlFilePath);
-        Connection instance = new Sqlite.UncloseableConnection(memory);
-        SqliteBlockMetadataStorage store = new SqliteBlockMetadataStorage(() -> instance, new SqliteCommands(), storeFile);
-        s3.collectGarbage(rawPointers, usageStore, store);
+        s3.collectGarbage(rawPointers, usageStore, meta);
     }
 
     @Override

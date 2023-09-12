@@ -20,6 +20,8 @@ public interface SqlSupplier {
 
     String ensureColumnExistsCommand(String table, String column, String type);
 
+    String vacuumCommand();
+
     default String createMutablePointersTableCommand() {
         return "CREATE TABLE IF NOT EXISTS metadatablobs (writingkey text primary key not null, hash text not null); " +
                 "CREATE UNIQUE INDEX IF NOT EXISTS index_name ON metadatablobs (writingkey);";

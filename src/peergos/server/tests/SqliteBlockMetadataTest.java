@@ -42,13 +42,11 @@ public class SqliteBlockMetadataTest {
         String sqlFilePath = storeFile.getPath();
         Connection memory = Sqlite.build(sqlFilePath);
         Connection instance = new Sqlite.UncloseableConnection(memory);
-        SqliteBlockMetadataStorage store = new SqliteBlockMetadataStorage(() -> instance, new SqliteCommands(), storeFile);
-        long initialSize = store.currentSize();
-        assertTrue(initialSize == 12288);
+        BlockMetadataStore store = new JdbcBlockMetadataStore(() -> instance, new SqliteCommands());
+
         Cid cid = randomCid();
         BlockMetadata meta = new BlockMetadata(10240, randomCids(20), Collections.emptyList());
         store.put(cid, "alpha", meta);
-        long sizeWithBlock = store.currentSize();
 
         // add same cid again
         store.put(cid, "beta", meta);
@@ -69,23 +67,5 @@ public class SqliteBlockMetadataTest {
                 List.of(BatId.inline(Bat.random(crypto.random)), BatId.inline(Bat.random(crypto.random))));
         store.put(cid3, null, meta3);
         Assert.assertTrue(store.list().filter(v -> v.cid.equals(cid3)).findFirst().get().version == null);
-    }
-
-    @Test
-    public void compaction() throws Exception {
-        Path dir = Files.createTempDirectory("peergos-block-metadata");
-        File storeFile = dir.resolve("metadata.sql" + System.currentTimeMillis()).toFile();
-        String sqlFilePath = storeFile.getPath();
-        Connection memory = Sqlite.build(sqlFilePath);
-        Connection instance = new Sqlite.UncloseableConnection(memory);
-        SqliteBlockMetadataStorage store = new SqliteBlockMetadataStorage(() -> instance, new SqliteCommands(), storeFile);
-        long initialSize = store.currentSize();
-        assertTrue(initialSize == 12288);
-        for (int i=0; i < 1500; i++)
-            store.put(randomCid(), null, new BlockMetadata(10240, randomCids(20), Collections.emptyList()));
-        long sizeWithBlocks = store.currentSize();
-        store.compact();
-        long sizeAfterCompaction = store.currentSize();
-        assertTrue(sizeAfterCompaction < sizeWithBlocks);
     }
 }

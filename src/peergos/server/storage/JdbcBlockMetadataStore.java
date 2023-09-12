@@ -6,14 +6,13 @@ import peergos.shared.cbor.*;
 import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.storage.auth.*;
 
-import java.io.*;
 import java.sql.*;
 import java.util.*;
 import java.util.function.*;
 import java.util.logging.*;
 import java.util.stream.*;
 
-public class SqliteBlockMetadataStorage implements BlockMetadataStore {
+public class JdbcBlockMetadataStore implements BlockMetadataStore {
 
     private static final Logger LOG = Logging.LOG();
     private static final String CREATE = "INSERT OR IGNORE INTO blockmetadata (cid, version, size, links, batids) VALUES(?, ?, ?, ?, ?)";
@@ -21,24 +20,46 @@ public class SqliteBlockMetadataStorage implements BlockMetadataStore {
     private static final String REMOVE = "DELETE FROM blockmetadata where cid = ?;";
     private static final String LIST = "SELECT cid, version FROM blockmetadata;";
     private static final String SIZE = "SELECT COUNT(*) FROM blockmetadata;";
-    private static final String VACUUM = "VACUUM;";
-
     private Supplier<Connection> conn;
-    private final File sqlFile;
+    private final SqlSupplier commands;
 
-    public SqliteBlockMetadataStorage(Supplier<Connection> conn, SqlSupplier commands, File sqlFile) {
+    public JdbcBlockMetadataStore(Supplier<Connection> conn, SqlSupplier commands) {
         this.conn = conn;
-        this.sqlFile = sqlFile;
+        this.commands = commands;
         init(commands);
     }
 
-    public long currentSize() {
-        return sqlFile.length();
+    private Connection getConnection() {
+        return getConnection(true, true);
+    }
+
+    private Connection getConnection(boolean autocommit, boolean serializable) {
+        Connection connection = conn.get();
+        try {
+            if (autocommit)
+                connection.setAutoCommit(true);
+            if (serializable)
+                connection.setTransactionIsolation(Connection.TRANSACTION_SERIALIZABLE);
+            return connection;
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    private synchronized void init(SqlSupplier commands) {
+        try (Connection conn = getConnection()) {
+            commands.createTable(commands.createBlockMetadataStoreTableCommand(), conn);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
     }
 
     public void compact() {
+        String vacuum = commands.vacuumCommand();
+        if (vacuum.isEmpty())
+            return;
         try (Connection conn = getConnection();
-             PreparedStatement stmt = conn.prepareStatement(VACUUM)) {
+             PreparedStatement stmt = conn.prepareStatement(vacuum)) {
             stmt.executeUpdate();
         } catch (SQLException sqe) {
             LOG.log(Level.WARNING, sqe.getMessage(), sqe);
@@ -55,25 +76,6 @@ public class SqliteBlockMetadataStorage implements BlockMetadataStore {
         } catch (SQLException sqe) {
             LOG.log(Level.WARNING, sqe.getMessage(), sqe);
             throw new RuntimeException(sqe);
-        }
-    }
-
-    private Connection getConnection() {
-        Connection connection = conn.get();
-        try {
-            connection.setAutoCommit(true);
-            connection.setTransactionIsolation(Connection.TRANSACTION_SERIALIZABLE);
-            return connection;
-        } catch (SQLException e) {
-            throw new RuntimeException(e);
-        }
-    }
-
-    private synchronized void init(SqlSupplier commands) {
-        try (Connection conn = getConnection()) {
-            commands.createTable(commands.createBlockMetadataStoreTableCommand(), conn);
-        } catch (Exception e) {
-            throw new RuntimeException(e);
         }
     }
 
