@@ -73,7 +73,7 @@ public class GarbageCollector {
         storage.clearOldTransactions(System.currentTimeMillis() - 24*3600*1000L);
         long t0 = System.nanoTime();
         // Versions are only relevant for versioned S3 buckets, otherwise version is null
-        // For S3, clients write raw blocks directly, we need to get them directly from S3
+        // For S3, clients write raw blocks directly, we need to get their version directly from S3
         List<BlockVersion> present = Stream.concat(storage.getAllRawBlockVersions(), metadata.listCbor()).collect(Collectors.toList());
         long t1 = System.nanoTime();
         System.out.println("Listing " + present.size() + " blocks took " + (t1-t0)/1_000_000_000 + "s");

@@ -62,6 +62,13 @@ public class SqliteBlockMetadataTest {
 
         long size = store.size();
         Assert.assertTrue(size == 2);
+
+        // null versions
+        Cid cid3 = randomCid();
+        BlockMetadata meta3 = new BlockMetadata(10240, randomCids(20),
+                List.of(BatId.inline(Bat.random(crypto.random)), BatId.inline(Bat.random(crypto.random))));
+        store.put(cid3, null, meta3);
+        Assert.assertTrue(store.list().filter(v -> v.cid.equals(cid3)).findFirst().get().version == null);
     }
 
     @Test
