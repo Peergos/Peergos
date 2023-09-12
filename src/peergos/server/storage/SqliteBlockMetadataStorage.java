@@ -146,4 +146,24 @@ public class SqliteBlockMetadataStorage implements BlockMetadataStore {
             throw new RuntimeException(sqe);
         }
     }
+
+    @Override
+    public Stream<BlockVersion> listCbor() {
+        try (Connection conn = getConnection();
+             PreparedStatement stmt = conn.prepareStatement(LIST)) {
+            ResultSet rs = stmt.executeQuery();
+            List<BlockVersion> res = new ArrayList<>();
+            while (rs.next()) {
+                Cid cid = Cid.cast(rs.getBytes("cid"));
+                String version = rs.getString("version");
+                if (! cid.isRaw()) {
+                    res.add(new BlockVersion(cid, version, true));
+                }
+            }
+            return res.stream();
+        } catch (SQLException sqe) {
+            LOG.log(Level.WARNING, sqe.getMessage(), sqe);
+            throw new RuntimeException(sqe);
+        }
+    }
 }

@@ -34,6 +34,14 @@ public class RamBlockMetadataStore implements BlockMetadataStore {
     }
 
     @Override
+    public Stream<BlockVersion> listCbor() {
+        return store.keySet()
+                .stream()
+                .filter(c -> ! c.isRaw())
+                .map(c -> new BlockVersion(c, null, true));
+    }
+
+    @Override
     public long size() {
         return store.size();
     }

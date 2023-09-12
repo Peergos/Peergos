@@ -19,6 +19,8 @@ public interface BlockMetadataStore {
 
     Stream<BlockVersion> list();
 
+    Stream<BlockVersion> listCbor();
+
     default BlockMetadata put(Cid block, String version, byte[] data) {
         BlockMetadata meta = extractMetadata(block, data);
         put(block, version, meta);

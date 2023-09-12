@@ -74,7 +74,7 @@ public class GarbageCollector {
         long t0 = System.nanoTime();
         // Versions are only relevant for versioned S3 buckets, otherwise version is null
         // For S3, clients write raw blocks directly, we need to get them directly from S3
-        List<BlockVersion> present = Stream.concat(metadata.list(), storage.getAllRawBlockVersions()).collect(Collectors.toList());
+        List<BlockVersion> present = Stream.concat(storage.getAllRawBlockVersions(), metadata.listCbor()).collect(Collectors.toList());
         long t1 = System.nanoTime();
         System.out.println("Listing " + present.size() + " blocks took " + (t1-t0)/1_000_000_000 + "s");
 
@@ -91,7 +91,6 @@ public class GarbageCollector {
         List<Multihash> usageRoots = usage.getAllTargets();
 
         Map<Multihash, Integer> toIndex = new HashMap<>();
-        // we traverse this in reverse order because the current versions are first
         for (int i = 0; i < present.size(); i++)
             if (present.get(i).isLatest)
                 toIndex.put(present.get(i).cid, i);
