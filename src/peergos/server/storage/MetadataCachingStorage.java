@@ -59,6 +59,8 @@ public class MetadataCachingStorage extends DelegatingDeletableStorage {
 
     @Override
     public CompletableFuture<List<Cid>> getLinks(Cid block, String auth) {
+        if (block.isRaw())
+            return Futures.of(Collections.emptyList());
         Optional<BlockMetadata> meta = metadata.get(block);
         if (meta.isPresent())
             return Futures.of(meta.get().links);
