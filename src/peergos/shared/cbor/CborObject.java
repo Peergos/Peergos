@@ -30,6 +30,16 @@ public interface CborObject extends Cborable {
 
     int LINK_TAG = 42;
 
+    static List<Cid> getLinks(Cid h, byte[] data) {
+        return h.isRaw() ?
+                Collections.emptyList() :
+                CborObject.fromByteArray(data)
+                        .links()
+                        .stream()
+                        .map(m -> (Cid) m)
+                        .collect(Collectors.toList());
+    }
+
     static CborObject fromByteArray(byte[] cbor) {
         return deserialize(new CborDecoder(new ByteArrayInputStream(cbor)), cbor.length);
     }

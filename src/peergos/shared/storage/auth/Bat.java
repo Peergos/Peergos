@@ -95,6 +95,10 @@ public class Bat implements Cborable {
         }
     }
 
+    public static List<BatId> getBlockBats(Cid h, byte[] data) {
+        return h.isRaw() ? getRawBlockBats(data) : getCborBlockBats(data);
+    }
+
     public static List<BatId> getRawBlockBats(byte[] block) {
         int magicLength = RAW_BLOCK_MAGIC_PREFIX.length;
         if (! ArrayOps.equalArrays(block, 0, magicLength, RAW_BLOCK_MAGIC_PREFIX, 0, magicLength))

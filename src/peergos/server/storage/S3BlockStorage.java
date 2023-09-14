@@ -631,6 +631,8 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
 
     @Override
     public CompletableFuture<BlockMetadata> getBlockMetadata(Cid h, String auth) {
+        if (h.isIdentity())
+            return Futures.of(new BlockMetadata(0, CborObject.getLinks(h, h.getHash()), Bat.getBlockBats(h, h.getHash())));
         Optional<BlockMetadata> cached = blockMetadata.get(h);
         if (cached.isPresent())
             return Futures.of(cached.get());
@@ -870,7 +872,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
     }
 
     public static void main(String[] args) throws Exception {
-         System.out.println("Performing GC on S3 block store...");
+        System.out.println("Performing GC on S3 block store...");
         Args a = Args.parse(args);
         Crypto crypto = Main.initCrypto();
         Hasher hasher = crypto.hasher;
