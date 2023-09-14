@@ -18,6 +18,11 @@ public class SqliteCommands implements SqlSupplier {
     }
 
     @Override
+    public String addMetadataCommand() {
+        return "INSERT OR IGNORE INTO blockmetadata (cid, version, size, links, batids) VALUES(?, ?, ?, ?, ?);";
+    }
+
+    @Override
     public String createFollowRequestsTableCommand() {
         return "CREATE TABLE IF NOT EXISTS followrequests (id integer primary key autoincrement, " +
                 "name text not null, followrequest text not null);";

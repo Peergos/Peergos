@@ -15,7 +15,6 @@ import java.util.stream.*;
 public class JdbcBlockMetadataStore implements BlockMetadataStore {
 
     private static final Logger LOG = Logging.LOG();
-    private static final String CREATE = "INSERT OR IGNORE INTO blockmetadata (cid, version, size, links, batids) VALUES(?, ?, ?, ?, ?)";
     private static final String GET_INFO = "SELECT * FROM blockmetadata WHERE cid = ?;";
     private static final String REMOVE = "DELETE FROM blockmetadata where cid = ?;";
     private static final String LIST = "SELECT cid, version FROM blockmetadata;";
@@ -102,7 +101,7 @@ public class JdbcBlockMetadataStore implements BlockMetadataStore {
     @Override
     public void put(Cid block, String version, BlockMetadata meta) {
         try (Connection conn = getConnection();
-             PreparedStatement insert = conn.prepareStatement(CREATE)) {
+             PreparedStatement insert = conn.prepareStatement(commands.addMetadataCommand())) {
 
             insert.setBytes(1, block.toBytes());
             insert.setString(2, version);
@@ -126,6 +125,7 @@ public class JdbcBlockMetadataStore implements BlockMetadataStore {
         try (Connection conn = getConnection();
              PreparedStatement stmt = conn.prepareStatement(SIZE)) {
             ResultSet rs = stmt.executeQuery();
+            rs.next();
             return rs.getInt(1);
         } catch (SQLException sqe) {
             LOG.log(Level.WARNING, sqe.getMessage(), sqe);

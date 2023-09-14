@@ -19,6 +19,11 @@ public class PostgresCommands implements SqlSupplier {
     }
 
     @Override
+    public String addMetadataCommand() {
+        return "INSERT INTO blockmetadata (cid, version, size, links, batids) VALUES(?, ?, ?, ?, ?) ON CONFLICT DO NOTHING;";
+    }
+
+    @Override
     public String createFollowRequestsTableCommand() {
         return "CREATE TABLE IF NOT EXISTS followrequests (id serial primary key, " +
                 "name text not null, followrequest text not null);";

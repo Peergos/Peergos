@@ -20,6 +20,8 @@ public interface SqlSupplier {
 
     String ensureColumnExistsCommand(String table, String column, String type);
 
+    String addMetadataCommand();
+
     String vacuumCommand();
 
     default String createMutablePointersTableCommand() {
