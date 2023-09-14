@@ -653,7 +653,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
     public void updateMetadataStoreIfEmpty() {
         if (blockMetadata.size() > 0)
             return;
-        System.out.println("Updating block metadata store from S3...");
+        LOG.info("Updating block metadata store from S3...");
         List<Cid> all = getAllBlockHashes().collect(Collectors.toList());
         int updateParallelism = 10;
         ForkJoinPool pool = new ForkJoinPool(updateParallelism);
@@ -666,7 +666,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         futures.stream()
                 .map(ForkJoinTask::join)
                 .collect(Collectors.toList());
-        System.out.println("Finished updating block metadata store from S3.");
+        LOG.info("Finished updating block metadata store from S3.");
     }
 
     @Override
