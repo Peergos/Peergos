@@ -37,7 +37,7 @@ public class GarbageCollector {
     }
 
     public synchronized void collect(Function<Stream<Map.Entry<PublicKeyHash, byte[]>>, CompletableFuture<Boolean>> snapshotSaver) {
-        collect(storage, pointers, usage, snapshotSaver, metadata);
+        collect(storage, pointers, usage, snapshotSaver, metadata, false);
     }
 
     public void start(long periodMillis, Function<Stream<Map.Entry<PublicKeyHash, byte[]>>, CompletableFuture<Boolean>> snapshotSaver) {
@@ -67,14 +67,17 @@ public class GarbageCollector {
                                JdbcIpnsAndSocial pointers,
                                UsageStore usage,
                                Function<Stream<Map.Entry<PublicKeyHash, byte[]>>, CompletableFuture<Boolean>> snapshotSaver,
-                               BlockMetadataStore metadata) {
+                               BlockMetadataStore metadata,
+                               boolean listFromBlockstore) {
         System.out.println("Starting blockstore garbage collection on node " + storage.id().join() + "...");
         // TODO: do this more efficiently with a bloom filter, and actual streaming and multithreading
         storage.clearOldTransactions(System.currentTimeMillis() - 24*3600*1000L);
         long t0 = System.nanoTime();
         // Versions are only relevant for versioned S3 buckets, otherwise version is null
         // For S3, clients write raw blocks directly, we need to get their version directly from S3
-        List<BlockVersion> present = Stream.concat(storage.getAllRawBlockVersions(), metadata.listCbor()).collect(Collectors.toList());
+        List<BlockVersion> present = listFromBlockstore ?
+                storage.getAllBlockHashVersions().collect(Collectors.toList()) :
+                Stream.concat(storage.getAllRawBlockVersions(), metadata.listCbor()).collect(Collectors.toList());
         long t1 = System.nanoTime();
         System.out.println("Listing " + present.size() + " blocks took " + (t1-t0)/1_000_000_000 + "s");
 

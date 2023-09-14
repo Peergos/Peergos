@@ -447,8 +447,9 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         transactions.clearOldTransactions(cutoffMillis);
     }
 
-    private void collectGarbage(JdbcIpnsAndSocial pointers, UsageStore usage, BlockMetadataStore metadata) {
-        GarbageCollector.collect(new MetadataCachingStorage(this, metadata, hasher), pointers, usage, this::savePointerSnapshot, metadata);
+    private void collectGarbage(JdbcIpnsAndSocial pointers, UsageStore usage, BlockMetadataStore metadata, boolean listFromBlockstore) {
+        GarbageCollector.collect(new MetadataCachingStorage(this, metadata, hasher), pointers, usage,
+                this::savePointerSnapshot, metadata, listFromBlockstore);
     }
 
     public CompletableFuture<Boolean> savePointerSnapshot(Stream<Map.Entry<PublicKeyHash, byte[]>> pointers) {
@@ -889,7 +890,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         JdbcIpnsAndSocial rawPointers = new JdbcIpnsAndSocial(database, sqlCommands);
         Supplier<Connection> usageDb = Main.getDBConnector(a, "space-usage-sql-file");
         UsageStore usageStore = new JdbcUsageStore(usageDb, sqlCommands);
-        s3.collectGarbage(rawPointers, usageStore, meta);
+        s3.collectGarbage(rawPointers, usageStore, meta, a.getBoolean("list-from-blockstore", false));
     }
 
     @Override

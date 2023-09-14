@@ -44,7 +44,7 @@ public class GCBenchmark {
             storage.closeTransaction(owner, tid).join();
         }
 
-        GarbageCollector.collect(storage, pointers, usage, s -> Futures.of(true), new RamBlockMetadataStore());
+        GarbageCollector.collect(storage, pointers, usage, s -> Futures.of(true), new RamBlockMetadataStore(), false);
     }
 
     private static Multihash generateTree(Random r, PublicKeyHash owner, ContentAddressedStorage storage, int nLeaves, TransactionId tid) {
