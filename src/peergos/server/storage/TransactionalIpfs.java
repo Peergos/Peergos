@@ -100,6 +100,12 @@ public class TransactionalIpfs extends DelegatingStorage implements DeletableCon
     }
 
     @Override
+    public CompletableFuture<BlockMetadata> getBlockMetadata(Cid block, String auth) {
+        return getRaw(block, auth, false)
+                .thenApply(data -> BlockMetadataStore.extractMetadata(block, data.get()));
+    }
+
+    @Override
     public CompletableFuture<List<byte[]>> getChampLookup(PublicKeyHash owner,
                                                           Cid root,
                                                           byte[] champKey,
@@ -145,7 +151,7 @@ public class TransactionalIpfs extends DelegatingStorage implements DeletableCon
     }
 
     @Override
-    public Stream<Pair<Cid, String>> getAllBlockHashVersions() {
+    public Stream<BlockVersion> getAllBlockHashVersions() {
         return target.getAllBlockHashVersions();
     }
 

@@ -27,7 +27,7 @@ public class DelegatingDeletableStorage implements DeletableContentAddressedStor
     }
 
     @Override
-    public Stream<Pair<Cid, String>> getAllBlockHashVersions() {
+    public Stream<BlockVersion> getAllBlockHashVersions() {
         return target.getAllBlockHashVersions();
     }
 
@@ -57,7 +57,7 @@ public class DelegatingDeletableStorage implements DeletableContentAddressedStor
     }
 
     @Override
-    public void bulkDelete(List<Pair<Cid, String>> blocks) {
+    public void bulkDelete(List<BlockVersion> blocks) {
         target.bulkDelete(blocks);
     }
 
@@ -97,8 +97,14 @@ public class DelegatingDeletableStorage implements DeletableContentAddressedStor
     }
 
     @Override
-    public CompletableFuture<List<PresignedUrl>> authWrites(PublicKeyHash owner, PublicKeyHash writer, List<byte[]> signedHashes, List<Integer> blockSizes, boolean isRaw, TransactionId tid) {
-        return target.authWrites(owner, writer, signedHashes, blockSizes, isRaw, tid);
+    public CompletableFuture<List<PresignedUrl>> authWrites(PublicKeyHash owner,
+                                                            PublicKeyHash writer,
+                                                            List<byte[]> signedHashes,
+                                                            List<Integer> blockSizes,
+                                                            List<List<BatId>> batIds,
+                                                            boolean isRaw,
+                                                            TransactionId tid) {
+        return target.authWrites(owner, writer, signedHashes, blockSizes, batIds, isRaw, tid);
     }
 
     @Override
@@ -176,7 +182,7 @@ public class DelegatingDeletableStorage implements DeletableContentAddressedStor
     }
 
     @Override
-    public CompletableFuture<Pair<Integer, List<Cid>>> getLinksAndSize(Cid block, String auth) {
-        return target.getLinksAndSize(block, auth);
+    public CompletableFuture<BlockMetadata> getBlockMetadata(Cid block, String auth) {
+        return target.getBlockMetadata(block, auth);
     }
 }

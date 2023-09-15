@@ -3,6 +3,11 @@ package peergos.server.sql;
 public class SqliteCommands implements SqlSupplier {
 
     @Override
+    public String vacuumCommand() {
+        return "VACUUM;";
+    }
+
+    @Override
     public String listTablesCommand() {
         return "SELECT NAME FROM sqlite_master WHERE type='table';";
     }
@@ -10,6 +15,11 @@ public class SqliteCommands implements SqlSupplier {
     @Override
     public String tableExistsCommand() {
         return "SELECT name FROM sqlite_master WHERE type='table' AND name=?;";
+    }
+
+    @Override
+    public String addMetadataCommand() {
+        return "INSERT OR IGNORE INTO blockmetadata (cid, version, size, links, batids) VALUES(?, ?, ?, ?, ?);";
     }
 
     @Override

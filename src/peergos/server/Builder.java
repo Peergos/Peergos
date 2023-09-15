@@ -6,9 +6,7 @@ import peergos.server.crypto.*;
 import peergos.server.crypto.asymmetric.curve25519.*;
 import peergos.server.crypto.hash.*;
 import peergos.server.crypto.random.*;
-import peergos.server.crypto.symmetric.*;
 import peergos.server.login.*;
-import peergos.server.mutable.*;
 import peergos.server.space.*;
 import peergos.server.sql.*;
 import peergos.server.storage.*;
@@ -69,33 +67,36 @@ public class Builder {
         return getDBConnector(a, dbName);
     }
 
+    public static Supplier<Connection> getPostgresConnector(Args a, String prefix) {
+        String postgresHost = a.getArg(prefix + "postgres.host");
+        int postgresPort = a.getInt(prefix + "postgres.port", 5432);
+        String databaseName = a.getArg(prefix + "postgres.database", "peergos");
+        String postgresUsername = a.getArg(prefix + "postgres.username");
+        String postgresPassword = a.getArg(prefix + "postgres.password");
+
+        Properties props = new Properties();
+        props.setProperty("dataSourceClassName", "org.postgresql.ds.PGSimpleDataSource");
+        props.setProperty("dataSource.serverName", postgresHost);
+        props.setProperty("dataSource.portNumber", "" + postgresPort);
+        props.setProperty("dataSource.user", postgresUsername);
+        props.setProperty("dataSource.password", postgresPassword);
+        props.setProperty("dataSource.databaseName", databaseName);
+        HikariConfig config = new HikariConfig(props);
+        HikariDataSource ds = new HikariDataSource(config);
+
+        return () -> {
+            try {
+                return ds.getConnection();
+            } catch (SQLException e) {
+                throw new RuntimeException(e);
+            }
+        };
+    }
+
     public static Supplier<Connection> getDBConnector(Args a, String dbName) {
         boolean usePostgres = a.getBoolean("use-postgres", false);
-        HikariConfig config;
         if (usePostgres) {
-            String postgresHost = a.getArg("postgres.host");
-            int postgresPort = a.getInt("postgres.port", 5432);
-            String databaseName = a.getArg("postgres.database", "peergos");
-            String postgresUsername = a.getArg("postgres.username");
-            String postgresPassword = a.getArg("postgres.password");
-
-            Properties props = new Properties();
-            props.setProperty("dataSourceClassName", "org.postgresql.ds.PGSimpleDataSource");
-            props.setProperty("dataSource.serverName", postgresHost);
-            props.setProperty("dataSource.portNumber", "" + postgresPort);
-            props.setProperty("dataSource.user", postgresUsername);
-            props.setProperty("dataSource.password", postgresPassword);
-            props.setProperty("dataSource.databaseName", databaseName);
-            config = new HikariConfig(props);
-            HikariDataSource ds = new HikariDataSource(config);
-
-            return () -> {
-                try {
-                    return ds.getConnection();
-                } catch (SQLException e) {
-                    throw new RuntimeException(e);
-                }
-            };
+            return getPostgresConnector(a, "");
         } else {
             String sqlFilePath = Sqlite.getDbPath(a, dbName);
             if (":memory:".equals(sqlFilePath))
@@ -187,21 +188,19 @@ public class Builder {
         return new BlockStoreProperties(directWrites, publicReads, authedReads, publicReadUrl, authedUrl);
     }
 
-    private static SqliteBlockMetadataStorage buildBlockMetadata(Args a) {
+    public static BlockMetadataStore buildBlockMetadata(Args a) {
         try {
-            File metaFile = a.fromPeergosDir("block-metadata-sql-file", "blockmetadata.sql").toFile();
-            Connection instance = new Sqlite.UncloseableConnection(Sqlite.build(metaFile.getPath()));
-            int maxMetadataStoreSize = a.getInt("max-block-metadata-store-size", 0); // 0 means unlimited
-            return new SqliteBlockMetadataStorage(() -> instance, new SqliteCommands(), maxMetadataStoreSize, metaFile);
+            boolean usePostgres = a.getArg("block-metadata-db-type", "sqlite").equals("postgres");
+            if (usePostgres) {
+                return new JdbcBlockMetadataStore(getPostgresConnector(a, "metadb."), new PostgresCommands());
+            } else {
+                File metaFile = a.fromPeergosDir("block-metadata-sql-file", "blockmetadata-v2.sql").toFile();
+                Connection instance = new Sqlite.UncloseableConnection(Sqlite.build(metaFile.getPath()));
+                return new JdbcBlockMetadataStore(() -> instance, new SqliteCommands());
+            }
         } catch (SQLException e) {
             throw new RuntimeException(e);
         }
-    }
-
-    private static MetadataCachingStorage buildMetadataStorage(Args a,
-                                                               DeletableContentAddressedStorage target,
-                                                               Hasher hasher) {
-        return new MetadataCachingStorage(target, buildBlockMetadata(a), hasher);
     }
 
     public static DeletableContentAddressedStorage buildLocalStorage(Args a,
@@ -212,6 +211,7 @@ public class Builder {
         boolean enableGC = a.getBoolean("enable-gc", false);
         boolean useS3 = S3Config.useS3(a);
         JavaPoster ipfsApi = buildIpfsApi(a);
+        BlockMetadataStore meta = buildBlockMetadata(a);
         if (useIPFS) {
             DeletableContentAddressedStorage.HTTP ipfs = new DeletableContentAddressedStorage.HTTP(ipfsApi, false, hasher);
             if (useS3) {
@@ -220,12 +220,17 @@ public class Builder {
                 BlockStoreProperties props = buildS3Properties(a);
                 TransactionalIpfs p2pBlockRetriever = new TransactionalIpfs(ipfs, transactions, authoriser, ipfs.id().join(), hasher);
 
-                return buildMetadataStorage(a, new S3BlockStorage(config, ipfs.id().join(), props, transactions, authoriser,
-                        new RamBlockMetadataStore(), hasher, p2pBlockRetriever, ipfs), hasher);
+                S3BlockStorage s3 = new S3BlockStorage(config, ipfs.id().join(), props, transactions, authoriser,
+                        meta, hasher, p2pBlockRetriever, ipfs);
+                s3.updateMetadataStoreIfEmpty();
+                return s3;
             } else if (enableGC) {
-                return buildMetadataStorage(a, new TransactionalIpfs(ipfs, transactions, authoriser, ipfs.id().join(), hasher), hasher);
-            } else
-                return buildMetadataStorage(a, new AuthedStorage(ipfs, authoriser, hasher), hasher);
+                TransactionalIpfs txns = new TransactionalIpfs(ipfs, transactions, authoriser, ipfs.id().join(), hasher);
+                return new MetadataCachingStorage(txns, meta, hasher);
+            } else {
+                AuthedStorage target = new AuthedStorage(ipfs, authoriser, hasher);
+                return new MetadataCachingStorage(target, meta, hasher);
+            }
         } else {
             // In S3 mode of operation we require the ipfs id to be supplied as we don't have a local ipfs running
             if (useS3) {
@@ -239,77 +244,26 @@ public class Builder {
 
                 JavaPoster bloomApiTarget = buildBloomApiTarget(a);
                 DeletableContentAddressedStorage.HTTP bloomTarget = new DeletableContentAddressedStorage.HTTP(bloomApiTarget, false, hasher);
-                SqliteBlockMetadataStorage metadata = buildBlockMetadata(a);
-                S3BlockStorage s3 = new S3BlockStorage(config, ourId, props, transactions, authoriser, metadata,
-                        hasher, p2pBlockRetriever, bloomTarget);
-                return new MetadataCachingStorage(s3, metadata, hasher);
+
+                S3BlockStorage s3 = new S3BlockStorage(config, ourId, props, transactions, authoriser, meta, hasher, p2pBlockRetriever, bloomTarget);
+                s3.updateMetadataStoreIfEmpty();
+                return s3;
             } else {
-                return new FileContentAddressedStorage(blockstorePath(a), transactions, authoriser, hasher);
+                FileContentAddressedStorage fileBacked = new FileContentAddressedStorage(blockstorePath(a), transactions, authoriser, hasher);
+                return new MetadataCachingStorage(fileBacked, meta, hasher);
             }
         }
     }
 
-
-    private static CompletableFuture<Boolean> ALLOW = Futures.of(true);
-    private static CompletableFuture<Boolean> BLOCK = Futures.of(false);
     public static BlockRequestAuthoriser blockAuthoriser(Args a,
                                                          BatCave batStore,
                                                          Hasher hasher) {
         Optional<BatWithId> instanceBat = a.getOptionalArg("instance-bat").map(BatWithId::decode);
-        return (b, d, s, auth) -> {
-            Logging.LOG().fine("Allow: " + b + ", auth=" + auth + ", from: " + s);
-            if (b.isRaw()) {
-                List<BatId> batids = Bat.getRawBlockBats(d);
-                if (batids.isEmpty()) // legacy raw block
-                    return ALLOW;
-                if (auth.isEmpty())
-                    return BLOCK;
-                BlockAuth blockAuth = BlockAuth.fromString(auth);
-                for (BatId bid : batids) {
-                    Optional<Bat> bat = bid.getInline()
-                            .or(() -> bid.id.equals(blockAuth.batId) ?
-                                    batStore.getBat(bid) :
-                                    Optional.empty());
-                    if (bat.isPresent() && BlockRequestAuthoriser.isValidAuth(blockAuth, b, s, bat.get(), hasher))
-                        return ALLOW;
-                }
-                if (instanceBat.isPresent()) {
-                    if (BlockRequestAuthoriser.isValidAuth(blockAuth, b, s, instanceBat.get().bat, hasher))
-                        return ALLOW;
-                }
-                return BLOCK;
-            } else if (b.codec == Cid.Codec.DagCbor) {
-                CborObject block = CborObject.fromByteArray(d);
-                if (block instanceof CborObject.CborMap) {
-                    if (((CborObject.CborMap) block).containsKey("bats")) {
-                        List<BatId> batids = ((CborObject.CborMap) block).getList("bats", BatId::fromCbor);
-                        if (auth.isEmpty()) {
-                            Logging.LOG().info("INVALID AUTH: EMPTY");
-                            return BLOCK;
-                        }
-                        BlockAuth blockAuth = BlockAuth.fromString(auth);
-                        for (BatId bid : batids) {
-                            Optional<Bat> bat = bid.getInline()
-                                    .or(() -> bid.id.equals(blockAuth.batId) ?
-                                            batStore.getBat(bid) :
-                                            Optional.empty());
-                            if (bat.isPresent() && BlockRequestAuthoriser.isValidAuth(blockAuth, b, s, bat.get(), hasher))
-                                return ALLOW;
-                        }
-                        if (instanceBat.isPresent()) {
-                            if (BlockRequestAuthoriser.isValidAuth(blockAuth, b, s, instanceBat.get().bat, hasher))
-                                return ALLOW;
-                        }
-                        if (! batids.isEmpty()) {
-                            String reason = BlockRequestAuthoriser.invalidReason(blockAuth, b, s, batids, hasher);
-                            Logging.LOG().info("INVALID AUTH: source: " + s + ", cid: " + b + " reason: " + reason);
-                        }
-                        return BLOCK;
-                    } else return ALLOW; // This is a public block
-                } else // e.g. inner CHAMP nodes
-                    return ALLOW;
-            }
-            return BLOCK;
+        return (b, blockBats, s, auth) -> {
+            Optional<BlockAuth> blockAuth = auth.isEmpty() ?
+                    Optional.empty() :
+                    Optional.of(BlockAuth.fromString(auth));
+            return Futures.of(BlockRequestAuthoriser.allowRead(b, blockBats, s, blockAuth, batStore, instanceBat, hasher));
         };
     }
 

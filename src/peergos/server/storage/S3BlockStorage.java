@@ -2,6 +2,7 @@ package peergos.server.storage;
 
 import io.prometheus.client.Histogram;
 import io.prometheus.client.Counter;
+import org.junit.*;
 import peergos.server.*;
 import peergos.server.corenode.*;
 import peergos.server.space.*;
@@ -181,17 +182,19 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
 
         if (! blocks.stream().allMatch(c -> hasBlock(c.hash)))
             return Futures.errored(new IllegalStateException("Blocks not present locally"));
+        if (! blocks.stream().allMatch(c -> c.hash.isRaw()))
+            return Futures.errored(new IllegalStateException("Can only auth read for raw blocks, not cbor!"));
 
-        // retrieve all blocks and verify BATs in parallel
-        List<CompletableFuture<Optional<byte[]>>> data = blocks.stream()
+        // verify all BATs in parallel
+        List<CompletableFuture<Boolean>> auths = blocks.stream()
                 .parallel()
-                .map(b -> authRaw(b.hash, b.hash.isRaw() ?
-                        Optional.of(new Pair<>(0, Bat.MAX_RAW_BLOCK_PREFIX_SIZE - 1)) :
-                        Optional.empty(), b.bat, id, hasher)
-                        .thenApply(bopt -> {
-                            if (bopt.isPresent())
-                                blockMetadata.put(b.hash, bopt.get());
-                            return bopt;
+                .map(b -> getBlockMetadata(b.hash, "")
+                        .thenApply(meta -> {
+                            String auth = b.bat.map(bat -> bat.bat.generateAuth(b.hash, id, 300, S3Request.currentDatetime(), bat.id, hasher)
+                                    .thenApply(BlockAuth::encode).join()).orElse("");
+                            if (!authoriser.allowRead(b.hash, meta.batids, id, auth).join())
+                                throw new IllegalStateException("Unauthorised!");
+                            return true;
                         }))
                 .collect(Collectors.toList());
 
@@ -199,7 +202,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
             String s3Key = hashToKey(block.hash);
             res.add(S3Request.preSignGet(folder + s3Key, Optional.of(600), Optional.empty(), S3AdminRequests.asAwsDate(ZonedDateTime.now()), host, region, accessKeyId, secretKey, useHttps, hasher).join());
         }
-        for (CompletableFuture<Optional<byte[]>> fut : data) {
+        for (CompletableFuture<Boolean> fut : auths) {
             fut.join(); // Any invalids BATs will cause this to throw
         }
         for (int i=0; i < blocks.size(); i++)
@@ -212,6 +215,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                                                             PublicKeyHash writerHash,
                                                             List<byte[]> signedHashes,
                                                             List<Integer> blockSizes,
+                                                            List<List<BatId>> batIds,
                                                             boolean isRaw,
                                                             TransactionId tid) {
         try {
@@ -219,15 +223,19 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                 throw new IllegalStateException("Too many writes to auth!");
             if (blockSizes.size() != signedHashes.size())
                 throw new IllegalStateException("Number of sizes doesn't match number of signed hashes!");
+            if (blockSizes.size() != batIds.size())
+                throw new IllegalStateException("Number of sizes doesn't match number of bats!");
             PublicSigningKey writer = getSigningKey(writerHash).get().get();
-            List<Pair<Cid, Integer>> blockProps = new ArrayList<>();
+            List<Pair<Cid, BlockMetadata>> blockProps = new ArrayList<>();
             for (int i=0; i < signedHashes.size(); i++) {
                 Cid.Codec codec = isRaw ? Cid.Codec.Raw : Cid.Codec.DagCbor;
+                if (! isRaw)
+                    throw new IllegalStateException("Only raw blocks can be pre-auther for writes");
                 Cid cid = new Cid(1, codec, Multihash.Type.sha2_256, writer.unsignMessage(signedHashes.get(i)));
-                blockProps.add(new Pair<>(cid, blockSizes.get(i)));
+                blockProps.add(new Pair<>(cid, new BlockMetadata(blockSizes.get(i), Collections.emptyList(), batIds.get(i))));
             }
             List<PresignedUrl> res = new ArrayList<>();
-            for (Pair<Cid, Integer> props : blockProps) {
+            for (Pair<Cid, BlockMetadata> props : blockProps) {
                 if (props.left.type != Multihash.Type.sha2_256)
                     throw new IllegalStateException("Can only pre-auth writes of sha256 hashed blocks!");
                 transactions.addBlock(props.left, tid, owner);
@@ -235,12 +243,12 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                 String contentSha256 = ArrayOps.bytesToHex(props.left.getHash());
                 Map<String, String> extraHeaders = new LinkedHashMap<>();
                 extraHeaders.put("Content-Type", "application/octet-stream");
-                res.add(S3Request.preSignPut(folder + s3Key, props.right, contentSha256, false,
+                res.add(S3Request.preSignPut(folder + s3Key, props.right.size, contentSha256, false,
                         S3AdminRequests.asAwsDate(ZonedDateTime.now()), host, extraHeaders, region, accessKeyId, secretKey, useHttps, hasher).join());
                 blockPutAuths.inc();
                 bloomAdds.add(props.left);
                 if (isRaw)
-                    blockMetadata.put(props.left, new BlockMetadata(props.right, Collections.emptyList()));
+                    blockMetadata.put(props.left, null, props.right);
             }
             return Futures.of(res);
         } catch (Exception e) {
@@ -266,56 +274,56 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         return getRaw(object, bat, id, hasher);
     }
 
-    private CompletableFuture<Optional<byte[]>> authRaw(Cid hash,
-                                                       Optional<Pair<Integer, Integer>> range,
-                                                       Optional<BatWithId> bat,
-                                                       Cid ourId,
-                                                       Hasher h) {
-        if (bat.isEmpty())
-            return getRaw(hash, range, "", true, Optional.empty());
-        return bat.get().bat.generateAuth(hash, ourId, 300, S3Request.currentDatetime(), bat.get().id, h)
-                .thenApply(BlockAuth::encode)
-                .thenCompose(auth -> getRaw(hash, range, auth, true, bat));
-    }
-
     @Override
     public CompletableFuture<Optional<byte[]>> getRaw(Cid hash, Optional<BatWithId> bat, Cid ourId, Hasher h) {
         if (bat.isEmpty())
             return getRaw(hash, "");
         return bat.get().bat.generateAuth(hash, ourId, 300, S3Request.currentDatetime(), bat.get().id, h)
                 .thenApply(BlockAuth::encode)
-                .thenCompose(auth -> getRaw(hash, Optional.empty(), auth, true, bat));
+                .thenCompose(auth -> getRaw(hash, Optional.empty(), auth, true, bat))
+                .thenApply(p -> p.map(v -> v.left));
     }
 
     @Override
     public CompletableFuture<Optional<byte[]>> getRaw(Cid hash, String auth) {
-        return getRaw(hash, Optional.empty(), auth, true, Optional.empty());
+        return getRaw(hash, Optional.empty(), auth, true, Optional.empty())
+                .thenApply(p -> p.map(v -> v.left));
     }
 
-    private CompletableFuture<Optional<byte[]>> getRaw(Cid hash,
-                                                       Optional<Pair<Integer, Integer>> range,
-                                                       String auth,
-                                                       boolean enforceAuth,
-                                                       Optional<BatWithId> bat) {
-        return getWithBackoff(() -> getRawWithoutBackoff(hash, range, auth, enforceAuth, bat));
-    }
-
-    private CompletableFuture<Optional<byte[]>> getRawWithoutBackoff(Cid hash,
+    /** Get raw block data and version
+     *
+     * @param hash
+     * @param range
+     * @param auth
+     * @param enforceAuth
+     * @param bat
+     * @return
+     */
+    private CompletableFuture<Optional<Pair<byte[], String>>> getRaw(Cid hash,
                                                                      Optional<Pair<Integer, Integer>> range,
                                                                      String auth,
                                                                      boolean enforceAuth,
                                                                      Optional<BatWithId> bat) {
+        return getWithBackoff(() -> getRawWithoutBackoff(hash, range, auth, enforceAuth, bat));
+    }
+
+    private CompletableFuture<Optional<Pair<byte[], String>>> getRawWithoutBackoff(Cid hash,
+                                                                                   Optional<Pair<Integer, Integer>> range,
+                                                                                   String auth,
+                                                                                   boolean enforceAuth,
+                                                                                   Optional<BatWithId> bat) {
         String path = folder + hashToKey(hash);
         PresignedUrl getUrl = S3Request.preSignGet(path, Optional.of(600), range,
                 S3AdminRequests.asAwsDate(ZonedDateTime.now()), host, region, accessKeyId, secretKey, useHttps, hasher).join();
         Histogram.Timer readTimer = readTimerLog.labels("read").startTimer();
         try {
-            byte[] block = HttpUtil.get(getUrl);
+            Pair<byte[], String> blockAndVersion = HttpUtil.getWithVersion(getUrl);
             blockGets.inc();
             // validate auth, unless this is an internal query
-            if (enforceAuth && ! authoriser.allowRead(hash, block, id, auth).join())
+            if (enforceAuth && ! authoriser.allowRead(hash, blockAndVersion.left, id, auth).join())
                 throw new IllegalStateException("Unauthorised!");
-            return Futures.of(Optional.of(block));
+            blockMetadata.put(hash, blockAndVersion.right, blockAndVersion.left);
+            return Futures.of(Optional.of(blockAndVersion));
         } catch (SocketTimeoutException | SSLException e) {
             // S3 can't handle the load so treat this as a rate limit and slow down
             throw new RateLimitException();
@@ -336,8 +344,11 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
 
             nonLocalGets.inc();
             if (p2pGetId.equals(id))
-                return p2pFallback.getRaw(hash, auth);
-            return p2pFallback.getRaw(hash, bat, p2pGetId, hasher, enforceAuth); // recalculate auth when the fallback node has a different node id
+                return p2pFallback.getRaw(hash, auth)
+                        .thenApply(dopt -> dopt.map(b -> new Pair<>(b, null)));
+            // recalculate auth when the fallback node has a different node id
+            return p2pFallback.getRaw(hash, bat, p2pGetId, hasher, enforceAuth)
+                    .thenApply(dopt -> dopt.map(b -> new Pair<>(b, null)));
         } finally {
             readTimer.observeDuration();
         }
@@ -404,18 +415,14 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                 .stream()
                 .filter(h -> !h.isIdentity())
                 .collect(Collectors.toList());
-        List<Multihash> existingLinks = existing.map(h -> h.isRaw() ?
-                        Optional.<byte[]>empty() :
-                        getRaw(h, Optional.empty(), "", false, mirrorBat).join())
-                .map(bopt -> bopt.map(CborObject::fromByteArray))
-                .flatMap(copt -> copt.map(CborObject::links).map(links -> links.stream()
+        List<Cid> existingLinks = existing.map(c -> getLinks(c, "").join().stream()
                         .filter(h -> !h.isIdentity())
-                        .collect(Collectors.toList())))
+                        .collect(Collectors.toList()))
                 .orElse(Collections.emptyList());
 
         for (int i=0; i < newLinks.size(); i++) {
             Optional<Cid> existingLink = i < existingLinks.size() ?
-                    Optional.of((Cid)existingLinks.get(i)) :
+                    Optional.of(existingLinks.get(i)) :
                     Optional.empty();
             Optional<Cid> updatedLink = Optional.of((Cid)newLinks.get(i));
             mirror(owner, existingLink, updatedLink, mirrorBat, ourNodeId, tid, hasher).join();
@@ -440,8 +447,9 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         transactions.clearOldTransactions(cutoffMillis);
     }
 
-    private void collectGarbage(JdbcIpnsAndSocial pointers, UsageStore usage, BlockMetadataStore metadata) {
-        GarbageCollector.collect(new MetadataCachingStorage(this, metadata, hasher), pointers, usage, this::savePointerSnapshot, metadata);
+    private void collectGarbage(JdbcIpnsAndSocial pointers, UsageStore usage, BlockMetadataStore metadata, boolean listFromBlockstore) {
+        GarbageCollector.collect(this, pointers, usage,
+                this::savePointerSnapshot, metadata, listFromBlockstore);
     }
 
     public CompletableFuture<Boolean> savePointerSnapshot(Stream<Map.Entry<PublicKeyHash, byte[]>> pointers) {
@@ -475,6 +483,9 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
 
     @Override
     public CompletableFuture<Optional<Integer>> getSize(Multihash hash) {
+        Optional<BlockMetadata> meta = blockMetadata.get((Cid) hash);
+        if (meta.isPresent())
+            return Futures.of(Optional.of(meta.get().size));
         return getWithBackoff(() -> getSizeWithoutRetry(hash));
     }
 
@@ -587,7 +598,8 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
             String contentHash = hashContent ? ArrayOps.bytesToHex(hash.getHash()) : "UNSIGNED-PAYLOAD";
             PresignedUrl putUrl = S3Request.preSignPut(s3Key, data.length, contentHash, false,
                     S3AdminRequests.asAwsDate(ZonedDateTime.now()), host, extraHeaders, region, accessKeyId, secretKey, useHttps, hasher).join();
-            HttpUtil.put(putUrl, data);
+            String version = HttpUtil.putWithVersion(putUrl, data).right;
+            blockMetadata.put(cid, version, data);
             bloomAdds.add(cid);
             blockPuts.inc();
             blockPutBytes.labels("size").observe(data.length);
@@ -610,25 +622,54 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
     public CompletableFuture<List<Cid>> getLinks(Cid root, String auth) {
         if (root.isRaw())
             return CompletableFuture.completedFuture(Collections.emptyList());
-        return getRaw(root, Optional.empty(), "", false, Optional.empty()).thenApply(opt -> opt
-                .map(CborObject::fromByteArray)
-                .map(cbor -> cbor.links().stream().map(c -> (Cid) c).collect(Collectors.toList()))
-                .orElse(Collections.emptyList())
-        );
+        Optional<BlockMetadata> meta = blockMetadata.get(root);
+        if (meta.isPresent())
+            return Futures.of(meta.get().links);
+        return getBlockMetadata(root, auth)
+                .thenApply(res -> res.links);
     }
 
     @Override
-    public CompletableFuture<Pair<Integer, List<Cid>>> getLinksAndSize(Cid block, String auth) {
-        if (block.isRaw()) {
-            return getSize(block)
-                    .thenApply(s -> new Pair<>(s.orElse(0), Collections.emptyList()));
+    public CompletableFuture<BlockMetadata> getBlockMetadata(Cid h, String auth) {
+        if (h.isIdentity())
+            return Futures.of(new BlockMetadata(0, CborObject.getLinks(h, h.getHash()), Bat.getBlockBats(h, h.getHash())));
+        Optional<BlockMetadata> cached = blockMetadata.get(h);
+        if (cached.isPresent())
+            return Futures.of(cached.get());
+        Optional<Pair<byte[], String>> data = getRaw(h, h.isRaw() ?
+                Optional.of(new Pair<>(0, Bat.MAX_RAW_BLOCK_PREFIX_SIZE - 1)) :
+                Optional.empty(), "", false, Optional.empty()).join();
+        if (data.isEmpty())
+            throw new IllegalStateException("Block not present locally: " + h);
+        byte[] bloc = data.get().left;
+        String version = data.get().right;
+        if (h.isRaw()) {
+            // we should avoid this by populating the metadata store, as it means two S3 calls, a ranged GET and a HEAD
+            int size = getSize(h).join().get();
+            BlockMetadata meta = new BlockMetadata(size, Collections.emptyList(), Bat.getRawBlockBats(bloc));
+            blockMetadata.put(h, version, meta);
+            return Futures.of(meta);
         }
-        Optional<byte[]> data = getRaw(block, Optional.empty(), "", false, Optional.empty()).join();
-        List<Cid> links = data.map(CborObject::fromByteArray)
-                .map(cbor -> cbor.links().stream().map(c -> (Cid) c).collect(Collectors.toList()))
-                .orElse(Collections.emptyList());
-        int size = data.map(a -> a.length).orElse(0);
-        return Futures.of(new Pair<>(size, links));
+        return Futures.of(blockMetadata.put(h, version, bloc));
+    }
+
+    public void updateMetadataStoreIfEmpty() {
+        if (blockMetadata.size() > 0)
+            return;
+        LOG.info("Updating block metadata store from S3...");
+        List<Cid> all = getAllBlockHashes().collect(Collectors.toList());
+        int updateParallelism = 10;
+        ForkJoinPool pool = new ForkJoinPool(updateParallelism);
+        int batchSize = all.size() / updateParallelism;
+        List<ForkJoinTask<Optional<BlockMetadata>>> futures = IntStream.range(0, updateParallelism)
+                .mapToObj(b -> pool.submit(() -> IntStream.range(b * batchSize, (b + 1) * batchSize)
+                        .mapToObj(i -> getBlockMetadata(all.get(i), "").join())
+                        .reduce((x, y) -> y)))
+                .collect(Collectors.toList());
+        futures.stream()
+                .map(ForkJoinTask::join)
+                .collect(Collectors.toList());
+        LOG.info("Finished updating block metadata store from S3.");
     }
 
     @Override
@@ -638,22 +679,42 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
     }
 
     @Override
-    public Stream<Pair<Cid, String>> getAllBlockHashVersions() {
+    public Stream<BlockVersion> getAllBlockHashVersions() {
         // todo make this actually streaming
         return getFileVersions(Long.MAX_VALUE).stream();
     }
 
-    private List<Pair<Cid, String>> getFileVersions(long maxReturned) {
-        List<Pair<Cid, String>> results = new ArrayList<>();
-        applyToAllVersions(obj -> {
+    @Override
+    public Stream<BlockVersion> getAllRawBlockVersions() {
+        // todo make this actually streaming
+        List<BlockVersion> results = new ArrayList<>();
+        applyToAllVersions("AFK", obj -> {
             try {
-                results.add(new Pair<>(keyToHash(obj.key), obj.version));
+                results.add(new BlockVersion(keyToHash(obj.key), obj.version, obj.isLatest));
             } catch (Exception e) {
                 LOG.warning("Couldn't parse S3 key to Cid: " + obj.key);
             }
         }, del -> {
             try {
-                results.add(new Pair<>(keyToHash(del.key), del.version));
+                results.add(new BlockVersion(keyToHash(del.key), del.version, del.isLatest));
+            } catch (Exception e) {
+                LOG.warning("Couldn't parse S3 key to Cid: " + del.key);
+            }
+        }, Long.MAX_VALUE);
+        return results.stream();
+    }
+
+    private List<BlockVersion> getFileVersions(long maxReturned) {
+        List<BlockVersion> results = new ArrayList<>();
+        applyToAllVersions("", obj -> {
+            try {
+                results.add(new BlockVersion(keyToHash(obj.key), obj.version, obj.isLatest));
+            } catch (Exception e) {
+                LOG.warning("Couldn't parse S3 key to Cid: " + obj.key);
+            }
+        }, del -> {
+            try {
+                results.add(new BlockVersion(keyToHash(del.key), del.version, del.isLatest));
             } catch (Exception e) {
                 LOG.warning("Couldn't parse S3 key to Cid: " + del.key);
             }
@@ -713,15 +774,17 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         }
     }
 
-    private void applyToAllVersions(Consumer<S3AdminRequests.ObjectMetadataVersion> processor,
-                                    Consumer<S3AdminRequests.DeleteMarker> deleteProcessor, long maxObjects) {
+    private void applyToAllVersions(String prefix,
+                                    Consumer<S3AdminRequests.ObjectMetadataVersion> processor,
+                                    Consumer<S3AdminRequests.DeleteMarker> deleteProcessor,
+                                    long maxObjects) {
         try {
             Optional<String> keyMarker = Optional.empty();
             Optional<String> versionIdMarker = Optional.empty();
             S3AdminRequests.ListObjectVersionsReply result;
             long processedObjects = 0;
             do {
-                result = S3AdminRequests.listObjectVersions(folder, 1_000, keyMarker, versionIdMarker,
+                result = S3AdminRequests.listObjectVersions(folder + prefix, 1_000, keyMarker, versionIdMarker,
                         ZonedDateTime.now(), host, region, accessKeyId, secretKey, url -> {
                             try {
                                 return HttpUtil.get(url);
@@ -763,13 +826,13 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
 
     @Override
     public void delete(Cid hash) {
-        delete(new Pair<>(hash, null));
+        delete(new BlockVersion(hash, null, true));
     }
 
     @Override
-    public void delete(Pair<Cid, String> version) {
+    public void delete(BlockVersion version) {
         try {
-            PresignedUrl delUrl = S3AdminRequests.preSignDelete(folder + hashToKey(version.left), Optional.ofNullable(version.right),
+            PresignedUrl delUrl = S3AdminRequests.preSignDelete(folder + hashToKey(version.cid), Optional.ofNullable(version.version),
                     S3AdminRequests.asAwsDate(ZonedDateTime.now()), host, region, accessKeyId, secretKey, useHttps, hasher).join();
             HttpUtil.delete(delUrl);
         } catch (Exception e) {
@@ -778,9 +841,9 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
     }
 
     @Override
-    public void bulkDelete(List<Pair<Cid, String>> versions) {
+    public void bulkDelete(List<BlockVersion> versions) {
         List<Pair<String, String>> keyVersions = versions.stream()
-                .map(v -> new Pair<>(folder + hashToKey(v.left), v.right))
+                .map(v -> new Pair<>(folder + hashToKey(v.cid), v.version))
                 .collect(Collectors.toList());
         try {
             S3AdminRequests.bulkDelete(keyVersions, ZonedDateTime.now(), host, region, accessKeyId, secretKey,
@@ -802,7 +865,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
             // fallback to doing deletes with parallel single calls
             // This is necessary because B2 doesn't implement the bulk delete call!!
             System.out.println("Falling back to parallel individual block deletes...");
-            for (Pair<Cid, String> version : versions) {
+            for (BlockVersion version : versions) {
                 new Thread(() -> delete(version)).start();
             }
         }
@@ -822,18 +885,14 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         Supplier<Connection> transactionsDb = Main.getDBConnector(a, "transactions-sql-file");
         TransactionStore transactions = JdbcTransactionStore.build(transactionsDb, sqlCommands);
         BlockRequestAuthoriser authoriser = (c, b, s, auth) -> Futures.of(true);
+        BlockMetadataStore meta = Builder.buildBlockMetadata(a);
         S3BlockStorage s3 = new S3BlockStorage(config, Cid.decode(a.getArg("ipfs.id")),
-                BlockStoreProperties.empty(), transactions, authoriser, new RamBlockMetadataStore(),
+                BlockStoreProperties.empty(), transactions, authoriser, meta,
                 hasher, new RAMStorage(hasher), new RAMStorage(hasher));
         JdbcIpnsAndSocial rawPointers = new JdbcIpnsAndSocial(database, sqlCommands);
         Supplier<Connection> usageDb = Main.getDBConnector(a, "space-usage-sql-file");
         UsageStore usageStore = new JdbcUsageStore(usageDb, sqlCommands);
-        File storeFile = new File("blockmetadata.sql");
-        String sqlFilePath = storeFile.getPath();
-        Connection memory = Sqlite.build(sqlFilePath);
-        Connection instance = new Sqlite.UncloseableConnection(memory);
-        SqliteBlockMetadataStorage store = new SqliteBlockMetadataStorage(() -> instance, new SqliteCommands(), 0, storeFile);
-        s3.collectGarbage(rawPointers, usageStore, store);
+        s3.collectGarbage(rawPointers, usageStore, meta, a.getBoolean("list-from-blockstore", false));
     }
 
     @Override

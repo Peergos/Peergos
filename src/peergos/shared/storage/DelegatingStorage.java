@@ -99,8 +99,9 @@ public abstract class DelegatingStorage implements ContentAddressedStorage {
                                                             PublicKeyHash writer,
                                                             List<byte[]> signedHashes,
                                                             List<Integer> blockSizes,
+                                                            List<List<BatId>> batIds,
                                                             boolean isRaw,
                                                             TransactionId tid) {
-        return target.authWrites(owner, writer, signedHashes, blockSizes, isRaw, tid);
+        return target.authWrites(owner, writer, signedHashes, blockSizes, batIds, isRaw, tid);
     }
 }

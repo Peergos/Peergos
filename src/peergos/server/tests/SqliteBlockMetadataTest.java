@@ -1,11 +1,14 @@
 package peergos.server.tests;
 
 import org.junit.*;
+import peergos.server.*;
 import peergos.server.sql.*;
 import peergos.server.storage.*;
 import peergos.server.util.*;
+import peergos.shared.*;
 import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.io.ipfs.multihash.*;
+import peergos.shared.storage.auth.*;
 
 import java.io.*;
 import java.nio.file.*;
@@ -18,6 +21,7 @@ import static org.junit.Assert.assertTrue;
 public class SqliteBlockMetadataTest {
 
     private static final Random r = new Random(666);
+    private static Crypto crypto = Main.initCrypto();
 
     private static Cid randomCid() {
         byte[] hash = new byte[32];
@@ -38,36 +42,30 @@ public class SqliteBlockMetadataTest {
         String sqlFilePath = storeFile.getPath();
         Connection memory = Sqlite.build(sqlFilePath);
         Connection instance = new Sqlite.UncloseableConnection(memory);
-        SqliteBlockMetadataStorage store = new SqliteBlockMetadataStorage(() -> instance, new SqliteCommands(), 1024 * 1024, storeFile);
-        long initialSize = store.currentSize();
-        assertTrue(initialSize == 16384);
+        BlockMetadataStore store = new JdbcBlockMetadataStore(() -> instance, new SqliteCommands());
+
         Cid cid = randomCid();
-        BlockMetadata meta = new BlockMetadata(10240, randomCids(20));
-        store.put(cid, meta);
-        long sizeWithBlock = store.currentSize();
-        store.ensureWithinSize();
+        BlockMetadata meta = new BlockMetadata(10240, randomCids(20), Collections.emptyList());
+        store.put(cid, "alpha", meta);
 
         // add same cid again
-        store.put(cid, meta);
-    }
+        store.put(cid, "beta", meta);
+        Cid cid2 = randomCid();
+        BlockMetadata meta2 = new BlockMetadata(10240, randomCids(20),
+                List.of(BatId.inline(Bat.random(crypto.random)), BatId.inline(Bat.random(crypto.random))));
+        store.put(cid2, "gammaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", meta2);
 
-    @Test
-    public void compaction() throws Exception {
-        Path dir = Files.createTempDirectory("peergos-block-metadata");
-        File storeFile = dir.resolve("metadata.sql" + System.currentTimeMillis()).toFile();
-        String sqlFilePath = storeFile.getPath();
-        Connection memory = Sqlite.build(sqlFilePath);
-        Connection instance = new Sqlite.UncloseableConnection(memory);
-        int maxFileSize = 1024 * 1024;
-        SqliteBlockMetadataStorage store = new SqliteBlockMetadataStorage(() -> instance, new SqliteCommands(), maxFileSize, storeFile);
-        long initialSize = store.currentSize();
-        assertTrue(initialSize == 16384);
-        for (int i=0; i < 1500; i++)
-            store.put(randomCid(), new BlockMetadata(10240, randomCids(20)));
-        long sizeWithBlocks = store.currentSize();
-        assertTrue(sizeWithBlocks > maxFileSize);
-        store.ensureWithinSize();
-        long sizeAfterCompaction = store.currentSize();
-        assertTrue(sizeAfterCompaction < 0.6 * maxFileSize);
+        List<BlockVersion> ls = store.list().collect(Collectors.toList());
+        Assert.assertTrue(ls.size() == 2);
+
+        long size = store.size();
+        Assert.assertTrue(size == 2);
+
+        // null versions
+        Cid cid3 = randomCid();
+        BlockMetadata meta3 = new BlockMetadata(10240, randomCids(20),
+                List.of(BatId.inline(Bat.random(crypto.random)), BatId.inline(Bat.random(crypto.random))));
+        store.put(cid3, null, meta3);
+        Assert.assertTrue(store.list().filter(v -> v.cid.equals(cid3)).findFirst().get().version == null);
     }
 }

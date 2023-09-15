@@ -103,6 +103,7 @@ public class CoreNodeHandler implements HttpHandler
             exchange.sendResponseHeaders(200, b.length);
             exchange.getResponseBody().write(b);
         } catch (Exception e) {
+            e.printStackTrace();
             HttpUtil.replyError(exchange, e);
         } finally {
             exchange.close();

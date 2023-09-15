@@ -52,6 +52,7 @@ public interface ContentAddressedStorage {
                                                              PublicKeyHash writer,
                                                              List<byte[]> signedHashes,
                                                              List<Integer> blockSizes,
+                                                             List<List<BatId>> batIds,
                                                              boolean isRaw,
                                                              TransactionId tid) {
         return Futures.errored(new IllegalStateException("Unimplemented call!"));
@@ -333,6 +334,7 @@ public interface ContentAddressedStorage {
                                                                 PublicKeyHash writer,
                                                                 List<byte[]> signedHashes,
                                                                 List<Integer> blockSizes,
+                                                                List<List<BatId>> batIds,
                                                                 boolean isRaw,
                                                                 TransactionId tid) {
             if (! isPeergosServer)
@@ -340,7 +342,7 @@ public interface ContentAddressedStorage {
             List<Long> sizes = blockSizes.stream()
                     .map(Integer::longValue)
                     .collect(Collectors.toList());
-            WriteAuthRequest req = new WriteAuthRequest(signedHashes, sizes);
+            WriteAuthRequest req = new WriteAuthRequest(signedHashes, sizes, batIds);
             return poster.postUnzip(apiPrefix + AUTH_WRITES + "?owner=" + encode(owner.toString())
                     + "&writer=" + encode(writer.toString())
                     + "&transaction=" + encode(tid.toString())
@@ -547,9 +549,10 @@ public interface ContentAddressedStorage {
                                                                 PublicKeyHash writer,
                                                                 List<byte[]> signedHashes,
                                                                 List<Integer> blockSizes,
+                                                                List<List<BatId>> batIds,
                                                                 boolean isRaw,
                                                                 TransactionId tid) {
-            return local.authWrites(owner, writer, signedHashes, blockSizes, isRaw, tid);
+            return local.authWrites(owner, writer, signedHashes, blockSizes, batIds, isRaw, tid);
         }
 
         @Override

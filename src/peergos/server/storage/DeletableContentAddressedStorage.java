@@ -24,7 +24,11 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
 
     Stream<Cid> getAllBlockHashes();
 
-    Stream<Pair<Cid, String>> getAllBlockHashVersions();
+    Stream<BlockVersion> getAllBlockHashVersions();
+
+    default Stream<BlockVersion> getAllRawBlockVersions() {
+        return getAllBlockHashVersions().filter(v -> v.cid.isRaw());
+    }
 
     List<Multihash> getOpenTransactionBlocks();
 
@@ -34,8 +38,8 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
 
     void delete(Cid block);
 
-    default void delete(Pair<Cid, String> blockVersion) {
-        delete(blockVersion.left);
+    default void delete(BlockVersion blockVersion) {
+        delete(blockVersion.cid);
     }
 
     default void bloomAdd(Multihash hash) {}
@@ -44,8 +48,8 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
         return Optional.empty();
     }
 
-    default void bulkDelete(List<Pair<Cid, String>> blockVersions) {
-        for (Pair<Cid, String> version : blockVersions) {
+    default void bulkDelete(List<BlockVersion> blockVersions) {
+        for (BlockVersion version : blockVersions) {
             delete(version);
         }
     }
@@ -170,21 +174,21 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
         return getChangeInContainedSize(original.get(), updated);
     }
 
-    default CompletableFuture<Pair<Integer, List<Cid>>> getLinksAndSize(Cid block, String auth) {
-        return getLinks(block, auth)
-                .thenCompose(links -> getSize(block).thenApply(size -> new Pair<>(size.orElse(0), links)));
+    default CompletableFuture<BlockMetadata> getBlockMetadata(Cid block, String auth) {
+        return getRaw(block, auth)
+                .thenApply(rawOpt -> BlockMetadataStore.extractMetadata(block, rawOpt.get()));
     }
 
     default CompletableFuture<Long> getChangeInContainedSize(Cid original, Cid updated) {
-        return getLinksAndSize(original, "")
-                .thenCompose(before -> getLinksAndSize(updated, "").thenCompose(after -> {
-                    int objectDelta = after.left - before.left;
-                    List<Cid> beforeLinks = before.right.stream().filter(c -> !c.isIdentity()).collect(Collectors.toList());
+        return getBlockMetadata(original, "")
+                .thenCompose(before -> getBlockMetadata(updated, "").thenCompose(after -> {
+                    int objectDelta = after.size - before.size;
+                    List<Cid> beforeLinks = before.links.stream().filter(c -> !c.isIdentity()).collect(Collectors.toList());
                     List<Cid> onlyBefore = new ArrayList<>(beforeLinks);
-                    onlyBefore.removeAll(after.right);
-                    List<Cid> afterLinks = after.right.stream().filter(c -> !c.isIdentity()).collect(Collectors.toList());
+                    onlyBefore.removeAll(after.links);
+                    List<Cid> afterLinks = after.links.stream().filter(c -> !c.isIdentity()).collect(Collectors.toList());
                     List<Cid> onlyAfter = new ArrayList<>(afterLinks);
-                    onlyAfter.removeAll(before.right);
+                    onlyAfter.removeAll(before.links);
 
                     int nPairs = Math.min(onlyBefore.size(), onlyAfter.size());
                     List<Pair<Cid, Cid>> pairs = IntStream.range(0, nPairs)
@@ -240,8 +244,8 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
         }
 
         @Override
-        public Stream<Pair<Cid, String>> getAllBlockHashVersions() {
-            return getAllBlockHashes().map(c -> new Pair<>(c, null));
+        public Stream<BlockVersion> getAllBlockHashVersions() {
+            return getAllBlockHashes().map(c -> new BlockVersion(c, null, true));
         }
 
         @Override

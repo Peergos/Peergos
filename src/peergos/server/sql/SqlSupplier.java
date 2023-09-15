@@ -20,6 +20,10 @@ public interface SqlSupplier {
 
     String ensureColumnExistsCommand(String table, String column, String type);
 
+    String addMetadataCommand();
+
+    String vacuumCommand();
+
     default String createMutablePointersTableCommand() {
         return "CREATE TABLE IF NOT EXISTS metadatablobs (writingkey text primary key not null, hash text not null); " +
                 "CREATE UNIQUE INDEX IF NOT EXISTS index_name ON metadatablobs (writingkey);";
@@ -66,10 +70,10 @@ public interface SqlSupplier {
 
     default String createBlockMetadataStoreTableCommand() {
         return "CREATE TABLE IF NOT EXISTS blockmetadata (cid " + getByteArrayType() + " primary key not null, " +
+                "version varchar(160)," +
                 "size " + sqlInteger() + " not null, " +
                 "links " + getByteArrayType() + " not null, " +
-                "accesstime " + sqlInteger() + " not null); " +
-                "CREATE INDEX IF NOT EXISTS blockmetadata_accessindex ON blockmetadata (accesstime);";
+                "batids " + getByteArrayType() + " not null);";
     }
 
     default String createServerMessageTableCommand() {

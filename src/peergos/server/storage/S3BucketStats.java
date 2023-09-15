@@ -4,13 +4,10 @@ import peergos.server.*;
 import peergos.server.util.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.storage.*;
-import peergos.shared.storage.auth.*;
-import peergos.shared.util.*;
 
 import java.io.*;
 import java.time.*;
 import java.util.*;
-import java.util.concurrent.*;
 import java.util.concurrent.atomic.*;
 import java.util.function.*;
 import java.util.logging.*;
@@ -59,11 +56,11 @@ public class S3BucketStats {
         }
     }
 
-    private static void copyRange(String startPrefix,
-                                  Optional<String> endPrefix,
-                                  S3Config source,
-                                  AtomicLong counter,
-                                  Hasher h) {
+    private static void analyseRange(String startPrefix,
+                                     Optional<String> endPrefix,
+                                     S3Config source,
+                                     AtomicLong counter,
+                                     Hasher h) {
         AtomicLong rawBlocks = new AtomicLong(0);
         AtomicLong cborBlocks = new AtomicLong(0);
         AtomicLong cborBlocksSize = new AtomicLong(0);
@@ -89,6 +86,6 @@ public class S3BucketStats {
         Optional<String> endPrefix = Optional.empty();
 
         System.out.println("Analysing S3 bucket " + source.getHost() + "/" + source.bucket);
-        copyRange(startPrefix, endPrefix, source, new AtomicLong(0), Main.initCrypto().hasher);
+        analyseRange(startPrefix, endPrefix, source, new AtomicLong(0), Main.initCrypto().hasher);
     }
 }

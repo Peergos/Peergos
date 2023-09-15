@@ -89,7 +89,7 @@ public class DHTHandler implements HttpHandler {
                             .map(x -> x.intValue())
                             .collect(Collectors.toList());
                     boolean isRaw = Boolean.parseBoolean(last.apply("raw"));
-                    dht.authWrites(ownerHash, writerHash, signatures, blockSizes, isRaw, tid).thenAccept(res -> {
+                    dht.authWrites(ownerHash, writerHash, signatures, blockSizes, req.batIds, isRaw, tid).thenAccept(res -> {
                         replyBytes(httpExchange, new CborObject.CborList(res).serialize(), Optional.empty());
                     }).exceptionally(Futures::logAndThrow).get();
                     break;

@@ -118,6 +118,7 @@ public class LocalOnlyStorage implements ContentAddressedStorage {
                                                             PublicKeyHash writer,
                                                             List<byte[]> signedHashes,
                                                             List<Integer> blockSizes,
+                                                            List<List<BatId>> batIds,
                                                             boolean isRaw,
                                                             TransactionId tid) {
         throw new IllegalStateException("Unimplemented!");

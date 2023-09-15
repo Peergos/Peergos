@@ -91,26 +91,7 @@ public class DirectS3BlockStore implements ContentAddressedStorage {
                                             List<byte[]> signedHashes,
                                             List<byte[]> blocks,
                                             TransactionId tid) {
-        return onOwnersNode(owner).thenCompose(ownersNode -> {
-            boolean allSmallBlocks = blocks.stream().map(b -> b.length).filter(len -> len > 8*1024).findAny().isEmpty();
-            if (ownersNode && directWrites && ! allSmallBlocks) {
-                CompletableFuture<List<Cid>> res = new CompletableFuture<>();
-                fallback.authWrites(owner, writer, signedHashes, blocks.stream().map(x -> x.length).collect(Collectors.toList()), false, tid)
-                        .thenCompose(preAuthed -> {
-                            List<CompletableFuture<Cid>> futures = new ArrayList<>();
-                            for (int i = 0; i < blocks.size(); i++) {
-                                PresignedUrl url = preAuthed.get(i);
-                                Cid targetName = keyToHash(url.base.substring(url.base.lastIndexOf("/") + 1));
-                                futures.add(direct.put(url.base, blocks.get(i), url.fields)
-                                        .thenApply(x -> targetName));
-                            }
-                            return Futures.combineAllInOrder(futures);
-                        }).thenApply(res::complete)
-                        .exceptionally(res::completeExceptionally);
-                return res;
-            }
-            return fallback.put(owner, writer, signedHashes, blocks, tid);
-        });
+        return fallback.put(owner, writer, signedHashes, blocks, tid);
     }
 
     private CompletableFuture<Boolean> onOwnersNode(PublicKeyHash owner) {
@@ -169,7 +150,9 @@ public class DirectS3BlockStore implements ContentAddressedStorage {
                                                     TransactionId tid,
                                                     ProgressConsumer<Long> progressCounter) {
         CompletableFuture<List<Cid>> res = new CompletableFuture<>();
-        fallback.authWrites(owner, writer, signatures, blocks.stream().map(x -> x.length).collect(Collectors.toList()), true, tid)
+        List<Integer> sizes = blocks.stream().map(x -> x.length).collect(Collectors.toList());
+        List<List<BatId>> batIds = blocks.stream().map(Bat::getRawBlockBats).collect(Collectors.toList());
+        fallback.authWrites(owner, writer, signatures, sizes, batIds, true, tid)
                 .thenCompose(preAuthed -> {
                     List<CompletableFuture<Cid>> futures = new ArrayList<>();
                     for (int i = 0; i < blocks.size(); i++) {
@@ -291,7 +274,7 @@ public class DirectS3BlockStore implements ContentAddressedStorage {
                     });
             return res;
         }
-        if (authedReads) {
+        if (authedReads && hash.isRaw()) {
             CompletableFuture<Optional<byte[]>> res = new CompletableFuture<>();
             fallback.authReads(Arrays.asList(new MirrorCap(hash, bat)))
                     .thenCompose(preAuthedGet -> direct.get(preAuthedGet.get(0).base, preAuthedGet.get(0).fields))

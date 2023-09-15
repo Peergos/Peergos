@@ -154,8 +154,9 @@ public class RetryStorage implements ContentAddressedStorage {
                                                             PublicKeyHash writer,
                                                             List<byte[]> signedHashes,
                                                             List<Integer> blockSizes,
+                                                            List<List<BatId>> batIds,
                                                             boolean isRaw,
                                                             TransactionId tid) {
-        return runWithRetry(() -> target.authWrites(owner, writer, signedHashes, blockSizes, isRaw, tid));
+        return runWithRetry(() -> target.authWrites(owner, writer, signedHashes, blockSizes, batIds, isRaw, tid));
     }
 }

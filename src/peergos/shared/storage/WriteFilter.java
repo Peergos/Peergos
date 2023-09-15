@@ -2,6 +2,7 @@ package peergos.shared.storage;
 
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.cid.*;
+import peergos.shared.storage.auth.*;
 import peergos.shared.user.fs.*;
 import peergos.shared.util.*;
 
@@ -25,13 +26,14 @@ public class WriteFilter extends DelegatingStorage {
                                                             PublicKeyHash writer,
                                                             List<byte[]> signedHashes,
                                                             List<Integer> blockSizes,
+                                                            List<List<BatId>> batIds,
                                                             boolean isRaw,
                                                             TransactionId tid) {
         if (! keyFilter.apply(writer, blockSizes.stream().mapToInt(x -> x).sum()))
             throw new IllegalStateException("Key not allowed to write to this server: " + writer);
         if (blockSizes.stream().anyMatch(s -> s > Fragment.MAX_LENGTH_WITH_BAT_PREFIX))
             throw new IllegalStateException("Block too big!");
-        return dht.authWrites(owner, writer, signedHashes, blockSizes, isRaw, tid);
+        return dht.authWrites(owner, writer, signedHashes, blockSizes, batIds, isRaw, tid);
     }
 
     @Override

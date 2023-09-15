@@ -37,7 +37,7 @@ public class GarbageCollector {
     }
 
     public synchronized void collect(Function<Stream<Map.Entry<PublicKeyHash, byte[]>>, CompletableFuture<Boolean>> snapshotSaver) {
-        collect(storage, pointers, usage, snapshotSaver, metadata);
+        collect(storage, pointers, usage, snapshotSaver, metadata, false);
     }
 
     public void start(long periodMillis, Function<Stream<Map.Entry<PublicKeyHash, byte[]>>, CompletableFuture<Boolean>> snapshotSaver) {
@@ -55,6 +55,17 @@ public class GarbageCollector {
         garbageCollector.start();
     }
 
+    private static List<BlockVersion> listBlocks(boolean listFromBlockstore,
+                                                 DeletableContentAddressedStorage storage,
+                                                 BlockMetadataStore metadata) {
+        // dedupe to guarantee no duplicate cids which might result in data loss
+        Map<Cid, BlockVersion> deduped = (listFromBlockstore ?
+                storage.getAllBlockHashVersions() :
+                Stream.concat(storage.getAllRawBlockVersions(), metadata.listCbor()))
+                .collect(Collectors.toMap(v -> v.cid, v -> v));
+        return new ArrayList<>(deduped.values());
+    }
+
     /** The result of this method is a snapshot of the mutable pointers that is consistent with the blocks store
      * after GC has completed (saved to a file which can be independently backed up).
      *
@@ -67,13 +78,15 @@ public class GarbageCollector {
                                JdbcIpnsAndSocial pointers,
                                UsageStore usage,
                                Function<Stream<Map.Entry<PublicKeyHash, byte[]>>, CompletableFuture<Boolean>> snapshotSaver,
-                               BlockMetadataStore metadata) {
+                               BlockMetadataStore metadata,
+                               boolean listFromBlockstore) {
         System.out.println("Starting blockstore garbage collection on node " + storage.id().join() + "...");
         // TODO: do this more efficiently with a bloom filter, and actual streaming and multithreading
         storage.clearOldTransactions(System.currentTimeMillis() - 24*3600*1000L);
         long t0 = System.nanoTime();
-        // current versions are returned first. This is only relevant for versioned S3 buckets, otherwise version is null
-        List<Pair<Cid, String>> present = storage.getAllBlockHashVersions().collect(Collectors.toList());
+        // Versions are only relevant for versioned S3 buckets, otherwise version is null
+        // For S3, clients write raw blocks directly, we need to get their version directly from S3
+        List<BlockVersion> present = listBlocks(listFromBlockstore, storage, metadata);
         long t1 = System.nanoTime();
         System.out.println("Listing " + present.size() + " blocks took " + (t1-t0)/1_000_000_000 + "s");
 
@@ -90,9 +103,9 @@ public class GarbageCollector {
         List<Multihash> usageRoots = usage.getAllTargets();
 
         Map<Multihash, Integer> toIndex = new HashMap<>();
-        // we traverse this in reverse order because the current versions are first
-        for (int i = present.size() - 1; i >= 0; i--)
-            toIndex.put(present.get(i).left, i);
+        for (int i = 0; i < present.size(); i++)
+            if (present.get(i).isLatest)
+                toIndex.put(present.get(i).cid, i);
         BitSet reachable = new BitSet(present.size());
 
         int markParallelism = 10;
@@ -165,17 +178,17 @@ public class GarbageCollector {
     private static Pair<Long, Long> deleteUnreachableBlocks(int startIndex,
                                                             int endIndex,
                                                             BitSet reachable,
-                                                            List<Pair<Cid, String>> present,
+                                                            List<BlockVersion> present,
                                                             AtomicLong progress,
                                                             DeletableContentAddressedStorage storage,
                                                             BlockMetadataStore metadata) {
         long deletedCborBlocks = 0, deletedRawBlocks = 0;
         long logPoint = startIndex;
         final int maxDeleteCount = 1000;
-        List<Pair<Cid, String>> pendingDeletes = new ArrayList<>();
+        List<BlockVersion> pendingDeletes = new ArrayList<>();
         for (int i = reachable.nextClearBit(startIndex); i >= startIndex && i < endIndex; i = reachable.nextClearBit(i + 1)) {
-            Pair<Cid, String> version = present.get(i);
-            Cid hash = version.left;
+            BlockVersion version = present.get(i);
+            Cid hash = version.cid;
             if (hash.isRaw())
                 deletedRawBlocks++;
             else
@@ -184,8 +197,8 @@ public class GarbageCollector {
 
             if (pendingDeletes.size() >= maxDeleteCount) {
                 getWithBackoff(() -> {storage.bulkDelete(pendingDeletes); return true;});
-                for (Pair<Cid, String> block : pendingDeletes) {
-                    metadata.remove(block.left);
+                for (BlockVersion block : pendingDeletes) {
+                    metadata.remove(block.cid);
                 }
                 pendingDeletes.clear();
             }

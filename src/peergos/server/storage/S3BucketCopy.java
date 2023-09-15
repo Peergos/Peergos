@@ -73,7 +73,7 @@ public class S3BucketCopy {
                 Collections.emptyMap(), config.region, config.accessKey, config.secretKey, true, h).join();
         try {
             System.out.println("Copying s3://"+sourceBucket + "/" + key + " to s3://" + config.bucket);
-            String res = new String(HttpUtil.put(copyUrl, new byte[0]));
+            String res = new String(HttpUtil.putWithVersion(copyUrl, new byte[0]).left);
             if (! res.startsWith("<?xml version=\"1.0\" encoding=\"UTF-8\"?><CopyObjectResult") || !res.contains("</LastModified><ETag>"))
                 throw new IllegalStateException(res);
         } catch (IOException e) {
@@ -95,7 +95,7 @@ public class S3BucketCopy {
             extraHeaders.put("Content-Type", "application/octet-stream");
             boolean hashContent = true;
             String contentHash = hashContent ? ArrayOps.bytesToHex(DirectS3BlockStore.keyToHash(key).getHash()) : "UNSIGNED-PAYLOAD";
-            HttpUtil.put(S3Request.preSignPut(key, res.length, contentHash, false,
+            HttpUtil.putWithVersion(S3Request.preSignPut(key, res.length, contentHash, false,
                     S3AdminRequests.asAwsDate(ZonedDateTime.now()), target.getHost(), extraHeaders, target.region, target.accessKey, target.secretKey,  true,h).join(), res);
         } catch (IOException e) {
             System.err.println(e.getMessage());
