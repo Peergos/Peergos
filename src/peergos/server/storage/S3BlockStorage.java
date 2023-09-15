@@ -872,7 +872,6 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
     }
 
     public static void main(String[] args) throws Exception {
-        Cid cd = Cid.decode("zb2rhXGcAe4uZnSmKJDEmtavJqLknS7qCn8YL8s7k4QxD9uGZ");
         System.out.println("Performing GC on S3 block store...");
         Args a = Args.parse(args);
         Crypto crypto = Main.initCrypto();
