@@ -688,7 +688,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
     public Stream<BlockVersion> getAllRawBlockVersions() {
         // todo make this actually streaming
         List<BlockVersion> results = new ArrayList<>();
-        applyToAllVersions("/AFK", obj -> {
+        applyToAllVersions("AFK", obj -> {
             try {
                 results.add(new BlockVersion(keyToHash(obj.key), obj.version, obj.isLatest));
             } catch (Exception e) {

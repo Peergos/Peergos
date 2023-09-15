@@ -55,6 +55,17 @@ public class GarbageCollector {
         garbageCollector.start();
     }
 
+    private static List<BlockVersion> listBlocks(boolean listFromBlockstore,
+                                                 DeletableContentAddressedStorage storage,
+                                                 BlockMetadataStore metadata) {
+        // dedupe to guarantee no duplicate cids which might result in data loss
+        Map<Cid, BlockVersion> deduped = (listFromBlockstore ?
+                storage.getAllBlockHashVersions() :
+                Stream.concat(storage.getAllRawBlockVersions(), metadata.listCbor()))
+                .collect(Collectors.toMap(v -> v.cid, v -> v));
+        return new ArrayList<>(deduped.values());
+    }
+
     /** The result of this method is a snapshot of the mutable pointers that is consistent with the blocks store
      * after GC has completed (saved to a file which can be independently backed up).
      *
@@ -75,9 +86,7 @@ public class GarbageCollector {
         long t0 = System.nanoTime();
         // Versions are only relevant for versioned S3 buckets, otherwise version is null
         // For S3, clients write raw blocks directly, we need to get their version directly from S3
-        List<BlockVersion> present = listFromBlockstore ?
-                storage.getAllBlockHashVersions().collect(Collectors.toList()) :
-                Stream.concat(storage.getAllRawBlockVersions(), metadata.listCbor()).collect(Collectors.toList());
+        List<BlockVersion> present = listBlocks(listFromBlockstore, storage, metadata);
         long t1 = System.nanoTime();
         System.out.println("Listing " + present.size() + " blocks took " + (t1-t0)/1_000_000_000 + "s");
 
