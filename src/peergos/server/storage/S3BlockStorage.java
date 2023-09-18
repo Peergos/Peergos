@@ -323,7 +323,8 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
             // validate auth, unless this is an internal query
             if (enforceAuth && ! authoriser.allowRead(hash, blockAndVersion.left, id, auth).join())
                 throw new IllegalStateException("Unauthorised!");
-            blockMetadata.put(hash, blockAndVersion.right, blockAndVersion.left);
+            if (range.isEmpty())
+                blockMetadata.put(hash, blockAndVersion.right, blockAndVersion.left);
             return Futures.of(Optional.of(blockAndVersion));
         } catch (SocketTimeoutException | SSLException e) {
             // S3 can't handle the load so treat this as a rate limit and slow down
