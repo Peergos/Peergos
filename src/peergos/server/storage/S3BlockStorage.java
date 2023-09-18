@@ -669,6 +669,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
 
         List<ForkJoinTask<Optional<BlockMetadata>>> futures = IntStream.range(0, updateParallelism)
                 .mapToObj(b -> pool.submit(() -> IntStream.range(b * batchSize, (b + 1) * batchSize)
+                        .parallel()
                         .mapToObj(i -> {
                             BlockMetadata res = getBlockMetadata(all.get(i), "").join();
                             if (i % (batchSize / 10) == 0) {
