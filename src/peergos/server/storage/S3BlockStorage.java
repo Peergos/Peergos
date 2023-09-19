@@ -27,6 +27,7 @@ import java.sql.*;
 import java.time.*;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.*;
 import java.util.function.*;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -322,7 +323,8 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
             // validate auth, unless this is an internal query
             if (enforceAuth && ! authoriser.allowRead(hash, blockAndVersion.left, id, auth).join())
                 throw new IllegalStateException("Unauthorised!");
-            blockMetadata.put(hash, blockAndVersion.right, blockAndVersion.left);
+            if (range.isEmpty())
+                blockMetadata.put(hash, blockAndVersion.right, blockAndVersion.left);
             return Futures.of(Optional.of(blockAndVersion));
         } catch (SocketTimeoutException | SSLException e) {
             // S3 can't handle the load so treat this as a rate limit and slow down
@@ -656,14 +658,27 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
     public void updateMetadataStoreIfEmpty() {
         if (blockMetadata.size() > 0)
             return;
-        LOG.info("Updating block metadata store from S3...");
+        LOG.info("Updating block metadata store from S3. Listing blocks...");
         List<Cid> all = getAllBlockHashes().collect(Collectors.toList());
+        LOG.info("Updating block metadata store from S3. Updating db with " + all.size() + " blocks...");
+
         int updateParallelism = 10;
         ForkJoinPool pool = new ForkJoinPool(updateParallelism);
         int batchSize = all.size() / updateParallelism;
+        AtomicLong progress = new AtomicLong(0);
+        int tenth = batchSize/10;
+
         List<ForkJoinTask<Optional<BlockMetadata>>> futures = IntStream.range(0, updateParallelism)
                 .mapToObj(b -> pool.submit(() -> IntStream.range(b * batchSize, (b + 1) * batchSize)
-                        .mapToObj(i -> getBlockMetadata(all.get(i), "").join())
+                        .mapToObj(i -> {
+                            BlockMetadata res = getBlockMetadata(all.get(i), "").join();
+                            if (i % (batchSize / 10) == 0) {
+                                long updatedProgress = progress.addAndGet(tenth);
+                                if (updatedProgress * 10 / all.size() > (updatedProgress - tenth) * 10 / all.size())
+                                    LOG.info("Populating block metadata: " + updatedProgress * 100 / all.size() + "% done");
+                            }
+                            return res;
+                        })
                         .reduce((x, y) -> y)))
                 .collect(Collectors.toList());
         futures.stream()

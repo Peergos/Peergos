@@ -84,7 +84,7 @@ public class HttpUtil {
 
             try {
                 int respCode = conn.getResponseCode();
-                if (respCode == 503)
+                if (respCode == 502 || respCode == 503)
                     throw new RateLimitException();
                 if (respCode == 404)
                     throw new FileNotFoundException();
@@ -119,7 +119,7 @@ public class HttpUtil {
                 int respCode = conn.getResponseCode();
                 if (respCode == 200)
                     return conn.getHeaderFields();
-                if (respCode == 503)
+                if (respCode == 502 || respCode == 503)
                     throw new RateLimitException();
                 if (respCode == 404)
                     throw new FileNotFoundException();
@@ -159,7 +159,7 @@ public class HttpUtil {
             out.close();
 
             int httpCode = conn.getResponseCode();
-            if (httpCode == 503)
+            if (httpCode == 502 || httpCode == 503)
                 throw new RateLimitException();
             InputStream in = conn.getInputStream();
             Map<String, String> headers = conn.getHeaderFields().entrySet()
@@ -191,7 +191,7 @@ public class HttpUtil {
             int code = conn.getResponseCode();
             if (code == 204)
                 return;
-            if (code == 503)
+            if (code == 502 || code == 503)
                 throw new RateLimitException();
             InputStream in = conn.getInputStream();
             byte[] body = Serialize.readFully(in);
