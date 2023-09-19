@@ -7,6 +7,7 @@ import org.peergos.*;
 import org.peergos.config.*;
 import org.peergos.config.Filter;
 import org.peergos.net.*;
+import org.peergos.protocol.dht.DatabaseRecordStore;
 import org.peergos.protocol.http.HttpProtocol;
 import org.peergos.util.JSONParser;
 import peergos.server.util.*;
@@ -296,8 +297,9 @@ public class IpfsWrapper implements AutoCloseable {
             }
         };
 
-
-        ipfsWrapper.embeddedIpfs = EmbeddedIpfs.build(ipfsWrapper.ipfsDir,
+        Path datastorePath = ipfsWrapper.ipfsDir.resolve("datastore").resolve("h2.datastore");
+        DatabaseRecordStore records = new DatabaseRecordStore(datastorePath.toString());
+        ipfsWrapper.embeddedIpfs = EmbeddedIpfs.build(records,
                 EmbeddedIpfs.buildBlockStore(config, ipfsWrapper.ipfsDir),
                 config.addresses.getSwarmAddresses(),
                 config.bootstrap.getBootstrapAddresses(),
