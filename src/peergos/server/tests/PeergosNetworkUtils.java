@@ -340,6 +340,41 @@ public class PeergosNetworkUtils {
 
     }
 
+    public static void socialFeedCASExceptionOnUpdate(NetworkAccess sharerNode, NetworkAccess shareeNode, Random random) {
+        //sign up a user on sharerNode
+        String sharerUsername = randomUsername("sharer-", random);
+        String sharerPassword = generatePassword();
+        UserContext sharer = ensureSignedUp(sharerUsername, sharerPassword, sharerNode.clear(), crypto);
+
+        //sign up some users on shareeNode
+        int shareeCount = 1;
+        List<String> shareePasswords = IntStream.range(0, shareeCount)
+                .mapToObj(i -> generatePassword())
+                .collect(Collectors.toList());
+        List<UserContext> shareeUsers = getUserContextsForNode(shareeNode, random, shareeCount, shareePasswords);
+        UserContext sharee = shareeUsers.get(0);
+
+        // friend sharer with others
+        friendBetweenGroups(Arrays.asList(sharer), shareeUsers);
+
+        SocialFeed senderFeed = sharer.getSocialFeed().join().update().join();
+        List<peergos.shared.display.Text> body = new ArrayList<>();
+        body.add(new peergos.shared.display.Text("msg!"));
+        SocialPost socialPost = peergos.shared.social.SocialPost.createInitialPost(sharerUsername, body, SocialPost.Resharing.Friends);
+
+        Pair<Path, FileWrapper> result = senderFeed.createNewPost(socialPost).join();
+        Set<String> readers = Set.of(sharee.username);
+        sharer.shareReadAccessWith(result.left, readers).join();
+
+        int startIndex = senderFeed.getLastSeenIndex();
+        SocialFeed updatedSenderFeed = senderFeed.update().join();
+
+        int requestSize = 100;
+        List<SharedItem> items = updatedSenderFeed.getShared(startIndex, startIndex + requestSize, sharer.crypto, sharer.network).join();
+
+        int newIndex = startIndex + items.size();
+        updatedSenderFeed.setLastSeenIndex(newIndex).join();
+    }
     public static void grantAndRevokeFileWriteAccess(NetworkAccess sharerNode, NetworkAccess shareeNode, int shareeCount, Random random) throws Exception {
         Assert.assertTrue(0 < shareeCount);
         //sign up a user on sharerNode
