@@ -373,8 +373,7 @@ public class PeergosNetworkUtils {
         List<SharedItem> items = updatedSenderFeed.getShared(startIndex, startIndex + requestSize, sharer.crypto, sharer.network).join();
 
         int newIndex = startIndex + items.size();
-        boolean result2 = updatedSenderFeed.setLastSeenIndex(newIndex).join();
-        System.currentTimeMillis();
+        updatedSenderFeed.setLastSeenIndex(newIndex).join();
     }
     public static void grantAndRevokeFileWriteAccess(NetworkAccess sharerNode, NetworkAccess shareeNode, int shareeCount, Random random) throws Exception {
         Assert.assertTrue(0 < shareeCount);
