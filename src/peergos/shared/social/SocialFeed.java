@@ -220,12 +220,13 @@ public class SocialFeed {
 
     private synchronized CompletableFuture<Boolean> commit() {
         byte[] raw = new FeedState(lastSeenIndex, feedSizeRecords, feedSizeBytes, currentCapBytesProcessed).serialize();
-        return stateFile.overwriteFile(AsyncReader.build(raw), raw.length,
-                network, crypto, x -> {})
-                .thenApply(f -> {
-                    this.stateFile = f;
-                    return true;
-                });
+        return this.stateFile.getLatest(network).thenCompose(updatedStateFile ->
+                updatedStateFile.overwriteFile(AsyncReader.build(raw), raw.length, network, crypto, x -> {})
+                    .thenApply(f -> {
+                        this.stateFile = f;
+                        return true;
+                    })
+        );
     }
 
     /** Incorporate any new shares from friends into the feed
