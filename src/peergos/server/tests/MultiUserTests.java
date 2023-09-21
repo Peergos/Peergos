@@ -206,6 +206,11 @@ public class MultiUserTests {
     }
 
     @Test
+    public void socialFeedCASExceptionOnUpdate() throws Exception {
+        PeergosNetworkUtils.socialFeedCASExceptionOnUpdate(network, network, random);
+    }
+
+    @Test
     public void socialFeedVariations() {
         PeergosNetworkUtils.socialFeedVariations(network, random);
     }
