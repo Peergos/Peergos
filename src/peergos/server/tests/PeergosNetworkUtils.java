@@ -2019,8 +2019,8 @@ public class PeergosNetworkUtils {
 
         Id newBId = newB.id;
         Assert.assertTrue(! originalBId.equals(newBId));
-        PublicKeyHash newChatId = newB.chatIdentity.get().getOwner(network.dhtClient).join();
-        PublicKeyHash oldChatId = originalB.chatIdentity.get().getOwner(network.dhtClient).join();
+        PublicKeyHash newChatId = newB.chatIdentity.get().getAndVerifyOwner(b.signer.publicKeyHash, network.dhtClient).join();
+        PublicKeyHash oldChatId = originalB.chatIdentity.get().getAndVerifyOwner(b.signer.publicKeyHash, network.dhtClient).join();
         Assert.assertTrue("New chat identity", !newChatId.equals(oldChatId));
     }
 
@@ -2349,7 +2349,7 @@ public class PeergosNetworkUtils {
         PointerUpdate pointer = network.mutable.getPointerTarget(cap.owner, cap.writer,
                 network.dhtClient).join();
         Snapshot version = new Snapshot(cap.writer,
-                WriterData.getWriterData((Cid) pointer.updated.get(), pointer.sequence, network.dhtClient).join());
+                WriterData.getWriterData(cap.owner, (Cid) pointer.updated.get(), pointer.sequence, network.dhtClient).join());
 
         Optional<CryptreeNode> next = network.getMetadata(version.get(nextChunkCap.writer).props, nextChunkCap).join();
         Set<AbsoluteCapability> directUnnamed = direct.stream().map(n -> n.cap).collect(Collectors.toSet());
@@ -2369,7 +2369,7 @@ public class PeergosNetworkUtils {
         PointerUpdate pointer = network.mutable.getPointerTarget(cap.owner, cap.writer,
                 network.dhtClient).join();
         return dir.getAllChildrenCapabilities(new Snapshot(cap.writer,
-                    WriterData.getWriterData((Cid) pointer.updated.get(), pointer.sequence, network.dhtClient).join()), cap, crypto.hasher, network).join()
+                    WriterData.getWriterData(cap.owner, (Cid) pointer.updated.get(), pointer.sequence, network.dhtClient).join()), cap, crypto.hasher, network).join()
                     .stream().map(n -> n.cap).collect(Collectors.toSet());
     }
 

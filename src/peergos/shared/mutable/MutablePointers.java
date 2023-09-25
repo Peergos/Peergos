@@ -8,7 +8,6 @@ import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.MaybeMultihash;
 import peergos.shared.storage.CasException;
 import peergos.shared.storage.ContentAddressedStorage;
-import peergos.shared.user.*;
 import peergos.shared.util.*;
 
 import java.util.*;
@@ -46,16 +45,17 @@ public interface MutablePointers {
     default CompletableFuture<PointerUpdate> getPointerTarget(PublicKeyHash owner, PublicKeyHash writer, ContentAddressedStorage ipfs) {
         return getPointer(owner, writer)
                 .thenCompose(current -> current.isPresent() ?
-                        parsePointerTarget(current.get(), writer, ipfs) :
+                        parsePointerTarget(current.get(), owner, writer, ipfs) :
                         Futures.of(PointerUpdate.empty()));
     }
 
     MutablePointers clearCache();
 
     static CompletableFuture<PointerUpdate> parsePointerTarget(byte[] pointerCas,
+                                                               PublicKeyHash owner,
                                                                PublicKeyHash writerKeyHash,
                                                                ContentAddressedStorage ipfs) {
-        return ipfs.getSigningKey(writerKeyHash)
+        return ipfs.getSigningKey(owner, writerKeyHash)
                 .thenApply(writerOpt -> writerOpt.map(writerKey -> PointerUpdate.fromCbor(CborObject.fromByteArray(writerKey.unsignMessage(pointerCas))))
                         .orElse(PointerUpdate.empty()));
     }

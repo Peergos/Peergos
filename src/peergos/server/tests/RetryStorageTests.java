@@ -91,7 +91,7 @@ public class RetryStorageTests {
 
 
         @Override
-        public CompletableFuture<Optional<byte[]>> getRaw(Cid object, Optional<BatWithId> bat) {
+        public CompletableFuture<Optional<byte[]>> getRaw(PublicKeyHash owner, Cid object, Optional<BatWithId> bat) {
             if(counter++ % retryLimit != 0) {
                 return CompletableFuture.failedFuture(new Error("failure!"));
             }else {
@@ -101,7 +101,7 @@ public class RetryStorageTests {
         }
 
         @Override
-        public CompletableFuture<Optional<CborObject>> get(Cid hash, Optional<BatWithId> bat) {
+        public CompletableFuture<Optional<CborObject>> get(PublicKeyHash owner, Cid hash, Optional<BatWithId> bat) {
             if(counter++ % retryLimit != 0) {
                 return CompletableFuture.failedFuture(new Error("failure!"));
             }else {

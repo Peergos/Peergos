@@ -1095,6 +1095,7 @@ public abstract class UserTests {
         String username = generateUsername();
         String password = "test01";
         UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
+        PublicKeyHash owner = context.signer.publicKeyHash;
         FileWrapper userRoot = context.getUserRoot().get();
 
         String filename = "mediumfile.bin";
@@ -1112,7 +1113,7 @@ public abstract class UserTests {
         List<Multihash> newFragmentCids = IntStream.range(0, rawBlockLinks.size()).mapToObj(i -> {
             Cid original = (Cid) rawBlockLinks.get(i);
             BatWithId bat = bats.get(i);
-            byte[] originalBlock = context.network.dhtClient.getRaw(original, Optional.of(bat)).join().get();
+            byte[] originalBlock = context.network.dhtClient.getRaw(owner, original, Optional.of(bat)).join().get();
             byte[] newBlock = Bat.removeRawBlockBatPrefix(originalBlock);
             return context.network.uploadFragments(Arrays.asList(new Fragment(newBlock)), userRoot.owner(),
                     userRoot.signingPair(), x -> {}, TransactionId.build("tid")).join().get(0);
@@ -1129,7 +1130,6 @@ public abstract class UserTests {
         modified.put("d", d);
         modified.remove("bats");
         CborObject.CborMap noBats = CborObject.CborMap.build(modified);
-        PublicKeyHash owner = file.owner();
         CommittedWriterData cwd = WriterData.getWriterData(owner, file.writer(), network.mutable, network.dhtClient).join();
         WriterData wd = cwd.props;
         SigningPrivateKeyAndPublicHash signingPair = file.signingPair();
@@ -1159,7 +1159,7 @@ public abstract class UserTests {
 
         // Check fragments are retrievable without a BAT
         Multihash originalFragmentWithoutBatPrefix = file.getPointer().fileAccess.toCbor().links().get(0);
-        CompletableFuture<Optional<byte[]>> originalRaw = network.clear().dhtClient.getRaw((Cid) originalFragmentWithoutBatPrefix, Optional.empty());
+        CompletableFuture<Optional<byte[]>> originalRaw = network.clear().dhtClient.getRaw(owner, (Cid) originalFragmentWithoutBatPrefix, Optional.empty());
         Assert.assertTrue(originalRaw.join().isPresent());
 
         //overwrite with 2 chunk file
@@ -1193,7 +1193,7 @@ public abstract class UserTests {
 
         // check retrieval of fragments fail without bat
         Multihash fragment = updatedFile.getPointer().fileAccess.toCbor().links().get(0);
-        Optional<byte[]> raw = network.clear().dhtClient.getRaw((Cid) fragment, Optional.empty()).exceptionally(e -> Optional.empty()).join();
+        Optional<byte[]> raw = network.clear().dhtClient.getRaw(owner, (Cid) fragment, Optional.empty()).exceptionally(e -> Optional.empty()).join();
         Assert.assertTrue(raw.isEmpty());
     }
 
@@ -1249,7 +1249,7 @@ public abstract class UserTests {
         Assert.assertTrue(badFileGet.exceptionally(t -> Optional.empty()).join().isEmpty());
 
         Multihash fragment = file.getPointer().fileAccess.toCbor().links().get(0);
-        CompletableFuture<Optional<byte[]>> raw = cleared.dhtClient.getRaw((Cid) fragment, Optional.empty());
+        CompletableFuture<Optional<byte[]>> raw = cleared.dhtClient.getRaw(context.signer.publicKeyHash, (Cid) fragment, Optional.empty());
         Assert.assertTrue(raw.exceptionally(t -> Optional.empty()).join().isEmpty());
     }
 

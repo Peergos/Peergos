@@ -27,7 +27,7 @@ public class NonWriteThroughMutablePointers implements MutablePointers {
                 Optional<byte[]> existing = source.getPointer(owner, writer).get();
                 existing.map(val -> modifications.put(writer, val));
             }
-            Optional<PublicSigningKey> opt = storage.getSigningKey(writer).get();
+            Optional<PublicSigningKey> opt = storage.getSigningKey(owner, writer).get();
             if (! opt.isPresent())
                 throw new IllegalStateException("Couldn't retrieve signing key!");
             return MutablePointers.isValidUpdate(opt.get(), Optional.ofNullable(modifications.get(writer)), writerSignedBtreeRootHash)

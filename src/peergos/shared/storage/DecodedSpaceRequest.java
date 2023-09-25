@@ -46,7 +46,7 @@ public class DecodedSpaceRequest {
                             if (! keyHashOpt.isPresent())
                                 throw new IllegalStateException("Couldn't retrieve public key for " + req.username);
                             PublicKeyHash identityHash = keyHashOpt.get();
-                            return dht.getSigningKey(identityHash);
+                            return dht.getSigningKey(identityHash, identityHash);
                         }).thenApply(keyOpt -> {
                             if (! keyOpt.isPresent())
                                 throw new IllegalStateException("Couldn't retrieve public key for " + req.username);

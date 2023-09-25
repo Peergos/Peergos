@@ -243,13 +243,13 @@ public class MirrorCoreNode implements CoreNode {
             PointerUpdate fresh = p2pMutable.getPointerTarget(peergosKey, peergosKey, ipfs).join();
             MaybeMultihash newPeergosRoot = fresh.updated;
 
-            CommittedWriterData currentPeergosWd = WriterData.getWriterData((Cid)newPeergosRoot.get(), fresh.sequence, ipfs).join();
+            CommittedWriterData currentPeergosWd = WriterData.getWriterData(peergosKey, (Cid)newPeergosRoot.get(), fresh.sequence, ipfs).join();
             PublicKeyHash pkiKey = currentPeergosWd.props.namedOwnedKeys.get("pki").ownedKey;
             if (pkiKey == null)
                 throw new IllegalStateException("No pki key on owner: " + pkiOwnerIdentity);
 
             byte[] newPointer = p2pMutable.getPointer(pkiOwnerIdentity, pkiKey).join().get();
-            MaybeMultihash currentPkiRoot = MutablePointers.parsePointerTarget(newPointer, pkiKey, ipfs).join().updated;
+            MaybeMultihash currentPkiRoot = MutablePointers.parsePointerTarget(newPointer, peergosKey, pkiKey, ipfs).join().updated;
             CorenodeState current = state;
             if (peergosKey.equals(current.pkiOwnerIdentity) &&
                     newPeergosRoot.equals(current.pkiOwnerTarget) &&
@@ -263,17 +263,17 @@ public class MirrorCoreNode implements CoreNode {
 
             // first retrieve all new blocks to be local
             TransactionId tid = transactions.startTransaction(peergosKey);
-            MaybeMultihash currentTree = IpfsCoreNode.getTreeRoot(current.pkiKeyTarget, ipfs);
-            MaybeMultihash updatedTree = IpfsCoreNode.getTreeRoot(currentPkiRoot, ipfs);
+            MaybeMultihash currentTree = IpfsCoreNode.getTreeRoot(peergosKey, current.pkiKeyTarget, ipfs);
+            MaybeMultihash updatedTree = IpfsCoreNode.getTreeRoot(peergosKey, currentPkiRoot, ipfs);
             Consumer<Triple<ByteArrayWrapper, Optional<CborObject.CborMerkleLink>, Optional<CborObject.CborMerkleLink>>> consumer =
                     t -> {
                         Optional<CborObject.CborMerkleLink> newVal = t.right;
                         if (newVal.isPresent()) {
                             transactions.addBlock(newVal.get().target, tid, peergosKey);
-                            ipfs.get((Cid) newVal.get().target, Optional.empty()).join();
+                            ipfs.get(peergosKey, (Cid) newVal.get().target, Optional.empty()).join();
                         }
                     };
-            Champ.applyToDiff(currentTree, updatedTree, 0, IpfsCoreNode::keyHash,
+            Champ.applyToDiff(peergosKey, currentTree, updatedTree, 0, IpfsCoreNode::keyHash,
                     Collections.emptyList(), Collections.emptyList(),
                     consumer, ChampWrapper.BIT_WIDTH, ipfs, c -> (CborObject.CborMerkleLink)c).get();
 

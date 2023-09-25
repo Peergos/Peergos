@@ -50,7 +50,7 @@ public class RAMStorage implements DeletableContentAddressedStorage {
 
     @Override
     public CompletableFuture<List<byte[]>> getChampLookup(PublicKeyHash owner, Cid root, byte[] champKey, Optional<BatWithId> bat, Optional<Cid> committedRoot) {
-        return getChampLookup(root, champKey, bat, committedRoot,hasher);
+        return getChampLookup(owner, root, champKey, bat, committedRoot, hasher);
     }
 
     @Override
@@ -123,7 +123,7 @@ public class RAMStorage implements DeletableContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<Optional<byte[]>> getRaw(Cid hash, Optional<BatWithId> bat) {
+    public CompletableFuture<Optional<byte[]>> getRaw(PublicKeyHash owner, Cid hash, Optional<BatWithId> bat) {
         return getRaw(hash, bat, id().join(), hasher);
     }
 
@@ -135,7 +135,7 @@ public class RAMStorage implements DeletableContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<Optional<CborObject>> get(Cid hash, Optional<BatWithId> bat) {
+    public CompletableFuture<Optional<CborObject>> get(PublicKeyHash owner, Cid hash, Optional<BatWithId> bat) {
         return get(hash, bat, id().join(), hasher);
     }
 

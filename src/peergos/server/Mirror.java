@@ -189,9 +189,9 @@ public class Mirror {
         Optional<byte[]> existing = targetPointers.getPointer(writer).join();
         // First pin the new root, then commit updated pointer
         MaybeMultihash existingTarget = existing.isPresent() ?
-                MutablePointers.parsePointerTarget(existing.get(), writer, storage).join().updated :
+                MutablePointers.parsePointerTarget(existing.get(), owner, writer, storage).join().updated :
                 MaybeMultihash.empty();
-        MaybeMultihash updatedTarget = MutablePointers.parsePointerTarget(newPointer, writer, storage).join().updated;
+        MaybeMultihash updatedTarget = MutablePointers.parsePointerTarget(newPointer, owner, writer, storage).join().updated;
         // use a mirror call to distinguish from normal pin calls
         TransactionId tid = transactions.startTransaction(owner);
         try {

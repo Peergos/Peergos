@@ -36,8 +36,8 @@ public class OwnedKeyChamp {
                 .thenCompose(hash -> ipfs.put(owner, writer.publicKeyHash, writer.secret.signMessage(hash), raw, tid));
     }
 
-    public static CompletableFuture<OwnedKeyChamp> build(Cid root, ContentAddressedStorage ipfs, Hasher hasher) {
-        return ChampWrapper.create(root, b -> Futures.of(b.data), ipfs, hasher, c -> (CborObject.CborMerkleLink)c)
+    public static CompletableFuture<OwnedKeyChamp> build(PublicKeyHash owner, Cid root, ContentAddressedStorage ipfs, Hasher hasher) {
+        return ChampWrapper.create(owner, root, b -> Futures.of(b.data), ipfs, hasher, c -> (CborObject.CborMerkleLink)c)
                 .thenApply(c -> new OwnedKeyChamp(root, c, ipfs));
     }
 
@@ -52,10 +52,11 @@ public class OwnedKeyChamp {
         return reverse(key.serialize());
     }
 
-    public CompletableFuture<Optional<OwnerProof>> get(PublicKeyHash ownedKey) {
+    public CompletableFuture<Optional<OwnerProof>> get(PublicKeyHash owner,
+                                                       PublicKeyHash ownedKey) {
         return champ.get(keyToBytes(ownedKey))
                 .thenCompose(res -> res.isPresent() ?
-                        ipfs.get((Cid)res.get().target, Optional.empty()).thenApply(raw -> raw.map(OwnerProof::fromCbor)) :
+                        ipfs.get(owner, (Cid)res.get().target, Optional.empty()).thenApply(raw -> raw.map(OwnerProof::fromCbor)) :
                         CompletableFuture.completedFuture(Optional.empty()));
     }
 
@@ -83,12 +84,13 @@ public class OwnedKeyChamp {
                 .thenApply(Optional::isPresent);
     }
 
-    public <T> CompletableFuture<T> applyToAllMappings(T identity,
+    public <T> CompletableFuture<T> applyToAllMappings(PublicKeyHash owner,
+                                                       T identity,
                                                        BiFunction<T, Pair<PublicKeyHash, OwnerProof>, CompletableFuture<T>> consumer,
                                                        ContentAddressedStorage ipfs) {
-        return champ.reduceAllMappings(identity,
+        return champ.reduceAllMappings(owner, identity,
                 (acc, pair) -> ! pair.right.isPresent() ? CompletableFuture.completedFuture(acc) :
-                        ipfs.get((Cid)pair.right.get().target, Optional.empty())
+                        ipfs.get(owner, (Cid)pair.right.get().target, Optional.empty())
                                 .thenApply(raw -> OwnerProof.fromCbor(raw.get()))
                                 .thenCompose(proof -> consumer.apply(acc,
                                         new Pair<>(PublicKeyHash.fromCbor(CborObject.fromByteArray(reverse(pair.left.data))), proof))));

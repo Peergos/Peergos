@@ -77,9 +77,9 @@ public class UserCleanup {
             Map<ByteArrayWrapper, CborObject.CborMerkleLink> allKeys = new HashMap<>();
             Set<ByteArrayWrapper> emptyKeys = new HashSet<>();
             CommittedWriterData wd = WriterData.getWriterData(owner, writer, mutable, storage).join();
-            ChampWrapper<CborObject.CborMerkleLink> champ = ChampWrapper.create((Cid) wd.props.tree.get(),
+            ChampWrapper<CborObject.CborMerkleLink> champ = ChampWrapper.create(owner, (Cid) wd.props.tree.get(),
                     x -> Futures.of(x.data), storage, hasher, b -> (CborObject.CborMerkleLink) b).join();
-            champ.applyToAllMappings(p -> {
+            champ.applyToAllMappings(owner, p -> {
                 if (p.right.isPresent())
                     allKeys.put(p.left, p.right.get());
                 else
@@ -166,7 +166,7 @@ public class UserCleanup {
         Map<Cid, List<Cid>> linkedFrom = new HashMap<>();
 
         for (PublicKeyHash writer : writers) {
-            getAllBlocksWithSize((Cid) mutable.getPointerTarget(owner, writer, storage).join().updated.get(),
+            getAllBlocksWithSize(owner, (Cid) mutable.getPointerTarget(owner, writer, storage).join().updated.get(),
                     mirror, storage, blockSizes, linkedFrom);
         }
 
@@ -175,32 +175,13 @@ public class UserCleanup {
             throw new IllegalStateException("Incorrect usage! Expected: " + serverCalculatedUsage + ", actual: " + totalFromBlocks);
     }
 
-    public static void getAllBlocks(Cid root,
-                                    Optional<BatWithId> mirror,
-                                    ContentAddressedStorage dht,
-                                    Map<Cid, byte[]> blocks) {
-        Optional<byte[]> raw = dht.getRaw(root, mirror).join();
-        if (raw.isEmpty())
-            return;
-
-        byte[] block = raw.get();
-        blocks.put(root, raw.get());
-        if (! root.isRaw()) {
-            List<Cid> children = CborObject.fromByteArray(block).links().stream().map(c -> (Cid) c).collect(Collectors.toList());
-            for (Cid child : children) {
-                if (child.isIdentity())
-                    continue;
-                getAllBlocks(child, mirror, dht, blocks);
-            }
-        }
-    }
-
-    private static void getAllBlocksWithSize(Cid root,
+    private static void getAllBlocksWithSize(PublicKeyHash owner,
+                                             Cid root,
                                              Optional<BatWithId> mirror,
                                              ContentAddressedStorage dht,
                                              Map<Cid,  Long> res,
                                              Map<Cid, List<Cid>> linkedFrom) {
-        Optional<byte[]> raw = dht.getRaw(root, mirror).join();
+        Optional<byte[]> raw = dht.getRaw(owner, root, mirror).join();
         if (raw.isEmpty())
             return;
         byte[] block = raw.get();
@@ -212,7 +193,7 @@ public class UserCleanup {
                     continue;
                 linkedFrom.putIfAbsent(child, new ArrayList<>());
                 linkedFrom.get(child).add(root);
-                getAllBlocksWithSize(child, mirror, dht, res, linkedFrom);
+                getAllBlocksWithSize(owner, child, mirror, dht, res, linkedFrom);
             }
         }
     }

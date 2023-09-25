@@ -139,7 +139,7 @@ public class InodeFileSystem implements Cborable {
         return getValue(childDirKey).thenCompose(opt -> {
             if (opt.isPresent())
                 return Futures.of(new Pair<>(this, opt.get()));
-            DirectoryInode empty = DirectoryInode.empty(champ.writeHasher, champ.bitWidth, champ.keyHasher, storage);
+            DirectoryInode empty = DirectoryInode.empty(champ.writeHasher, champ.bitWidth, champ.owner, champ.keyHasher, storage);
             return putValue(owner, writer, childDirKey, Optional.empty(), empty, tid)
                     .thenCompose(f -> {
                         if (parent.isEmpty()) // we are the root
@@ -258,7 +258,8 @@ public class InodeFileSystem implements Cborable {
         return CborObject.CborMap.build(state);
     }
 
-    public static CompletableFuture<InodeFileSystem> build(Cborable cbor,
+    public static CompletableFuture<InodeFileSystem> build(PublicKeyHash owner,
+                                                           Cborable cbor,
                                                            Hasher hasher,
                                                            ContentAddressedStorage storage) {
         if (!(cbor instanceof CborObject.CborMap))
@@ -268,8 +269,8 @@ public class InodeFileSystem implements Cborable {
         Multihash root = m.getMerkleLink("r");
         Function<ByteArrayWrapper, CompletableFuture<byte[]>> keyHasher = b -> hasher.sha256(b.data);
         Function<Cborable, DirectoryInode> fromCbor =
-                c -> DirectoryInode.fromCbor(c, hasher, ChampWrapper.BIT_WIDTH, keyHasher, storage);
-        return ChampWrapper.create((Cid)root, keyHasher, storage, hasher, fromCbor)
+                c -> DirectoryInode.fromCbor(c, hasher, ChampWrapper.BIT_WIDTH, owner, keyHasher, storage);
+        return ChampWrapper.create(owner, (Cid)root, keyHasher, storage, hasher, fromCbor)
                 .thenApply(cw -> new InodeFileSystem(inodeCount, cw, storage));
     }
 
@@ -280,7 +281,7 @@ public class InodeFileSystem implements Cborable {
                                                                  TransactionId tid) {
         Function<ByteArrayWrapper, CompletableFuture<byte[]>> keyHasher = b -> hasher.sha256(b.data);
         Function<Cborable, DirectoryInode> fromCbor =
-                c -> DirectoryInode.fromCbor(c, hasher, ChampWrapper.BIT_WIDTH, keyHasher, storage);
+                c -> DirectoryInode.fromCbor(c, hasher, ChampWrapper.BIT_WIDTH, owner, keyHasher, storage);
         return ChampWrapper.create(owner, writer, keyHasher, tid, storage, hasher, fromCbor)
                 .thenApply(cw -> new InodeFileSystem(0, cw, storage));
     }

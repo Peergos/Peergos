@@ -71,7 +71,7 @@ public class UserQuotas implements QuotaAdmin {
     @Override
     public void approveSpaceRequest(PublicKeyHash adminIdentity, Multihash instanceIdentity, byte[] signedRequest) {
         try {
-            Optional<PublicSigningKey> adminOpt = dht.getSigningKey(adminIdentity).join();
+            Optional<PublicSigningKey> adminOpt = dht.getSigningKey(adminIdentity, adminIdentity).join();
             if (!adminOpt.isPresent())
                 throw new IllegalStateException("Couldn't retrieve admin key!");
             byte[] rawFromAdmin = adminOpt.get().unsignMessage(signedRequest);
@@ -82,7 +82,7 @@ public class UserQuotas implements QuotaAdmin {
             if (! userOpt.isPresent())
                 throw new IllegalStateException("Couldn't lookup user key!");
 
-            Optional<PublicSigningKey> userKey = dht.getSigningKey(userOpt.get()).join();
+            Optional<PublicSigningKey> userKey = dht.getSigningKey(userOpt.get(), userOpt.get()).join();
             if (! userKey.isPresent())
                 throw new IllegalStateException("Couldn't retrieve user key!");
 

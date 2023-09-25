@@ -20,7 +20,6 @@ import java.io.*;
 import java.net.*;
 import java.util.*;
 import java.util.concurrent.*;
-import java.util.function.*;
 import java.util.stream.*;
 
 public interface ContentAddressedStorage {
@@ -126,11 +125,11 @@ public interface ContentAddressedStorage {
 
 
     /**
-     *
+     * @param owner
      * @param hash
      * @return The data with the requested hash, deserialized into cbor, or Optional.empty() if no object can be found
      */
-    CompletableFuture<Optional<CborObject>> get(Cid hash, Optional<BatWithId> bat);
+    CompletableFuture<Optional<CborObject>> get(PublicKeyHash owner, Cid hash, Optional<BatWithId> bat);
 
     /**
      * Write a block of data that is just raw bytes, not ipld structured cbor
@@ -151,10 +150,12 @@ public interface ContentAddressedStorage {
 
     /**
      * Get a block of data that is not in ipld cbor format, just raw bytes
+     *
+     * @param owner
      * @param hash
      * @return
      */
-    CompletableFuture<Optional<byte[]>> getRaw(Cid hash, Optional<BatWithId> bat);
+    CompletableFuture<Optional<byte[]>> getRaw(PublicKeyHash owner, Cid hash, Optional<BatWithId> bat);
 
     CompletableFuture<List<byte[]>> getChampLookup(PublicKeyHash owner,
                                                    Cid root,
@@ -162,18 +163,19 @@ public interface ContentAddressedStorage {
                                                    Optional<BatWithId> bat,
                                                    Optional<Cid> committedRoot);
 
-    default CompletableFuture<List<byte[]>> getChampLookup(Cid root,
+    default CompletableFuture<List<byte[]>> getChampLookup(PublicKeyHash owner,
+                                                           Cid root,
                                                            byte[] champKey,
                                                            Optional<BatWithId> bat,
                                                            Optional<Cid> committedRoot,
                                                            Hasher hasher) {
         CachingStorage cache = new CachingStorage(this, 100, 1024 * 1024);
-        return ChampWrapper.create((Cid)root, x -> Futures.of(x.data), cache, hasher, c -> (CborObject.CborMerkleLink) c)
+        return ChampWrapper.create(owner, (Cid)root, x -> Futures.of(x.data), cache, hasher, c -> (CborObject.CborMerkleLink) c)
                 .thenCompose(tree -> tree.get(champKey))
                 .thenApply(c -> c.map(x -> x.target).map(MaybeMultihash::of).orElse(MaybeMultihash.empty()))
                 .thenApply(btreeValue -> {
                     if (btreeValue.isPresent())
-                        return cache.get((Cid) btreeValue.get(), bat);
+                        return cache.get(owner, (Cid) btreeValue.get(), bat);
                     return Optional.empty();
                 }).thenApply(x -> new ArrayList<>(cache.getCached()));
     }
@@ -200,7 +202,7 @@ public interface ContentAddressedStorage {
                                                                         Hasher h,
                                                                         ProgressConsumer<Long> monitor,
                                                                         double spaceIncreaseFactor) {
-        return NetworkAccess.downloadFragments(hashes, bats, this, h, monitor, spaceIncreaseFactor);
+        return NetworkAccess.downloadFragments(owner, hashes, bats, this, h, monitor, spaceIncreaseFactor);
     }
 
     default CompletableFuture<PublicKeyHash> putSigningKey(byte[] signature,
@@ -222,28 +224,28 @@ public interface ContentAddressedStorage {
         return new PublicKeyHash(new Cid(1, Cid.Codec.DagCbor, Multihash.Type.id, key.serialize()));
     }
 
-    default CompletableFuture<PublicKeyHash> putBoxingKey(PublicKeyHash controller,
+    default CompletableFuture<PublicKeyHash> putBoxingKey(PublicKeyHash owner,
                                                           byte[] signature,
                                                           PublicBoxingKey key,
                                                           TransactionId tid) {
         byte[] rawKey = key.toCbor().toByteArray();
         if (rawKey.length <= Multihash.MAX_IDENTITY_HASH_SIZE)
             return Futures.of(new PublicKeyHash(Cid.buildCidV1(Cid.Codec.DagCbor, Multihash.Type.id, rawKey)));
-        return put(controller, controller, signature, rawKey, tid)
+        return put(owner, owner, signature, rawKey, tid)
                 .thenApply(PublicKeyHash::new);
     }
 
-    default CompletableFuture<Optional<PublicSigningKey>> getSigningKey(PublicKeyHash hash) {
+    default CompletableFuture<Optional<PublicSigningKey>> getSigningKey(PublicKeyHash owner, PublicKeyHash hash) {
         return (hash.isIdentity() ?
                 CompletableFuture.completedFuture(Optional.of(CborObject.fromByteArray(hash.getHash()))) :
-                get(hash.target, Optional.empty()))
+                get(owner, hash.target, Optional.empty()))
                 .thenApply(opt -> Optional.ofNullable(opt).orElse(Optional.empty()).map(PublicSigningKey::fromCbor));
     }
 
-    default CompletableFuture<Optional<PublicBoxingKey>> getBoxingKey(PublicKeyHash hash) {
+    default CompletableFuture<Optional<PublicBoxingKey>> getBoxingKey(PublicKeyHash owner, PublicKeyHash hash) {
         return (hash.isIdentity() ?
                 CompletableFuture.completedFuture(Optional.of(CborObject.fromByteArray(hash.getHash()))) :
-                get(hash.target, Optional.empty()))
+                get(owner, hash.target, Optional.empty()))
                 .thenApply(opt -> Optional.ofNullable(opt).orElse(Optional.empty()).map(PublicBoxingKey::fromCbor));
     }
 
@@ -372,7 +374,7 @@ public interface ContentAddressedStorage {
         @Override
         public CompletableFuture<List<byte[]>> getChampLookup(PublicKeyHash owner, Cid root, byte[] champKey, Optional<BatWithId> bat, Optional<Cid> committedRoot) {
             if (! isPeergosServer) {
-                return getChampLookup(root, champKey, bat, committedRoot, hasher);
+                return getChampLookup(owner, root, champKey, bat, committedRoot, hasher);
             }
             return poster.get(apiPrefix + CHAMP_GET + "?arg=" + root.toString()
                     + "&arg=" + ArrayOps.bytesToHex(champKey)
@@ -475,32 +477,41 @@ public interface ContentAddressedStorage {
         }
 
         @Override
-        public CompletableFuture<Optional<CborObject>> get(Cid hash, Optional<BatWithId> bat) {
+        public CompletableFuture<Optional<CborObject>> get(PublicKeyHash owner, Cid hash, Optional<BatWithId> bat) {
             if (hash.isIdentity())
                 return CompletableFuture.completedFuture(Optional.of(CborObject.fromByteArray(hash.getHash())));
             if (isPeergosServer)
-                return poster.get(apiPrefix + BLOCK_GET + "?stream-channels=true&arg=" + hash + bat.map(b -> "&bat=" + b.encode()).orElse(""))
+                return poster.get(apiPrefix + BLOCK_GET + "?stream-channels=true&arg="
+                                + hash
+                                + "&owner=" + encode(owner.toString())
+                                + bat.map(b -> "&bat=" + b.encode()).orElse(""))
                         .thenApply(raw -> raw.length == 0 ? Optional.empty() : Optional.of(CborObject.fromByteArray(raw)));
 
             return id()
                     .thenCompose(ourId -> bat.map(b -> b.bat.generateAuth(hash, ourId, 300, S3Request.currentDatetime(), bat.get().id, hasher)
                             .thenApply(BlockAuth::encode)).orElse(Futures.of("")))
-                    .thenCompose(auth -> poster.get(apiPrefix + BLOCK_GET + "?stream-channels=true&arg=" + hash + "&auth=" + auth)
+                    .thenCompose(auth -> poster.get(apiPrefix + BLOCK_GET + "?stream-channels=true&arg=" + hash
+                                    + "&owner=" + encode(owner.toString())
+                                    + "&auth=" + auth)
                             .thenApply(raw -> raw.length == 0 ? Optional.empty() : Optional.of(CborObject.fromByteArray(raw))));
         }
 
         @Override
-        public CompletableFuture<Optional<byte[]>> getRaw(Cid hash, Optional<BatWithId> bat) {
+        public CompletableFuture<Optional<byte[]>> getRaw(PublicKeyHash owner, Cid hash, Optional<BatWithId> bat) {
             if (hash.isIdentity())
                 return CompletableFuture.completedFuture(Optional.of(hash.getHash()));
             if (isPeergosServer)
-                return poster.get(apiPrefix + BLOCK_GET + "?stream-channels=true&arg=" + hash + bat.map(b -> "&bat=" + b.encode()).orElse(""))
+                return poster.get(apiPrefix + BLOCK_GET + "?stream-channels=true&arg=" + hash
+                                + "&owner=" + encode(owner.toString())
+                                + bat.map(b -> "&bat=" + b.encode()).orElse(""))
                         .thenApply(raw -> raw.length == 0 ? Optional.empty() : Optional.of(raw));
 
             return id()
                     .thenCompose(ourId -> bat.map(b -> b.bat.generateAuth(hash, ourId, 300, S3Request.currentDatetime(), bat.get().id, hasher)
                             .thenApply(BlockAuth::encode)).orElse(Futures.of("")))
-                    .thenCompose(auth -> poster.get(apiPrefix + BLOCK_GET + "?stream-channels=true&arg=" + hash + "&auth=" + auth))
+                    .thenCompose(auth -> poster.get(apiPrefix + BLOCK_GET + "?stream-channels=true&arg=" + hash
+                            + "&owner=" + encode(owner.toString())
+                            + "&auth=" + auth))
                     .thenApply(raw -> raw.length == 0 ? Optional.empty() : Optional.of(raw));
         }
 
@@ -583,13 +594,13 @@ public interface ContentAddressedStorage {
         }
 
         @Override
-        public CompletableFuture<Optional<CborObject>> get(Cid object, Optional<BatWithId> bat) {
-            return local.get(object, bat);
+        public CompletableFuture<Optional<CborObject>> get(PublicKeyHash owner, Cid object, Optional<BatWithId> bat) {
+            return local.get(owner, object, bat);
         }
 
         @Override
-        public CompletableFuture<Optional<byte[]>> getRaw(Cid object, Optional<BatWithId> bat) {
-            return local.getRaw(object, bat);
+        public CompletableFuture<Optional<byte[]>> getRaw(PublicKeyHash owner, Cid object, Optional<BatWithId> bat) {
+            return local.getRaw(owner, object, bat);
         }
 
         @Override

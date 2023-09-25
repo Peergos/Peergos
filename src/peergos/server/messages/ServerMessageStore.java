@@ -80,7 +80,7 @@ public class ServerMessageStore implements ServerMessager {
     @Override
     public CompletableFuture<Boolean> sendMessage(String username, byte[] signedBody) {
         PublicKeyHash signerHash = pki.getPublicKeyHash(username).join().get();
-        Optional<PublicSigningKey> signerOpt = ipfs.getSigningKey(signerHash).join();
+        Optional<PublicSigningKey> signerOpt = ipfs.getSigningKey(signerHash, signerHash).join();
         if (! signerOpt.isPresent())
             throw new IllegalStateException("Couldn't retrieve signer key!");
         byte[] raw = signerOpt.get().unsignMessage(signedBody);

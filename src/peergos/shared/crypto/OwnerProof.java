@@ -16,8 +16,8 @@ public class OwnerProof implements Cborable {
         this.signedOwner = signedOwner;
     }
 
-    public CompletableFuture<PublicKeyHash> getOwner(ContentAddressedStorage ipfs) {
-        return ipfs.getSigningKey(ownedKey)
+    public CompletableFuture<PublicKeyHash> getAndVerifyOwner(PublicKeyHash owner, ContentAddressedStorage ipfs) {
+        return ipfs.getSigningKey(owner, ownedKey)
                 .thenApply(signer -> signer
                         .map(k -> PublicKeyHash.fromCbor(CborObject.fromByteArray(k.unsignMessage(signedOwner))))
                         .orElseThrow(() -> new IllegalStateException("Couldn't retrieve owned key: " + ownedKey)));

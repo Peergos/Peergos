@@ -156,7 +156,7 @@ public class OpLog implements Cborable, Account, MutablePointers, ContentAddress
     }
 
     @Override
-    public CompletableFuture<Optional<CborObject>> get(Cid hash, Optional<BatWithId> bat) {
+    public CompletableFuture<Optional<CborObject>> get(PublicKeyHash owner, Cid hash, Optional<BatWithId> bat) {
         return Futures.of(Optional.ofNullable(storage.get(hash)).map(CborObject::fromByteArray));
     }
 
@@ -182,7 +182,7 @@ public class OpLog implements Cborable, Account, MutablePointers, ContentAddress
     }
 
     @Override
-    public CompletableFuture<Optional<byte[]>> getRaw(Cid hash, Optional<BatWithId> bat) {
+    public CompletableFuture<Optional<byte[]>> getRaw(PublicKeyHash owner, Cid hash, Optional<BatWithId> bat) {
         return Futures.of(Optional.ofNullable(storage.get(hash)));
     }
 

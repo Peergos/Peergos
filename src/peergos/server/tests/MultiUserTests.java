@@ -6,7 +6,6 @@ import peergos.server.util.Args;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.fingerprint.*;
 import peergos.shared.storage.*;
-import peergos.shared.storage.auth.*;
 import peergos.shared.util.TriFunction;
 import peergos.shared.*;
 import peergos.shared.cbor.*;
@@ -65,16 +64,16 @@ public class MultiUserTests {
         WriterData props = WriterData.getWriterData(owner, writer, network.mutable, network.dhtClient).join().props;
         if (! props.ownedKeys.isPresent())
             return;
-        OwnedKeyChamp ownedChamp = props.getOwnedKeyChamp(network.dhtClient, network.hasher).join();
+        OwnedKeyChamp ownedChamp = props.getOwnedKeyChamp(owner, network.dhtClient, network.hasher).join();
         Set<OwnerProof> empty = Collections.emptySet();
-        Set<OwnerProof> claims = ownedChamp.applyToAllMappings(empty,
+        Set<OwnerProof> claims = ownedChamp.applyToAllMappings(owner, empty,
                 (a, b) -> CompletableFuture.completedFuture(Stream.concat(a.stream(), Stream.of(b.right)).collect(Collectors.toSet())),
                 network.dhtClient).join();
         Set<PublicKeyHash> ownedKeys = claims.stream()
                 .map(p -> p.ownedKey)
                 .collect(Collectors.toSet());
         Set<Pair<PublicKeyHash, PublicKeyHash>> pairs = claims.stream()
-                .map(p -> new Pair<>(p.getOwner(network.dhtClient).join(), p.ownedKey))
+                .map(p -> new Pair<>(p.getAndVerifyOwner(owner, network.dhtClient).join(), p.ownedKey))
                 .collect(Collectors.toSet());
         Set<PublicKeyHash> ownerKeys = pairs.stream()
                 .map(p -> p.left)

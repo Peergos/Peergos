@@ -88,7 +88,7 @@ public class AuthedCachingStorage extends DelegatingStorage {
     }
 
     @Override
-    public CompletableFuture<Optional<CborObject>> get(Cid key, Optional<BatWithId> bat) {
+    public CompletableFuture<Optional<CborObject>> get(PublicKeyHash owner, Cid key, Optional<BatWithId> bat) {
         if (cache.containsKey(key))
             return authoriseGet(key, cache.get(key), bat)
                     .thenApply(res -> Optional.of(CborObject.fromByteArray(res)));
@@ -104,7 +104,7 @@ public class AuthedCachingStorage extends DelegatingStorage {
         pending.put(key, pipe);
 
         CompletableFuture<Optional<CborObject>> result = new CompletableFuture<>();
-        target.get(key, bat).thenAccept(cborOpt -> {
+        target.get(owner, key, bat).thenAccept(cborOpt -> {
             if (cborOpt.isPresent()) {
                 byte[] value = cborOpt.get().toByteArray();
                 if (value.length > 0 && value.length < maxValueSize)
@@ -141,7 +141,7 @@ public class AuthedCachingStorage extends DelegatingStorage {
     }
 
     @Override
-    public CompletableFuture<Optional<byte[]>> getRaw(Cid key, Optional<BatWithId> bat) {
+    public CompletableFuture<Optional<byte[]>> getRaw(PublicKeyHash owner, Cid key, Optional<BatWithId> bat) {
         if (cache.containsKey(key))
             return authoriseGet(key, cache.get(key), bat)
                     .thenApply(res -> Optional.of(res));
@@ -155,7 +155,7 @@ public class AuthedCachingStorage extends DelegatingStorage {
 
         CompletableFuture<Optional<byte[]>> pipe = new CompletableFuture<>();
         pendingRaw.put(key, pipe);
-        return target.getRaw(key, bat).thenApply(rawOpt -> {
+        return target.getRaw(owner, key, bat).thenApply(rawOpt -> {
             if (rawOpt.isPresent()) {
                 byte[] value = rawOpt.get();
                 if (value.length > 0 && value.length < maxValueSize) {

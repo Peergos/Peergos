@@ -105,8 +105,8 @@ public class RetryStorage implements ContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<Optional<CborObject>> get(Cid hash, Optional<BatWithId> bat) {
-        return runWithRetry(() -> target.get(hash, bat));
+    public CompletableFuture<Optional<CborObject>> get(PublicKeyHash owner, Cid hash, Optional<BatWithId> bat) {
+        return runWithRetry(() -> target.get(owner, hash, bat));
     }
 
     @Override
@@ -120,8 +120,8 @@ public class RetryStorage implements ContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<Optional<byte[]>> getRaw(Cid hash, Optional<BatWithId> bat) {
-        return runWithRetry(() -> target.getRaw(hash, bat));
+    public CompletableFuture<Optional<byte[]>> getRaw(PublicKeyHash owner, Cid hash, Optional<BatWithId> bat) {
+        return runWithRetry(() -> target.getRaw(owner, hash, bat));
     }
 
     @Override

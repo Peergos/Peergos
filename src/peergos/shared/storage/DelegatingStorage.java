@@ -50,8 +50,8 @@ public abstract class DelegatingStorage implements ContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<Optional<CborObject>> get(Cid hash, Optional<BatWithId> bat) {
-        return target.get(hash, bat);
+    public CompletableFuture<Optional<CborObject>> get(PublicKeyHash owner, Cid hash, Optional<BatWithId> bat) {
+        return target.get(owner, hash, bat);
     }
 
     @Override
@@ -65,8 +65,8 @@ public abstract class DelegatingStorage implements ContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<Optional<byte[]>> getRaw(Cid hash, Optional<BatWithId> bat) {
-        return target.getRaw(hash, bat);
+    public CompletableFuture<Optional<byte[]>> getRaw(PublicKeyHash owner, Cid hash, Optional<BatWithId> bat) {
+        return target.getRaw(owner, hash, bat);
     }
 
     @Override

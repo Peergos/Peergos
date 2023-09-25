@@ -63,7 +63,7 @@ public class WriteSynchronizer {
 
     public CompletableFuture<Snapshot> getWriterData(PublicKeyHash owner, PublicKeyHash writer) {
         return mutable.getPointerTarget(owner, writer, dht)
-                .thenCompose(x -> WriterData.getWriterData((Cid)x.updated.get(), x.sequence, dht))
+                .thenCompose(x -> WriterData.getWriterData(owner, (Cid)x.updated.get(), x.sequence, dht))
                 .thenApply(cwd -> new Snapshot(writer, cwd));
     }
 

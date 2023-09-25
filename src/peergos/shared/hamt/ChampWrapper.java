@@ -23,16 +23,19 @@ public class ChampWrapper<V extends Cborable> implements ImmutableTree<V>
     public final Hasher writeHasher;
     public final int bitWidth;
     public final Function<ByteArrayWrapper, CompletableFuture<byte[]>> keyHasher;
+    public final PublicKeyHash owner;
     private Pair<Champ<V>, Multihash> root;
 
     public ChampWrapper(Champ<V> root,
                         Multihash rootHash,
+                        PublicKeyHash owner,
                         Function<ByteArrayWrapper, CompletableFuture<byte[]>> keyHasher,
                         ContentAddressedStorage storage,
                         Hasher writeHasher,
                         int bitWidth) {
         this.storage = storage;
         this.writeHasher = writeHasher;
+        this.owner = owner;
         this.keyHasher = keyHasher;
         this.root = new Pair<>(root, rootHash);
         this.bitWidth = bitWidth;
@@ -42,15 +45,16 @@ public class ChampWrapper<V extends Cborable> implements ImmutableTree<V>
         return root.right;
     }
 
-    public static <V extends Cborable> CompletableFuture<ChampWrapper<V>> create(Cid rootHash,
+    public static <V extends Cborable> CompletableFuture<ChampWrapper<V>> create(PublicKeyHash owner,
+                                                                                 Cid rootHash,
                                                                                  Function<ByteArrayWrapper, CompletableFuture<byte[]>> hasher,
                                                                                  ContentAddressedStorage dht,
                                                                                  Hasher writeHasher,
                                                                                  Function<Cborable, V> fromCbor) {
-        return dht.get(rootHash, Optional.empty()).thenApply(rawOpt -> {
+        return dht.get(owner, rootHash, Optional.empty()).thenApply(rawOpt -> {
             if (! rawOpt.isPresent())
                 throw new IllegalStateException("Champ root not present: " + rootHash);
-            return new ChampWrapper<>(Champ.fromCbor(rawOpt.get(), fromCbor), rootHash, hasher, dht, writeHasher, BIT_WIDTH);
+            return new ChampWrapper<>(Champ.fromCbor(rawOpt.get(), fromCbor), rootHash, owner, hasher, dht, writeHasher, BIT_WIDTH);
         });
     }
 
@@ -65,7 +69,7 @@ public class ChampWrapper<V extends Cborable> implements ImmutableTree<V>
         byte[] raw = newRoot.serialize();
         return writeHasher.sha256(raw)
                 .thenCompose(hash -> dht.put(owner, writer.publicKeyHash, writer.secret.signMessage(hash), raw, tid))
-                .thenApply(put -> new ChampWrapper<>(newRoot, put, hasher, dht, writeHasher, BIT_WIDTH));
+                .thenApply(put -> new ChampWrapper<>(newRoot, put, owner, hasher, dht, writeHasher, BIT_WIDTH));
     }
 
     /**
@@ -78,7 +82,7 @@ public class ChampWrapper<V extends Cborable> implements ImmutableTree<V>
     public CompletableFuture<Optional<V>> get(byte[] rawKey) {
         ByteArrayWrapper key = new ByteArrayWrapper(rawKey);
         return keyHasher.apply(key)
-                .thenCompose(keyHash -> root.left.get(key, keyHash, 0, BIT_WIDTH, storage));
+                .thenCompose(keyHash -> root.left.get(owner, key, keyHash, 0, BIT_WIDTH, storage));
     }
 
     /**
@@ -132,7 +136,7 @@ public class ChampWrapper<V extends Cborable> implements ImmutableTree<V>
      * @throws IOException
      */
     public CompletableFuture<Long> size() {
-        return root.left.size(0, storage);
+        return root.left.size(owner, 0, storage);
     }
 
     /**
@@ -140,9 +144,10 @@ public class ChampWrapper<V extends Cborable> implements ImmutableTree<V>
      * @return The combined result of applying the map to all mappings
      * @throws IOException
      */
-    public <T> CompletableFuture<T> reduceAllMappings(T identity,
+    public <T> CompletableFuture<T> reduceAllMappings(PublicKeyHash owner,
+                                                      T identity,
                                                       BiFunction<T, Pair<ByteArrayWrapper, Optional<V>>, CompletableFuture<T>> mapper) {
-        return root.left.reduceAllMappings(identity, mapper, storage);
+        return root.left.reduceAllMappings(owner, identity, mapper, storage);
     }
 
     /**
@@ -150,7 +155,7 @@ public class ChampWrapper<V extends Cborable> implements ImmutableTree<V>
      * @return true
      * @throws IOException
      */
-    public CompletableFuture<Boolean> applyToAllMappings(Function<Pair<ByteArrayWrapper, Optional<V>>, CompletableFuture<Boolean>> mapper) {
-        return root.left.applyToAllMappings(mapper, storage);
+    public CompletableFuture<Boolean> applyToAllMappings(PublicKeyHash owner, Function<Pair<ByteArrayWrapper, Optional<V>>, CompletableFuture<Boolean>> mapper) {
+        return root.left.applyToAllMappings(owner, mapper, storage);
     }
 }

@@ -1,5 +1,4 @@
 package peergos.shared;
-import java.net.URL;
 import java.util.function.*;
 import java.util.logging.*;
 
@@ -548,13 +547,13 @@ public class NetworkAccess {
         return cap.bat.map(b -> b.calculateId(hasher).thenApply(id -> Optional.of(new BatWithId(b, id.id)))).orElse(Futures.of(Optional.empty()))
                 .thenCompose(bat -> Futures.asyncExceptionally(
                         () -> dhtClient.getChampLookup(cap.owner, (Cid) base.tree.get(), cap.getMapKey(), bat,committedRoot),
-                        t -> dhtClient.getChampLookup((Cid) base.tree.get(), cap.getMapKey(), bat, committedRoot, hasher)
-                ).thenCompose(blocks -> ChampWrapper.create((Cid)base.tree.get(), x -> Futures.of(x.data), dhtClient, hasher, c -> (CborObject.CborMerkleLink) c)
+                        t -> dhtClient.getChampLookup(cap.owner, (Cid) base.tree.get(), cap.getMapKey(), bat, committedRoot, hasher)
+                ).thenCompose(blocks -> ChampWrapper.create(cap.owner, (Cid)base.tree.get(), x -> Futures.of(x.data), dhtClient, hasher, c -> (CborObject.CborMerkleLink) c)
                         .thenCompose(tree -> tree.get(cap.getMapKey()))
                         .thenApply(c -> c.map(x -> x.target))
                         .thenCompose(btreeValue -> {
                             if (btreeValue.isPresent()) {
-                                return dhtClient.get((Cid) btreeValue.get(), bat)
+                                return dhtClient.get(cap.owner, (Cid) btreeValue.get(), bat)
                                         .thenApply(value -> value.map(cbor -> CryptreeNode.fromCbor(cbor, cap.rBaseKey, btreeValue.get())))
                                         .thenApply(res -> {
                                             cache.put(cacheKey, res);
@@ -702,7 +701,8 @@ public class NetworkAccess {
                 .thenApply(valueHash -> valueHash.isPresent());
     }
 
-    public static CompletableFuture<List<FragmentWithHash>> downloadFragments(List<Cid> hashes,
+    public static CompletableFuture<List<FragmentWithHash>> downloadFragments(PublicKeyHash owner,
+                                                                              List<Cid> hashes,
                                                                               List<BatWithId> bats,
                                                                               ContentAddressedStorage dhtClient,
                                                                               Hasher hasher,
@@ -715,8 +715,8 @@ public class NetworkAccess {
                     return (h.isIdentity() ?
                             CompletableFuture.completedFuture(Optional.of(h.getHash())) :
                             h.codec == Cid.Codec.Raw ?
-                                    dhtClient.getRaw(h, i < bats.size() ? Optional.of(bats.get(i)) : Optional.empty()) :
-                                    dhtClient.get(h, i < bats.size() ? Optional.of(bats.get(i)) : Optional.empty())
+                                    dhtClient.getRaw(owner, h, i < bats.size() ? Optional.of(bats.get(i)) : Optional.empty()) :
+                                    dhtClient.get(owner, h, i < bats.size() ? Optional.of(bats.get(i)) : Optional.empty())
                                             .thenApply(cborOpt -> cborOpt.map(cbor -> ((CborObject.CborByteArray) cbor).value))) // for backwards compatibility
                             .thenApply(dataOpt -> {
                                 Optional<byte[]> bytes = dataOpt;

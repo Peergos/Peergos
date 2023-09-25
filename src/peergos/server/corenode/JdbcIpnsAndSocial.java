@@ -220,27 +220,6 @@ public class JdbcIpnsAndSocial {
         }
     }
 
-    public List<Multihash> getAllTargets(ContentAddressedStorage ipfs) {
-        try (Connection conn = getConnection();
-             PreparedStatement stmt = conn.prepareStatement("SELECT * FROM metadatablobs")) {
-            ResultSet rs = stmt.executeQuery();
-            List<Multihash> results = new ArrayList<>();
-            while (rs.next()) {
-                PublicKeyHash writerHash = PublicKeyHash.fromCbor(CborObject.fromByteArray(Base64.getDecoder().decode(rs.getString("writingKey"))));
-                PublicSigningKey writer = ipfs.getSigningKey(writerHash).join().get();
-                byte[] signedRawCas = Base64.getDecoder().decode(rs.getString(IPNS_TARGET_NAME));
-                byte[] bothHashes = writer.unsignMessage(signedRawCas);
-                PointerUpdate cas = PointerUpdate.fromCbor(CborObject.fromByteArray(bothHashes));
-                results.add(cas.updated.get());
-            }
-
-            return results;
-        } catch (SQLException sqe) {
-            LOG.log(Level.WARNING, sqe.getMessage(), sqe);
-            return Collections.emptyList();
-        }
-    }
-
     public Map<PublicKeyHash, byte[]> getAllEntries() {
         try (Connection conn = getConnection();
              PreparedStatement stmt = conn.prepareStatement("SELECT * FROM metadatablobs")) {

@@ -164,7 +164,7 @@ public class GarbageCollector {
                                          DeletableContentAddressedStorage storage,
                                          Set<Multihash> done,
                                          BlockMetadataStore metadata) {
-        PublicSigningKey writer = getWithBackoff(() -> storage.getSigningKey(writerHash).join().get());
+        PublicSigningKey writer = getWithBackoff(() -> storage.getSigningKey(null, writerHash).join().get());
         byte[] bothHashes = writer.unsignMessage(signedRawCas);
         PointerUpdate cas = PointerUpdate.fromCbor(CborObject.fromByteArray(bothHashes));
         MaybeMultihash updated = cas.updated;

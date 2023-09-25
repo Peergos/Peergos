@@ -186,7 +186,7 @@ public class Chat implements Cborable {
                     if (!chatIdentity.ownedKey.equals(author.identity))
                         throw new IllegalStateException("Identity keys don't match!");
                     // verify signature
-                    return chatIdentity.getOwner(ipfs).thenApply(x -> {
+                    return chatIdentity.getAndVerifyOwner(author.identity, ipfs).thenApply(x -> {
                         Map<Id, Member> updated = new HashMap<>(members);
                         updated.put(author.id, author.withChatId(chatIdentity));
                         return new ChatUpdate(withMembers(updated).addToRecent(msg), Arrays.asList(signed), Collections.emptyList(), Collections.emptySet());
@@ -276,9 +276,9 @@ public class Chat implements Cborable {
         if (! msg.timestamp.isBeforeOrEqual(current) && !author.removed) {
             // check signature
             return (author.chatIdentity.isPresent() ?
-                    author.chatIdentity.get().getOwner(ipfs) :
+                    author.chatIdentity.get().getAndVerifyOwner(author.identity, ipfs) :
                     Futures.of(author.identity))
-                    .thenCompose(ipfs::getSigningKey)
+                    .thenCompose(hash -> ipfs.getSigningKey(hash, hash))
                     .thenCompose(signerOpt -> {
                         if (signerOpt.isEmpty())
                             throw new IllegalStateException("Couldn't retrieve public signing key!");

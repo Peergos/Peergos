@@ -211,11 +211,11 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
                                                     ContentAddressedStorage dht,
                                                     UsageStore usageStore,
                                                     Hasher hasher) {
-        PointerUpdate pointerUpdate = dht.getSigningKey(event.writer)
+        PointerUpdate pointerUpdate = dht.getSigningKey(event.owner, event.writer)
                 .thenApply(signer -> PointerUpdate.fromCbor(CborObject.fromByteArray(signer.get()
                         .unsignMessage(event.writerSignedBtreeRootHash)))).join();
         Set<PublicKeyHash> updatedOwned =
-                WriterData.getDirectOwnedKeys(event.writer, pointerUpdate.updated, dht, hasher).join();
+                WriterData.getDirectOwnedKeys(event.owner, event.writer, pointerUpdate.updated, dht, hasher).join();
         WriterUsage current = usageStore.getUsage(event.writer);
         for (PublicKeyHash owned : updatedOwned) {
             usageStore.addWriter(current.owner, owned);
@@ -224,7 +224,7 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
 
     private void processMutablePointerEvent(MutableEvent event) {
         try {
-            PointerUpdate pointerUpdate = dht.getSigningKey(event.writer)
+            PointerUpdate pointerUpdate = dht.getSigningKey(event.owner, event.writer)
                     .thenApply(signer -> PointerUpdate.fromCbor(CborObject.fromByteArray(signer.get()
                             .unsignMessage(event.writerSignedBtreeRootHash)))).join();
             processMutablePointerEvent(usageStore, event.owner, event.writer, pointerUpdate.original, pointerUpdate.updated,
@@ -253,7 +253,7 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
                 try {
                     // subtract data size from orphaned child keys (this assumes the keys form a tree without dupes)
                     Set<PublicKeyHash> updatedOwned =
-                            WriterData.getDirectOwnedKeys(writer, newRoot, dht, hasher).join();
+                            WriterData.getDirectOwnedKeys(owner, writer, newRoot, dht, hasher).join();
                     processRemovedOwnedKeys(state, owner, updatedOwned, mutable, dht, hasher);
                 } catch (Exception e) {
                     LOG.log(Level.WARNING, e.getMessage(), e);
@@ -269,7 +269,7 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
                 long t1 = System.nanoTime();
                 LOG.info("Calculating change in used space for (" + owner + ", " + writer + ") took " + (t1-t0)/1_000_000 + "mS");
                 Set<PublicKeyHash> updatedOwned =
-                        WriterData.getDirectOwnedKeys(writer, newRoot, dht, hasher).join();
+                        WriterData.getDirectOwnedKeys(owner, writer, newRoot, dht, hasher).join();
                 for (PublicKeyHash owned : updatedOwned) {
                     state.addWriter(current.owner, owned);
                 }
