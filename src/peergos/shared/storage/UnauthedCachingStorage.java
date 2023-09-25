@@ -45,7 +45,7 @@ public class UnauthedCachingStorage extends DelegatingStorage {
     }
 
     @Override
-    public CompletableFuture<Optional<byte[]>> getRaw(Cid key, Optional<BatWithId> bat) {
+    public CompletableFuture<Optional<byte[]>> getRaw(PublicKeyHash owner, Cid key, Optional<BatWithId> bat) {
         return cache.get(key)
                 .thenCompose(res -> {
                     if (res.isPresent())
@@ -57,7 +57,7 @@ public class UnauthedCachingStorage extends DelegatingStorage {
                     CompletableFuture<Optional<byte[]>> pipe = new CompletableFuture<>();
                     pending.put(key, pipe);
 
-                    return target.getRaw(key, bat).thenApply(blockOpt -> {
+                    return target.getRaw(owner, key, bat).thenApply(blockOpt -> {
                         if (blockOpt.isPresent()) {
                             byte[] value = blockOpt.get();
                             cache.put(key, value);
@@ -93,32 +93,32 @@ public class UnauthedCachingStorage extends DelegatingStorage {
                                                             Hasher hasher) {
         CachingStorage cache = new CachingStorage(new LocalOnlyStorage(this.cache,
                 () -> (committedRoot.isPresent() ?
-                        get(committedRoot.get(), Optional.empty())
+                        get(owner, committedRoot.get(), Optional.empty())
                                 .thenApply(ropt -> ropt.map(WriterData::fromCbor).flatMap(wd ->  wd.tree))
                                 .thenCompose(champRoot -> target.getChampLookup(owner, (Cid) champRoot.get(), champKey, bat, Optional.empty())) :
                         target.getChampLookup(owner, root, champKey, bat, Optional.empty()))
                         .thenApply(blocks -> cacheBlocks(blocks, hasher)), hasher),
                 100, 1024*1024);
-        return ChampWrapper.create(root, x -> Futures.of(x.data), cache, hasher, c -> (CborObject.CborMerkleLink) c)
+        return ChampWrapper.create(owner, root, x -> Futures.of(x.data), cache, hasher, c -> (CborObject.CborMerkleLink) c)
                 .thenCompose(tree -> tree.get(champKey))
                 .thenApply(c -> c.map(x -> x.target).map(MaybeMultihash::of).orElse(MaybeMultihash.empty()))
                 .thenApply(btreeValue -> {
                     if (btreeValue.isPresent())
-                        return cache.get((Cid) btreeValue.get(), bat);
+                        return cache.get(owner, (Cid) btreeValue.get(), bat);
                     return Optional.empty();
                 }).thenApply(x -> new ArrayList<>(cache.getCached()));
     }
 
     @Override
-    public CompletableFuture<List<byte[]>> getChampLookup(Cid root,
+    public CompletableFuture<List<byte[]>> getChampLookup(PublicKeyHash owner, Cid root,
                                                           byte[] champKey,
                                                           Optional<BatWithId> bat,
                                                           Optional<Cid> committedRoot,
                                                           Hasher hasher) {
         System.out.println("UnauthedCachingStorage::getChampLookup " + root);
         return Futures.asyncExceptionally(
-                () -> target.getChampLookup(root, champKey, bat, committedRoot, hasher),
-                        t -> super.getChampLookup(root, champKey, bat, committedRoot, hasher)
+                () -> target.getChampLookup(owner, root, champKey, bat, committedRoot, hasher),
+                        t -> super.getChampLookup(owner, root, champKey, bat, committedRoot, hasher)
         ).thenApply(blocks -> cacheBlocks(blocks, hasher));
     }
 
@@ -148,8 +148,8 @@ public class UnauthedCachingStorage extends DelegatingStorage {
     }
 
     @Override
-    public CompletableFuture<Optional<CborObject>> get(Cid key, Optional<BatWithId> bat) {
-        return getRaw(key, bat)
+    public CompletableFuture<Optional<CborObject>> get(PublicKeyHash owner, Cid key, Optional<BatWithId> bat) {
+        return getRaw(owner, key, bat)
                 .thenApply(opt -> opt.map(CborObject::fromByteArray));
     }
 

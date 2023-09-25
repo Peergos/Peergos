@@ -164,7 +164,7 @@ public class DHTHandler implements HttpHandler {
                     // against the core node)
                     Supplier<PublicSigningKey> fromDht = () -> {
                         try {
-                            return dht.getSigningKey(writerHash).get().get();
+                            return dht.getSigningKey(writerHash, writerHash).get().get();
                         } catch (Exception e) {
                             throw new RuntimeException(e);
                         }
@@ -209,13 +209,14 @@ public class DHTHandler implements HttpHandler {
                 }
                 case BLOCK_GET:{
                     AggregatedMetrics.DHT_BLOCK_GET.inc();
+                    PublicKeyHash ownerHash = PublicKeyHash.fromString(last.apply("owner"));
                     Cid hash = Cid.decode(args.get(0));
                     Optional<BatWithId> bat = params.containsKey("bat") ?
                             Optional.of(BatWithId.decode(last.apply("bat"))) :
                             Optional.empty();
                     (hash.codec == Cid.Codec.Raw ?
-                            dht.getRaw(hash, bat) :
-                            dht.get(hash, bat).thenApply(opt -> opt.map(CborObject::toByteArray)))
+                            dht.getRaw(ownerHash, hash, bat) :
+                            dht.get(ownerHash, hash, bat).thenApply(opt -> opt.map(CborObject::toByteArray)))
                             .thenAccept(opt -> replyBytes(httpExchange,
                                     opt.orElse(new byte[0]), opt.map(x -> hash)))
                             .exceptionally(Futures::logAndThrow).get();

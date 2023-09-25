@@ -7,7 +7,6 @@ import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.storage.*;
-import peergos.shared.user.*;
 import peergos.shared.util.*;
 
 import java.util.*;
@@ -149,15 +148,15 @@ public class Champ<V extends Cborable> implements Cborable {
         return total;
     }
 
-    CompletableFuture<Pair<Multihash, Optional<Champ<V>>>> getChild(byte[] hash, int depth, int bitWidth, ContentAddressedStorage storage) {
+    CompletableFuture<Pair<Multihash, Optional<Champ<V>>>> getChild(PublicKeyHash owner, byte[] hash, int depth, int bitWidth, ContentAddressedStorage storage) {
         int bitpos = mask(hash, depth, bitWidth);
         int index = contents.length - 1 - getIndex(this.nodeMap, bitpos);
         Multihash childHash = contents[index].link.get();
-        return storage.get((Cid) childHash, Optional.empty())
+        return storage.get(owner, (Cid) childHash, Optional.empty())
                 .thenApply(x -> new Pair<>(childHash, x.map(y -> Champ.fromCbor(y, fromCbor))));
     }
 
-    public CompletableFuture<Long> size(int depth, ContentAddressedStorage storage) {
+    public CompletableFuture<Long> size(PublicKeyHash owner, int depth, ContentAddressedStorage storage) {
         long keys = keyCount();
         if (nodeCount() == 0)
             return CompletableFuture.completedFuture(keys);
@@ -167,9 +166,9 @@ public class Champ<V extends Cborable> implements Cborable {
             HashPrefixPayload<V> pointer = contents[i];
             if (! pointer.isShard())
                 break; // we reach the key section
-            childCounts.add(storage.get((Cid) pointer.link.get(), Optional.empty())
+            childCounts.add(storage.get(owner, (Cid) pointer.link.get(), Optional.empty())
                     .thenApply(x -> new Pair<>(pointer.link.get(), x.map(y -> Champ.fromCbor(y, fromCbor))))
-                    .thenCompose(child -> child.right.map(c -> c.size(depth + 1, storage))
+                    .thenCompose(child -> child.right.map(c -> c.size(owner, depth + 1, storage))
                             .orElse(CompletableFuture.completedFuture(0L)))
             );
         }
@@ -192,7 +191,7 @@ public class Champ<V extends Cborable> implements Cborable {
      * @param storage The storage
      * @return The value, if any, that this key maps to
      */
-    public CompletableFuture<Optional<V>> get(ByteArrayWrapper key, byte[] hash, int depth, int bitWidth, ContentAddressedStorage storage) {
+    public CompletableFuture<Optional<V>> get(PublicKeyHash owner, ByteArrayWrapper key, byte[] hash, int depth, int bitWidth, ContentAddressedStorage storage) {
         final int bitpos = mask(hash, depth, bitWidth);
 
         if (dataMap.get(bitpos)) { // local value
@@ -208,8 +207,8 @@ public class Champ<V extends Cborable> implements Cborable {
         }
 
         if (nodeMap.get(bitpos)) { // child node
-            return getChild(hash, depth, bitWidth, storage)
-                    .thenCompose(child -> child.right.map(c -> c.get(key, hash, depth + 1, bitWidth, storage))
+            return getChild(owner, hash, depth, bitWidth, storage)
+                    .thenCompose(child -> child.right.map(c -> c.get(owner, key, hash, depth + 1, bitWidth, storage))
                             .orElse(CompletableFuture.completedFuture(Optional.empty())));
         }
 
@@ -280,7 +279,7 @@ public class Champ<V extends Cborable> implements Cborable {
                         return storage.put(owner, writer, champ.serialize(), writeHasher, tid).thenApply(h -> new Pair<>(champ, h));
                     });
         } else if (nodeMap.get(bitpos)) { // child node
-            return getChild(hash, depth, bitWidth, storage)
+            return getChild(owner, hash, depth, bitWidth, storage)
                     .thenCompose(child -> child.right.get().put(owner, writer, key, hash, depth + 1, expected, value,
                             bitWidth, maxCollisions, hasher, tid, storage, writeHasher, child.left)
                             .thenCompose(newChild -> {
@@ -504,7 +503,7 @@ public class Champ<V extends Cborable> implements Cborable {
             }
             return CompletableFuture.completedFuture(new Pair<>(this, ourHash));
         } else if (nodeMap.get(bitpos)) { // node (not value)
-            return getChild(hash, depth, bitWidth, storage)
+            return getChild(owner, hash, depth, bitWidth, storage)
                     .thenCompose(child -> child.right.get().remove(owner, writer, key, hash, depth + 1, expected,
                             bitWidth, maxCollisions, tid, storage, writeHasher, child.left)
                             .thenCompose(newChild -> {
@@ -587,7 +586,8 @@ public class Champ<V extends Cborable> implements Cborable {
         return new Champ<>(newDataMap, nodeMap, dst, fromCbor);
     }
 
-    public <T> CompletableFuture<T> reduceAllMappings(T identity,
+    public <T> CompletableFuture<T> reduceAllMappings(PublicKeyHash owner,
+                                                      T identity,
                                                       BiFunction<T, Pair<ByteArrayWrapper, Optional<V>>, CompletableFuture<T>> consumer,
                                                       ContentAddressedStorage storage) {
         return Futures.reduceAll(Arrays.stream(contents).collect(Collectors.toList()), identity, (res, payload) ->
@@ -600,14 +600,15 @@ public class Champ<V extends Cborable> implements Cborable {
                         CompletableFuture.completedFuture(res)
                 ).thenCompose(newRes ->
                         payload.isShard() && payload.link.isPresent() ?
-                                storage.get((Cid)payload.link.get(), Optional.empty())
+                                storage.get(owner, (Cid)payload.link.get(), Optional.empty())
                                         .thenApply(rawOpt -> Champ.fromCbor(rawOpt.orElseThrow(() -> new IllegalStateException("Hash not present! " + payload.link)), fromCbor))
-                                        .thenCompose(child -> child.reduceAllMappings(newRes, consumer, storage)) :
+                                        .thenCompose(child -> child.reduceAllMappings(owner, newRes, consumer, storage)) :
                                 CompletableFuture.completedFuture(newRes)
                 ), (a, b) -> a);
     }
 
-    public CompletableFuture<Boolean> applyToAllMappings(Function<Pair<ByteArrayWrapper, Optional<V>>, CompletableFuture<Boolean>> mapper,
+    public CompletableFuture<Boolean> applyToAllMappings(PublicKeyHash owner,
+                                                         Function<Pair<ByteArrayWrapper, Optional<V>>, CompletableFuture<Boolean>> mapper,
                                                          ContentAddressedStorage storage) {
         return Futures.combineAll(Arrays.stream(contents).parallel().map(payload ->
                         (! payload.isShard() ?
@@ -619,9 +620,9 @@ public class Champ<V extends Cborable> implements Cborable {
                                 Futures.of(true)
                         ).thenCompose(newRes ->
                                 payload.isShard() && payload.link.isPresent() ?
-                                        storage.get((Cid)payload.link.get(), Optional.empty())
+                                        storage.get(owner, (Cid)payload.link.get(), Optional.empty())
                                                 .thenApply(rawOpt -> Champ.fromCbor(rawOpt.orElseThrow(() -> new IllegalStateException("Hash not present! " + payload.link)), fromCbor))
-                                                .thenCompose(child -> child.applyToAllMappings(mapper, storage)) :
+                                                .thenCompose(child -> child.applyToAllMappings(owner, mapper, storage)) :
                                         Futures.of(true)
                         )).collect(Collectors.toList()))
                 .thenApply(x -> true);
@@ -673,6 +674,7 @@ public class Champ<V extends Cborable> implements Cborable {
     }
 
     public static <V extends Cborable> CompletableFuture<Boolean> applyToDiff(
+            PublicKeyHash owner,
             MaybeMultihash original,
             MaybeMultihash updated,
             int depth,
@@ -686,9 +688,9 @@ public class Champ<V extends Cborable> implements Cborable {
 
         if (updated.equals(original))
             return CompletableFuture.completedFuture(true);
-        return original.map(h -> storage.get((Cid)h, Optional.empty())).orElseGet(() -> CompletableFuture.completedFuture(Optional.empty()))
+        return original.map(h -> storage.get(owner, (Cid)h, Optional.empty())).orElseGet(() -> CompletableFuture.completedFuture(Optional.empty()))
                 .thenApply(rawOpt -> rawOpt.map(y -> Champ.fromCbor(y, fromCbor)))
-                .thenCompose(left -> updated.map(h -> storage.get((Cid)h, Optional.empty())).orElseGet(() -> CompletableFuture.completedFuture(Optional.empty()))
+                .thenCompose(left -> updated.map(h -> storage.get(owner, (Cid)h, Optional.empty())).orElseGet(() -> CompletableFuture.completedFuture(Optional.empty()))
                         .thenApply(rawOpt -> rawOpt.map(y -> Champ.fromCbor(y, fromCbor)))
                         .thenCompose(right -> hashAndMaskKeys(higherLeftMappings, depth, bitWidth, hasher)
                                 .thenCompose(leftHigherMappingsByBit -> hashAndMaskKeys(higherRightMappings, depth, bitWidth, hasher)
@@ -726,7 +728,7 @@ public class Champ<V extends Cborable> implements Cborable {
                                         .map(p -> p.link);
 
                                 if (leftShard.isPresent() || rightShard.isPresent()) {
-                                    deeperLayers.add(applyToDiff(
+                                    deeperLayers.add(applyToDiff(owner,
                                             leftShard.orElse(MaybeMultihash.empty()),
                                             rightShard.orElse(MaybeMultihash.empty()), depth + 1, hasher,
                                             leftMappings, rightMappings, consumer, bitWidth, storage, fromCbor));

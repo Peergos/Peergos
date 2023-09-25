@@ -41,7 +41,7 @@ public class UserRepository implements SocialNetwork, MutablePointers {
 
     @Override
     public CompletableFuture<Boolean> removeFollowRequest(PublicKeyHash owner, byte[] data) {
-        return ipfs.getSigningKey(owner).thenCompose(signerOpt -> {
+        return ipfs.getSigningKey(owner, owner).thenCompose(signerOpt -> {
             try {
                 byte[] unsigned = signerOpt.get().unsignMessage(data);
                 return store.removeFollowRequest(owner, unsigned);
@@ -59,7 +59,7 @@ public class UserRepository implements SocialNetwork, MutablePointers {
     @Override
     public CompletableFuture<Boolean> setPointer(PublicKeyHash owner, PublicKeyHash writer, byte[] writerSignedBtreeRootHash) {
         return getPointer(owner, writer)
-                .thenCompose(current -> ipfs.getSigningKey(writer)
+                .thenCompose(current -> ipfs.getSigningKey(owner, writer)
                         .thenCompose(writerOpt -> {
                             try {
                                 if (writerSignedBtreeRootHash.length > MAX_POINTER_SIZE)
@@ -77,7 +77,7 @@ public class UserRepository implements SocialNetwork, MutablePointers {
                                             // check the new target is valid for this writer (or a deletion)
                                             if (cas.updated.isPresent()) {
                                                 Multihash newHash = cas.updated.get();
-                                                CommittedWriterData newWriterData = WriterData.getWriterData((Cid) newHash, cas.sequence, ipfs).join();
+                                                CommittedWriterData newWriterData = WriterData.getWriterData(owner, (Cid) newHash, cas.sequence, ipfs).join();
                                                 if (!newWriterData.props.controller.equals(writer))
                                                     return Futures.of(false);
                                             }

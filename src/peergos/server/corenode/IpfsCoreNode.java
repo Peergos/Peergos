@@ -76,20 +76,20 @@ public class IpfsCoreNode implements CoreNode {
      * @param newRoot The root of the new champ
      */
     private synchronized void update(MaybeMultihash newRoot, Optional<Long> newSequence) {
-        updateAllMappings(signer.publicKeyHash, currentRoot, newRoot, ipfs, chains, reverseLookup, usernames);
+        updateAllMappings(peergosIdentity, currentRoot, newRoot, ipfs, chains, reverseLookup, usernames);
         this.currentRoot = newRoot;
         this.currentSequence = newSequence;
     }
 
-    public static MaybeMultihash getTreeRoot(MaybeMultihash pointerTarget, ContentAddressedStorage ipfs) {
+    public static MaybeMultihash getTreeRoot(PublicKeyHash peergos, MaybeMultihash pointerTarget, ContentAddressedStorage ipfs) {
         if (! pointerTarget.isPresent())
             return MaybeMultihash.empty();
-        CommittedWriterData current = WriterData.getWriterData((Cid)pointerTarget.get(), Optional.empty(), ipfs).join();
+        CommittedWriterData current = WriterData.getWriterData(peergos, (Cid)pointerTarget.get(), Optional.empty(), ipfs).join();
         return current.props.tree.map(MaybeMultihash::of).orElseGet(MaybeMultihash::empty);
 
     }
 
-    public static void updateAllMappings(PublicKeyHash pkiSigner,
+    public static void updateAllMappings(PublicKeyHash peergos,
                                          MaybeMultihash currentChampRoot,
                                          MaybeMultihash newChampRoot,
                                          ContentAddressedStorage ipfs,
@@ -97,12 +97,12 @@ public class IpfsCoreNode implements CoreNode {
                                          Map<PublicKeyHash, String> reverseLookup,
                                          List<String> usernames) {
         try {
-            MaybeMultihash currentTree = getTreeRoot(currentChampRoot, ipfs);
-            MaybeMultihash updatedTree = getTreeRoot(newChampRoot, ipfs);
+            MaybeMultihash currentTree = getTreeRoot(peergos, currentChampRoot, ipfs);
+            MaybeMultihash updatedTree = getTreeRoot(peergos, newChampRoot, ipfs);
             Consumer<Triple<ByteArrayWrapper, Optional<CborObject.CborMerkleLink>, Optional<CborObject.CborMerkleLink>>> consumer =
-                    t -> updateMapping(t.left, t.middle, t.right, ipfs, chains, reverseLookup, usernames);
+                    t -> updateMapping(peergos, t.left, t.middle, t.right, ipfs, chains, reverseLookup, usernames);
             Function<Cborable, CborObject.CborMerkleLink> fromCbor = c -> (CborObject.CborMerkleLink)c;
-            Champ.applyToDiff(currentTree, updatedTree, 0, IpfsCoreNode::keyHash,
+            Champ.applyToDiff(peergos, currentTree, updatedTree, 0, IpfsCoreNode::keyHash,
                     Collections.emptyList(), Collections.emptyList(),
                     consumer, ChampWrapper.BIT_WIDTH, ipfs, fromCbor).get();
         } catch (Exception e) {
@@ -110,7 +110,8 @@ public class IpfsCoreNode implements CoreNode {
         }
     }
 
-    public static void updateMapping(ByteArrayWrapper key,
+    public static void updateMapping(PublicKeyHash peergos,
+                                     ByteArrayWrapper key,
                                      Optional<CborObject.CborMerkleLink> oldValue,
                                      Optional<CborObject.CborMerkleLink> newValue,
                                      ContentAddressedStorage ipfs,
@@ -118,7 +119,7 @@ public class IpfsCoreNode implements CoreNode {
                                      Map<PublicKeyHash, String> reverseLookup,
                                      List<String> usernames) {
         try {
-            Optional<CborObject> cborOpt = ipfs.get((Cid)newValue.get().target, Optional.empty()).get();
+            Optional<CborObject> cborOpt = ipfs.get(peergos, (Cid)newValue.get().target, Optional.empty()).get();
             if (!cborOpt.isPresent()) {
                 LOG.severe("Couldn't retrieve new claim chain from " + newValue);
                 return;
@@ -131,7 +132,7 @@ public class IpfsCoreNode implements CoreNode {
             String username = new String(key.data);
 
             if (oldValue.isPresent()) {
-                Optional<CborObject> existingCborOpt = ipfs.get((Cid)oldValue.get().target, Optional.empty()).get();
+                Optional<CborObject> existingCborOpt = ipfs.get(peergos, (Cid)oldValue.get().target, Optional.empty()).get();
                 if (!existingCborOpt.isPresent()) {
                     LOG.severe("Couldn't retrieve existing claim chain from " + newValue);
                     return;
@@ -280,17 +281,17 @@ public class IpfsCoreNode implements CoreNode {
             throw new IllegalStateException("Invalid username");
 
         try {
-            CommittedWriterData current = WriterData.getWriterData((Cid)currentRoot.get(), currentSequence, ipfs).get();
+            CommittedWriterData current = WriterData.getWriterData(peergosIdentity, (Cid)currentRoot.get(), currentSequence, ipfs).get();
             MaybeMultihash currentTree = current.props.tree.map(MaybeMultihash::of).orElseGet(MaybeMultihash::empty);
 
             ChampWrapper<CborObject.CborMerkleLink> champ = currentTree.isPresent() ?
-                    ChampWrapper.create((Cid)currentTree.get(), IpfsCoreNode::keyHash, ipfs, hasher, c -> (CborObject.CborMerkleLink)c).get() :
+                    ChampWrapper.create(peergosIdentity, (Cid)currentTree.get(), IpfsCoreNode::keyHash, ipfs, hasher, c -> (CborObject.CborMerkleLink)c).get() :
                     IpfsTransaction.call(peergosIdentity,
                             tid -> ChampWrapper.create(signer.publicKeyHash, signer, IpfsCoreNode::keyHash, tid, ipfs, hasher, c -> (CborObject.CborMerkleLink)c),
                             ipfs).get();
             Optional<CborObject.CborMerkleLink> existing = champ.get(username.getBytes()).get();
             Optional<CborObject> cborOpt = existing.isPresent() ?
-                    ipfs.get((Cid) existing.get().target, Optional.empty()).get() :
+                    ipfs.get(peergosIdentity, (Cid) existing.get().target, Optional.empty()).get() :
                     Optional.empty();
             if (! cborOpt.isPresent() && existing.isPresent()) {
                 LOG.severe("Couldn't retrieve existing claim chain from " + existing + " for " + username);

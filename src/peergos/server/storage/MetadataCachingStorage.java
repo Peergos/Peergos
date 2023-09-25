@@ -95,16 +95,16 @@ public class MetadataCachingStorage extends DelegatingDeletableStorage {
     }
 
     @Override
-    public CompletableFuture<Optional<CborObject>> get(Cid hash, Optional<BatWithId> bat) {
-        return target.get(hash, bat).thenApply(res -> {
+    public CompletableFuture<Optional<CborObject>> get(PublicKeyHash owner, Cid hash, Optional<BatWithId> bat) {
+        return target.get(owner, hash, bat).thenApply(res -> {
             res.ifPresent(cbor -> cacheBlockMetadata(cbor.toByteArray(), hash.isRaw()));
             return res;
         });
     }
 
     @Override
-    public CompletableFuture<Optional<byte[]>> getRaw(Cid hash, Optional<BatWithId> bat) {
-        return target.getRaw(hash, bat).thenApply(bopt -> {
+    public CompletableFuture<Optional<byte[]>> getRaw(PublicKeyHash owner, Cid hash, Optional<BatWithId> bat) {
+        return target.getRaw(owner, hash, bat).thenApply(bopt -> {
             bopt.ifPresent(b -> cacheBlockMetadata(b, hash.isRaw()));
             return bopt;
         });

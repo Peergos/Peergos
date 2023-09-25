@@ -101,17 +101,17 @@ public class BufferedStorage extends DelegatingStorage {
             }
         },
                 () -> committedRoot.isPresent() ?
-                        get(committedRoot.get(), Optional.empty())
+                        get(owner, committedRoot.get(), Optional.empty())
                                 .thenApply(ropt -> ropt.map(WriterData::fromCbor).flatMap(wd ->  wd.tree))
                                 .thenCompose(champRoot -> target.getChampLookup(owner, (Cid) champRoot.get(), champKey, bat, Optional.empty())) :
                         target.getChampLookup(owner, root, champKey, bat, Optional.empty()), hasher),
                 100, 1024 * 1024);
-        return ChampWrapper.create(root, x -> Futures.of(x.data), cache, hasher, c -> (CborObject.CborMerkleLink) c)
+        return ChampWrapper.create(owner, root, x -> Futures.of(x.data), cache, hasher, c -> (CborObject.CborMerkleLink) c)
                 .thenCompose(tree -> tree.get(champKey))
                 .thenApply(c -> c.map(x -> x.target).map(MaybeMultihash::of).orElse(MaybeMultihash.empty()))
                 .thenApply(btreeValue -> {
                     if (btreeValue.isPresent())
-                        return cache.get((Cid) btreeValue.get(), bat);
+                        return cache.get(owner, (Cid) btreeValue.get(), bat);
                     return Optional.empty();
                 }).thenApply(x -> new ArrayList<>(cache.getCached()));
     }
@@ -158,20 +158,20 @@ public class BufferedStorage extends DelegatingStorage {
                                                                        Hasher h,
                                                                        ProgressConsumer<Long> monitor,
                                                                        double spaceIncreaseFactor) {
-        return NetworkAccess.downloadFragments(hashes, bats, this, h, monitor, spaceIncreaseFactor);
+        return NetworkAccess.downloadFragments(owner, hashes, bats, this, h, monitor, spaceIncreaseFactor);
     }
 
     @Override
-    public synchronized CompletableFuture<Optional<byte[]>> getRaw(Cid hash, Optional<BatWithId> bat) {
+    public synchronized CompletableFuture<Optional<byte[]>> getRaw(PublicKeyHash owner, Cid hash, Optional<BatWithId> bat) {
         OpLog.BlockWrite local = storage.get(hash);
         if (local != null)
             return Futures.of(Optional.of(local.block));
-        return target.getRaw(hash, bat);
+        return target.getRaw(owner, hash, bat);
     }
 
     @Override
-    public synchronized CompletableFuture<Optional<CborObject>> get(Cid hash, Optional<BatWithId> bat) {
-        return getRaw(hash, bat)
+    public synchronized CompletableFuture<Optional<CborObject>> get(PublicKeyHash owner, Cid hash, Optional<BatWithId> bat) {
+        return getRaw(owner, hash, bat)
                 .thenApply(opt -> opt.map(CborObject::fromByteArray));
     }
 

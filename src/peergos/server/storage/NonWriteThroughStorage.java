@@ -65,24 +65,24 @@ public class NonWriteThroughStorage implements ContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<Optional<byte[]>> getRaw(Cid object, Optional<BatWithId> bat) {
+    public CompletableFuture<Optional<byte[]>> getRaw(PublicKeyHash owner, Cid object, Optional<BatWithId> bat) {
         try {
-            Optional<byte[]> modified = modifications.getRaw(object, bat).get();
+            Optional<byte[]> modified = modifications.getRaw(owner, object, bat).get();
             if ( modified.isPresent())
                 return CompletableFuture.completedFuture(modified);
-            return source.getRaw(object, bat);
+            return source.getRaw(owner, object, bat);
         } catch (Exception e) {
             throw new RuntimeException(e.getMessage(), e);
         }
     }
 
     @Override
-    public CompletableFuture<Optional<CborObject>> get(Cid hash, Optional<BatWithId> bat) {
+    public CompletableFuture<Optional<CborObject>> get(PublicKeyHash owner, Cid hash, Optional<BatWithId> bat) {
         try {
-            Optional<CborObject> modified = modifications.get(hash, bat).get();
+            Optional<CborObject> modified = modifications.get(owner, hash, bat).get();
             if ( modified.isPresent())
                 return CompletableFuture.completedFuture(modified);
-            return source.get(hash, bat);
+            return source.get(owner, hash, bat);
         } catch (Exception e) {
             throw new RuntimeException(e.getMessage(), e);
         }
@@ -91,7 +91,7 @@ public class NonWriteThroughStorage implements ContentAddressedStorage {
     @Override
     public CompletableFuture<Optional<Integer>> getSize(Multihash block) {
         try {
-            Optional<CborObject> modified = modifications.get((Cid)block, Optional.empty()).get();
+            Optional<CborObject> modified = modifications.get(null, (Cid)block, Optional.empty()).get();
             if (modified.isPresent())
                 return CompletableFuture.completedFuture(modified.map(cbor -> cbor.toByteArray().length));
             return source.getSize(block);

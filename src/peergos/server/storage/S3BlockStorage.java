@@ -2,7 +2,6 @@ package peergos.server.storage;
 
 import io.prometheus.client.Histogram;
 import io.prometheus.client.Counter;
-import org.junit.*;
 import peergos.server.*;
 import peergos.server.corenode.*;
 import peergos.server.space.*;
@@ -226,7 +225,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                 throw new IllegalStateException("Number of sizes doesn't match number of signed hashes!");
             if (blockSizes.size() != batIds.size())
                 throw new IllegalStateException("Number of sizes doesn't match number of bats!");
-            PublicSigningKey writer = getSigningKey(writerHash).get().get();
+            PublicSigningKey writer = getSigningKey(owner, writerHash).get().get();
             List<Pair<Cid, BlockMetadata>> blockProps = new ArrayList<>();
             for (int i=0; i < signedHashes.size(); i++) {
                 Cid.Codec codec = isRaw ? Cid.Codec.Raw : Cid.Codec.DagCbor;
@@ -258,7 +257,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<Optional<CborObject>> get(Cid object, Optional<BatWithId> bat) {
+    public CompletableFuture<Optional<CborObject>> get(PublicKeyHash owner, Cid object, Optional<BatWithId> bat) {
         return getRaw(object, bat, id, hasher)
                 .thenApply(opt -> opt.map(CborObject::fromByteArray));
     }
@@ -271,7 +270,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<Optional<byte[]>> getRaw(Cid object, Optional<BatWithId> bat) {
+    public CompletableFuture<Optional<byte[]>> getRaw(PublicKeyHash owner, Cid object, Optional<BatWithId> bat) {
         return getRaw(object, bat, id, hasher);
     }
 
@@ -436,7 +435,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
     public CompletableFuture<List<byte[]>> getChampLookup(PublicKeyHash owner, Cid root, byte[] champKey, Optional<BatWithId> bat,Optional<Cid> committedRoot) {
         if (! hasBlock(root))
             return Futures.errored(new IllegalStateException("Champ root not present locally: " + root));
-        return getChampLookup(root, champKey, bat, committedRoot, hasher);
+        return getChampLookup(owner, root, champKey, bat, committedRoot, hasher);
     }
 
     @Override

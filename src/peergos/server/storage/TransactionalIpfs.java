@@ -51,7 +51,7 @@ public class TransactionalIpfs extends DelegatingStorage implements DeletableCon
     }
 
     @Override
-    public CompletableFuture<Optional<CborObject>> get(Cid object, Optional<BatWithId> bat) {
+    public CompletableFuture<Optional<CborObject>> get(PublicKeyHash owner, Cid object, Optional<BatWithId> bat) {
         return get(object, bat, id, hasher);
     }
 
@@ -61,7 +61,7 @@ public class TransactionalIpfs extends DelegatingStorage implements DeletableCon
     }
 
     @Override
-    public CompletableFuture<Optional<byte[]>> getRaw(Cid hash, Optional<BatWithId> bat) {
+    public CompletableFuture<Optional<byte[]>> getRaw(PublicKeyHash owner, Cid hash, Optional<BatWithId> bat) {
         return getRaw(hash, bat, id, hasher);
     }
 
@@ -113,7 +113,7 @@ public class TransactionalIpfs extends DelegatingStorage implements DeletableCon
                                                           Optional<Cid> committedRoot) {
         if (! hasBlock(root))
             return Futures.errored(new IllegalStateException("Champ root not present locally: " + root));
-        return getChampLookup(root, champKey, bat, committedRoot, hasher);
+        return getChampLookup(owner, root, champKey, bat, committedRoot, hasher);
     }
 
     @Override

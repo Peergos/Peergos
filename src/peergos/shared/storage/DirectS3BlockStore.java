@@ -180,11 +180,11 @@ public class DirectS3BlockStore implements ContentAddressedStorage {
                                                                        ProgressConsumer<Long> monitor,
                                                                        double spaceIncreaseFactor) {
         if (publicReads || ! authedReads)
-            return NetworkAccess.downloadFragments(hashes, bats, fallback, h, monitor, spaceIncreaseFactor);
+            return NetworkAccess.downloadFragments(owner, hashes, bats, fallback, h, monitor, spaceIncreaseFactor);
 
         return onOwnersNode(owner).thenCompose(onOwners -> {
             if (! onOwners)
-                return NetworkAccess.downloadFragments(hashes, bats, fallback, h, monitor, spaceIncreaseFactor);
+                return NetworkAccess.downloadFragments(owner, hashes, bats, fallback, h, monitor, spaceIncreaseFactor);
 
             // Do a bulk auth in a single call
             List<Pair<Integer, Cid>> indexAndHash = IntStream.range(0, hashes.size())
@@ -230,7 +230,7 @@ public class DirectS3BlockStore implements ContentAddressedStorage {
                         return Arrays.asList(res);
                     }).thenAccept(allResults::complete)
                     .exceptionally(t -> {
-                        NetworkAccess.downloadFragments(hashes, bats, this, h, monitor, spaceIncreaseFactor)
+                        NetworkAccess.downloadFragments(owner, hashes, bats, this, h, monitor, spaceIncreaseFactor)
                                 .thenAccept(allResults::complete)
                                 .exceptionally(e -> {
                                     allResults.completeExceptionally(e);
@@ -243,12 +243,12 @@ public class DirectS3BlockStore implements ContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<Optional<CborObject>> get(Cid hash, Optional<BatWithId> bat) {
-        return getRaw(hash, bat).thenApply(opt -> opt.map(CborObject::fromByteArray));
+    public CompletableFuture<Optional<CborObject>> get(PublicKeyHash owner, Cid hash, Optional<BatWithId> bat) {
+        return getRaw(owner, hash, bat).thenApply(opt -> opt.map(CborObject::fromByteArray));
     }
 
     @Override
-    public CompletableFuture<Optional<byte[]>> getRaw(Cid hash, Optional<BatWithId> bat) {
+    public CompletableFuture<Optional<byte[]>> getRaw(PublicKeyHash owner, Cid hash, Optional<BatWithId> bat) {
         if (hash.isIdentity())
                 return CompletableFuture.completedFuture(Optional.of(hash.getHash()));
         if (publicReads) {
@@ -262,7 +262,7 @@ public class DirectS3BlockStore implements ContentAddressedStorage {
                                 .thenApply(Optional::of)
                                 .thenAccept(res::complete)
                                 .exceptionally(e -> {
-                                    fallback.getRaw(hash, bat)
+                                    fallback.getRaw(owner, hash, bat)
                                             .thenAccept(res::complete)
                                             .exceptionally(f -> {
                                                 res.completeExceptionally(f);
@@ -281,7 +281,7 @@ public class DirectS3BlockStore implements ContentAddressedStorage {
                     .thenApply(Optional::of)
                     .thenAccept(res::complete)
                     .exceptionally(t -> {
-                        fallback.getRaw(hash, bat)
+                        fallback.getRaw(owner, hash, bat)
                                 .thenAccept(res::complete)
                                 .exceptionally(e -> {
                                     res.completeExceptionally(e);
@@ -291,7 +291,7 @@ public class DirectS3BlockStore implements ContentAddressedStorage {
                     });
             return res;
         }
-        return fallback.getRaw(hash, bat);
+        return fallback.getRaw(owner, hash, bat);
     }
 
     @Override
@@ -306,7 +306,7 @@ public class DirectS3BlockStore implements ContentAddressedStorage {
                 t -> {
                     if (!(t instanceof RateLimitException))
                         return Futures.errored(t);
-                    return getChampLookup(root, champKey, bat, committedRoot, hasher);
+                    return getChampLookup(owner, root, champKey, bat, committedRoot, hasher);
                 });
     }
 }

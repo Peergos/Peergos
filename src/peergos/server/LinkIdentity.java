@@ -6,7 +6,6 @@ import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.crypto.symmetric.*;
 import peergos.shared.io.ipfs.multibase.*;
-import peergos.shared.storage.auth.*;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
 import peergos.shared.util.*;
@@ -83,7 +82,7 @@ public class LinkIdentity {
         Optional<PublicKeyHash> idKeyHash = network.coreNode.getPublicKeyHash(username).join();
         if (idKeyHash.isEmpty())
             throw new IllegalStateException("Unknown user: " + username);
-        Optional<PublicSigningKey> idKey = network.dhtClient.getSigningKey(idKeyHash.get()).join();
+        Optional<PublicSigningKey> idKey = network.dhtClient.getSigningKey(idKeyHash.get(), idKeyHash.get()).join();
         if (idKey.isEmpty())
             throw new IllegalStateException("Couldn't retrieve key for " + username);
 

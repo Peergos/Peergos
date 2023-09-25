@@ -113,7 +113,7 @@ public class CachingVerifyingStorage extends DelegatingStorage {
     }
 
     @Override
-    public CompletableFuture<Optional<CborObject>> get(Cid key, Optional<BatWithId> bat) {
+    public CompletableFuture<Optional<CborObject>> get(PublicKeyHash owner, Cid key, Optional<BatWithId> bat) {
         if (cache.containsKey(key))
             return CompletableFuture.completedFuture(Optional.of(CborObject.fromByteArray(cache.get(key))));
 
@@ -124,7 +124,7 @@ public class CachingVerifyingStorage extends DelegatingStorage {
         pending.put(key, pipe);
 
         CompletableFuture<Optional<CborObject>> result = new CompletableFuture<>();
-        target.get(key, bat)
+        target.get(owner, key, bat)
                 .thenCompose(cborOpt -> cborOpt.map(cbor -> verify(cbor.toByteArray(), key, () -> cbor)
                         .thenApply(Optional::of))
                         .orElseGet(() -> Futures.of(Optional.empty())))
@@ -167,7 +167,7 @@ public class CachingVerifyingStorage extends DelegatingStorage {
     }
 
     @Override
-    public CompletableFuture<Optional<byte[]>> getRaw(Cid key, Optional<BatWithId> bat) {
+    public CompletableFuture<Optional<byte[]>> getRaw(PublicKeyHash owner, Cid key, Optional<BatWithId> bat) {
         if (cache.containsKey(key))
             return CompletableFuture.completedFuture(Optional.of(cache.get(key)));
 
@@ -176,7 +176,7 @@ public class CachingVerifyingStorage extends DelegatingStorage {
 
         CompletableFuture<Optional<byte[]>> pipe = new CompletableFuture<>();
         pendingRaw.put(key, pipe);
-        target.getRaw(key, bat)
+        target.getRaw(owner, key, bat)
                 .thenCompose(arrOpt -> arrOpt.map(bytes -> verify(bytes, key, () -> bytes)
                                 .thenApply(Optional::of))
                         .orElseGet(() -> Futures.of(Optional.empty())))

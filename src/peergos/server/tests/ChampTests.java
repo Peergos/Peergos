@@ -11,8 +11,10 @@ import peergos.server.util.*;
 import peergos.shared.*;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.*;
+import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.hamt.*;
+import peergos.shared.io.ipfs.cid.*;
 import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.storage.*;
 import peergos.shared.util.*;
@@ -29,6 +31,7 @@ public class ChampTests {
 
     private static final Crypto crypto = Main.initCrypto();
     private static final Hasher writeHasher = crypto.hasher;
+    private static final PublicKeyHash owner = new PublicKeyHash(new Cid(1, Cid.Codec.DagCbor, Multihash.Type.id, new byte[36]));
     private final Function<ByteArrayWrapper, CompletableFuture<byte[]>> hasher;
 
     public ChampTests(Function<ByteArrayWrapper, CompletableFuture<byte[]>> hasher) {
@@ -76,7 +79,7 @@ public class ChampTests {
             Multihash value = randomHash.get();
             Pair<Champ<CborObject.CborMerkleLink>, Multihash> updated = current.put(user.publicKeyHash, user, key, hasher.apply(key).join(), 0,
                     Optional.empty(), Optional.of(new CborObject.CborMerkleLink(value)), bitWidth, maxCollisions, hasher, tid, storage, writeHasher, currentHash).get();
-            Optional<CborObject.CborMerkleLink> result = updated.left.get(key, hasher.apply(key).join(), 0, bitWidth, storage).get();
+            Optional<CborObject.CborMerkleLink> result = updated.left.get(owner, key, hasher.apply(key).join(), 0, bitWidth, storage).get();
             if (! result.equals(Optional.of(new CborObject.CborMerkleLink(value))))
                 throw new IllegalStateException("Incorrect result!");
             current = updated.left;
@@ -86,12 +89,12 @@ public class ChampTests {
 
         // check every mapping
         for (Map.Entry<ByteArrayWrapper, Optional<CborObject.CborMerkleLink>> e : state.entrySet()) {
-            Optional<CborObject.CborMerkleLink> res = current.get(e.getKey(), hasher.apply(e.getKey()).join(), 0, bitWidth, storage).get();
+            Optional<CborObject.CborMerkleLink> res = current.get(owner, e.getKey(), hasher.apply(e.getKey()).join(), 0, bitWidth, storage).get();
             if (! res.equals(e.getValue()))
                 throw new IllegalStateException("Incorrect state!");
         }
 
-        long size = current.size(0, storage).get();
+        long size = current.size(owner, 0, storage).get();
         if (size != nKeys)
             throw new IllegalStateException("Incorrect number of mappings! " + size);
 
@@ -99,10 +102,10 @@ public class ChampTests {
         for (Map.Entry<ByteArrayWrapper, Optional<CborObject.CborMerkleLink>> e : state.entrySet()) {
             ByteArrayWrapper key = e.getKey();
             Multihash value = randomHash.get();
-            Optional<CborObject.CborMerkleLink> currentValue = current.get(e.getKey(), hasher.apply(e.getKey()).join(), 0, bitWidth, storage).get();
+            Optional<CborObject.CborMerkleLink> currentValue = current.get(owner, e.getKey(), hasher.apply(e.getKey()).join(), 0, bitWidth, storage).get();
             Pair<Champ<CborObject.CborMerkleLink>, Multihash> updated = current.put(user.publicKeyHash, user, key, hasher.apply(key).join(), 0, currentValue,
                     Optional.of(new CborObject.CborMerkleLink(value)), bitWidth, maxCollisions, hasher, tid, storage, writeHasher, currentHash).get();
-            Optional<CborObject.CborMerkleLink> result = updated.left.get(key, hasher.apply(key).join(), 0, bitWidth, storage).get();
+            Optional<CborObject.CborMerkleLink> result = updated.left.get(owner, key, hasher.apply(key).join(), 0, bitWidth, storage).get();
             if (! result.equals(Optional.of(new CborObject.CborMerkleLink(value))))
                 throw new IllegalStateException("Incorrect result!");
             state.put(key, Optional.of(new CborObject.CborMerkleLink(value)));
@@ -113,10 +116,10 @@ public class ChampTests {
         // remove each key and check the mapping is gone
         for (Map.Entry<ByteArrayWrapper, Optional<CborObject.CborMerkleLink>> e : state.entrySet()) {
             ByteArrayWrapper key = e.getKey();
-            Optional<CborObject.CborMerkleLink> currentValue = current.get(e.getKey(), hasher.apply(e.getKey()).join(), 0, bitWidth, storage).get();
+            Optional<CborObject.CborMerkleLink> currentValue = current.get(owner, e.getKey(), hasher.apply(e.getKey()).join(), 0, bitWidth, storage).get();
             Pair<Champ<CborObject.CborMerkleLink>, Multihash> updated = current.remove(user.publicKeyHash, user, key, hasher.apply(key).join(), 0, currentValue,
                     bitWidth, maxCollisions, tid, storage, writeHasher, currentHash).get();
-            Optional<CborObject.CborMerkleLink> result = updated.left.get(key, hasher.apply(key).join(), 0, bitWidth, storage).get();
+            Optional<CborObject.CborMerkleLink> result = updated.left.get(owner, key, hasher.apply(key).join(), 0, bitWidth, storage).get();
             if (! result.equals(Optional.empty()))
                 throw new IllegalStateException("Incorrect state!");
         }
@@ -205,7 +208,7 @@ public class ChampTests {
             Pair<Champ<CborObject.CborMerkleLink>, Multihash> updated = current.put(user.publicKeyHash, user, key, hasher.apply(key).join(), 0, currentValue,
                     newValue, bitWidth, maxCollisions, hasher, tid, storage, writeHasher, currentHash).get();
             List<Triple<ByteArrayWrapper, Optional<CborObject.CborMerkleLink>, Optional<CborObject.CborMerkleLink>>> diffs = new ArrayList<>();
-            Champ.applyToDiff(MaybeMultihash.of(currentHash), MaybeMultihash.of(updated.right), 0, hasher,
+            Champ.applyToDiff(owner, MaybeMultihash.of(currentHash), MaybeMultihash.of(updated.right), 0, hasher,
                     Collections.emptyList(), Collections.emptyList(), diffs::add, bitWidth, storage, c -> (CborObject.CborMerkleLink)c).join();
             if (diffs.size() != 1 || ! diffs.get(0).equals(new Triple<>(key, currentValue, newValue)))
                 throw new IllegalStateException("Incorrect champ diff updating element!");
@@ -223,7 +226,7 @@ public class ChampTests {
                     newValue, bitWidth, maxCollisions, hasher, tid, storage, writeHasher, currentHash).get();
             List<Triple<ByteArrayWrapper, Optional<CborObject.CborMerkleLink>, Optional<CborObject.CborMerkleLink>>> diffs = new ArrayList<>();
 
-            Champ.applyToDiff(MaybeMultihash.of(currentHash), MaybeMultihash.of(updated.right), 0, hasher,
+            Champ.applyToDiff(owner, MaybeMultihash.of(currentHash), MaybeMultihash.of(updated.right), 0, hasher,
                     Collections.emptyList(), Collections.emptyList(), diffs::add, bitWidth, storage, c -> (CborObject.CborMerkleLink)c).join();
             if (diffs.size() != 1 || ! diffs.get(0).equals(new Triple<>(key, currentValue, newValue)))
                 throw new IllegalStateException("Incorrect champ diff updating element!");
@@ -240,7 +243,7 @@ public class ChampTests {
             Pair<Champ<CborObject.CborMerkleLink>, Multihash> updated = current.put(user.publicKeyHash, user, key, hasher.apply(key).join(), 0, currentValue,
                     newValue, bitWidth, maxCollisions, hasher, tid, storage, writeHasher, currentHash).get();
             List<Triple<ByteArrayWrapper, Optional<CborObject.CborMerkleLink>, Optional<CborObject.CborMerkleLink>>> diffs = new ArrayList<>();
-            Champ.applyToDiff(MaybeMultihash.of(currentHash), MaybeMultihash.of(updated.right), 0, hasher,
+            Champ.applyToDiff(owner, MaybeMultihash.of(currentHash), MaybeMultihash.of(updated.right), 0, hasher,
                     Collections.emptyList(), Collections.emptyList(), diffs::add, bitWidth, storage, c -> (CborObject.CborMerkleLink)c).join();
             if (diffs.size() != 1 || ! diffs.get(0).equals(new Triple<>(key, currentValue, newValue)))
                 throw new IllegalStateException("Incorrect champ diff updating element!");
@@ -316,33 +319,33 @@ public class ChampTests {
 
         // check every mapping
         for (Map.Entry<ByteArrayWrapper, Optional<CborObject.CborMerkleLink>> e : state.entrySet()) {
-            Optional<CborObject.CborMerkleLink> res = current.get(e.getKey(), hasher.apply(e.getKey()).join(), 0, bitWidth, storage).get();
+            Optional<CborObject.CborMerkleLink> res = current.get(owner, e.getKey(), hasher.apply(e.getKey()).join(), 0, bitWidth, storage).get();
             if (! res.equals(e.getValue()))
                 throw new IllegalStateException("Incorrect state!");
         }
 
-        long size = current.size(0, storage).get();
+        long size = current.size(owner, 0, storage).get();
         if (size != 3)
             throw new IllegalStateException("Incorrect number of mappings! " + size);
 
         // delete one entry
         ByteArrayWrapper key = new ByteArrayWrapper(new byte[]{0, 1, 0});
-        Optional<CborObject.CborMerkleLink> currentValue = current.get(key, hasher.apply(key).join(), 0, bitWidth, storage).get();
+        Optional<CborObject.CborMerkleLink> currentValue = current.get(owner, key, hasher.apply(key).join(), 0, bitWidth, storage).get();
         Pair<Champ<CborObject.CborMerkleLink>, Multihash> updated = current.remove(user.publicKeyHash, user, key, hasher.apply(key).join(), 0, currentValue,
                 bitWidth, maxCollisions, tid, storage, writeHasher, currentHash).get();
         current = updated.left;
         state.remove(key);
-        Optional<CborObject.CborMerkleLink> result = updated.left.get(key, hasher.apply(key).join(), 0, bitWidth, storage).get();
+        Optional<CborObject.CborMerkleLink> result = updated.left.get(owner, key, hasher.apply(key).join(), 0, bitWidth, storage).get();
         if (! result.equals(Optional.empty()))
             throw new IllegalStateException("Incorrect state!");
 
-        long size_after_delete = current.size(0, storage).get();
+        long size_after_delete = current.size(owner, 0, storage).get();
         if (size_after_delete != 2)
             throw new IllegalStateException("Incorrect number of mappings! " + size);
 
         // check every mapping
         for (Map.Entry<ByteArrayWrapper, Optional<CborObject.CborMerkleLink>> e : state.entrySet()) {
-            Optional<CborObject.CborMerkleLink> res = current.get(e.getKey(), hasher.apply(e.getKey()).join(), 0, bitWidth, storage).get();
+            Optional<CborObject.CborMerkleLink> res = current.get(owner, e.getKey(), hasher.apply(e.getKey()).join(), 0, bitWidth, storage).get();
             if (! res.equals(e.getValue()))
                 throw new IllegalStateException("Incorrect state!");
         }

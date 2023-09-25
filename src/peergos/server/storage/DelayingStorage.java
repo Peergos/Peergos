@@ -1,6 +1,5 @@
 package peergos.server.storage;
 
-import peergos.shared.*;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.cid.*;
@@ -72,20 +71,20 @@ public class DelayingStorage implements ContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<Optional<byte[]>> getRaw(Cid object, Optional<BatWithId> bat) {
+    public CompletableFuture<Optional<byte[]>> getRaw(PublicKeyHash owner, Cid object, Optional<BatWithId> bat) {
         try {
             sleep(readDelay);
-            return source.getRaw(object, bat);
+            return source.getRaw(owner, object, bat);
         } catch (Exception e) {
             throw new RuntimeException(e.getMessage(), e);
         }
     }
 
     @Override
-    public CompletableFuture<Optional<CborObject>> get(Cid hash, Optional<BatWithId> bat) {
+    public CompletableFuture<Optional<CborObject>> get(PublicKeyHash owner, Cid hash, Optional<BatWithId> bat) {
         try {
             sleep(readDelay);
-            return source.get(hash, bat);
+            return source.get(owner, hash, bat);
         } catch (Exception e) {
             throw new RuntimeException(e.getMessage(), e);
         }

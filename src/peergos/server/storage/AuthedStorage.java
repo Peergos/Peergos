@@ -35,7 +35,7 @@ public class AuthedStorage extends DelegatingStorage implements DeletableContent
     }
 
     @Override
-    public CompletableFuture<Optional<CborObject>> get(Cid object, Optional<BatWithId> bat) {
+    public CompletableFuture<Optional<CborObject>> get(PublicKeyHash owner, Cid object, Optional<BatWithId> bat) {
         return get(object, bat, ourNodeId, h);
     }
 
@@ -45,7 +45,7 @@ public class AuthedStorage extends DelegatingStorage implements DeletableContent
     }
 
     @Override
-    public CompletableFuture<Optional<byte[]>> getRaw(Cid hash, Optional<BatWithId> bat) {
+    public CompletableFuture<Optional<byte[]>> getRaw(PublicKeyHash owner, Cid hash, Optional<BatWithId> bat) {
         return getRaw(hash, bat, ourNodeId, h);
     }
 
@@ -87,7 +87,7 @@ public class AuthedStorage extends DelegatingStorage implements DeletableContent
     public CompletableFuture<List<byte[]>> getChampLookup(PublicKeyHash owner, Cid root, byte[] champKey, Optional<BatWithId> bat, Optional<Cid> committedRoot) {
         if (! hasBlock(root))
             return Futures.errored(new IllegalStateException("Champ root not present locally: " + root));
-        return getChampLookup(root, champKey, bat, committedRoot, h);
+        return getChampLookup(owner, root, champKey, bat, committedRoot, h);
     }
 
     @Override

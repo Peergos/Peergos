@@ -1,7 +1,6 @@
 package peergos.server.mutable;
 
 import peergos.server.corenode.*;
-import peergos.shared.cbor.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.mutable.*;
 import peergos.shared.storage.*;
@@ -23,7 +22,7 @@ public class JdbcPointerCache implements PointerCache {
     @Override
     public synchronized CompletableFuture<Boolean> put(PublicKeyHash owner, PublicKeyHash writer, byte[] signedUpdate) {
         return store.getPointer(writer)
-                .thenCompose(current -> storage.getSigningKey(writer).thenCompose(signerOpt -> {
+                .thenCompose(current -> storage.getSigningKey(owner, writer).thenCompose(signerOpt -> {
                     if (signerOpt.isEmpty())
                         throw new IllegalStateException("Couldn't retrieve signing key!");
                     if (doUpdate(current, signedUpdate, signerOpt.get()))

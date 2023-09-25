@@ -46,7 +46,7 @@ public interface QuotaAdmin extends QuotaControl {
 
     static QuotaControl.SpaceRequest parseQuotaRequest(PublicKeyHash owner, byte[] signedRequest, ContentAddressedStorage dht) {
         // check request is valid
-        Optional<PublicSigningKey> ownerOpt = dht.getSigningKey(owner).join();
+        Optional<PublicSigningKey> ownerOpt = dht.getSigningKey(owner, owner).join();
         if (!ownerOpt.isPresent())
             throw new IllegalStateException("Couldn't retrieve owner key!");
         byte[] raw = ownerOpt.get().unsignMessage(signedRequest);

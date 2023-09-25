@@ -283,7 +283,7 @@ public class UserPublicKeyLink implements Cborable {
             Optional<byte[]> keyChangeProof = from.getKeyChangeProof();
             if (!keyChangeProof.isPresent())
                 return CompletableFuture.completedFuture(false);
-            return ipfs.getSigningKey(from.owner).thenApply(ownerKeyOpt -> {
+            return ipfs.getSigningKey(from.owner, from.owner).thenApply(ownerKeyOpt -> {
                 if (!ownerKeyOpt.isPresent())
                     return false;
                 PublicKeyHash targetKey = PublicKeyHash.fromCbor(CborObject.fromByteArray(ownerKeyOpt.get().unsignMessage(keyChangeProof.get())));
@@ -304,7 +304,7 @@ public class UserPublicKeyLink implements Cborable {
             return CompletableFuture.completedFuture(false);
         if (from.claim.storageProviders.size() > 1)
             return CompletableFuture.completedFuture(false);
-        return ipfs.getSigningKey(from.owner).thenApply(ownerKeyOpt -> {
+        return ipfs.getSigningKey(from.owner, from.owner).thenApply(ownerKeyOpt -> {
             if (!ownerKeyOpt.isPresent())
                 return false;
             try {

@@ -36,11 +36,11 @@ public class ValidateUser {
             return;
         }
 
-        validateBlock(target.get(), network);
+        validateBlock(owner, target.get(), network);
     }
 
-    private static void validateBlock(Multihash target, NetworkAccess network) {
-        Optional<CborObject> block = network.dhtClient.get((Cid)target, Optional.empty()).join();
+    private static void validateBlock(PublicKeyHash owner, Multihash target, NetworkAccess network) {
+        Optional<CborObject> block = network.dhtClient.get(owner, (Cid)target, Optional.empty()).join();
         if (! block.isPresent())
             throw new IllegalStateException("Couldn't retrieve " + target);
 
@@ -49,7 +49,7 @@ public class ValidateUser {
             if (link instanceof Cid && ((Cid) link).codec == Cid.Codec.Raw)
                 network.dhtClient.getSize(link).join();
             else
-                validateBlock(link, network);
+                validateBlock(owner, link, network);
         }
     }
 }
