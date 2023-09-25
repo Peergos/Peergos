@@ -46,12 +46,19 @@ public class GarbageCollector {
             while (true) {
                 try {
                     collect(snapshotSaver);
-                    Thread.sleep(periodMillis);
                 } catch (Exception e) {
                     LOG.log(Level.SEVERE, e, e::getMessage);
                 }
+                try {
+                    Thread.sleep(periodMillis);
+                } catch (InterruptedException ex) {
+                    Thread.currentThread().interrupt();
+                }
             }
         }, "Garbage Collector");
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+            garbageCollector.interrupt();
+        }, "Garbage Collector - shutdown"));
         garbageCollector.setDaemon(true);
         garbageCollector.start();
     }
