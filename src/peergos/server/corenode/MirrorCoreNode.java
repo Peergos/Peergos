@@ -458,6 +458,17 @@ public class MirrorCoreNode implements CoreNode {
     }
 
     @Override
+    public List<Multihash> getStorageProviders(PublicKeyHash owner) {
+        if (! state.reverseLookup.containsKey(owner))
+            return Collections.emptyList();
+        String username = getUsername(owner).join();
+        List<UserPublicKeyLink> chain = getChain(username).join();
+        if (chain.isEmpty())
+            return Collections.emptyList();
+        return chain.get(chain.size() - 1).claim.storageProviders;
+    }
+
+    @Override
     public CompletableFuture<String> getUsername(PublicKeyHash key) {
         String username = state.reverseLookup.get(key);
         if (username != null)
