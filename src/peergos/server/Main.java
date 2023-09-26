@@ -581,6 +581,8 @@ public class Main extends Builder {
             CoreNode core = buildCorenode(a, localStorage, transactions, rawPointers, localPointers, proxingMutable,
                     rawSocial, usageStore, rawAccount, batStore, account, hasher);
             localStorage.setPki(core);
+            if (core instanceof MirrorCoreNode)
+                ((MirrorCoreNode) core).updateAndSave();
 
             boolean isPki = Cid.decodePeerId(a.getArg("pki-node-id")).equals(nodeId);
             QuotaAdmin userQuotas = buildSpaceQuotas(a, localStorage, core,
