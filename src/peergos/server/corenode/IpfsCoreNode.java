@@ -46,8 +46,6 @@ public class IpfsCoreNode implements CoreNode {
 
     public IpfsCoreNode(SigningPrivateKeyAndPublicHash pkiSigner,
                         int maxSignupsPerDay,
-                        MaybeMultihash currentRoot,
-                        Optional<Long> currentSequence,
                         ContentAddressedStorage ipfs,
                         Hasher hasher,
                         MutablePointers mutable,
@@ -63,10 +61,26 @@ public class IpfsCoreNode implements CoreNode {
         this.batCave = batCave;
         this.peergosIdentity = peergosIdentity;
         this.signer = pkiSigner;
-        this.update(currentRoot, currentSequence);
         this.difficultyGenerator = new DifficultyGenerator(System.currentTimeMillis(), maxSignupsPerDay);
     }
 
+    @Override
+    public void initialize() {
+        PointerUpdate currentPkiPointer = mutable.getPointerTarget(peergosIdentity, peergosIdentity, ipfs).join();
+        Optional<Long> currentPkiSequence = currentPkiPointer.sequence;
+        MaybeMultihash currentPkiRoot = currentPkiPointer.updated;
+        update(currentPkiRoot, currentPkiSequence);
+        if (! currentPkiRoot.isPresent()) {
+            reverseLookup.put(peergosIdentity, "peergos");
+            CommittedWriterData committed = IpfsTransaction.call(peergosIdentity,
+                    tid -> WriterData.createEmpty(peergosIdentity, signer, ipfs, hasher, tid).join()
+                            .commit(peergosIdentity, signer, MaybeMultihash.empty(), Optional.empty(), mutable, ipfs, hasher, tid)
+                            .thenApply(version -> version.get(signer)), ipfs).join();
+            currentPkiRoot = committed.hash;
+            currentPkiSequence = committed.sequence;
+            update(currentPkiRoot, currentPkiSequence);
+        }
+    }
     public static CompletableFuture<byte[]> keyHash(ByteArrayWrapper username) {
         return Futures.of(Blake2b.Digest.newInstance().digest(username.data));
     }
