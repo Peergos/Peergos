@@ -3,6 +3,7 @@ package peergos.server.storage;
 import peergos.server.storage.auth.*;
 import peergos.server.util.Logging;
 import peergos.shared.cbor.*;
+import peergos.shared.corenode.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.Cid;
 import peergos.shared.io.ipfs.Multihash;
@@ -45,6 +46,9 @@ public class FileContentAddressedStorage implements DeletableContentAddressedSto
         if (!rootDir.isDirectory())
             throw new IllegalStateException("File store path must be a directory! " + root);
     }
+
+    @Override
+    public void setPki(CoreNode pki) {}
 
     @Override
     public ContentAddressedStorage directToOrigin() {
@@ -134,29 +138,29 @@ public class FileContentAddressedStorage implements DeletableContentAddressedSto
     }
 
     @Override
-    public CompletableFuture<Optional<CborObject>> get(Cid hash, String auth) {
+    public CompletableFuture<Optional<CborObject>> get(List<Multihash> peerIds, Cid hash, String auth) {
         if (hash.codec == Cid.Codec.Raw)
             throw new IllegalStateException("Need to call getRaw if cid is not cbor!");
-        return getRaw(hash, auth).thenApply(opt -> opt.map(CborObject::fromByteArray));
+        return getRaw(Collections.emptyList(), hash, auth).thenApply(opt -> opt.map(CborObject::fromByteArray));
     }
 
     @Override
     public CompletableFuture<Optional<CborObject>> get(PublicKeyHash owner, Cid hash, Optional<BatWithId> bat) {
-        return get(hash, bat, id().join(), hasher);
+        return get(Collections.emptyList(), hash, bat, id().join(), hasher);
     }
 
     @Override
     public CompletableFuture<Optional<byte[]>> getRaw(PublicKeyHash owner, Cid hash, Optional<BatWithId> bat) {
-        return getRaw(hash, bat, id().join(), hasher);
+        return getRaw(Collections.emptyList(), hash, bat, id().join(), hasher);
     }
 
     @Override
-    public CompletableFuture<Optional<byte[]>> getRaw(Cid hash, String auth) {
-        return getRaw(hash, auth, true);
+    public CompletableFuture<Optional<byte[]>> getRaw(List<Multihash> peerIds, Cid hash, String auth) {
+        return getRaw(peerIds, hash, auth, true);
     }
 
     @Override
-    public CompletableFuture<Optional<byte[]>> getRaw(Cid hash, String auth, boolean doAuth) {
+    public CompletableFuture<Optional<byte[]>> getRaw(List<Multihash> peerIds, Cid hash, String auth, boolean doAuth) {
         try {
             if (hash.isIdentity())
                 return Futures.of(Optional.of(hash.getHash()));
@@ -187,7 +191,7 @@ public class FileContentAddressedStorage implements DeletableContentAddressedSto
     public CompletableFuture<List<Cid>> getLinks(Cid root, String auth) {
         if (root.codec == Cid.Codec.Raw)
             return CompletableFuture.completedFuture(Collections.emptyList());
-        return getRaw(root, auth, false)
+        return getRaw(Collections.emptyList(), root, auth, false)
                 .thenApply(opt -> opt.map(CborObject::fromByteArray))
                 .thenApply(opt -> opt
                         .map(cbor -> cbor.links().stream().map(c -> (Cid) c).collect(Collectors.toList()))

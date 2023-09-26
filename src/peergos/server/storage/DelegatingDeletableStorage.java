@@ -1,6 +1,7 @@
 package peergos.server.storage;
 
 import peergos.shared.cbor.*;
+import peergos.shared.corenode.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.Cid;
 import peergos.shared.io.ipfs.Multihash;
@@ -19,6 +20,11 @@ public class DelegatingDeletableStorage implements DeletableContentAddressedStor
 
     public DelegatingDeletableStorage(DeletableContentAddressedStorage target) {
         this.target = target;
+    }
+
+    @Override
+    public void setPki(CoreNode pki) {
+        target.setPki(pki);
     }
 
     @Override
@@ -62,18 +68,18 @@ public class DelegatingDeletableStorage implements DeletableContentAddressedStor
     }
 
     @Override
-    public CompletableFuture<Optional<CborObject>> get(Cid hash, String auth) {
-        return target.get(hash, auth);
+    public CompletableFuture<Optional<CborObject>> get(List<Multihash> peerIds, Cid hash, String auth) {
+        return target.get(peerIds, hash, auth);
     }
 
     @Override
-    public CompletableFuture<Optional<byte[]>> getRaw(Cid hash, String auth) {
-        return target.getRaw(hash, auth);
+    public CompletableFuture<Optional<byte[]>> getRaw(List<Multihash> peerIds, Cid hash, String auth) {
+        return target.getRaw(peerIds, hash, auth);
     }
 
     @Override
-    public CompletableFuture<List<Cid>> mirror(PublicKeyHash owner, Optional<Cid> existing, Optional<Cid> updated, Optional<BatWithId> mirrorBat, Cid ourNodeId, TransactionId tid, Hasher hasher) {
-        return target.mirror(owner, existing, updated, mirrorBat, ourNodeId, tid, hasher);
+    public CompletableFuture<List<Cid>> mirror(PublicKeyHash owner, List<Multihash> peerIds, Optional<Cid> existing, Optional<Cid> updated, Optional<BatWithId> mirrorBat, Cid ourNodeId, TransactionId tid, Hasher hasher) {
+        return target.mirror(owner, peerIds, existing, updated, mirrorBat, ourNodeId, tid, hasher);
     }
 
     @Override
@@ -152,8 +158,8 @@ public class DelegatingDeletableStorage implements DeletableContentAddressedStor
     }
 
     @Override
-    public CompletableFuture<Optional<CborObject>> get(Cid hash, Optional<BatWithId> bat, Cid ourId, Hasher h) {
-        return target.get(hash, bat, ourId, h);
+    public CompletableFuture<Optional<CborObject>> get(List<Multihash> peerIds, Cid hash, Optional<BatWithId> bat, Cid ourId, Hasher h) {
+        return target.get(peerIds, hash, bat, ourId, h);
     }
 
     @Override

@@ -416,6 +416,7 @@ public class MirrorCoreNode implements CoreNode {
                 if (! localMirrorBats.contains(bat))
                     batCave.addBat(username, bat.id(), bat.bat, new byte[0]);
             }
+            List<Multihash> storageProviders = getStorageProviders(owner);
             // Mirror all the data locally
             Mirror.mirrorUser(username, Optional.empty(), mirrorBat, this, p2pMutable, null, ipfs, rawPointers, rawAccount, transactions, hasher);
             Map<PublicKeyHash, byte[]> mirrored = Mirror.mirrorUser(username, Optional.empty(), mirrorBat, this, p2pMutable,
@@ -435,7 +436,7 @@ public class MirrorCoreNode implements CoreNode {
             for (Map.Entry<PublicKeyHash, byte[]> e : res.pointerState.entrySet()) {
                 byte[] existingVal = mirrored.get(e.getKey());
                 if (! Arrays.equals(existingVal, e.getValue())) {
-                    Mirror.mirrorMerkleTree(owner, e.getKey(), e.getValue(), mirrorBat, ipfs, rawPointers, transactions, hasher);
+                    Mirror.mirrorMerkleTree(owner, e.getKey(), storageProviders, e.getValue(), mirrorBat, ipfs, rawPointers, transactions, hasher);
                 }
             }
 
