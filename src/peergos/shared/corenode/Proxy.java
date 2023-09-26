@@ -14,20 +14,12 @@ public class Proxy {
                                                               PublicKeyHash ownerKey,
                                                               Supplier<CompletableFuture<V>> direct,
                                                               Function<Multihash, CompletableFuture<V>> proxied) {
-        return core.getUsername(ownerKey)
-                .thenCompose(owner -> core.getChain(owner)
-                        .thenCompose(chain -> {
-                            if (chain.isEmpty()) {
-                                throw new IllegalStateException("Attempt to redirect call for non existent user!");
-                            }
-                            List<Multihash> storageIds = chain.get(chain.size() - 1).claim.storageProviders;
-                            Multihash target = storageIds.get(0);
-                            if (target.equals(serverId)) { // don't proxy
-                                return direct.get();
-                            } else {
-                                return proxied.apply(target);
-                            }
-                        }));
-
+        List<Multihash> storageIds = core.getStorageProviders(ownerKey);
+        Multihash target = storageIds.get(0);
+        if (target.equals(serverId)) { // don't proxy
+            return direct.get();
+        } else {
+            return proxied.apply(target);
+        }
     }
 }
