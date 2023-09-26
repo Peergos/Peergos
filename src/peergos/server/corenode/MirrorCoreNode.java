@@ -90,7 +90,8 @@ public class MirrorCoreNode implements CoreNode {
         }
     }
 
-    public void updateAndSave() {
+    @Override
+    public void initialize() {
         try {
             boolean changed = update();
             if (changed)

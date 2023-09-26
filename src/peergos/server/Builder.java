@@ -332,21 +332,10 @@ public class Builder {
             SigningKeyPair pkiKeys = new SigningKeyPair(pkiPublic, pkiSecretKey);
             PublicKeyHash pkiPublicHash = ContentAddressedStorage.hashKey(pkiKeys.publicSigningKey);
 
-            PointerUpdate currentPkiPointer = mutable.getPointerTarget(peergosIdentity, pkiPublicHash, dht).join();
-            Optional<Long> currentPkiSequence = currentPkiPointer.sequence;
-            MaybeMultihash currentPkiRoot = currentPkiPointer.updated;
             SigningPrivateKeyAndPublicHash pkiSigner = new SigningPrivateKeyAndPublicHash(pkiPublicHash, pkiSecretKey);
-            if (! currentPkiRoot.isPresent()) {
-                CommittedWriterData committed = IpfsTransaction.call(peergosIdentity,
-                        tid -> WriterData.createEmpty(peergosIdentity, pkiSigner, dht, crypto.hasher, tid).join()
-                                .commit(peergosIdentity, pkiSigner, MaybeMultihash.empty(), Optional.empty(), mutable, dht, crypto.hasher, tid)
-                                .thenApply(version -> version.get(pkiSigner)), dht).join();
-                currentPkiRoot = committed.hash;
-                currentPkiSequence = committed.sequence;
-            }
 
-            return new IpfsCoreNode(pkiSigner, a.getInt("max-daily-signups"), currentPkiRoot, currentPkiSequence,
-                    dht, crypto.hasher, mutable, account, batCave, peergosIdentity);
+            return new IpfsCoreNode(pkiSigner, a.getInt("max-daily-signups"), dht, crypto.hasher, mutable,
+                    account, batCave, peergosIdentity);
         } catch (Exception e) {
             throw new RuntimeException(e);
         }

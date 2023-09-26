@@ -15,6 +15,8 @@ import java.util.concurrent.*;
 public interface CoreNode {
     int MAX_USERNAME_SIZE = 64;
 
+    default void initialize() {}
+
     CompletableFuture<Optional<RequiredDifficulty>> signup(String username,
                                                            UserPublicKeyLink chain,
                                                            OpLog setupOperations,
@@ -103,6 +105,8 @@ public interface CoreNode {
     default List<Multihash> getStorageProviders(PublicKeyHash owner) {
         String username = getUsername(owner).join();
         List<UserPublicKeyLink> chain = getChain(username).join();
+        if (chain.isEmpty())
+            return Collections.emptyList();
         return chain.get(chain.size() - 1).claim.storageProviders;
     }
 
