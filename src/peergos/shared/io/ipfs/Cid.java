@@ -85,6 +85,11 @@ public class Cid extends Multihash {
     }
 
     @Override
+    public Multihash bareMultihash() {
+        return new Multihash(type, getHash());
+    }
+
+    @Override
     public String toString() {
         if (version == V0) {
             return super.toString();

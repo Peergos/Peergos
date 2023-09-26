@@ -2,6 +2,7 @@ package peergos.server.storage;
 
 import peergos.server.util.*;
 import peergos.shared.cbor.*;
+import peergos.shared.corenode.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.Cid;
 import peergos.shared.io.ipfs.Multihash;
@@ -55,52 +56,59 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
         }
     }
 
+    void setPki(CoreNode pki);
+
     /**
-     *
+     * @param peerIds
      * @param hash
      * @return The data with the requested hash, deserialized into cbor, or Optional.empty() if no object can be found
      */
-    CompletableFuture<Optional<CborObject>> get(Cid hash, String auth);
+    CompletableFuture<Optional<CborObject>> get(List<Multihash> peerIds, Cid hash, String auth);
 
-    default CompletableFuture<Optional<CborObject>> get(Cid hash, Optional<BatWithId> bat, Cid ourId, Hasher h) {
+    default CompletableFuture<Optional<CborObject>> get(List<Multihash> peerIds, Cid hash, Optional<BatWithId> bat, Cid ourId, Hasher h) {
         if (bat.isEmpty())
-            return get(hash, "");
+            return get(peerIds, hash, "");
         return bat.get().bat.generateAuth(hash, ourId, 300, S3Request.currentDatetime(), bat.get().id, h)
                 .thenApply(BlockAuth::encode)
-                .thenCompose(auth -> get(hash, auth));
+                .thenCompose(auth -> get(peerIds, hash, auth));
     }
 
     /**
      * Get a block of data that is not in ipld cbor format, just raw bytes
+     *
+     * @param peerIds
      * @param hash
      * @return
      */
-    CompletableFuture<Optional<byte[]>> getRaw(Cid hash, String auth);
+    CompletableFuture<Optional<byte[]>> getRaw(List<Multihash> peerIds, Cid hash, String auth);
 
-    default CompletableFuture<Optional<byte[]>> getRaw(Cid hash, String auth, boolean doAuth) {
-        return getRaw(hash, auth);
+    default CompletableFuture<Optional<byte[]>> getRaw(List<Multihash> peerIds, Cid hash, String auth, boolean doAuth) {
+        return getRaw(peerIds, hash, auth);
     }
 
-    default CompletableFuture<Optional<byte[]>> getRaw(Cid hash, Optional<BatWithId> bat, Cid ourId, Hasher h) {
-        return getRaw(hash, bat, ourId, h, true);
+    default CompletableFuture<Optional<byte[]>> getRaw(List<Multihash> peerIds, Cid hash, Optional<BatWithId> bat, Cid ourId, Hasher h) {
+        return getRaw(peerIds, hash, bat, ourId, h, true);
     }
 
-    default CompletableFuture<Optional<byte[]>> getRaw(Cid hash, Optional<BatWithId> bat, Cid ourId, Hasher h, boolean doAuth) {
+    default CompletableFuture<Optional<byte[]>> getRaw(List<Multihash> peerIds, Cid hash, Optional<BatWithId> bat, Cid ourId, Hasher h, boolean doAuth) {
         if (bat.isEmpty())
-            return getRaw(hash, "");
+            return getRaw(peerIds, hash, "");
         return bat.get().bat.generateAuth(hash, ourId, 300, S3Request.currentDatetime(), bat.get().id, h)
                 .thenApply(BlockAuth::encode)
-                .thenCompose(auth -> getRaw(hash, auth, doAuth));
+                .thenCompose(auth -> getRaw(peerIds, hash, auth, doAuth));
     }
 
-    /** Ensure that local copies of all blocks in merkle tree referenced are present locally
+    /**
+     * Ensure that local copies of all blocks in merkle tree referenced are present locally
      *
      * @param owner
+     * @param peerIds
      * @param existing
      * @param updated
      * @return
      */
     default CompletableFuture<List<Cid>> mirror(PublicKeyHash owner,
+                                                List<Multihash> peerIds,
                                                 Optional<Cid> existing,
                                                 Optional<Cid> updated,
                                                 Optional<BatWithId> mirrorBat,
@@ -114,7 +122,7 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
             return Futures.of(Collections.singletonList(newRoot));
         boolean isRaw = newRoot.isRaw();
 
-        Optional<byte[]> newVal = RetryStorage.runWithRetry(3, () -> getRaw(newRoot, mirrorBat, ourNodeId, hasher, false)).join();
+        Optional<byte[]> newVal = RetryStorage.runWithRetry(3, () -> getRaw(peerIds, newRoot, mirrorBat, ourNodeId, hasher, false)).join();
         if (newVal.isEmpty())
             throw new IllegalStateException("Couldn't retrieve block: " + newRoot);
         if (isRaw)
@@ -136,7 +144,7 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
                     Optional.of((Cid)existingLinks.get(i)) :
                     Optional.empty();
             Optional<Cid> updatedLink = Optional.of((Cid)newLinks.get(i));
-            mirror(owner, existingLink, updatedLink, mirrorBat, ourNodeId, tid, hasher).join();
+            mirror(owner, peerIds, existingLink, updatedLink, mirrorBat, ourNodeId, tid, hasher).join();
         }
         return Futures.of(Collections.singletonList(newRoot));
     }
@@ -149,7 +157,7 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
     default CompletableFuture<List<Cid>> getLinks(Cid root, String auth) {
         if (root.isRaw())
             return CompletableFuture.completedFuture(Collections.emptyList());
-        return get(root, auth).thenApply(opt -> opt
+        return get(Collections.emptyList(), root, auth).thenApply(opt -> opt
                 .map(cbor -> cbor.links().stream().map(c -> (Cid) c).collect(Collectors.toList()))
                 .orElse(Collections.emptyList())
         );
@@ -177,7 +185,7 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
     }
 
     default CompletableFuture<BlockMetadata> getBlockMetadata(Cid block, String auth) {
-        return getRaw(block, auth)
+        return getRaw(Collections.emptyList(), block, auth)
                 .thenApply(rawOpt -> BlockMetadataStore.extractMetadata(block, rawOpt.get()));
     }
 
@@ -277,18 +285,25 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
         }
 
         @Override
-        public CompletableFuture<Optional<CborObject>> get(Cid hash, String auth) {
+        public void setPki(CoreNode pki) {}
+
+        @Override
+        public CompletableFuture<Optional<CborObject>> get(List<Multihash> peerIds, Cid hash, String auth) {
             if (hash.isIdentity())
                 return CompletableFuture.completedFuture(Optional.of(CborObject.fromByteArray(hash.getHash())));
-            return poster.get(apiPrefix + BLOCK_GET + "?stream-channels=true&arg=" + hash + "&auth=" + auth)
+            return poster.get(apiPrefix + BLOCK_GET + "?stream-channels=true&arg=" + hash
+                            + (peerIds.isEmpty() ? "" : "&peers=" + peerIds.stream().map(p -> p.bareMultihash().toBase58()).collect(Collectors.joining(",")))
+                            + "&auth=" + auth)
                     .thenApply(raw -> raw.length == 0 ? Optional.empty() : Optional.of(CborObject.fromByteArray(raw)));
         }
 
         @Override
-        public CompletableFuture<Optional<byte[]>> getRaw(Cid hash, String auth) {
+        public CompletableFuture<Optional<byte[]>> getRaw(List<Multihash> peerIds, Cid hash, String auth) {
             if (hash.isIdentity())
                 return CompletableFuture.completedFuture(Optional.of(hash.getHash()));
-            return poster.get(apiPrefix + BLOCK_GET + "?stream-channels=true&arg=" + hash + "&auth=" + auth)
+            return poster.get(apiPrefix + BLOCK_GET + "?stream-channels=true&arg=" + hash
+                            + (peerIds.isEmpty() ? "" : "&peers=" + peerIds.stream().map(p -> p.bareMultihash().toBase58()).collect(Collectors.joining(",")))
+                            + "&auth=" + auth)
                     .thenApply(raw -> raw.length == 0 ? Optional.empty() : Optional.of(raw));
         }
     }

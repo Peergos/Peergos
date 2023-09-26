@@ -100,5 +100,11 @@ public interface CoreNode {
         });
     }
 
+    default List<Multihash> getStorageProviders(PublicKeyHash owner) {
+        String username = getUsername(owner).join();
+        List<UserPublicKeyLink> chain = getChain(username).join();
+        return chain.get(chain.size() - 1).claim.storageProviders;
+    }
+
     void close() throws IOException;
 }

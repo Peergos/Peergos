@@ -65,6 +65,10 @@ public class Multihash implements Comparable<Multihash> {
         return type == Type.id;
     }
 
+    public Multihash bareMultihash() {
+        return this;
+    }
+
     public static Multihash decode(byte[] multihash) {
         return new Multihash(Type.lookup(multihash[0] & 0xff), Arrays.copyOfRange(multihash, 2, multihash.length));
     }
