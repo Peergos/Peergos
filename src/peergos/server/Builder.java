@@ -1,6 +1,7 @@
 package peergos.server;
 
 import com.zaxxer.hikari.*;
+import org.peergos.EmbeddedIpfs;
 import peergos.server.corenode.*;
 import peergos.server.crypto.*;
 import peergos.server.crypto.asymmetric.curve25519.*;
@@ -203,7 +204,7 @@ public class Builder {
         }
     }
 
-    public static DeletableContentAddressedStorage buildLocalStorage(Args a,
+    public static DeletableContentAddressedStorage buildLocalStorage(Optional<EmbeddedIpfs> embeddedIpfs, Args a,
                                                                      TransactionStore transactions,
                                                                      BlockRequestAuthoriser authoriser,
                                                                      Hasher hasher) throws SQLException {
@@ -213,7 +214,7 @@ public class Builder {
         JavaPoster ipfsApi = buildIpfsApi(a);
         BlockMetadataStore meta = buildBlockMetadata(a);
         if (useIPFS) {
-            DeletableContentAddressedStorage.HTTP ipfs = new DeletableContentAddressedStorage.HTTP(ipfsApi, false, hasher);
+            NabuDeletableStorage ipfs = new NabuDeletableStorage(embeddedIpfs.get(), ipfsApi, false, hasher);
             if (useS3) {
                 // IPFS is already running separately, we can still use an S3BlockStorage
                 S3Config config = S3Config.build(a, Optional.empty());
@@ -410,7 +411,7 @@ public class Builder {
                                                                                     Optional<String> basicAuth) {
         JavaPoster poster = new JavaPoster(target, isPublicServer, basicAuth);
         ScryptJava hasher = new ScryptJava();
-        ContentAddressedStorage localDht = NetworkAccess.buildLocalDht(poster, true, hasher);
+        ContentAddressedStorage localDht = new ContentAddressedStorage.HTTP(poster, true, hasher);
         return NetworkAccess.buildViaPeergosInstance(poster, poster, localDht, mutableCacheTime, hasher, false);
     }
 

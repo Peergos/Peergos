@@ -222,6 +222,9 @@ public class IpfsWrapper implements AutoCloseable {
         }
         this.ipfsConfigParams= ipfsConfigParams.withIdentity(identityOpt);
     }
+    public EmbeddedIpfs getEmbeddedIpfs() {
+        return embeddedIpfs;
+    }
 
     public static boolean isHttpApiListening(String ipfsApiAddress) {
         try {

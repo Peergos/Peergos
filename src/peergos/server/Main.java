@@ -1,6 +1,7 @@
 package peergos.server;
 
 import com.webauthn4j.data.client.*;
+import org.peergos.EmbeddedIpfs;
 import peergos.server.cli.CLI;
 import peergos.server.login.*;
 import peergos.server.messages.*;
@@ -151,7 +152,7 @@ public class Main extends Builder {
             ).collect(Collectors.toList())
     );
 
-    private static Args bootstrap(Args args) {
+    private static Args bootstrap(IpfsWrapper ipfs, Args args) {
         try {
             // This means creating a pki keypair and publishing the public key
             Crypto crypto = initCrypto();
@@ -163,7 +164,7 @@ public class Main extends Builder {
 
             boolean useIPFS = args.getBoolean("useIPFS");
             ContentAddressedStorage dht = useIPFS ?
-                    new ContentAddressedStorage.HTTP(Builder.buildIpfsApi(args), false, crypto.hasher) :
+                    new NabuStorage(ipfs.getEmbeddedIpfs(), Builder.buildIpfsApi(args), false, crypto.hasher) :
                     new FileContentAddressedStorage(blockstorePath(args),
                             JdbcTransactionStore.build(getDBConnector(args, "transactions-sql-file"), new SqliteCommands()),
                             (a, b, c, d) -> Futures.of(true), crypto.hasher);
@@ -278,12 +279,12 @@ public class Main extends Builder {
                         ipfs = startIpfs(args);
                     }
 
-                    args = bootstrap(args);
+                    args = bootstrap(ipfs, args);
 
                     BatCave batStore = new JdbcBatCave(getDBConnector(args, "bat-store"), getSqlCommands(args));
                     BlockRequestAuthoriser blockRequestAuthoriser = Builder.blockAuthoriser(args, batStore, crypto.hasher);
                     Multihash pkiIpfsNodeId = useIPFS ?
-                            new ContentAddressedStorage.HTTP(Builder.buildIpfsApi(args), false, crypto.hasher).id().join() :
+                            new NabuStorage(ipfs.getEmbeddedIpfs(), Builder.buildIpfsApi(args), false, crypto.hasher).id().join() :
                             new FileContentAddressedStorage(blockstorePath(args),
                                     JdbcTransactionStore.build(getDBConnector(args, "transactions-sql-file"), new SqliteCommands()),
                                     blockRequestAuthoriser, crypto.hasher).id().get();
@@ -351,7 +352,7 @@ public class Main extends Builder {
                     BlockRequestAuthoriser authoriser = Builder.blockAuthoriser(args, batStore, crypto.hasher);
 
                     ContentAddressedStorage storage = useIPFS ?
-                            new ContentAddressedStorage.HTTP(Builder.buildIpfsApi(args), false, crypto.hasher) :
+                            new NabuStorage(ipfs.getEmbeddedIpfs(), Builder.buildIpfsApi(args), false, crypto.hasher) :
                             S3Config.useS3(args) ?
                                     new S3BlockStorage(S3Config.build(args, Optional.empty()), Cid.decode(args.getArg("ipfs.id")),
                                             BlockStoreProperties.empty(), transactions, authoriser, new RamBlockMetadataStore(),
@@ -538,7 +539,8 @@ public class Main extends Builder {
 
             BatCave batStore = new JdbcBatCave(getDBConnector(a, "bat-store", dbConnectionPool), sqlCommands);
             BlockRequestAuthoriser blockRequestAuthoriser = Builder.blockAuthoriser(a, batStore, hasher);
-            DeletableContentAddressedStorage localStorage = buildLocalStorage(a, transactions, blockRequestAuthoriser,
+            Optional<EmbeddedIpfs> embeddedIpfs = ipfsWrapper == null ? Optional.empty() : Optional.of(ipfsWrapper.getEmbeddedIpfs());
+            DeletableContentAddressedStorage localStorage = buildLocalStorage(embeddedIpfs, a, transactions, blockRequestAuthoriser,
                     crypto.hasher);
             JdbcIpnsAndSocial rawPointers = buildRawPointers(a,
                     getDBConnector(a, "mutable-pointers-file", dbConnectionPool));

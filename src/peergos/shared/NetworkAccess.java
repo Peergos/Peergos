@@ -220,7 +220,7 @@ public class NetworkAccess {
         JavaScriptPoster relative = new JavaScriptPoster(false, isPublic);
         ScryptJS hasher = new ScryptJS();
         boolean isPeergosServer = true; // we used to support using web ui through an ipfs gateway directly
-        ContentAddressedStorage localDht = buildLocalDht(relative, isPeergosServer, hasher);
+        ContentAddressedStorage localDht = new ContentAddressedStorage.HTTP(relative, isPeergosServer, hasher);
         OnlineState onlineState = new OnlineState(() -> localDht.id()
                 .thenApply(x -> true)
                 .exceptionally(t -> false));
