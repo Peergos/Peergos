@@ -238,7 +238,7 @@ public class GarbageCollector {
             }
         }
         List<Cid> links = metadata.get(root).map(m -> m.links)
-                .orElseGet(() -> getWithBackoff(() -> storage.getLinks(root, "").join()));
+                .orElseGet(() -> getWithBackoff(() -> storage.getLinks(root).join()));
         for (Cid link : links) {
             markReachable(storage, link, toIndex, reachable, metadata);
         }

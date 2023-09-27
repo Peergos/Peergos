@@ -183,12 +183,12 @@ public class DelegatingDeletableStorage implements DeletableContentAddressedStor
     }
 
     @Override
-    public CompletableFuture<List<Cid>> getLinks(Cid root, String auth) {
-        return target.getLinks(root, auth);
+    public CompletableFuture<List<Cid>> getLinks(Cid root) {
+        return target.getLinks(root);
     }
 
     @Override
-    public CompletableFuture<BlockMetadata> getBlockMetadata(Cid block, String auth) {
-        return target.getBlockMetadata(block, auth);
+    public CompletableFuture<BlockMetadata> getBlockMetadata(Cid block) {
+        return target.getBlockMetadata(block);
     }
 }

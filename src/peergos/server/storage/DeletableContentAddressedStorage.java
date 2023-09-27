@@ -132,7 +132,7 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
         List<Multihash> newLinks = newBlock.links().stream()
                 .filter(h -> !h.isIdentity())
                 .collect(Collectors.toList());
-        List<Multihash> existingLinks = existing.map(h -> getLinks(h, "mirror").join()
+        List<Multihash> existingLinks = existing.map(h -> getLinks(h).join()
                         .stream()
                         .filter(c -> ! c.isIdentity())
                         .map(c -> (Multihash) c)
@@ -154,17 +154,17 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
      * @param root The hash of the object whose links we want
      * @return A list of the multihashes referenced with ipld links in this object
      */
-    default CompletableFuture<List<Cid>> getLinks(Cid root, String auth) {
+    default CompletableFuture<List<Cid>> getLinks(Cid root) {
         if (root.isRaw())
             return CompletableFuture.completedFuture(Collections.emptyList());
-        return get(Collections.emptyList(), root, auth).thenApply(opt -> opt
+        return get(Collections.emptyList(), root, "").thenApply(opt -> opt
                 .map(cbor -> cbor.links().stream().map(c -> (Cid) c).collect(Collectors.toList()))
                 .orElse(Collections.emptyList())
         );
     }
 
     default CompletableFuture<Long> getRecursiveBlockSize(Cid block) {
-        return getLinks(block, "").thenCompose(links -> {
+        return getLinks(block).thenCompose(links -> {
             List<CompletableFuture<Long>> subtrees = links.stream()
                     .filter(m -> ! m.isIdentity())
                     .map(c -> Futures.runAsync(() -> getRecursiveBlockSize(c)))
@@ -184,14 +184,14 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
         return getChangeInContainedSize(original.get(), updated);
     }
 
-    default CompletableFuture<BlockMetadata> getBlockMetadata(Cid block, String auth) {
-        return getRaw(Collections.emptyList(), block, auth)
+    default CompletableFuture<BlockMetadata> getBlockMetadata(Cid block) {
+        return getRaw(Collections.emptyList(), block, "")
                 .thenApply(rawOpt -> BlockMetadataStore.extractMetadata(block, rawOpt.get()));
     }
 
     default CompletableFuture<Long> getChangeInContainedSize(Cid original, Cid updated) {
-        return getBlockMetadata(original, "")
-                .thenCompose(before -> getBlockMetadata(updated, "").thenCompose(after -> {
+        return getBlockMetadata(original)
+                .thenCompose(before -> getBlockMetadata(updated).thenCompose(after -> {
                     int objectDelta = after.size - before.size;
                     List<Cid> beforeLinks = before.links.stream().filter(c -> !c.isIdentity()).collect(Collectors.toList());
                     List<Cid> onlyBefore = new ArrayList<>(beforeLinks);
