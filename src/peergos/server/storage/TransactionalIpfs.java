@@ -96,10 +96,10 @@ public class TransactionalIpfs extends DelegatingStorage implements DeletableCon
     }
 
     @Override
-    public CompletableFuture<List<Cid>> getLinks(Cid root, String auth) {
+    public CompletableFuture<List<Cid>> getLinks(Cid root) {
         if (root.isRaw())
             return CompletableFuture.completedFuture(Collections.emptyList());
-        return getRaw(Collections.emptyList(), root, auth, false)
+        return getRaw(Collections.emptyList(), root, "", false)
                 .thenApply(opt -> opt.map(CborObject::fromByteArray))
                 .thenApply(opt -> opt
                         .map(cbor -> cbor.links().stream().map(c -> (Cid) c).collect(Collectors.toList()))
@@ -108,8 +108,8 @@ public class TransactionalIpfs extends DelegatingStorage implements DeletableCon
     }
 
     @Override
-    public CompletableFuture<BlockMetadata> getBlockMetadata(Cid block, String auth) {
-        return getRaw(Collections.emptyList(), block, auth, false)
+    public CompletableFuture<BlockMetadata> getBlockMetadata(Cid block) {
+        return getRaw(Collections.emptyList(), block, "", false)
                 .thenApply(data -> BlockMetadataStore.extractMetadata(block, data.get()));
     }
 

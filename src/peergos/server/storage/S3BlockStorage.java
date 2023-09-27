@@ -195,7 +195,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         // verify all BATs in parallel
         List<CompletableFuture<Boolean>> auths = blocks.stream()
                 .parallel()
-                .map(b -> getBlockMetadata(b.hash, "")
+                .map(b -> getBlockMetadata(b.hash)
                         .thenApply(meta -> {
                             String auth = b.bat.map(bat -> bat.bat.generateAuth(b.hash, id, 300, S3Request.currentDatetime(), bat.id, hasher)
                                     .thenApply(BlockAuth::encode).join()).orElse("");
@@ -426,7 +426,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                 .stream()
                 .filter(h -> !h.isIdentity())
                 .collect(Collectors.toList());
-        List<Cid> existingLinks = existing.map(c -> getLinks(c, "").join().stream()
+        List<Cid> existingLinks = existing.map(c -> getLinks(c).join().stream()
                         .filter(h -> !h.isIdentity())
                         .collect(Collectors.toList()))
                 .orElse(Collections.emptyList());
@@ -630,18 +630,18 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<List<Cid>> getLinks(Cid root, String auth) {
+    public CompletableFuture<List<Cid>> getLinks(Cid root) {
         if (root.isRaw())
             return CompletableFuture.completedFuture(Collections.emptyList());
         Optional<BlockMetadata> meta = blockMetadata.get(root);
         if (meta.isPresent())
             return Futures.of(meta.get().links);
-        return getBlockMetadata(root, auth)
+        return getBlockMetadata(root)
                 .thenApply(res -> res.links);
     }
 
     @Override
-    public CompletableFuture<BlockMetadata> getBlockMetadata(Cid h, String auth) {
+    public CompletableFuture<BlockMetadata> getBlockMetadata(Cid h) {
         if (h.isIdentity())
             return Futures.of(new BlockMetadata(0, CborObject.getLinks(h, h.getHash()), Bat.getBlockBats(h, h.getHash())));
         Optional<BlockMetadata> cached = blockMetadata.get(h);
@@ -680,7 +680,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         List<ForkJoinTask<Optional<BlockMetadata>>> futures = IntStream.range(0, updateParallelism)
                 .mapToObj(b -> pool.submit(() -> IntStream.range(b * batchSize, (b + 1) * batchSize)
                         .mapToObj(i -> {
-                            BlockMetadata res = getBlockMetadata(all.get(i), "").join();
+                            BlockMetadata res = getBlockMetadata(all.get(i)).join();
                             if (i % (batchSize / 10) == 0) {
                                 long updatedProgress = progress.addAndGet(tenth);
                                 if (updatedProgress * 10 / all.size() > (updatedProgress - tenth) * 10 / all.size())
