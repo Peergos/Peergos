@@ -1,6 +1,7 @@
 package peergos.server.corenode;
 import java.util.logging.*;
 
+import peergos.server.storage.*;
 import peergos.server.util.*;
 
 import peergos.shared.*;
@@ -28,7 +29,7 @@ public class IpfsCoreNode implements CoreNode {
 	public static final int MAX_FREE_IDENTITY_CHANGES = 10;
 
     private final PublicKeyHash peergosIdentity;
-    private final ContentAddressedStorage ipfs;
+    private final DeletableContentAddressedStorage ipfs;
     private final Hasher hasher;
     private final MutablePointers mutable;
     private final Account account;
@@ -46,7 +47,7 @@ public class IpfsCoreNode implements CoreNode {
 
     public IpfsCoreNode(SigningPrivateKeyAndPublicHash pkiSigner,
                         int maxSignupsPerDay,
-                        ContentAddressedStorage ipfs,
+                        DeletableContentAddressedStorage ipfs,
                         Hasher hasher,
                         MutablePointers mutable,
                         Account account,
@@ -71,7 +72,6 @@ public class IpfsCoreNode implements CoreNode {
         MaybeMultihash currentPkiRoot = currentPkiPointer.updated;
         update(currentPkiRoot, currentPkiSequence);
         if (! currentPkiRoot.isPresent()) {
-            reverseLookup.put(peergosIdentity, "peergos");
             CommittedWriterData committed = IpfsTransaction.call(peergosIdentity,
                     tid -> WriterData.createEmpty(peergosIdentity, signer, ipfs, hasher, tid).join()
                             .commit(peergosIdentity, signer, MaybeMultihash.empty(), Optional.empty(), mutable, ipfs, hasher, tid)
@@ -90,29 +90,42 @@ public class IpfsCoreNode implements CoreNode {
      * @param newRoot The root of the new champ
      */
     private synchronized void update(MaybeMultihash newRoot, Optional<Long> newSequence) {
-        updateAllMappings(peergosIdentity, currentRoot, newRoot, ipfs, chains, reverseLookup, usernames);
+        updateAllMappings(Arrays.asList(ipfs.id().join()), peergosIdentity, currentRoot, newRoot, ipfs, chains, reverseLookup, usernames);
         this.currentRoot = newRoot;
         this.currentSequence = newSequence;
     }
 
-    public static MaybeMultihash getTreeRoot(PublicKeyHash peergos, MaybeMultihash pointerTarget, ContentAddressedStorage ipfs) {
+    public static CompletableFuture<CommittedWriterData> getWriterData(List<Multihash> peerIds,
+                                                                       Cid hash,
+                                                                       Optional<Long> sequence,
+                                                                       DeletableContentAddressedStorage dht) {
+        return dht.get(peerIds, hash, "")
+                .thenApply(cborOpt -> {
+                    if (! cborOpt.isPresent())
+                        throw new IllegalStateException("Couldn't retrieve WriterData from dht! " + hash);
+                    return new CommittedWriterData(MaybeMultihash.of(hash), WriterData.fromCbor(cborOpt.get()), sequence);
+                });
+    }
+
+    public static MaybeMultihash getTreeRoot(List<Multihash> peerIds, MaybeMultihash pointerTarget, DeletableContentAddressedStorage ipfs) {
         if (! pointerTarget.isPresent())
             return MaybeMultihash.empty();
-        CommittedWriterData current = WriterData.getWriterData(peergos, (Cid)pointerTarget.get(), Optional.empty(), ipfs).join();
+        CommittedWriterData current = getWriterData(peerIds, (Cid)pointerTarget.get(), Optional.empty(), ipfs).join();
         return current.props.tree.map(MaybeMultihash::of).orElseGet(MaybeMultihash::empty);
 
     }
 
-    public static void updateAllMappings(PublicKeyHash peergos,
+    public static void updateAllMappings(List<Multihash> peerIds,
+                                         PublicKeyHash peergos,
                                          MaybeMultihash currentChampRoot,
                                          MaybeMultihash newChampRoot,
-                                         ContentAddressedStorage ipfs,
+                                         DeletableContentAddressedStorage ipfs,
                                          Map<String, List<UserPublicKeyLink>> chains,
                                          Map<PublicKeyHash, String> reverseLookup,
                                          List<String> usernames) {
         try {
-            MaybeMultihash currentTree = getTreeRoot(peergos, currentChampRoot, ipfs);
-            MaybeMultihash updatedTree = getTreeRoot(peergos, newChampRoot, ipfs);
+            MaybeMultihash currentTree = getTreeRoot(peerIds, currentChampRoot, ipfs);
+            MaybeMultihash updatedTree = getTreeRoot(peerIds, newChampRoot, ipfs);
             Consumer<Triple<ByteArrayWrapper, Optional<CborObject.CborMerkleLink>, Optional<CborObject.CborMerkleLink>>> consumer =
                     t -> updateMapping(peergos, t.left, t.middle, t.right, ipfs, chains, reverseLookup, usernames);
             Function<Cborable, CborObject.CborMerkleLink> fromCbor = c -> (CborObject.CborMerkleLink)c;

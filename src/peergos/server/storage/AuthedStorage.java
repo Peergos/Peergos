@@ -43,8 +43,11 @@ public class AuthedStorage extends DelegatingStorage implements DeletableContent
     }
 
     @Override
-    public CompletableFuture<Optional<CborObject>> get(PublicKeyHash owner, Cid object, Optional<BatWithId> bat) {
-        return get(pki.getStorageProviders(owner), object, bat, ourNodeId, h);
+    public CompletableFuture<Optional<CborObject>> get(PublicKeyHash owner, Cid hash, Optional<BatWithId> bat) {
+        List<Multihash> peerIds = hasBlock(hash) ?
+                Collections.emptyList() :
+                pki.getStorageProviders(owner);
+        return get(peerIds, hash, bat, ourNodeId, h);
     }
 
     @Override

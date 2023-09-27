@@ -243,6 +243,11 @@ public class MirrorCoreNode implements CoreNode {
     private synchronized boolean update() {
         try {
             PublicKeyHash peergosKey = writeTarget.getPublicKeyHash("peergos").join().get();
+            if (! peergosKey.equals(pkiOwnerIdentity))
+                throw new IllegalStateException("'peergos' user changed their identity keypair!");
+            List<UserPublicKeyLink> peergosChain = writeTarget.getChain("peergos").join();// make sure peergos is in the lookup so getting the WriterData succeeds
+            state.reverseLookup.putIfAbsent(peergosKey, "peergos");
+            state.chains.putIfAbsent("peergos", peergosChain);
 
             PointerUpdate fresh = p2pMutable.getPointerTarget(peergosKey, peergosKey, ipfs).join();
             MaybeMultihash newPeergosRoot = fresh.updated;
@@ -267,8 +272,9 @@ public class MirrorCoreNode implements CoreNode {
 
             // first retrieve all new blocks to be local
             TransactionId tid = transactions.startTransaction(peergosKey);
-            MaybeMultihash currentTree = IpfsCoreNode.getTreeRoot(peergosKey, current.pkiKeyTarget, ipfs);
-            MaybeMultihash updatedTree = IpfsCoreNode.getTreeRoot(peergosKey, currentPkiRoot, ipfs);
+            List<Multihash> pkiStorageProviders = getStorageProviders(peergosKey);
+            MaybeMultihash currentTree = IpfsCoreNode.getTreeRoot(pkiStorageProviders, current.pkiKeyTarget, ipfs);
+            MaybeMultihash updatedTree = IpfsCoreNode.getTreeRoot(pkiStorageProviders, currentPkiRoot, ipfs);
             Consumer<Triple<ByteArrayWrapper, Optional<CborObject.CborMerkleLink>, Optional<CborObject.CborMerkleLink>>> consumer =
                     t -> {
                         Optional<CborObject.CborMerkleLink> newVal = t.right;
@@ -282,7 +288,7 @@ public class MirrorCoreNode implements CoreNode {
                     consumer, ChampWrapper.BIT_WIDTH, ipfs, c -> (CborObject.CborMerkleLink)c).get();
 
             // now update the mappings
-            IpfsCoreNode.updateAllMappings(pkiKey, current.pkiKeyTarget, currentPkiRoot, ipfs, updated.chains,
+            IpfsCoreNode.updateAllMappings(pkiStorageProviders, pkiKey, current.pkiKeyTarget, currentPkiRoot, ipfs, updated.chains,
                     updated.reverseLookup, updated.usernames);
 
             // 'pin' the new pki version
@@ -455,17 +461,6 @@ public class MirrorCoreNode implements CoreNode {
             return Futures.of(res);
         } else // Proxy call to their target storage server
             return writeTarget.migrateUser(username, newChain, migrationTargetNode, mirrorBat);
-    }
-
-    @Override
-    public List<Multihash> getStorageProviders(PublicKeyHash owner) {
-        if (! state.reverseLookup.containsKey(owner))
-            return Collections.emptyList();
-        String username = getUsername(owner).join();
-        List<UserPublicKeyLink> chain = getChain(username).join();
-        if (chain.isEmpty())
-            return Collections.emptyList();
-        return chain.get(chain.size() - 1).claim.storageProviders;
     }
 
     @Override
