@@ -911,6 +911,10 @@ public class Main extends Builder {
     }
 
     public static void main(String[] args) {
-        MAIN.main(Args.parse(args));
+        try {
+            MAIN.main(Args.parse(args));
+        } catch (Throwable t) {
+            t.printStackTrace();
+        }
     }
 }
