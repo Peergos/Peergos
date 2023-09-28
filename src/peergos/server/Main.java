@@ -292,9 +292,9 @@ public class Main extends Builder {
                         ipfs.stop();
                     args = args.setIfAbsent("pki-node-id", pkiIpfsNodeId.toString());
                     if (useIPFS) {
-                        boolean saveConfigFile = !args.hasArg("ipfs.identity.peerId");
-                        args = args.setArg("ipfs.identity.peerId", ipfs.ipfsConfigParams.identity.get().peerId.toBase58());
-                        args = args.setArg("ipfs.identity.privKey", Base64.getEncoder().encodeToString(ipfs.ipfsConfigParams.identity.get().privKeyProtobuf));
+                        boolean saveConfigFile = !args.hasArg("ipfs.identity.peerid");
+                        args = args.setArg("ipfs.identity.peerid", ipfs.ipfsConfigParams.identity.get().peerId.toBase58());
+                        args = args.setArg("ipfs.identity.priv-key", Base64.getEncoder().encodeToString(ipfs.ipfsConfigParams.identity.get().privKeyProtobuf));
                         if (saveConfigFile) {
                             args.saveToFile();
                         }
