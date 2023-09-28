@@ -31,7 +31,7 @@ import static peergos.server.util.AddressUtil.getAddress;
 
 public class IpfsWrapper implements AutoCloseable {
 
-    private static final Logger LOG = Logger.getLogger(IpfsWrapper.class.getName());
+    private static final Logger LOG = Logger.getGlobal();
 
     public static final String IPFS_BOOTSTRAP_NODES = "ipfs-config-bootstrap-node-list";
 
@@ -277,7 +277,7 @@ public class IpfsWrapper implements AutoCloseable {
     public static IpfsWrapper launch(Args args) {
 
         Path ipfsDir = getIpfsDir(args);
-        LOG().info("Using IPFS dir " + ipfsDir);
+        LOG.info("Using IPFS dir " + ipfsDir);
         org.peergos.util.Logging.init(ipfsDir, args.getBoolean("log-to-console", false));
 
         IpfsConfigParams ipfsConfigParams = buildConfig(args);
