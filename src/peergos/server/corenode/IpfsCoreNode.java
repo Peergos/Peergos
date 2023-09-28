@@ -115,6 +115,105 @@ public class IpfsCoreNode implements CoreNode {
 
     }
 
+    public static <V extends Cborable> CompletableFuture<Boolean> applyToDiff(
+            List<Multihash> storageProviders,
+            MaybeMultihash original,
+            MaybeMultihash updated,
+            int depth,
+            Function<ByteArrayWrapper, CompletableFuture<byte[]>> hasher,
+            List<Champ.KeyElement<V>> higherLeftMappings,
+            List<Champ.KeyElement<V>> higherRightMappings,
+            Consumer<Triple<ByteArrayWrapper, Optional<V>, Optional<V>>> consumer,
+            int bitWidth,
+            DeletableContentAddressedStorage storage,
+            Function<Cborable, V> fromCbor) {
+
+        if (updated.equals(original))
+            return CompletableFuture.completedFuture(true);
+        return original.map(h -> storage.get(storageProviders, (Cid)h, "")).orElseGet(() -> CompletableFuture.completedFuture(Optional.empty()))
+                .thenApply(rawOpt -> rawOpt.map(y -> Champ.fromCbor(y, fromCbor)))
+                .thenCompose(left -> updated.map(h -> storage.get(storageProviders, (Cid)h, "")).orElseGet(() -> CompletableFuture.completedFuture(Optional.empty()))
+                        .thenApply(rawOpt -> rawOpt.map(y -> Champ.fromCbor(y, fromCbor)))
+                        .thenCompose(right -> Champ.hashAndMaskKeys(higherLeftMappings, depth, bitWidth, hasher)
+                                .thenCompose(leftHigherMappingsByBit -> Champ.hashAndMaskKeys(higherRightMappings, depth, bitWidth, hasher)
+                                        .thenCompose(rightHigherMappingsByBit -> {
+
+                                            int leftMax = left.map(c -> Math.max(c.dataMap.length(), c.nodeMap.length())).orElse(0);
+                                            int rightMax = right.map(c -> Math.max(c.dataMap.length(), c.nodeMap.length())).orElse(0);
+                                            int maxBit = Math.max(leftMax, rightMax);
+                                            int leftDataIndex = 0, rightDataIndex = 0, leftNodeCount = 0, rightNodeCount = 0;
+
+                                            List<CompletableFuture<Boolean>> deeperLayers = new ArrayList<>();
+
+                                            for (int i = 0; i < maxBit; i++) {
+                                                // either the payload is present OR higher mappings are non empty OR the champ is absent
+                                                Optional<Champ.HashPrefixPayload<V>> leftPayload = Champ.getElement(i, leftDataIndex, leftNodeCount, left);
+                                                Optional<Champ.HashPrefixPayload<V>> rightPayload = Champ.getElement(i, rightDataIndex, rightNodeCount, right);
+
+                                                List<Champ.KeyElement<V>> leftHigherMappings = leftHigherMappingsByBit.getOrDefault(i, Collections.emptyList());
+                                                List<Champ.KeyElement<V>> leftMappings = leftPayload
+                                                        .filter(p -> !p.isShard())
+                                                        .map(p -> Arrays.asList(p.mappings))
+                                                        .orElse(leftHigherMappings);
+                                                List<Champ.KeyElement<V>> rightHigherMappings = rightHigherMappingsByBit.getOrDefault(i, Collections.emptyList());
+                                                List<Champ.KeyElement<V>> rightMappings = rightPayload
+                                                        .filter(p -> !p.isShard())
+                                                        .map(p -> Arrays.asList(p.mappings))
+                                                        .orElse(rightHigherMappings);
+
+                                                Optional<MaybeMultihash> leftShard = leftPayload
+                                                        .filter(p -> p.isShard())
+                                                        .map(p -> p.link);
+
+                                                Optional<MaybeMultihash> rightShard = rightPayload
+                                                        .filter(p -> p.isShard())
+                                                        .map(p -> p.link);
+
+                                                if (leftShard.isPresent() || rightShard.isPresent()) {
+                                                    deeperLayers.add(applyToDiff(storageProviders,
+                                                            leftShard.orElse(MaybeMultihash.empty()),
+                                                            rightShard.orElse(MaybeMultihash.empty()), depth + 1, hasher,
+                                                            leftMappings, rightMappings, consumer, bitWidth, storage, fromCbor));
+                                                } else {
+                                                    Map<ByteArrayWrapper, Optional<V>> leftMap = leftMappings.stream()
+                                                            .collect(Collectors.toMap(e -> e.key, e -> e.valueHash));
+                                                    Map<ByteArrayWrapper, Optional<V>> rightMap = rightMappings.stream()
+                                                            .collect(Collectors.toMap(e -> e.key, e -> e.valueHash));
+
+                                                    HashSet<ByteArrayWrapper> both = new HashSet<>(leftMap.keySet());
+                                                    both.retainAll(rightMap.keySet());
+
+                                                    for (Map.Entry<ByteArrayWrapper, Optional<V>> entry : leftMap.entrySet()) {
+                                                        if (! both.contains(entry.getKey()))
+                                                            consumer.accept(new Triple<>(entry.getKey(), entry.getValue(), Optional.empty()));
+                                                        else if (! entry.getValue().equals(rightMap.get(entry.getKey())))
+                                                            consumer.accept(new Triple<>(entry.getKey(), entry.getValue(), rightMap.get(entry.getKey())));
+                                                    }
+                                                    for (Map.Entry<ByteArrayWrapper, Optional<V>> entry : rightMap.entrySet()) {
+                                                        if (! both.contains(entry.getKey()))
+                                                            consumer.accept(new Triple<>(entry.getKey(), Optional.empty(), entry.getValue()));
+                                                    }
+                                                }
+
+                                                if (leftPayload.isPresent()) {
+                                                    if (leftPayload.get().isShard())
+                                                        leftNodeCount++;
+                                                    else
+                                                        leftDataIndex++;
+                                                }
+                                                if (rightPayload.isPresent()) {
+                                                    if (rightPayload.get().isShard())
+                                                        rightNodeCount++;
+                                                    else
+                                                        rightDataIndex++;
+                                                }
+                                            }
+
+                                            return Futures.combineAll(deeperLayers).thenApply(x -> true);
+                                        })))
+                );
+    }
+
     public static void updateAllMappings(List<Multihash> peerIds,
                                          PublicKeyHash peergos,
                                          MaybeMultihash currentChampRoot,
@@ -129,7 +228,7 @@ public class IpfsCoreNode implements CoreNode {
             Consumer<Triple<ByteArrayWrapper, Optional<CborObject.CborMerkleLink>, Optional<CborObject.CborMerkleLink>>> consumer =
                     t -> updateMapping(peergos, t.left, t.middle, t.right, ipfs, chains, reverseLookup, usernames);
             Function<Cborable, CborObject.CborMerkleLink> fromCbor = c -> (CborObject.CborMerkleLink)c;
-            Champ.applyToDiff(peerIds, currentTree, updatedTree, 0, IpfsCoreNode::keyHash,
+            IpfsCoreNode.applyToDiff(peerIds, currentTree, updatedTree, 0, IpfsCoreNode::keyHash,
                     Collections.emptyList(), Collections.emptyList(),
                     consumer, ChampWrapper.BIT_WIDTH, ipfs, fromCbor).get();
         } catch (Exception e) {

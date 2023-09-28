@@ -205,7 +205,7 @@ public class ChampTests {
             Pair<Champ<CborObject.CborMerkleLink>, Multihash> updated = current.put(user.publicKeyHash, user, key, hasher.apply(key).join(), 0, currentValue,
                     newValue, bitWidth, maxCollisions, hasher, tid, storage, writeHasher, currentHash).get();
             List<Triple<ByteArrayWrapper, Optional<CborObject.CborMerkleLink>, Optional<CborObject.CborMerkleLink>>> diffs = new ArrayList<>();
-            Champ.applyToDiff(Collections.emptyList(), MaybeMultihash.of(currentHash), MaybeMultihash.of(updated.right), 0, hasher,
+            IpfsCoreNode.applyToDiff(Collections.emptyList(), MaybeMultihash.of(currentHash), MaybeMultihash.of(updated.right), 0, hasher,
                     Collections.emptyList(), Collections.emptyList(), diffs::add, bitWidth, storage, c -> (CborObject.CborMerkleLink)c).join();
             if (diffs.size() != 1 || ! diffs.get(0).equals(new Triple<>(key, currentValue, newValue)))
                 throw new IllegalStateException("Incorrect champ diff updating element!");
@@ -223,7 +223,7 @@ public class ChampTests {
                     newValue, bitWidth, maxCollisions, hasher, tid, storage, writeHasher, currentHash).get();
             List<Triple<ByteArrayWrapper, Optional<CborObject.CborMerkleLink>, Optional<CborObject.CborMerkleLink>>> diffs = new ArrayList<>();
 
-            Champ.applyToDiff(Collections.emptyList(), MaybeMultihash.of(currentHash), MaybeMultihash.of(updated.right), 0, hasher,
+            IpfsCoreNode.applyToDiff(Collections.emptyList(), MaybeMultihash.of(currentHash), MaybeMultihash.of(updated.right), 0, hasher,
                     Collections.emptyList(), Collections.emptyList(), diffs::add, bitWidth, storage, c -> (CborObject.CborMerkleLink)c).join();
             if (diffs.size() != 1 || ! diffs.get(0).equals(new Triple<>(key, currentValue, newValue)))
                 throw new IllegalStateException("Incorrect champ diff updating element!");
@@ -240,7 +240,7 @@ public class ChampTests {
             Pair<Champ<CborObject.CborMerkleLink>, Multihash> updated = current.put(user.publicKeyHash, user, key, hasher.apply(key).join(), 0, currentValue,
                     newValue, bitWidth, maxCollisions, hasher, tid, storage, writeHasher, currentHash).get();
             List<Triple<ByteArrayWrapper, Optional<CborObject.CborMerkleLink>, Optional<CborObject.CborMerkleLink>>> diffs = new ArrayList<>();
-            Champ.applyToDiff(Collections.emptyList(), MaybeMultihash.of(currentHash), MaybeMultihash.of(updated.right), 0, hasher,
+            IpfsCoreNode.applyToDiff(Collections.emptyList(), MaybeMultihash.of(currentHash), MaybeMultihash.of(updated.right), 0, hasher,
                     Collections.emptyList(), Collections.emptyList(), diffs::add, bitWidth, storage, c -> (CborObject.CborMerkleLink)c).join();
             if (diffs.size() != 1 || ! diffs.get(0).equals(new Triple<>(key, currentValue, newValue)))
                 throw new IllegalStateException("Incorrect champ diff updating element!");
