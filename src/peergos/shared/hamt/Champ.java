@@ -1,5 +1,6 @@
 package peergos.shared.hamt;
 
+import peergos.server.storage.*;
 import peergos.shared.*;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.*;
@@ -674,7 +675,7 @@ public class Champ<V extends Cborable> implements Cborable {
     }
 
     public static <V extends Cborable> CompletableFuture<Boolean> applyToDiff(
-            PublicKeyHash owner,
+            List<Multihash> storageProviders,
             MaybeMultihash original,
             MaybeMultihash updated,
             int depth,
@@ -683,14 +684,14 @@ public class Champ<V extends Cborable> implements Cborable {
             List<KeyElement<V>> higherRightMappings,
             Consumer<Triple<ByteArrayWrapper, Optional<V>, Optional<V>>> consumer,
             int bitWidth,
-            ContentAddressedStorage storage,
+            DeletableContentAddressedStorage storage,
             Function<Cborable, V> fromCbor) {
 
         if (updated.equals(original))
             return CompletableFuture.completedFuture(true);
-        return original.map(h -> storage.get(owner, (Cid)h, Optional.empty())).orElseGet(() -> CompletableFuture.completedFuture(Optional.empty()))
+        return original.map(h -> storage.get(storageProviders, (Cid)h, "")).orElseGet(() -> CompletableFuture.completedFuture(Optional.empty()))
                 .thenApply(rawOpt -> rawOpt.map(y -> Champ.fromCbor(y, fromCbor)))
-                .thenCompose(left -> updated.map(h -> storage.get(owner, (Cid)h, Optional.empty())).orElseGet(() -> CompletableFuture.completedFuture(Optional.empty()))
+                .thenCompose(left -> updated.map(h -> storage.get(storageProviders, (Cid)h, "")).orElseGet(() -> CompletableFuture.completedFuture(Optional.empty()))
                         .thenApply(rawOpt -> rawOpt.map(y -> Champ.fromCbor(y, fromCbor)))
                         .thenCompose(right -> hashAndMaskKeys(higherLeftMappings, depth, bitWidth, hasher)
                                 .thenCompose(leftHigherMappingsByBit -> hashAndMaskKeys(higherRightMappings, depth, bitWidth, hasher)
@@ -728,7 +729,7 @@ public class Champ<V extends Cborable> implements Cborable {
                                         .map(p -> p.link);
 
                                 if (leftShard.isPresent() || rightShard.isPresent()) {
-                                    deeperLayers.add(applyToDiff(owner,
+                                    deeperLayers.add(applyToDiff(storageProviders,
                                             leftShard.orElse(MaybeMultihash.empty()),
                                             rightShard.orElse(MaybeMultihash.empty()), depth + 1, hasher,
                                             leftMappings, rightMappings, consumer, bitWidth, storage, fromCbor));

@@ -283,7 +283,7 @@ public class MirrorCoreNode implements CoreNode {
                             ipfs.get(peergosKey, (Cid) newVal.get().target, Optional.empty()).join();
                         }
                     };
-            Champ.applyToDiff(peergosKey, currentTree, updatedTree, 0, IpfsCoreNode::keyHash,
+            Champ.applyToDiff(pkiStorageProviders, currentTree, updatedTree, 0, IpfsCoreNode::keyHash,
                     Collections.emptyList(), Collections.emptyList(),
                     consumer, ChampWrapper.BIT_WIDTH, ipfs, c -> (CborObject.CborMerkleLink)c).get();
 
