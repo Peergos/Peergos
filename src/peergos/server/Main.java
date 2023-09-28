@@ -897,7 +897,8 @@ public class Main extends Builder {
                     VERSION,
                     IDENTITY,
                     PKI,
-                    PKI_INIT
+                    PKI_INIT,
+                    IPFS
             )
     );
 
