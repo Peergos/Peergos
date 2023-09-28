@@ -156,10 +156,10 @@ public class IpfsWrapper implements AutoCloseable {
                 args.getOptionalArg("s3.region.endpoint"))
             ) : Optional.empty();
         Optional<IdentitySection> peergosIdentity =
-                args.hasArg("ipfs.identity.privKey") && args.hasArg("ipfs.identity.peerId") ?
+                args.hasArg("ipfs.identity.priv-key") && args.hasArg("ipfs.identity.peerid") ?
                     Optional.of(new IdentitySection(
-                            io.ipfs.multibase.binary.Base64.decodeBase64(args.getArg("ipfs.identity.privKey")),
-                            PeerId.fromBase58(args.getArg("ipfs.identity.peerId")))
+                            io.ipfs.multibase.binary.Base64.decodeBase64(args.getArg("ipfs.identity.priv-key")),
+                            PeerId.fromBase58(args.getArg("ipfs.identity.peerid")))
                     ) : Optional.empty();
 
         Optional<String> blockStoreFilterOpt = args.getOptionalArg("block-store-filter");
