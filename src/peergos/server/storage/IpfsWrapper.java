@@ -313,7 +313,7 @@ public class IpfsWrapper implements AutoCloseable {
 
         int maxConnectionQueue = 500;
         int handlerThreads = 50;
-        LOG.info("Starting RPC API server at " + apiAddress.getHost() + ":" + localAPIAddress.getPort());
+        LOG.info("Starting Nabu API server at " + apiAddress.getHost() + ":" + localAPIAddress.getPort());
         try {
             ipfsWrapper.apiServer = HttpServer.create(localAPIAddress, maxConnectionQueue);
             ipfsWrapper.apiServer.createContext(APIHandler.API_URL, new APIHandler(ipfsWrapper.embeddedIpfs));
