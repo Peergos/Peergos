@@ -283,7 +283,7 @@ public class IpfsWrapper implements AutoCloseable {
         IpfsConfigParams ipfsConfigParams = buildConfig(args);
         IpfsWrapper ipfsWrapper = new IpfsWrapper(ipfsDir, ipfsConfigParams);
         Config config = ipfsWrapper.configure();
-        LOG.info("Starting Nabu version: " + APIHandler.CURRENT_VERSION);
+        LOG.info("Starting Nabu version: " + APIHandler.CURRENT_VERSION + ", peerid: " + config.identity.peerId);
         BlockRequestAuthoriser authoriser = (c, b, p, a) -> {
             if (config.addresses.allowTarget.isEmpty()) {
                 CompletableFuture.completedFuture(false);
