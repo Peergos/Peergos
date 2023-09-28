@@ -129,7 +129,7 @@ public class IpfsCoreNode implements CoreNode {
             Consumer<Triple<ByteArrayWrapper, Optional<CborObject.CborMerkleLink>, Optional<CborObject.CborMerkleLink>>> consumer =
                     t -> updateMapping(peergos, t.left, t.middle, t.right, ipfs, chains, reverseLookup, usernames);
             Function<Cborable, CborObject.CborMerkleLink> fromCbor = c -> (CborObject.CborMerkleLink)c;
-            Champ.applyToDiff(peergos, currentTree, updatedTree, 0, IpfsCoreNode::keyHash,
+            Champ.applyToDiff(peerIds, currentTree, updatedTree, 0, IpfsCoreNode::keyHash,
                     Collections.emptyList(), Collections.emptyList(),
                     consumer, ChampWrapper.BIT_WIDTH, ipfs, fromCbor).get();
         } catch (Exception e) {
