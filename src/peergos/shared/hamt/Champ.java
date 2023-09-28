@@ -22,7 +22,7 @@ public class Champ<V extends Cborable> implements Cborable {
 
     private static final int HASH_CODE_LENGTH = 32;
 
-    private static class KeyElement<V extends Cborable> {
+    public static class KeyElement<V extends Cborable> {
         public final ByteArrayWrapper key;
         public final Optional<V> valueHash;
 
@@ -46,7 +46,7 @@ public class Champ<V extends Cborable> implements Cborable {
         }
     }
 
-    private static class HashPrefixPayload<V extends Cborable> {
+    public static class HashPrefixPayload<V extends Cborable> {
         public final KeyElement<V>[] mappings;
         public final MaybeMultihash link;
 
@@ -94,7 +94,7 @@ public class Champ<V extends Cborable> implements Cborable {
         return new Champ<>(new BitSet(), new BitSet(), new HashPrefixPayload[0], fromCbor);
     }
 
-    private final BitSet dataMap, nodeMap;
+    public final BitSet dataMap, nodeMap;
     private final HashPrefixPayload<V>[] contents;
     private final Function<Cborable, V> fromCbor;
 
@@ -642,10 +642,10 @@ public class Champ<V extends Cborable> implements Cborable {
                 .collect(Collectors.toList());
     }
 
-    private static <V extends Cborable> Optional<HashPrefixPayload<V>> getElement(int bitIndex,
-                                                                                  int dataIndex,
-                                                                                  int nodeIndex,
-                                                                                  Optional<Champ<V>> c) {
+    public static <V extends Cborable> Optional<HashPrefixPayload<V>> getElement(int bitIndex,
+                                                                                 int dataIndex,
+                                                                                 int nodeIndex,
+                                                                                 Optional<Champ<V>> c) {
         if (! c.isPresent())
             return Optional.empty();
         Champ<V> champ = c.get();
@@ -656,7 +656,7 @@ public class Champ<V extends Cborable> implements Cborable {
         return Optional.empty();
     }
 
-    private static <V extends Cborable> CompletableFuture<Map<Integer, List<KeyElement<V>>>> hashAndMaskKeys(
+    public static <V extends Cborable> CompletableFuture<Map<Integer, List<KeyElement<V>>>> hashAndMaskKeys(
             List<KeyElement<V>> mappings,
             int depth,
             int bitWidth,
@@ -672,105 +672,6 @@ public class Champ<V extends Cborable> implements Cborable {
                         .map(e -> new Pair<>(e.getKey(), e.getValue().stream().map(p -> p.left).collect(Collectors.toList())))
                         .collect(Collectors.toMap(p -> p.left, p -> p.right))
                 );
-    }
-
-    public static <V extends Cborable> CompletableFuture<Boolean> applyToDiff(
-            List<Multihash> storageProviders,
-            MaybeMultihash original,
-            MaybeMultihash updated,
-            int depth,
-            Function<ByteArrayWrapper, CompletableFuture<byte[]>> hasher,
-            List<KeyElement<V>> higherLeftMappings,
-            List<KeyElement<V>> higherRightMappings,
-            Consumer<Triple<ByteArrayWrapper, Optional<V>, Optional<V>>> consumer,
-            int bitWidth,
-            DeletableContentAddressedStorage storage,
-            Function<Cborable, V> fromCbor) {
-
-        if (updated.equals(original))
-            return CompletableFuture.completedFuture(true);
-        return original.map(h -> storage.get(storageProviders, (Cid)h, "")).orElseGet(() -> CompletableFuture.completedFuture(Optional.empty()))
-                .thenApply(rawOpt -> rawOpt.map(y -> Champ.fromCbor(y, fromCbor)))
-                .thenCompose(left -> updated.map(h -> storage.get(storageProviders, (Cid)h, "")).orElseGet(() -> CompletableFuture.completedFuture(Optional.empty()))
-                        .thenApply(rawOpt -> rawOpt.map(y -> Champ.fromCbor(y, fromCbor)))
-                        .thenCompose(right -> hashAndMaskKeys(higherLeftMappings, depth, bitWidth, hasher)
-                                .thenCompose(leftHigherMappingsByBit -> hashAndMaskKeys(higherRightMappings, depth, bitWidth, hasher)
-                                        .thenCompose(rightHigherMappingsByBit -> {
-
-                            int leftMax = left.map(c -> Math.max(c.dataMap.length(), c.nodeMap.length())).orElse(0);
-                            int rightMax = right.map(c -> Math.max(c.dataMap.length(), c.nodeMap.length())).orElse(0);
-                            int maxBit = Math.max(leftMax, rightMax);
-                            int leftDataIndex = 0, rightDataIndex = 0, leftNodeCount = 0, rightNodeCount = 0;
-
-                            List<CompletableFuture<Boolean>> deeperLayers = new ArrayList<>();
-
-                            for (int i = 0; i < maxBit; i++) {
-                                // either the payload is present OR higher mappings are non empty OR the champ is absent
-                                Optional<HashPrefixPayload<V>> leftPayload = getElement(i, leftDataIndex, leftNodeCount, left);
-                                Optional<HashPrefixPayload<V>> rightPayload = getElement(i, rightDataIndex, rightNodeCount, right);
-
-                                List<KeyElement<V>> leftHigherMappings = leftHigherMappingsByBit.getOrDefault(i, Collections.emptyList());
-                                List<KeyElement<V>> leftMappings = leftPayload
-                                        .filter(p -> !p.isShard())
-                                        .map(p -> Arrays.asList(p.mappings))
-                                        .orElse(leftHigherMappings);
-                                List<KeyElement<V>> rightHigherMappings = rightHigherMappingsByBit.getOrDefault(i, Collections.emptyList());
-                                List<KeyElement<V>> rightMappings = rightPayload
-                                        .filter(p -> !p.isShard())
-                                        .map(p -> Arrays.asList(p.mappings))
-                                        .orElse(rightHigherMappings);
-
-                                Optional<MaybeMultihash> leftShard = leftPayload
-                                        .filter(p -> p.isShard())
-                                        .map(p -> p.link);
-
-                                Optional<MaybeMultihash> rightShard = rightPayload
-                                        .filter(p -> p.isShard())
-                                        .map(p -> p.link);
-
-                                if (leftShard.isPresent() || rightShard.isPresent()) {
-                                    deeperLayers.add(applyToDiff(storageProviders,
-                                            leftShard.orElse(MaybeMultihash.empty()),
-                                            rightShard.orElse(MaybeMultihash.empty()), depth + 1, hasher,
-                                            leftMappings, rightMappings, consumer, bitWidth, storage, fromCbor));
-                                } else {
-                                    Map<ByteArrayWrapper, Optional<V>> leftMap = leftMappings.stream()
-                                            .collect(Collectors.toMap(e -> e.key, e -> e.valueHash));
-                                    Map<ByteArrayWrapper, Optional<V>> rightMap = rightMappings.stream()
-                                            .collect(Collectors.toMap(e -> e.key, e -> e.valueHash));
-
-                                    HashSet<ByteArrayWrapper> both = new HashSet<>(leftMap.keySet());
-                                    both.retainAll(rightMap.keySet());
-
-                                    for (Map.Entry<ByteArrayWrapper, Optional<V>> entry : leftMap.entrySet()) {
-                                        if (! both.contains(entry.getKey()))
-                                            consumer.accept(new Triple<>(entry.getKey(), entry.getValue(), Optional.empty()));
-                                        else if (! entry.getValue().equals(rightMap.get(entry.getKey())))
-                                            consumer.accept(new Triple<>(entry.getKey(), entry.getValue(), rightMap.get(entry.getKey())));
-                                    }
-                                    for (Map.Entry<ByteArrayWrapper, Optional<V>> entry : rightMap.entrySet()) {
-                                        if (! both.contains(entry.getKey()))
-                                            consumer.accept(new Triple<>(entry.getKey(), Optional.empty(), entry.getValue()));
-                                    }
-                                }
-
-                                if (leftPayload.isPresent()) {
-                                    if (leftPayload.get().isShard())
-                                        leftNodeCount++;
-                                    else
-                                        leftDataIndex++;
-                                }
-                                if (rightPayload.isPresent()) {
-                                    if (rightPayload.get().isShard())
-                                        rightNodeCount++;
-                                    else
-                                        rightDataIndex++;
-                                }
-                            }
-
-                            return Futures.combineAll(deeperLayers).thenApply(x -> true);
-                        })))
-        );
     }
 
     @Override
