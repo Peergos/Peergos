@@ -280,7 +280,7 @@ public class MirrorCoreNode implements CoreNode {
                         Optional<CborObject.CborMerkleLink> newVal = t.right;
                         if (newVal.isPresent()) {
                             transactions.addBlock(newVal.get().target, tid, peergosKey);
-                            ipfs.get(peergosKey, (Cid) newVal.get().target, Optional.empty()).join();
+                            ipfs.get(pkiStorageProviders, (Cid) newVal.get().target, "").join();
                         }
                     };
             IpfsCoreNode.applyToDiff(pkiStorageProviders, currentTree, updatedTree, 0, IpfsCoreNode::keyHash,
@@ -288,7 +288,7 @@ public class MirrorCoreNode implements CoreNode {
                     consumer, ChampWrapper.BIT_WIDTH, ipfs, c -> (CborObject.CborMerkleLink)c).get();
 
             // now update the mappings
-            IpfsCoreNode.updateAllMappings(pkiStorageProviders, pkiKey, current.pkiKeyTarget, currentPkiRoot, ipfs, updated.chains,
+            IpfsCoreNode.updateAllMappings(pkiStorageProviders, current.pkiKeyTarget, currentPkiRoot, ipfs, updated.chains,
                     updated.reverseLookup, updated.usernames);
 
             // 'pin' the new pki version
