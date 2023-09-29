@@ -155,12 +155,14 @@ public class IpfsWrapper implements AutoCloseable {
                 args.getOptionalArg("s3.region"), args.getOptionalArg("s3.accessKey"), args.getOptionalArg("s3.secretKey"),
                 args.getOptionalArg("s3.region.endpoint"))
             ) : Optional.empty();
-        Optional<IdentitySection> peergosIdentity =
-                args.hasArg("ipfs.identity.priv-key") && args.hasArg("ipfs.identity.peerid") ?
-                    Optional.of(new IdentitySection(
-                            io.ipfs.multibase.binary.Base64.decodeBase64(args.getArg("ipfs.identity.priv-key")),
-                            PeerId.fromBase58(args.getArg("ipfs.identity.peerid")))
-                    ) : Optional.empty();
+        Optional<IdentitySection> peergosIdentity = Optional.empty();
+        if (args.hasArg("ipfs.identity.priv-key") && args.hasArg("ipfs.identity.peerid")) {
+            LOG.info("Using identity provided via command arguments");
+            peergosIdentity = Optional.of(new IdentitySection(
+                    io.ipfs.multibase.binary.Base64.decodeBase64(args.getArg("ipfs.identity.priv-key")),
+                    PeerId.fromBase58(args.getArg("ipfs.identity.peerid")))
+            );
+        }
 
         Optional<String> blockStoreFilterOpt = args.getOptionalArg("block-store-filter");
         Filter filter = new Filter(FilterType.NONE, 0.0);
@@ -214,6 +216,7 @@ public class IpfsWrapper implements AutoCloseable {
         } else {
             identityOpt = readIPFSIdentity(ipfsDir);
             if (identityOpt.isEmpty()) {
+                LOG.info("Creating new identity");
                 HostBuilder builder = new HostBuilder().generateIdentity();
                 PrivKey privKey = builder.getPrivateKey();
                 PeerId peerId = builder.getPeerId();
@@ -268,6 +271,7 @@ public class IpfsWrapper implements AutoCloseable {
         try {
             Map<String, Object> json = (Map) JSONParser.parse(Files.readString(configFilePath));
             IdentitySection identitySection = Jsonable.parse(json, p -> IdentitySection.fromJson(p));
+            LOG.info("Using identity found in config file from folder: " + ipfsDir);
             return Optional.of(identitySection);
         }  catch (IOException ioe) {
             return Optional.empty();

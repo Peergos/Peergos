@@ -214,12 +214,11 @@ public class DHTHandler implements HttpHandler {
                     Optional<BatWithId> bat = params.containsKey("bat") ?
                             Optional.of(BatWithId.decode(last.apply("bat"))) :
                             Optional.empty();
-                    (hash.codec == Cid.Codec.Raw ?
-                            dht.getRaw(ownerHash, hash, bat) :
-                            dht.get(ownerHash, hash, bat).thenApply(opt -> opt.map(CborObject::toByteArray)))
-                            .thenAccept(opt -> replyBytes(httpExchange,
-                                    opt.orElse(new byte[0]), opt.map(x -> hash)))
-                            .exceptionally(Futures::logAndThrow).get();
+                    Optional<byte[]> block = hash.codec == Cid.Codec.Raw ?
+                            dht.getRaw(ownerHash, hash, bat).join() :
+                            dht.get(ownerHash, hash, bat).thenApply(opt -> opt.map(CborObject::toByteArray)).join();
+                    replyBytes(httpExchange,
+                            block.orElse(new byte[0]), block.map(x -> hash));
                     break;
                 }
                 case BLOCK_STAT: {

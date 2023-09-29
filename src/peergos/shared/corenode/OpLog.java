@@ -265,6 +265,11 @@ public class OpLog implements Cborable, Account, MutablePointers, ContentAddress
             byte[] signedUpdate = m.getByteArray("s");
             return new PointerWrite(writer, signedUpdate);
         }
+
+        @Override
+        public String toString() {
+            return writer.toString();
+        }
     }
 
     private static Either<PointerWrite, BlockWrite> parseOperation(Cborable cbor) {

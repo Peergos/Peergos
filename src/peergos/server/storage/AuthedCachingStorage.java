@@ -14,10 +14,10 @@ import java.util.concurrent.*;
 
 public class AuthedCachingStorage extends DelegatingStorage {
     private final ContentAddressedStorage target;
-    private final LRUCache<Multihash, byte[]> cache;
-    private final LRUCache<Multihash, Boolean> legacyBlocks;
-    private final LRUCache<Multihash, CompletableFuture<Optional<CborObject>>> pending;
-    private final LRUCache<Multihash, CompletableFuture<Optional<byte[]>>> pendingRaw;
+    private final Map<Multihash, byte[]> cache;
+    private final Map<Multihash, Boolean> legacyBlocks;
+    private final Map<Multihash, CompletableFuture<Optional<CborObject>>> pending;
+    private final Map<Multihash, CompletableFuture<Optional<byte[]>>> pendingRaw;
     private final BlockRequestAuthoriser authoriser;
     private final Hasher h;
     private final Cid ourNodeId;
@@ -33,12 +33,12 @@ public class AuthedCachingStorage extends DelegatingStorage {
         this.ourNodeId = target.id().join();
         this.authoriser = authoriser;
         this.h = h;
-        this.cache = new LRUCache<>(cacheSize);
-        this.legacyBlocks = new LRUCache<>(cacheSize);
+        this.cache = Collections.synchronizedMap(new LRUCache<>(cacheSize));
+        this.legacyBlocks = Collections.synchronizedMap(new LRUCache<>(cacheSize));
         this.maxValueSize = maxValueSize;
         this.cacheSize = cacheSize;
-        this.pending = new LRUCache<>(100);
-        this.pendingRaw = new LRUCache<>(100);
+        this.pending = Collections.synchronizedMap(new LRUCache<>(100));
+        this.pendingRaw = Collections.synchronizedMap(new LRUCache<>(100));
     }
 
     public Collection<byte[]> getCached() {
@@ -168,7 +168,7 @@ public class AuthedCachingStorage extends DelegatingStorage {
             pipe.complete(rawOpt);
             return rawOpt;
         }).exceptionally(t -> {
-            pending.remove(key);
+            pendingRaw.remove(key);
             pipe.completeExceptionally(t);
             return Optional.empty();
         });

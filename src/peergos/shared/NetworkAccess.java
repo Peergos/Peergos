@@ -146,14 +146,20 @@ public class NetworkAccess {
                 spaceUsage, serverMessager, hasher, usernames, isJavascript);
     }
 
-    public static NetworkAccess nonCommittingForSignup(Account account,
-                                                       ContentAddressedStorage directDht,
-                                                       MutablePointers mutable,
-                                                       BatCave bats,
-                                                       Hasher hasher) {
-        WriteSynchronizer synchronizer = new WriteSynchronizer(mutable, directDht, hasher);
-        MutableTree tree = new MutableTreeImpl(mutable, directDht, hasher, synchronizer);
-        return new NetworkAccess(null, account, null, directDht, bats, null, mutable, tree, synchronizer, null,
+    public static BufferedNetworkAccess nonCommittingForSignup(Account account,
+                                                               ContentAddressedStorage dht,
+                                                               MutablePointers mutable,
+                                                               BatCave bats,
+                                                               Hasher hasher) {
+        BufferedStorage blockBuffer = new BufferedStorage(dht, hasher);
+        MutablePointers unbufferedMutable = mutable;
+        BufferedPointers mutableBuffer = new BufferedPointers(unbufferedMutable);
+        WriteSynchronizer synchronizer = new WriteSynchronizer(mutableBuffer, blockBuffer, hasher);
+        MutableTree tree = new MutableTreeImpl(mutableBuffer, blockBuffer, hasher, synchronizer);
+
+        int bufferSize = 1024 * 1024;
+        return new BufferedNetworkAccess(blockBuffer, mutableBuffer, bufferSize, null, account,
+                null, dht, unbufferedMutable, bats, Optional.empty(), tree, synchronizer, null,
                 null, null, hasher, Collections.emptyList(), false);
     }
 
