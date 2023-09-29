@@ -353,7 +353,8 @@ public class UserContext {
                                                                Consumer<String> progressCallback) {
         // Using a local OpLog that doesn't commit anything allows us to group all the updates into a single atomic call
         OpLog opLog = new OpLog(new ArrayList<>(), null, Optional.empty());
-        NetworkAccess network = NetworkAccess.nonCommittingForSignup(opLog, opLog, opLog, opLog, crypto.hasher);
+        BufferedNetworkAccess network = NetworkAccess.nonCommittingForSignup(opLog, opLog, opLog, opLog, crypto.hasher);
+        network.synchronizer.setFlusher((o, v, w) -> Futures.of(v)); // disable final commit
         progressCallback.accept("Generating keys");
         return initialNetwork.coreNode.getChain(username)
                 .thenApply(existing -> {
@@ -404,7 +405,7 @@ public class UserContext {
                                     CommittedWriterData notCommitted = new CommittedWriterData(MaybeMultihash.empty(), newUserData, Optional.empty());
                                     network.synchronizer.put(identity.publicKeyHash, identity.publicKeyHash, notCommitted);
                                     return network.synchronizer.applyComplexUpdate(identityHash, identity,
-                                            (s, committer) -> newUserData.commit(identityHash, identity, MaybeMultihash.empty(), Optional.empty(), network, tid));
+                                            (s, committer) -> committer.commit(identityHash, identity, newUserData, notCommitted, tid));
                                 });
                             }), network.dhtClient)
                                     .thenCompose(snapshot -> {
@@ -419,7 +420,8 @@ public class UserContext {
                                                         TRANSACTIONS_DIR_NAME, Optional.of(batid), network, crypto))
                                                 .thenCompose(globalRoot -> createSpecialDirectory(globalRoot, username,
                                                         CapabilityStore.CAPABILITY_CACHE_DIR, Optional.of(batid), network, crypto))
-                                                .thenCompose(x -> completeSignup(username, chain, identity, token, addCard, progressCallback, opLog, initialNetwork, crypto))
+                                                .thenCompose(x -> network.commit(identityHash))
+                                                .thenCompose(c -> completeSignup(username, chain, identity, token, addCard, progressCallback, opLog, initialNetwork, crypto))
                                                 .thenCompose(y -> signIn(username, userWithRoot, mfa -> null, initialNetwork, crypto, progressCallback));
                                     }))));
                 }).exceptionally(Futures::logAndThrow);
@@ -1061,7 +1063,7 @@ public class UserContext {
                                             LOG.info("Uploading entry point directory");
                                             return WriterData.createEmpty(owner.publicKeyHash, writerPair,
                                                     network.dhtClient, network.hasher, tid)
-                                                    .thenCompose(empty -> empty.commit(owner.publicKeyHash, writerPair, MaybeMultihash.empty(), Optional.empty(), network, tid))
+                                                    .thenCompose(empty -> committer.commit(owner.publicKeyHash, writerPair, empty, new CommittedWriterData(MaybeMultihash.empty(), empty, Optional.empty()), tid))
                                                     .thenCompose(s3 -> root.commit(s3, committer, rootPointer, Optional.of(writerPair), network, tid)
                                                             .thenApply(finalSnapshot -> {
                                                                 long t3 = System.currentTimeMillis();
