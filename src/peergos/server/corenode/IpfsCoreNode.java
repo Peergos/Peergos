@@ -297,16 +297,27 @@ public class IpfsCoreNode implements CoreNode {
                                   Account account,
                                   BatCave batCave) {
         TransactionId tid = ipfs.startTransaction(owner).join();
-        for (Either<OpLog.PointerWrite, OpLog.BlockWrite> op : ops.operations) {
+        for (int i=0; i < ops.operations.size(); i++) {
+            Either<OpLog.PointerWrite, OpLog.BlockWrite> op = ops.operations.get(i);
             if (op.isA()) {
                 OpLog.PointerWrite pointerUpdate = op.a();
                 mutable.setPointer(owner, pointerUpdate.writer, pointerUpdate.writerSignedChampRootCas).join();
             } else {
                 OpLog.BlockWrite block = op.b();
+                // Group blocks of same type to do a parallel write (these should all be cbor, not raw)
+                List<byte[]> signatures = new ArrayList<>();
+                List<byte[]> blocks = new ArrayList<>();
+                signatures.add(block.signature);
+                blocks.add(block.block);
+                while (i+1 < ops.operations.size() && ops.operations.get(i + 1).isB() && ops.operations.get(i + 1).b().isRaw == block.isRaw) {
+                    signatures.add(ops.operations.get(i + 1).b().signature);
+                    blocks.add(ops.operations.get(i + 1).b().block);
+                    i++;
+                }
                 if (block.isRaw)
-                    ipfs.putRaw(owner, block.writer, block.signature, block.block, tid, x -> {}).join();
+                    ipfs.putRaw(owner, block.writer, signatures, blocks, tid, x -> {}).join();
                 else
-                    ipfs.put(owner, block.writer, block.signature, block.block, tid).join();
+                    ipfs.put(owner, block.writer, signatures, blocks, tid).join();
             }
         }
         if (ops.loginData != null) {

@@ -62,4 +62,9 @@ public class Either<A, B> {
     public static <A, B> Either<A, B> b(B b) {
         return new Either<>(null, b);
     }
+
+    @Override
+    public String toString() {
+        return isA() ? a.toString() : b.toString();
+    }
 }
