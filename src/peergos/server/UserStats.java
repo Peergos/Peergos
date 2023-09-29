@@ -1,9 +1,11 @@
 package peergos.server;
 
+import peergos.server.storage.*;
 import peergos.shared.*;
 import peergos.shared.corenode.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.Multihash;
+import peergos.shared.storage.*;
 import peergos.shared.user.*;
 import peergos.shared.util.*;
 
@@ -32,8 +34,8 @@ public class UserStats {
                 hosts = last.claim.storageProviders;
                 PublicKeyHash owner = last.owner;
                 Set<PublicKeyHash> ownedKeysRecursive =
-                        WriterData.getOwnedKeysRecursive(username, network.coreNode, network.mutable,
-                                network.dhtClient, network.hasher).join();
+                        DeletableContentAddressedStorage.getOwnedKeysRecursive(username, network.coreNode, network.mutable,
+                                (h, s) -> ContentAddressedStorage.getWriterData(owner, h, s, network.dhtClient), network.dhtClient, network.hasher).join();
                 long total = network.spaceUsage.getUsage(owner).join();
                 String summary = "User: " + username + ", expiry: " + expiry + " usage: " + total
                         + ", owned keys: " + ownedKeysRecursive.size() + "\n";

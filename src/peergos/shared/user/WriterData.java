@@ -157,7 +157,7 @@ public class WriterData implements Cborable {
                 .orElseThrow(() -> new IllegalStateException("Owned key champ absent!"));
     }
 
-    private <T> CompletableFuture<Set<T>> applyToOwnedKeys(PublicKeyHash owner,
+    public <T> CompletableFuture<Set<T>> applyToOwnedKeys(PublicKeyHash owner,
                                                            Function<OwnedKeyChamp, CompletableFuture<Set<T>>> processor,
                                                            ContentAddressedStorage ipfs,
                                                            Hasher hasher) {
@@ -350,132 +350,6 @@ public class WriterData implements Cborable {
         Optional<UserStaticData> staticData = m.getOptional("static", UserStaticData::fromCbor);
         Optional<Multihash> tree = m.getOptional("tree", val -> ((CborObject.CborMerkleLink)val).target);
         return new WriterData(controller, algo, publicData, followRequestReceiver, owned, named, staticData, tree);
-    }
-
-    public static CompletableFuture<Map<PublicKeyHash, byte[]>> getUserSnapshot(String username,
-                                                                                CoreNode core,
-                                                                                MutablePointers mutable,
-                                                                                ContentAddressedStorage dht,
-                                                                                Hasher hasher) {
-        return core.getPublicKeyHash(username)
-                .thenCompose(publicKeyHash -> publicKeyHash
-                        .map(h -> getUserSnapshotRecursive(h, h, Collections.emptyMap(), mutable, dht, hasher))
-                        .orElseGet(() -> CompletableFuture.completedFuture(Collections.emptyMap())));
-    }
-
-    public static CompletableFuture<Map<PublicKeyHash, byte[]>> getUserSnapshotRecursive(PublicKeyHash owner,
-                                                                                         PublicKeyHash writer,
-                                                                                         Map<PublicKeyHash, byte[]> alreadyDone,
-                                                                                         MutablePointers mutable,
-                                                                                         ContentAddressedStorage ipfs,
-                                                                                         Hasher hasher) {
-        return getDirectOwnedKeys(owner, writer, mutable, ipfs, hasher)
-                .thenCompose(directOwned -> {
-                    Set<PublicKeyHash> newKeys = directOwned.stream().
-                            filter(h -> ! alreadyDone.containsKey(h))
-                            .collect(Collectors.toSet());
-                    Map<PublicKeyHash, byte[]> done = new HashMap<>(alreadyDone);
-                    return mutable.getPointer(owner, writer).thenCompose(val -> {
-                        if (val.isPresent())
-                            done.put(writer, val.get());
-                        BiFunction<Map<PublicKeyHash, byte[]>, PublicKeyHash,
-                                CompletableFuture<Map<PublicKeyHash, byte[]>>> composer =
-                                (a, w) -> getUserSnapshotRecursive(owner, w, a, mutable, ipfs, hasher)
-                                        .thenApply(ws ->
-                                                Stream.concat(
-                                                        ws.entrySet().stream().filter(e -> ! a.containsKey(e.getKey())),
-                                                        a.entrySet().stream())
-                                                        .collect(Collectors.toMap(e -> e.getKey(), e -> e.getValue())));
-                        return Futures.reduceAll(newKeys, done,
-                                composer,
-                                (a, b) -> Stream.concat(
-                                        a.entrySet().stream().filter(e -> ! b.containsKey(e.getKey())),
-                                        b.entrySet().stream())
-                                        .collect(Collectors.toMap(e -> e.getKey(), e -> e.getValue())));
-                    });
-                });
-    }
-
-    public static CompletableFuture<Set<PublicKeyHash>> getOwnedKeysRecursive(String username,
-                                                                              CoreNode core,
-                                                                              MutablePointers mutable,
-                                                                              ContentAddressedStorage dht,
-                                                                              Hasher hasher) {
-        return core.getPublicKeyHash(username)
-                .thenCompose(publicKeyHash -> publicKeyHash
-                        .map(h -> getOwnedKeysRecursive(h, h, mutable, dht, hasher))
-                        .orElseGet(() -> CompletableFuture.completedFuture(Collections.emptySet())));
-    }
-
-    public static CompletableFuture<Set<PublicKeyHash>> getOwnedKeysRecursive(PublicKeyHash owner,
-                                                                              PublicKeyHash writer,
-                                                                              MutablePointers mutable,
-                                                                              ContentAddressedStorage ipfs,
-                                                                              Hasher hasher) {
-        return getOwnedKeysRecursive(owner, writer, Collections.emptySet(), mutable, ipfs, hasher);
-    }
-
-    private static CompletableFuture<Set<PublicKeyHash>> getOwnedKeysRecursive(PublicKeyHash owner,
-                                                                               PublicKeyHash writer,
-                                                                               Set<PublicKeyHash> alreadyDone,
-                                                                               MutablePointers mutable,
-                                                                               ContentAddressedStorage ipfs,
-                                                                               Hasher hasher) {
-        return getDirectOwnedKeys(owner, writer, mutable, ipfs, hasher)
-                .thenCompose(directOwned -> {
-                    Set<PublicKeyHash> newKeys = directOwned.stream().
-                            filter(h -> ! alreadyDone.contains(h))
-                            .collect(Collectors.toSet());
-                    Set<PublicKeyHash> done = new HashSet<>(alreadyDone);
-                    done.add(writer);
-                    BiFunction<Set<PublicKeyHash>, PublicKeyHash, CompletableFuture<Set<PublicKeyHash>>> composer =
-                            (a, w) -> getOwnedKeysRecursive(owner, w, a, mutable, ipfs, hasher)
-                                    .thenApply(ws ->
-                                            Stream.concat(ws.stream(), a.stream())
-                                                    .collect(Collectors.toSet()));
-                    return Futures.reduceAll(newKeys, done,
-                            composer,
-                            (a, b) -> Stream.concat(a.stream(), b.stream())
-                                    .collect(Collectors.toSet()));
-                });
-    }
-
-    public static CompletableFuture<Set<PublicKeyHash>> getDirectOwnedKeys(PublicKeyHash owner,
-                                                                           PublicKeyHash writer,
-                                                                           MutablePointers mutable,
-                                                                           ContentAddressedStorage ipfs,
-                                                                           Hasher hasher) {
-        return mutable.getPointerTarget(owner, writer, ipfs)
-                .thenCompose(h -> getDirectOwnedKeys(owner, writer, h.updated, ipfs, hasher));
-    }
-
-    public static CompletableFuture<Set<PublicKeyHash>> getDirectOwnedKeys(PublicKeyHash owner,
-                                                                           PublicKeyHash writer,
-                                                                           MaybeMultihash root,
-                                                                           ContentAddressedStorage ipfs,
-                                                                           Hasher hasher) {
-        if (! root.isPresent())
-            return CompletableFuture.completedFuture(Collections.emptySet());
-
-        BiFunction<Set<OwnerProof>, Pair<PublicKeyHash, OwnerProof>, CompletableFuture<Set<OwnerProof>>>
-                composer = (acc, pair) -> CompletableFuture.completedFuture(Stream.concat(acc.stream(), Stream.of(pair.right))
-                .collect(Collectors.toSet()));
-
-        BiFunction<Set<PublicKeyHash>, OwnerProof, CompletableFuture<Set<PublicKeyHash>>> proofComposer =
-                (acc, proof) -> proof.getAndVerifyOwner(owner, ipfs)
-                        .thenApply(claimedWriter -> Stream.concat(acc.stream(), claimedWriter.equals(writer) ?
-                                Stream.of(proof.ownedKey) :
-                                Stream.empty()).collect(Collectors.toSet()));
-
-        return getWriterData(owner, (Cid)root.get(), Optional.empty(), ipfs)
-                .thenCompose(wd -> wd.props.applyToOwnedKeys(owner, owned ->
-                        owned.applyToAllMappings(owner, Collections.emptySet(), composer, ipfs), ipfs, hasher)
-                        .thenApply(owned -> Stream.concat(owned.stream(),
-                                wd.props.namedOwnedKeys.values().stream()).collect(Collectors.toSet())))
-                .thenCompose(all -> Futures.reduceAll(all, Collections.emptySet(),
-                        proofComposer,
-                        (a, b) -> Stream.concat(a.stream(), b.stream())
-                                .collect(Collectors.toSet())));
     }
 
     public static CompletableFuture<CommittedWriterData> getWriterData(PublicKeyHash owner,

@@ -637,4 +637,16 @@ public interface ContentAddressedStorage {
                     target -> p2p.putRaw(target, owner, writer, signatures, blocks, tid, progressConsumer));
         }
     }
+
+    static CompletableFuture<CommittedWriterData> getWriterData(PublicKeyHash owner,
+                                                                Cid hash,
+                                                                Optional<Long> sequence,
+                                                                ContentAddressedStorage dht) {
+        return dht.get(owner, hash, Optional.empty())
+                .thenApply(cborOpt -> {
+                    if (! cborOpt.isPresent())
+                        throw new IllegalStateException("Couldn't retrieve WriterData from dht! " + hash);
+                    return new CommittedWriterData(MaybeMultihash.of(hash), WriterData.fromCbor(cborOpt.get()), sequence);
+                });
+    }
 }

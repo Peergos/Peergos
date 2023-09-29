@@ -385,6 +385,49 @@ public class MirrorCoreNode implements CoreNode {
                 in.login);
     }
 
+    public static CompletableFuture<Map<PublicKeyHash, byte[]>> getUserSnapshotRecursive(List<Multihash> peerIds,
+                                                                                         PublicKeyHash owner,
+                                                                                         PublicKeyHash writer,
+                                                                                         Map<PublicKeyHash, byte[]> alreadyDone,
+                                                                                         MutablePointers mutable,
+                                                                                         DeletableContentAddressedStorage ipfs,
+                                                                                         Hasher hasher) {
+        return DeletableContentAddressedStorage.getDirectOwnedKeys(owner, writer, mutable,
+                        (h, s) -> DeletableContentAddressedStorage.getWriterData(peerIds, h, s, ipfs), ipfs, hasher)
+                .thenCompose(directOwned -> {
+                    Set<PublicKeyHash> newKeys = directOwned.stream().
+                            filter(h -> ! alreadyDone.containsKey(h))
+                            .collect(Collectors.toSet());
+                    Map<PublicKeyHash, byte[]> done = new HashMap<>(alreadyDone);
+                    return mutable.getPointer(owner, writer).thenCompose(val -> {
+                        if (val.isPresent())
+                            done.put(writer, val.get());
+                        BiFunction<Map<PublicKeyHash, byte[]>, PublicKeyHash,
+                                CompletableFuture<Map<PublicKeyHash, byte[]>>> composer =
+                                (a, w) -> getUserSnapshotRecursive(peerIds, owner, w, a, mutable, ipfs, hasher)
+                                        .thenApply(ws ->
+                                                Stream.concat(
+                                                                ws.entrySet().stream().filter(e -> ! a.containsKey(e.getKey())),
+                                                                a.entrySet().stream())
+                                                        .collect(Collectors.toMap(e -> e.getKey(), e -> e.getValue())));
+                        return Futures.reduceAll(newKeys, done,
+                                composer,
+                                (a, b) -> Stream.concat(
+                                                a.entrySet().stream().filter(e -> ! b.containsKey(e.getKey())),
+                                                b.entrySet().stream())
+                                        .collect(Collectors.toMap(e -> e.getKey(), e -> e.getValue())));
+                    });
+                });
+    }
+
+    public static CompletableFuture<Map<PublicKeyHash, byte[]>> getUserSnapshot(PublicKeyHash owner,
+                                                                                List<Multihash> peerIds,
+                                                                                MutablePointers mutable,
+                                                                                DeletableContentAddressedStorage dht,
+                                                                                Hasher hasher) {
+        return getUserSnapshotRecursive(peerIds, owner, owner, Collections.emptyMap(), mutable, dht, hasher);
+    }
+
     @Override
     public CompletableFuture<UserSnapshot> migrateUser(String username,
                                                        List<UserPublicKeyLink> newChain,
@@ -404,7 +447,7 @@ public class MirrorCoreNode implements CoreNode {
             // a user is migrating away from this server
             ProofOfWork work = ProofOfWork.empty();
 
-            UserSnapshot snapshot = WriterData.getUserSnapshot(username, this, p2pMutable, ipfs, hasher)
+            UserSnapshot snapshot = getUserSnapshot(owner, currentLast.claim.storageProviders, p2pMutable, ipfs, hasher)
                     .thenApply(pointers -> new UserSnapshot(pointers,
                             localSocial.getAndParseFollowRequests(owner),
                             batCave.getUserBats(username, new byte[0]).join(),

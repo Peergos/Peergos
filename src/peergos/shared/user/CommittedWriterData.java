@@ -1,8 +1,10 @@
 package peergos.shared.user;
 
 import peergos.shared.*;
+import peergos.shared.io.ipfs.*;
 
 import java.util.*;
+import java.util.concurrent.*;
 
 public class CommittedWriterData {
 
@@ -32,5 +34,9 @@ public class CommittedWriterData {
     @Override
     public int hashCode() {
         return hash.hashCode() ^ sequence.hashCode();
+    }
+
+    public interface Retriever {
+        CompletableFuture<CommittedWriterData> getWriterData(Cid hash, Optional<Long> sequence);
     }
 }

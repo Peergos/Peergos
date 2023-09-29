@@ -1,6 +1,7 @@
 package peergos.server.mutable;
 import java.util.logging.*;
 
+import peergos.server.storage.*;
 import peergos.server.util.*;
 
 import peergos.shared.corenode.*;
@@ -23,7 +24,7 @@ public class UserBasedBlacklist implements PublicKeyBlackList {
     private Map<PublicKeyHash, Boolean> banned = new ConcurrentHashMap<>();
     private final CoreNode core;
     private final MutablePointers mutable;
-    private final ContentAddressedStorage dht;
+    private final DeletableContentAddressedStorage dht;
     private final Hasher hasher;
     private final Path source;
     private final ForkJoinPool pool = Threads.newPool(1, "User-blocklist-");
@@ -32,7 +33,7 @@ public class UserBasedBlacklist implements PublicKeyBlackList {
     public UserBasedBlacklist(Path source,
                               CoreNode core,
                               MutablePointers mutable,
-                              ContentAddressedStorage dht,
+                              DeletableContentAddressedStorage dht,
                               Hasher hasher) {
         this.source = source;
         this.core = core;
@@ -87,7 +88,8 @@ public class UserBasedBlacklist implements PublicKeyBlackList {
     private Set<PublicKeyHash> buildBlackList(Set<String> usernames) {
         Set<PublicKeyHash> res = new HashSet<>();
         for (String username : usernames) {
-            res.addAll(WriterData.getOwnedKeysRecursive(username, core, mutable, dht, hasher).join());
+            res.addAll(DeletableContentAddressedStorage.getOwnedKeysRecursive(username, core, mutable,
+                    (h, s) -> DeletableContentAddressedStorage.getWriterData(Collections.emptyList(), h, s, dht), dht, hasher).join());
         }
         return res;
     }
