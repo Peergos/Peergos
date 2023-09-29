@@ -1,11 +1,13 @@
 package peergos.server;
 
+import peergos.server.storage.*;
 import peergos.server.util.*;
 import peergos.shared.*;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.Cid;
 import peergos.shared.io.ipfs.Multihash;
+import peergos.shared.storage.*;
 import peergos.shared.user.*;
 
 import java.net.*;
@@ -22,8 +24,8 @@ public class ValidateUser {
         NetworkAccess network = Builder.buildJavaNetworkAccess(new URL("https://peergos.net"), true).get();
         String username = args[0];
         Optional<PublicKeyHash> identity = network.coreNode.getPublicKeyHash(username).join();
-        Set<PublicKeyHash> ownedKeys = WriterData.getOwnedKeysRecursive(username, network.coreNode, network.mutable,
-                network.dhtClient, network.hasher).join();
+        Set<PublicKeyHash> ownedKeys = DeletableContentAddressedStorage.getOwnedKeysRecursive(username, network.coreNode, network.mutable,
+                (h, s) -> ContentAddressedStorage.getWriterData(identity.get(), h, s, network.dhtClient), network.dhtClient, network.hasher).join();
         for (PublicKeyHash ownedKey : ownedKeys) {
             validateWriter(identity.get(), ownedKey, network);
         }

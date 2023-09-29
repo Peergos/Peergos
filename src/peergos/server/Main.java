@@ -607,7 +607,7 @@ public class Main extends Builder {
             ContentAddressedStorage p2pDht = new ContentAddressedStorage.Proxying(filteringDht, proxingDht, nodeId, core);
 
             Path blacklistPath = a.fromPeergosDir("blacklist_file", "blacklist.txt");
-            PublicKeyBlackList blacklist = new UserBasedBlacklist(blacklistPath, core, localMutable, p2pDht, hasher);
+            PublicKeyBlackList blacklist = new UserBasedBlacklist(blacklistPath, core, localMutable, localStorage, hasher);
             MutablePointers blockingMutablePointers = new BlockingMutablePointers(localMutable, blacklist);
             MutablePointers p2mMutable = new ProxyingMutablePointers(nodeId, core, blockingMutablePointers, proxingMutable);
 

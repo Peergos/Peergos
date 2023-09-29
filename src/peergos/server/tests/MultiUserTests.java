@@ -1,7 +1,7 @@
 package peergos.server.tests;
 
 import org.junit.*;
-import peergos.server.storage.ResetableFileInputStream;
+import peergos.server.storage.*;
 import peergos.server.util.Args;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.fingerprint.*;
@@ -511,8 +511,9 @@ public class MultiUserTests {
         Assert.assertTrue("Following parent link results in read only parent",
                 ! metaOnlyParent.isWritable() && ! metaOnlyParent.isReadable());
 
-        Set<PublicKeyHash> keysOwnedByRootSigner = WriterData.getDirectOwnedKeys(theFile.owner(), parentFolder.writer(),
-                u1.network.mutable, u1.network.dhtClient, u1.network.hasher).join();
+        Set<PublicKeyHash> keysOwnedByRootSigner = DeletableContentAddressedStorage.getDirectOwnedKeys(theFile.owner(), parentFolder.writer(),
+                u1.network.mutable, (h, s) -> ContentAddressedStorage.getWriterData(parentFolder.writer(), h,s, u1.network.dhtClient),
+                u1.network.dhtClient, u1.network.hasher).join();
         Assert.assertTrue("New writer key present", keysOwnedByRootSigner.contains(theFile.writer()));
 
         Set<String> sharedWriteAccessWithBefore = u1.sharedWith(filePath).join().get(SharedWithCache.Access.WRITE);
@@ -529,8 +530,10 @@ public class MultiUserTests {
             Optional<FileWrapper> sharedFile = userContext.getByPath(filePath).get();
             Assert.assertTrue("shared file removed", ! sharedFile.isPresent());
         }
-        Set<PublicKeyHash> updatedKeysOwnedByRootSigner = WriterData.getDirectOwnedKeys(theFile.owner(),
-                parentFolder.writer(), u1.network.mutable, u1.network.dhtClient, u1.network.hasher).join();
+        Set<PublicKeyHash> updatedKeysOwnedByRootSigner = DeletableContentAddressedStorage.getDirectOwnedKeys(theFile.owner(),
+                parentFolder.writer(), u1.network.mutable,
+                (h, s) -> ContentAddressedStorage.getWriterData(theFile.owner(), h,s, u1.network.dhtClient),
+                u1.network.dhtClient, u1.network.hasher).join();
         Assert.assertTrue("New writer key not present", ! updatedKeysOwnedByRootSigner.contains(theFile.writer()));
     }
 
