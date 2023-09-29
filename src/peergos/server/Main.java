@@ -613,7 +613,7 @@ public class Main extends Builder {
 
             SocialNetworkProxy httpSocial = new HttpSocialNetwork(p2pHttpProxy, p2pHttpProxy);
 
-            SocialNetwork local = UserRepository.build(p2pDht, rawSocial);
+            SocialNetwork local = UserRepository.build(localStorage, rawSocial);
             SocialNetwork p2pSocial = new ProxyingSocialNetwork(nodeId, core, local, httpSocial);
 
             Set<String> adminUsernames = Arrays.asList(a.getArg("admin-usernames", "").split(","))
