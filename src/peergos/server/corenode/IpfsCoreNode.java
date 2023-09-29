@@ -90,7 +90,7 @@ public class IpfsCoreNode implements CoreNode {
      * @param newRoot The root of the new champ
      */
     private synchronized void update(MaybeMultihash newRoot, Optional<Long> newSequence) {
-        updateAllMappings(Arrays.asList(ipfs.id().join()), peergosIdentity, currentRoot, newRoot, ipfs, chains, reverseLookup, usernames);
+        updateAllMappings(Arrays.asList(ipfs.id().join()), currentRoot, newRoot, ipfs, chains, reverseLookup, usernames);
         this.currentRoot = newRoot;
         this.currentSequence = newSequence;
     }
@@ -215,7 +215,6 @@ public class IpfsCoreNode implements CoreNode {
     }
 
     public static void updateAllMappings(List<Multihash> peerIds,
-                                         PublicKeyHash peergos,
                                          MaybeMultihash currentChampRoot,
                                          MaybeMultihash newChampRoot,
                                          DeletableContentAddressedStorage ipfs,
@@ -226,7 +225,7 @@ public class IpfsCoreNode implements CoreNode {
             MaybeMultihash currentTree = getTreeRoot(peerIds, currentChampRoot, ipfs);
             MaybeMultihash updatedTree = getTreeRoot(peerIds, newChampRoot, ipfs);
             Consumer<Triple<ByteArrayWrapper, Optional<CborObject.CborMerkleLink>, Optional<CborObject.CborMerkleLink>>> consumer =
-                    t -> updateMapping(peergos, t.left, t.middle, t.right, ipfs, chains, reverseLookup, usernames);
+                    t -> updateMapping(peerIds, t.left, t.middle, t.right, ipfs, chains, reverseLookup, usernames);
             Function<Cborable, CborObject.CborMerkleLink> fromCbor = c -> (CborObject.CborMerkleLink)c;
             IpfsCoreNode.applyToDiff(peerIds, currentTree, updatedTree, 0, IpfsCoreNode::keyHash,
                     Collections.emptyList(), Collections.emptyList(),
@@ -236,16 +235,16 @@ public class IpfsCoreNode implements CoreNode {
         }
     }
 
-    public static void updateMapping(PublicKeyHash peergos,
+    public static void updateMapping(List<Multihash> peerIds,
                                      ByteArrayWrapper key,
                                      Optional<CborObject.CborMerkleLink> oldValue,
                                      Optional<CborObject.CborMerkleLink> newValue,
-                                     ContentAddressedStorage ipfs,
+                                     DeletableContentAddressedStorage ipfs,
                                      Map<String, List<UserPublicKeyLink>> chains,
                                      Map<PublicKeyHash, String> reverseLookup,
                                      List<String> usernames) {
         try {
-            Optional<CborObject> cborOpt = ipfs.get(peergos, (Cid)newValue.get().target, Optional.empty()).get();
+            Optional<CborObject> cborOpt = ipfs.get(peerIds, (Cid)newValue.get().target, "").get();
             if (!cborOpt.isPresent()) {
                 LOG.severe("Couldn't retrieve new claim chain from " + newValue);
                 return;
@@ -258,7 +257,7 @@ public class IpfsCoreNode implements CoreNode {
             String username = new String(key.data);
 
             if (oldValue.isPresent()) {
-                Optional<CborObject> existingCborOpt = ipfs.get(peergos, (Cid)oldValue.get().target, Optional.empty()).get();
+                Optional<CborObject> existingCborOpt = ipfs.get(peerIds, (Cid)oldValue.get().target, "").get();
                 if (!existingCborOpt.isPresent()) {
                     LOG.severe("Couldn't retrieve existing claim chain from " + newValue);
                     return;
