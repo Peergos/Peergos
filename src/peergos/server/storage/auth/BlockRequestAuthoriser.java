@@ -80,7 +80,7 @@ public interface BlockRequestAuthoriser {
                 Collections.emptyMap(), Collections.emptyMap(), auth.batId.toBase58(), "eu-central-1", auth.awsDatetime);
         LocalDateTime timestamp = auth.timestamp();
         LocalDateTime expiry = timestamp.plusSeconds(auth.expirySeconds);
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime now = LocalDateTime.now(ZoneOffset.UTC);
         if (expiry.isBefore(now))
             return false;
         String signature = S3Request.computeSignature(req, bat.encodeSecret(), h).join();

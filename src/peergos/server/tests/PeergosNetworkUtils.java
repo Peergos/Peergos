@@ -220,7 +220,7 @@ public class PeergosNetworkUtils {
             checkFileContents(originalFileContents, sharedFile.get(), userContext);
         }
 
-        // check other users can browser to the friend's root
+        // check other users can browse to the friend's root
         for (UserContext userContext : shareeUsers) {
             Optional<FileWrapper> friendRoot = userContext.getByPath(sharerUser.username).join();
             assertTrue("friend root present", friendRoot.isPresent());
