@@ -1070,7 +1070,7 @@ public class UserContext {
                                                                 LOG.info("Uploading root dir metadata took " + (t3 - t2) + " mS");
                                                                 return finalSnapshot;
                                                             }))
-                                                    .thenCompose(x -> addRootEntryPointAndCommit(x.merge(s2), entry, current, loginPublic, owner, userRootKey, network, tid));
+                                                    .thenCompose(x -> addRootEntryPointAndCommit(x.merge(s2), entry, current, loginPublic, owner, userRootKey, committer, network, tid));
                                         });
                             }));
         }), network.dhtClient).thenApply(s -> TrieNodeImpl.empty().put("/" + directoryName, entry));
@@ -1970,6 +1970,7 @@ public class UserContext {
                                                                           PublicSigningKey loginPublic,
                                                                           SigningPrivateKeyAndPublicHash owner,
                                                                           SymmetricKey rootKey,
+                                                                          Committer c,
                                                                           NetworkAccess network,
                                                                           TransactionId tid) {
         CommittedWriterData cwd = version.get(owner.publicKeyHash);
@@ -1981,14 +1982,14 @@ public class UserContext {
         } else {
             // legacy account
             Optional<UserStaticData> updated = wd.staticData.map(sd -> new UserStaticData(sd.getData(rootKey).addEntryPoint(entry), rootKey));
-            return wd.withStaticData(updated).commit(owner.publicKeyHash, owner, cwd.hash, cwd.sequence, network, tid);
+            return c.commit(owner.publicKeyHash, owner, wd.withStaticData(updated), cwd, tid);
         }
     }
 
     private synchronized CompletableFuture<FileWrapper> addExternalEntryPoint(EntryPoint entry) {
         boolean isOurs = username.equals(entry.ownerName);
         if (isOurs)
-            throw new IllegalStateException("Cannot add an entry point to your won filesystem!");
+            throw new IllegalStateException("Cannot add an entry point to your own filesystem!");
         String filename = ENTRY_POINTS_FROM_FRIENDS_FILENAME;
         // verify owner before adding
         return entry.isValid("/" + entry.ownerName, network)
