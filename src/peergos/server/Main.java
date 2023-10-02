@@ -1,6 +1,7 @@
 package peergos.server;
 
 import com.webauthn4j.data.client.*;
+import io.netty.util.*;
 import peergos.server.cli.CLI;
 import peergos.server.login.*;
 import peergos.server.messages.*;
@@ -911,6 +912,8 @@ public class Main extends Builder {
     }
 
     public static void main(String[] args) {
+        // Netty uses thread count twice the number of CPUs, this undoes that, unless #cpus == 1
+        NettyRuntime.setAvailableProcessors(Math.max(1, Runtime.getRuntime().availableProcessors())/ 2);
         try {
             MAIN.main(Args.parse(args));
         } catch (Throwable t) {
