@@ -168,7 +168,7 @@ public class AuthedCachingStorage extends DelegatingStorage {
             pipe.complete(rawOpt);
             return rawOpt;
         }).exceptionally(t -> {
-            pending.remove(key);
+            pendingRaw.remove(key);
             pipe.completeExceptionally(t);
             return Optional.empty();
         });
