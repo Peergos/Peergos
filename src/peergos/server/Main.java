@@ -914,8 +914,10 @@ public class Main extends Builder {
         System.getProperties().setProperty("io.netty.eventLoopThreads", "1");
         try {
             MAIN.main(Args.parse(args));
-        } catch (Throwable t) {
-            t.printStackTrace();
+        } catch (Throwable e) {
+            e.printStackTrace();
+            Logging.LOG().log(Level.SEVERE, e, () -> e.getMessage());
+            System.exit(-1);
         }
     }
 }
