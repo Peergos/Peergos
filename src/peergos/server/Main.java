@@ -1,7 +1,6 @@
 package peergos.server;
 
 import com.webauthn4j.data.client.*;
-import io.netty.util.*;
 import peergos.server.cli.CLI;
 import peergos.server.login.*;
 import peergos.server.messages.*;
@@ -601,9 +600,8 @@ public class Main extends Builder {
             localMutable.addListener(spaceChecker::accept);
 
             int blockCacheSize = a.getInt("max-cached-blocks", 1000);
-            int maxCachedBlockSize = a.getInt("max-cached-block-size", 10 * 1024);
-            ContentAddressedStorage filteringDht = new WriteFilter(new AuthedCachingStorage(localStorage,
-                    blockRequestAuthoriser, hasher, blockCacheSize, maxCachedBlockSize), spaceChecker::allowWrite);
+            int maxCachedBlockSize = a.getInt("max-cached-block-size", 50 * 1024);
+            ContentAddressedStorage filteringDht = new WriteFilter(localStorage, spaceChecker::allowWrite);
             ContentAddressedStorageProxy proxingDht = new ContentAddressedStorageProxy.HTTP(p2pHttpProxy);
             ContentAddressedStorage p2pDht = new ContentAddressedStorage.Proxying(filteringDht, proxingDht, nodeId, core);
 
@@ -627,7 +625,7 @@ public class Main extends Builder {
 
             Account p2pAccount = new ProxyingAccount(nodeId, core, account, accountProxy);
             VerifyingAccount verifyingAccount = new VerifyingAccount(p2pAccount, core, localStorage);
-            ContentAddressedStorage cachingStorage = new AuthedCachingStorage(p2pDht, blockRequestAuthoriser, hasher, 1000, 50 * 1024);
+            ContentAddressedStorage cachingStorage = new AuthedCachingStorage(p2pDht, blockRequestAuthoriser, hasher, blockCacheSize, maxCachedBlockSize);
             ContentAddressedStorage incomingP2PStorage = new GetBlockingStorage(cachingStorage);
 
             ProxyingBatCave p2pBats = new ProxyingBatCave(nodeId, core, batStore, new HttpBatCave(p2pHttpProxy, p2pHttpProxy));
@@ -912,8 +910,8 @@ public class Main extends Builder {
     }
 
     public static void main(String[] args) {
-        // Netty uses thread count twice the number of CPUs, this undoes that, unless #cpus == 1
-        NettyRuntime.setAvailableProcessors(Math.max(1, Runtime.getRuntime().availableProcessors())/ 2);
+        // Netty uses thread count twice the number of CPUs, this undoes that
+        System.getProperties().setProperty("io.netty.eventLoopThreads", "1");
         try {
             MAIN.main(Args.parse(args));
         } catch (Throwable t) {
