@@ -302,7 +302,7 @@ public class IpfsWrapper implements AutoCloseable {
         };
 
         Path datastorePath = ipfsWrapper.ipfsDir.resolve("datastore").resolve("h2.datastore");
-        DatabaseRecordStore records = new DatabaseRecordStore(datastorePath.toString());
+        DatabaseRecordStore records = new DatabaseRecordStore(datastorePath.toAbsolutePath().toString());
         ipfsWrapper.embeddedIpfs = EmbeddedIpfs.build(records,
                 EmbeddedIpfs.buildBlockStore(config, ipfsWrapper.ipfsDir),
                 config.addresses.getSwarmAddresses(),
