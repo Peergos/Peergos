@@ -191,7 +191,6 @@ public class Main extends Builder {
                     crypto.random);
             Files.write(args.fromPeergosDir("pki.secret.key.path"), cipherTextCbor.serialize());
             Files.write(args.fromPeergosDir("pki.public.key.path"), pkiKeys.publicSigningKey.toCbor().toByteArray());
-            System.out.println("Peergos user identity hash: " + peergosPublicHash);
             return args.setIfAbsent("peergos.identity.hash", peergosPublicHash.toString());
         } catch (Exception e) {
             throw new RuntimeException(e);
@@ -238,6 +237,7 @@ public class Main extends Builder {
                         network.dhtClient).join();
                 context.addNamedOwnedKeyAndCommit("pki", pkiKeyPair).join();
             }
+            System.out.println("Peergos user identity hash: " + context.signer.publicKeyHash);
             // Create /peergos/releases and make it public
             Optional<FileWrapper> releaseDir = context.getByPath(PathUtil.get(pkiUsername, "releases")).join();
             if (! releaseDir.isPresent()) {
