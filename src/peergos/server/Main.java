@@ -583,7 +583,7 @@ public class Main extends Builder {
             localStorage.setPki(core);
             core.initialize();
 
-            boolean isPki = Cid.decode(a.getArg("pki-node-id")).equals(nodeId);
+            boolean isPki = Cid.decodePeerId(a.getArg("pki-node-id")).equals(nodeId);
             QuotaAdmin userQuotas = buildSpaceQuotas(a, localStorage, core,
                     getDBConnector(a, "space-requests-sql-file", dbConnectionPool),
                     getDBConnector(a, "quotas-sql-file", dbConnectionPool), isPki, localhostApi);
