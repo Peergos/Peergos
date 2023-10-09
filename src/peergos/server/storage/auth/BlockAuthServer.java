@@ -25,6 +25,10 @@ public class BlockAuthServer {
         localhostServer.createContext("/", ex -> handle(ex, author));
         localhostServer.setExecutor(Threads.newPool(handlerPoolSize, "Block-auth-handler-"));
         localhostServer.start();
+        Thread shutdownHook = new Thread(() -> {
+            localhostServer.stop(0);
+        });
+        Runtime.getRuntime().addShutdownHook(shutdownHook);
     }
 
     public static void handle(HttpExchange httpExchange, BlockRequestAuthoriser author) {
