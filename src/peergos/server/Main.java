@@ -513,7 +513,7 @@ public class Main extends Builder {
             boolean useIPFS = a.getBoolean("useIPFS");
 
             IpfsWrapper ipfsWrapper = useIPFS ? IPFS.main(a) : null;
-            BlockMetadataStore meta = ipfsWrapper != null ? ipfsWrapper.getBlockMetadata() : buildBlockMetadata(a);
+            BlockMetadataStore meta = useIPFS ? ipfsWrapper.getBlockMetadata() : buildBlockMetadata(a);
 
             boolean doExportAggregatedMetrics = a.getBoolean("collect-metrics");
             if (doExportAggregatedMetrics) {
