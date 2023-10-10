@@ -511,7 +511,9 @@ public class Main extends Builder {
             System.out.println("Starting Peergos daemon version: " + new InstanceAdmin.VersionInfo(UserService.CURRENT_VERSION, Admin.getSourceVersion()));
 
             boolean useIPFS = a.getBoolean("useIPFS");
+
             IpfsWrapper ipfsWrapper = useIPFS ? IPFS.main(a) : null;
+            BlockMetadataStore meta = useIPFS ? ipfsWrapper.getBlockMetadata() : buildBlockMetadata(a);
 
             boolean doExportAggregatedMetrics = a.getBoolean("collect-metrics");
             if (doExportAggregatedMetrics) {
@@ -538,7 +540,7 @@ public class Main extends Builder {
 
             BatCave batStore = new JdbcBatCave(getDBConnector(a, "bat-store", dbConnectionPool), sqlCommands);
             BlockRequestAuthoriser blockRequestAuthoriser = Builder.blockAuthoriser(a, batStore, hasher);
-            DeletableContentAddressedStorage localStorage = buildLocalStorage(a, transactions, blockRequestAuthoriser,
+            DeletableContentAddressedStorage localStorage = buildLocalStorage(a, meta, transactions, blockRequestAuthoriser,
                     crypto.hasher);
             JdbcIpnsAndSocial rawPointers = buildRawPointers(a,
                     getDBConnector(a, "mutable-pointers-file", dbConnectionPool));
