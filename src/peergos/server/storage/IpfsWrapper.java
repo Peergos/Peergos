@@ -204,8 +204,10 @@ public class IpfsWrapper implements AutoCloseable {
     private HttpServer apiServer;
     private HttpServer p2pServer;
 
-    public IpfsWrapper(Path ipfsDir, IpfsConfigParams ipfsConfigParams) {
+    private final BlockMetadataStore metaDB;
 
+    public IpfsWrapper(Path ipfsDir, IpfsConfigParams ipfsConfigParams, BlockMetadataStore metaDB) {
+        this.metaDB = metaDB;
         File ipfsDirF = ipfsDir.toFile();
         if (! ipfsDirF.isDirectory() && ! ipfsDirF.mkdirs()) {
             throw new IllegalStateException("Specified IPFS_PATH '" + ipfsDir + " is not a directory and/or could not be created");
@@ -225,6 +227,10 @@ public class IpfsWrapper implements AutoCloseable {
             }
         }
         this.ipfsConfigParams= ipfsConfigParams.withIdentity(identityOpt);
+    }
+
+    public BlockMetadataStore getBlockMetadata() {
+        return metaDB;
     }
 
     public static boolean isHttpApiListening(String ipfsApiAddress) {
@@ -286,7 +292,9 @@ public class IpfsWrapper implements AutoCloseable {
         org.peergos.util.Logging.init(ipfsDir, args.getBoolean("log-to-console", false));
 
         IpfsConfigParams ipfsConfigParams = buildConfig(args);
-        IpfsWrapper ipfsWrapper = new IpfsWrapper(ipfsDir, ipfsConfigParams);
+        BlockMetadataStore metaDB = Builder.buildBlockMetadata(args);
+
+        IpfsWrapper ipfsWrapper = new IpfsWrapper(ipfsDir, ipfsConfigParams, metaDB);
         Config config = ipfsWrapper.configure();
         LOG.info("Starting Nabu version: " + APIHandler.CURRENT_VERSION + ", peerid: " + config.identity.peerId);
         BlockRequestAuthoriser authoriser = (c, b, p, a) -> {
@@ -306,7 +314,7 @@ public class IpfsWrapper implements AutoCloseable {
         DatabaseRecordStore records = new DatabaseRecordStore(datastorePath.toAbsolutePath().toString());
 
         org.peergos.blockstore.metadatadb.BlockMetadataStore meta =
-                new DelegatingBlockMetadataStore(Builder.buildBlockMetadata(args));
+                new DelegatingBlockMetadataStore(ipfsWrapper.metaDB);
         ipfsWrapper.embeddedIpfs = EmbeddedIpfs.build(records,
                 EmbeddedIpfs.buildBlockStore(config, ipfsWrapper.ipfsDir, meta),
                 config.addresses.getSwarmAddresses(),

@@ -204,6 +204,7 @@ public class Builder {
     }
 
     public static DeletableContentAddressedStorage buildLocalStorage(Args a,
+                                                                     BlockMetadataStore meta,
                                                                      TransactionStore transactions,
                                                                      BlockRequestAuthoriser authoriser,
                                                                      Hasher hasher) throws SQLException {
@@ -211,7 +212,6 @@ public class Builder {
         boolean enableGC = a.getBoolean("enable-gc", false);
         boolean useS3 = S3Config.useS3(a);
         JavaPoster ipfsApi = buildIpfsApi(a);
-        BlockMetadataStore meta = buildBlockMetadata(a);
         if (useIPFS) {
             DeletableContentAddressedStorage.HTTP ipfs = new DeletableContentAddressedStorage.HTTP(ipfsApi, false, hasher);
             if (useS3) {
