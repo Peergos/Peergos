@@ -45,7 +45,7 @@ public class MirrorCoreNode implements CoreNode {
     private final JdbcIpnsAndSocial localSocial;
     private final UsageStore usageStore;
     private final PublicKeyHash pkiOwnerIdentity;
-    private final Multihash ourNodeId;
+    private final Multihash ourNodeId, pkiPeerId;
     private final Hasher hasher;
 
     private volatile CorenodeState state;
@@ -63,6 +63,7 @@ public class MirrorCoreNode implements CoreNode {
                           TransactionStore transactions,
                           JdbcIpnsAndSocial localSocial,
                           UsageStore usageStore,
+                          Multihash pkiPeerId,
                           PublicKeyHash pkiOwnerIdentity,
                           Path statePath,
                           Hasher hasher) {
@@ -77,6 +78,7 @@ public class MirrorCoreNode implements CoreNode {
         this.transactions = transactions;
         this.localSocial = localSocial;
         this.usageStore = usageStore;
+        this.pkiPeerId = pkiPeerId;
         this.pkiOwnerIdentity = pkiOwnerIdentity;
         this.statePath = statePath;
         this.ourNodeId = ipfs.id().join();
@@ -242,44 +244,38 @@ public class MirrorCoreNode implements CoreNode {
      */
     private synchronized boolean update() {
         try {
-            PublicKeyHash peergosKey = writeTarget.getPublicKeyHash("peergos").join().get();
-            if (! peergosKey.equals(pkiOwnerIdentity))
-                throw new IllegalStateException("'peergos' user changed their identity keypair!");
-            List<UserPublicKeyLink> peergosChain = writeTarget.getChain("peergos").join();// make sure peergos is in the lookup so getting the WriterData succeeds
-            state.reverseLookup.putIfAbsent(peergosKey, "peergos");
-            state.chains.putIfAbsent("peergos", peergosChain);
-
-            PointerUpdate fresh = p2pMutable.getPointerTarget(peergosKey, peergosKey, ipfs).join();
+            byte[] pkiIdPointer = p2pMutable.getPointer(pkiPeerId, pkiOwnerIdentity, pkiOwnerIdentity).join().get();
+            PointerUpdate fresh = MutablePointers.parsePointerTarget(pkiIdPointer, pkiOwnerIdentity, pkiOwnerIdentity, ipfs).join();
             MaybeMultihash newPeergosRoot = fresh.updated;
 
-            CommittedWriterData currentPeergosWd = WriterData.getWriterData(peergosKey, (Cid)newPeergosRoot.get(), fresh.sequence, ipfs).join();
+            CommittedWriterData currentPeergosWd = IpfsCoreNode.getWriterData(List.of(pkiPeerId), (Cid)newPeergosRoot.get(), fresh.sequence, ipfs).join();
             PublicKeyHash pkiKey = currentPeergosWd.props.namedOwnedKeys.get("pki").ownedKey;
             if (pkiKey == null)
                 throw new IllegalStateException("No pki key on owner: " + pkiOwnerIdentity);
 
-            byte[] newPointer = p2pMutable.getPointer(pkiOwnerIdentity, pkiKey).join().get();
-            MaybeMultihash currentPkiRoot = MutablePointers.parsePointerTarget(newPointer, peergosKey, pkiKey, ipfs).join().updated;
+            byte[] newPointer = p2pMutable.getPointer(pkiPeerId, pkiOwnerIdentity, pkiKey).join().get();
+            MaybeMultihash currentPkiRoot = MutablePointers.parsePointerTarget(newPointer, pkiOwnerIdentity, pkiKey, ipfs).join().updated;
             CorenodeState current = state;
-            if (peergosKey.equals(current.pkiOwnerIdentity) &&
+            if (pkiOwnerIdentity.equals(current.pkiOwnerIdentity) &&
                     newPeergosRoot.equals(current.pkiOwnerTarget) &&
                     pkiKey.equals(current.pkiKey) &&
                     currentPkiRoot.equals(current.pkiKeyTarget))
                 return false;
 
             Logging.LOG().info("Updating pki mirror state... Please wait. This could take a minute or two");
-            CorenodeState updated = CorenodeState.buildEmpty(peergosKey, pkiKey, newPeergosRoot, currentPkiRoot);
+            CorenodeState updated = CorenodeState.buildEmpty(pkiOwnerIdentity, pkiKey, newPeergosRoot, currentPkiRoot);
             updated.load(current);
 
             // first retrieve all new blocks to be local
-            TransactionId tid = transactions.startTransaction(peergosKey);
-            List<Multihash> pkiStorageProviders = getStorageProviders(peergosKey);
+            TransactionId tid = transactions.startTransaction(pkiOwnerIdentity);
+            List<Multihash> pkiStorageProviders = List.of(pkiPeerId);
             MaybeMultihash currentTree = IpfsCoreNode.getTreeRoot(pkiStorageProviders, current.pkiKeyTarget, ipfs);
             MaybeMultihash updatedTree = IpfsCoreNode.getTreeRoot(pkiStorageProviders, currentPkiRoot, ipfs);
             Consumer<Triple<ByteArrayWrapper, Optional<CborObject.CborMerkleLink>, Optional<CborObject.CborMerkleLink>>> consumer =
                     t -> {
                         Optional<CborObject.CborMerkleLink> newVal = t.right;
                         if (newVal.isPresent()) {
-                            transactions.addBlock(newVal.get().target, tid, peergosKey);
+                            transactions.addBlock(newVal.get().target, tid, pkiOwnerIdentity);
                             ipfs.get(pkiStorageProviders, (Cid) newVal.get().target, "").join();
                         }
                     };
@@ -294,7 +290,7 @@ public class MirrorCoreNode implements CoreNode {
             // 'pin' the new pki version
             Optional<byte[]> existingPointer = rawPointers.getPointer(pkiKey).join();
             rawPointers.setPointer(pkiKey, existingPointer, newPointer).join();
-            transactions.closeTransaction(peergosKey, tid);
+            transactions.closeTransaction(pkiOwnerIdentity, tid);
 
             state = updated;
             Logging.LOG().info("... finished updating pki mirror state.");
