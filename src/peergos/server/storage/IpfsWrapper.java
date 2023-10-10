@@ -314,7 +314,7 @@ public class IpfsWrapper implements AutoCloseable {
         DatabaseRecordStore records = new DatabaseRecordStore(datastorePath.toAbsolutePath().toString());
 
         org.peergos.blockstore.metadatadb.BlockMetadataStore meta =
-                new DelegatingBlockMetadataStore(ipfsWrapper.metaDB);
+                new DelegatingBlockMetadataStore(metaDB);
         ipfsWrapper.embeddedIpfs = EmbeddedIpfs.build(records,
                 EmbeddedIpfs.buildBlockStore(config, ipfsWrapper.ipfsDir, meta),
                 config.addresses.getSwarmAddresses(),
