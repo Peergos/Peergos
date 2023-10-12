@@ -1,6 +1,7 @@
 package peergos.server.storage;
 
 import com.sun.net.httpserver.HttpServer;
+import io.ipfs.cid.*;
 import io.libp2p.core.PeerId;
 import io.libp2p.core.crypto.PrivKey;
 import org.peergos.*;
@@ -402,7 +403,7 @@ public class IpfsWrapper implements AutoCloseable {
 
         org.peergos.config.Filter filter = ipfsConfigParams.blockFilter;
 
-        CodecSet codecSet = CodecSet.empty();
+        CodecSet codecSet = new CodecSet(Set.of(Cid.Codec.DagCbor, Cid.Codec.Raw));
         DatastoreSection datastoreSection = new DatastoreSection(blockMount, rootMount, filter, codecSet);
         BootstrapSection bootstrapSection = new BootstrapSection(bootstrapNodes);
         // ipfs metrics are merged with peergos metrics. only need to init once, so set to false here
