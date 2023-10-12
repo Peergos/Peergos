@@ -80,6 +80,15 @@ public class MultiNodeNetworkTests {
 
     private static final List<Args> argsToCleanUp = new ArrayList<>();
 
+    @Before
+    public void beforeTest() {
+        try{
+            Thread.sleep(2000);
+        } catch (InterruptedException ie) {
+            ie.printStackTrace();
+        }
+    }
+
     @AfterClass
     public static void cleanup() {
         try {Thread.sleep(2000);}catch (InterruptedException e) {}
