@@ -167,9 +167,15 @@ public class MultiNodeNetworkTests {
     }
 
     @Test
-    public void migrate() {
+    public void migrateWithZeroPwdChanges() {
         migrate(0);
+    }
+    @Test
+    public void migrateWith1PwdChanges() {
         migrate(1);
+    }
+    @Test
+    public void migrateWith2PwdChanges() {
         migrate(2);
     }
 
