@@ -45,8 +45,14 @@ public class JavaPoster implements HttpPoster {
     }
 
     private CompletableFuture<byte[]> post(String url, byte[] payload, boolean unzip, Map<String, String> headers, int timeoutMillis) {
+        try {
+            Thread.sleep(10);
+        } catch (InterruptedException ie) {
+            ie.printStackTrace();
+        }
         HttpURLConnection conn = null;
         CompletableFuture<byte[]> res = new CompletableFuture<>();
+        long start = System.currentTimeMillis();
         try
         {
             conn = (HttpURLConnection) buildURL(url).openConnection();
@@ -74,6 +80,8 @@ public class JavaPoster implements HttpPoster {
         } catch (SocketTimeoutException e) {
             res.completeExceptionally(new SocketTimeoutException("Socket timeout on: " + url));
         } catch (IOException e) {
+            long end = System.currentTimeMillis();
+            System.err.println("FAILED REQUEST: ELAPSED " + ((end-start)/1000));
             if (conn != null){
                 String trailer = conn.getHeaderField("Trailer");
                 if (trailer != null)
