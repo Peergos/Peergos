@@ -27,18 +27,21 @@ public class GarbageCollector {
     private final JdbcIpnsAndSocial pointers;
     private final UsageStore usage;
     private final BlockMetadataStore metadata;
+    private final boolean listRawFromBlockstore;
 
     public GarbageCollector(DeletableContentAddressedStorage storage,
                             JdbcIpnsAndSocial pointers,
-                            UsageStore usage) {
+                            UsageStore usage,
+                            boolean listRawFromBlockstore) {
         this.storage = storage;
         this.pointers = pointers;
         this.usage = usage;
+        this.listRawFromBlockstore = listRawFromBlockstore;
         this.metadata = storage.getBlockMetadataStore().orElseGet(RamBlockMetadataStore::new);
     }
 
     public synchronized void collect(Function<Stream<Map.Entry<PublicKeyHash, byte[]>>, CompletableFuture<Boolean>> snapshotSaver) {
-        collect(storage, pointers, usage, snapshotSaver, metadata, false);
+        collect(storage, pointers, usage, snapshotSaver, metadata, listRawFromBlockstore);
     }
 
     public void start(long periodMillis, Function<Stream<Map.Entry<PublicKeyHash, byte[]>>, CompletableFuture<Boolean>> snapshotSaver) {

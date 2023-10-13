@@ -555,9 +555,11 @@ public class Main extends Builder {
             boolean enableGC = a.getBoolean("enable-gc", false);
             GarbageCollector gc = null;
             if (enableGC) {
-                gc = new GarbageCollector(localStorage, rawPointers, usageStore);
+                boolean useS3 = S3Config.useS3(a);
+                boolean listRawBlocks = useS3 && a.getBoolean("s3.versioned-bucket");
+                gc = new GarbageCollector(localStorage, rawPointers, usageStore, listRawBlocks);
                 Function<Stream<Map.Entry<PublicKeyHash, byte[]>>, CompletableFuture<Boolean>> snapshotSaver =
-                        S3Config.useS3(a) ?
+                        useS3 ?
                                 ((S3BlockStorage) localStorage)::savePointerSnapshot :
                                 s -> Futures.of(true);
                 int gcInterval = 12 * 60 * 60 * 1000;

@@ -237,7 +237,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
             for (int i=0; i < signedHashes.size(); i++) {
                 Cid.Codec codec = isRaw ? Cid.Codec.Raw : Cid.Codec.DagCbor;
                 if (! isRaw)
-                    throw new IllegalStateException("Only raw blocks can be pre-auther for writes");
+                    throw new IllegalStateException("Only raw blocks can be pre-authed for writes");
                 Cid cid = new Cid(1, codec, Multihash.Type.sha2_256, writer.unsignMessage(signedHashes.get(i)));
                 blockProps.add(new Pair<>(cid, new BlockMetadata(blockSizes.get(i), Collections.emptyList(), batIds.get(i))));
             }
@@ -916,7 +916,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         JdbcIpnsAndSocial rawPointers = new JdbcIpnsAndSocial(database, sqlCommands);
         Supplier<Connection> usageDb = Main.getDBConnector(a, "space-usage-sql-file");
         UsageStore usageStore = new JdbcUsageStore(usageDb, sqlCommands);
-        s3.collectGarbage(rawPointers, usageStore, meta, a.getBoolean("list-from-blockstore", false));
+        s3.collectGarbage(rawPointers, usageStore, meta, a.getBoolean("s3.versioned-bucket"));
     }
 
     @Override
