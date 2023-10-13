@@ -45,11 +45,6 @@ public class JavaPoster implements HttpPoster {
     }
 
     private CompletableFuture<byte[]> post(String url, byte[] payload, boolean unzip, Map<String, String> headers, int timeoutMillis) {
-        try {
-            Thread.sleep(10);
-        } catch (InterruptedException ie) {
-            ie.printStackTrace();
-        }
         HttpURLConnection conn = null;
         CompletableFuture<byte[]> res = new CompletableFuture<>();
         long start = System.currentTimeMillis();
@@ -88,7 +83,18 @@ public class JavaPoster implements HttpPoster {
                     System.err.println("Trailer:" + trailer);
                 else
                     System.err.println(e.getMessage() + " retrieving " + url);
-                res.completeExceptionally(trailer == null ? e : new RuntimeException(trailer));
+                if (e.getMessage().equals("Invalid Http response") && payload.length == 0) {
+                    System.err.println("RETRYING FAILED REQUEST");
+                    post(url, payload, unzip, headers, timeoutMillis).thenApply(resp -> {
+                        res.complete(resp);
+                        return null;
+                    }).exceptionally(ex -> {
+                        res.completeExceptionally(ex);
+                        return null;
+                    });
+                } else {
+                    res.completeExceptionally(trailer == null ? e : new RuntimeException(trailer));
+                }
             } else
                 res.completeExceptionally(e);
         } finally {
