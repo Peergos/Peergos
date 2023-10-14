@@ -110,6 +110,7 @@ public class MultiNodeNetworkTests {
 
     @BeforeClass
     public static void init() throws Exception {
+        System.getProperties().setProperty("io.netty.eventLoopThreads", "1");
         // start pki node
         UserService pki = Main.PKI_INIT.main(args.with("allow-target", "/ip4/127.0.0.1/tcp/8002"));
         PublicKeyHash peergosId = pki.coreNode.getPublicKeyHash("peergos").join().get();
