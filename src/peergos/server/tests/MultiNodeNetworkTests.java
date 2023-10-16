@@ -39,7 +39,7 @@ import static peergos.server.tests.PeergosNetworkUtils.*;
 public class MultiNodeNetworkTests {
     private static Args args = UserTests.buildArgs()
             .with("useIPFS", "true")
-            .with("enable-gc", "false")
+            .with("enable-gc", "true")
             .with(IpfsWrapper.IPFS_BOOTSTRAP_NODES, ""); // no bootstrapping
             /*.with(IpfsWrapper.IPFS_BOOTSTRAP_NODES,
                     org.peergos.config.Config.defaultBootstrapNodes.stream()
