@@ -131,7 +131,7 @@ public class MultiNodeNetworkTests {
             int allowPort = TestPorts.getPort();
             Args normalNode = UserTests.buildArgs()
                     .with("useIPFS", "true")
-                    .with("enable-gc", "false")
+                    .with("enable-gc", "true")
                     .with("port", "" + peergosPort)
                     .with("pki-node-id", pkiNodeId.toString())
                     .with("peergos.identity.hash", peergosId.toString())
