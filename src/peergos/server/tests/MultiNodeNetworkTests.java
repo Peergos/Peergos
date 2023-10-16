@@ -157,12 +157,12 @@ public class MultiNodeNetworkTests {
         return Builder.buildNonCachingJavaNetworkAccess(local, false, 1_000, Optional.empty()).get();
     }
 
-    /*@Before
+    @Before
     public void gc() {
         for (UserService service : services) {
             service.gc.collect(s -> Futures.of(true));
         }
-    }*/
+    }
 
     @Test
     public void signUp() {
