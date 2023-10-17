@@ -230,6 +230,9 @@ public class GarbageCollector {
         }
         if (pendingDeletes.size() > 0) {
             getWithBackoff(() -> {storage.bulkDelete(pendingDeletes); return true;});
+            for (BlockVersion block : pendingDeletes) {
+                metadata.remove(block.cid);
+            }
         }
 
         return new Pair<>(deletedCborBlocks, deletedRawBlocks);
