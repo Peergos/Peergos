@@ -31,12 +31,10 @@ public class DelegatingBlockMetadataStore implements BlockMetadataStore {
 
     @Override
     public void put(Cid block, BlockMetadata meta) {
-        System.currentTimeMillis();
     }
 
     @Override
     public void remove(Cid block) {
-        System.currentTimeMillis();
     }
 
     @Override

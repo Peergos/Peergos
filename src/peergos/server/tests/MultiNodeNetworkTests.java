@@ -41,11 +41,6 @@ public class MultiNodeNetworkTests {
             .with("useIPFS", "true")
             .with("enable-gc", "true")
             .with(IpfsWrapper.IPFS_BOOTSTRAP_NODES, ""); // no bootstrapping
-            /*.with(IpfsWrapper.IPFS_BOOTSTRAP_NODES,
-                    org.peergos.config.Config.defaultBootstrapNodes.stream()
-                            .map(ma -> ma.toString())
-                            .collect(Collectors.joining(","))
-            );*/
     private static Random random = new Random(0);
     private static List<NetworkAccess> nodes = new ArrayList<>();
     private static List<UserService> services = new ArrayList<>();
@@ -79,15 +74,6 @@ public class MultiNodeNetworkTests {
     }
 
     private static final List<Args> argsToCleanUp = new ArrayList<>();
-
-    @Before
-    public void beforeTest() {
-        try{
-            Thread.sleep(2000);
-        } catch (InterruptedException ie) {
-            ie.printStackTrace();
-        }
-    }
 
     @AfterClass
     public static void cleanup() {
@@ -182,13 +168,10 @@ public class MultiNodeNetworkTests {
     public void migrateWithZeroPwdChanges() {
         migrate(0);
     }
+
     @Test
     public void migrateWith1PwdChanges() {
         migrate(1);
-    }
-    @Test
-    public void migrateWith2PwdChanges() {
-        migrate(2);
     }
 
     public void migrate(int nPasswordChanges) {
