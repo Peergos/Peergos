@@ -51,11 +51,10 @@ public class JavaPoster implements HttpPoster {
 
     private CompletableFuture<byte[]> post(String url, byte[] payload, boolean unzip, Map<String, String> headers, int timeoutMillis) {
         CompletableFuture<byte[]> res = new CompletableFuture<>();
-        HttpHeaders responseHeaders = null;
+        HttpResponse<byte[]> response = null;
         try
         {
-            String urlStr = buildURL(url).toString();
-            URI uri = URI.create(urlStr);
+            URI uri = URI.create(buildURL(url).toString());
             HttpClient.Builder builder  = HttpClient.newBuilder()
                     .connectTimeout(Duration.ofMillis(1_000));
             HttpClient client = builder.build();
@@ -75,24 +74,34 @@ public class JavaPoster implements HttpPoster {
                 requestBuilder.setHeader("Authorization", basicAuth.get());
 
             HttpRequest request  = requestBuilder.build();
-            HttpResponse<byte[]> response = client.send(request, HttpResponse.BodyHandlers.ofByteArray());
-            res.complete(response.body());
+            response = client.send(request, HttpResponse.BodyHandlers.ofByteArray());
+            byte[] responseBytes = response.body();
+            if (responseBytes.length == 0 && response.statusCode() != 200) {
+                handleUnexpectedError(url, res, response, new RuntimeException("Unexpected http response. statusCode:" + response.statusCode()));
+            } else {
+                res.complete(responseBytes);
+            }
         } catch (SocketTimeoutException e) {
             res.completeExceptionally(new SocketTimeoutException("Socket timeout on: " + url));
         } catch (InterruptedException ex) {
             res.completeExceptionally(new RuntimeException(ex));
         } catch (IOException e) {
-            if (responseHeaders != null){
-                Optional<String> trailer = responseHeaders.firstValue("Trailer");
-                if (trailer.isPresent())
-                    System.err.println("Trailer:" + trailer);
-                else
-                    System.err.println(e.getMessage() + " retrieving " + url);
-                res.completeExceptionally(trailer.isEmpty() ? e : new RuntimeException(trailer.get()));
-            } else
-                res.completeExceptionally(e);
+            handleUnexpectedError(url, res, response, e);
         }
         return res;
+    }
+
+    private void handleUnexpectedError(String url, CompletableFuture<byte[]> res, HttpResponse<byte[]> response, Exception e) {
+        if (response != null){
+            HttpHeaders responseHeaders = response.headers();
+            Optional<String> trailer = responseHeaders.firstValue("Trailer");
+            if (trailer.isPresent())
+                System.err.println("Trailer:" + trailer);
+            else
+                System.err.println(e.getMessage() + " retrieving " + url);
+            res.completeExceptionally(trailer.isEmpty() ? e : new RuntimeException(trailer.get()));
+        } else
+            res.completeExceptionally(e);
     }
 
     @Override
