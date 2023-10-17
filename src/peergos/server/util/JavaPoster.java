@@ -20,11 +20,15 @@ public class JavaPoster implements HttpPoster {
     private final URL dht;
     private final boolean useGet;
     private final Optional<String> basicAuth;
+    private final HttpClient client;
 
     public JavaPoster(URL dht, boolean isPublicServer, Optional<String> basicAuth) {
         this.dht = dht;
         this.useGet = isPublicServer;
         this.basicAuth = basicAuth;
+        client = HttpClient.newBuilder()
+                .connectTimeout(Duration.ofMillis(1_000))
+                .build();
     }
 
     public JavaPoster(URL dht, boolean isPublicServer) {
@@ -55,11 +59,7 @@ public class JavaPoster implements HttpPoster {
         try
         {
             URI uri = URI.create(buildURL(url).toString());
-            HttpClient.Builder builder  = HttpClient.newBuilder()
-                    .connectTimeout(Duration.ofMillis(1_000));
-            HttpClient client = builder.build();
-            HttpRequest.Builder requestBuilder = HttpRequest.newBuilder()
-                    .uri(uri);
+            HttpRequest.Builder requestBuilder = HttpRequest.newBuilder().uri(uri);
             if (payload.length == 0) {
                 requestBuilder.POST(HttpRequest.BodyPublishers.noBody());
             } else {
