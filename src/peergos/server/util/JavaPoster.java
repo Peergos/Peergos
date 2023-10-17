@@ -6,10 +6,7 @@ import peergos.shared.util.*;
 
 import java.io.*;
 import java.net.*;
-import java.net.http.HttpClient;
-import java.net.http.HttpHeaders;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
+import java.net.http.*;
 import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.*;
@@ -86,7 +83,7 @@ public class JavaPoster implements HttpPoster {
                 din.close();
                 res.complete(resp);
             }
-        } catch (SocketTimeoutException e) {
+        } catch (HttpTimeoutException | SocketTimeoutException e) {
             res.completeExceptionally(new SocketTimeoutException("Socket timeout on: " + url));
         } catch (InterruptedException ex) {
             res.completeExceptionally(new RuntimeException(ex));
