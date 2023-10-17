@@ -28,6 +28,7 @@ public class GarbageCollector {
     private final UsageStore usage;
     private final BlockMetadataStore metadata;
     private final boolean listRawFromBlockstore;
+    private final AtomicBoolean running = new AtomicBoolean(false);
 
     public GarbageCollector(DeletableContentAddressedStorage storage,
                             JdbcIpnsAndSocial pointers,
@@ -44,9 +45,14 @@ public class GarbageCollector {
         collect(storage, pointers, usage, snapshotSaver, metadata, listRawFromBlockstore);
     }
 
+    public void stop() {
+        running.set(false);
+    }
+
     public void start(long periodMillis, Function<Stream<Map.Entry<PublicKeyHash, byte[]>>, CompletableFuture<Boolean>> snapshotSaver) {
+        running.set(true);
         Thread garbageCollector = new Thread(() -> {
-            while (true) {
+            while (running.get()) {
                 try {
                     collect(snapshotSaver);
                 } catch (Exception e) {

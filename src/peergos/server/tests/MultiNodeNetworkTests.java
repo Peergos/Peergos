@@ -119,6 +119,7 @@ public class MultiNodeNetworkTests {
         Multihash pkiNodeId = toPki.dhtClient.id().get();
         nodes.add(toPki);
         services.add(pki);
+        pki.gc.stop();
         int bootstrapSwarmPort = args.getInt("ipfs-swarm-port");
 
         // create two other nodes that use the first as a PKI-node
@@ -145,6 +146,7 @@ public class MultiNodeNetworkTests {
             argsToCleanUp.add(normalNode);
             UserService service = Main.PEERGOS.main(normalNode);
             services.add(service);
+            service.gc.stop();
 
 //            IPFS ipfs = new IPFS(Main.getLocalMultiAddress(ipfsApiPort));
 //            ipfs.swarm.connect(Main.getLocalBootstrapAddress(bootstrapSwarmPort, pkiNodeId).toString());
