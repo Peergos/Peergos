@@ -57,13 +57,15 @@ public class JavaPoster implements HttpPoster {
             String urlStr = buildURL(url).toString();
             URI uri = URI.create(urlStr);
             HttpClient.Builder builder  = HttpClient.newBuilder()
-                    .version(HttpClient.Version.HTTP_1_1)
-                    .followRedirects(HttpClient.Redirect.NORMAL)
                     .connectTimeout(Duration.ofMillis(1_000));
             HttpClient client = builder.build();
             HttpRequest.Builder requestBuilder = HttpRequest.newBuilder()
-                    .uri(uri)
-                    .POST(HttpRequest.BodyPublishers.ofByteArray(payload));
+                    .uri(uri);
+            if (payload.length == 0) {
+                requestBuilder.POST(HttpRequest.BodyPublishers.noBody());
+            } else {
+                requestBuilder.POST(HttpRequest.BodyPublishers.ofByteArray(payload));
+            }
             if (timeoutMillis >= 0)
                 requestBuilder.timeout(Duration.ofMillis(timeoutMillis));
             for (Map.Entry<String, String> e : headers.entrySet()) {
@@ -73,14 +75,8 @@ public class JavaPoster implements HttpPoster {
                 requestBuilder.setHeader("Authorization", basicAuth.get());
 
             HttpRequest request  = requestBuilder.build();
-            HttpResponse<InputStream> response = client.send(request, HttpResponse.BodyHandlers.ofInputStream());
-            responseHeaders = response.headers();
-            Optional<String> contentEncodingOpt = responseHeaders.firstValue("content-encoding");
-            boolean isGzipped = contentEncodingOpt.isPresent() && "gzip".equals(contentEncodingOpt.get());
-            DataInputStream din = new DataInputStream(isGzipped && unzip ? new GZIPInputStream(response.body()) : response.body());
-            byte[] resp = Serialize.readFully(din);
-            din.close();
-            res.complete(resp);
+            HttpResponse<byte[]> response = client.send(request, HttpResponse.BodyHandlers.ofByteArray());
+            res.complete(response.body());
         } catch (SocketTimeoutException e) {
             res.completeExceptionally(new SocketTimeoutException("Socket timeout on: " + url));
         } catch (InterruptedException ex) {
