@@ -6,6 +6,11 @@ import peergos.shared.util.*;
 
 import java.io.*;
 import java.net.*;
+import java.net.http.HttpClient;
+import java.net.http.HttpHeaders;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.zip.*;
@@ -15,11 +20,15 @@ public class JavaPoster implements HttpPoster {
     private final URL dht;
     private final boolean useGet;
     private final Optional<String> basicAuth;
+    private final HttpClient client;
 
     public JavaPoster(URL dht, boolean isPublicServer, Optional<String> basicAuth) {
         this.dht = dht;
         this.useGet = isPublicServer;
         this.basicAuth = basicAuth;
+        client = HttpClient.newBuilder()
+                .connectTimeout(Duration.ofMillis(1_000))
+                .build();
     }
 
     public JavaPoster(URL dht, boolean isPublicServer) {
@@ -45,49 +54,54 @@ public class JavaPoster implements HttpPoster {
     }
 
     private CompletableFuture<byte[]> post(String url, byte[] payload, boolean unzip, Map<String, String> headers, int timeoutMillis) {
-        HttpURLConnection conn = null;
         CompletableFuture<byte[]> res = new CompletableFuture<>();
+        HttpResponse<byte[]> response = null;
         try
         {
-            conn = (HttpURLConnection) buildURL(url).openConnection();
+            URI uri = URI.create(buildURL(url).toString());
+            HttpRequest.Builder requestBuilder = HttpRequest.newBuilder().uri(uri);
+            if (payload.length == 0) {
+                requestBuilder.POST(HttpRequest.BodyPublishers.noBody());
+            } else {
+                requestBuilder.POST(HttpRequest.BodyPublishers.ofByteArray(payload));
+            }
             if (timeoutMillis >= 0)
-                conn.setReadTimeout(timeoutMillis);
-            conn.setConnectTimeout(1_000);
-            conn.setDoInput(true);
-            conn.setDoOutput(true);
+                requestBuilder.timeout(Duration.ofMillis(timeoutMillis));
             for (Map.Entry<String, String> e : headers.entrySet()) {
-                conn.setRequestProperty(e.getKey(), e.getValue());
+                requestBuilder.setHeader(e.getKey(), e.getValue());
             }
             if (basicAuth.isPresent())
-                conn.setRequestProperty("Authorization", basicAuth.get());
-            DataOutputStream dout = new DataOutputStream(conn.getOutputStream());
+                requestBuilder.setHeader("Authorization", basicAuth.get());
 
-            dout.write(payload);
-            dout.flush();
-
-            String contentEncoding = conn.getContentEncoding();
-            boolean isGzipped = "gzip".equals(contentEncoding);
-            DataInputStream din = new DataInputStream(isGzipped && unzip ? new GZIPInputStream(conn.getInputStream()) : conn.getInputStream());
-            byte[] resp = Serialize.readFully(din);
-            din.close();
-            res.complete(resp);
+            HttpRequest request  = requestBuilder.build();
+            response = client.send(request, HttpResponse.BodyHandlers.ofByteArray());
+            byte[] responseBytes = response.body();
+            if (responseBytes.length == 0 && response.statusCode() != 200) {
+                handleUnexpectedError(url, res, response, new RuntimeException("Unexpected http response. statusCode:" + response.statusCode()));
+            } else {
+                res.complete(responseBytes);
+            }
         } catch (SocketTimeoutException e) {
             res.completeExceptionally(new SocketTimeoutException("Socket timeout on: " + url));
+        } catch (InterruptedException ex) {
+            res.completeExceptionally(new RuntimeException(ex));
         } catch (IOException e) {
-            if (conn != null){
-                String trailer = conn.getHeaderField("Trailer");
-                if (trailer != null)
-                    System.err.println("Trailer:" + trailer);
-                else
-                    System.err.println(e.getMessage() + " retrieving " + url);
-                res.completeExceptionally(trailer == null ? e : new RuntimeException(trailer));
-            } else
-                res.completeExceptionally(e);
-        } finally {
-            if (conn != null)
-                conn.disconnect();
+            handleUnexpectedError(url, res, response, e);
         }
         return res;
+    }
+
+    private void handleUnexpectedError(String url, CompletableFuture<byte[]> res, HttpResponse<byte[]> response, Exception e) {
+        if (response != null){
+            HttpHeaders responseHeaders = response.headers();
+            Optional<String> trailer = responseHeaders.firstValue("Trailer");
+            if (trailer.isPresent())
+                System.err.println("Trailer:" + trailer);
+            else
+                System.err.println(e.getMessage() + " retrieving " + url);
+            res.completeExceptionally(trailer.isEmpty() ? e : new RuntimeException(trailer.get()));
+        } else
+            res.completeExceptionally(e);
     }
 
     @Override
