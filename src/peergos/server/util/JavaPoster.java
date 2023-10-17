@@ -55,7 +55,7 @@ public class JavaPoster implements HttpPoster {
 
     private CompletableFuture<byte[]> post(String url, byte[] payload, boolean unzip, Map<String, String> headers, int timeoutMillis) {
         CompletableFuture<byte[]> res = new CompletableFuture<>();
-        HttpResponse<byte[]> response = null;
+        HttpResponse<InputStream> response = null;
         try
         {
             URI uri = URI.create(buildURL(url).toString());
@@ -74,12 +74,17 @@ public class JavaPoster implements HttpPoster {
                 requestBuilder.setHeader("Authorization", basicAuth.get());
 
             HttpRequest request  = requestBuilder.build();
-            response = client.send(request, HttpResponse.BodyHandlers.ofByteArray());
-            byte[] responseBytes = response.body();
-            if (responseBytes.length == 0 && response.statusCode() != 200) {
+            response = client.send(request, HttpResponse.BodyHandlers.ofInputStream());
+            if (response.statusCode() != 200) {
                 handleUnexpectedError(url, res, response, new RuntimeException("Unexpected http response. statusCode:" + response.statusCode()));
             } else {
-                res.complete(responseBytes);
+                HttpHeaders responseHeaders = response.headers();
+                Optional<String> contentEncodingOpt = responseHeaders.firstValue("content-encoding");
+                boolean isGzipped = contentEncodingOpt.isPresent() && "gzip".equals(contentEncodingOpt.get());
+                DataInputStream din = new DataInputStream(isGzipped && unzip ? new GZIPInputStream(response.body()) : response.body());
+                byte[] resp = Serialize.readFully(din);
+                din.close();
+                res.complete(resp);
             }
         } catch (SocketTimeoutException e) {
             res.completeExceptionally(new SocketTimeoutException("Socket timeout on: " + url));
@@ -91,7 +96,7 @@ public class JavaPoster implements HttpPoster {
         return res;
     }
 
-    private void handleUnexpectedError(String url, CompletableFuture<byte[]> res, HttpResponse<byte[]> response, Exception e) {
+    private void handleUnexpectedError(String url, CompletableFuture<byte[]> res, HttpResponse<InputStream> response, Exception e) {
         if (response != null){
             HttpHeaders responseHeaders = response.headers();
             Optional<String> trailer = responseHeaders.firstValue("Trailer");
