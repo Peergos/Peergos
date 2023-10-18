@@ -915,7 +915,7 @@ public class Main extends Builder {
 
     public static void main(String[] args) {
         // Netty uses thread count twice the number of CPUs, this undoes that
-        System.getProperties().setProperty("io.netty.eventLoopThreads", "1");
+        System.getProperties().setProperty("io.netty.eventLoopThreads", "2");
         try {
             MAIN.main(Args.parse(args));
         } catch (Throwable e) {
