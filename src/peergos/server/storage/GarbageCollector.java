@@ -79,7 +79,8 @@ public class GarbageCollector {
         Map<Cid, BlockVersion> deduped = (listFromBlockstore ?
                 storage.getAllBlockHashVersions() :
                 Stream.concat(storage.getAllRawBlockVersions(), metadata.listCbor()))
-                .collect(Collectors.toMap(v -> v.cid, v -> v));
+                .collect(Collectors.toMap(v -> v.cid, v -> v,
+                        (a, b) -> a.isLatest ? a : b.isLatest ? b : a.version.isEmpty() ? b : a));
         return new ArrayList<>(deduped.values());
     }
 
