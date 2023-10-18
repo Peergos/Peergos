@@ -290,7 +290,6 @@ public class IpfsWrapper implements AutoCloseable {
 
         Path ipfsDir = getIpfsDir(args);
         LOG.info("Using IPFS dir " + ipfsDir);
-        org.peergos.util.Logging.init(ipfsDir, args.getBoolean("log-to-console", false));
 
         IpfsConfigParams ipfsConfigParams = buildConfig(args);
         BlockMetadataStore metaDB = Builder.buildBlockMetadata(args);
