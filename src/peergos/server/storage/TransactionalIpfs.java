@@ -37,6 +37,11 @@ public class TransactionalIpfs extends DelegatingStorage implements DeletableCon
     }
 
     @Override
+    public CompletableFuture<Cid> id() {
+        return Futures.of(id);
+    }
+
+    @Override
     public void setPki(CoreNode pki) {
         this.pki = pki;
     }
