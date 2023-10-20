@@ -2,7 +2,7 @@ package peergos.server.storage.auth;
 
 import com.sun.net.httpserver.*;
 import peergos.server.util.*;
-import peergos.shared.io.ipfs.cid.*;
+import peergos.shared.io.ipfs.Cid;
 import peergos.shared.storage.*;
 import peergos.shared.util.*;
 
@@ -23,8 +23,12 @@ public class BlockAuthServer {
                                      int handlerPoolSize) throws IOException {
         HttpServer localhostServer = HttpServer.create(listen, connectionBacklog);
         localhostServer.createContext("/", ex -> handle(ex, author));
-        localhostServer.setExecutor(Executors.newFixedThreadPool(handlerPoolSize));
+        localhostServer.setExecutor(Threads.newPool(handlerPoolSize, "Block-auth-handler-"));
         localhostServer.start();
+        Thread shutdownHook = new Thread(() -> {
+            localhostServer.stop(0);
+        });
+        Runtime.getRuntime().addShutdownHook(shutdownHook);
     }
 
     public static void handle(HttpExchange httpExchange, BlockRequestAuthoriser author) {
@@ -33,10 +37,7 @@ public class BlockAuthServer {
             Map<String, List<String>> params = HttpUtil.parseQuery(httpExchange.getRequestURI().getQuery());
             Function<String, String> last = key -> params.get(key).get(params.get(key).size() - 1);
 
-            Cid host = Cid.decodePeerId(httpExchange.getRequestHeaders().getFirst("Host"));
             Cid source = Cid.decodePeerId(last.apply("peer"));
-            if (!host.equals(source))
-                throw new IllegalStateException("Host doesn't match!");
             String auth = last.apply("auth");
             Cid cid = Cid.decode(last.apply("cid"));
             byte[] block = Serialize.readFully(httpExchange.getRequestBody());

@@ -1,11 +1,12 @@
 package peergos.server;
 
+import peergos.server.storage.*;
 import peergos.shared.*;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.hamt.*;
-import peergos.shared.io.ipfs.cid.*;
+import peergos.shared.io.ipfs.*;
 import peergos.shared.mutable.*;
 import peergos.shared.storage.*;
 import peergos.shared.storage.auth.*;
@@ -39,7 +40,9 @@ public class UserCleanup {
         Hasher hasher = c.crypto.hasher;
         PublicKeyHash owner = c.signer.publicKeyHash;
         FileWrapper root = c.getUserRoot().join();
-        Set<PublicKeyHash> writers = WriterData.getOwnedKeysRecursive(owner, owner, mutable, storage, hasher).join()
+        List<Multihash> hosts = c.network.coreNode.getStorageProviders(owner);
+        Set<PublicKeyHash> writers = DeletableContentAddressedStorage.getOwnedKeysRecursive(owner, owner, mutable,
+                        (h, s) -> ContentAddressedStorage.getWriterData(owner, h, s, storage), storage, hasher).join()
                 .stream()
                 .filter(w ->  !w.equals(owner))
                 .collect(Collectors.toSet());
@@ -51,7 +54,8 @@ public class UserCleanup {
 
         Map<PublicKeyHash, PublicKeyHash> toParent = new HashMap<>();
         for (PublicKeyHash writer : writers) {
-            Set<PublicKeyHash> owned = WriterData.getDirectOwnedKeys(owner, writer, mutable, storage, hasher).join();
+            Set<PublicKeyHash> owned = DeletableContentAddressedStorage.getDirectOwnedKeys(owner, writer, mutable,
+                    (h, s) -> ContentAddressedStorage.getWriterData(owner, h, s, storage), storage, hasher).join();
             for (PublicKeyHash child : owned) {
                 toParent.put(child, writer);
             }
@@ -152,7 +156,8 @@ public class UserCleanup {
         PublicKeyHash owner = c.signer.publicKeyHash;
         long serverCalculatedUsage = c.getSpaceUsage().join();
         Optional<BatWithId> mirror = c.getMirrorBat().join();
-        Set<PublicKeyHash> writers = WriterData.getOwnedKeysRecursive(owner, owner, c.network.mutable, c.network.dhtClient, c.crypto.hasher).join();
+        Set<PublicKeyHash> writers = DeletableContentAddressedStorage.getOwnedKeysRecursive(owner, owner, c.network.mutable,
+                (h, s) -> ContentAddressedStorage.getWriterData(owner, h, s, c.network.dhtClient), c.network.dhtClient, c.crypto.hasher).join();
         checkRawUsage(owner, writers, mirror, serverCalculatedUsage, c.network.dhtClient, c.network.mutable);
     }
 

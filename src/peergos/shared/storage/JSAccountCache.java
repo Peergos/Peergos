@@ -2,7 +2,6 @@ package peergos.shared.storage;
 
 import peergos.shared.cbor.CborObject;
 import peergos.shared.crypto.asymmetric.PublicSigningKey;
-import peergos.shared.io.ipfs.multibase.Multibase;
 import peergos.shared.login.LoginCache;
 import peergos.shared.user.LoginData;
 import peergos.shared.user.NativeJSAccountCache;

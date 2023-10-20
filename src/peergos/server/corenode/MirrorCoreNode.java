@@ -12,8 +12,8 @@ import peergos.shared.corenode.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.hamt.*;
-import peergos.shared.io.ipfs.cid.*;
-import peergos.shared.io.ipfs.multihash.*;
+import peergos.shared.io.ipfs.Cid;
+import peergos.shared.io.ipfs.Multihash;
 import peergos.shared.mutable.*;
 import peergos.shared.social.*;
 import peergos.shared.storage.*;
@@ -45,7 +45,7 @@ public class MirrorCoreNode implements CoreNode {
     private final JdbcIpnsAndSocial localSocial;
     private final UsageStore usageStore;
     private final PublicKeyHash pkiOwnerIdentity;
-    private final Multihash ourNodeId;
+    private final Multihash ourNodeId, pkiPeerId;
     private final Hasher hasher;
 
     private volatile CorenodeState state;
@@ -63,6 +63,7 @@ public class MirrorCoreNode implements CoreNode {
                           TransactionStore transactions,
                           JdbcIpnsAndSocial localSocial,
                           UsageStore usageStore,
+                          Multihash pkiPeerId,
                           PublicKeyHash pkiOwnerIdentity,
                           Path statePath,
                           Hasher hasher) {
@@ -77,6 +78,7 @@ public class MirrorCoreNode implements CoreNode {
         this.transactions = transactions;
         this.localSocial = localSocial;
         this.usageStore = usageStore;
+        this.pkiPeerId = pkiPeerId;
         this.pkiOwnerIdentity = pkiOwnerIdentity;
         this.statePath = statePath;
         this.ourNodeId = ipfs.id().join();
@@ -84,10 +86,14 @@ public class MirrorCoreNode implements CoreNode {
         try {
             this.state = load(statePath, pkiOwnerIdentity);
         } catch (IOException e) {
-            e.printStackTrace();
+            Logging.LOG().info("No previous pki state file present");
             // load empty
             this.state = CorenodeState.buildEmpty(pkiOwnerIdentity, pkiOwnerIdentity, MaybeMultihash.empty(), MaybeMultihash.empty());
         }
+    }
+
+    @Override
+    public void initialize() {
         try {
             boolean changed = update();
             if (changed)
@@ -238,53 +244,53 @@ public class MirrorCoreNode implements CoreNode {
      */
     private synchronized boolean update() {
         try {
-            PublicKeyHash peergosKey = writeTarget.getPublicKeyHash("peergos").join().get();
-
-            PointerUpdate fresh = p2pMutable.getPointerTarget(peergosKey, peergosKey, ipfs).join();
+            byte[] pkiIdPointer = p2pMutable.getPointer(pkiPeerId, pkiOwnerIdentity, pkiOwnerIdentity).join().get();
+            PointerUpdate fresh = MutablePointers.parsePointerTarget(pkiIdPointer, pkiOwnerIdentity, pkiOwnerIdentity, ipfs).join();
             MaybeMultihash newPeergosRoot = fresh.updated;
 
-            CommittedWriterData currentPeergosWd = WriterData.getWriterData(peergosKey, (Cid)newPeergosRoot.get(), fresh.sequence, ipfs).join();
+            CommittedWriterData currentPeergosWd = IpfsCoreNode.getWriterData(List.of(pkiPeerId), (Cid)newPeergosRoot.get(), fresh.sequence, ipfs).join();
             PublicKeyHash pkiKey = currentPeergosWd.props.namedOwnedKeys.get("pki").ownedKey;
             if (pkiKey == null)
                 throw new IllegalStateException("No pki key on owner: " + pkiOwnerIdentity);
 
-            byte[] newPointer = p2pMutable.getPointer(pkiOwnerIdentity, pkiKey).join().get();
-            MaybeMultihash currentPkiRoot = MutablePointers.parsePointerTarget(newPointer, peergosKey, pkiKey, ipfs).join().updated;
+            byte[] newPointer = p2pMutable.getPointer(pkiPeerId, pkiOwnerIdentity, pkiKey).join().get();
+            MaybeMultihash currentPkiRoot = MutablePointers.parsePointerTarget(newPointer, pkiOwnerIdentity, pkiKey, ipfs).join().updated;
             CorenodeState current = state;
-            if (peergosKey.equals(current.pkiOwnerIdentity) &&
+            if (pkiOwnerIdentity.equals(current.pkiOwnerIdentity) &&
                     newPeergosRoot.equals(current.pkiOwnerTarget) &&
                     pkiKey.equals(current.pkiKey) &&
                     currentPkiRoot.equals(current.pkiKeyTarget))
                 return false;
 
             Logging.LOG().info("Updating pki mirror state... Please wait. This could take a minute or two");
-            CorenodeState updated = CorenodeState.buildEmpty(peergosKey, pkiKey, newPeergosRoot, currentPkiRoot);
+            CorenodeState updated = CorenodeState.buildEmpty(pkiOwnerIdentity, pkiKey, newPeergosRoot, currentPkiRoot);
             updated.load(current);
 
             // first retrieve all new blocks to be local
-            TransactionId tid = transactions.startTransaction(peergosKey);
-            MaybeMultihash currentTree = IpfsCoreNode.getTreeRoot(peergosKey, current.pkiKeyTarget, ipfs);
-            MaybeMultihash updatedTree = IpfsCoreNode.getTreeRoot(peergosKey, currentPkiRoot, ipfs);
+            TransactionId tid = transactions.startTransaction(pkiOwnerIdentity);
+            List<Multihash> pkiStorageProviders = List.of(pkiPeerId);
+            MaybeMultihash currentTree = IpfsCoreNode.getTreeRoot(pkiStorageProviders, current.pkiKeyTarget, ipfs);
+            MaybeMultihash updatedTree = IpfsCoreNode.getTreeRoot(pkiStorageProviders, currentPkiRoot, ipfs);
             Consumer<Triple<ByteArrayWrapper, Optional<CborObject.CborMerkleLink>, Optional<CborObject.CborMerkleLink>>> consumer =
                     t -> {
                         Optional<CborObject.CborMerkleLink> newVal = t.right;
                         if (newVal.isPresent()) {
-                            transactions.addBlock(newVal.get().target, tid, peergosKey);
-                            ipfs.get(peergosKey, (Cid) newVal.get().target, Optional.empty()).join();
+                            transactions.addBlock(newVal.get().target, tid, pkiOwnerIdentity);
+                            ipfs.get(pkiStorageProviders, (Cid) newVal.get().target, "").join();
                         }
                     };
-            Champ.applyToDiff(peergosKey, currentTree, updatedTree, 0, IpfsCoreNode::keyHash,
+            IpfsCoreNode.applyToDiff(pkiStorageProviders, currentTree, updatedTree, 0, IpfsCoreNode::keyHash,
                     Collections.emptyList(), Collections.emptyList(),
                     consumer, ChampWrapper.BIT_WIDTH, ipfs, c -> (CborObject.CborMerkleLink)c).get();
 
             // now update the mappings
-            IpfsCoreNode.updateAllMappings(pkiKey, current.pkiKeyTarget, currentPkiRoot, ipfs, updated.chains,
+            IpfsCoreNode.updateAllMappings(pkiStorageProviders, current.pkiKeyTarget, currentPkiRoot, ipfs, updated.chains,
                     updated.reverseLookup, updated.usernames);
 
             // 'pin' the new pki version
             Optional<byte[]> existingPointer = rawPointers.getPointer(pkiKey).join();
             rawPointers.setPointer(pkiKey, existingPointer, newPointer).join();
-            transactions.closeTransaction(peergosKey, tid);
+            transactions.closeTransaction(pkiOwnerIdentity, tid);
 
             state = updated;
             Logging.LOG().info("... finished updating pki mirror state.");
@@ -329,8 +335,12 @@ public class MirrorCoreNode implements CoreNode {
                                                                    ProofOfWork proof) {
         usageStore.addUserIfAbsent(username);
         usageStore.addWriter(username, chain.owner);
+        long t0 = System.currentTimeMillis();
         IpfsCoreNode.applyOpLog(username, chain.owner, setupOperations, ipfs, localPointers, account, batCave);
+        long t1 = System.currentTimeMillis();
         writeTarget.completePaidSignup(username, chain, setupOperations, signedSpaceRequest, proof).join();
+        long t2 = System.currentTimeMillis();
+        LOG.info("Complete Paid signup timing - oplog: " + (t1-t0) + "ms, pki confirmation: " + (t2-t1) + "ms");
         new Thread(() -> {
             try {
                 update();
@@ -375,6 +385,49 @@ public class MirrorCoreNode implements CoreNode {
                 in.login);
     }
 
+    public static CompletableFuture<Map<PublicKeyHash, byte[]>> getUserSnapshotRecursive(List<Multihash> peerIds,
+                                                                                         PublicKeyHash owner,
+                                                                                         PublicKeyHash writer,
+                                                                                         Map<PublicKeyHash, byte[]> alreadyDone,
+                                                                                         MutablePointers mutable,
+                                                                                         DeletableContentAddressedStorage ipfs,
+                                                                                         Hasher hasher) {
+        return DeletableContentAddressedStorage.getDirectOwnedKeys(owner, writer, mutable,
+                        (h, s) -> DeletableContentAddressedStorage.getWriterData(peerIds, h, s, ipfs), ipfs, hasher)
+                .thenCompose(directOwned -> {
+                    Set<PublicKeyHash> newKeys = directOwned.stream().
+                            filter(h -> ! alreadyDone.containsKey(h))
+                            .collect(Collectors.toSet());
+                    Map<PublicKeyHash, byte[]> done = new HashMap<>(alreadyDone);
+                    return mutable.getPointer(owner, writer).thenCompose(val -> {
+                        if (val.isPresent())
+                            done.put(writer, val.get());
+                        BiFunction<Map<PublicKeyHash, byte[]>, PublicKeyHash,
+                                CompletableFuture<Map<PublicKeyHash, byte[]>>> composer =
+                                (a, w) -> getUserSnapshotRecursive(peerIds, owner, w, a, mutable, ipfs, hasher)
+                                        .thenApply(ws ->
+                                                Stream.concat(
+                                                                ws.entrySet().stream().filter(e -> ! a.containsKey(e.getKey())),
+                                                                a.entrySet().stream())
+                                                        .collect(Collectors.toMap(e -> e.getKey(), e -> e.getValue())));
+                        return Futures.reduceAll(newKeys, done,
+                                composer,
+                                (a, b) -> Stream.concat(
+                                                a.entrySet().stream().filter(e -> ! b.containsKey(e.getKey())),
+                                                b.entrySet().stream())
+                                        .collect(Collectors.toMap(e -> e.getKey(), e -> e.getValue())));
+                    });
+                });
+    }
+
+    public static CompletableFuture<Map<PublicKeyHash, byte[]>> getUserSnapshot(PublicKeyHash owner,
+                                                                                List<Multihash> peerIds,
+                                                                                MutablePointers mutable,
+                                                                                DeletableContentAddressedStorage dht,
+                                                                                Hasher hasher) {
+        return getUserSnapshotRecursive(peerIds, owner, owner, Collections.emptyMap(), mutable, dht, hasher);
+    }
+
     @Override
     public CompletableFuture<UserSnapshot> migrateUser(String username,
                                                        List<UserPublicKeyLink> newChain,
@@ -394,7 +447,7 @@ public class MirrorCoreNode implements CoreNode {
             // a user is migrating away from this server
             ProofOfWork work = ProofOfWork.empty();
 
-            UserSnapshot snapshot = WriterData.getUserSnapshot(username, this, p2pMutable, ipfs, hasher)
+            UserSnapshot snapshot = getUserSnapshot(owner, currentLast.claim.storageProviders, p2pMutable, ipfs, hasher)
                     .thenApply(pointers -> new UserSnapshot(pointers,
                             localSocial.getAndParseFollowRequests(owner),
                             batCave.getUserBats(username, new byte[0]).join(),
@@ -416,6 +469,7 @@ public class MirrorCoreNode implements CoreNode {
                 if (! localMirrorBats.contains(bat))
                     batCave.addBat(username, bat.id(), bat.bat, new byte[0]);
             }
+            List<Multihash> storageProviders = getStorageProviders(owner);
             // Mirror all the data locally
             Mirror.mirrorUser(username, Optional.empty(), mirrorBat, this, p2pMutable, null, ipfs, rawPointers, rawAccount, transactions, hasher);
             Map<PublicKeyHash, byte[]> mirrored = Mirror.mirrorUser(username, Optional.empty(), mirrorBat, this, p2pMutable,
@@ -435,7 +489,7 @@ public class MirrorCoreNode implements CoreNode {
             for (Map.Entry<PublicKeyHash, byte[]> e : res.pointerState.entrySet()) {
                 byte[] existingVal = mirrored.get(e.getKey());
                 if (! Arrays.equals(existingVal, e.getValue())) {
-                    Mirror.mirrorMerkleTree(owner, e.getKey(), e.getValue(), mirrorBat, ipfs, rawPointers, transactions, hasher);
+                    Mirror.mirrorMerkleTree(owner, e.getKey(), storageProviders, e.getValue(), mirrorBat, ipfs, rawPointers, transactions, hasher);
                 }
             }
 

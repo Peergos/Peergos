@@ -2,9 +2,10 @@ package peergos.server.storage;
 
 import peergos.server.storage.auth.*;
 import peergos.shared.cbor.*;
+import peergos.shared.corenode.*;
 import peergos.shared.crypto.hash.*;
-import peergos.shared.io.ipfs.cid.*;
-import peergos.shared.io.ipfs.multihash.*;
+import peergos.shared.io.ipfs.Cid;
+import peergos.shared.io.ipfs.Multihash;
 import peergos.shared.storage.*;
 import peergos.shared.storage.auth.*;
 import peergos.shared.util.*;
@@ -20,6 +21,7 @@ public class TransactionalIpfs extends DelegatingStorage implements DeletableCon
     private final BlockRequestAuthoriser authoriser;
     private final Cid id;
     private final Hasher hasher;
+    private CoreNode pki;
 
     public TransactionalIpfs(DeletableContentAddressedStorage target,
                              TransactionStore transactions,
@@ -32,6 +34,16 @@ public class TransactionalIpfs extends DelegatingStorage implements DeletableCon
         this.authoriser = authoriser;
         this.id = id;
         this.hasher = hasher;
+    }
+
+    @Override
+    public CompletableFuture<Cid> id() {
+        return Futures.of(id);
+    }
+
+    @Override
+    public void setPki(CoreNode pki) {
+        this.pki = pki;
     }
 
     @Override
@@ -51,28 +63,29 @@ public class TransactionalIpfs extends DelegatingStorage implements DeletableCon
     }
 
     @Override
-    public CompletableFuture<Optional<CborObject>> get(PublicKeyHash owner, Cid object, Optional<BatWithId> bat) {
-        return get(object, bat, id, hasher);
+    public CompletableFuture<Optional<CborObject>> get(PublicKeyHash owner, Cid hash, Optional<BatWithId> bat) {
+        List<Multihash> providers = hasBlock(hash) ? Collections.emptyList() : pki.getStorageProviders(owner);
+        return get(providers, hash, bat, id, hasher);
     }
 
     @Override
-    public CompletableFuture<Optional<CborObject>> get(Cid hash, String auth) {
-        return getRaw(hash, auth).thenApply(bopt -> bopt.map(CborObject::fromByteArray));
+    public CompletableFuture<Optional<CborObject>> get(List<Multihash> peerIds, Cid hash, String auth) {
+        return getRaw(peerIds, hash, auth).thenApply(bopt -> bopt.map(CborObject::fromByteArray));
     }
 
     @Override
     public CompletableFuture<Optional<byte[]>> getRaw(PublicKeyHash owner, Cid hash, Optional<BatWithId> bat) {
-        return getRaw(hash, bat, id, hasher);
+        return getRaw(pki.getStorageProviders(owner), hash, bat, id, hasher);
     }
 
     @Override
-    public CompletableFuture<Optional<byte[]>> getRaw(Cid hash, String auth) {
-        return getRaw(hash, auth, true);
+    public CompletableFuture<Optional<byte[]>> getRaw(List<Multihash> peerIds, Cid hash, String auth) {
+        return getRaw(peerIds, hash, auth, true);
     }
 
     @Override
-    public CompletableFuture<Optional<byte[]>> getRaw(Cid hash, String auth, boolean doAuth) {
-        return target.getRaw(hash, auth).thenApply(bopt -> {
+    public CompletableFuture<Optional<byte[]>> getRaw(List<Multihash> peerIds, Cid hash, String auth, boolean doAuth) {
+        return target.getRaw(peerIds, hash, auth).thenApply(bopt -> {
             if (bopt.isEmpty())
                 return Optional.empty();
             byte[] block = bopt.get();
@@ -88,10 +101,10 @@ public class TransactionalIpfs extends DelegatingStorage implements DeletableCon
     }
 
     @Override
-    public CompletableFuture<List<Cid>> getLinks(Cid root, String auth) {
+    public CompletableFuture<List<Cid>> getLinks(Cid root) {
         if (root.isRaw())
             return CompletableFuture.completedFuture(Collections.emptyList());
-        return getRaw(root, auth, false)
+        return getRaw(Collections.emptyList(), root, "", false)
                 .thenApply(opt -> opt.map(CborObject::fromByteArray))
                 .thenApply(opt -> opt
                         .map(cbor -> cbor.links().stream().map(c -> (Cid) c).collect(Collectors.toList()))
@@ -100,8 +113,8 @@ public class TransactionalIpfs extends DelegatingStorage implements DeletableCon
     }
 
     @Override
-    public CompletableFuture<BlockMetadata> getBlockMetadata(Cid block, String auth) {
-        return getRaw(block, auth, false)
+    public CompletableFuture<BlockMetadata> getBlockMetadata(Cid block) {
+        return getRaw(Collections.emptyList(), block, "", false)
                 .thenApply(data -> BlockMetadataStore.extractMetadata(block, data.get()));
     }
 

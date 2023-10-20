@@ -6,14 +6,12 @@ import org.junit.runners.*;
 import peergos.server.*;
 import peergos.server.sql.*;
 import peergos.server.storage.*;
-import peergos.server.util.*;
 import peergos.shared.crypto.hash.*;
-import peergos.shared.io.ipfs.cid.*;
-import peergos.shared.io.ipfs.multihash.*;
+import peergos.shared.io.ipfs.Cid;
+import peergos.shared.io.ipfs.Multihash;
 import peergos.shared.storage.*;
 
 import java.security.*;
-import java.sql.*;
 import java.util.*;
 
 @RunWith(Parameterized.class)

@@ -22,9 +22,9 @@ import peergos.shared.crypto.asymmetric.curve25519.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.crypto.password.*;
 import peergos.shared.crypto.symmetric.*;
-import peergos.shared.io.ipfs.cid.*;
-import peergos.shared.io.ipfs.multiaddr.*;
-import peergos.shared.io.ipfs.multihash.*;
+import peergos.shared.io.ipfs.Cid;
+import peergos.shared.io.ipfs.MultiAddress;
+import peergos.shared.io.ipfs.Multihash;
 import peergos.shared.mutable.*;
 import peergos.shared.storage.*;
 import peergos.shared.storage.auth.*;
@@ -204,6 +204,7 @@ public class Builder {
     }
 
     public static DeletableContentAddressedStorage buildLocalStorage(Args a,
+                                                                     BlockMetadataStore meta,
                                                                      TransactionStore transactions,
                                                                      BlockRequestAuthoriser authoriser,
                                                                      Hasher hasher) throws SQLException {
@@ -211,7 +212,6 @@ public class Builder {
         boolean enableGC = a.getBoolean("enable-gc", false);
         boolean useS3 = S3Config.useS3(a);
         JavaPoster ipfsApi = buildIpfsApi(a);
-        BlockMetadataStore meta = buildBlockMetadata(a);
         if (useIPFS) {
             DeletableContentAddressedStorage.HTTP ipfs = new DeletableContentAddressedStorage.HTTP(ipfsApi, false, hasher);
             if (useS3) {
@@ -311,7 +311,7 @@ public class Builder {
         return new HttpQuotaAdmin(poster);
     }
 
-    public static CoreNode buildPkiCorenode(MutablePointers mutable, Account account, BatCave batCave, ContentAddressedStorage dht, Args a) {
+    public static CoreNode buildPkiCorenode(MutablePointers mutable, Account account, BatCave batCave, DeletableContentAddressedStorage dht, Args a) {
         try {
             Crypto crypto = initCrypto();
             PublicKeyHash peergosIdentity = PublicKeyHash.fromString(a.getArg("peergos.identity.hash"));
@@ -332,21 +332,10 @@ public class Builder {
             SigningKeyPair pkiKeys = new SigningKeyPair(pkiPublic, pkiSecretKey);
             PublicKeyHash pkiPublicHash = ContentAddressedStorage.hashKey(pkiKeys.publicSigningKey);
 
-            PointerUpdate currentPkiPointer = mutable.getPointerTarget(peergosIdentity, pkiPublicHash, dht).join();
-            Optional<Long> currentPkiSequence = currentPkiPointer.sequence;
-            MaybeMultihash currentPkiRoot = currentPkiPointer.updated;
             SigningPrivateKeyAndPublicHash pkiSigner = new SigningPrivateKeyAndPublicHash(pkiPublicHash, pkiSecretKey);
-            if (! currentPkiRoot.isPresent()) {
-                CommittedWriterData committed = IpfsTransaction.call(peergosIdentity,
-                        tid -> WriterData.createEmpty(peergosIdentity, pkiSigner, dht, crypto.hasher, tid).join()
-                                .commit(peergosIdentity, pkiSigner, MaybeMultihash.empty(), Optional.empty(), mutable, dht, crypto.hasher, tid)
-                                .thenApply(version -> version.get(pkiSigner)), dht).join();
-                currentPkiRoot = committed.hash;
-                currentPkiSequence = committed.sequence;
-            }
 
-            return new IpfsCoreNode(pkiSigner, a.getInt("max-daily-signups"), currentPkiRoot, currentPkiSequence,
-                    dht, crypto.hasher, mutable, account, batCave, peergosIdentity);
+            return new IpfsCoreNode(pkiSigner, a.getInt("max-daily-signups"), dht, crypto.hasher, mutable,
+                    account, batCave, peergosIdentity);
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
@@ -376,7 +365,7 @@ public class Builder {
         return isPkiNode ?
                 buildPkiCorenode(localPointers, account, bats, localStorage, a) :
                 new MirrorCoreNode(new HTTPCoreNode(buildP2pHttpProxy(a), pkiServerId), rawAccount, bats, account, proxingMutable,
-                        localStorage, rawPointers, localPointers, transactions, localSocial, usageStore, peergosId,
+                        localStorage, rawPointers, localPointers, transactions, localSocial, usageStore, pkiServerId, peergosId,
                         a.fromPeergosDir("pki-mirror-state-path","pki-state.cbor"), hasher);
     }
 

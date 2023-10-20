@@ -1,9 +1,12 @@
 package peergos.server;
 import java.util.logging.*;
+
+import peergos.server.storage.*;
 import peergos.server.util.Logging;
 
 import peergos.shared.*;
 import peergos.shared.crypto.hash.*;
+import peergos.shared.storage.*;
 import peergos.shared.user.*;
 
 import java.io.*;
@@ -39,8 +42,9 @@ public class Playground {
                                    UserContext context,
                                    NetworkAccess network) throws Exception {
         // Do something dangerous (you only live once)
-        Set<PublicKeyHash> ownedKeys = WriterData.getOwnedKeysRecursive(username, network.coreNode,
-                network.mutable, network.dhtClient, network.hasher).join();
+        Set<PublicKeyHash> ownedKeys = DeletableContentAddressedStorage.getOwnedKeysRecursive(username, network.coreNode,
+                network.mutable, (h, s) -> ContentAddressedStorage.getWriterData(context.signer.publicKeyHash, h, s, network.dhtClient),
+                network.dhtClient, network.hasher).join();
         for (PublicKeyHash ownedKey : ownedKeys) {
             if (ownedKey.equals(context.signer.publicKeyHash))
                 continue; // only the writer has a tree

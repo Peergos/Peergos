@@ -2,7 +2,7 @@ package peergos.server.storage.auth;
 
 import peergos.server.util.*;
 import peergos.shared.crypto.hash.*;
-import peergos.shared.io.ipfs.cid.*;
+import peergos.shared.io.ipfs.Cid;
 import peergos.shared.storage.auth.*;
 import peergos.shared.util.*;
 
@@ -80,7 +80,7 @@ public interface BlockRequestAuthoriser {
                 Collections.emptyMap(), Collections.emptyMap(), auth.batId.toBase58(), "eu-central-1", auth.awsDatetime);
         LocalDateTime timestamp = auth.timestamp();
         LocalDateTime expiry = timestamp.plusSeconds(auth.expirySeconds);
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime now = LocalDateTime.now(ZoneOffset.UTC);
         if (expiry.isBefore(now))
             return false;
         String signature = S3Request.computeSignature(req, bat.encodeSecret(), h).join();

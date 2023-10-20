@@ -1,8 +1,8 @@
 package peergos.server.storage;
 
 import peergos.server.util.Logging;
-import peergos.shared.io.ipfs.cid.*;
-import peergos.shared.io.ipfs.multihash.*;
+import peergos.shared.io.ipfs.Cid;
+import peergos.shared.io.ipfs.Multihash;
 import peergos.shared.storage.*;
 import peergos.shared.util.*;
 

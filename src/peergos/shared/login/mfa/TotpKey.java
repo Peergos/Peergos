@@ -2,7 +2,7 @@ package peergos.shared.login.mfa;
 
 import jsinterop.annotations.JsType;
 import peergos.shared.fingerprint.FingerPrint;
-import peergos.shared.io.ipfs.multibase.binary.*;
+import peergos.shared.io.ipfs.bases.Base32;
 import peergos.shared.zxing.BarcodeFormat;
 import peergos.shared.zxing.common.BitMatrix;
 import peergos.shared.zxing.qrcode.QRCodeWriter;

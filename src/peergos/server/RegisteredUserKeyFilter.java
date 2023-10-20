@@ -1,5 +1,6 @@
 package peergos.server;
 
+import peergos.server.storage.*;
 import peergos.shared.corenode.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.mutable.*;
@@ -14,11 +15,11 @@ public class RegisteredUserKeyFilter {
     private static final int TEN_MINUTES = 600_000;
     private final CoreNode core;
     private final MutablePointers mutable;
-    private final ContentAddressedStorage dht;
+    private final DeletableContentAddressedStorage dht;
     private final Hasher hasher;
     private final Map<PublicKeyHash, Boolean> allowedKeys = new ConcurrentHashMap<>();
 
-    public RegisteredUserKeyFilter(CoreNode core, MutablePointers mutable, ContentAddressedStorage dht, Hasher hasher) {
+    public RegisteredUserKeyFilter(CoreNode core, MutablePointers mutable, DeletableContentAddressedStorage dht, Hasher hasher) {
         this.core = core;
         this.mutable = mutable;
         this.dht = dht;
@@ -40,7 +41,8 @@ public class RegisteredUserKeyFilter {
             List<String> usernames = core.getUsernames("").get();
             Set<PublicKeyHash> updated = new HashSet<>();
             for (String username : usernames) {
-                updated.addAll(WriterData.getOwnedKeysRecursive(username, core, mutable, dht, hasher).join());
+                updated.addAll(DeletableContentAddressedStorage.getOwnedKeysRecursive(username, core, mutable,
+                        (h, s) -> DeletableContentAddressedStorage.getWriterData(Collections.emptyList(), h, s, dht), dht, hasher).join());
             }
             Set<PublicKeyHash> toRemove = new HashSet<>();
             for (PublicKeyHash hash : allowedKeys.keySet())

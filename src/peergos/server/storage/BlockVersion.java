@@ -1,6 +1,6 @@
 package peergos.server.storage;
 
-import peergos.shared.io.ipfs.cid.*;
+import peergos.shared.io.ipfs.Cid;
 
 public class BlockVersion {
     public final Cid cid;

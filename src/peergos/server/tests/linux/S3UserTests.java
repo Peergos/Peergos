@@ -1,17 +1,15 @@
 package peergos.server.tests.linux;
 
 import org.junit.*;
-import org.junit.runner.*;
-import org.junit.runners.*;
 import peergos.server.*;
 import peergos.server.storage.*;
 import peergos.server.tests.*;
+import peergos.server.tests.util.*;
 import peergos.server.util.*;
 import peergos.shared.*;
 import peergos.shared.crypto.hash.*;
-import peergos.shared.io.ipfs.cid.*;
+import peergos.shared.io.ipfs.Cid;
 import peergos.shared.storage.*;
-import peergos.shared.user.*;
 
 import java.io.*;
 import java.net.*;
@@ -70,11 +68,11 @@ public class S3UserTests extends UserTests {
         services.add(pki);
 
         // start ipfs S3 node
-        int ipfsApiPort = 9000 + random.nextInt(8000);
-        int ipfsGatewayPort = 9000 + random.nextInt(8000);
-        int ipfsSwarmPort = 9000 + random.nextInt(8000);
-        int proxyTargetPort = 9000 + random.nextInt(8000);
-        int allowPort = 9000 + random.nextInt(8000);
+        int ipfsApiPort = TestPorts.getPort();
+        int ipfsGatewayPort = TestPorts.getPort();
+        int ipfsSwarmPort = TestPorts.getPort();
+        int proxyTargetPort = TestPorts.getPort();
+        int allowPort = TestPorts.getPort();
         Args ipfsArgs = withS3(buildArgs())
                 .with("useIPFS", "true")
                 .with("ipfs-api-address", "/ip4/127.0.0.1/tcp/" + ipfsApiPort)
@@ -84,11 +82,11 @@ public class S3UserTests extends UserTests {
                 .with(IpfsWrapper.IPFS_BOOTSTRAP_NODES, "" + Main.getLocalBootstrapAddress(bootstrapSwarmPort, pkiNodeId))
                 .with("proxy-target", Main.getLocalMultiAddress(proxyTargetPort).toString())
                 .with("ipfs-api-address", Main.getLocalMultiAddress(ipfsApiPort).toString());
-        IpfsWrapper ipfs = Main.INSTALL_AND_RUN_IPFS.main(ipfsArgs);
+        IpfsWrapper ipfs = Main.IPFS.main(ipfsArgs);
         argsToCleanUp.add(ipfsArgs);
 
         // start direct S3 node
-        int peergosPort = 9000 + random.nextInt(8000);
+        int peergosPort = TestPorts.getPort();
         Cid ourId = new ContentAddressedStorage.HTTP(new JavaPoster(new URL("http://localhost:" + ipfsApiPort), false), false, crypto.hasher).id().get();
         Args peergosArgs = withS3(buildArgs())
                 .with("port", "" + peergosPort)

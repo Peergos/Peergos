@@ -1,9 +1,10 @@
 package peergos.server.storage;
 
 import peergos.shared.cbor.*;
+import peergos.shared.corenode.*;
 import peergos.shared.crypto.hash.*;
-import peergos.shared.io.ipfs.multihash.*;
-import peergos.shared.io.ipfs.cid.*;
+import peergos.shared.io.ipfs.Cid;
+import peergos.shared.io.ipfs.Multihash;
 import peergos.shared.storage.*;
 import peergos.shared.storage.auth.*;
 import peergos.shared.util.*;
@@ -24,6 +25,9 @@ public class RAMStorage implements DeletableContentAddressedStorage {
     public RAMStorage(Hasher hasher) {
         this.hasher = hasher;
     }
+
+    @Override
+    public void setPki(CoreNode pki) {}
 
     @Override
     public ContentAddressedStorage directToOrigin() {
@@ -116,7 +120,7 @@ public class RAMStorage implements DeletableContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<Optional<byte[]>> getRaw(Cid object, String auth) {
+    public CompletableFuture<Optional<byte[]>> getRaw(List<Multihash> peerIds, Cid object, String auth) {
         return CompletableFuture.completedFuture(storage.containsKey(object) ?
                 Optional.of(storage.get(object)) :
                 Optional.empty());
@@ -124,11 +128,11 @@ public class RAMStorage implements DeletableContentAddressedStorage {
 
     @Override
     public CompletableFuture<Optional<byte[]>> getRaw(PublicKeyHash owner, Cid hash, Optional<BatWithId> bat) {
-        return getRaw(hash, bat, id().join(), hasher);
+        return getRaw(Collections.emptyList(), hash, bat, id().join(), hasher);
     }
 
     @Override
-    public CompletableFuture<Optional<CborObject>> get(Cid hash, String auth) {
+    public CompletableFuture<Optional<CborObject>> get(List<Multihash> peerIds, Cid hash, String auth) {
         if (hash.codec == Cid.Codec.Raw)
             throw new IllegalStateException("Need to call getRaw if cid is not cbor!");
         return CompletableFuture.completedFuture(getAndParseObject(hash));
@@ -136,7 +140,7 @@ public class RAMStorage implements DeletableContentAddressedStorage {
 
     @Override
     public CompletableFuture<Optional<CborObject>> get(PublicKeyHash owner, Cid hash, Optional<BatWithId> bat) {
-        return get(hash, bat, id().join(), hasher);
+        return get(Collections.emptyList(), hash, bat, id().join(), hasher);
     }
 
     private synchronized Optional<CborObject> getAndParseObject(Multihash hash) {
@@ -154,10 +158,10 @@ public class RAMStorage implements DeletableContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<List<Cid>> getLinks(Cid root, String auth) {
+    public CompletableFuture<List<Cid>> getLinks(Cid root) {
         if (root.codec == Cid.Codec.Raw)
             return CompletableFuture.completedFuture(Collections.emptyList());
-        return get(root, auth).thenApply(opt -> opt
+        return get(Collections.emptyList(), root, "").thenApply(opt -> opt
                 .map(cbor -> cbor.links().stream().map(c -> (Cid)c).collect(Collectors.toList()))
                 .orElse(Collections.emptyList())
         );

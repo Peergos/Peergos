@@ -1,13 +1,14 @@
 package peergos.server.corenode;
 
 import peergos.server.crypto.*;
+import peergos.server.storage.*;
 import peergos.server.util.*;
 import peergos.shared.*;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.hash.*;
-import peergos.shared.io.ipfs.cid.*;
-import peergos.shared.io.ipfs.multihash.*;
+import peergos.shared.io.ipfs.Cid;
+import peergos.shared.io.ipfs.Multihash;
 import peergos.shared.mutable.*;
 import peergos.shared.social.*;
 import peergos.shared.storage.*;
@@ -20,12 +21,14 @@ import java.util.concurrent.*;
 public class UserRepository implements SocialNetwork, MutablePointers {
     public static final int MAX_POINTER_SIZE = TweetNaCl.SIGNATURE_SIZE_BYTES + 2 + 2*36 + 9; // Signature overhead + 2 cids + 2 (cbor list[3]) + cbor long
 
-    private final ContentAddressedStorage ipfs;
+    private final DeletableContentAddressedStorage ipfs;
     private final JdbcIpnsAndSocial store;
+    private final List<Multihash> us;
 
-    public UserRepository(ContentAddressedStorage ipfs, JdbcIpnsAndSocial store) {
+    public UserRepository(DeletableContentAddressedStorage ipfs, JdbcIpnsAndSocial store) {
         this.ipfs = ipfs;
         this.store = store;
+        this.us = List.of(ipfs.id().join());
     }
 
     @Override
@@ -77,7 +80,7 @@ public class UserRepository implements SocialNetwork, MutablePointers {
                                             // check the new target is valid for this writer (or a deletion)
                                             if (cas.updated.isPresent()) {
                                                 Multihash newHash = cas.updated.get();
-                                                CommittedWriterData newWriterData = WriterData.getWriterData(owner, (Cid) newHash, cas.sequence, ipfs).join();
+                                                CommittedWriterData newWriterData = DeletableContentAddressedStorage.getWriterData(us, (Cid) newHash, cas.sequence, ipfs).join();
                                                 if (!newWriterData.props.controller.equals(writer))
                                                     return Futures.of(false);
                                             }
@@ -97,7 +100,7 @@ public class UserRepository implements SocialNetwork, MutablePointers {
         return this;
     }
 
-    public static UserRepository build(ContentAddressedStorage ipfs, JdbcIpnsAndSocial sqlNode) {
+    public static UserRepository build(DeletableContentAddressedStorage ipfs, JdbcIpnsAndSocial sqlNode) {
         return new UserRepository(ipfs, sqlNode);
     }
 }

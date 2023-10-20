@@ -3,7 +3,6 @@ import java.util.*;
 import java.util.logging.Logger;
 
 import peergos.server.storage.*;
-import peergos.server.messages.*;
 import peergos.server.storage.admin.*;
 import peergos.server.util.*;
 
@@ -12,7 +11,7 @@ import java.util.logging.Level;
 import com.sun.net.httpserver.*;
 import peergos.shared.*;
 import peergos.shared.corenode.*;
-import peergos.shared.io.ipfs.multihash.*;
+import peergos.shared.io.ipfs.Multihash;
 import peergos.shared.mutable.*;
 import peergos.shared.social.*;
 import peergos.shared.storage.*;
@@ -258,11 +257,11 @@ public class UserService {
                 basicAuth, local, host, nodeId, false);
         addHandler(localhostServer, tlsServer, UI_URL, handler, basicAuth, local, host, nodeId, true);
 
-        localhostServer.setExecutor(Executors.newFixedThreadPool(handlerPoolSize));
+        localhostServer.setExecutor(Threads.newPool(handlerPoolSize, "api-handler-"));
         localhostServer.start();
 
         if (tlsServer != null) {
-            tlsServer.setExecutor(Executors.newFixedThreadPool(handlerPoolSize));
+            tlsServer.setExecutor(Threads.newPool(handlerPoolSize, "api-handler-"));
             tlsServer.start();
         }
 
@@ -282,7 +281,9 @@ public class UserService {
                     .map(ba -> (HttpHandler) new BasicAuthHandler(ba, handler))
                     .orElse(handler);
         // Allow local requests, ones to the public host, and p2p reqs to our node
-        List<String> allowedHosts = Arrays.asList("127.0.0.1:" + local.getPort(), host.host(), nodeId.toString());
+        String barePeerId = new Multihash(nodeId.type, nodeId.getHash()).toBase58();
+        String wrappedPeerId = nodeId.toBase58();
+        List<String> allowedHosts = Arrays.asList("127.0.0.1:" + local.getPort(), host.host(), barePeerId, wrappedPeerId);
         SubdomainHandler subdomainHandler = new SubdomainHandler(allowedHosts, withAuth, allowSubdomains);
         localhostServer.createContext(path, subdomainHandler);
         if (tlsServer != null) {

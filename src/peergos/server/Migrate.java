@@ -2,7 +2,7 @@ package peergos.server;
 
 import peergos.shared.corenode.*;
 import peergos.shared.crypto.asymmetric.*;
-import peergos.shared.io.ipfs.multihash.*;
+import peergos.shared.io.ipfs.Multihash;
 
 import java.util.*;
 import java.util.stream.*;

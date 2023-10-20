@@ -1,6 +1,7 @@
 package peergos.server.corenode;
 import java.util.logging.*;
 
+import peergos.server.storage.*;
 import peergos.server.util.*;
 
 import peergos.shared.*;
@@ -9,8 +10,8 @@ import peergos.shared.corenode.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.hamt.*;
-import peergos.shared.io.ipfs.cid.*;
-import peergos.shared.io.ipfs.multihash.*;
+import peergos.shared.io.ipfs.Cid;
+import peergos.shared.io.ipfs.Multihash;
 import peergos.shared.mutable.*;
 import peergos.shared.storage.*;
 import peergos.shared.storage.auth.*;
@@ -28,7 +29,7 @@ public class IpfsCoreNode implements CoreNode {
 	public static final int MAX_FREE_IDENTITY_CHANGES = 10;
 
     private final PublicKeyHash peergosIdentity;
-    private final ContentAddressedStorage ipfs;
+    private final DeletableContentAddressedStorage ipfs;
     private final Hasher hasher;
     private final MutablePointers mutable;
     private final Account account;
@@ -46,9 +47,7 @@ public class IpfsCoreNode implements CoreNode {
 
     public IpfsCoreNode(SigningPrivateKeyAndPublicHash pkiSigner,
                         int maxSignupsPerDay,
-                        MaybeMultihash currentRoot,
-                        Optional<Long> currentSequence,
-                        ContentAddressedStorage ipfs,
+                        DeletableContentAddressedStorage ipfs,
                         Hasher hasher,
                         MutablePointers mutable,
                         Account account,
@@ -63,10 +62,26 @@ public class IpfsCoreNode implements CoreNode {
         this.batCave = batCave;
         this.peergosIdentity = peergosIdentity;
         this.signer = pkiSigner;
-        this.update(currentRoot, currentSequence);
         this.difficultyGenerator = new DifficultyGenerator(System.currentTimeMillis(), maxSignupsPerDay);
     }
 
+    @Override
+    public void initialize() {
+        PointerUpdate currentPkiPointer = mutable.getPointerTarget(peergosIdentity, signer.publicKeyHash, ipfs).join();
+        Optional<Long> currentPkiSequence = currentPkiPointer.sequence;
+        MaybeMultihash currentPkiRoot = currentPkiPointer.updated;
+        System.out.println("Initializing PKI from root " + currentPkiRoot);
+        update(currentPkiRoot, currentPkiSequence);
+        if (! currentPkiRoot.isPresent()) {
+            CommittedWriterData committed = IpfsTransaction.call(peergosIdentity,
+                    tid -> WriterData.createEmpty(peergosIdentity, signer, ipfs, hasher, tid).join()
+                            .commit(peergosIdentity, signer, MaybeMultihash.empty(), Optional.empty(), mutable, ipfs, hasher, tid)
+                            .thenApply(version -> version.get(signer)), ipfs).join();
+            currentPkiRoot = committed.hash;
+            currentPkiSequence = committed.sequence;
+            update(currentPkiRoot, currentPkiSequence);
+        }
+    }
     public static CompletableFuture<byte[]> keyHash(ByteArrayWrapper username) {
         return Futures.of(Blake2b.Digest.newInstance().digest(username.data));
     }
@@ -76,33 +91,145 @@ public class IpfsCoreNode implements CoreNode {
      * @param newRoot The root of the new champ
      */
     private synchronized void update(MaybeMultihash newRoot, Optional<Long> newSequence) {
-        updateAllMappings(peergosIdentity, currentRoot, newRoot, ipfs, chains, reverseLookup, usernames);
+        updateAllMappings(Arrays.asList(ipfs.id().join()), currentRoot, newRoot, ipfs, chains, reverseLookup, usernames);
         this.currentRoot = newRoot;
         this.currentSequence = newSequence;
     }
 
-    public static MaybeMultihash getTreeRoot(PublicKeyHash peergos, MaybeMultihash pointerTarget, ContentAddressedStorage ipfs) {
+    public static CompletableFuture<CommittedWriterData> getWriterData(List<Multihash> peerIds,
+                                                                       Cid hash,
+                                                                       Optional<Long> sequence,
+                                                                       DeletableContentAddressedStorage dht) {
+        return dht.get(peerIds, hash, "")
+                .thenApply(cborOpt -> {
+                    if (! cborOpt.isPresent())
+                        throw new IllegalStateException("Couldn't retrieve WriterData from dht! " + hash);
+                    return new CommittedWriterData(MaybeMultihash.of(hash), WriterData.fromCbor(cborOpt.get()), sequence);
+                });
+    }
+
+    public static MaybeMultihash getTreeRoot(List<Multihash> peerIds, MaybeMultihash pointerTarget, DeletableContentAddressedStorage ipfs) {
         if (! pointerTarget.isPresent())
             return MaybeMultihash.empty();
-        CommittedWriterData current = WriterData.getWriterData(peergos, (Cid)pointerTarget.get(), Optional.empty(), ipfs).join();
+        CommittedWriterData current = getWriterData(peerIds, (Cid)pointerTarget.get(), Optional.empty(), ipfs).join();
         return current.props.tree.map(MaybeMultihash::of).orElseGet(MaybeMultihash::empty);
 
     }
 
-    public static void updateAllMappings(PublicKeyHash peergos,
+    public static <V extends Cborable> CompletableFuture<Boolean> applyToDiff(
+            List<Multihash> storageProviders,
+            MaybeMultihash original,
+            MaybeMultihash updated,
+            int depth,
+            Function<ByteArrayWrapper, CompletableFuture<byte[]>> hasher,
+            List<Champ.KeyElement<V>> higherLeftMappings,
+            List<Champ.KeyElement<V>> higherRightMappings,
+            Consumer<Triple<ByteArrayWrapper, Optional<V>, Optional<V>>> consumer,
+            int bitWidth,
+            DeletableContentAddressedStorage storage,
+            Function<Cborable, V> fromCbor) {
+
+        if (updated.equals(original))
+            return CompletableFuture.completedFuture(true);
+        return original.map(h -> storage.get(storageProviders, (Cid)h, "")).orElseGet(() -> CompletableFuture.completedFuture(Optional.empty()))
+                .thenApply(rawOpt -> rawOpt.map(y -> Champ.fromCbor(y, fromCbor)))
+                .thenCompose(left -> updated.map(h -> storage.get(storageProviders, (Cid)h, "")).orElseGet(() -> CompletableFuture.completedFuture(Optional.empty()))
+                        .thenApply(rawOpt -> rawOpt.map(y -> Champ.fromCbor(y, fromCbor)))
+                        .thenCompose(right -> Champ.hashAndMaskKeys(higherLeftMappings, depth, bitWidth, hasher)
+                                .thenCompose(leftHigherMappingsByBit -> Champ.hashAndMaskKeys(higherRightMappings, depth, bitWidth, hasher)
+                                        .thenCompose(rightHigherMappingsByBit -> {
+
+                                            int leftMax = left.map(c -> Math.max(c.dataMap.length(), c.nodeMap.length())).orElse(0);
+                                            int rightMax = right.map(c -> Math.max(c.dataMap.length(), c.nodeMap.length())).orElse(0);
+                                            int maxBit = Math.max(leftMax, rightMax);
+                                            int leftDataIndex = 0, rightDataIndex = 0, leftNodeCount = 0, rightNodeCount = 0;
+
+                                            List<CompletableFuture<Boolean>> deeperLayers = new ArrayList<>();
+
+                                            for (int i = 0; i < maxBit; i++) {
+                                                // either the payload is present OR higher mappings are non empty OR the champ is absent
+                                                Optional<Champ.HashPrefixPayload<V>> leftPayload = Champ.getElement(i, leftDataIndex, leftNodeCount, left);
+                                                Optional<Champ.HashPrefixPayload<V>> rightPayload = Champ.getElement(i, rightDataIndex, rightNodeCount, right);
+
+                                                List<Champ.KeyElement<V>> leftHigherMappings = leftHigherMappingsByBit.getOrDefault(i, Collections.emptyList());
+                                                List<Champ.KeyElement<V>> leftMappings = leftPayload
+                                                        .filter(p -> !p.isShard())
+                                                        .map(p -> Arrays.asList(p.mappings))
+                                                        .orElse(leftHigherMappings);
+                                                List<Champ.KeyElement<V>> rightHigherMappings = rightHigherMappingsByBit.getOrDefault(i, Collections.emptyList());
+                                                List<Champ.KeyElement<V>> rightMappings = rightPayload
+                                                        .filter(p -> !p.isShard())
+                                                        .map(p -> Arrays.asList(p.mappings))
+                                                        .orElse(rightHigherMappings);
+
+                                                Optional<MaybeMultihash> leftShard = leftPayload
+                                                        .filter(p -> p.isShard())
+                                                        .map(p -> p.link);
+
+                                                Optional<MaybeMultihash> rightShard = rightPayload
+                                                        .filter(p -> p.isShard())
+                                                        .map(p -> p.link);
+
+                                                if (leftShard.isPresent() || rightShard.isPresent()) {
+                                                    deeperLayers.add(applyToDiff(storageProviders,
+                                                            leftShard.orElse(MaybeMultihash.empty()),
+                                                            rightShard.orElse(MaybeMultihash.empty()), depth + 1, hasher,
+                                                            leftMappings, rightMappings, consumer, bitWidth, storage, fromCbor));
+                                                } else {
+                                                    Map<ByteArrayWrapper, Optional<V>> leftMap = leftMappings.stream()
+                                                            .collect(Collectors.toMap(e -> e.key, e -> e.valueHash));
+                                                    Map<ByteArrayWrapper, Optional<V>> rightMap = rightMappings.stream()
+                                                            .collect(Collectors.toMap(e -> e.key, e -> e.valueHash));
+
+                                                    HashSet<ByteArrayWrapper> both = new HashSet<>(leftMap.keySet());
+                                                    both.retainAll(rightMap.keySet());
+
+                                                    for (Map.Entry<ByteArrayWrapper, Optional<V>> entry : leftMap.entrySet()) {
+                                                        if (! both.contains(entry.getKey()))
+                                                            consumer.accept(new Triple<>(entry.getKey(), entry.getValue(), Optional.empty()));
+                                                        else if (! entry.getValue().equals(rightMap.get(entry.getKey())))
+                                                            consumer.accept(new Triple<>(entry.getKey(), entry.getValue(), rightMap.get(entry.getKey())));
+                                                    }
+                                                    for (Map.Entry<ByteArrayWrapper, Optional<V>> entry : rightMap.entrySet()) {
+                                                        if (! both.contains(entry.getKey()))
+                                                            consumer.accept(new Triple<>(entry.getKey(), Optional.empty(), entry.getValue()));
+                                                    }
+                                                }
+
+                                                if (leftPayload.isPresent()) {
+                                                    if (leftPayload.get().isShard())
+                                                        leftNodeCount++;
+                                                    else
+                                                        leftDataIndex++;
+                                                }
+                                                if (rightPayload.isPresent()) {
+                                                    if (rightPayload.get().isShard())
+                                                        rightNodeCount++;
+                                                    else
+                                                        rightDataIndex++;
+                                                }
+                                            }
+
+                                            return Futures.combineAll(deeperLayers).thenApply(x -> true);
+                                        })))
+                );
+    }
+
+    public static void updateAllMappings(List<Multihash> peerIds,
                                          MaybeMultihash currentChampRoot,
                                          MaybeMultihash newChampRoot,
-                                         ContentAddressedStorage ipfs,
+                                         DeletableContentAddressedStorage ipfs,
                                          Map<String, List<UserPublicKeyLink>> chains,
                                          Map<PublicKeyHash, String> reverseLookup,
                                          List<String> usernames) {
         try {
-            MaybeMultihash currentTree = getTreeRoot(peergos, currentChampRoot, ipfs);
-            MaybeMultihash updatedTree = getTreeRoot(peergos, newChampRoot, ipfs);
+            MaybeMultihash currentTree = getTreeRoot(peerIds, currentChampRoot, ipfs);
+            MaybeMultihash updatedTree = getTreeRoot(peerIds, newChampRoot, ipfs);
+            System.out.println("Updating pki to new tree root " + updatedTree);
             Consumer<Triple<ByteArrayWrapper, Optional<CborObject.CborMerkleLink>, Optional<CborObject.CborMerkleLink>>> consumer =
-                    t -> updateMapping(peergos, t.left, t.middle, t.right, ipfs, chains, reverseLookup, usernames);
+                    t -> updateMapping(peerIds, t.left, t.middle, t.right, ipfs, chains, reverseLookup, usernames);
             Function<Cborable, CborObject.CborMerkleLink> fromCbor = c -> (CborObject.CborMerkleLink)c;
-            Champ.applyToDiff(peergos, currentTree, updatedTree, 0, IpfsCoreNode::keyHash,
+            IpfsCoreNode.applyToDiff(peerIds, currentTree, updatedTree, 0, IpfsCoreNode::keyHash,
                     Collections.emptyList(), Collections.emptyList(),
                     consumer, ChampWrapper.BIT_WIDTH, ipfs, fromCbor).get();
         } catch (Exception e) {
@@ -110,16 +237,16 @@ public class IpfsCoreNode implements CoreNode {
         }
     }
 
-    public static void updateMapping(PublicKeyHash peergos,
+    public static void updateMapping(List<Multihash> peerIds,
                                      ByteArrayWrapper key,
                                      Optional<CborObject.CborMerkleLink> oldValue,
                                      Optional<CborObject.CborMerkleLink> newValue,
-                                     ContentAddressedStorage ipfs,
+                                     DeletableContentAddressedStorage ipfs,
                                      Map<String, List<UserPublicKeyLink>> chains,
                                      Map<PublicKeyHash, String> reverseLookup,
                                      List<String> usernames) {
         try {
-            Optional<CborObject> cborOpt = ipfs.get(peergos, (Cid)newValue.get().target, Optional.empty()).get();
+            Optional<CborObject> cborOpt = ipfs.get(peerIds, (Cid)newValue.get().target, "").get();
             if (!cborOpt.isPresent()) {
                 LOG.severe("Couldn't retrieve new claim chain from " + newValue);
                 return;
@@ -132,7 +259,7 @@ public class IpfsCoreNode implements CoreNode {
             String username = new String(key.data);
 
             if (oldValue.isPresent()) {
-                Optional<CborObject> existingCborOpt = ipfs.get(peergos, (Cid)oldValue.get().target, Optional.empty()).get();
+                Optional<CborObject> existingCborOpt = ipfs.get(peerIds, (Cid)oldValue.get().target, "").get();
                 if (!existingCborOpt.isPresent()) {
                     LOG.severe("Couldn't retrieve existing claim chain from " + newValue);
                     return;
@@ -172,16 +299,27 @@ public class IpfsCoreNode implements CoreNode {
                                   Account account,
                                   BatCave batCave) {
         TransactionId tid = ipfs.startTransaction(owner).join();
-        for (Either<OpLog.PointerWrite, OpLog.BlockWrite> op : ops.operations) {
+        for (int i=0; i < ops.operations.size(); i++) {
+            Either<OpLog.PointerWrite, OpLog.BlockWrite> op = ops.operations.get(i);
             if (op.isA()) {
                 OpLog.PointerWrite pointerUpdate = op.a();
                 mutable.setPointer(owner, pointerUpdate.writer, pointerUpdate.writerSignedChampRootCas).join();
             } else {
                 OpLog.BlockWrite block = op.b();
+                // Group blocks of same type to do a parallel write (these should all be cbor, not raw)
+                List<byte[]> signatures = new ArrayList<>();
+                List<byte[]> blocks = new ArrayList<>();
+                signatures.add(block.signature);
+                blocks.add(block.block);
+                while (i+1 < ops.operations.size() && ops.operations.get(i + 1).isB() && ops.operations.get(i + 1).b().isRaw == block.isRaw) {
+                    signatures.add(ops.operations.get(i + 1).b().signature);
+                    blocks.add(ops.operations.get(i + 1).b().block);
+                    i++;
+                }
                 if (block.isRaw)
-                    ipfs.putRaw(owner, block.writer, block.signature, block.block, tid, x -> {}).join();
+                    ipfs.putRaw(owner, block.writer, signatures, blocks, tid, x -> {}).join();
                 else
-                    ipfs.put(owner, block.writer, block.signature, block.block, tid).join();
+                    ipfs.put(owner, block.writer, signatures, blocks, tid).join();
             }
         }
         if (ops.loginData != null) {

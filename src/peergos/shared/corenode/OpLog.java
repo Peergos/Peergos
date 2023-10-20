@@ -3,8 +3,8 @@ package peergos.shared.corenode;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.hash.*;
-import peergos.shared.io.ipfs.cid.*;
-import peergos.shared.io.ipfs.multihash.*;
+import peergos.shared.io.ipfs.Cid;
+import peergos.shared.io.ipfs.Multihash;
 import peergos.shared.login.mfa.*;
 import peergos.shared.mutable.*;
 import peergos.shared.storage.*;
@@ -264,6 +264,11 @@ public class OpLog implements Cborable, Account, MutablePointers, ContentAddress
             PublicKeyHash writer = m.get("w", PublicKeyHash::fromCbor);
             byte[] signedUpdate = m.getByteArray("s");
             return new PointerWrite(writer, signedUpdate);
+        }
+
+        @Override
+        public String toString() {
+            return writer.toString();
         }
     }
 

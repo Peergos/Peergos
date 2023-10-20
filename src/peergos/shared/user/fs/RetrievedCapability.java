@@ -1,7 +1,7 @@
 package peergos.shared.user.fs;
 
 import peergos.shared.crypto.symmetric.*;
-import peergos.shared.io.ipfs.multihash.*;
+import peergos.shared.io.ipfs.Multihash;
 import peergos.shared.user.fs.cryptree.*;
 
 public class RetrievedCapability {

@@ -7,18 +7,14 @@ import peergos.server.*;
 import peergos.server.storage.*;
 import peergos.server.util.*;
 import peergos.shared.*;
-import peergos.shared.io.ipfs.multiaddr.*;
-import peergos.shared.io.ipfs.multihash.Multihash;
-import peergos.shared.storage.auth.*;
+import peergos.shared.io.ipfs.MultiAddress;
+import peergos.shared.io.ipfs.Multihash;
 import peergos.shared.user.UserContext;
 import peergos.shared.user.fs.*;
 
 import java.net.URL;
 import java.util.*;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertTrue;
-import static peergos.server.Main.ENSURE_IPFS_INSTALLED;
 import static peergos.server.Main.IPFS;
 import static peergos.server.tests.UserTests.randomString;
 
@@ -55,7 +51,6 @@ public class P2pStreamNetworkTests {
                 .with("proxy-target", new MultiAddress(args.getArg("ipfs-gateway-address")).toString())
                 .with("ipfs-api-address", Main.getLocalMultiAddress(ipfsApiPort).toString());
 
-        ENSURE_IPFS_INSTALLED.main(normalNode);
         IPFS.main(normalNode);
 
 //        IPFS node2 = new IPFS(Main.getLocalMultiAddress(ipfsApiPort));

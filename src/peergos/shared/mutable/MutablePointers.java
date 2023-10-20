@@ -4,7 +4,7 @@ import peergos.shared.cbor.CborObject;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.hash.*;
-import peergos.shared.io.ipfs.multihash.*;
+import peergos.shared.io.ipfs.Multihash;
 import peergos.shared.MaybeMultihash;
 import peergos.shared.storage.CasException;
 import peergos.shared.storage.ContentAddressedStorage;

@@ -20,9 +20,9 @@ import peergos.shared.crypto.*;
 import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.crypto.password.*;
-import peergos.shared.io.ipfs.multiaddr.*;
-import peergos.shared.io.ipfs.cid.*;
-import peergos.shared.io.ipfs.multihash.*;
+import peergos.shared.io.ipfs.Cid;
+import peergos.shared.io.ipfs.MultiAddress;
+import peergos.shared.io.ipfs.Multihash;
 import peergos.shared.login.mfa.*;
 import peergos.shared.mutable.*;
 import peergos.shared.social.*;
@@ -63,44 +63,11 @@ public class Main extends Builder {
     public static final Command.Arg ARG_IPFS_PROXY_TARGET =
         new Command.Arg("proxy-target", "Proxy target for p2p http requests", false, "/ip4/127.0.0.1/tcp/8003");
 
-    public static Command<Boolean> ENSURE_IPFS_INSTALLED = new Command<>("install-ipfs",
-            "Download/update IPFS binary. Does nothing if current IPFS binary is up-to-date.",
-            args -> {
-                Path ipfsExePath = IpfsWrapper.getIpfsExePath(args);
-                File dir = ipfsExePath.getParent().toFile();
-                if (!  dir.isDirectory() && ! dir.mkdirs())
-                    throw new IllegalStateException("Specified install directory "+ dir +" doesn't exist and can't be created");
-
-                IpfsInstaller.ensureInstalled(ipfsExePath);
-
-                List<IpfsInstaller.Plugin> plugins = IpfsInstaller.Plugin.parseAll(args);
-                Path ipfsDir = IpfsWrapper.getIpfsDir(args);
-                if (! plugins.isEmpty())
-                    if (! ipfsDir.toFile().exists() && ! ipfsDir.toFile().mkdirs())
-                        throw new IllegalStateException("Couldn't create ipfs dir: " + ipfsDir);
-
-                for (IpfsInstaller.Plugin plugin : plugins) {
-                    plugin.ensureInstalled(ipfsDir);
-                }
-                return true;
-            },
-            Arrays.asList(
-                    new Command.Arg("ipfs-exe-path", "Desired path to IPFS executable. Defaults to $PEERGOS_PATH/ipfs", false),
-                    new Command.Arg("ipfs-plugins", "comma separated list of ipfs plugins to install, currently only go-ds-s3 is supported", false),
-                    new Command.Arg("s3.path", "Path of data store in S3", false),
-                    new Command.Arg("s3.bucket", "S3 bucket name", false),
-                    new Command.Arg("s3.region", "S3 region", false),
-                    new Command.Arg("s3.accessKey", "S3 access key", false),
-                    new Command.Arg("s3.secretKey", "S3 secret key", false),
-                    new Command.Arg("s3.region.endpoint", "Base url for S3 service", false)
-            )
-    );
     public static Command<IpfsWrapper> IPFS = new Command<>("ipfs",
             "Configure and start IPFS daemon",
             Main::startIpfs,
             Arrays.asList(
                     new Command.Arg("IPFS_PATH", "Path to IPFS directory. Defaults to $PEERGOS_PATH/.ipfs, or ~/.peergos/.ipfs", false),
-                    new Command.Arg("ipfs-exe-path", "Path to IPFS executable. Defaults to $PEERGOS_PATH/ipfs", false),
                     new Command.Arg("ipfs-api-address", "IPFS API port", false, "/ip4/127.0.0.1/tcp/5001"),
                     new Command.Arg("ipfs-gateway-address", "IPFS Gateway port", false, "/ip4/127.0.0.1/tcp/8080"),
                     new Command.Arg("ipfs-swarm-port", "IPFS Swarm port", false, "4001"),
@@ -126,24 +93,20 @@ public class Main extends Builder {
                                     "/ip6/2a03:b0c0:0:1010::23:1001/tcp/4001/p2p/QmSoLer265NRgSp2LA3dPaeykiS1J6DifTC88f5uVQKNAd",
                                     "/ip4/104.131.131.82/udp/4001/quic/p2p/QmaCpDMGvV2BGHeYERUEnRQAwe3N8SzbUtfsmvsqQLuvuJ"
                             ).collect(Collectors.joining(","))),
-                    new Command.Arg("ipfs-manage-runtime", "Will manage the IPFS daemon runtime when set (restart on exit)", false, "true"),
                     new Command.Arg("collect-metrics", "Export aggregated metrics", false, "false"),
                     new Command.Arg("metrics.address", "Listen address for serving aggregated metrics", false, "localhost"),
-                    new Command.Arg("ipfs.metrics.port", "Port for serving aggregated ipfs metrics", false, "8101")
+                    new Command.Arg("ipfs.metrics.port", "Port for serving aggregated ipfs metrics", false, "8101"),
+                    new Command.Arg("s3.path", "Path of data store in S3", false),
+                    new Command.Arg("s3.bucket", "S3 bucket name", false),
+                    new Command.Arg("s3.region", "S3 region", false),
+                    new Command.Arg("s3.accessKey", "S3 access key", false),
+                    new Command.Arg("s3.secretKey", "S3 secret key", false),
+                    new Command.Arg("s3.region.endpoint", "Base url for S3 service", false),
+                    new Command.Arg("block-store-filter", "Indicate blockstore filter type. Can be 'none', 'bloom', 'infini'", false),
+                    new Command.Arg("block-store-filter-false-positive-rate", "The false positive rate to apply to the block-store-filter. ", false)
             )
     );
 
-    public static Command<IpfsWrapper> INSTALL_AND_RUN_IPFS = new Command<>("ipfs",
-            "Install, configure and start IPFS daemon",
-            a -> {
-                ENSURE_IPFS_INSTALLED.main(a);
-                return IPFS.main(a);
-            },
-            Stream.concat(
-                    ENSURE_IPFS_INSTALLED.params.stream(),
-                    IPFS.params.stream())
-                    .collect(Collectors.toList())
-    );
 
     public static final Command<UserService> PEERGOS = new Command<>("daemon",
             "The user facing Peergos server",
@@ -228,7 +191,6 @@ public class Main extends Builder {
                     crypto.random);
             Files.write(args.fromPeergosDir("pki.secret.key.path"), cipherTextCbor.serialize());
             Files.write(args.fromPeergosDir("pki.public.key.path"), pkiKeys.publicSigningKey.toCbor().toByteArray());
-            System.out.println("Peergos user identity hash: " + peergosPublicHash);
             return args.setIfAbsent("peergos.identity.hash", peergosPublicHash.toString());
         } catch (Exception e) {
             throw new RuntimeException(e);
@@ -275,6 +237,7 @@ public class Main extends Builder {
                         network.dhtClient).join();
                 context.addNamedOwnedKeyAndCommit("pki", pkiKeyPair).join();
             }
+            System.out.println("Peergos user identity hash: " + context.signer.publicKeyHash);
             // Create /peergos/releases and make it public
             Optional<FileWrapper> releaseDir = context.getByPath(PathUtil.get(pkiUsername, "releases")).join();
             if (! releaseDir.isPresent()) {
@@ -312,7 +275,6 @@ public class Main extends Builder {
                     IpfsWrapper ipfs = null;
                     boolean useIPFS = args.getBoolean("useIPFS");
                     if (useIPFS) {
-                        ENSURE_IPFS_INSTALLED.main(args);
                         ipfs = startIpfs(args);
                     }
 
@@ -329,6 +291,15 @@ public class Main extends Builder {
                     if (ipfs != null)
                         ipfs.stop();
                     args = args.setIfAbsent("pki-node-id", pkiIpfsNodeId.toString());
+                    if (useIPFS) {
+                        boolean saveConfigFile = !args.hasArg("ipfs.identity.peerid");
+                        args = args.setArg("ipfs.identity.peerid", ipfs.ipfsConfigParams.identity.get().peerId.toBase58());
+                        args = args.setArg("ipfs.identity.priv-key", Base64.getEncoder().encodeToString(ipfs.ipfsConfigParams.identity.get().privKeyProtobuf));
+                        if (saveConfigFile) {
+                            args.saveToFile();
+                        }
+                    }
+
                     UserService daemon = PEERGOS.main(args);
                     poststrap(args);
                     return daemon;
@@ -370,7 +341,6 @@ public class Main extends Builder {
                     IpfsWrapper ipfs = null;
                     boolean useIPFS = args.getBoolean("useIPFS");
                     if (useIPFS) {
-                        ENSURE_IPFS_INSTALLED.main(args);
                         ipfs = startIpfs(args);
                     }
 
@@ -532,7 +502,7 @@ public class Main extends Builder {
             )
     );
 
-    public static UserService startPeergos(Args args) {
+    public static UserService startPeergos(Args a) {
         try {
             Crypto crypto = initCrypto();
             Hasher hasher = crypto.hasher;
@@ -540,13 +510,11 @@ public class Main extends Builder {
 
             System.out.println("Starting Peergos daemon version: " + new InstanceAdmin.VersionInfo(UserService.CURRENT_VERSION, Admin.getSourceVersion()));
 
-            boolean useIPFS = args.getBoolean("useIPFS");
-            Args a = S3Config.useS3(args) && useIPFS ? args.setArg("ipfs-plugins", "go-ds-s3") : args;
-            IpfsWrapper ipfsWrapper = null;
-            if (useIPFS) {
-                ENSURE_IPFS_INSTALLED.main(a);
-                ipfsWrapper = IPFS.main(a);
-            }
+            boolean useIPFS = a.getBoolean("useIPFS");
+
+            IpfsWrapper ipfsWrapper = useIPFS ? IPFS.main(a) : null;
+            BlockMetadataStore meta = useIPFS ? ipfsWrapper.getBlockMetadata() : buildBlockMetadata(a);
+
             boolean doExportAggregatedMetrics = a.getBoolean("collect-metrics");
             if (doExportAggregatedMetrics) {
                 int exporterPort = a.getInt("metrics.port");
@@ -572,7 +540,7 @@ public class Main extends Builder {
 
             BatCave batStore = new JdbcBatCave(getDBConnector(a, "bat-store", dbConnectionPool), sqlCommands);
             BlockRequestAuthoriser blockRequestAuthoriser = Builder.blockAuthoriser(a, batStore, hasher);
-            DeletableContentAddressedStorage localStorage = buildLocalStorage(a, transactions, blockRequestAuthoriser,
+            DeletableContentAddressedStorage localStorage = buildLocalStorage(a, meta, transactions, blockRequestAuthoriser,
                     crypto.hasher);
             JdbcIpnsAndSocial rawPointers = buildRawPointers(a,
                     getDBConnector(a, "mutable-pointers-file", dbConnectionPool));
@@ -587,9 +555,11 @@ public class Main extends Builder {
             boolean enableGC = a.getBoolean("enable-gc", false);
             GarbageCollector gc = null;
             if (enableGC) {
-                gc = new GarbageCollector(localStorage, rawPointers, usageStore);
+                boolean useS3 = S3Config.useS3(a);
+                boolean listRawBlocks = useS3 && a.getBoolean("s3.versioned-bucket");
+                gc = new GarbageCollector(localStorage, rawPointers, usageStore, listRawBlocks);
                 Function<Stream<Map.Entry<PublicKeyHash, byte[]>>, CompletableFuture<Boolean>> snapshotSaver =
-                        S3Config.useS3(a) ?
+                        useS3 ?
                                 ((S3BlockStorage) localStorage)::savePointerSnapshot :
                                 s -> Futures.of(true);
                 int gcInterval = 12 * 60 * 60 * 1000;
@@ -614,6 +584,8 @@ public class Main extends Builder {
 
             CoreNode core = buildCorenode(a, localStorage, transactions, rawPointers, localPointers, proxingMutable,
                     rawSocial, usageStore, rawAccount, batStore, account, hasher);
+            localStorage.setPki(core);
+            core.initialize();
 
             boolean isPki = Cid.decodePeerId(a.getArg("pki-node-id")).equals(nodeId);
             QuotaAdmin userQuotas = buildSpaceQuotas(a, localStorage, core,
@@ -632,20 +604,19 @@ public class Main extends Builder {
             localMutable.addListener(spaceChecker::accept);
 
             int blockCacheSize = a.getInt("max-cached-blocks", 1000);
-            int maxCachedBlockSize = a.getInt("max-cached-block-size", 10 * 1024);
-            ContentAddressedStorage filteringDht = new WriteFilter(new AuthedCachingStorage(localStorage,
-                    blockRequestAuthoriser, hasher, blockCacheSize, maxCachedBlockSize), spaceChecker::allowWrite);
+            int maxCachedBlockSize = a.getInt("max-cached-block-size", 50 * 1024);
+            ContentAddressedStorage filteringDht = new WriteFilter(localStorage, spaceChecker::allowWrite);
             ContentAddressedStorageProxy proxingDht = new ContentAddressedStorageProxy.HTTP(p2pHttpProxy);
             ContentAddressedStorage p2pDht = new ContentAddressedStorage.Proxying(filteringDht, proxingDht, nodeId, core);
 
             Path blacklistPath = a.fromPeergosDir("blacklist_file", "blacklist.txt");
-            PublicKeyBlackList blacklist = new UserBasedBlacklist(blacklistPath, core, localMutable, p2pDht, hasher);
+            PublicKeyBlackList blacklist = new UserBasedBlacklist(blacklistPath, core, localMutable, localStorage, hasher);
             MutablePointers blockingMutablePointers = new BlockingMutablePointers(localMutable, blacklist);
             MutablePointers p2mMutable = new ProxyingMutablePointers(nodeId, core, blockingMutablePointers, proxingMutable);
 
             SocialNetworkProxy httpSocial = new HttpSocialNetwork(p2pHttpProxy, p2pHttpProxy);
 
-            SocialNetwork local = UserRepository.build(p2pDht, rawSocial);
+            SocialNetwork local = UserRepository.build(localStorage, rawSocial);
             SocialNetwork p2pSocial = new ProxyingSocialNetwork(nodeId, core, local, httpSocial);
 
             Set<String> adminUsernames = Arrays.asList(a.getArg("admin-usernames", "").split(","))
@@ -658,7 +629,7 @@ public class Main extends Builder {
 
             Account p2pAccount = new ProxyingAccount(nodeId, core, account, accountProxy);
             VerifyingAccount verifyingAccount = new VerifyingAccount(p2pAccount, core, localStorage);
-            ContentAddressedStorage cachingStorage = new AuthedCachingStorage(p2pDht, blockRequestAuthoriser, hasher, 1000, 50 * 1024);
+            ContentAddressedStorage cachingStorage = new AuthedCachingStorage(p2pDht, blockRequestAuthoriser, hasher, blockCacheSize, maxCachedBlockSize);
             ContentAddressedStorage incomingP2PStorage = new GetBlockingStorage(cachingStorage);
 
             ProxyingBatCave p2pBats = new ProxyingBatCave(nodeId, core, batStore, new HttpBatCave(p2pHttpProxy, p2pHttpProxy));
@@ -860,17 +831,7 @@ public class Main extends Builder {
         if (IpfsWrapper.isHttpApiListening(ipfsApiAddress)) {
             throw new IllegalStateException("IPFS is already running on api " + ipfsApiAddress);
         }
-
-        IpfsWrapper ipfs = IpfsWrapper.build(a);
-
-        if (a.getBoolean("ipfs-manage-runtime", true))
-            IpfsWrapper.launchAndManage(ipfs);
-        else {
-            IpfsWrapper.launchOnce(ipfs);
-        }
-        // wait for daemon to finish starting
-        ipfs.waitForDaemon(10);
-        return ipfs;
+        return IpfsWrapper.launch(a);
     }
 
     public static Boolean startShell(Args args) {
@@ -938,9 +899,9 @@ public class Main extends Builder {
                     MIGRATE,
                     VERSION,
                     IDENTITY,
-                    INSTALL_AND_RUN_IPFS,
                     PKI,
-                    PKI_INIT
+                    PKI_INIT,
+                    IPFS
             )
     );
 
@@ -953,6 +914,14 @@ public class Main extends Builder {
     }
 
     public static void main(String[] args) {
-        MAIN.main(Args.parse(args));
+        // Netty uses thread count twice the number of CPUs, this undoes that
+        System.getProperties().setProperty("io.netty.eventLoopThreads", "2");
+        try {
+            MAIN.main(Args.parse(args));
+        } catch (Throwable e) {
+            e.printStackTrace();
+            Logging.LOG().log(Level.SEVERE, e, () -> e.getMessage());
+            System.exit(-1);
+        }
     }
 }

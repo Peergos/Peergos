@@ -13,7 +13,7 @@ import peergos.shared.*;
 import peergos.shared.cbor.*;
 import peergos.shared.corenode.*;
 import peergos.shared.crypto.hash.*;
-import peergos.shared.io.ipfs.cid.*;
+import peergos.shared.io.ipfs.*;
 import peergos.shared.mutable.*;
 import peergos.shared.storage.*;
 import peergos.shared.user.*;
@@ -124,6 +124,7 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
         Logging.LOG().info("Checking for updated mutable pointers...");
         long t1 = System.currentTimeMillis();
         Set<PublicKeyHash> writers = store.getAllWriters();
+        List<Multihash> us = List.of(dht.id().join().bareMultihash());
         for (PublicKeyHash writerKey : writers) {
             WriterUsage writerUsage = store.getUsage(writerKey);
             Logging.LOG().info("Checking for updates from user: " + writerUsage.owner + ", writer key: " + writerKey);
@@ -137,7 +138,8 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
                     long updatedSize = dht.getRecursiveBlockSize((Cid)rootHash.get()).get();
                     long deltaUsage = updatedSize - writerUsage.directRetainedStorage();
                     store.confirmUsage(writerUsage.owner, writerKey, deltaUsage, false);
-                    Set<PublicKeyHash> directOwnedKeys = WriterData.getDirectOwnedKeys(owner, writerKey, mutable, dht, hasher).join();
+                    Set<PublicKeyHash> directOwnedKeys = DeletableContentAddressedStorage.getDirectOwnedKeys(owner, writerKey, mutable,
+                            (h, s) -> DeletableContentAddressedStorage.getWriterData(us, h,s, dht), dht, hasher).join();
                     List<PublicKeyHash> newOwnedKeys = directOwnedKeys.stream()
                             .filter(key -> !writerUsage.ownedKeys().contains(key))
                             .collect(Collectors.toList());
@@ -197,7 +199,9 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
                                             MutablePointers mutable,
                                             Hasher hasher) {
         usageStore.addUserIfAbsent(username);
-        Set<PublicKeyHash> allUserKeys = WriterData.getOwnedKeysRecursive(owner, owner, mutable, dht, hasher).join();
+        List<Multihash> us = List.of(dht.id().join().bareMultihash());
+        Set<PublicKeyHash> allUserKeys = DeletableContentAddressedStorage.getOwnedKeysRecursive(owner, owner, mutable,
+                (h, s) -> DeletableContentAddressedStorage.getWriterData(us, h,s, dht), dht, hasher).join();
 
         for (PublicKeyHash writerKey : allUserKeys) {
             usageStore.addWriter(username, writerKey);
@@ -208,14 +212,16 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
     }
 
     private static void prepareMutablePointerChange(MutableEvent event,
-                                                    ContentAddressedStorage dht,
+                                                    DeletableContentAddressedStorage dht,
                                                     UsageStore usageStore,
                                                     Hasher hasher) {
+        List<Multihash> us = List.of(dht.id().join().bareMultihash());
         PointerUpdate pointerUpdate = dht.getSigningKey(event.owner, event.writer)
                 .thenApply(signer -> PointerUpdate.fromCbor(CborObject.fromByteArray(signer.get()
                         .unsignMessage(event.writerSignedBtreeRootHash)))).join();
         Set<PublicKeyHash> updatedOwned =
-                WriterData.getDirectOwnedKeys(event.owner, event.writer, pointerUpdate.updated, dht, hasher).join();
+                DeletableContentAddressedStorage.getDirectOwnedKeys(event.owner, event.writer, pointerUpdate.updated,
+                        (h, s) -> DeletableContentAddressedStorage.getWriterData(us, h,s, dht), dht, hasher).join();
         WriterUsage current = usageStore.getUsage(event.writer);
         for (PublicKeyHash owned : updatedOwned) {
             usageStore.addWriter(current.owner, owned);
@@ -247,13 +253,15 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
         WriterUsage current = state.getUsage(writer);
         if (current == null)
             throw new IllegalStateException("Unknown writer key hash: " + writer);
+        List<Multihash> us = List.of(dht.id().join().bareMultihash());
         if (! newRoot.isPresent()) {
             state.updateWriterUsage(writer, MaybeMultihash.empty(), Collections.emptySet(), Collections.emptySet(), 0);
             if (existingRoot.isPresent()) {
                 try {
                     // subtract data size from orphaned child keys (this assumes the keys form a tree without dupes)
                     Set<PublicKeyHash> updatedOwned =
-                            WriterData.getDirectOwnedKeys(owner, writer, newRoot, dht, hasher).join();
+                            DeletableContentAddressedStorage.getDirectOwnedKeys(owner, writer, newRoot,
+                                    (h, s) -> DeletableContentAddressedStorage.getWriterData(us, h,s, dht),  dht, hasher).join();
                     processRemovedOwnedKeys(state, owner, updatedOwned, mutable, dht, hasher);
                 } catch (Exception e) {
                     LOG.log(Level.WARNING, e.getMessage(), e);
@@ -269,7 +277,8 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
                 long t1 = System.nanoTime();
                 LOG.info("Calculating change in used space for (" + owner + ", " + writer + ") took " + (t1-t0)/1_000_000 + "mS");
                 Set<PublicKeyHash> updatedOwned =
-                        WriterData.getDirectOwnedKeys(owner, writer, newRoot, dht, hasher).join();
+                        DeletableContentAddressedStorage.getDirectOwnedKeys(owner, writer, newRoot,
+                                (h, s) -> DeletableContentAddressedStorage.getWriterData(us, h,s, dht), dht, hasher).join();
                 for (PublicKeyHash owned : updatedOwned) {
                     state.addWriter(current.owner, owned);
                 }

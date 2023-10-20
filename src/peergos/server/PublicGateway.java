@@ -43,7 +43,7 @@ public class PublicGateway {
         GatewayHandler publicGateway = new GatewayHandler(domainSuffix, crypto, network);
         localhostServer.createContext("/", isPublicServer ? new HSTSHandler(publicGateway) : publicGateway);
 
-        localhostServer.setExecutor(Executors.newFixedThreadPool(handlerPoolSize));
+        localhostServer.setExecutor(Threads.newPool(handlerPoolSize, "peergos-gateway-handler-"));
         localhostServer.start();
     }
 }

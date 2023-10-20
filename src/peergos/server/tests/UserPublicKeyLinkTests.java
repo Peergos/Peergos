@@ -11,11 +11,10 @@ import peergos.shared.corenode.UserPublicKeyLink;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.hash.*;
-import peergos.shared.io.ipfs.multihash.*;
+import peergos.shared.io.ipfs.Multihash;
 import peergos.shared.storage.*;
 import peergos.shared.util.*;
 
-import java.nio.file.*;
 import java.time.LocalDate;
 import java.util.*;
 

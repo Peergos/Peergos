@@ -2,9 +2,10 @@ package peergos.server.storage;
 
 import peergos.server.storage.auth.*;
 import peergos.shared.cbor.*;
+import peergos.shared.corenode.*;
 import peergos.shared.crypto.hash.*;
-import peergos.shared.io.ipfs.cid.*;
-import peergos.shared.io.ipfs.multihash.*;
+import peergos.shared.io.ipfs.Cid;
+import peergos.shared.io.ipfs.Multihash;
 import peergos.shared.storage.*;
 import peergos.shared.storage.auth.*;
 import peergos.shared.util.*;
@@ -18,6 +19,7 @@ public class AuthedStorage extends DelegatingStorage implements DeletableContent
     private final BlockRequestAuthoriser authoriser;
     private final Hasher h;
     private final Cid ourNodeId;
+    private CoreNode pki;
 
     public AuthedStorage(DeletableContentAddressedStorage target,
                          BlockRequestAuthoriser authoriser,
@@ -30,33 +32,48 @@ public class AuthedStorage extends DelegatingStorage implements DeletableContent
     }
 
     @Override
+    public void setPki(CoreNode pki) {
+        target.setPki(pki);
+        this.pki = pki;
+    }
+
+    @Override
     public ContentAddressedStorage directToOrigin() {
         return this;
     }
 
     @Override
-    public CompletableFuture<Optional<CborObject>> get(PublicKeyHash owner, Cid object, Optional<BatWithId> bat) {
-        return get(object, bat, ourNodeId, h);
+    public CompletableFuture<Optional<CborObject>> get(PublicKeyHash owner, Cid hash, Optional<BatWithId> bat) {
+        List<Multihash> peerIds = hasBlock(hash) ?
+                Collections.emptyList() :
+                pki.getStorageProviders(owner);
+        return get(peerIds, hash, bat, ourNodeId, h);
     }
 
     @Override
-    public CompletableFuture<Optional<CborObject>> get(Cid hash, String auth) {
-        return getRaw(hash, auth).thenApply(bopt -> bopt.map(CborObject::fromByteArray));
+    public CompletableFuture<Optional<CborObject>> get(List<Multihash> peerIds, Cid hash, String auth) {
+        return getRaw(peerIds, hash, auth).thenApply(bopt -> bopt.map(CborObject::fromByteArray));
     }
 
     @Override
     public CompletableFuture<Optional<byte[]>> getRaw(PublicKeyHash owner, Cid hash, Optional<BatWithId> bat) {
-        return getRaw(hash, bat, ourNodeId, h);
+        return getRaw(pki.getStorageProviders(owner), hash, bat, ourNodeId, h);
     }
 
     @Override
-    public CompletableFuture<Optional<byte[]>> getRaw(Cid hash, String auth) {
-        return getRaw(hash, auth, true);
+    public CompletableFuture<Optional<byte[]>> getRaw(List<Multihash> peerIds, Cid hash, String auth) {
+        return getRaw(peerIds, hash, auth, true);
     }
 
     @Override
-    public CompletableFuture<Optional<byte[]>> getRaw(Cid hash, String auth, boolean doAuth) {
-        return target.getRaw(hash, auth).thenApply(bopt -> {
+    public CompletableFuture<BlockMetadata> getBlockMetadata(Cid block) {
+        return getRaw(Collections.emptyList(), block, "", false)
+                .thenApply(rawOpt -> BlockMetadataStore.extractMetadata(block, rawOpt.get()));
+    }
+
+    @Override
+    public CompletableFuture<Optional<byte[]>> getRaw(List<Multihash> peerIds, Cid hash, String auth, boolean doAuth) {
+        return target.getRaw(peerIds, hash, auth).thenApply(bopt -> {
             if (bopt.isEmpty())
                 return Optional.empty();
             byte[] block = bopt.get();
@@ -72,10 +89,10 @@ public class AuthedStorage extends DelegatingStorage implements DeletableContent
     }
 
     @Override
-    public CompletableFuture<List<Cid>> getLinks(Cid root, String auth) {
+    public CompletableFuture<List<Cid>> getLinks(Cid root) {
         if (root.codec == Cid.Codec.Raw)
             return CompletableFuture.completedFuture(Collections.emptyList());
-        return getRaw(root, auth, false)
+        return getRaw(Collections.emptyList(), root, "", false)
                 .thenApply(opt -> opt.map(CborObject::fromByteArray))
                 .thenApply(opt -> opt
                         .map(cbor -> cbor.links().stream().map(c -> (Cid) c).collect(Collectors.toList()))

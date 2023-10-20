@@ -1,10 +1,15 @@
 package peergos.server.storage;
 
+import peergos.server.util.*;
+import peergos.shared.*;
 import peergos.shared.cbor.*;
+import peergos.shared.corenode.*;
+import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
+import peergos.shared.io.ipfs.Cid;
+import peergos.shared.io.ipfs.Multihash;
 import peergos.shared.io.ipfs.api.*;
-import peergos.shared.io.ipfs.cid.*;
-import peergos.shared.io.ipfs.multihash.*;
+import peergos.shared.mutable.*;
 import peergos.shared.storage.*;
 import peergos.shared.storage.auth.*;
 import peergos.shared.user.*;
@@ -12,6 +17,7 @@ import peergos.shared.util.*;
 
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.function.*;
 import java.util.stream.*;
 
 /** This interface is only used locally on a server and never exposed.
@@ -20,7 +26,7 @@ import java.util.stream.*;
  */
 public interface DeletableContentAddressedStorage extends ContentAddressedStorage {
 
-    ForkJoinPool usagePool = new ForkJoinPool(100);
+    ForkJoinPool usagePool = Threads.newPool(100, "Usage-updater-");
 
     Stream<Cid> getAllBlockHashes();
 
@@ -54,52 +60,59 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
         }
     }
 
+    void setPki(CoreNode pki);
+
     /**
-     *
+     * @param peerIds
      * @param hash
      * @return The data with the requested hash, deserialized into cbor, or Optional.empty() if no object can be found
      */
-    CompletableFuture<Optional<CborObject>> get(Cid hash, String auth);
+    CompletableFuture<Optional<CborObject>> get(List<Multihash> peerIds, Cid hash, String auth);
 
-    default CompletableFuture<Optional<CborObject>> get(Cid hash, Optional<BatWithId> bat, Cid ourId, Hasher h) {
+    default CompletableFuture<Optional<CborObject>> get(List<Multihash> peerIds, Cid hash, Optional<BatWithId> bat, Cid ourId, Hasher h) {
         if (bat.isEmpty())
-            return get(hash, "");
+            return get(peerIds, hash, "");
         return bat.get().bat.generateAuth(hash, ourId, 300, S3Request.currentDatetime(), bat.get().id, h)
                 .thenApply(BlockAuth::encode)
-                .thenCompose(auth -> get(hash, auth));
+                .thenCompose(auth -> get(peerIds, hash, auth));
     }
 
     /**
      * Get a block of data that is not in ipld cbor format, just raw bytes
+     *
+     * @param peerIds
      * @param hash
      * @return
      */
-    CompletableFuture<Optional<byte[]>> getRaw(Cid hash, String auth);
+    CompletableFuture<Optional<byte[]>> getRaw(List<Multihash> peerIds, Cid hash, String auth);
 
-    default CompletableFuture<Optional<byte[]>> getRaw(Cid hash, String auth, boolean doAuth) {
-        return getRaw(hash, auth);
+    default CompletableFuture<Optional<byte[]>> getRaw(List<Multihash> peerIds, Cid hash, String auth, boolean doAuth) {
+        return getRaw(peerIds, hash, auth);
     }
 
-    default CompletableFuture<Optional<byte[]>> getRaw(Cid hash, Optional<BatWithId> bat, Cid ourId, Hasher h) {
-        return getRaw(hash, bat, ourId, h, true);
+    default CompletableFuture<Optional<byte[]>> getRaw(List<Multihash> peerIds, Cid hash, Optional<BatWithId> bat, Cid ourId, Hasher h) {
+        return getRaw(peerIds, hash, bat, ourId, h, true);
     }
 
-    default CompletableFuture<Optional<byte[]>> getRaw(Cid hash, Optional<BatWithId> bat, Cid ourId, Hasher h, boolean doAuth) {
+    default CompletableFuture<Optional<byte[]>> getRaw(List<Multihash> peerIds, Cid hash, Optional<BatWithId> bat, Cid ourId, Hasher h, boolean doAuth) {
         if (bat.isEmpty())
-            return getRaw(hash, "");
+            return getRaw(peerIds, hash, "");
         return bat.get().bat.generateAuth(hash, ourId, 300, S3Request.currentDatetime(), bat.get().id, h)
                 .thenApply(BlockAuth::encode)
-                .thenCompose(auth -> getRaw(hash, auth, doAuth));
+                .thenCompose(auth -> getRaw(peerIds, hash, auth, doAuth));
     }
 
-    /** Ensure that local copies of all blocks in merkle tree referenced are present locally
+    /**
+     * Ensure that local copies of all blocks in merkle tree referenced are present locally
      *
      * @param owner
+     * @param peerIds
      * @param existing
      * @param updated
      * @return
      */
     default CompletableFuture<List<Cid>> mirror(PublicKeyHash owner,
+                                                List<Multihash> peerIds,
                                                 Optional<Cid> existing,
                                                 Optional<Cid> updated,
                                                 Optional<BatWithId> mirrorBat,
@@ -113,7 +126,7 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
             return Futures.of(Collections.singletonList(newRoot));
         boolean isRaw = newRoot.isRaw();
 
-        Optional<byte[]> newVal = RetryStorage.runWithRetry(3, () -> getRaw(newRoot, mirrorBat, ourNodeId, hasher, false)).join();
+        Optional<byte[]> newVal = RetryStorage.runWithRetry(3, () -> getRaw(peerIds, newRoot, mirrorBat, ourNodeId, hasher, false)).join();
         if (newVal.isEmpty())
             throw new IllegalStateException("Couldn't retrieve block: " + newRoot);
         if (isRaw)
@@ -123,10 +136,11 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
         List<Multihash> newLinks = newBlock.links().stream()
                 .filter(h -> !h.isIdentity())
                 .collect(Collectors.toList());
-        List<Multihash> existingLinks = existing.map(h -> get(h, mirrorBat, ourNodeId, hasher).join())
-                .flatMap(copt -> copt.map(CborObject::links).map(links -> links.stream()
-                        .filter(h -> !h.isIdentity())
-                        .collect(Collectors.toList())))
+        List<Multihash> existingLinks = existing.map(h -> getLinks(h).join()
+                        .stream()
+                        .filter(c -> ! c.isIdentity())
+                        .map(c -> (Multihash) c)
+                        .collect(Collectors.toList()))
                 .orElse(Collections.emptyList());
 
         for (int i=0; i < newLinks.size(); i++) {
@@ -134,7 +148,7 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
                     Optional.of((Cid)existingLinks.get(i)) :
                     Optional.empty();
             Optional<Cid> updatedLink = Optional.of((Cid)newLinks.get(i));
-            mirror(owner, existingLink, updatedLink, mirrorBat, ourNodeId, tid, hasher).join();
+            mirror(owner, peerIds, existingLink, updatedLink, mirrorBat, ourNodeId, tid, hasher).join();
         }
         return Futures.of(Collections.singletonList(newRoot));
     }
@@ -144,17 +158,17 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
      * @param root The hash of the object whose links we want
      * @return A list of the multihashes referenced with ipld links in this object
      */
-    default CompletableFuture<List<Cid>> getLinks(Cid root, String auth) {
+    default CompletableFuture<List<Cid>> getLinks(Cid root) {
         if (root.isRaw())
             return CompletableFuture.completedFuture(Collections.emptyList());
-        return get(root, auth).thenApply(opt -> opt
+        return get(Collections.emptyList(), root, "").thenApply(opt -> opt
                 .map(cbor -> cbor.links().stream().map(c -> (Cid) c).collect(Collectors.toList()))
                 .orElse(Collections.emptyList())
         );
     }
 
     default CompletableFuture<Long> getRecursiveBlockSize(Cid block) {
-        return getLinks(block, "").thenCompose(links -> {
+        return getLinks(block).thenCompose(links -> {
             List<CompletableFuture<Long>> subtrees = links.stream()
                     .filter(m -> ! m.isIdentity())
                     .map(c -> Futures.runAsync(() -> getRecursiveBlockSize(c)))
@@ -174,14 +188,14 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
         return getChangeInContainedSize(original.get(), updated);
     }
 
-    default CompletableFuture<BlockMetadata> getBlockMetadata(Cid block, String auth) {
-        return getRaw(block, auth)
+    default CompletableFuture<BlockMetadata> getBlockMetadata(Cid block) {
+        return getRaw(Collections.emptyList(), block, "")
                 .thenApply(rawOpt -> BlockMetadataStore.extractMetadata(block, rawOpt.get()));
     }
 
     default CompletableFuture<Long> getChangeInContainedSize(Cid original, Cid updated) {
-        return getBlockMetadata(original, "")
-                .thenCompose(before -> getBlockMetadata(updated, "").thenCompose(after -> {
+        return getBlockMetadata(original)
+                .thenCompose(before -> getBlockMetadata(updated).thenCompose(after -> {
                     int objectDelta = after.size - before.size;
                     List<Cid> beforeLinks = before.links.stream().filter(c -> !c.isIdentity()).collect(Collectors.toList());
                     List<Cid> onlyBefore = new ArrayList<>(beforeLinks);
@@ -275,19 +289,127 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
         }
 
         @Override
-        public CompletableFuture<Optional<CborObject>> get(Cid hash, String auth) {
+        public void setPki(CoreNode pki) {}
+
+        @Override
+        public CompletableFuture<Optional<CborObject>> get(List<Multihash> peerIds, Cid hash, String auth) {
             if (hash.isIdentity())
                 return CompletableFuture.completedFuture(Optional.of(CborObject.fromByteArray(hash.getHash())));
-            return poster.get(apiPrefix + BLOCK_GET + "?stream-channels=true&arg=" + hash + "&auth=" + auth)
+            return poster.get(apiPrefix + BLOCK_GET + "?stream-channels=true&arg=" + hash
+                            + (peerIds.isEmpty() ? "" : "&peers=" + peerIds.stream().map(p -> p.bareMultihash().toBase58()).collect(Collectors.joining(",")))
+                            + "&auth=" + auth)
                     .thenApply(raw -> raw.length == 0 ? Optional.empty() : Optional.of(CborObject.fromByteArray(raw)));
         }
 
         @Override
-        public CompletableFuture<Optional<byte[]>> getRaw(Cid hash, String auth) {
+        public CompletableFuture<Optional<byte[]>> getRaw(List<Multihash> peerIds, Cid hash, String auth) {
             if (hash.isIdentity())
                 return CompletableFuture.completedFuture(Optional.of(hash.getHash()));
-            return poster.get(apiPrefix + BLOCK_GET + "?stream-channels=true&arg=" + hash + "&auth=" + auth)
+            return poster.get(apiPrefix + BLOCK_GET + "?stream-channels=true&arg=" + hash
+                            + (peerIds.isEmpty() ? "" : "&peers=" + peerIds.stream().map(p -> p.bareMultihash().toBase58()).collect(Collectors.joining(",")))
+                            + "&auth=" + auth)
                     .thenApply(raw -> raw.length == 0 ? Optional.empty() : Optional.of(raw));
         }
+    }
+
+    public static CompletableFuture<Set<PublicKeyHash>> getOwnedKeysRecursive(String username,
+                                                                              CoreNode core,
+                                                                              MutablePointers mutable,
+                                                                              CommittedWriterData.Retriever retriever,
+                                                                              ContentAddressedStorage dht,
+                                                                              Hasher hasher) {
+        List<UserPublicKeyLink> chain = core.getChain(username).join();
+        if (chain.isEmpty())
+            return Futures.of(Collections.emptySet());
+        UserPublicKeyLink last = chain.get(chain.size() - 1);
+        PublicKeyHash owner = last.owner;
+        return getOwnedKeysRecursive(owner, owner, mutable, retriever, dht, hasher);
+    }
+
+    public static CompletableFuture<Set<PublicKeyHash>> getOwnedKeysRecursive(PublicKeyHash owner,
+                                                                              PublicKeyHash writer,
+                                                                              MutablePointers mutable,
+                                                                              CommittedWriterData.Retriever retriever,
+                                                                              ContentAddressedStorage ipfs,
+                                                                              Hasher hasher) {
+        return getOwnedKeysRecursive(owner, writer, Collections.emptySet(), mutable, retriever, ipfs, hasher);
+    }
+
+    private static CompletableFuture<Set<PublicKeyHash>> getOwnedKeysRecursive(PublicKeyHash owner,
+                                                                               PublicKeyHash writer,
+                                                                               Set<PublicKeyHash> alreadyDone,
+                                                                               MutablePointers mutable,
+                                                                               CommittedWriterData.Retriever retriever,
+                                                                               ContentAddressedStorage ipfs,
+                                                                               Hasher hasher) {
+        return getDirectOwnedKeys(owner, writer, mutable, retriever, ipfs, hasher)
+                .thenCompose(directOwned -> {
+                    Set<PublicKeyHash> newKeys = directOwned.stream().
+                            filter(h -> ! alreadyDone.contains(h))
+                            .collect(Collectors.toSet());
+                    Set<PublicKeyHash> done = new HashSet<>(alreadyDone);
+                    done.add(writer);
+                    BiFunction<Set<PublicKeyHash>, PublicKeyHash, CompletableFuture<Set<PublicKeyHash>>> composer =
+                            (a, w) -> getOwnedKeysRecursive(owner, w, a, mutable, retriever, ipfs, hasher)
+                                    .thenApply(ws ->
+                                            Stream.concat(ws.stream(), a.stream())
+                                                    .collect(Collectors.toSet()));
+                    return Futures.reduceAll(newKeys, done,
+                            composer,
+                            (a, b) -> Stream.concat(a.stream(), b.stream())
+                                    .collect(Collectors.toSet()));
+                });
+    }
+
+    public static CompletableFuture<Set<PublicKeyHash>> getDirectOwnedKeys(PublicKeyHash owner,
+                                                                           PublicKeyHash writer,
+                                                                           MutablePointers mutable,
+                                                                           CommittedWriterData.Retriever retriever,
+                                                                           ContentAddressedStorage ipfs,
+                                                                           Hasher hasher) {
+        return mutable.getPointerTarget(owner, writer, ipfs)
+                .thenCompose(h -> getDirectOwnedKeys(owner, writer, h.updated, retriever, ipfs, hasher));
+    }
+
+    public static CompletableFuture<Set<PublicKeyHash>> getDirectOwnedKeys(PublicKeyHash owner,
+                                                                           PublicKeyHash writer,
+                                                                           MaybeMultihash root,
+                                                                           CommittedWriterData.Retriever retriever,
+                                                                           ContentAddressedStorage ipfs,
+                                                                           Hasher hasher) {
+        if (! root.isPresent())
+            return CompletableFuture.completedFuture(Collections.emptySet());
+
+        BiFunction<Set<OwnerProof>, Pair<PublicKeyHash, OwnerProof>, CompletableFuture<Set<OwnerProof>>>
+                composer = (acc, pair) -> CompletableFuture.completedFuture(Stream.concat(acc.stream(), Stream.of(pair.right))
+                .collect(Collectors.toSet()));
+
+        BiFunction<Set<PublicKeyHash>, OwnerProof, CompletableFuture<Set<PublicKeyHash>>> proofComposer =
+                (acc, proof) -> proof.getAndVerifyOwner(owner, ipfs)
+                        .thenApply(claimedWriter -> Stream.concat(acc.stream(), claimedWriter.equals(writer) ?
+                                Stream.of(proof.ownedKey) :
+                                Stream.empty()).collect(Collectors.toSet()));
+
+        return retriever.getWriterData((Cid)root.get(), Optional.empty())
+                .thenCompose(wd -> wd.props.applyToOwnedKeys(owner, owned ->
+                                owned.applyToAllMappings(owner, Collections.emptySet(), composer, ipfs), ipfs, hasher)
+                        .thenApply(owned -> Stream.concat(owned.stream(),
+                                wd.props.namedOwnedKeys.values().stream()).collect(Collectors.toSet())))
+                .thenCompose(all -> Futures.reduceAll(all, Collections.emptySet(),
+                        proofComposer,
+                        (a, b) -> Stream.concat(a.stream(), b.stream())
+                                .collect(Collectors.toSet())));
+    }
+
+    static CompletableFuture<CommittedWriterData> getWriterData(List<Multihash> peerIds,
+                                                                Cid hash,
+                                                                Optional<Long> sequence,
+                                                                DeletableContentAddressedStorage dht) {
+        return dht.get(peerIds, hash, "")
+                .thenApply(cborOpt -> {
+                    if (! cborOpt.isPresent())
+                        throw new IllegalStateException("Couldn't retrieve WriterData from dht! " + hash);
+                    return new CommittedWriterData(MaybeMultihash.of(hash), WriterData.fromCbor(cborOpt.get()), sequence);
+                });
     }
 }

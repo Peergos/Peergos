@@ -8,9 +8,9 @@ import peergos.shared.crypto.*;
 import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.hamt.*;
+import peergos.shared.io.ipfs.Cid;
+import peergos.shared.io.ipfs.Multihash;
 import peergos.shared.io.ipfs.api.*;
-import peergos.shared.io.ipfs.cid.*;
-import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.storage.auth.*;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
@@ -391,7 +391,7 @@ public interface ContentAddressedStorage {
                                                 List<byte[]> signedHashes,
                                                 List<byte[]> blocks,
                                                 TransactionId tid) {
-            return bulkPut(owner, writer, signedHashes, blocks, "cbor", tid, x -> {});
+            return bulkPut(owner, writer, signedHashes, blocks, "dag-cbor", tid, x -> {});
         }
 
         @Override
@@ -517,6 +517,8 @@ public interface ContentAddressedStorage {
 
         @Override
         public CompletableFuture<Optional<Integer>> getSize(Multihash block) {
+            if (block.type == Multihash.Type.id)
+                return Futures.of(Optional.of(block.getHash().length));
             return poster.get(apiPrefix + BLOCK_STAT + "?stream-channels=true&arg=" + block.toString() + "&auth=letmein")
                     .thenApply(raw -> Optional.of((Integer)((Map)JSONParser.parse(new String(raw))).get("Size")));
         }
@@ -634,5 +636,17 @@ public interface ContentAddressedStorage {
                     () -> local.putRaw(owner, writer, signatures, blocks, tid, progressConsumer),
                     target -> p2p.putRaw(target, owner, writer, signatures, blocks, tid, progressConsumer));
         }
+    }
+
+    static CompletableFuture<CommittedWriterData> getWriterData(PublicKeyHash owner,
+                                                                Cid hash,
+                                                                Optional<Long> sequence,
+                                                                ContentAddressedStorage dht) {
+        return dht.get(owner, hash, Optional.empty())
+                .thenApply(cborOpt -> {
+                    if (! cborOpt.isPresent())
+                        throw new IllegalStateException("Couldn't retrieve WriterData from dht! " + hash);
+                    return new CommittedWriterData(MaybeMultihash.of(hash), WriterData.fromCbor(cborOpt.get()), sequence);
+                });
     }
 }

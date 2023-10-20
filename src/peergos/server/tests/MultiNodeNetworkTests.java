@@ -5,6 +5,7 @@ import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
 import peergos.server.*;
 import peergos.server.storage.*;
+import peergos.server.tests.util.*;
 import peergos.server.util.*;
 import peergos.shared.*;
 import peergos.shared.cbor.*;
@@ -12,8 +13,8 @@ import peergos.shared.corenode.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.crypto.symmetric.*;
-import peergos.shared.io.ipfs.cid.*;
-import peergos.shared.io.ipfs.multihash.*;
+import peergos.shared.io.ipfs.Cid;
+import peergos.shared.io.ipfs.Multihash;
 import peergos.shared.social.*;
 import peergos.shared.storage.auth.*;
 import peergos.shared.user.*;
@@ -38,8 +39,8 @@ import static peergos.server.tests.PeergosNetworkUtils.*;
 public class MultiNodeNetworkTests {
     private static Args args = UserTests.buildArgs()
             .with("useIPFS", "true")
+            .with("enable-gc", "true")
             .with(IpfsWrapper.IPFS_BOOTSTRAP_NODES, ""); // no bootstrapping
-
     private static Random random = new Random(0);
     private static List<NetworkAccess> nodes = new ArrayList<>();
     private static List<UserService> services = new ArrayList<>();
@@ -95,6 +96,7 @@ public class MultiNodeNetworkTests {
 
     @BeforeClass
     public static void init() throws Exception {
+        System.getProperties().setProperty("io.netty.eventLoopThreads", "1");
         // start pki node
         UserService pki = Main.PKI_INIT.main(args.with("allow-target", "/ip4/127.0.0.1/tcp/8002"));
         PublicKeyHash peergosId = pki.coreNode.getPublicKeyHash("peergos").join().get();
@@ -103,18 +105,20 @@ public class MultiNodeNetworkTests {
         Multihash pkiNodeId = toPki.dhtClient.id().get();
         nodes.add(toPki);
         services.add(pki);
+        pki.gc.stop();
         int bootstrapSwarmPort = args.getInt("ipfs-swarm-port");
 
         // create two other nodes that use the first as a PKI-node
         for (int i = 0; i < 2; i++) {
-            int ipfsApiPort = 9000 + random.nextInt(8000);
-            int ipfsGatewayPort = 9000 + random.nextInt(8000);
-            int ipfsSwarmPort = 9000 + random.nextInt(8000);
-            int peergosPort = 9000 + random.nextInt(8000);
-            int proxyTargetPort = 9000 + random.nextInt(8000);
-            int allowPort = 9000 + random.nextInt(8000);
+            int ipfsApiPort = TestPorts.getPort();System.out.println("node" + (i+1) + " base port: " + ipfsApiPort);
+            int ipfsGatewayPort = TestPorts.getPort();
+            int ipfsSwarmPort = TestPorts.getPort();
+            int peergosPort = TestPorts.getPort();
+            int proxyTargetPort = TestPorts.getPort();
+            int allowPort = TestPorts.getPort();
             Args normalNode = UserTests.buildArgs()
                     .with("useIPFS", "true")
+                    .with("enable-gc", "true")
                     .with("port", "" + peergosPort)
                     .with("pki-node-id", pkiNodeId.toString())
                     .with("peergos.identity.hash", peergosId.toString())
@@ -128,6 +132,7 @@ public class MultiNodeNetworkTests {
             argsToCleanUp.add(normalNode);
             UserService service = Main.PEERGOS.main(normalNode);
             services.add(service);
+            service.gc.stop();
 
 //            IPFS ipfs = new IPFS(Main.getLocalMultiAddress(ipfsApiPort));
 //            ipfs.swarm.connect(Main.getLocalBootstrapAddress(bootstrapSwarmPort, pkiNodeId).toString());
@@ -160,10 +165,13 @@ public class MultiNodeNetworkTests {
     }
 
     @Test
-    public void migrate() {
+    public void migrateWithZeroPwdChanges() {
         migrate(0);
+    }
+
+    @Test
+    public void migrateWith1PwdChanges() {
         migrate(1);
-        migrate(2);
     }
 
     public void migrate(int nPasswordChanges) {

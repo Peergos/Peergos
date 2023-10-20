@@ -2,9 +2,9 @@ package peergos.server.storage;
 
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.hash.*;
-import peergos.shared.io.ipfs.cid.*;
-import peergos.shared.io.ipfs.multihash.*;
 import peergos.shared.storage.*;
+import peergos.shared.io.ipfs.Cid;
+import peergos.shared.io.ipfs.Multihash;
 import peergos.shared.storage.auth.*;
 import peergos.shared.util.*;
 
@@ -58,21 +58,21 @@ public class MetadataCachingStorage extends DelegatingDeletableStorage {
     }
 
     @Override
-    public CompletableFuture<List<Cid>> getLinks(Cid block, String auth) {
+    public CompletableFuture<List<Cid>> getLinks(Cid block) {
         if (block.isRaw())
             return Futures.of(Collections.emptyList());
         Optional<BlockMetadata> meta = metadata.get(block);
         if (meta.isPresent())
             return Futures.of(meta.get().links);
-        return getBlockMetadata(block, auth).thenApply(res -> res.links);
+        return getBlockMetadata(block).thenApply(res -> res.links);
     }
 
     @Override
-    public CompletableFuture<BlockMetadata> getBlockMetadata(Cid block, String auth) {
+    public CompletableFuture<BlockMetadata> getBlockMetadata(Cid block) {
         Optional<BlockMetadata> meta = metadata.get(block);
         if (meta.isPresent())
             return Futures.of(meta.get());
-        return target.getBlockMetadata(block, auth)
+        return target.getBlockMetadata(block)
                 .thenApply(blockmeta -> {
                     metadata.put(block, null, blockmeta);
                     return blockmeta;

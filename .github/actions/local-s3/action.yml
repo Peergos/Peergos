@@ -25,8 +25,8 @@ runs:
     - name: Download minio
       shell: bash
       run: |
-        curl --retry 5 --no-progress-meter --output '${{ steps.minio.outputs.home }}/minio' 'https://dl.min.io/server/minio/release/${{ steps.minio.outputs.release }}/archive/minio.RELEASE.2021-07-15T22-27-34Z'
-        curl --retry 5 --no-progress-meter --output '${{ steps.minio.outputs.home }}/mc' 'https://dl.min.io/client/mc/release/${{ steps.minio.outputs.release }}/archive/mc.RELEASE.2021-07-27T06-46-19Z'
+        curl --retry 5 --no-progress-meter --output '${{ steps.minio.outputs.home }}/minio' 'https://dl.min.io/server/minio/release/${{ steps.minio.outputs.release }}/archive/minio.RELEASE.2023-10-07T15-07-38Z'
+        curl --retry 5 --no-progress-meter --output '${{ steps.minio.outputs.home }}/mc' 'https://dl.min.io/client/mc/release/${{ steps.minio.outputs.release }}/archive/mc.RELEASE.2023-10-04T06-52-56Z'
         chmod +x '${{ steps.minio.outputs.home }}/minio'
         chmod +x '${{ steps.minio.outputs.home }}/mc'
     - name: Start minio

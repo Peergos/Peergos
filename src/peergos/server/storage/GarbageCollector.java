@@ -2,12 +2,13 @@ package peergos.server.storage;
 
 import peergos.server.corenode.*;
 import peergos.server.space.*;
+import peergos.server.util.*;
 import peergos.shared.*;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.hash.*;
-import peergos.shared.io.ipfs.cid.*;
-import peergos.shared.io.ipfs.multihash.*;
+import peergos.shared.io.ipfs.Cid;
+import peergos.shared.io.ipfs.Multihash;
 import peergos.shared.mutable.*;
 import peergos.shared.storage.*;
 import peergos.shared.util.*;
@@ -26,31 +27,47 @@ public class GarbageCollector {
     private final JdbcIpnsAndSocial pointers;
     private final UsageStore usage;
     private final BlockMetadataStore metadata;
+    private final boolean listRawFromBlockstore;
+    private final AtomicBoolean running = new AtomicBoolean(false);
 
     public GarbageCollector(DeletableContentAddressedStorage storage,
                             JdbcIpnsAndSocial pointers,
-                            UsageStore usage) {
+                            UsageStore usage,
+                            boolean listRawFromBlockstore) {
         this.storage = storage;
         this.pointers = pointers;
         this.usage = usage;
+        this.listRawFromBlockstore = listRawFromBlockstore;
         this.metadata = storage.getBlockMetadataStore().orElseGet(RamBlockMetadataStore::new);
     }
 
     public synchronized void collect(Function<Stream<Map.Entry<PublicKeyHash, byte[]>>, CompletableFuture<Boolean>> snapshotSaver) {
-        collect(storage, pointers, usage, snapshotSaver, metadata, false);
+        collect(storage, pointers, usage, snapshotSaver, metadata, listRawFromBlockstore);
+    }
+
+    public void stop() {
+        running.set(false);
     }
 
     public void start(long periodMillis, Function<Stream<Map.Entry<PublicKeyHash, byte[]>>, CompletableFuture<Boolean>> snapshotSaver) {
+        running.set(true);
         Thread garbageCollector = new Thread(() -> {
-            while (true) {
+            while (running.get()) {
                 try {
                     collect(snapshotSaver);
-                    Thread.sleep(periodMillis);
                 } catch (Exception e) {
                     LOG.log(Level.SEVERE, e, e::getMessage);
                 }
+                try {
+                    Thread.sleep(periodMillis);
+                } catch (InterruptedException ex) {
+                    Thread.currentThread().interrupt();
+                }
             }
         }, "Garbage Collector");
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+            garbageCollector.interrupt();
+        }, "Garbage Collector - shutdown"));
         garbageCollector.setDaemon(true);
         garbageCollector.start();
     }
@@ -62,7 +79,8 @@ public class GarbageCollector {
         Map<Cid, BlockVersion> deduped = (listFromBlockstore ?
                 storage.getAllBlockHashVersions() :
                 Stream.concat(storage.getAllRawBlockVersions(), metadata.listCbor()))
-                .collect(Collectors.toMap(v -> v.cid, v -> v));
+                .collect(Collectors.toMap(v -> v.cid, v -> v,
+                        (a, b) -> a.isLatest ? a : b.isLatest ? b : a.version.isEmpty() ? b : a));
         return new ArrayList<>(deduped.values());
     }
 
@@ -109,7 +127,7 @@ public class GarbageCollector {
         BitSet reachable = new BitSet(present.size());
 
         int markParallelism = 10;
-        ForkJoinPool markPool = new ForkJoinPool(markParallelism);
+        ForkJoinPool markPool = Threads.newPool(markParallelism, "GC-mark-");
         List<ForkJoinTask<Boolean>> usageMarked = usageRoots.stream()
                 .map(r -> markPool.submit(() -> markReachable(storage, (Cid)r, toIndex, reachable, metadata)))
                 .collect(Collectors.toList());
@@ -137,7 +155,7 @@ public class GarbageCollector {
         snapshotSaver.apply(allPointers.entrySet().stream()).join();
 
         int deleteParallelism = 4;
-        ForkJoinPool pool = new ForkJoinPool(deleteParallelism);
+        ForkJoinPool pool = Threads.newPool(deleteParallelism, "GC-delete-");
         int batchSize = present.size() / deleteParallelism;
         AtomicLong progressCounter = new AtomicLong(0);
         List<ForkJoinTask<Pair<Long, Long>>> futures = IntStream.range(0, deleteParallelism)
@@ -213,6 +231,9 @@ public class GarbageCollector {
         }
         if (pendingDeletes.size() > 0) {
             getWithBackoff(() -> {storage.bulkDelete(pendingDeletes); return true;});
+            for (BlockVersion block : pendingDeletes) {
+                metadata.remove(block.cid);
+            }
         }
 
         return new Pair<>(deletedCborBlocks, deletedRawBlocks);
@@ -230,7 +251,7 @@ public class GarbageCollector {
             }
         }
         List<Cid> links = metadata.get(root).map(m -> m.links)
-                .orElseGet(() -> getWithBackoff(() -> storage.getLinks(root, "").join()));
+                .orElseGet(() -> getWithBackoff(() -> storage.getLinks(root).join()));
         for (Cid link : links) {
             markReachable(storage, link, toIndex, reachable, metadata);
         }

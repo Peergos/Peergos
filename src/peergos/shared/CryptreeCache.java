@@ -1,6 +1,6 @@
 package peergos.shared;
 
-import peergos.shared.io.ipfs.multihash.*;
+import peergos.shared.io.ipfs.Multihash;
 import peergos.shared.user.fs.cryptree.*;
 import peergos.shared.util.*;
 

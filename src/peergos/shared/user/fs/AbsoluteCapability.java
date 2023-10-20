@@ -2,11 +2,9 @@ package peergos.shared.user.fs;
 
 import jsinterop.annotations.*;
 import peergos.shared.cbor.*;
-import peergos.shared.crypto.*;
-import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.crypto.symmetric.*;
-import peergos.shared.io.ipfs.multibase.*;
+import peergos.shared.io.ipfs.bases.*;
 import peergos.shared.storage.auth.*;
 import peergos.shared.util.*;
 
