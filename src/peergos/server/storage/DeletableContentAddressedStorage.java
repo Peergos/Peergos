@@ -65,16 +65,22 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
     /**
      * @param peerIds
      * @param hash
+     * @param persistBlock
      * @return The data with the requested hash, deserialized into cbor, or Optional.empty() if no object can be found
      */
-    CompletableFuture<Optional<CborObject>> get(List<Multihash> peerIds, Cid hash, String auth);
+    CompletableFuture<Optional<CborObject>> get(List<Multihash> peerIds, Cid hash, String auth, boolean persistBlock);
 
-    default CompletableFuture<Optional<CborObject>> get(List<Multihash> peerIds, Cid hash, Optional<BatWithId> bat, Cid ourId, Hasher h) {
+    default CompletableFuture<Optional<CborObject>> get(List<Multihash> peerIds,
+                                                        Cid hash,
+                                                        Optional<BatWithId> bat,
+                                                        Cid ourId,
+                                                        Hasher h,
+                                                        boolean persistBlock) {
         if (bat.isEmpty())
-            return get(peerIds, hash, "");
+            return get(peerIds, hash, "", persistBlock);
         return bat.get().bat.generateAuth(hash, ourId, 300, S3Request.currentDatetime(), bat.get().id, h)
                 .thenApply(BlockAuth::encode)
-                .thenCompose(auth -> get(peerIds, hash, auth));
+                .thenCompose(auth -> get(peerIds, hash, auth, persistBlock));
     }
 
     /**
@@ -82,24 +88,43 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
      *
      * @param peerIds
      * @param hash
+     * @param persistBlock
      * @return
      */
-    CompletableFuture<Optional<byte[]>> getRaw(List<Multihash> peerIds, Cid hash, String auth);
+    CompletableFuture<Optional<byte[]>> getRaw(List<Multihash> peerIds,
+                                               Cid hash,
+                                               String auth,
+                                               boolean persistBlock);
 
-    default CompletableFuture<Optional<byte[]>> getRaw(List<Multihash> peerIds, Cid hash, String auth, boolean doAuth) {
-        return getRaw(peerIds, hash, auth);
+    default CompletableFuture<Optional<byte[]>> getRaw(List<Multihash> peerIds,
+                                                       Cid hash,
+                                                       String auth,
+                                                       boolean doAuth,
+                                                       boolean persistBlock) {
+        return getRaw(peerIds, hash, auth, persistBlock);
     }
 
-    default CompletableFuture<Optional<byte[]>> getRaw(List<Multihash> peerIds, Cid hash, Optional<BatWithId> bat, Cid ourId, Hasher h) {
-        return getRaw(peerIds, hash, bat, ourId, h, true);
+    default CompletableFuture<Optional<byte[]>> getRaw(List<Multihash> peerIds,
+                                                       Cid hash,
+                                                       Optional<BatWithId> bat,
+                                                       Cid ourId,
+                                                       Hasher h,
+                                                       boolean persistBlock) {
+        return getRaw(peerIds, hash, bat, ourId, h, true, persistBlock);
     }
 
-    default CompletableFuture<Optional<byte[]>> getRaw(List<Multihash> peerIds, Cid hash, Optional<BatWithId> bat, Cid ourId, Hasher h, boolean doAuth) {
+    default CompletableFuture<Optional<byte[]>> getRaw(List<Multihash> peerIds,
+                                                       Cid hash,
+                                                       Optional<BatWithId> bat,
+                                                       Cid ourId,
+                                                       Hasher h,
+                                                       boolean doAuth,
+                                                       boolean persistBlock) {
         if (bat.isEmpty())
-            return getRaw(peerIds, hash, "");
+            return getRaw(peerIds, hash, "", persistBlock);
         return bat.get().bat.generateAuth(hash, ourId, 300, S3Request.currentDatetime(), bat.get().id, h)
                 .thenApply(BlockAuth::encode)
-                .thenCompose(auth -> getRaw(peerIds, hash, auth, doAuth));
+                .thenCompose(auth -> getRaw(peerIds, hash, auth, doAuth, persistBlock));
     }
 
     /**
@@ -126,7 +151,7 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
             return Futures.of(Collections.singletonList(newRoot));
         boolean isRaw = newRoot.isRaw();
 
-        Optional<byte[]> newVal = RetryStorage.runWithRetry(3, () -> getRaw(peerIds, newRoot, mirrorBat, ourNodeId, hasher, false)).join();
+        Optional<byte[]> newVal = RetryStorage.runWithRetry(3, () -> getRaw(peerIds, newRoot, mirrorBat, ourNodeId, hasher, false, true)).join();
         if (newVal.isEmpty())
             throw new IllegalStateException("Couldn't retrieve block: " + newRoot);
         if (isRaw)
@@ -161,7 +186,7 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
     default CompletableFuture<List<Cid>> getLinks(Cid root) {
         if (root.isRaw())
             return CompletableFuture.completedFuture(Collections.emptyList());
-        return get(Collections.emptyList(), root, "").thenApply(opt -> opt
+        return get(Collections.emptyList(), root, "", true).thenApply(opt -> opt
                 .map(cbor -> cbor.links().stream().map(c -> (Cid) c).collect(Collectors.toList()))
                 .orElse(Collections.emptyList())
         );
@@ -189,7 +214,7 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
     }
 
     default CompletableFuture<BlockMetadata> getBlockMetadata(Cid block) {
-        return getRaw(Collections.emptyList(), block, "")
+        return getRaw(Collections.emptyList(), block, "", true)
                 .thenApply(rawOpt -> BlockMetadataStore.extractMetadata(block, rawOpt.get()));
     }
 
@@ -292,7 +317,7 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
         public void setPki(CoreNode pki) {}
 
         @Override
-        public CompletableFuture<Optional<CborObject>> get(List<Multihash> peerIds, Cid hash, String auth) {
+        public CompletableFuture<Optional<CborObject>> get(List<Multihash> peerIds, Cid hash, String auth, boolean persistBlock) {
             if (hash.isIdentity())
                 return CompletableFuture.completedFuture(Optional.of(CborObject.fromByteArray(hash.getHash())));
             return poster.get(apiPrefix + BLOCK_GET + "?stream-channels=true&arg=" + hash
@@ -302,12 +327,13 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
         }
 
         @Override
-        public CompletableFuture<Optional<byte[]>> getRaw(List<Multihash> peerIds, Cid hash, String auth) {
+        public CompletableFuture<Optional<byte[]>> getRaw(List<Multihash> peerIds, Cid hash, String auth, boolean persistBlock) {
             if (hash.isIdentity())
                 return CompletableFuture.completedFuture(Optional.of(hash.getHash()));
             return poster.get(apiPrefix + BLOCK_GET + "?stream-channels=true&arg=" + hash
                             + (peerIds.isEmpty() ? "" : "&peers=" + peerIds.stream().map(p -> p.bareMultihash().toBase58()).collect(Collectors.joining(",")))
-                            + "&auth=" + auth)
+                            + "&auth=" + auth
+                            + "&=persist" + persistBlock)
                     .thenApply(raw -> raw.length == 0 ? Optional.empty() : Optional.of(raw));
         }
     }
@@ -405,7 +431,7 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
                                                                 Cid hash,
                                                                 Optional<Long> sequence,
                                                                 DeletableContentAddressedStorage dht) {
-        return dht.get(peerIds, hash, "")
+        return dht.get(peerIds, hash, "", false)
                 .thenApply(cborOpt -> {
                     if (! cborOpt.isPresent())
                         throw new IllegalStateException("Couldn't retrieve WriterData from dht! " + hash);

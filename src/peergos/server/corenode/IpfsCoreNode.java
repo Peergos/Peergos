@@ -100,7 +100,7 @@ public class IpfsCoreNode implements CoreNode {
                                                                        Cid hash,
                                                                        Optional<Long> sequence,
                                                                        DeletableContentAddressedStorage dht) {
-        return dht.get(peerIds, hash, "")
+        return dht.get(peerIds, hash, "", true)
                 .thenApply(cborOpt -> {
                     if (! cborOpt.isPresent())
                         throw new IllegalStateException("Couldn't retrieve WriterData from dht! " + hash);
@@ -131,9 +131,9 @@ public class IpfsCoreNode implements CoreNode {
 
         if (updated.equals(original))
             return CompletableFuture.completedFuture(true);
-        return original.map(h -> storage.get(storageProviders, (Cid)h, "")).orElseGet(() -> CompletableFuture.completedFuture(Optional.empty()))
+        return original.map(h -> storage.get(storageProviders, (Cid)h, "", false)).orElseGet(() -> CompletableFuture.completedFuture(Optional.empty()))
                 .thenApply(rawOpt -> rawOpt.map(y -> Champ.fromCbor(y, fromCbor)))
-                .thenCompose(left -> updated.map(h -> storage.get(storageProviders, (Cid)h, "")).orElseGet(() -> CompletableFuture.completedFuture(Optional.empty()))
+                .thenCompose(left -> updated.map(h -> storage.get(storageProviders, (Cid)h, "", false)).orElseGet(() -> CompletableFuture.completedFuture(Optional.empty()))
                         .thenApply(rawOpt -> rawOpt.map(y -> Champ.fromCbor(y, fromCbor)))
                         .thenCompose(right -> Champ.hashAndMaskKeys(higherLeftMappings, depth, bitWidth, hasher)
                                 .thenCompose(leftHigherMappingsByBit -> Champ.hashAndMaskKeys(higherRightMappings, depth, bitWidth, hasher)
@@ -246,7 +246,7 @@ public class IpfsCoreNode implements CoreNode {
                                      Map<PublicKeyHash, String> reverseLookup,
                                      List<String> usernames) {
         try {
-            Optional<CborObject> cborOpt = ipfs.get(peerIds, (Cid)newValue.get().target, "").get();
+            Optional<CborObject> cborOpt = ipfs.get(peerIds, (Cid)newValue.get().target, "", false).get();
             if (!cborOpt.isPresent()) {
                 LOG.severe("Couldn't retrieve new claim chain from " + newValue);
                 return;
@@ -259,7 +259,7 @@ public class IpfsCoreNode implements CoreNode {
             String username = new String(key.data);
 
             if (oldValue.isPresent()) {
-                Optional<CborObject> existingCborOpt = ipfs.get(peerIds, (Cid)oldValue.get().target, "").get();
+                Optional<CborObject> existingCborOpt = ipfs.get(peerIds, (Cid)oldValue.get().target, "", false).get();
                 if (!existingCborOpt.isPresent()) {
                     LOG.severe("Couldn't retrieve existing claim chain from " + newValue);
                     return;

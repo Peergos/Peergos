@@ -120,7 +120,7 @@ public class RAMStorage implements DeletableContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<Optional<byte[]>> getRaw(List<Multihash> peerIds, Cid object, String auth) {
+    public CompletableFuture<Optional<byte[]>> getRaw(List<Multihash> peerIds, Cid object, String auth, boolean persistBlock) {
         return CompletableFuture.completedFuture(storage.containsKey(object) ?
                 Optional.of(storage.get(object)) :
                 Optional.empty());
@@ -128,11 +128,11 @@ public class RAMStorage implements DeletableContentAddressedStorage {
 
     @Override
     public CompletableFuture<Optional<byte[]>> getRaw(PublicKeyHash owner, Cid hash, Optional<BatWithId> bat) {
-        return getRaw(Collections.emptyList(), hash, bat, id().join(), hasher);
+        return getRaw(Collections.emptyList(), hash, bat, id().join(), hasher, false);
     }
 
     @Override
-    public CompletableFuture<Optional<CborObject>> get(List<Multihash> peerIds, Cid hash, String auth) {
+    public CompletableFuture<Optional<CborObject>> get(List<Multihash> peerIds, Cid hash, String auth, boolean persistBlock) {
         if (hash.codec == Cid.Codec.Raw)
             throw new IllegalStateException("Need to call getRaw if cid is not cbor!");
         return CompletableFuture.completedFuture(getAndParseObject(hash));
@@ -140,7 +140,7 @@ public class RAMStorage implements DeletableContentAddressedStorage {
 
     @Override
     public CompletableFuture<Optional<CborObject>> get(PublicKeyHash owner, Cid hash, Optional<BatWithId> bat) {
-        return get(Collections.emptyList(), hash, bat, id().join(), hasher);
+        return get(Collections.emptyList(), hash, bat, id().join(), hasher, false);
     }
 
     private synchronized Optional<CborObject> getAndParseObject(Multihash hash) {
@@ -161,7 +161,7 @@ public class RAMStorage implements DeletableContentAddressedStorage {
     public CompletableFuture<List<Cid>> getLinks(Cid root) {
         if (root.codec == Cid.Codec.Raw)
             return CompletableFuture.completedFuture(Collections.emptyList());
-        return get(Collections.emptyList(), root, "").thenApply(opt -> opt
+        return get(Collections.emptyList(), root, "", false).thenApply(opt -> opt
                 .map(cbor -> cbor.links().stream().map(c -> (Cid)c).collect(Collectors.toList()))
                 .orElse(Collections.emptyList())
         );

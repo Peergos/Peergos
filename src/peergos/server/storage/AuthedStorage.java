@@ -52,33 +52,33 @@ public class AuthedStorage extends DelegatingStorage implements DeletableContent
         List<Multihash> peerIds = hasBlock(hash) ?
                 Collections.emptyList() :
                 pki.getStorageProviders(owner);
-        return get(peerIds, hash, bat, ourNodeId, h);
+        return get(peerIds, hash, bat, ourNodeId, h, false);
     }
 
     @Override
-    public CompletableFuture<Optional<CborObject>> get(List<Multihash> peerIds, Cid hash, String auth) {
-        return getRaw(peerIds, hash, auth).thenApply(bopt -> bopt.map(CborObject::fromByteArray));
+    public CompletableFuture<Optional<CborObject>> get(List<Multihash> peerIds, Cid hash, String auth, boolean persistBlock) {
+        return getRaw(peerIds, hash, auth, persistBlock).thenApply(bopt -> bopt.map(CborObject::fromByteArray));
     }
 
     @Override
     public CompletableFuture<Optional<byte[]>> getRaw(PublicKeyHash owner, Cid hash, Optional<BatWithId> bat) {
-        return getRaw(pki.getStorageProviders(owner), hash, bat, ourNodeId, h);
+        return getRaw(pki.getStorageProviders(owner), hash, bat, ourNodeId, h, false);
     }
 
     @Override
-    public CompletableFuture<Optional<byte[]>> getRaw(List<Multihash> peerIds, Cid hash, String auth) {
-        return getRaw(peerIds, hash, auth, true);
+    public CompletableFuture<Optional<byte[]>> getRaw(List<Multihash> peerIds, Cid hash, String auth, boolean persistBlock) {
+        return getRaw(peerIds, hash, auth, true, persistBlock);
     }
 
     @Override
     public CompletableFuture<BlockMetadata> getBlockMetadata(Cid block) {
-        return getRaw(Collections.emptyList(), block, "", false)
+        return getRaw(Collections.emptyList(), block, "", false, false)
                 .thenApply(rawOpt -> BlockMetadataStore.extractMetadata(block, rawOpt.get()));
     }
 
     @Override
-    public CompletableFuture<Optional<byte[]>> getRaw(List<Multihash> peerIds, Cid hash, String auth, boolean doAuth) {
-        return target.getRaw(peerIds, hash, auth).thenApply(bopt -> {
+    public CompletableFuture<Optional<byte[]>> getRaw(List<Multihash> peerIds, Cid hash, String auth, boolean doAuth, boolean persistBlock) {
+        return target.getRaw(peerIds, hash, auth, persistBlock).thenApply(bopt -> {
             if (bopt.isEmpty())
                 return Optional.empty();
             byte[] block = bopt.get();
@@ -97,7 +97,7 @@ public class AuthedStorage extends DelegatingStorage implements DeletableContent
     public CompletableFuture<List<Cid>> getLinks(Cid root) {
         if (root.codec == Cid.Codec.Raw)
             return CompletableFuture.completedFuture(Collections.emptyList());
-        return getRaw(Collections.emptyList(), root, "", false)
+        return getRaw(Collections.emptyList(), root, "", false, false)
                 .thenApply(opt -> opt.map(CborObject::fromByteArray))
                 .thenApply(opt -> opt
                         .map(cbor -> cbor.links().stream().map(c -> (Cid) c).collect(Collectors.toList()))

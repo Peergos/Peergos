@@ -276,7 +276,7 @@ public class MirrorCoreNode implements CoreNode {
                         Optional<CborObject.CborMerkleLink> newVal = t.right;
                         if (newVal.isPresent()) {
                             transactions.addBlock(newVal.get().target, tid, pkiOwnerIdentity);
-                            ipfs.get(pkiStorageProviders, (Cid) newVal.get().target, "").join();
+                            ipfs.get(pkiStorageProviders, (Cid) newVal.get().target, "", true).join();
                         }
                     };
             IpfsCoreNode.applyToDiff(pkiStorageProviders, currentTree, updatedTree, 0, IpfsCoreNode::keyHash,

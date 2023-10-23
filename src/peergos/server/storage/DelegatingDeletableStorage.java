@@ -68,13 +68,13 @@ public class DelegatingDeletableStorage implements DeletableContentAddressedStor
     }
 
     @Override
-    public CompletableFuture<Optional<CborObject>> get(List<Multihash> peerIds, Cid hash, String auth) {
-        return target.get(peerIds, hash, auth);
+    public CompletableFuture<Optional<CborObject>> get(List<Multihash> peerIds, Cid hash, String auth, boolean persistBlock) {
+        return target.get(peerIds, hash, auth, persistBlock);
     }
 
     @Override
-    public CompletableFuture<Optional<byte[]>> getRaw(List<Multihash> peerIds, Cid hash, String auth) {
-        return target.getRaw(peerIds, hash, auth);
+    public CompletableFuture<Optional<byte[]>> getRaw(List<Multihash> peerIds, Cid hash, String auth, boolean persistBlock) {
+        return target.getRaw(peerIds, hash, auth, persistBlock);
     }
 
     @Override
@@ -158,8 +158,8 @@ public class DelegatingDeletableStorage implements DeletableContentAddressedStor
     }
 
     @Override
-    public CompletableFuture<Optional<CborObject>> get(List<Multihash> peerIds, Cid hash, Optional<BatWithId> bat, Cid ourId, Hasher h) {
-        return target.get(peerIds, hash, bat, ourId, h);
+    public CompletableFuture<Optional<CborObject>> get(List<Multihash> peerIds, Cid hash, Optional<BatWithId> bat, Cid ourId, Hasher h, boolean persistBlock) {
+        return target.get(peerIds, hash, bat, ourId, h, persistBlock);
     }
 
     @Override
