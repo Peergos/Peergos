@@ -32,6 +32,11 @@ public class AuthedStorage extends DelegatingStorage implements DeletableContent
     }
 
     @Override
+    public CompletableFuture<Cid> id() {
+        return Futures.of(ourNodeId);
+    }
+
+    @Override
     public void setPki(CoreNode pki) {
         target.setPki(pki);
         this.pki = pki;
