@@ -322,7 +322,8 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
                 return CompletableFuture.completedFuture(Optional.of(CborObject.fromByteArray(hash.getHash())));
             return poster.get(apiPrefix + BLOCK_GET + "?stream-channels=true&arg=" + hash
                             + (peerIds.isEmpty() ? "" : "&peers=" + peerIds.stream().map(p -> p.bareMultihash().toBase58()).collect(Collectors.joining(",")))
-                            + "&auth=" + auth)
+                            + "&auth=" + auth
+                            + "&persist=" + persistBlock)
                     .thenApply(raw -> raw.length == 0 ? Optional.empty() : Optional.of(CborObject.fromByteArray(raw)));
         }
 
@@ -333,7 +334,7 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
             return poster.get(apiPrefix + BLOCK_GET + "?stream-channels=true&arg=" + hash
                             + (peerIds.isEmpty() ? "" : "&peers=" + peerIds.stream().map(p -> p.bareMultihash().toBase58()).collect(Collectors.joining(",")))
                             + "&auth=" + auth
-                            + "&=persist" + persistBlock)
+                            + "&persist=" + persistBlock)
                     .thenApply(raw -> raw.length == 0 ? Optional.empty() : Optional.of(raw));
         }
     }
