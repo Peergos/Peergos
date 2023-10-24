@@ -29,6 +29,8 @@ public class GarbageCollector {
     private final BlockMetadataStore metadata;
     private final boolean listRawFromBlockstore;
     private final AtomicBoolean running = new AtomicBoolean(false);
+    private final ForkJoinPool markPool, deletePool;
+    private final int deleteParallelism;
 
     public GarbageCollector(DeletableContentAddressedStorage storage,
                             JdbcIpnsAndSocial pointers,
@@ -39,10 +41,14 @@ public class GarbageCollector {
         this.usage = usage;
         this.listRawFromBlockstore = listRawFromBlockstore;
         this.metadata = storage.getBlockMetadataStore().orElseGet(RamBlockMetadataStore::new);
+        int markParallelism = 10;
+        this.markPool = Threads.newPool(markParallelism, "GC-mark-");
+        this.deleteParallelism = 4;
+        deletePool = Threads.newPool(deleteParallelism, "GC-delete-");
     }
 
     public synchronized void collect(Function<Stream<Map.Entry<PublicKeyHash, byte[]>>, CompletableFuture<Boolean>> snapshotSaver) {
-        collect(storage, pointers, usage, snapshotSaver, metadata, listRawFromBlockstore);
+        collect(storage, pointers, usage, snapshotSaver, metadata, markPool, deleteParallelism, deletePool, listRawFromBlockstore);
     }
 
     public void stop() {
@@ -97,6 +103,9 @@ public class GarbageCollector {
                                UsageStore usage,
                                Function<Stream<Map.Entry<PublicKeyHash, byte[]>>, CompletableFuture<Boolean>> snapshotSaver,
                                BlockMetadataStore metadata,
+                               ForkJoinPool markPool,
+                               int deleteParallelism,
+                               ForkJoinPool deletePool,
                                boolean listFromBlockstore) {
         System.out.println("Starting blockstore garbage collection on node " + storage.id().join() + "...");
         // TODO: do this more efficiently with a bloom filter, and actual streaming and multithreading
@@ -126,8 +135,6 @@ public class GarbageCollector {
                 toIndex.put(present.get(i).cid, i);
         BitSet reachable = new BitSet(present.size());
 
-        int markParallelism = 10;
-        ForkJoinPool markPool = Threads.newPool(markParallelism, "GC-mark-");
         List<ForkJoinTask<Boolean>> usageMarked = usageRoots.stream()
                 .map(r -> markPool.submit(() -> markReachable(storage, (Cid)r, toIndex, reachable, metadata)))
                 .collect(Collectors.toList());
@@ -154,12 +161,10 @@ public class GarbageCollector {
         // Save pointers snapshot
         snapshotSaver.apply(allPointers.entrySet().stream()).join();
 
-        int deleteParallelism = 4;
-        ForkJoinPool pool = Threads.newPool(deleteParallelism, "GC-delete-");
         int batchSize = present.size() / deleteParallelism;
         AtomicLong progressCounter = new AtomicLong(0);
         List<ForkJoinTask<Pair<Long, Long>>> futures = IntStream.range(0, deleteParallelism)
-                .mapToObj(i -> pool.submit(() -> deleteUnreachableBlocks(i * batchSize,
+                .mapToObj(i -> deletePool.submit(() -> deleteUnreachableBlocks(i * batchSize,
                         Math.min((i + 1) * batchSize, present.size()), reachable, present, progressCounter, storage, metadata)))
                 .collect(Collectors.toList());
         Pair<Long, Long> deleted = futures.stream()

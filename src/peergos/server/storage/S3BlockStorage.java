@@ -458,9 +458,12 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         transactions.clearOldTransactions(cutoffMillis);
     }
 
-    private void collectGarbage(JdbcIpnsAndSocial pointers, UsageStore usage, BlockMetadataStore metadata, boolean listFromBlockstore) {
+    private void collectGarbage(JdbcIpnsAndSocial pointers, UsageStore usage, BlockMetadataStore metadata,
+                                ForkJoinPool markPool,
+                                int deleteParallelism,
+                                ForkJoinPool deletePool, boolean listFromBlockstore) {
         GarbageCollector.collect(this, pointers, usage,
-                this::savePointerSnapshot, metadata, listFromBlockstore);
+                this::savePointerSnapshot, metadata, markPool, deleteParallelism, deletePool, listFromBlockstore);
     }
 
     public CompletableFuture<Boolean> savePointerSnapshot(Stream<Map.Entry<PublicKeyHash, byte[]>> pointers) {
@@ -916,7 +919,11 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         JdbcIpnsAndSocial rawPointers = new JdbcIpnsAndSocial(database, sqlCommands);
         Supplier<Connection> usageDb = Main.getDBConnector(a, "space-usage-sql-file");
         UsageStore usageStore = new JdbcUsageStore(usageDb, sqlCommands);
-        s3.collectGarbage(rawPointers, usageStore, meta, a.getBoolean("s3.versioned-bucket"));
+        int markParallelism = 10;
+        ForkJoinPool markPool = Threads.newPool(markParallelism, "GC-mark-");
+        int deleteParallelism = 4;
+        ForkJoinPool deletePool = Threads.newPool(deleteParallelism, "GC-delete-");
+        s3.collectGarbage(rawPointers, usageStore, meta, markPool, deleteParallelism, deletePool, a.getBoolean("s3.versioned-bucket"));
     }
 
     @Override
