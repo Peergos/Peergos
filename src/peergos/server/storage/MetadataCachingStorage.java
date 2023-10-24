@@ -72,41 +72,21 @@ public class MetadataCachingStorage extends DelegatingDeletableStorage {
         Optional<BlockMetadata> meta = metadata.get(block);
         if (meta.isPresent())
             return Futures.of(meta.get());
-        return target.getBlockMetadata(block)
-                .thenApply(blockmeta -> {
-                    metadata.put(block, null, blockmeta);
-                    return blockmeta;
-                });
-    }
-
-    private void cacheBlockMetadata(byte[] block, boolean isRaw) {
-        Cid cid = hashToCid(block, isRaw, hasher).join();
-        metadata.put(cid, null, block);
+        return target.getBlockMetadata(block);
     }
 
     @Override
     public CompletableFuture<List<byte[]>> getChampLookup(PublicKeyHash owner, Cid root, byte[] champKey, Optional<BatWithId> bat, Optional<Cid> committedRoot) {
-        return target.getChampLookup(owner, root, champKey, bat,committedRoot).thenApply(blocks -> {
-            for (byte[] block : blocks) {
-                cacheBlockMetadata(block, false);
-            }
-            return blocks;
-        });
+        return target.getChampLookup(owner, root, champKey, bat,committedRoot);
     }
 
     @Override
     public CompletableFuture<Optional<CborObject>> get(PublicKeyHash owner, Cid hash, Optional<BatWithId> bat) {
-        return target.get(owner, hash, bat).thenApply(res -> {
-            res.ifPresent(cbor -> cacheBlockMetadata(cbor.toByteArray(), hash.isRaw()));
-            return res;
-        });
+        return target.get(owner, hash, bat);
     }
 
     @Override
     public CompletableFuture<Optional<byte[]>> getRaw(PublicKeyHash owner, Cid hash, Optional<BatWithId> bat) {
-        return target.getRaw(owner, hash, bat).thenApply(bopt -> {
-            bopt.ifPresent(b -> cacheBlockMetadata(b, hash.isRaw()));
-            return bopt;
-        });
+        return target.getRaw(owner, hash, bat);
     }
 }
