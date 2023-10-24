@@ -95,7 +95,7 @@ public interface BlockRequestAuthoriser {
                         (bid.isInline() && auth.batId.equals(h.hash(bid.getInline().get().serialize(), false).join())))
                 .findFirst();
         if (match.isEmpty())
-            return "No matching BAT ID in block";
+            return "No matching BAT ID in block for " + auth.batId;
 
         LocalDateTime timestamp = auth.timestamp();
         LocalDateTime expiry = timestamp.plusSeconds(auth.expirySeconds);
