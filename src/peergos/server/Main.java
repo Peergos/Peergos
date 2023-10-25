@@ -56,6 +56,8 @@ public class Main extends Builder {
 
     public static final Command.Arg ARG_TRANSACTIONS_SQL_FILE =
         new Command.Arg("transactions-sql-file", "The filename for the transactions datastore", false, "transactions.sql");
+    public static final Command.Arg ARG_BAT_STORE =
+                    new Command.Arg("bat-store", "The filename for the BAT store (or :memory: for ram based)", true, "bats.sql");
     public static final Command.Arg ARG_USE_IPFS =
         new Command.Arg("useIPFS", "Use IPFS for storage or a local disk store if not", false, "true");
     public static final Command.Arg ARG_IPFS_API_ADDRESS =
@@ -103,8 +105,10 @@ public class Main extends Builder {
                     new Command.Arg("s3.secretKey", "S3 secret key", false),
                     new Command.Arg("s3.region.endpoint", "Base url for S3 service", false),
                     new Command.Arg("block-store-filter", "Indicate blockstore filter type. Can be 'none', 'bloom', 'infini'", false),
-                    new Command.Arg("block-store-filter-false-positive-rate", "The false positive rate to apply to the block-store-filter. ", false)
-            )
+                    new Command.Arg("block-store-filter-false-positive-rate", "The false positive rate to apply to the block-store-filter. ", false),
+                    ARG_TRANSACTIONS_SQL_FILE,
+                    ARG_BAT_STORE
+                    )
     );
 
 
@@ -123,7 +127,7 @@ public class Main extends Builder {
                     new Command.Arg("domain", "Domain name to bind to", false, "localhost"),
                     new Command.Arg("public-domain", "The public domain name for this server (required if TLS is managed upstream)", false),
                     ARG_USE_IPFS,
-                    new Command.Arg("bat-store", "The filename for the BAT store (or :memory: for ram based)", true, "bats.sql"),
+                    ARG_BAT_STORE,
                     new Command.Arg("mutable-pointers-file", "The filename for the mutable pointers datastore", true, "mutable.sql"),
                     new Command.Arg("social-sql-file", "The filename for the follow requests datastore", true, "social.sql"),
                     new Command.Arg("space-requests-sql-file", "The filename for the space requests datastore", true, "space-requests.sql"),

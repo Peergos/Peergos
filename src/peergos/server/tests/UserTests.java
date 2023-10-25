@@ -89,8 +89,6 @@ public abstract class UserTests {
                     "peergos.password", "testpassword",
                     "pki.keygen.password", "testpkipassword",
                     "pki.keyfile.password", "testpassword",
-                    "transactions-sql-file", "transactions.sql",
-                    "bat-store", "bats.sql"
             });
         } catch (IOException e) {
             throw new RuntimeException(e);
