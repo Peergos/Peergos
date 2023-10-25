@@ -302,7 +302,7 @@ public class S3Request {
     }
 
     public static String currentDatetime() {
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime now = LocalDateTime.now(ZoneOffset.UTC);
         return now.toString().substring(0, 19).replaceAll("-", "").replaceAll(":", "") + "Z";
     }
 }
