@@ -88,7 +88,9 @@ public abstract class UserTests {
                     Main.PEERGOS_PATH, peergosDir.toString(),
                     "peergos.password", "testpassword",
                     "pki.keygen.password", "testpkipassword",
-                    "pki.keyfile.password", "testpassword"
+                    "pki.keyfile.password", "testpassword",
+                    "transactions-sql-file", "transactions.sql",
+                    "bat-store", "bats.sql"
             });
         } catch (IOException e) {
             throw new RuntimeException(e);

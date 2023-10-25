@@ -29,7 +29,6 @@ public class S3UserTests extends UserTests {
 
     private static Args pkiArgs = buildArgs()
             .with("useIPFS", "true")
-            .with("transactions-sql-file", "transactions.sql")
             .with(IpfsWrapper.IPFS_BOOTSTRAP_NODES, ""); // no bootstrapping
 
     private static Args withS3(Args in) {
