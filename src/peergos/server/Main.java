@@ -508,16 +508,13 @@ public class Main extends Builder {
             System.out.println("Starting Peergos daemon version: " + new InstanceAdmin.VersionInfo(UserService.CURRENT_VERSION, Admin.getSourceVersion()));
 
             SqlSupplier sqlCommands = getSqlCommands(a);
-            Supplier<Connection> dbConnectionPool = getDBConnector(a, "transactions-sql-file");
-            BatCave batStore = new JdbcBatCave(getDBConnector(a, "bat-store", dbConnectionPool), sqlCommands);
-            BlockRequestAuthoriser blockRequestAuthoriser = Builder.blockAuthoriser(a, batStore, hasher);
 
             boolean useIPFS = a.getBoolean("useIPFS");
 
             IpfsWrapper ipfsWrapper = useIPFS ? IPFS.main(a) : null;
-            if (useIPFS) {
-                ipfsWrapper.setBlockRequestAuthoriser(blockRequestAuthoriser);
-            }
+            Supplier<Connection> dbConnectionPool = useIPFS ? ipfsWrapper.getDbConnectionPool() : getDBConnector(a, "transactions-sql-file");
+            BatCave batStore = useIPFS ? ipfsWrapper.getBatStore() : new JdbcBatCave(getDBConnector(a, "bat-store", dbConnectionPool), sqlCommands);
+            BlockRequestAuthoriser blockRequestAuthoriser = useIPFS ? ipfsWrapper.getBlockRequestAuthoriser() : Builder.blockAuthoriser(a, batStore, hasher);
             BlockMetadataStore meta = useIPFS ? ipfsWrapper.getBlockMetadata() : buildBlockMetadata(a);
 
             boolean doExportAggregatedMetrics = a.getBoolean("collect-metrics");
