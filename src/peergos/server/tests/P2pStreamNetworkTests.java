@@ -22,8 +22,8 @@ public class P2pStreamNetworkTests {
     private static Args args = UserTests
             .buildArgs()
             .with("useIPFS", "true")
-            .with("transactions-sql-file", "transactions.sql");
-
+            .with("transactions-sql-file", "transactions.sql")
+            .with(IpfsWrapper.IPFS_BOOTSTRAP_NODES, ""); // no bootstrapping
 
     private static Random random = new Random(0);
     private static List<NetworkAccess> nodes = new ArrayList<>();
