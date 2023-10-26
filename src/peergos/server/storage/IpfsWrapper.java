@@ -282,8 +282,8 @@ public class IpfsWrapper implements AutoCloseable {
 
     public static IpfsWrapper launch(Args args) {
         SqlSupplier sqlCommands = Builder.getSqlCommands(args);
-        Supplier<Connection> dbConnectionPool = Builder.getDBConnector(args, "transactions-sql-file");
-        BatCave batStore = new JdbcBatCave(Builder.getDBConnector(args, "bat-store", dbConnectionPool), sqlCommands);
+        Supplier<Connection> dbConn = Builder.getDBConnector(args, "bat-store");
+        BatCave batStore = new JdbcBatCave(dbConn, sqlCommands);
         Hasher hasher = Builder.initCrypto().hasher;
         BlockRequestAuthoriser blockAuth = Builder.blockAuthoriser(args, batStore, hasher);
         BlockMetadataStore metaDB = Builder.buildBlockMetadata(args);
