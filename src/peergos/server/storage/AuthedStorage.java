@@ -52,7 +52,7 @@ public class AuthedStorage extends DelegatingStorage implements DeletableContent
         List<Multihash> peerIds = hasBlock(hash) ?
                 Collections.emptyList() :
                 pki.getStorageProviders(owner);
-        return get(peerIds, hash, bat, ourNodeId, h, false);
+        return get(peerIds, hash, bat, ourNodeId, h, true);
     }
 
     @Override
@@ -62,7 +62,7 @@ public class AuthedStorage extends DelegatingStorage implements DeletableContent
 
     @Override
     public CompletableFuture<Optional<byte[]>> getRaw(PublicKeyHash owner, Cid hash, Optional<BatWithId> bat) {
-        return getRaw(pki.getStorageProviders(owner), hash, bat, ourNodeId, h, false);
+        return getRaw(pki.getStorageProviders(owner), hash, bat, ourNodeId, h, true);
     }
 
     @Override
@@ -72,7 +72,7 @@ public class AuthedStorage extends DelegatingStorage implements DeletableContent
 
     @Override
     public CompletableFuture<BlockMetadata> getBlockMetadata(Cid block) {
-        return getRaw(Collections.emptyList(), block, "", false, false)
+        return getRaw(Collections.emptyList(), block, "", false, true)
                 .thenApply(rawOpt -> BlockMetadataStore.extractMetadata(block, rawOpt.get()));
     }
 
@@ -97,7 +97,7 @@ public class AuthedStorage extends DelegatingStorage implements DeletableContent
     public CompletableFuture<List<Cid>> getLinks(Cid root) {
         if (root.codec == Cid.Codec.Raw)
             return CompletableFuture.completedFuture(Collections.emptyList());
-        return getRaw(Collections.emptyList(), root, "", false, false)
+        return getRaw(Collections.emptyList(), root, "", false, true)
                 .thenApply(opt -> opt.map(CborObject::fromByteArray))
                 .thenApply(opt -> opt
                         .map(cbor -> cbor.links().stream().map(c -> (Cid) c).collect(Collectors.toList()))

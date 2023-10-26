@@ -65,7 +65,7 @@ public class TransactionalIpfs extends DelegatingStorage implements DeletableCon
     @Override
     public CompletableFuture<Optional<CborObject>> get(PublicKeyHash owner, Cid hash, Optional<BatWithId> bat) {
         List<Multihash> providers = hasBlock(hash) ? Collections.emptyList() : pki.getStorageProviders(owner);
-        return get(providers, hash, bat, id, hasher, false);
+        return get(providers, hash, bat, id, hasher, true);
     }
 
     @Override
@@ -75,7 +75,7 @@ public class TransactionalIpfs extends DelegatingStorage implements DeletableCon
 
     @Override
     public CompletableFuture<Optional<byte[]>> getRaw(PublicKeyHash owner, Cid hash, Optional<BatWithId> bat) {
-        return getRaw(pki.getStorageProviders(owner), hash, bat, id, hasher, false);
+        return getRaw(pki.getStorageProviders(owner), hash, bat, id, hasher, true);
     }
 
     @Override
@@ -104,7 +104,7 @@ public class TransactionalIpfs extends DelegatingStorage implements DeletableCon
     public CompletableFuture<List<Cid>> getLinks(Cid root) {
         if (root.isRaw())
             return CompletableFuture.completedFuture(Collections.emptyList());
-        return getRaw(Collections.emptyList(), root, "", false, false)
+        return getRaw(Collections.emptyList(), root, "", false, true)
                 .thenApply(opt -> opt.map(CborObject::fromByteArray))
                 .thenApply(opt -> opt
                         .map(cbor -> cbor.links().stream().map(c -> (Cid) c).collect(Collectors.toList()))
@@ -114,7 +114,7 @@ public class TransactionalIpfs extends DelegatingStorage implements DeletableCon
 
     @Override
     public CompletableFuture<BlockMetadata> getBlockMetadata(Cid block) {
-        return getRaw(Collections.emptyList(), block, "", false, false)
+        return getRaw(Collections.emptyList(), block, "", false, true)
                 .thenApply(data -> BlockMetadataStore.extractMetadata(block, data.get()));
     }
 

@@ -432,7 +432,7 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
                                                                 Cid hash,
                                                                 Optional<Long> sequence,
                                                                 DeletableContentAddressedStorage dht) {
-        return dht.get(peerIds, hash, "", false)
+        return dht.get(peerIds, hash, "", true)
                 .thenApply(cborOpt -> {
                     if (! cborOpt.isPresent())
                         throw new IllegalStateException("Couldn't retrieve WriterData from dht! " + hash);
