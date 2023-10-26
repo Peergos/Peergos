@@ -316,7 +316,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
 
     @Override
     public CompletableFuture<Optional<CborObject>> get(PublicKeyHash owner, Cid object, Optional<BatWithId> bat) {
-        return getRaw(pki.getStorageProviders(owner), object, bat, id, hasher, false)
+        return getRaw(pki.getStorageProviders(owner), object, bat, id, hasher, true)
                 .thenApply(opt -> opt.map(CborObject::fromByteArray));
     }
 
@@ -329,7 +329,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
 
     @Override
     public CompletableFuture<Optional<byte[]>> getRaw(PublicKeyHash owner, Cid object, Optional<BatWithId> bat) {
-        return getRaw(pki.getStorageProviders(owner), object, bat, id, hasher, false);
+        return getRaw(pki.getStorageProviders(owner), object, bat, id, hasher, true);
     }
 
     @Override
