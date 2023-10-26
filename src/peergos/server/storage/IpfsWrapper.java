@@ -206,19 +206,7 @@ public class IpfsWrapper implements AutoCloseable {
     private HttpServer apiServer;
     private HttpServer p2pServer;
 
-    private final BlockMetadataStore metaDB;
-
-    private final BlockRequestAuthoriser blockRequestAuthoriser;
-
-    private final Supplier<Connection> dbConnectionPool;
-    private final BatCave batStore;
-
-    public IpfsWrapper(Path ipfsDir, IpfsConfigParams ipfsConfigParams, Supplier<Connection> dbConnectionPool,
-                       BatCave batStore, BlockRequestAuthoriser blockRequestAuthoriser, BlockMetadataStore metaDB) {
-        this.dbConnectionPool = dbConnectionPool;
-        this.batStore = batStore;
-        this.blockRequestAuthoriser = blockRequestAuthoriser;
-        this.metaDB = metaDB;
+    public IpfsWrapper(Path ipfsDir, IpfsConfigParams ipfsConfigParams) {
         File ipfsDirF = ipfsDir.toFile();
         if (! ipfsDirF.isDirectory() && ! ipfsDirF.mkdirs()) {
             throw new IllegalStateException("Specified IPFS_PATH '" + ipfsDir + " is not a directory and/or could not be created");
@@ -238,22 +226,6 @@ public class IpfsWrapper implements AutoCloseable {
             }
         }
         this.ipfsConfigParams= ipfsConfigParams.withIdentity(identityOpt);
-    }
-
-    public BlockMetadataStore getBlockMetadata() {
-        return metaDB;
-    }
-
-    public Supplier<Connection> getDbConnectionPool() {
-        return dbConnectionPool;
-    }
-
-    public BatCave getBatStore() {
-        return batStore;
-    }
-
-    public BlockRequestAuthoriser getBlockRequestAuthoriser() {
-        return blockRequestAuthoriser;
     }
 
     public static boolean isHttpApiListening(String ipfsApiAddress) {
@@ -309,26 +281,28 @@ public class IpfsWrapper implements AutoCloseable {
     }
 
     public static IpfsWrapper launch(Args args) {
-
-        Path ipfsDir = getIpfsDir(args);
-        LOG.info("Using IPFS dir " + ipfsDir);
-
-        IpfsConfigParams ipfsConfigParams = buildConfig(args);
         SqlSupplier sqlCommands = Builder.getSqlCommands(args);
         Supplier<Connection> dbConnectionPool = Builder.getDBConnector(args, "transactions-sql-file");
         BatCave batStore = new JdbcBatCave(Builder.getDBConnector(args, "bat-store", dbConnectionPool), sqlCommands);
         Hasher hasher = Builder.initCrypto().hasher;
-        BlockRequestAuthoriser blockRequestAuthoriser = Builder.blockAuthoriser(args, batStore, hasher);
-
+        BlockRequestAuthoriser blockAuth = Builder.blockAuthoriser(args, batStore, hasher);
         BlockMetadataStore metaDB = Builder.buildBlockMetadata(args);
+        return launch(args, blockAuth, metaDB);
+    }
 
-        IpfsWrapper ipfsWrapper = new IpfsWrapper(ipfsDir, ipfsConfigParams, dbConnectionPool, batStore, blockRequestAuthoriser, metaDB);
+    public static IpfsWrapper launch(Args args, BlockRequestAuthoriser blockAuth, BlockMetadataStore metaDB) {
+        Path ipfsDir = getIpfsDir(args);
+        LOG.info("Using IPFS dir " + ipfsDir);
+
+        IpfsConfigParams ipfsConfigParams = buildConfig(args);
+
+        IpfsWrapper ipfsWrapper = new IpfsWrapper(ipfsDir, ipfsConfigParams);
         Config config = ipfsWrapper.configure();
         LOG.info("Starting Nabu version: " + APIHandler.CURRENT_VERSION + ", peerid: " + config.identity.peerId);
         org.peergos.BlockRequestAuthoriser authoriser = (c, block, p, auth) -> {
             peergos.shared.io.ipfs.Cid source = peergos.shared.io.ipfs.Cid.decodePeerId(p.toString());
             peergos.shared.io.ipfs.Cid cid = peergos.shared.io.ipfs.Cid.decode(c.toString());
-            return ipfsWrapper.blockRequestAuthoriser.allowRead(cid, block, source, auth).thenApply(resp -> resp)
+            return blockAuth.allowRead(cid, block, source, auth).thenApply(resp -> resp)
                 .exceptionally(ex -> false);
         };
 

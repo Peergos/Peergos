@@ -70,7 +70,7 @@ public class Main extends Builder {
             Main::startIpfs,
             Arrays.asList(
                     new Command.Arg("IPFS_PATH", "Path to IPFS directory. Defaults to $PEERGOS_PATH/.ipfs, or ~/.peergos/.ipfs", false),
-                    new Command.Arg("ipfs-api-address", "IPFS API port", false, "/ip4/127.0.0.1/tcp/5001"),
+                    ARG_IPFS_API_ADDRESS,
                     new Command.Arg("ipfs-gateway-address", "IPFS Gateway port", false, "/ip4/127.0.0.1/tcp/8080"),
                     new Command.Arg("ipfs-swarm-port", "IPFS Swarm port", false, "4001"),
                     ARG_IPFS_PROXY_TARGET,
@@ -120,8 +120,8 @@ public class Main extends Builder {
                     new Command.Arg("peergos.identity.hash", "The hash of peergos user's public key, this is used to bootstrap the pki", true, "z59vuwzfFDp3ZA8ZpnnmHEuMtyA1q34m3Th49DYXQVJntWpxdGrRqXi"),
                     new Command.Arg("pki-node-id", "Ipfs node id of the pki node", true, "QmVdFZgHnEgcedCS2G2ZNiEN59LuVrnRm7z3yXtEBv2XiF"),
                     new Command.Arg("pki.node.ipaddress", "IP address of the pki node", true, "172.104.157.121"),
-                    new Command.Arg("ipfs-api-address", "IPFS API port", false, "/ip4/127.0.0.1/tcp/5001"),
-                    new Command.Arg("ipfs-gateway-address", "IPFS Gateway port", false, "/ip4/127.0.0.1/tcp/8080"),
+                    ARG_IPFS_API_ADDRESS,
+                    new Command.Arg("ipfs-gateway-address", "IPFS Gateway address", false, "/ip4/127.0.0.1/tcp/8080"),
                     ARG_IPFS_PROXY_TARGET,
                     new Command.Arg("pki.node.swarm.port", "Swarm port of the pki node", true, "5001"),
                     new Command.Arg("domain", "Domain name to bind to", false, "localhost"),
@@ -514,12 +514,11 @@ public class Main extends Builder {
             SqlSupplier sqlCommands = getSqlCommands(a);
 
             boolean useIPFS = a.getBoolean("useIPFS");
-
-            IpfsWrapper ipfsWrapper = useIPFS ? IPFS.main(a) : null;
-            Supplier<Connection> dbConnectionPool = useIPFS ? ipfsWrapper.getDbConnectionPool() : getDBConnector(a, "transactions-sql-file");
-            BatCave batStore = useIPFS ? ipfsWrapper.getBatStore() : new JdbcBatCave(getDBConnector(a, "bat-store", dbConnectionPool), sqlCommands);
-            BlockRequestAuthoriser blockRequestAuthoriser = useIPFS ? ipfsWrapper.getBlockRequestAuthoriser() : Builder.blockAuthoriser(a, batStore, hasher);
-            BlockMetadataStore meta = useIPFS ? ipfsWrapper.getBlockMetadata() : buildBlockMetadata(a);
+            Supplier<Connection> dbConnectionPool = getDBConnector(a, "transactions-sql-file");
+            BatCave batStore = new JdbcBatCave(getDBConnector(a, "bat-store", dbConnectionPool), sqlCommands);
+            BlockRequestAuthoriser blockAuth = blockAuthoriser(a, batStore, hasher);
+            BlockMetadataStore meta = buildBlockMetadata(a);
+            IpfsWrapper ipfsWrapper = useIPFS ? IpfsWrapper.launch(a, blockAuth, meta) : null;
 
             boolean doExportAggregatedMetrics = a.getBoolean("collect-metrics");
             if (doExportAggregatedMetrics) {
@@ -541,8 +540,7 @@ public class Main extends Builder {
 
             TransactionStore transactions = buildTransactionStore(a, dbConnectionPool);
 
-            DeletableContentAddressedStorage localStorage = buildLocalStorage(a, meta, transactions, blockRequestAuthoriser,
-                    crypto.hasher);
+            DeletableContentAddressedStorage localStorage = buildLocalStorage(a, meta, transactions, blockAuth, crypto.hasher);
             JdbcIpnsAndSocial rawPointers = buildRawPointers(a,
                     getDBConnector(a, "mutable-pointers-file", dbConnectionPool));
 
@@ -625,7 +623,7 @@ public class Main extends Builder {
 
             Account p2pAccount = new ProxyingAccount(nodeId, core, account, accountProxy);
             VerifyingAccount verifyingAccount = new VerifyingAccount(p2pAccount, core, localStorage);
-            ContentAddressedStorage cachingStorage = new AuthedCachingStorage(p2pDht, blockRequestAuthoriser, hasher, blockCacheSize, maxCachedBlockSize);
+            ContentAddressedStorage cachingStorage = new AuthedCachingStorage(p2pDht, blockAuth, hasher, blockCacheSize, maxCachedBlockSize);
             ContentAddressedStorage incomingP2PStorage = new GetBlockingStorage(cachingStorage);
 
             ProxyingBatCave p2pBats = new ProxyingBatCave(nodeId, core, batStore, new HttpBatCave(p2pHttpProxy, p2pHttpProxy));
