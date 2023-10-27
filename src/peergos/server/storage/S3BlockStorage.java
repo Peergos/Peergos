@@ -265,26 +265,26 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
 
     @Override
     public CompletableFuture<Optional<CborObject>> get(PublicKeyHash owner, Cid object, Optional<BatWithId> bat) {
-        return getRaw(pki.getStorageProviders(owner), object, bat, id, hasher)
+        return getRaw(pki.getStorageProviders(owner), object, bat, id, hasher, true)
                 .thenApply(opt -> opt.map(CborObject::fromByteArray));
     }
 
     @Override
-    public CompletableFuture<Optional<CborObject>> get(List<Multihash> peerIds, Cid hash, String auth) {
+    public CompletableFuture<Optional<CborObject>> get(List<Multihash> peerIds, Cid hash, String auth, boolean persistBlock) {
         if (hash.isRaw())
             throw new IllegalStateException("Need to call getRaw if cid is not cbor!");
-        return getRaw(peerIds, hash, auth).thenApply(opt -> opt.map(CborObject::fromByteArray));
+        return getRaw(peerIds, hash, auth, persistBlock).thenApply(opt -> opt.map(CborObject::fromByteArray));
     }
 
     @Override
     public CompletableFuture<Optional<byte[]>> getRaw(PublicKeyHash owner, Cid object, Optional<BatWithId> bat) {
-        return getRaw(pki.getStorageProviders(owner), object, bat, id, hasher);
+        return getRaw(pki.getStorageProviders(owner), object, bat, id, hasher, true);
     }
 
     @Override
-    public CompletableFuture<Optional<byte[]>> getRaw(List<Multihash> peerIds, Cid hash, Optional<BatWithId> bat, Cid ourId, Hasher h) {
+    public CompletableFuture<Optional<byte[]>> getRaw(List<Multihash> peerIds, Cid hash, Optional<BatWithId> bat, Cid ourId, Hasher h, boolean persistBlock) {
         if (bat.isEmpty())
-            return getRaw(peerIds, hash, "");
+            return getRaw(peerIds, hash, "", persistBlock);
         return bat.get().bat.generateAuth(hash, ourId, 300, S3Request.currentDatetime(), bat.get().id, h)
                 .thenApply(BlockAuth::encode)
                 .thenCompose(auth -> getRaw(peerIds, hash, Optional.empty(), auth, true, bat))
@@ -292,7 +292,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<Optional<byte[]>> getRaw(List<Multihash> peerIds, Cid hash, String auth) {
+    public CompletableFuture<Optional<byte[]>> getRaw(List<Multihash> peerIds, Cid hash, String auth, boolean persistBlock) {
         return getRaw(peerIds, hash, Optional.empty(), auth, true, Optional.empty())
                 .thenApply(p -> p.map(v -> v.left));
     }
@@ -354,10 +354,10 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
 
             nonLocalGets.inc();
             if (p2pGetId.equals(id))
-                return p2pFallback.getRaw(peerIds, hash, auth)
+                return p2pFallback.getRaw(peerIds, hash, auth, false)
                         .thenApply(dopt -> dopt.map(b -> new Pair<>(b, null)));
             // recalculate auth when the fallback node has a different node id
-            return p2pFallback.getRaw(peerIds, hash, bat, p2pGetId, hasher, enforceAuth)
+            return p2pFallback.getRaw(peerIds, hash, bat, p2pGetId, hasher, enforceAuth, false)
                     .thenApply(dopt -> dopt.map(b -> new Pair<>(b, null)));
         } finally {
             readTimer.observeDuration();
@@ -414,7 +414,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
             return Futures.of(Collections.singletonList(newRoot));
 
         // This call will not verify the auth as we might not have the mirror bat present locally
-        Optional<byte[]> newBlock = p2pFallback.getRaw(peerIds, newRoot, mirrorBat, p2pGetId, hasher, false).join();
+        Optional<byte[]> newBlock = p2pFallback.getRaw(peerIds, newRoot, mirrorBat, p2pGetId, hasher, false, true).join();
         if (newBlock.isEmpty())
             throw new IllegalStateException("Couldn't retrieve block: " + newRoot);
         if (! hasBlock(newRoot))
@@ -458,9 +458,12 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         transactions.clearOldTransactions(cutoffMillis);
     }
 
-    private void collectGarbage(JdbcIpnsAndSocial pointers, UsageStore usage, BlockMetadataStore metadata, boolean listFromBlockstore) {
+    private void collectGarbage(JdbcIpnsAndSocial pointers, UsageStore usage, BlockMetadataStore metadata,
+                                ForkJoinPool markPool,
+                                int deleteParallelism,
+                                ForkJoinPool deletePool, boolean listFromBlockstore) {
         GarbageCollector.collect(this, pointers, usage,
-                this::savePointerSnapshot, metadata, listFromBlockstore);
+                this::savePointerSnapshot, metadata, markPool, deleteParallelism, deletePool, listFromBlockstore);
     }
 
     public CompletableFuture<Boolean> savePointerSnapshot(Stream<Map.Entry<PublicKeyHash, byte[]>> pointers) {
@@ -916,7 +919,11 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         JdbcIpnsAndSocial rawPointers = new JdbcIpnsAndSocial(database, sqlCommands);
         Supplier<Connection> usageDb = Main.getDBConnector(a, "space-usage-sql-file");
         UsageStore usageStore = new JdbcUsageStore(usageDb, sqlCommands);
-        s3.collectGarbage(rawPointers, usageStore, meta, a.getBoolean("s3.versioned-bucket"));
+        int markParallelism = 10;
+        ForkJoinPool markPool = Threads.newPool(markParallelism, "GC-mark-");
+        int deleteParallelism = 4;
+        ForkJoinPool deletePool = Threads.newPool(deleteParallelism, "GC-delete-");
+        s3.collectGarbage(rawPointers, usageStore, meta, markPool, deleteParallelism, deletePool, a.getBoolean("s3.versioned-bucket"));
     }
 
     @Override

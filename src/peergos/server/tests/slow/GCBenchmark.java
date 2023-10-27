@@ -6,6 +6,7 @@ import peergos.server.corenode.*;
 import peergos.server.space.*;
 import peergos.server.sql.*;
 import peergos.server.storage.*;
+import peergos.server.util.*;
 import peergos.shared.*;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.*;
@@ -18,6 +19,7 @@ import peergos.shared.util.*;
 import java.io.*;
 import java.nio.file.*;
 import java.util.*;
+import java.util.concurrent.*;
 import java.util.stream.*;
 
 public class GCBenchmark {
@@ -44,7 +46,12 @@ public class GCBenchmark {
             storage.closeTransaction(owner, tid).join();
         }
 
-        GarbageCollector.collect(storage, pointers, usage, s -> Futures.of(true), new RamBlockMetadataStore(), false);
+        int markParallelism = 10;
+        ForkJoinPool markPool = Threads.newPool(markParallelism, "GC-mark-");
+        int deleteParallelism = 4;
+        ForkJoinPool deletePool = Threads.newPool(deleteParallelism, "GC-delete-");
+        GarbageCollector.collect(storage, pointers, usage, s -> Futures.of(true), new RamBlockMetadataStore(),
+                markPool, deleteParallelism, deletePool, false);
     }
 
     private static Multihash generateTree(Random r, PublicKeyHash owner, ContentAddressedStorage storage, int nLeaves, TransactionId tid) {

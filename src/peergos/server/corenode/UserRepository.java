@@ -80,7 +80,7 @@ public class UserRepository implements SocialNetwork, MutablePointers {
                                             // check the new target is valid for this writer (or a deletion)
                                             if (cas.updated.isPresent()) {
                                                 Multihash newHash = cas.updated.get();
-                                                CommittedWriterData newWriterData = DeletableContentAddressedStorage.getWriterData(us, (Cid) newHash, cas.sequence, ipfs).join();
+                                                CommittedWriterData newWriterData = DeletableContentAddressedStorage.getWriterData(us, (Cid) newHash, cas.sequence, false, ipfs).join();
                                                 if (!newWriterData.props.controller.equals(writer))
                                                     return Futures.of(false);
                                             }
