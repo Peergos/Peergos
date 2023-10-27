@@ -431,8 +431,9 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
     static CompletableFuture<CommittedWriterData> getWriterData(List<Multihash> peerIds,
                                                                 Cid hash,
                                                                 Optional<Long> sequence,
+                                                                boolean persistBlock,
                                                                 DeletableContentAddressedStorage dht) {
-        return dht.get(peerIds, hash, "", true)
+        return dht.get(peerIds, hash, "", persistBlock)
                 .thenApply(cborOpt -> {
                     if (! cborOpt.isPresent())
                         throw new IllegalStateException("Couldn't retrieve WriterData from dht! " + hash);

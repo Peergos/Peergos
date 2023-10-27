@@ -393,7 +393,7 @@ public class MirrorCoreNode implements CoreNode {
                                                                                          DeletableContentAddressedStorage ipfs,
                                                                                          Hasher hasher) {
         return DeletableContentAddressedStorage.getDirectOwnedKeys(owner, writer, mutable,
-                        (h, s) -> DeletableContentAddressedStorage.getWriterData(peerIds, h, s, ipfs), ipfs, hasher)
+                        (h, s) -> DeletableContentAddressedStorage.getWriterData(peerIds, h, s, false, ipfs), ipfs, hasher)
                 .thenCompose(directOwned -> {
                     Set<PublicKeyHash> newKeys = directOwned.stream().
                             filter(h -> ! alreadyDone.containsKey(h))

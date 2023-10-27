@@ -42,7 +42,7 @@ public class WriterDataTests {
         CommittedWriterData bCurrentCwd = wdB.commit(pubB, signerB, MaybeMultihash.empty(), Optional.empty(), mutable, dht, hasher, test).join().get(pubB);
         MaybeMultihash bCurrent = bCurrentCwd.hash;
 
-        CommittedWriterData.Retriever retriever = (h, s) -> DeletableContentAddressedStorage.getWriterData(Collections.emptyList(), h, s, dht);
+        CommittedWriterData.Retriever retriever = (h, s) -> DeletableContentAddressedStorage.getWriterData(Collections.emptyList(), h, s, false, dht);
         Set<PublicKeyHash> ownedByA1 = DeletableContentAddressedStorage.getOwnedKeysRecursive(pubA, pubA, mutable, retriever, dht, hasher).join();
         Set<PublicKeyHash> ownedByB1 = DeletableContentAddressedStorage.getOwnedKeysRecursive(pubB, pubB, mutable, retriever, dht, hasher).join();
 
