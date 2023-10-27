@@ -141,7 +141,7 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
                     long deltaUsage = updatedSize - writerUsage.directRetainedStorage();
                     store.confirmUsage(writerUsage.owner, writerKey, deltaUsage, false);
                     Set<PublicKeyHash> directOwnedKeys = DeletableContentAddressedStorage.getDirectOwnedKeys(owner, writerKey, mutable,
-                            (h, s) -> DeletableContentAddressedStorage.getWriterData(us, h,s, dht), dht, hasher).join();
+                            (h, s) -> DeletableContentAddressedStorage.getWriterData(us, h,s, false, dht), dht, hasher).join();
                     List<PublicKeyHash> newOwnedKeys = directOwnedKeys.stream()
                             .filter(key -> !writerUsage.ownedKeys().contains(key))
                             .collect(Collectors.toList());
@@ -232,7 +232,7 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
                         .unsignMessage(event.writerSignedBtreeRootHash).join()))).join();
         Set<PublicKeyHash> updatedOwned =
                 DeletableContentAddressedStorage.getDirectOwnedKeys(event.owner, event.writer, pointerUpdate.updated,
-                        (h, s) -> DeletableContentAddressedStorage.getWriterData(us, h,s, dht), dht, hasher).join();
+                        (h, s) -> DeletableContentAddressedStorage.getWriterData(us, h,s, false, dht), dht, hasher).join();
         WriterUsage current = usageStore.getUsage(event.writer);
         for (PublicKeyHash owned : updatedOwned) {
             usageStore.addWriter(current.owner, owned);
@@ -274,7 +274,7 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
                     // subtract data size from orphaned child keys (this assumes the keys form a tree without dupes)
                     Set<PublicKeyHash> updatedOwned =
                             DeletableContentAddressedStorage.getDirectOwnedKeys(owner, writer, existingRoot,
-                                    (h, s) -> DeletableContentAddressedStorage.getWriterData(us, h,s, dht),  dht, hasher).join();
+                                    (h, s) -> DeletableContentAddressedStorage.getWriterData(us, h,s, false, dht),  dht, hasher).join();
                     processRemovedOwnedKeys(state, owner, updatedOwned, mutable, dht, hasher);
                 } catch (Exception e) {
                     LOG.log(Level.WARNING, e.getMessage(), e);
@@ -291,7 +291,7 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
                 LOG.info("Calculating change in used space for (" + owner + ", " + writer + ") took " + (t1-t0)/1_000_000 + "mS");
                 Set<PublicKeyHash> updatedOwned =
                         DeletableContentAddressedStorage.getDirectOwnedKeys(owner, writer, newRoot,
-                                (h, s) -> DeletableContentAddressedStorage.getWriterData(us, h,s, dht), dht, hasher).join();
+                                (h, s) -> DeletableContentAddressedStorage.getWriterData(us, h,s, false, dht), dht, hasher).join();
                 for (PublicKeyHash owned : updatedOwned) {
                     state.addWriter(current.owner, owned);
                 }

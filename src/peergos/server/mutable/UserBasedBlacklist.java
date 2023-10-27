@@ -89,7 +89,7 @@ public class UserBasedBlacklist implements PublicKeyBlackList {
         Set<PublicKeyHash> res = new HashSet<>();
         for (String username : usernames) {
             res.addAll(DeletableContentAddressedStorage.getOwnedKeysRecursive(username, core, mutable,
-                    (h, s) -> DeletableContentAddressedStorage.getWriterData(Collections.emptyList(), h, s, dht), dht, hasher).join());
+                    (h, s) -> DeletableContentAddressedStorage.getWriterData(Collections.emptyList(), h, s, false, dht), dht, hasher).join());
         }
         return res;
     }
