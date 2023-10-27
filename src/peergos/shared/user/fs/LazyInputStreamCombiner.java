@@ -138,7 +138,9 @@ public class LazyInputStreamCombiner implements AsyncReader {
                 .thenApply(p -> {
                     Pair<byte[], AbsoluteCapability> res = new Pair<>(p.left, p.right);
                     bufferedChunks.put(chunkOffset, res);
-                    inProgress.remove(chunkOffset).complete(res);
+                    CompletableFuture<Pair<byte[], AbsoluteCapability>> fut = inProgress.remove(chunkOffset);
+                    if (fut != null)
+                        fut.complete(res);
                     System.out.println("Completed chunk " + (chunkOffset / Chunk.MAX_SIZE));
                     return res;
                 }).exceptionally(t -> {

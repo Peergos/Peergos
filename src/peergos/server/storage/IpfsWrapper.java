@@ -12,18 +12,24 @@ import org.peergos.protocol.dht.DatabaseRecordStore;
 import org.peergos.protocol.http.HttpProtocol;
 import org.peergos.util.JSONParser;
 import peergos.server.Builder;
+import peergos.server.sql.SqlSupplier;
+import peergos.server.storage.auth.JdbcBatCave;
 import peergos.server.util.*;
 import peergos.server.util.Args;
+import peergos.server.storage.auth.BlockRequestAuthoriser;
+import peergos.shared.crypto.hash.Hasher;
 import peergos.shared.io.ipfs.MultiAddress;
 import peergos.shared.storage.*;
+import peergos.shared.storage.auth.BatCave;
 import peergos.shared.util.*;
 
 import java.io.*;
 import java.net.*;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.sql.Connection;
 import java.util.*;
-import java.util.concurrent.CompletableFuture;
+import java.util.function.Supplier;
 import java.util.logging.*;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -78,7 +84,7 @@ public class IpfsWrapper implements AutoCloseable {
          */
         public final List<MultiAddress> bootstrapNode;
         public final int swarmPort;
-        public final String apiAddress, gatewayAddress, allowTarget, proxyTarget;
+        public final String apiAddress, gatewayAddress, proxyTarget;
         public final Optional<String> metricsAddress;
         public final Optional<S3ConfigParams> s3ConfigParams;
         public final Optional<IdentitySection> identity;
@@ -87,19 +93,17 @@ public class IpfsWrapper implements AutoCloseable {
                                 String apiAddress,
                                 String gatewayAddress,
                                 String proxyTarget,
-                                String allowTarget,
                                 int swarmPort,
                                 Optional<String> metricsAddress,
                                 Optional<S3ConfigParams> s3ConfigParams,
                                 Filter blockFilter) {
-            this(bootstrapNode, apiAddress, gatewayAddress, proxyTarget, allowTarget, swarmPort, metricsAddress,
+            this(bootstrapNode, apiAddress, gatewayAddress, proxyTarget, swarmPort, metricsAddress,
                     s3ConfigParams, blockFilter, Optional.empty());
         }
         public IpfsConfigParams(List<MultiAddress> bootstrapNode,
                                 String apiAddress,
                                 String gatewayAddress,
                                 String proxyTarget,
-                                String allowTarget,
                                 int swarmPort,
                                 Optional<String> metricsAddress,
                                 Optional<S3ConfigParams> s3ConfigParams,
@@ -109,7 +113,6 @@ public class IpfsWrapper implements AutoCloseable {
             this.apiAddress = apiAddress;
             this.gatewayAddress = gatewayAddress;
             this.proxyTarget = proxyTarget;
-            this.allowTarget = allowTarget;
             this.swarmPort = swarmPort;
             this.metricsAddress = metricsAddress;
             this.s3ConfigParams = s3ConfigParams;
@@ -118,7 +121,7 @@ public class IpfsWrapper implements AutoCloseable {
         }
         public IpfsConfigParams withIdentity(Optional<IdentitySection> identity) {
             return new IpfsConfigParams(this.bootstrapNode, this.apiAddress, this.gatewayAddress, this.proxyTarget,
-                    this.allowTarget, this.swarmPort, this.metricsAddress, this.s3ConfigParams, this.blockFilter,
+                    this.swarmPort, this.metricsAddress, this.s3ConfigParams, this.blockFilter,
                     identity);
         }
     }
@@ -143,13 +146,10 @@ public class IpfsWrapper implements AutoCloseable {
         String gatewayAddress = args.getArg("ipfs-gateway-address");
 
         String proxyTarget = args.getArg("proxy-target");
-        MultiAddress allowTarget = new MultiAddress(args.getArg("allow-target"));
-
         boolean enableMetrics = args.getBoolean("collect-metrics", false);
         Optional<String> metricsAddress = enableMetrics ?
                 Optional.of(args.getArg("metrics.address") + ":" + args.getInt("ipfs.metrics.port")) :
                 Optional.empty();
-
 
         Optional<S3ConfigParams> s3Params = S3Config.useS3(args) ?
             Optional.of(
@@ -191,7 +191,6 @@ public class IpfsWrapper implements AutoCloseable {
         }
         return new IpfsConfigParams(bootstrapNodes, apiAddress, gatewayAddress,
                 proxyTarget,
-                "http://" + allowTarget.getHost() + ":" + allowTarget.getTCPPort(),
                 swarmPort, metricsAddress, s3Params, filter, peergosIdentity);
     }
 
@@ -205,10 +204,7 @@ public class IpfsWrapper implements AutoCloseable {
     private HttpServer apiServer;
     private HttpServer p2pServer;
 
-    private final BlockMetadataStore metaDB;
-
-    public IpfsWrapper(Path ipfsDir, IpfsConfigParams ipfsConfigParams, BlockMetadataStore metaDB) {
-        this.metaDB = metaDB;
+    public IpfsWrapper(Path ipfsDir, IpfsConfigParams ipfsConfigParams) {
         File ipfsDirF = ipfsDir.toFile();
         if (! ipfsDirF.isDirectory() && ! ipfsDirF.mkdirs()) {
             throw new IllegalStateException("Specified IPFS_PATH '" + ipfsDir + " is not a directory and/or could not be created");
@@ -228,10 +224,6 @@ public class IpfsWrapper implements AutoCloseable {
             }
         }
         this.ipfsConfigParams= ipfsConfigParams.withIdentity(identityOpt);
-    }
-
-    public BlockMetadataStore getBlockMetadata() {
-        return metaDB;
     }
 
     public static boolean isHttpApiListening(String ipfsApiAddress) {
@@ -287,27 +279,29 @@ public class IpfsWrapper implements AutoCloseable {
     }
 
     public static IpfsWrapper launch(Args args) {
+        SqlSupplier sqlCommands = Builder.getSqlCommands(args);
+        Supplier<Connection> dbConn = Builder.getDBConnector(args, "bat-store");
+        BatCave batStore = new JdbcBatCave(dbConn, sqlCommands);
+        Hasher hasher = Builder.initCrypto().hasher;
+        BlockRequestAuthoriser blockAuth = Builder.blockAuthoriser(args, batStore, hasher);
+        BlockMetadataStore metaDB = Builder.buildBlockMetadata(args);
+        return launch(args, blockAuth, metaDB);
+    }
 
+    public static IpfsWrapper launch(Args args, BlockRequestAuthoriser blockAuth, BlockMetadataStore metaDB) {
         Path ipfsDir = getIpfsDir(args);
         LOG.info("Using IPFS dir " + ipfsDir);
 
         IpfsConfigParams ipfsConfigParams = buildConfig(args);
-        BlockMetadataStore metaDB = Builder.buildBlockMetadata(args);
 
-        IpfsWrapper ipfsWrapper = new IpfsWrapper(ipfsDir, ipfsConfigParams, metaDB);
+        IpfsWrapper ipfsWrapper = new IpfsWrapper(ipfsDir, ipfsConfigParams);
         Config config = ipfsWrapper.configure();
         LOG.info("Starting Nabu version: " + APIHandler.CURRENT_VERSION + ", peerid: " + config.identity.peerId);
-        BlockRequestAuthoriser authoriser = (c, b, p, a) -> {
-            if (config.addresses.allowTarget.isEmpty()) {
-                CompletableFuture.completedFuture(false);
-            }
-            try {
-                String uri = config.addresses.allowTarget.get() + "?cid=" + c.toString() + "&peer=" + p.toString() + "&auth=" + a;
-                byte[] resp = org.peergos.util.HttpUtil.post(uri, Collections.emptyMap(), b);
-                return CompletableFuture.completedFuture((new String(resp)).equals("true"));
-            } catch (IOException ioe) {
-                return CompletableFuture.completedFuture(false);
-            }
+        org.peergos.BlockRequestAuthoriser authoriser = (c, block, p, auth) -> {
+            peergos.shared.io.ipfs.Cid source = peergos.shared.io.ipfs.Cid.decodePeerId(p.toString());
+            peergos.shared.io.ipfs.Cid cid = peergos.shared.io.ipfs.Cid.decode(c.toString());
+            return blockAuth.allowRead(cid, block, source, auth).thenApply(resp -> resp)
+                .exceptionally(ex -> false);
         };
 
         Path datastorePath = ipfsWrapper.ipfsDir.resolve("datastore").resolve("h2.datastore");
@@ -367,7 +361,6 @@ public class IpfsWrapper implements AutoCloseable {
         io.ipfs.multiaddr.MultiAddress gatewayAddress = new io.ipfs.multiaddr.MultiAddress(ipfsConfigParams.gatewayAddress);
         Optional<io.ipfs.multiaddr.MultiAddress> proxyTargetAddress = Optional.of(new io.ipfs.multiaddr.MultiAddress(ipfsConfigParams.proxyTarget));
 
-        Optional<String> allowTarget = Optional.of(ipfsConfigParams.allowTarget);
         List<io.ipfs.multiaddr.MultiAddress> bootstrapNodes = ipfsConfigParams.bootstrapNode.stream()
                 .map(b -> new io.ipfs.multiaddr.MultiAddress(b.toString()))
                 .collect(Collectors.toList());
@@ -398,7 +391,7 @@ public class IpfsWrapper implements AutoCloseable {
         Mount rootMount = new Mount("/", "h2.datastore", "measure", dataChildMap);
 
         AddressesSection addressesSection = new AddressesSection(swarmAddresses, apiAddress, gatewayAddress,
-                proxyTargetAddress, allowTarget);
+                proxyTargetAddress, Optional.empty());
 
         org.peergos.config.Filter filter = ipfsConfigParams.blockFilter;
 

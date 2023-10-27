@@ -56,6 +56,8 @@ public class Main extends Builder {
 
     public static final Command.Arg ARG_TRANSACTIONS_SQL_FILE =
         new Command.Arg("transactions-sql-file", "The filename for the transactions datastore", false, "transactions.sql");
+    public static final Command.Arg ARG_BAT_STORE =
+                    new Command.Arg("bat-store", "The filename for the BAT store (or :memory: for ram based)", true, "bats.sql");
     public static final Command.Arg ARG_USE_IPFS =
         new Command.Arg("useIPFS", "Use IPFS for storage or a local disk store if not", false, "true");
     public static final Command.Arg ARG_IPFS_API_ADDRESS =
@@ -68,7 +70,7 @@ public class Main extends Builder {
             Main::startIpfs,
             Arrays.asList(
                     new Command.Arg("IPFS_PATH", "Path to IPFS directory. Defaults to $PEERGOS_PATH/.ipfs, or ~/.peergos/.ipfs", false),
-                    new Command.Arg("ipfs-api-address", "IPFS API port", false, "/ip4/127.0.0.1/tcp/5001"),
+                    ARG_IPFS_API_ADDRESS,
                     new Command.Arg("ipfs-gateway-address", "IPFS Gateway port", false, "/ip4/127.0.0.1/tcp/8080"),
                     new Command.Arg("ipfs-swarm-port", "IPFS Swarm port", false, "4001"),
                     ARG_IPFS_PROXY_TARGET,
@@ -103,8 +105,9 @@ public class Main extends Builder {
                     new Command.Arg("s3.secretKey", "S3 secret key", false),
                     new Command.Arg("s3.region.endpoint", "Base url for S3 service", false),
                     new Command.Arg("block-store-filter", "Indicate blockstore filter type. Can be 'none', 'bloom', 'infini'", false),
-                    new Command.Arg("block-store-filter-false-positive-rate", "The false positive rate to apply to the block-store-filter. ", false)
-            )
+                    new Command.Arg("block-store-filter-false-positive-rate", "The false positive rate to apply to the block-store-filter. ", false),
+                    ARG_BAT_STORE
+                    )
     );
 
 
@@ -116,15 +119,14 @@ public class Main extends Builder {
                     new Command.Arg("peergos.identity.hash", "The hash of peergos user's public key, this is used to bootstrap the pki", true, "z59vuwzfFDp3ZA8ZpnnmHEuMtyA1q34m3Th49DYXQVJntWpxdGrRqXi"),
                     new Command.Arg("pki-node-id", "Ipfs node id of the pki node", true, "QmVdFZgHnEgcedCS2G2ZNiEN59LuVrnRm7z3yXtEBv2XiF"),
                     new Command.Arg("pki.node.ipaddress", "IP address of the pki node", true, "172.104.157.121"),
-                    new Command.Arg("ipfs-api-address", "IPFS API port", false, "/ip4/127.0.0.1/tcp/5001"),
-                    new Command.Arg("ipfs-gateway-address", "IPFS Gateway port", false, "/ip4/127.0.0.1/tcp/8080"),
-                    new Command.Arg("allow-target", "Local address to listen on for IPFS allow calls", false, "/ip4/127.0.0.1/tcp/8002"),
+                    ARG_IPFS_API_ADDRESS,
+                    new Command.Arg("ipfs-gateway-address", "IPFS Gateway address", false, "/ip4/127.0.0.1/tcp/8080"),
                     ARG_IPFS_PROXY_TARGET,
                     new Command.Arg("pki.node.swarm.port", "Swarm port of the pki node", true, "5001"),
                     new Command.Arg("domain", "Domain name to bind to", false, "localhost"),
                     new Command.Arg("public-domain", "The public domain name for this server (required if TLS is managed upstream)", false),
                     ARG_USE_IPFS,
-                    new Command.Arg("bat-store", "The filename for the BAT store (or :memory: for ram based)", true, "bats.sql"),
+                    ARG_BAT_STORE,
                     new Command.Arg("mutable-pointers-file", "The filename for the mutable pointers datastore", true, "mutable.sql"),
                     new Command.Arg("social-sql-file", "The filename for the follow requests datastore", true, "social.sql"),
                     new Command.Arg("space-requests-sql-file", "The filename for the space requests datastore", true, "space-requests.sql"),
@@ -321,7 +323,6 @@ public class Main extends Builder {
                     new Command.Arg("space-usage-sql-file", "The filename for the space usage datastore", true, "space-usage.sql"),
                     new Command.Arg("ipfs-api-address", "ipfs api port", true, "/ip4/127.0.0.1/tcp/5001"),
                     new Command.Arg("ipfs-gateway-address", "ipfs gateway port", true, "/ip4/127.0.0.1/tcp/8080"),
-                    new Command.Arg("allow-target", "Local address to listen on for IPFS allow calls", false, "/ip4/127.0.0.1/tcp/8002"),
                     ARG_IPFS_PROXY_TARGET,
                     new Command.Arg("pki.secret.key.path", "The path to the pki secret key file", true, "test.pki.secret.key"),
                     new Command.Arg("pki.public.key.path", "The path to the pki public key file", true, "test.pki.public.key"),
@@ -383,7 +384,6 @@ public class Main extends Builder {
                     new Command.Arg("space-usage-sql-file", "The filename for the space usage datastore", true, "space-usage.sql"),
                     ARG_IPFS_API_ADDRESS,
                     new Command.Arg("ipfs-gateway-address", "ipfs gateway port", true, "/ip4/127.0.0.1/tcp/8080"),
-                    new Command.Arg("allow-target", "Local address to listen on for IPFS allow calls", false, "/ip4/127.0.0.1/tcp/8002"),
                     ARG_IPFS_PROXY_TARGET,
                     new Command.Arg("pki.secret.key.path", "The path to the pki secret key file", true, "test.pki.secret.key"),
                     new Command.Arg("pki.public.key.path", "The path to the pki public key file", true, "test.pki.public.key"),
@@ -510,10 +510,14 @@ public class Main extends Builder {
 
             System.out.println("Starting Peergos daemon version: " + new InstanceAdmin.VersionInfo(UserService.CURRENT_VERSION, Admin.getSourceVersion()));
 
-            boolean useIPFS = a.getBoolean("useIPFS");
+            SqlSupplier sqlCommands = getSqlCommands(a);
 
-            IpfsWrapper ipfsWrapper = useIPFS ? IPFS.main(a) : null;
-            BlockMetadataStore meta = useIPFS ? ipfsWrapper.getBlockMetadata() : buildBlockMetadata(a);
+            boolean useIPFS = a.getBoolean("useIPFS");
+            Supplier<Connection> dbConnectionPool = getDBConnector(a, "transactions-sql-file");
+            BatCave batStore = new JdbcBatCave(getDBConnector(a, "bat-store", dbConnectionPool), sqlCommands);
+            BlockRequestAuthoriser blockAuth = blockAuthoriser(a, batStore, hasher);
+            BlockMetadataStore meta = buildBlockMetadata(a);
+            IpfsWrapper ipfsWrapper = useIPFS ? IpfsWrapper.launch(a, blockAuth, meta) : null;
 
             boolean doExportAggregatedMetrics = a.getBoolean("collect-metrics");
             if (doExportAggregatedMetrics) {
@@ -533,15 +537,9 @@ public class Main extends Builder {
 
             JavaPoster p2pHttpProxy = buildP2pHttpProxy(a);
 
-            SqlSupplier sqlCommands = getSqlCommands(a);
-
-            Supplier<Connection> dbConnectionPool = getDBConnector(a, "transactions-sql-file");
             TransactionStore transactions = buildTransactionStore(a, dbConnectionPool);
 
-            BatCave batStore = new JdbcBatCave(getDBConnector(a, "bat-store", dbConnectionPool), sqlCommands);
-            BlockRequestAuthoriser blockRequestAuthoriser = Builder.blockAuthoriser(a, batStore, hasher);
-            DeletableContentAddressedStorage localStorage = buildLocalStorage(a, meta, transactions, blockRequestAuthoriser,
-                    crypto.hasher);
+            DeletableContentAddressedStorage localStorage = buildLocalStorage(a, meta, transactions, blockAuth, crypto.hasher);
             JdbcIpnsAndSocial rawPointers = buildRawPointers(a,
                     getDBConnector(a, "mutable-pointers-file", dbConnectionPool));
 
@@ -576,11 +574,6 @@ public class Main extends Builder {
             JdbcAccount rawAccount = new JdbcAccount(getDBConnector(a, "account-sql-file", dbConnectionPool), sqlCommands, origin, rpId);
             Account account = new AccountWithStorage(localStorage, localPointers, rawAccount);
             AccountProxy accountProxy = new HttpAccount(p2pHttpProxy, pkiServerNodeId);
-
-            MultiAddress allowListenAddress = new MultiAddress(a.getArg("allow-target"));
-            InetSocketAddress allowListener = new InetSocketAddress(allowListenAddress.getHost(), allowListenAddress.getTCPPort());
-            System.out.println("Block allow listener for " + nodeId + " on " + allowListener);
-            BlockAuthServer.startListener(blockRequestAuthoriser, allowListener, 100, 4);
 
             CoreNode core = buildCorenode(a, localStorage, transactions, rawPointers, localPointers, proxingMutable,
                     rawSocial, usageStore, rawAccount, batStore, account, hasher);
@@ -629,7 +622,7 @@ public class Main extends Builder {
 
             Account p2pAccount = new ProxyingAccount(nodeId, core, account, accountProxy);
             VerifyingAccount verifyingAccount = new VerifyingAccount(p2pAccount, core, localStorage);
-            ContentAddressedStorage cachingStorage = new AuthedCachingStorage(p2pDht, blockRequestAuthoriser, hasher, blockCacheSize, maxCachedBlockSize);
+            ContentAddressedStorage cachingStorage = new AuthedCachingStorage(p2pDht, blockAuth, hasher, blockCacheSize, maxCachedBlockSize);
             ContentAddressedStorage incomingP2PStorage = new GetBlockingStorage(cachingStorage);
 
             ProxyingBatCave p2pBats = new ProxyingBatCave(nodeId, core, batStore, new HttpBatCave(p2pHttpProxy, p2pHttpProxy));

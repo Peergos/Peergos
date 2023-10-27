@@ -66,7 +66,6 @@ public abstract class UserTests {
         try {
             Path peergosDir = Files.createTempDirectory("peergos");
             int port = TestPorts.getPort();
-            int allowPort = TestPorts.getPort();
             int proxyPort = TestPorts.getPort();
             int gatewayPort = TestPorts.getPort();
             int ipfsApiPort = TestPorts.getPort();
@@ -74,7 +73,6 @@ public abstract class UserTests {
             int ipfsSwarmPort = TestPorts.getPort();
             return Args.parse(new String[]{
                     "-port", Integer.toString(port),
-                    "-allow-target", "/ip4/127.0.0.1/tcp/" + allowPort,
                     "-proxy-target", "/ip4/127.0.0.1/tcp/" + proxyPort,
                     "-gateway-port", Integer.toString(gatewayPort),
                     "-ipfs-api-address", "/ip4/127.0.0.1/tcp/" + ipfsApiPort,
@@ -90,7 +88,7 @@ public abstract class UserTests {
                     Main.PEERGOS_PATH, peergosDir.toString(),
                     "peergos.password", "testpassword",
                     "pki.keygen.password", "testpkipassword",
-                    "pki.keyfile.password", "testpassword"
+                    "pki.keyfile.password", "testpassword",
             });
         } catch (IOException e) {
             throw new RuntimeException(e);

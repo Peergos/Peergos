@@ -20,7 +20,8 @@ import static peergos.server.tests.UserTests.randomString;
 
 public class P2pStreamNetworkTests {
     private static Args args = UserTests
-            .buildArgs().with("useIPFS", "true")
+            .buildArgs()
+            .with("useIPFS", "true")
             .with(IpfsWrapper.IPFS_BOOTSTRAP_NODES, ""); // no bootstrapping
 
     private static Random random = new Random(0);
