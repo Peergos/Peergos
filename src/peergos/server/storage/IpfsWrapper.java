@@ -143,7 +143,7 @@ public class IpfsWrapper implements AutoCloseable {
         String gatewayAddress = args.getArg("ipfs-gateway-address");
 
         String proxyTarget = args.getArg("proxy-target");
-        boolean enableMetrics = args.getBoolean("enable-metrics", false);
+        boolean enableMetrics = args.getBoolean("collect-metrics", false);
         Optional<String> metricsAddress = args.getOptionalArg("metrics.address");
         Optional<Integer> metricsPort = args.getOptionalArg("ipfs.metrics.port").map(Integer::parseInt);
 
@@ -323,6 +323,7 @@ public class IpfsWrapper implements AutoCloseable {
         LOG.info("Starting Nabu API server at " + apiAddress.getHost() + ":" + localAPIAddress.getPort());
         try {
             if (config.metrics.enabled) {
+                LOG.info("Starting ipfs metrics endpoint at " + config.metrics.address + ":" + config.metrics.port);
                 AggregatedMetrics.startExporter(config.metrics.address, config.metrics.port);
             }
 
