@@ -397,7 +397,7 @@ public class IpfsWrapper implements AutoCloseable {
         BootstrapSection bootstrapSection = new BootstrapSection(bootstrapNodes);
         // ipfs metrics are merged with peergos metrics, unless running the IPFS standalone command.
         boolean separateIpfsMetrics = ipfsConfigParams.enableMetrics && ipfsConfigParams.metricsPort.isPresent();
-        MetricsSection metrics = new MetricsSection(separateIpfsMetrics, ipfsConfigParams.metricsAddress.get(), ipfsConfigParams.metricsPort.get());
+        MetricsSection metrics = new MetricsSection(separateIpfsMetrics, ipfsConfigParams.metricsAddress.orElse("localhost"), ipfsConfigParams.metricsPort.orElse(8101));
         Config config = new org.peergos.config.Config(addressesSection, bootstrapSection, datastoreSection,
                 identity, metrics);
         return config;
