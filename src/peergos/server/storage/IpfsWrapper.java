@@ -11,6 +11,7 @@ import org.peergos.net.*;
 import org.peergos.protocol.dht.DatabaseRecordStore;
 import org.peergos.protocol.http.HttpProtocol;
 import org.peergos.util.JSONParser;
+import peergos.server.AggregatedMetrics;
 import peergos.server.Builder;
 import peergos.server.sql.SqlSupplier;
 import peergos.server.storage.auth.JdbcBatCave;
@@ -318,6 +319,10 @@ public class IpfsWrapper implements AutoCloseable {
         int handlerThreads = 50;
         LOG.info("Starting Nabu API server at " + apiAddress.getHost() + ":" + localAPIAddress.getPort());
         try {
+            if (config.metrics.enabled) {
+                AggregatedMetrics.startExporter(config.metrics.address, config.metrics.port);
+            }
+
             ipfsWrapper.apiServer = HttpServer.create(localAPIAddress, maxConnectionQueue);
             ipfsWrapper.apiServer.createContext(APIHandler.API_URL, new APIHandler(ipfsWrapper.embeddedIpfs));
             ipfsWrapper.apiServer.setExecutor(Threads.newPool(handlerThreads, "Nabu-api-handler-"));
@@ -335,9 +340,7 @@ public class IpfsWrapper implements AutoCloseable {
         } catch (IOException ioe) {
             throw new IllegalStateException("Unable to start Server: " + ioe);
         }
-        Thread shutdownHook = new Thread(() -> {
-            ipfsWrapper.stop();
-        });
+        Thread shutdownHook = new Thread(ipfsWrapper::stop);
         Runtime.getRuntime().addShutdownHook(shutdownHook);
         return ipfsWrapper;
     }
