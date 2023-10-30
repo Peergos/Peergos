@@ -149,7 +149,7 @@ public class Main extends Builder {
                     new Command.Arg("collect-metrics", "Export aggregated metrics", false, "false"),
                     new Command.Arg("metrics.address", "Listen address for serving aggregated metrics", false, "localhost"),
                     new Command.Arg("metrics.port", "Port for serving aggregated metrics", false, "8001"),
-                    new Command.Arg("ipfs.metrics.port", "Port for serving aggregated ipfs metrics", false, "8101")
+                    new Command.Arg("ipfs.metrics.port", "Port for serving aggregated ipfs metrics", false)
             ).collect(Collectors.toList())
     );
 
