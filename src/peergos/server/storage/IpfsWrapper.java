@@ -11,6 +11,7 @@ import org.peergos.net.*;
 import org.peergos.protocol.dht.DatabaseRecordStore;
 import org.peergos.protocol.http.HttpProtocol;
 import org.peergos.util.JSONParser;
+import peergos.server.AggregatedMetrics;
 import peergos.server.Builder;
 import peergos.server.sql.SqlSupplier;
 import peergos.server.storage.auth.JdbcBatCave;
@@ -85,27 +86,21 @@ public class IpfsWrapper implements AutoCloseable {
         public final List<MultiAddress> bootstrapNode;
         public final int swarmPort;
         public final String apiAddress, gatewayAddress, proxyTarget;
+        public final boolean enableMetrics;
         public final Optional<String> metricsAddress;
+        public final Optional<Integer> metricsPort;
         public final Optional<S3ConfigParams> s3ConfigParams;
         public final Optional<IdentitySection> identity;
         public final Filter blockFilter;
+
         public IpfsConfigParams(List<MultiAddress> bootstrapNode,
                                 String apiAddress,
                                 String gatewayAddress,
                                 String proxyTarget,
                                 int swarmPort,
+                                boolean enableMetrics,
                                 Optional<String> metricsAddress,
-                                Optional<S3ConfigParams> s3ConfigParams,
-                                Filter blockFilter) {
-            this(bootstrapNode, apiAddress, gatewayAddress, proxyTarget, swarmPort, metricsAddress,
-                    s3ConfigParams, blockFilter, Optional.empty());
-        }
-        public IpfsConfigParams(List<MultiAddress> bootstrapNode,
-                                String apiAddress,
-                                String gatewayAddress,
-                                String proxyTarget,
-                                int swarmPort,
-                                Optional<String> metricsAddress,
+                                Optional<Integer> metricsPort,
                                 Optional<S3ConfigParams> s3ConfigParams,
                                 Filter blockFilter,
                                 Optional<IdentitySection> identity) {
@@ -114,14 +109,16 @@ public class IpfsWrapper implements AutoCloseable {
             this.gatewayAddress = gatewayAddress;
             this.proxyTarget = proxyTarget;
             this.swarmPort = swarmPort;
+            this.enableMetrics = enableMetrics;
             this.metricsAddress = metricsAddress;
+            this.metricsPort = metricsPort;
             this.s3ConfigParams = s3ConfigParams;
             this.blockFilter = blockFilter;
             this.identity = identity;
         }
         public IpfsConfigParams withIdentity(Optional<IdentitySection> identity) {
             return new IpfsConfigParams(this.bootstrapNode, this.apiAddress, this.gatewayAddress, this.proxyTarget,
-                    this.swarmPort, this.metricsAddress, this.s3ConfigParams, this.blockFilter,
+                    this.swarmPort, this.enableMetrics, this.metricsAddress, this.metricsPort, this.s3ConfigParams, this.blockFilter,
                     identity);
         }
     }
@@ -146,10 +143,9 @@ public class IpfsWrapper implements AutoCloseable {
         String gatewayAddress = args.getArg("ipfs-gateway-address");
 
         String proxyTarget = args.getArg("proxy-target");
-        boolean enableMetrics = args.getBoolean("collect-metrics", false);
-        Optional<String> metricsAddress = enableMetrics ?
-                Optional.of(args.getArg("metrics.address") + ":" + args.getInt("ipfs.metrics.port")) :
-                Optional.empty();
+        boolean enableMetrics = args.getBoolean("enable-metrics", false);
+        Optional<String> metricsAddress = args.getOptionalArg("metrics.address");
+        Optional<Integer> metricsPort = args.getOptionalArg("ipfs.metrics.port").map(Integer::parseInt);
 
         Optional<S3ConfigParams> s3Params = S3Config.useS3(args) ?
             Optional.of(
@@ -190,8 +186,7 @@ public class IpfsWrapper implements AutoCloseable {
             filter = new Filter(type, falsePositiveRate);
         }
         return new IpfsConfigParams(bootstrapNodes, apiAddress, gatewayAddress,
-                proxyTarget,
-                swarmPort, metricsAddress, s3Params, filter, peergosIdentity);
+                proxyTarget, swarmPort, enableMetrics, metricsAddress, metricsPort, s3Params, filter, peergosIdentity);
     }
 
     private static final String IPFS_DIR = "IPFS_PATH";
@@ -327,6 +322,10 @@ public class IpfsWrapper implements AutoCloseable {
         int handlerThreads = 50;
         LOG.info("Starting Nabu API server at " + apiAddress.getHost() + ":" + localAPIAddress.getPort());
         try {
+            if (config.metrics.enabled) {
+                AggregatedMetrics.startExporter(config.metrics.address, config.metrics.port);
+            }
+
             ipfsWrapper.apiServer = HttpServer.create(localAPIAddress, maxConnectionQueue);
             ipfsWrapper.apiServer.createContext(APIHandler.API_URL, new APIHandler(ipfsWrapper.embeddedIpfs));
             ipfsWrapper.apiServer.setExecutor(Threads.newPool(handlerThreads, "Nabu-api-handler-"));
@@ -344,9 +343,7 @@ public class IpfsWrapper implements AutoCloseable {
         } catch (IOException ioe) {
             throw new IllegalStateException("Unable to start Server: " + ioe);
         }
-        Thread shutdownHook = new Thread(() -> {
-            ipfsWrapper.stop();
-        });
+        Thread shutdownHook = new Thread(ipfsWrapper::stop);
         Runtime.getRuntime().addShutdownHook(shutdownHook);
         return ipfsWrapper;
     }
@@ -398,8 +395,9 @@ public class IpfsWrapper implements AutoCloseable {
         CodecSet codecSet = new CodecSet(Set.of(Cid.Codec.DagCbor, Cid.Codec.Raw));
         DatastoreSection datastoreSection = new DatastoreSection(blockMount, rootMount, filter, codecSet);
         BootstrapSection bootstrapSection = new BootstrapSection(bootstrapNodes);
-        // ipfs metrics are merged with peergos metrics. only need to init once, so set to false here
-        MetricsSection metrics = new MetricsSection(false, "localhost", 9100);
+        // ipfs metrics are merged with peergos metrics, unless running the IPFS standalone command.
+        boolean separateIpfsMetrics = ipfsConfigParams.enableMetrics && ipfsConfigParams.metricsPort.isPresent();
+        MetricsSection metrics = new MetricsSection(separateIpfsMetrics, ipfsConfigParams.metricsAddress.orElse("localhost"), ipfsConfigParams.metricsPort.orElse(8101));
         Config config = new org.peergos.config.Config(addressesSection, bootstrapSection, datastoreSection,
                 identity, metrics);
         return config;
