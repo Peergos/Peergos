@@ -6,6 +6,7 @@ import io.prometheus.client.exporter.HTTPServer;
 import peergos.server.util.*;
 
 import java.io.IOException;
+import java.util.*;
 
 /**
  * A wrapper around the prometheus metrics and HTTP exporter.
@@ -64,9 +65,15 @@ public class AggregatedMetrics {
     public static final Counter PAID_SIGNUP_SUCCESS  = build("core_node_signup_paid_success", "Total successful paid signup calls.");
     public static final Counter MIGRATE_USER  = build("core_node_migrate_user", "Total migrate-user calls.");
 
-    public static void startExporter(String address, int port) throws IOException {
-        Logging.LOG().info("Starting metrics server at " + address + ":" + port);
+    private static Set<String> runningExporters = new HashSet<>();
+
+    public static synchronized void startExporter(String address, int port) throws IOException {
+        String addr = address + ":" + port;
+        if (runningExporters.contains(addr))
+            return;
+        Logging.LOG().info("Starting metrics server at " + addr);
         HTTPServer server = new HTTPServer(address, port);
+        runningExporters.add(addr);
         //shutdown hook on signal
         Runtime.getRuntime().addShutdownHook(new Thread(() -> server.close()));
     }
