@@ -106,8 +106,8 @@ Architecture
  - 6: Sharing - Secure cryptographic sharing of files with friends.
 
 2.0 Language
- - The IPFS layer is currently coded in Go - we have a minimal ipfs replacement - [ipfs-nucleus](https://github.com/peergos/ipfs-nucleus)
- - The server is coded to run on JVM to get portability and speed, predominantly Java
+ - The IPFS layer is coded in Java - we have a minimal ipfs replacement - [Nabu](https://github.com/peergos/nabu)
+ - The Peergos server is coded to run on JVM to get portability and speed, predominantly Java
  - The web interface is mostly coded in Java and cross compiled to Javascript, with the exception of the Tweetnacl and scrypt libraries, and a small amount of GUI code in JS for Vue.js. 
  - Apps are written in HTML5
 
