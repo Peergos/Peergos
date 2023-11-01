@@ -390,11 +390,11 @@ put local_path remote_path
 Development
 --------
 ### Dependencies
-Requires jdk11 and ant to build. Use the following to install dependencies:
+Requires jdk17 and ant to build. Use the following to install dependencies:
 #### On debian
 ```shell
 sudo apt-get install ant
-sudo apt-get install openjdk-11-jdk
+sudo apt-get install openjdk-17-jdk
 ```
 #### On macOS
 ```shell
