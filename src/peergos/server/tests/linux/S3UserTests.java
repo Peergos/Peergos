@@ -10,6 +10,9 @@ import peergos.shared.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.Cid;
 import peergos.shared.storage.*;
+import peergos.shared.storage.auth.*;
+import peergos.shared.user.*;
+import peergos.shared.util.*;
 
 import java.io.*;
 import java.net.*;
@@ -66,6 +69,9 @@ public class S3UserTests extends UserTests {
         Cid pkiNodeId = toPki.dhtClient.id().get();
         int bootstrapSwarmPort = pkiArgs.getInt("ipfs-swarm-port");
         services.add(pki);
+        UserContext peergos = UserContext.signIn("peergos", "testpassword", m -> Futures.errored(new IllegalStateException("No MFA")),
+                toPki, crypto).join();
+        BatWithId mirrorBat = peergos.getMirrorBat().join().get();
 
         // start ipfs S3 node
         int ipfsApiPort = TestPorts.getPort();
@@ -92,6 +98,8 @@ public class S3UserTests extends UserTests {
                 .with("port", "" + peergosPort)
                 .with("useIPFS", "false")
                 .with("enable-gc", "false")
+                .with("mirror.username", "peergos")
+                .with("mirror.bat", mirrorBat.encode())
                 .with("ipfs-api-address", "/ip4/127.0.0.1/tcp/" + ipfsApiPort)
                 .with("ipfs-gateway-address", "/ip4/127.0.0.1/tcp/" + ipfsGatewayPort)
                 .with("allow-target", "/ip4/127.0.0.1/tcp/" + allowPort)
