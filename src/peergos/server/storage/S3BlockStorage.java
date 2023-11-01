@@ -127,7 +127,8 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         this.folder = (useHttps ? "" : bucket + "/") + (config.path.isEmpty() || config.path.endsWith("/") ? config.path : config.path + "/");
         this.accessKeyId = config.accessKey;
         this.secretKey = config.secretKey;
-        LOG.info("Using S3 Block Storage at " + config.regionEndpoint + ", bucket " + config.bucket + ", path: " + config.path);
+        LOG.info("Using S3 Block Storage at " + config.regionEndpoint + ", bucket " + config.bucket
+                + ", path: " + config.path + ", p2p-get peerid: " + p2pGetId);
         this.props = props;
         this.transactions = transactions;
         this.authoriser = authoriser;
