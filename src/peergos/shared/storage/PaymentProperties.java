@@ -40,12 +40,12 @@ public final class PaymentProperties  implements Cborable {
 
     @JsMethod
     public int freeMb() {
-        return (int)(freeQuota / (1024 * 1024));
+        return (int)(freeQuota / (1000 * 1000));
     }
 
     @JsMethod
     public int desiredMb() {
-        return (int)(desiredQuota / (1024 * 1024));
+        return (int)(desiredQuota / (1000 * 1000));
     }
 
     @JsMethod
