@@ -11,6 +11,7 @@ import org.peergos.net.*;
 import org.peergos.protocol.dht.DatabaseRecordStore;
 import org.peergos.protocol.http.HttpProtocol;
 import org.peergos.util.JSONParser;
+import org.peergos.util.JsonHelper;
 import peergos.server.AggregatedMetrics;
 import peergos.server.Builder;
 import peergos.server.sql.SqlSupplier;
@@ -28,6 +29,7 @@ import java.io.*;
 import java.net.*;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.sql.Connection;
 import java.util.*;
 import java.util.function.Supplier;
@@ -235,10 +237,22 @@ public class IpfsWrapper implements AutoCloseable {
                 HostBuilder builder = new HostBuilder().generateIdentity();
                 PrivKey privKey = builder.getPrivateKey();
                 PeerId peerId = builder.getPeerId();
-                identityOpt = Optional.of(new IdentitySection(privKey.bytes(), peerId));
+                IdentitySection newIdentity = new IdentitySection(privKey.bytes(), peerId);
+                saveIdentityToFile(newIdentity);
+                identityOpt = Optional.of(newIdentity);
             }
         }
         this.ipfsConfigParams= ipfsConfigParams.withIdentity(identityOpt);
+    }
+
+    private void saveIdentityToFile(IdentitySection identity) {
+        String text = JsonHelper.pretty(identity.toJson());
+        try {
+            Path ipfsDir = this.ipfsDir.resolve("identity.json");
+            Files.write(ipfsDir, text.getBytes(), StandardOpenOption.CREATE);
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     public static boolean isHttpApiListening(String ipfsApiAddress) {
