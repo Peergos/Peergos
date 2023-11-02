@@ -708,7 +708,14 @@ public class Main extends Builder {
                         .with("peergos-url", "http://localhost:" + a.getArg("port"));
                 GATEWAY.main(gatewayArgs);
             }
-            a.saveToFileIfAbsent();
+
+            if (useIPFS && !a.hasArg("ipfs.identity.peerid")) {
+                Args args = a.with("ipfs.identity.peerid", ipfsWrapper.ipfsConfigParams.identity.get().peerId.toBase58());
+                args = args.with("ipfs.identity.priv-key", Base64.getEncoder().encodeToString(ipfsWrapper.ipfsConfigParams.identity.get().privKeyProtobuf));
+                args.saveToFile();
+            } else {
+                a.saveToFileIfAbsent();
+            }
             System.out.println("\n" +
                     "█╗█╗█╗█╗   ██████╗ ███████╗███████╗██████╗  ██████╗  ██████╗ ███████╗   █╗█╗█╗█╗\n" +
                     " █████╔╝   ██╔══██╗██╔════╝██╔════╝██╔══██╗██╔════╝ ██╔═══██╗██╔════╝    █████╔╝\n" +
