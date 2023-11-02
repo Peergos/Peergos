@@ -75,7 +75,7 @@ public class Bat implements Cborable {
                                                      Hasher h) {
         if (batId.isIdentity())
             throw new IllegalStateException("Cannot use identity multihash in S3 signatures!");
-        S3Request req = new S3Request("GET", sourceNode.bareMultihash().toBase58(), "api/v0/block/get?arg=" + block.toBase58(), S3Request.UNSIGNED,
+        S3Request req = new S3Request("GET", sourceNode.toBase58(), "api/v0/block/get?arg=" + block.toBase58(), S3Request.UNSIGNED,
                 Optional.of(expirySeconds), false, true,
                 Collections.emptyMap(), Collections.emptyMap(), batId.toBase58(), "eu-central-1", datetime);
         return S3Request.computeSignature(req, encodeSecret(), h)
