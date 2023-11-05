@@ -135,6 +135,16 @@ public abstract class StaticHandler implements HttpHandler
             // Todo work on removing unsafe-inline from sub domains
             if (includeCsp)
                 httpExchange.getResponseHeaders().set("content-security-policy", "default-src 'self' " + this.host + ";" +
+                        "script-src 'self' " + this.host +
+                        // hashes are for the javascript files used by the Notes viewer (we do not want to allow unsafe-inline)
+                        " 'sha256-lc0/PlKl54k8dUpkXRKLbx2Hl3hxZMMfGpEht3SbH+g=' 'sha256-QKId69Dt6HhOzWqRT7lihmUgeIaIoZVkXEpZSzT2VMs=' " +
+                        "'sha256-VfwV5wiRRHSi+a/7PQvQ40QYPdHsrFSk3YPu9/q15P8=' 'sha256-hxeU9OdaYw1YqILhTS8VftPFmtyUKnApRljigHwLofw=' " +
+                        "'sha256-GSHOUEipdHXwJB2q/Xl3FSnCU3tQCq1kaTrC5tNHZp8=' 'sha256-opUlsM2gWfWKF1JyDAxcDnJb554L1f4wKI3eVvZ+NWA=' " +
+                        "'sha256-3bx9DzOjhQcTP7MO5xHfwwdJAseoNNmAydmPB1UQ4AY=' 'sha256-PSMJaPB+J5tqJRUKooSo10C9XxKB9CKdnTs8SNhYdJk=' " +
+                        "'sha256-1lmdc0UMkFwk1GFh7Rvp5Uz4ou4T2xDW1v7+rcXU3r8=' 'sha256-C/UKtQRkZji+AzMvJQEUSs9ElDKYVvDrELeKwYanNJk=' " +
+                        "'sha256-pREzLwvoUb8brgTXz40H6u2wVsnoVOx6nKm3cHMzCeA=' 'sha256-oEVuyRoTUTkqiMx6eYf/c3fN6QSvvp3isF6sezjEtXU=' " +
+                        "'sha256-VKpq7Tv3d7WDY3HqKk+CBx8mgM7XzLNPrMaZ2ywNqJQ=' 'sha256-Srpwsy3vwG/eAJoQeBIuDByNVW8j1gAgEg+nlAj332o=' " +
+                        "'sha256-RrUjQF+NhOeE8uVQki4T3Yje+smugBEaN0NGPuR8tBg='; " +
                         "style-src 'self' " +
                         " " + this.host +
                         (isSubdomain ? " 'unsafe-inline' https://" + reqHost : "") + // calendar, editor, todoboard, pdfviewer
