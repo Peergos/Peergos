@@ -724,12 +724,14 @@ public class Main extends Builder {
                     "███████╗   ██║     ███████╗███████╗██║  ██║╚██████╔╝╚██████╔╝███████║   ███████╗\n" +
                     "╚══════╝   ╚═╝     ╚══════╝╚══════╝╚═╝  ╚═╝ ╚═════╝  ╚═════╝ ╚══════╝   ╚══════╝");
             boolean generateToken = a.getBoolean("generate-token", ! localhostApi);
-            String host = "http://" + localAPIAddress.getHostString() + (webPort == 80 ? "" : ":" + webPort);
+            String host = (publicHostname.isPresent() ? "https://" : "http://") +
+                    (publicHostname.orElse(localAPIAddress.getHostString())) +
+                    (webPort == 80 ? "" : ":" + webPort);
             if (generateToken) {
                 System.out.println("Generating signup token...");
                 String token = userQuotas.generateToken(crypto.random);
                 System.out.println("Peergos daemon started. Browse to " + host + "/?signup=true&token="
-                        + token + " to sign up.");
+                        + token + " to sign up, or use the shell command with the token " + token);
             } else
                 System.out.println("Peergos daemon started. Browse to " + host + "/ to sign up or login. \nRun with -generate-token true to generate a signup token.");
             InstanceAdmin.VersionInfo version = storageAdmin.getVersionInfo().join();
