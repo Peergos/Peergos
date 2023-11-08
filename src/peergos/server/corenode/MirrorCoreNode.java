@@ -254,7 +254,8 @@ public class MirrorCoreNode implements CoreNode {
                 throw new IllegalStateException("No pki key on owner: " + pkiOwnerIdentity);
 
             byte[] newPointer = p2pMutable.getPointer(pkiPeerId, pkiOwnerIdentity, pkiKey).join().get();
-            MaybeMultihash currentPkiRoot = MutablePointers.parsePointerTarget(newPointer, pkiOwnerIdentity, pkiKey, ipfs).join().updated;
+            PointerUpdate pkiUpdateCas = MutablePointers.parsePointerTarget(newPointer, pkiOwnerIdentity, pkiKey, ipfs).join();
+            MaybeMultihash currentPkiRoot = pkiUpdateCas.updated;
             CorenodeState current = state;
             if (pkiOwnerIdentity.equals(current.pkiOwnerIdentity) &&
                     newPeergosRoot.equals(current.pkiOwnerTarget) &&
@@ -271,6 +272,19 @@ public class MirrorCoreNode implements CoreNode {
             List<Multihash> pkiStorageProviders = List.of(pkiPeerId);
             MaybeMultihash currentTree = IpfsCoreNode.getTreeRoot(pkiStorageProviders, current.pkiKeyTarget, ipfs);
             MaybeMultihash updatedTree = IpfsCoreNode.getTreeRoot(pkiStorageProviders, currentPkiRoot, ipfs);
+
+            // explicitly get other direct blocks, in theory need recursive mirror, but this is complete here
+            if (updatedTree.isPresent()) {
+                CommittedWriterData currentWd = IpfsCoreNode.getWriterData(pkiStorageProviders,
+                        (Cid) currentPkiRoot.get(), Optional.empty(), ipfs).join();
+                List<Multihash> toAdd = currentWd.props.toCbor().links().stream()
+                        .filter(h -> updatedTree.map(m -> !m.equals(h)).orElse(true))
+                        .collect(Collectors.toList());
+                for (Multihash m : toAdd) {
+                    ipfs.get(pkiStorageProviders, (Cid) m, "").join();
+                }
+            }
+
             Consumer<Triple<ByteArrayWrapper, Optional<CborObject.CborMerkleLink>, Optional<CborObject.CborMerkleLink>>> consumer =
                     t -> {
                         Optional<CborObject.CborMerkleLink> newVal = t.right;
