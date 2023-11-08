@@ -75,7 +75,7 @@ public interface BlockRequestAuthoriser {
     }
 
     static boolean isValidAuth(BlockAuth auth, Cid block, Cid sourceNode, Bat bat, Hasher h) {
-        S3Request req = new S3Request("GET", sourceNode.toBase58(), "api/v0/block/get?arg=" + block.toBase58(), S3Request.UNSIGNED,
+        S3Request req = new S3Request("GET", sourceNode.bareMultihash().toBase58(), "api/v0/block/get?arg=" + block.toBase58(), S3Request.UNSIGNED,
                 Optional.of(auth.expirySeconds), false, true,
                 Collections.emptyMap(), Collections.emptyMap(), auth.batId.toBase58(), "eu-central-1", auth.awsDatetime);
         LocalDateTime timestamp = auth.timestamp();

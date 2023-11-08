@@ -75,7 +75,7 @@ public class IpfsCoreNode implements CoreNode {
         if (! currentPkiRoot.isPresent()) {
             CommittedWriterData committed = IpfsTransaction.call(peergosIdentity,
                     tid -> WriterData.createEmpty(peergosIdentity, signer, ipfs, hasher, tid).join()
-                            .commit(peergosIdentity, signer, MaybeMultihash.empty(), Optional.empty(), mutable, ipfs, hasher, tid)
+                            .commit(peergosIdentity, signer, MaybeMultihash.empty(), Optional.of(1L), mutable, ipfs, hasher, tid)
                             .thenApply(version -> version.get(signer)), ipfs).join();
             currentPkiRoot = committed.hash;
             currentPkiSequence = committed.sequence;
