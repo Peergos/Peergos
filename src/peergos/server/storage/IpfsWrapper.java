@@ -330,7 +330,7 @@ public class IpfsWrapper implements AutoCloseable {
                 new DelegatingBlockMetadataStore(metaDB);
         boolean provideBlocks = args.hasArg("mirror.node.id") || args.hasArg("mirror.username");
         ipfsWrapper.embeddedIpfs = EmbeddedIpfs.build(records,
-                EmbeddedIpfs.buildBlockStore(config, ipfsWrapper.ipfsDir, meta),
+                EmbeddedIpfs.buildBlockStore(config, ipfsWrapper.ipfsDir, meta, false),
                 provideBlocks,
                 config.addresses.getSwarmAddresses(),
                 config.bootstrap.getBootstrapAddresses(),
