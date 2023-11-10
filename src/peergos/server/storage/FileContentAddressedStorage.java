@@ -26,7 +26,6 @@ import java.util.stream.*;
 public class FileContentAddressedStorage implements DeletableContentAddressedStorage {
     private static final Logger LOG = Logging.LOG();
     private static final int CID_V1 = 1;
-    private static final int DIRECTORY_DEPTH = 5;
     private final Path root;
     private final TransactionStore transactions;
     private final BlockRequestAuthoriser authoriser;
@@ -118,15 +117,12 @@ public class FileContentAddressedStorage implements DeletableContentAddressedSto
                 .collect(Collectors.toList()));
     }
 
-    private Path getFilePath(Cid h) {
-        String name = h.toString();
+    private static Path getFilePath(Cid h) {
+        String key = DirectS3BlockStore.hashToKey(h);
 
-        int depth = DIRECTORY_DEPTH;
-        Path path = PathUtil.get("");
-        for (int i=0; i < depth; i++)
-            path = path.resolve(Character.toString(name.charAt(i)));
-        // include full name in filename
-        path = path.resolve(name);
+        Path path = PathUtil.get("")
+                .resolve(key.substring(key.length() - 3, key.length() - 1))
+                .resolve(key + ".data");
         return path;
     }
 
@@ -278,7 +274,7 @@ public class FileContentAddressedStorage implements DeletableContentAddressedSto
         getFilesRecursive(root, processor);
     }
 
-    private void getFilesRecursive(Path path, Consumer<Cid> accumulator) {
+    private static void getFilesRecursive(Path path, Consumer<Cid> accumulator) {
         File pathFile = path.toFile();
         if (pathFile.isFile()) {
             accumulator.accept(Cid.decode(pathFile.getName()));
@@ -334,5 +330,28 @@ public class FileContentAddressedStorage implements DeletableContentAddressedSto
     @Override
     public String toString() {
         return "FileContentAddressedStorage " + root;
+    }
+
+    public static void main(String[] a) throws Exception {
+        // run this within the .peergos dir
+        Path root = Paths.get(".ipfs/blocks");
+        Path targetDir = Paths.get("protobuf-blocks");
+        if (! targetDir.toFile().mkdir())
+            throw new IllegalStateException("Couldn't create target dir!");
+        moveProtobufBlocks(root, targetDir);
+    }
+    public static void moveProtobufBlocks(Path root, Path targetDir) {
+        getFilesRecursive(root, cid -> {
+            if (cid.codec == Cid.Codec.DagProtobuf) {
+                // move block
+                String filename = DirectS3BlockStore.hashToKey(cid) + ".data";
+                Path path = getFilePath(cid);
+                try {
+                    Files.move(root.resolve(path), targetDir.resolve(filename), StandardCopyOption.REPLACE_EXISTING);
+                } catch (IOException e) {
+                    throw new RuntimeException(e);
+                }
+            }
+        });
     }
 }
