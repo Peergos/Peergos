@@ -194,7 +194,7 @@ public class Builder {
             if (usePostgres) {
                 return new JdbcBlockMetadataStore(getPostgresConnector(a, "metadb."), new PostgresCommands());
             } else {
-                File metaFile = a.fromPeergosDir("block-metadata-sql-file", "blockmetadata-v2.sql").toFile();
+                File metaFile = a.fromPeergosDir("block-metadata-sql-file", "blockmetadata-v3.sql").toFile();
                 Connection instance = new Sqlite.UncloseableConnection(Sqlite.build(metaFile.getPath()));
                 return new JdbcBlockMetadataStore(() -> instance, new SqliteCommands());
             }
@@ -226,10 +226,14 @@ public class Builder {
                 return s3;
             } else if (enableGC) {
                 TransactionalIpfs txns = new TransactionalIpfs(ipfs, transactions, authoriser, ipfs.id().join(), hasher);
-                return new MetadataCachingStorage(txns, meta, hasher);
+                MetadataCachingStorage metabs = new MetadataCachingStorage(txns, meta, hasher);
+                metabs.updateMetadataStoreIfEmpty();
+                return metabs;
             } else {
                 AuthedStorage target = new AuthedStorage(ipfs, authoriser, hasher);
-                return new MetadataCachingStorage(target, meta, hasher);
+                MetadataCachingStorage metabs = new MetadataCachingStorage(target, meta, hasher);
+                metabs.updateMetadataStoreIfEmpty();
+                return metabs;
             }
         } else {
             // In S3 mode of operation we require the ipfs id to be supplied as we don't have a local ipfs running
@@ -250,7 +254,9 @@ public class Builder {
                 return s3;
             } else {
                 FileContentAddressedStorage fileBacked = new FileContentAddressedStorage(blockstorePath(a), transactions, authoriser, hasher);
-                return new MetadataCachingStorage(fileBacked, meta, hasher);
+                MetadataCachingStorage metabs = new MetadataCachingStorage(fileBacked, meta, hasher);
+                metabs.updateMetadataStoreIfEmpty();
+                return metabs;
             }
         }
     }

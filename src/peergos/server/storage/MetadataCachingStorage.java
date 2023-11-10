@@ -10,9 +10,11 @@ import peergos.shared.util.*;
 
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.logging.*;
 
 public class MetadataCachingStorage extends DelegatingDeletableStorage {
 
+    private static final Logger LOG = Logger.getGlobal();
     private final DeletableContentAddressedStorage target;
     private final BlockMetadataStore metadata;
     private final Hasher hasher;
@@ -22,6 +24,17 @@ public class MetadataCachingStorage extends DelegatingDeletableStorage {
         this.target = target;
         this.metadata = metadata;
         this.hasher = hasher;
+    }
+
+    public void updateMetadataStoreIfEmpty() {
+        if (metadata.size() > 0)
+            return;
+        LOG.info("Populating block metadata db..");
+        target.getAllBlockHashes().forEach(c -> {
+            Optional<BlockMetadata> existing = metadata.get(c);
+            if (existing.isEmpty())
+                metadata.put(c, null, target.getBlockMetadata(c).join());
+        });
     }
 
     @Override
