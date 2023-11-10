@@ -28,7 +28,7 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
 
     ForkJoinPool usagePool = Threads.newPool(100, "Usage-updater-");
 
-    Stream<Cid> getAllBlockHashes();
+    Stream<Cid> getAllBlockHashes(boolean useBlockstore);
 
     Stream<BlockVersion> getAllBlockHashVersions();
 
@@ -250,8 +250,8 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
         }
 
         @Override
-        public Stream<Cid> getAllBlockHashes() {
-            String jsonStream = new String(poster.get(apiPrefix + REFS_LOCAL).join());
+        public Stream<Cid> getAllBlockHashes(boolean useBlockstore) {
+            String jsonStream = new String(poster.get(apiPrefix + REFS_LOCAL + "?use-block-store=" + useBlockstore).join());
             return JSONParser.parseStream(jsonStream).stream()
                     .map(m -> (String) (((Map) m).get("Ref")))
                     .map(Cid::decode);
@@ -259,7 +259,7 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
 
         @Override
         public Stream<BlockVersion> getAllBlockHashVersions() {
-            return getAllBlockHashes().map(c -> new BlockVersion(c, null, true));
+            return getAllBlockHashes(false).map(c -> new BlockVersion(c, null, true));
         }
 
         @Override

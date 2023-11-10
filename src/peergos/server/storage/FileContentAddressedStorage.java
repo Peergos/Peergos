@@ -241,13 +241,13 @@ public class FileContentAddressedStorage implements DeletableContentAddressedSto
     }
 
     @Override
-    public Stream<Cid> getAllBlockHashes() {
+    public Stream<Cid> getAllBlockHashes(boolean useBlockstore) {
         return getFiles().stream();
     }
 
     @Override
     public Stream<BlockVersion> getAllBlockHashVersions() {
-        return getAllBlockHashes().map(c -> new BlockVersion(c, null, true));
+        return getAllBlockHashes(false).map(c -> new BlockVersion(c, null, true));
     }
 
     @Override
