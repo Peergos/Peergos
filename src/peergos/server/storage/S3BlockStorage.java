@@ -669,7 +669,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         if (blockMetadata.size() > 0)
             return;
         LOG.info("Updating block metadata store from S3. Listing blocks...");
-        List<Cid> all = getAllBlockHashes().collect(Collectors.toList());
+        List<Cid> all = getAllBlockHashes(true).collect(Collectors.toList());
         LOG.info("Updating block metadata store from S3. Updating db with " + all.size() + " blocks...");
 
         int updateParallelism = 10;
@@ -698,7 +698,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
     }
 
     @Override
-    public Stream<Cid> getAllBlockHashes() {
+    public Stream<Cid> getAllBlockHashes(boolean useBlockstore) {
         // todo make this actually streaming
         return getFiles(Long.MAX_VALUE).stream();
     }

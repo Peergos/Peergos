@@ -28,8 +28,8 @@ public class DelegatingDeletableStorage implements DeletableContentAddressedStor
     }
 
     @Override
-    public Stream<Cid> getAllBlockHashes() {
-        return target.getAllBlockHashes();
+    public Stream<Cid> getAllBlockHashes(boolean useBlockstore) {
+        return target.getAllBlockHashes(useBlockstore);
     }
 
     @Override

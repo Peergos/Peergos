@@ -30,7 +30,7 @@ public class MetadataCachingStorage extends DelegatingDeletableStorage {
         if (metadata.size() > 0)
             return;
         LOG.info("Populating block metadata db..");
-        target.getAllBlockHashes().forEach(c -> {
+        target.getAllBlockHashes(true).forEach(c -> {
             Optional<BlockMetadata> existing = metadata.get(c);
             if (existing.isEmpty())
                 metadata.put(c, null, target.getBlockMetadata(c).join());

@@ -58,14 +58,14 @@ public class RAMStorage implements DeletableContentAddressedStorage {
     }
 
     @Override
-    public Stream<Cid> getAllBlockHashes() {
+    public Stream<Cid> getAllBlockHashes(boolean useBlockstore) {
         return storage.keySet().stream();
     }
 
 
     @Override
     public Stream<BlockVersion> getAllBlockHashVersions() {
-        return getAllBlockHashes().map(c -> new BlockVersion(c, null, true));
+        return getAllBlockHashes(false).map(c -> new BlockVersion(c, null, true));
     }
 
     @Override
