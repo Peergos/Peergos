@@ -277,7 +277,10 @@ public class FileContentAddressedStorage implements DeletableContentAddressedSto
     private static void getFilesRecursive(Path path, Consumer<Cid> accumulator) {
         File pathFile = path.toFile();
         if (pathFile.isFile()) {
-            accumulator.accept(Cid.decode(pathFile.getName()));
+            if (pathFile.getName().endsWith(".data")) {
+                String name = pathFile.getName();
+                accumulator.accept(DirectS3BlockStore.keyToHash(name.substring(0, name.length() - 5)));
+            }
             return;
         }
         else if (!  pathFile.isDirectory())
@@ -290,12 +293,13 @@ public class FileContentAddressedStorage implements DeletableContentAddressedSto
             Path child = path.resolve(filename);
             if (child.toFile().isDirectory()) {
                 getFilesRecursive(child, accumulator);
-            } else if (filename.startsWith("Q") || filename.startsWith("z")) { // tolerate non content addressed files in the same space
+            } else if (filename.endsWith(".data")) {
                 try {
-                    accumulator.accept(Cid.decode(child.toFile().getName()));
+                    String name = child.toFile().getName();
+                    accumulator.accept(DirectS3BlockStore.keyToHash(name.substring(0, name.length() - 5)));
                 } catch (IllegalStateException e) {
                     // ignore files who's name isn't a valid multihash
-                    LOG.info("Ignoring file "+ child +" since name is not a valid multihash");
+                    LOG.info("Ignoring file "+ child +" since name is not of form $cid.data");
                 }
             }
         }
