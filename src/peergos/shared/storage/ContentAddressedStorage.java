@@ -421,7 +421,7 @@ public interface ContentAddressedStorage {
             // support more than one, and to maximise use of browsers 5 connections.
             //int FRAGMENTs_PER_QUERY = isPeergosServer ? (blocks.size() > 10 ? 10 : 1) : 1;
             // multi fragment seems to break things, for now just use 1
-            int FRAGMENTs_PER_QUERY = isPeergosServer ? 1 : 1;
+            int FRAGMENTs_PER_QUERY = isPeergosServer ? 10 : 1;
             List<List<byte[]>> grouped = ArrayOps.group(blocks, FRAGMENTs_PER_QUERY);
             List<List<byte[]>> groupedSignatures = ArrayOps.group(signatures, FRAGMENTs_PER_QUERY);
             List<Integer> sizes = grouped.stream()

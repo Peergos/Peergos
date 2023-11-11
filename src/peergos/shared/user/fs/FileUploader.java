@@ -83,8 +83,9 @@ public class FileUploader implements AutoCloseable {
         private static final int MAX_QUEUE_SIZE = 10;
 
         public synchronized CompletableFuture<Boolean> add(ChunkUpload chunk) {
-            if (! waitingUploaders.isEmpty()) {
-                waitingUploaders.poll().complete(chunk);
+            CompletableFuture<ChunkUpload> poll = waitingUploaders.poll();
+            if (poll != null) {
+                poll.complete(chunk);
                 return Futures.of(true);
             }
             toUpload.add(Futures.of(chunk));

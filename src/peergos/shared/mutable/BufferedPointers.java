@@ -50,7 +50,7 @@ public class BufferedPointers implements MutablePointers {
                 .flatMap(m -> m.toOptional().map(h ->  (Cid) h));
     }
 
-    public List<WriterUpdate> getUpdates() {
+    public synchronized List<WriterUpdate> getUpdates() {
         return writerUpdates;
     }
 
