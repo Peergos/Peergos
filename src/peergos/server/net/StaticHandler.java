@@ -145,7 +145,7 @@ public abstract class StaticHandler implements HttpHandler
                                 "'sha256-VKpq7Tv3d7WDY3HqKk+CBx8mgM7XzLNPrMaZ2ywNqJQ=' 'sha256-Srpwsy3vwG/eAJoQeBIuDByNVW8j1gAgEg+nlAj332o=' " +
                                 "'sha256-RrUjQF+NhOeE8uVQki4T3Yje+smugBEaN0NGPuR8tBg='";
                 httpExchange.getResponseHeaders().set("content-security-policy",
-                        "default-src 'self' " +
+                        "default-src 'self'; script-src 'self' " +
                         this.host +
                         (isSubdomain ? " " + editorJsHashes : "") +
                         ";" +
