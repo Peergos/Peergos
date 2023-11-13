@@ -633,7 +633,7 @@ public class Main extends Builder {
             Optional<String> basicAuth = a.getOptionalArg("basic-auth");
             List<String> blockstoreDomains = S3Config.getBlockstoreDomains(a);
             Optional<String> paymentDomain = a.getOptionalArg("payment-domain");
-            List<String> appSubdomains = Arrays.asList(a.getArg("apps", "markdown-viewer,email,calendar,todo-board,code-editor,pdf").split(","));
+            List<String> appSubdomains = Arrays.asList(a.getArg("apps", "markup-viewer,email,calendar,todo-board,code-editor,pdf").split(","));
             List<String> frameDomains = paymentDomain.map(Arrays::asList).orElse(Collections.emptyList());
 
             localAPI.initAndStart(localAPIAddress, nodeId, tlsProps, publicHostname, blockstoreDomains, frameDomains, appSubdomains,
