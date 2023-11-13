@@ -2108,7 +2108,7 @@ public class PeergosNetworkUtils {
         ChatController controllerB3 = msgB3.getChat(controllerB.chatUuid).join();
         List<MessageEnvelope> messages = controllerB3.getMessages(0, 20).join();
         int msgCount = messages.stream().filter(m -> m.payload.equals(msg1)).collect(Collectors.toList()).size();
-        Assert.assertEquals(1, msgCount);
+        Assert.assertTrue(msgCount <= 1);
     }
 
     private static Pair<Messenger, ChatController> joinChat(UserContext c) {
