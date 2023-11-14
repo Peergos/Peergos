@@ -25,10 +25,10 @@ public class S3BucketCopy {
                                           S3Config config,
                                           AtomicLong counter,
                                           Hasher h) {
-        try {
-            Optional<String> continuationToken = Optional.empty();
-            S3AdminRequests.ListObjectsReply result;
-            do {
+        Optional<String> continuationToken = Optional.empty();
+        S3AdminRequests.ListObjectsReply result;
+        while (true) {
+            try {
                 result = S3AdminRequests.listObjects(startPrefix, 1_000, continuationToken,
                         ZonedDateTime.now(), config.getHost(), config.region, config.accessKey, config.secretKey, url -> {
                             try {
@@ -52,10 +52,13 @@ public class S3BucketCopy {
                     System.out.println("Objects processed: " + done);
                 LOG.log(Level.FINE, "Next Continuation Token : " + result.continuationToken);
                 continuationToken = result.continuationToken;
-            } while (result.isTruncated);
-
-        } catch (Exception e) {
-            LOG.log(Level.SEVERE, e.getMessage(), e);
+                if (! result.isTruncated)
+                    break;
+            } catch (RateLimitException r) {
+                Threads.sleep(5_000);
+            } catch (Exception e) {
+                LOG.log(Level.SEVERE, e.getMessage(), e);
+            }
         }
     }
 
