@@ -340,7 +340,8 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
             throw new RateLimitException();
         } catch (IOException e) {
             String msg = e.getMessage();
-            boolean rateLimited = msg.startsWith("<?xml version=\"1.0\" encoding=\"UTF-8\"?><Error><Code>SlowDown</Code>");
+            boolean rateLimited = msg.contains("<Error><Code>SlowDown</Code>")
+                    || msg.contains("<Error><Code>InternalError</Code>");
             if (rateLimited) {
                 getRateLimited.inc();
                 S3BlockStorage.rateLimited.inc();
@@ -385,7 +386,8 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                 LOG.info("Error checking for " + hash + ": " + e);
                 return false;
             }
-            boolean rateLimited = msg.startsWith("<?xml version=\"1.0\" encoding=\"UTF-8\"?><Error><Code>SlowDown</Code>");
+            boolean rateLimited = msg.contains("<Error><Code>SlowDown</Code>")
+                    || msg.contains("<Error><Code>InternalError</Code>");
             if (rateLimited) {
                 S3BlockStorage.rateLimited.inc();
                 throw new RateLimitException();
@@ -517,7 +519,8 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
             return Futures.of(Optional.empty());
         } catch (IOException e) {
             String msg = e.getMessage();
-            boolean rateLimited = msg.startsWith("<?xml version=\"1.0\" encoding=\"UTF-8\"?><Error><Code>SlowDown</Code>");
+            boolean rateLimited = msg.contains("<Error><Code>SlowDown</Code>")
+                    || msg.contains("<Error><Code>InternalError</Code>");
             if (rateLimited) {
                 S3BlockStorage.rateLimited.inc();
                 throw new RateLimitException();
@@ -618,7 +621,8 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
             return cid;
         } catch (IOException e) {
             String msg = e.getMessage();
-            boolean rateLimited = msg.startsWith("<?xml version=\"1.0\" encoding=\"UTF-8\"?><Error><Code>SlowDown</Code>");
+            boolean rateLimited = msg.contains("<Error><Code>SlowDown</Code>")
+                    || msg.contains("<Error><Code>InternalError</Code>");
             if (rateLimited) {
                 S3BlockStorage.rateLimited.inc();
                 throw new RateLimitException();
@@ -878,7 +882,8 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                             return HttpUtil.post(url, body);
                         } catch (IOException e) {
                             String msg = e.getMessage();
-                            boolean rateLimited = msg.startsWith("<?xml version=\"1.0\" encoding=\"UTF-8\"?><Error><Code>SlowDown</Code>");
+                            boolean rateLimited = msg.contains("<Error><Code>SlowDown</Code>")
+                                    || msg.contains("<Error><Code>InternalError</Code>");
                             if (rateLimited) {
                                 S3BlockStorage.rateLimited.inc();
                                 throw new RateLimitException();
