@@ -514,7 +514,10 @@ public class MirrorCoreNode implements CoreNode {
             }
 
             // Make sure usage is updated
-            SpaceCheckingKeyFilter.processCorenodeEvent(username, owner, usageStore, ipfs, p2pMutable, hasher);
+            List<Multihash> us = List.of(ourNodeId.bareMultihash());
+            Set<PublicKeyHash> allUserKeys = DeletableContentAddressedStorage.getOwnedKeysRecursive(owner, owner, p2pMutable,
+                    (h, s) -> DeletableContentAddressedStorage.getWriterData(us, h,s, ipfs), ipfs, hasher).join();
+            SpaceCheckingKeyFilter.processCorenodeEvent(username, owner, allUserKeys, usageStore, ipfs, p2pMutable, hasher);
             return Futures.of(res);
         } else // Proxy call to their target storage server
             return writeTarget.migrateUser(username, newChain, migrationTargetNode, mirrorBat);

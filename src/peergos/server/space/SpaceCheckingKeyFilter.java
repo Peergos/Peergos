@@ -200,10 +200,19 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
                                             DeletableContentAddressedStorage dht,
                                             MutablePointers mutable,
                                             Hasher hasher) {
-        usageStore.addUserIfAbsent(username);
         // get current set of owned keys from usage db, and traverse filesystem
         // only if a pointer has changed since last usage update
         Set<PublicKeyHash> allUserKeys = usageStore.getAllWriters(owner);
+        processCorenodeEvent(username, owner, allUserKeys, usageStore, dht, mutable, hasher);
+    }
+    public static void processCorenodeEvent(String username,
+                                            PublicKeyHash owner,
+                                            Set<PublicKeyHash> allUserKeys,
+                                            UsageStore usageStore,
+                                            DeletableContentAddressedStorage dht,
+                                            MutablePointers mutable,
+                                            Hasher hasher) {
+        usageStore.addUserIfAbsent(username);
 
         for (PublicKeyHash writerKey : allUserKeys) {
             usageStore.addWriter(username, writerKey);
