@@ -227,9 +227,33 @@ public class JdbcUsageStore implements UsageStore {
     @Override
     public Set<PublicKeyHash> getAllWriters() {
         try (Connection conn = getConnection();
-             PreparedStatement insert = conn.prepareStatement("SELECT key_hash FROM writers;")) {
+             PreparedStatement query = conn.prepareStatement("SELECT key_hash FROM writers;")) {
             Set<PublicKeyHash> res = new HashSet<>();
-            ResultSet resultSet = insert.executeQuery();
+            ResultSet resultSet = query.executeQuery();
+            while (resultSet.next())
+                res.add(PublicKeyHash.decode(resultSet.getBytes(1)));
+            return res;
+        } catch (SQLException sqe) {
+            LOG.log(Level.WARNING, sqe.getMessage(), sqe);
+            throw new RuntimeException(sqe);
+        }
+    }
+
+    @Override
+    public Set<PublicKeyHash> getAllWriters(PublicKeyHash owner) {
+        try (Connection conn = getConnection();
+             PreparedStatement idQuery = conn.prepareStatement("SELECT id FROM writers WHERE key_hash=?;");
+             PreparedStatement query = conn.prepareStatement("SELECT writers.key_hash FROM writers " +
+                     "INNER JOIN ownedkeys ON writers.id=ownedkeys.owned_id WHERE ownedkeys.parent_id=?;")) {
+            idQuery.setBytes(1, owner.toBytes());
+            ResultSet idRes = idQuery.executeQuery();
+            if (!idRes.next())
+                return Collections.emptySet();
+            int id = idRes.getInt(1);
+            query.setInt(1, id);
+
+            Set<PublicKeyHash> res = new HashSet<>();
+            ResultSet resultSet = query.executeQuery();
             while (resultSet.next())
                 res.add(PublicKeyHash.decode(resultSet.getBytes(1)));
             return res;
