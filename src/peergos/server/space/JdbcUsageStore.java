@@ -253,6 +253,7 @@ public class JdbcUsageStore implements UsageStore {
             query.setInt(1, id);
 
             Set<PublicKeyHash> res = new HashSet<>();
+            res.add(owner);
             ResultSet resultSet = query.executeQuery();
             while (resultSet.next())
                 res.add(PublicKeyHash.decode(resultSet.getBytes(1)));

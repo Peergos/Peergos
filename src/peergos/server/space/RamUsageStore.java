@@ -47,7 +47,6 @@ public class RamUsageStore implements UsageStore {
     public Set<PublicKeyHash> getAllWriters(PublicKeyHash owner) {
         Set<PublicKeyHash> res = new HashSet<>();
         getAllWriters(owner, res);
-        res.remove(owner);
         return res;
     }
 

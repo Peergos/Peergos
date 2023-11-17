@@ -28,7 +28,7 @@ public class JdbcUsageStoreTests {
         store.updateWriterUsage(owner, MaybeMultihash.empty(), Collections.emptySet(), Set.of(writer), 0);
 
         Set<PublicKeyHash> allWriters = store.getAllWriters(owner);
-        Assert.assertTrue(allWriters.size() == 1);
+        Assert.assertTrue(allWriters.size() == 2);
         Assert.assertTrue(allWriters.contains(writer));
     }
 }
