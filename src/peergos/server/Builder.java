@@ -220,8 +220,9 @@ public class Builder {
                 BlockStoreProperties props = buildS3Properties(a);
                 TransactionalIpfs p2pBlockRetriever = new TransactionalIpfs(ipfs, transactions, authoriser, ipfs.id().join(), hasher);
 
+                FileBlockCache cborCache = new FileBlockCache(a.fromPeergosDir("block-cache-dir", "block-cache"), 1024 * 1024 * 1024L);
                 S3BlockStorage s3 = new S3BlockStorage(config, ipfs.id().join(), props, transactions, authoriser,
-                        meta, hasher, p2pBlockRetriever, ipfs);
+                        meta, cborCache, hasher, p2pBlockRetriever, ipfs);
                 s3.updateMetadataStoreIfEmpty();
                 return s3;
             } else if (enableGC) {
@@ -249,7 +250,9 @@ public class Builder {
                 JavaPoster bloomApiTarget = buildBloomApiTarget(a);
                 DeletableContentAddressedStorage.HTTP bloomTarget = new DeletableContentAddressedStorage.HTTP(bloomApiTarget, false, hasher);
 
-                S3BlockStorage s3 = new S3BlockStorage(config, ourId, props, transactions, authoriser, meta, hasher, p2pBlockRetriever, bloomTarget);
+                FileBlockCache cborCache = new FileBlockCache(a.fromPeergosDir("block-cache-dir", "block-cache"), 10 * 1024 * 1024 * 1024L);
+                S3BlockStorage s3 = new S3BlockStorage(config, ourId, props, transactions, authoriser,
+                        meta, cborCache, hasher, p2pBlockRetriever, bloomTarget);
                 s3.updateMetadataStoreIfEmpty();
                 return s3;
             } else {

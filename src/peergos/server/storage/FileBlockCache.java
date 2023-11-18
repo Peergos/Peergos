@@ -20,7 +20,6 @@ import java.util.logging.*;
  */
 public class FileBlockCache implements BlockCache {
     private static final Logger LOG = Logging.LOG();
-    private static final int DIRECTORY_DEPTH = 5;
     private final Path root;
     private final long maxSizeBytes;
     private long lastSizeCheckTime = 0;
@@ -41,14 +40,11 @@ public class FileBlockCache implements BlockCache {
     }
 
     private Path getFilePath(Cid h) {
-        String name = h.toString();
+        String key = DirectS3BlockStore.hashToKey(h);
 
-        int depth = DIRECTORY_DEPTH;
-        Path path = PathUtil.get("");
-        for (int i=0; i < depth; i++)
-            path = path.resolve(Character.toString(name.charAt(i)));
-        // include full name in filename
-        path = path.resolve(name);
+        Path path = PathUtil.get("")
+                .resolve(key.substring(key.length() - 3, key.length() - 1))
+                .resolve(key + ".data");
         return path;
     }
 
@@ -117,7 +113,7 @@ public class FileBlockCache implements BlockCache {
 
     protected List<Cid> getFiles() {
         List<Cid> existing = new ArrayList<>();
-        getFilesRecursive(root, existing::add);
+        FileContentAddressedStorage.getFilesRecursive(root, existing::add);
         return existing;
     }
 
@@ -157,34 +153,7 @@ public class FileBlockCache implements BlockCache {
     }
 
     public void applyToAll(Consumer<Cid> processor) {
-        getFilesRecursive(root, processor);
-    }
-
-    private void getFilesRecursive(Path path, Consumer<Cid> accumulator) {
-        File pathFile = path.toFile();
-        if (pathFile.isFile()) {
-            accumulator.accept(Cid.decode(pathFile.getName()));
-            return;
-        }
-        else if (!  pathFile.isDirectory())
-            throw new IllegalStateException("Specified path "+ path +" is not a file or directory");
-
-        String[] filenames = pathFile.list();
-        if (filenames == null)
-            throw new IllegalStateException("Couldn't retrieve children of directory: " + path);
-        for (String filename : filenames) {
-            Path child = path.resolve(filename);
-            if (child.toFile().isDirectory()) {
-                getFilesRecursive(child, accumulator);
-            } else if (filename.startsWith("Q") || filename.startsWith("z")) { // tolerate non content addressed files in the same space
-                try {
-                    accumulator.accept(Cid.decode(child.toFile().getName()));
-                } catch (IllegalStateException e) {
-                    // ignore files who's name isn't a valid multihash
-                    LOG.info("Ignoring file "+ child +" since name is not a valid multihash");
-                }
-            }
-        }
+        FileContentAddressedStorage.getFilesRecursive(root, processor);
     }
 
     private void ensureWithinSizeLimit(long maxSize) {

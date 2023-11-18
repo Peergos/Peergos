@@ -340,7 +340,7 @@ public class Main extends Builder {
                             S3Config.useS3(args) ?
                                     new S3BlockStorage(S3Config.build(args, Optional.empty()), Cid.decode(args.getArg("ipfs.id")),
                                             BlockStoreProperties.empty(), transactions, authoriser, new RamBlockMetadataStore(),
-                                            crypto.hasher, new DeletableContentAddressedStorage.HTTP(Builder.buildIpfsApi(args), false, crypto.hasher),
+                                            new RamBlockCache(1024, 1000), crypto.hasher, new DeletableContentAddressedStorage.HTTP(Builder.buildIpfsApi(args), false, crypto.hasher),
                                             new DeletableContentAddressedStorage.HTTP(Builder.buildIpfsApi(args), false, crypto.hasher)) :
                                     new FileContentAddressedStorage(blockstorePath(args),
                                             transactions, authoriser, crypto.hasher);

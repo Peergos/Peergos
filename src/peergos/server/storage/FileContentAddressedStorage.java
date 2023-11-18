@@ -274,7 +274,7 @@ public class FileContentAddressedStorage implements DeletableContentAddressedSto
         getFilesRecursive(root, processor);
     }
 
-    private static void getFilesRecursive(Path path, Consumer<Cid> accumulator) {
+    public static void getFilesRecursive(Path path, Consumer<Cid> accumulator) {
         File pathFile = path.toFile();
         if (pathFile.isFile()) {
             if (pathFile.getName().endsWith(".data")) {
