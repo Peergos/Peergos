@@ -12,6 +12,8 @@ public interface WriterUsageStore {
 
     Set<PublicKeyHash> getAllWriters();
 
+    Set<PublicKeyHash> getAllWriters(PublicKeyHash owner);
+
     WriterUsage getUsage(PublicKeyHash writer);
 
     void updateWriterUsage(PublicKeyHash writer,

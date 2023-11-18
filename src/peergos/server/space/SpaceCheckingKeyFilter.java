@@ -80,6 +80,7 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
     public void calculateUsage() {
         try {
             List<String> usernames = quotaAdmin.getLocalUsernames();
+            long t0 = System.currentTimeMillis();
             Logging.LOG().info("Calculating space usage for " + usernames.size() + " local users...");
             long done = 0;
             for (String username : usernames) {
@@ -100,7 +101,8 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
                 }
             }
             usageStore.initialized();
-            Logging.LOG().info("Finished calculating space usage for " + usernames.size() + " local users...");
+            long t1 = System.currentTimeMillis();
+            Logging.LOG().info("Finished calculating space usage for " + usernames.size() + " local users in " + (t1-t0)/1_000 + "s");
         } catch (Exception e) {
             LOG.log(Level.WARNING, e.getMessage(), e);
         }
@@ -198,10 +200,19 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
                                             DeletableContentAddressedStorage dht,
                                             MutablePointers mutable,
                                             Hasher hasher) {
+        // get current set of owned keys from usage db, and traverse filesystem
+        // only if a pointer has changed since last usage update
+        Set<PublicKeyHash> allUserKeys = usageStore.getAllWriters(owner);
+        processCorenodeEvent(username, owner, allUserKeys, usageStore, dht, mutable, hasher);
+    }
+    public static void processCorenodeEvent(String username,
+                                            PublicKeyHash owner,
+                                            Set<PublicKeyHash> allUserKeys,
+                                            UsageStore usageStore,
+                                            DeletableContentAddressedStorage dht,
+                                            MutablePointers mutable,
+                                            Hasher hasher) {
         usageStore.addUserIfAbsent(username);
-        List<Multihash> us = List.of(dht.id().join().bareMultihash());
-        Set<PublicKeyHash> allUserKeys = DeletableContentAddressedStorage.getOwnedKeysRecursive(owner, owner, mutable,
-                (h, s) -> DeletableContentAddressedStorage.getWriterData(us, h,s, dht), dht, hasher).join();
 
         for (PublicKeyHash writerKey : allUserKeys) {
             usageStore.addWriter(username, writerKey);
@@ -290,6 +301,12 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
                 HashSet<PublicKeyHash> addedOwnedKeys = new HashSet<>(updatedOwned);
                 addedOwnedKeys.removeAll(current.ownedKeys());
                 state.updateWriterUsage(writer, newRoot, removedChildren, addedOwnedKeys, current.directRetainedStorage() + changeInStorage);
+                for (PublicKeyHash added : addedOwnedKeys) {
+                    state.addWriter(current.owner, added);
+                    WriterUsage currentAdded = state.getUsage(added);
+                    MaybeMultihash updatedRoot = mutable.getPointerTarget(owner, added, dht).join().updated;
+                    processMutablePointerEvent(state, owner, added, currentAdded.target(), updatedRoot, mutable, dht, hasher);
+                }
                 System.out.println("Updated usage from " + current.directRetainedStorage() + ", adding " + changeInStorage);
             }
         } catch (Exception e) {
