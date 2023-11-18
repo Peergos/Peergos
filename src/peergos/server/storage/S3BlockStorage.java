@@ -636,6 +636,8 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
             bloomAdds.add(cid);
             blockPuts.inc();
             blockPutBytes.labels("size").observe(data.length);
+            if (! isRaw)
+                cborCache.put(cid, data);
             return cid;
         } catch (IOException e) {
             String msg = e.getMessage();
