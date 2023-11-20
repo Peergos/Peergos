@@ -102,6 +102,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
     private final TransactionStore transactions;
     private final BlockRequestAuthoriser authoriser;
     private final BlockMetadataStore blockMetadata;
+    private final BlockCache cborCache;
     private final Hasher hasher;
     private final DeletableContentAddressedStorage p2pFallback, bloomTarget;
 
@@ -114,6 +115,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                           TransactionStore transactions,
                           BlockRequestAuthoriser authoriser,
                           BlockMetadataStore blockMetadata,
+                          BlockCache cborCache,
                           Hasher hasher,
                           DeletableContentAddressedStorage p2pFallback,
                           DeletableContentAddressedStorage bloomTarget) {
@@ -133,6 +135,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         this.transactions = transactions;
         this.authoriser = authoriser;
         this.blockMetadata = blockMetadata;
+        this.cborCache = cborCache;
         this.hasher = hasher;
         this.p2pFallback = p2pFallback;
         this.bloomTarget = bloomTarget;
@@ -313,7 +316,22 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                                                                      String auth,
                                                                      boolean enforceAuth,
                                                                      Optional<BatWithId> bat) {
-        return getWithBackoff(() -> getRawWithoutBackoff(peerIds, hash, range, auth, enforceAuth, bat));
+        if (! hash.isRaw()) {
+            Optional<byte[]> cached = cborCache.get(hash).join();
+            if (cached.isPresent()) {
+                if (enforceAuth && ! authoriser.allowRead(hash, cached.get(), id, auth).join())
+                    throw new IllegalStateException("Unauthorised!");
+                return Futures.of(Optional.of(new Pair<>(cached.get(), null)));
+            }
+        }
+        return getWithBackoff(() -> getRawWithoutBackoff(peerIds, hash, range, auth, enforceAuth, bat))
+                .thenApply(res -> {
+                    if (hash.isRaw())
+                        return res;
+                    if (res.isPresent())
+                        cborCache.put(hash, res.get().left);
+                    return res;
+                });
     }
 
     private CompletableFuture<Optional<Pair<byte[], String>>> getRawWithoutBackoff(List<Multihash> peerIds,
@@ -618,6 +636,8 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
             bloomAdds.add(cid);
             blockPuts.inc();
             blockPutBytes.labels("size").observe(data.length);
+            if (! isRaw)
+                cborCache.put(cid, data);
             return cid;
         } catch (IOException e) {
             String msg = e.getMessage();
@@ -918,7 +938,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         BlockMetadataStore meta = Builder.buildBlockMetadata(a);
         S3BlockStorage s3 = new S3BlockStorage(config, Cid.decode(a.getArg("ipfs.id")),
                 BlockStoreProperties.empty(), transactions, authoriser, meta,
-                hasher, new RAMStorage(hasher), new RAMStorage(hasher));
+                new RamBlockCache(1024, 100), hasher, new RAMStorage(hasher), new RAMStorage(hasher));
         JdbcIpnsAndSocial rawPointers = new JdbcIpnsAndSocial(database, sqlCommands);
         Supplier<Connection> usageDb = Main.getDBConnector(a, "space-usage-sql-file");
         UsageStore usageStore = new JdbcUsageStore(usageDb, sqlCommands);
