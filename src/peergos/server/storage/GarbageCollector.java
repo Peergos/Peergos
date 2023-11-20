@@ -118,7 +118,7 @@ public class GarbageCollector {
         System.out.println("Listing " + allPointers.size() + " pointers took " + (t3-t2)/1_000_000_000 + "s");
 
         // Get the current roots from the usage store which shouldn't be GC'd until usage has been updated
-        List<Multihash> usageRoots = usage.getAllTargets();
+        List<Pair<Multihash, String>> usageRoots = usage.getAllTargets();
 
         Map<Multihash, Integer> toIndex = new HashMap<>();
         for (int i = 0; i < present.size(); i++)
@@ -129,15 +129,16 @@ public class GarbageCollector {
         int markParallelism = 10;
         ForkJoinPool markPool = Threads.newPool(markParallelism, "GC-mark-");
         List<ForkJoinTask<Boolean>> usageMarked = usageRoots.stream()
-                .map(r -> markPool.submit(() -> markReachable(storage, (Cid)r, toIndex, reachable, metadata)))
+                .map(r -> markPool.submit(() -> markReachable(storage, (Cid)r.left, r.right, toIndex, reachable, metadata)))
                 .collect(Collectors.toList());
         usageMarked.forEach(f -> f.join());
         long t4 = System.nanoTime();
         System.out.println("Marking reachable from "+usageRoots.size()+" usage roots took " + (t4-t3)/1_000_000_000 + "s");
 
-        Set<Multihash> fromUsage = new HashSet<>(usageRoots);
+        Set<Multihash> fromUsage = new HashSet<>(usageRoots.size());
+        fromUsage.addAll(usageRoots.stream().map(r -> r.left).collect(Collectors.toSet()));
         List<ForkJoinTask<Boolean>> marked = allPointers.entrySet().stream()
-                .map(e -> markPool.submit(() -> markReachable(e.getKey(), e.getValue(), reachable, toIndex, storage, fromUsage, metadata)))
+                .map(e -> markPool.submit(() -> markReachable(e.getKey(), e.getValue(), reachable, toIndex, storage, usage, fromUsage, metadata)))
                 .collect(Collectors.toList());
         long rootsProcessed = marked.stream().filter(ForkJoinTask::join).count();
 
@@ -180,6 +181,7 @@ public class GarbageCollector {
                                          BitSet reachable,
                                          Map<Multihash, Integer> toIndex,
                                          DeletableContentAddressedStorage storage,
+                                         UsageStore usage,
                                          Set<Multihash> done,
                                          BlockMetadataStore metadata) {
         PublicSigningKey writer = getWithBackoff(() -> storage.getSigningKey(null, writerHash).join().get());
@@ -187,7 +189,14 @@ public class GarbageCollector {
         PointerUpdate cas = PointerUpdate.fromCbor(CborObject.fromByteArray(bothHashes));
         MaybeMultihash updated = cas.updated;
         if (updated.isPresent() && ! done.contains(updated.get())) {
-            markReachable(storage, (Cid) updated.get(), toIndex, reachable, metadata);
+            try {
+                markReachable(storage, (Cid) updated.get(), toIndex, reachable, metadata);
+            } catch (Exception e) {
+                String username = usage.getUsage(writerHash).owner;
+                String msg = "Error marking reachable for user: " + username + ", writer " + writerHash;
+                System.out.println(msg);
+                throw new RuntimeException(msg, e);
+            }
             return true;
         }
         return false;
@@ -237,6 +246,21 @@ public class GarbageCollector {
         }
 
         return new Pair<>(deletedCborBlocks, deletedRawBlocks);
+    }
+
+    private static boolean markReachable(DeletableContentAddressedStorage storage,
+                                         Cid root,
+                                         String username,
+                                         Map<Multihash, Integer> toIndex,
+                                         BitSet reachable,
+                                         BlockMetadataStore metadata) {
+        try {
+            return markReachable(storage, root, toIndex, reachable, metadata);
+        }  catch (Exception e) {
+            String msg = "Error marking reachable for user: " + username + ", from usage root " + root;
+            System.out.println(msg);
+            throw new RuntimeException(msg, e);
+        }
     }
 
     private static boolean markReachable(DeletableContentAddressedStorage storage,
