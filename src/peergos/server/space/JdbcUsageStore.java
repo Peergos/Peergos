@@ -265,17 +265,19 @@ public class JdbcUsageStore implements UsageStore {
     }
 
     @Override
-    public List<Multihash> getAllTargets() {
+    public List<Pair<Multihash, String>> getAllTargets() {
         try (Connection conn = getConnection();
-             PreparedStatement get = conn.prepareStatement("SELECT target FROM writerusage;")) {
-            List<Multihash> res = new ArrayList<>();
+             PreparedStatement get = conn.prepareStatement("SELECT writerusage.target,users.name FROM writerusage " +
+                     "INNER JOIN users ON writerusage.user_id=users.id;")) {
+            List<Pair<Multihash, String>> res = new ArrayList<>();
             ResultSet resultSet = get.executeQuery();
             while (resultSet.next()) {
                 MaybeMultihash target = Optional.ofNullable(resultSet.getBytes(1))
                     .map(x -> MaybeMultihash.of(Cid.cast(x)))
                     .orElse(MaybeMultihash.empty());
+                String username = resultSet.getString(2);
                 if (target.isPresent())
-                    res.add(target.get());
+                    res.add(new Pair<>(target.get(), username));
             }
             return res;
         } catch (SQLException sqe) {
