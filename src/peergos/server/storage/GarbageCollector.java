@@ -248,17 +248,18 @@ public class GarbageCollector {
         PointerUpdate cas = PointerUpdate.fromCbor(CborObject.fromByteArray(bothHashes));
         MaybeMultihash updated = cas.updated;
         if (updated.isPresent() && ! done.contains(updated.get())) {
-            try {
-                markReachable(storage, (Cid) updated.get(), toIndex, reachable, metadata);
-            } catch (Exception e) {
-                String username = usage.getUsage(writerHash).owner;
-                String msg = "Error marking reachable for user: " + username + ", writer " + writerHash;
-                System.out.println(msg);
-                throw new RuntimeException(msg, e);
-            }
+            markReachable(storage, (Cid) updated.get(), toIndex, reachable, metadata, () -> getUsername(writerHash, usage));
             return true;
         }
         return false;
+    }
+
+    private static String getUsername(PublicKeyHash writer, UsageStore usage) {
+        try {
+            return usage.getUsage(writer).owner;
+        } catch (Exception e) {
+            return "Orphaned writer: " + writer;
+        }
     }
 
     private static Pair<Long, Long> deleteUnreachableBlocks(int startIndex,
@@ -313,30 +314,29 @@ public class GarbageCollector {
                                          Map<Multihash, Integer> toIndex,
                                          BitSet reachable,
                                          BlockMetadataStore metadata) {
-        try {
-            return markReachable(storage, root, toIndex, reachable, metadata);
-        }  catch (Exception e) {
-            String msg = "Error marking reachable for user: " + username + ", from usage root " + root;
-            System.out.println(msg);
-            throw new RuntimeException(msg, e);
-        }
+        return markReachable(storage, root, toIndex, reachable, metadata, () -> username);
     }
 
     private static boolean markReachable(DeletableContentAddressedStorage storage,
                                          Cid root,
                                          Map<Multihash, Integer> toIndex,
                                          BitSet reachable,
-                                         BlockMetadataStore metadata) {
+                                         BlockMetadataStore metadata,
+                                         Supplier<String> username) {
         int index = toIndex.getOrDefault(root, -1);
         if (index >= 0) {
             synchronized (reachable) {
                 reachable.set(index);
             }
         }
-        List<Cid> links = metadata.get(root).map(m -> m.links)
-                .orElseGet(() -> getWithBackoff(() -> storage.getLinks(root).join()));
-        for (Cid link : links) {
-            markReachable(storage, link, toIndex, reachable, metadata);
+        try {
+            List<Cid> links = metadata.get(root).map(m -> m.links)
+                    .orElseGet(() -> getWithBackoff(() -> storage.getLinks(root).join()));
+            for (Cid link : links) {
+                markReachable(storage, link, toIndex, reachable, metadata, username);
+            }
+        } catch (Exception e) {
+            LOG.info("Error processing user " + username.get());
         }
         return true;
     }
