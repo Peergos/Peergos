@@ -84,6 +84,65 @@ public class GarbageCollector {
         return new ArrayList<>(deduped.values());
     }
 
+    public static void checkIntegrity(DeletableContentAddressedStorage storage,
+                                      BlockMetadataStore metadata,
+                                      JdbcIpnsAndSocial pointers,
+                                      UsageStore usage) {
+        Map<PublicKeyHash, byte[]> allPointers = pointers.getAllEntries();
+
+        List<Pair<Multihash, String>> usageRoots = usage.getAllTargets();
+        Set<Multihash> done = new HashSet<>();
+        System.out.println("Checking integrity from pointer targets...");
+        allPointers.forEach((writerHash, signedRawCas) -> {
+            PublicSigningKey writer = getWithBackoff(() -> storage.getSigningKey(null, writerHash).join().get());
+            byte[] bothHashes = writer.unsignMessage(signedRawCas);
+            PointerUpdate cas = PointerUpdate.fromCbor(CborObject.fromByteArray(bothHashes));
+            MaybeMultihash updated = cas.updated;
+            if (updated.isPresent() && !done.contains(updated.get())) {
+                done.add(updated.get());
+                try {
+                    traverseDag(updated.get(), metadata, done);
+                } catch (Exception e) {
+                    try {
+                        String username = usage.getUsage(writerHash).owner;
+                        String msg = "Error marking reachable for user: " + username + ", writer " + writerHash + " " + e.getMessage();
+                        System.err.println(msg);
+                    } catch (Exception f) {
+                        System.err.println("Error processing writer: " + e.getMessage() + " " + f.getMessage());
+                    }
+                }
+            }
+        });
+        System.out.println("Checking integrity from usage roots...");
+
+        for (Pair<Multihash, String> usageRoot : usageRoots) {
+            if (! done.contains(usageRoot.left)) {
+                try {
+                traverseDag(usageRoot.left, metadata, done);
+                } catch (Exception e) {
+                    String username = usageRoot.right;;
+                    String msg = "Error marking reachable for user: " + username + ", from usage root " + usageRoot.left;
+                    System.err.println(msg);
+                }
+            }
+        }
+        System.out.println("Finished checking block DAG integrity");
+    }
+
+    private static void traverseDag(Multihash cid,
+                                    BlockMetadataStore metadata,
+                                    Set<Multihash> done) {
+        if (cid.isIdentity())
+            return;
+        Optional<BlockMetadata> meta = metadata.get((Cid) cid);
+        if (meta.isEmpty())
+            throw new IllegalStateException("Absent block! " + cid + ", key: " + DirectS3BlockStore.hashToKey(cid));
+        for (Cid link : meta.get().links) {
+            done.add(link);
+            traverseDag(link, metadata, done);
+        }
+    }
+
     /** The result of this method is a snapshot of the mutable pointers that is consistent with the blocks store
      * after GC has completed (saved to a file which can be independently backed up).
      *

@@ -922,7 +922,6 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
     }
 
     public static void main(String[] args) throws Exception {
-        System.out.println("Performing GC on S3 block store...");
         Args a = Args.parse(args);
         Crypto crypto = Main.initCrypto();
         Hasher hasher = crypto.hasher;
@@ -942,6 +941,11 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         JdbcIpnsAndSocial rawPointers = new JdbcIpnsAndSocial(database, sqlCommands);
         Supplier<Connection> usageDb = Main.getDBConnector(a, "space-usage-sql-file");
         UsageStore usageStore = new JdbcUsageStore(usageDb, sqlCommands);
+        if (a.hasArg("integrity-check")) {
+            GarbageCollector.checkIntegrity(s3, meta, rawPointers, usageStore);
+            return;
+        }
+        System.out.println("Performing GC on S3 block store...");
         s3.collectGarbage(rawPointers, usageStore, meta, a.getBoolean("s3.versioned-bucket"));
     }
 
