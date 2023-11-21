@@ -84,6 +84,65 @@ public class GarbageCollector {
         return new ArrayList<>(deduped.values());
     }
 
+    public static void checkIntegrity(DeletableContentAddressedStorage storage,
+                                      BlockMetadataStore metadata,
+                                      JdbcIpnsAndSocial pointers,
+                                      UsageStore usage) {
+        Map<PublicKeyHash, byte[]> allPointers = pointers.getAllEntries();
+
+        List<Pair<Multihash, String>> usageRoots = usage.getAllTargets();
+        Set<Multihash> done = new HashSet<>();
+        System.out.println("Checking integrity from pointer targets...");
+        allPointers.forEach((writerHash, signedRawCas) -> {
+            PublicSigningKey writer = getWithBackoff(() -> storage.getSigningKey(null, writerHash).join().get());
+            byte[] bothHashes = writer.unsignMessage(signedRawCas);
+            PointerUpdate cas = PointerUpdate.fromCbor(CborObject.fromByteArray(bothHashes));
+            MaybeMultihash updated = cas.updated;
+            if (updated.isPresent() && !done.contains(updated.get())) {
+                done.add(updated.get());
+                try {
+                    traverseDag(updated.get(), metadata, done);
+                } catch (Exception e) {
+                    try {
+                        String username = usage.getUsage(writerHash).owner;
+                        String msg = "Error marking reachable for user: " + username + ", writer " + writerHash + " " + e.getMessage();
+                        System.err.println(msg);
+                    } catch (Exception f) {
+                        System.err.println("Error processing writer: " + e.getMessage() + " " + f.getMessage());
+                    }
+                }
+            }
+        });
+        System.out.println("Checking integrity from usage roots...");
+
+        for (Pair<Multihash, String> usageRoot : usageRoots) {
+            if (! done.contains(usageRoot.left)) {
+                try {
+                traverseDag(usageRoot.left, metadata, done);
+                } catch (Exception e) {
+                    String username = usageRoot.right;;
+                    String msg = "Error marking reachable for user: " + username + ", from usage root " + usageRoot.left;
+                    System.err.println(msg);
+                }
+            }
+        }
+        System.out.println("Finished checking block DAG integrity");
+    }
+
+    private static void traverseDag(Multihash cid,
+                                    BlockMetadataStore metadata,
+                                    Set<Multihash> done) {
+        if (cid.isIdentity())
+            return;
+        Optional<BlockMetadata> meta = metadata.get((Cid) cid);
+        if (meta.isEmpty())
+            throw new IllegalStateException("Absent block! " + cid + ", key: " + DirectS3BlockStore.hashToKey(cid));
+        for (Cid link : meta.get().links) {
+            done.add(link);
+            traverseDag(link, metadata, done);
+        }
+    }
+
     /** The result of this method is a snapshot of the mutable pointers that is consistent with the blocks store
      * after GC has completed (saved to a file which can be independently backed up).
      *
@@ -189,17 +248,18 @@ public class GarbageCollector {
         PointerUpdate cas = PointerUpdate.fromCbor(CborObject.fromByteArray(bothHashes));
         MaybeMultihash updated = cas.updated;
         if (updated.isPresent() && ! done.contains(updated.get())) {
-            try {
-                markReachable(storage, (Cid) updated.get(), toIndex, reachable, metadata);
-            } catch (Exception e) {
-                String username = usage.getUsage(writerHash).owner;
-                String msg = "Error marking reachable for user: " + username + ", writer " + writerHash;
-                System.out.println(msg);
-                throw new RuntimeException(msg, e);
-            }
+            markReachable(storage, (Cid) updated.get(), toIndex, reachable, metadata, () -> getUsername(writerHash, usage));
             return true;
         }
         return false;
+    }
+
+    private static String getUsername(PublicKeyHash writer, UsageStore usage) {
+        try {
+            return usage.getUsage(writer).owner;
+        } catch (Exception e) {
+            return "Orphaned writer: " + writer;
+        }
     }
 
     private static Pair<Long, Long> deleteUnreachableBlocks(int startIndex,
@@ -254,30 +314,29 @@ public class GarbageCollector {
                                          Map<Multihash, Integer> toIndex,
                                          BitSet reachable,
                                          BlockMetadataStore metadata) {
-        try {
-            return markReachable(storage, root, toIndex, reachable, metadata);
-        }  catch (Exception e) {
-            String msg = "Error marking reachable for user: " + username + ", from usage root " + root;
-            System.out.println(msg);
-            throw new RuntimeException(msg, e);
-        }
+        return markReachable(storage, root, toIndex, reachable, metadata, () -> username);
     }
 
     private static boolean markReachable(DeletableContentAddressedStorage storage,
                                          Cid root,
                                          Map<Multihash, Integer> toIndex,
                                          BitSet reachable,
-                                         BlockMetadataStore metadata) {
+                                         BlockMetadataStore metadata,
+                                         Supplier<String> username) {
         int index = toIndex.getOrDefault(root, -1);
         if (index >= 0) {
             synchronized (reachable) {
                 reachable.set(index);
             }
         }
-        List<Cid> links = metadata.get(root).map(m -> m.links)
-                .orElseGet(() -> getWithBackoff(() -> storage.getLinks(root).join()));
-        for (Cid link : links) {
-            markReachable(storage, link, toIndex, reachable, metadata);
+        try {
+            List<Cid> links = metadata.get(root).map(m -> m.links)
+                    .orElseGet(() -> getWithBackoff(() -> storage.getLinks(root).join()));
+            for (Cid link : links) {
+                markReachable(storage, link, toIndex, reachable, metadata, username);
+            }
+        } catch (Exception e) {
+            LOG.info("Error processing user " + username.get());
         }
         return true;
     }
