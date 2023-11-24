@@ -171,6 +171,9 @@ public class MimeTypes {
             if (filename.endsWith(".odp"))
                 return "application/vnd.oasis.opendocument.presentation";
 
+            if (filename.endsWith(".apk"))
+                return "application/vnd.android.package-archive";
+
             return "application/zip";
         }
 
