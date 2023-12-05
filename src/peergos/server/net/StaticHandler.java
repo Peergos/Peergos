@@ -158,7 +158,6 @@ public abstract class StaticHandler implements HttpHandler
                         "frame-ancestors 'self' " + this.host + ";" +
                         "connect-src 'self' " + this.host +
                         (isSubdomain ? "" : blockstoreDomain.stream().map(d -> " https://" + d).collect(Collectors.joining())) + ";" +
-                        "webrtc 'block';" +
                         "media-src 'self' " + this.host + " blob:;" +
                         "img-src 'self' " + this.host + " data: blob:;" +
                         "object-src 'none';"
