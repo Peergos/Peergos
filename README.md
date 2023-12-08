@@ -41,9 +41,13 @@ Overview at IPFS Thing:
 
 [![Overview](https://img.youtube.com/vi/g1vzoZjG9Zo/0.jpg)](https://www.youtube.com/watch?v=g1vzoZjG9Zo)
 
+[![Architecture details](https://img.youtube.com/vi/HVyrVUI2-RA/0.jpg)](https://www.youtube.com/watch?v=HVyrVUI2-RA)
+
 Applications on Peergos:
 
 [![Overview](https://img.youtube.com/vi/3i1TtknNw2E/0.jpg)](https://www.youtube.com/watch?v=3i1TtknNw2E)
+
+[![A better web: secure, private p2p apps with user owned data and identity](https://img.youtube.com/vi/mSElk2jcFqY/0.jpg)](https://www.youtube.com/watch?v=mSElk2jcFqY)
 
 Applications deep dive:
 
