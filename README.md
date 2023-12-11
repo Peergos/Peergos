@@ -291,6 +291,12 @@ Follow the instructions for self hosting but add the following parameters (eithe
 -postgres.username $USERNAME
 ```
 
+Usage - troubleshooting
+-----
+* You can run with "-log-to-conosle true" to also show any logging on the console. 
+* The very first run will sync the pki and this takes several minutes. Subsequent runs should start within seconds. 
+
+
 ### CLI
 There are a range of commands available from a command line. You can run -help to find the available commands or details on any command or sub-command. Most users should only need the *daemon* and *shell* commands, and maybe *identity* or *fuse*. You can use the *migrate* command to move all your data to a new server (where the command is run). 
 
