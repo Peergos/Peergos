@@ -168,6 +168,8 @@ public class HttpUtil {
                     .collect(Collectors.toMap(e -> e.getKey().toLowerCase(), e -> e.getValue().get(0)));
             String version = headers.getOrDefault("x-amz-version-id", null);
             return new Pair(Serialize.readFully(in), version);
+        } catch (ConnectException e) {
+            throw new RateLimitException();
         } catch (IOException e) {
             if (conn != null) {
                 InputStream err = conn.getErrorStream();
