@@ -171,8 +171,10 @@ public class HttpUtil {
         } catch (IOException e) {
             if (conn != null) {
                 InputStream err = conn.getErrorStream();
-                byte[] errBody = Serialize.readFully(err);
-                throw new IOException(new String(errBody));
+                if (err != null) {
+                    byte[] errBody = Serialize.readFully(err);
+                    throw new IOException(new String(errBody));
+                }
             }
             throw new RuntimeException(e);
         } catch (URISyntaxException e) {
