@@ -189,7 +189,7 @@ public class MimeTypes {
         if (equalArrays(start, CBOR_PEERGOS_IDENTITY_PROOF))
             return PEERGOS_IDENTITY;
 
-        if (allAscii(start)) {
+        if (validUtf8(start)) {
             if (filename.endsWith(".ics") && equalArrays(start, ICS))
                 return "text/calendar";
             if (filename.endsWith(".vcf") && equalArrays(start, VCF))
@@ -210,12 +210,51 @@ public class MimeTypes {
         return "application/octet-stream";
     }
 
-    private static boolean allAscii(byte[] data) {
-        for (byte b : data) {
-            if ((b & 0xff) > 0x80)
+    private static boolean isContinuationByte(byte b) {
+        return (b & 0xc0) == 0x80;
+    }
+
+    private static boolean validUtf8(byte[] data) {
+        // UTF-8 is 1-4 bytes, 1 byte chars are ascii
+        // number of leading 1 bits in first byte determine number of bytes
+        for (int i=0; i < data.length; i++) {
+            byte b = data[i];
+            if ((b & 0xff) < 0x80)
+                continue; // ASCII
+
+            // check rest of character
+            int len = Integer.numberOfLeadingZeros(~b << 24);
+            if (len > 4 || len < 2) // can't start with a continuation byte
                 return false;
-            if ((b & 0xff) < 0x20 && b != (byte)0x9 && b != (byte)0xA && b != (byte) 0xD)
+            if (i + len > data.length) {
+                for (int x = i + 1; x < data.length; x++)
+                    if (! isContinuationByte(data[x]))
+                        return false;
+                return true; // tolerate partial final chars as this is a prefix
+            }
+            for (int x = 1; x < len; x++)
+                if (! isContinuationByte(data[i + x]))
+                    return false;
+            int val;
+            if (len == 2) {
+                val = ((b & 0x1f) << 6) | (data[i + 1] & 0x3f);
+                if (val <= 0x7f)
+                    return false;
+            } else if (len == 3) {
+                val = ((b & 0xf) << 12) | ((data[i + 1] & 0x3f) << 6) | (data[i + 2] & 0x3f);
+                if (val <= 0x7ff)
+                    return false;
+            } else { // len == 4
+                val = ((b & 0x7) << 18) | ((data[i + 1] & 0x3f) << 12) | ((data[i + 2] & 0x3f) << 6) | (data[i + 3] & 0x3f);
+                if (val <= 0xffff)
+                    return false;
+            }
+
+            if (val > 0x10ffff)
                 return false;
+            if (val > 0xd800 && val <= 0xdfff)
+                return false;
+            i += len-1;
         }
         return true;
     }
