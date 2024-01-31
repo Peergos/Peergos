@@ -39,4 +39,11 @@ public class MimeTypeTests {
         String mime = MimeTypes.calculateMimeType(utf8, "surreal");
         Assert.assertTrue(mime.equals("text/html"));
     }
+
+    @Test
+    public void truncatedUtf8() {
+        byte[] utf8 = ArrayOps.concat("<!DOCTYPE html>\n<html>".getBytes(StandardCharsets.UTF_8), new byte[]{(byte)0xe2, (byte)0x80});
+        String mime = MimeTypes.calculateMimeType(utf8, "surreal");
+        Assert.assertTrue(mime.equals("text/html"));
+    }
 }
