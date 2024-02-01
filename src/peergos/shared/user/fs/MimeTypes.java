@@ -24,6 +24,8 @@ public class MimeTypes {
     final static int[] THREEGP = new int[]{'3', 'g', 'p'};
 
     final static int[] FLV = new int[]{'F', 'L', 'V'};
+    final static int[] FORM = new int[]{'F', 'O', 'R', 'M'};
+    final static int[] AIFF = new int[]{'A', 'I', 'F', 'F'};
     final static int[] AVI = new int[]{'A', 'V', 'I', ' '};
     final static int[] OGG = new int[]{'O', 'g', 'g', 'S', 0, 2};
     final static int[] WEBM = new int[]{'w', 'e', 'b', 'm'};
@@ -42,7 +44,10 @@ public class MimeTypes {
     final static int[] JPEGXL2 = new int[]{0x00, 0x00, 0x00, 0x0C, 0x4A, 0x58, 0x4C, 0x20, 0x0D, 0x0A, 0x87, 0x0A};
 
     final static int[] PDF = new int[]{0x25, 'P', 'D', 'F'};
+    final static int[] PS = new int[]{'%', '!', 'P', 'S', '-', 'A', 'd', 'o', 'b', 'e', '-'};
     final static int[] ZIP = new int[]{'P', 'K', 3, 4};
+    final static int[] GZIP = new int[]{0x1f, 0x8b, 0x08};
+    final static int[] RAR = new int[]{'R', 'a', 'r', '!', 0x1a, 0x07};
     final static int[] WASM = new int[]{0, 'a', 's', 'm'};
 
     final static int[] ICS = new int[]{'B','E','G','I','N',':','V','C','A','L','E','N','D','A','R'};
@@ -51,6 +56,8 @@ public class MimeTypes {
     final static int[] SVG = new int[]{'<','s','v','g',' '};
     final static int[] WOFF = new int[]{'w','O','F','F'};
     final static int[] WOFF2 = new int[]{'w','O','F','2'};
+    final static int[] OTF = new int[]{'O','T','T', 'O'};
+    final static int[] TTF = new int[]{0, 1, 0, 0};
 
     // mimetypes for files that are cbor list(mimetype int, map(data)), mimetypes < 24 use a single byte
     public static final String PEERGOS_TODO = "application/vnd.peergos-todo";
@@ -71,7 +78,7 @@ public class MimeTypes {
 
     final static int HEADER_BYTES_TO_IDENTIFY_MIME_TYPE = 40;
 
-    public static final String calculateMimeType(byte[] start, String filename) {
+    public static String calculateMimeType(byte[] start, String filename) {
         if (equalArrays(start, BMP))
             return "image/bmp";
         if (equalArrays(start, GIF))
@@ -121,7 +128,7 @@ public class MimeTypes {
         }
         if (equalArrays(start, 24, WEBM))
             return "video/webm";
-        if (equalArrays(start, OGG))
+        if (equalArrays(start, OGG) && !filename.endsWith("oga"))
             return "video/ogg";
         if (equalArrays(start, MATROSKA_START))
             return "video/x-matroska";
@@ -144,9 +151,14 @@ public class MimeTypes {
             return "audio/ogg";
         if (equalArrays(start, RIFF) && equalArrays(start, 8, WAV_2))
             return "audio/wav";
+        if (equalArrays(start, FORM) && equalArrays(start, 8, AIFF))
+            return "audio/aiff";
 
         if (equalArrays(start, PDF))
             return "application/pdf";
+
+        if (equalArrays(start, PS))
+            return "application/postscript";
 
         if (equalArrays(start, WASM))
             return "application/wasm";
@@ -177,10 +189,20 @@ public class MimeTypes {
             return "application/zip";
         }
 
+        if (equalArrays(start, GZIP))
+            return "application/x-gzip";
+
+        if (equalArrays(start, RAR))
+            return "application/x-rar-compressed";
+
         if (equalArrays(start, WOFF))
             return "font/woff";
         if (equalArrays(start, WOFF2))
             return "font/woff2";
+        if (equalArrays(start, OTF))
+            return "font/otf";
+        if (equalArrays(start, TTF))
+            return "font/ttf";
 
         if (equalArrays(start, CBOR_PEERGOS_TODO))
             return PEERGOS_TODO;
@@ -202,6 +224,8 @@ public class MimeTypes {
                 return "text/javascript";
             if (filename.endsWith(".svg") && (equalArrays(start, XML) || equalArrays(start, SVG)))
                 return "image/svg+xml";
+            if (filename.endsWith(".json"))
+                return "application/json";
             String prefix = new String(start).trim().toLowerCase();
             if (prefix.contains("html>") || prefix.contains("<html"))
                 return "text/html";
