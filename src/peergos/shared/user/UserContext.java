@@ -1139,7 +1139,7 @@ public class UserContext {
                         PointerUpdate cas = new PointerUpdate(current.hash, MaybeMultihash.empty(), PointerUpdate.increment(current.sequence));
                         byte[] signed = pair.secret.signMessage(cas.serialize());
                         return network.mutable.setPointer(this.signer.publicKeyHash, pair.publicKeyHash, signed);
-                    }).thenCompose(x -> network.spaceUsage.requestQuota(username, identity, 1024*1024))
+                    }).thenCompose(x -> network.spaceUsage.requestQuota(username, identity, 1_000_000))
                             .thenCompose(x -> network.mutable.getPointerTarget(owner, owner, network.dhtClient)
                                     .thenCompose(current -> {
                                         PointerUpdate cas = new PointerUpdate(current.updated, MaybeMultihash.empty(), PointerUpdate.increment(current.sequence));
