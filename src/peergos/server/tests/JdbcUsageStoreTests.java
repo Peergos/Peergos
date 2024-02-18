@@ -30,5 +30,10 @@ public class JdbcUsageStoreTests {
         Set<PublicKeyHash> allWriters = store.getAllWriters(owner);
         Assert.assertTrue(allWriters.size() == 2);
         Assert.assertTrue(allWriters.contains(writer));
+
+        int usageDelta = 1_000_000_000;
+        store.confirmUsage(username, owner, usageDelta, false);
+        Map<String, Long> allUsage = store.getAllUsage();
+        Assert.assertTrue(allUsage.get(username) == usageDelta);
     }
 }

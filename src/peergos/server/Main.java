@@ -879,6 +879,7 @@ public class Main extends Builder {
                     SHELL,
                     FUSE,
                     QuotaCLI.QUOTA,
+                    UsageCLI.USAGE,
                     ServerMessages.SERVER_MESSAGES,
                     GATEWAY,
                     Mirror.MIRROR,

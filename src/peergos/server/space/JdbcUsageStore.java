@@ -128,6 +128,24 @@ public class JdbcUsageStore implements UsageStore {
         }
     }
 
+    public Map<String, Long> getAllUsage() {
+        try (Connection conn = getConnection();
+             PreparedStatement search = conn.prepareStatement("SELECT u.name, uu.total_bytes " +
+                     "FROM users u, userusage uu WHERE u.id = uu.user_id;")) {
+            Map<String, Long> usage = new HashMap<>();
+            ResultSet resultSet = search.executeQuery();
+            while (resultSet.next()) {
+                String username = resultSet.getString(1);
+                long total = resultSet.getLong(2);
+                usage.put(username, total);
+            }
+            return usage;
+        } catch (SQLException sqe) {
+            LOG.log(Level.WARNING, sqe.getMessage(), sqe);
+            throw new RuntimeException(sqe);
+        }
+    }
+
     @Override
     public UserUsage getUsage(String username) {
         int userId = getUserId(username);
