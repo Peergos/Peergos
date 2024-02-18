@@ -852,7 +852,8 @@ public class Main extends Builder {
             List<UserPublicKeyLink> newChain = Migrate.buildMigrationChain(existing, newStorageNodeId, user.signer.secret);
             user.ensureMirrorId().join().get();
             Optional<BatWithId> current = user.getMirrorBat().join();
-            user.network.coreNode.migrateUser(username, newChain, currentStorageNodeId, current).join();
+            long usage = user.getSpaceUsage().join();
+            user.network.coreNode.migrateUser(username, newChain, currentStorageNodeId, current, usage).join();
             List<UserPublicKeyLink> updatedChain = user.network.coreNode.getChain(username).join();
             if (!updatedChain.get(updatedChain.size() - 1).claim.storageProviders.contains(newStorageNodeId))
                 throw new IllegalStateException("Migration failed. Please try again later");

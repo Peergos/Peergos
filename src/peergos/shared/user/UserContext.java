@@ -781,7 +781,8 @@ public class UserContext {
      */
     @JsMethod
     public CompletableFuture<Long> getSpaceUsage() {
-        return network.spaceUsage.getUsage(signer.publicKeyHash);
+        byte[] signedTime = TimeLimitedClient.signNow(signer.secret);
+        return network.spaceUsage.getUsage(signer.publicKeyHash, signedTime);
     }
 
     /**

@@ -122,7 +122,8 @@ public class NonWriteThroughCoreNode implements CoreNode {
     public CompletableFuture<UserSnapshot> migrateUser(String username,
                                                        List<UserPublicKeyLink> newChain,
                                                        Multihash currentStorageId,
-                                                       Optional<BatWithId> mirrorBat) {
+                                                       Optional<BatWithId> mirrorBat,
+                                                       long currentUsage) {
         throw new IllegalStateException("Unimplemented method!");
     }
 

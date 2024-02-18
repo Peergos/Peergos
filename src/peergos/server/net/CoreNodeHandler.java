@@ -182,7 +182,8 @@ public class CoreNodeHandler implements HttpHandler
         Optional<BatWithId> mirrorBat = hasBat ?
                 Optional.of(BatWithId.fromCbor(CborObject.fromByteArray(Serialize.deserializeByteArray(din, 128)))) :
                 Optional.empty();
-        UserSnapshot state = coreNode.migrateUser(username, newChain, currentStorageId, mirrorBat).join();
+        long currentUsage = din.readLong();
+        UserSnapshot state = coreNode.migrateUser(username, newChain, currentStorageId, mirrorBat, currentUsage).join();
         dout.write(state.serialize());
     }
 

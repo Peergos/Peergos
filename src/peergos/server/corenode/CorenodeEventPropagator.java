@@ -109,8 +109,9 @@ public class CorenodeEventPropagator implements CoreNode {
     public CompletableFuture<UserSnapshot> migrateUser(String username,
                                                        List<UserPublicKeyLink> newChain,
                                                        Multihash currentStorageId,
-                                                       Optional<BatWithId> mirrorBat) {
-        return target.migrateUser(username, newChain, currentStorageId, mirrorBat).thenApply(res -> {
+                                                       Optional<BatWithId> mirrorBat,
+                                                       long currentUsage) {
+        return target.migrateUser(username, newChain, currentStorageId, mirrorBat, currentUsage).thenApply(res -> {
             processEvent(newChain);
             return res;
         });

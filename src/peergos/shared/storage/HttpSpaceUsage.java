@@ -29,17 +29,18 @@ public class HttpSpaceUsage implements SpaceUsageProxy {
     }
 
     @Override
-    public CompletableFuture<Long> getUsage(PublicKeyHash owner) {
-        return getUsage("", direct, owner);
+    public CompletableFuture<Long> getUsage(PublicKeyHash owner, byte[] signedTime) {
+        return getUsage("", direct, owner, signedTime);
     }
 
     @Override
-    public CompletableFuture<Long> getUsage(Multihash targetServerId, PublicKeyHash owner) {
-        return getUsage(getProxyUrlPrefix(targetServerId), p2p, owner);
+    public CompletableFuture<Long> getUsage(Multihash targetServerId, PublicKeyHash owner, byte[] signedTime) {
+        return getUsage(getProxyUrlPrefix(targetServerId), p2p, owner, signedTime);
     }
 
-    private CompletableFuture<Long> getUsage(String urlPrefix, HttpPoster poster, PublicKeyHash owner) {
-        return poster.get(urlPrefix + Constants.SPACE_USAGE_URL + "usage?owner=" + encode(owner.toString())).thenApply(res -> {
+    private CompletableFuture<Long> getUsage(String urlPrefix, HttpPoster poster, PublicKeyHash owner, byte[] signedTime) {
+        return poster.get(urlPrefix + Constants.SPACE_USAGE_URL + "usage?owner=" + encode(owner.toString())
+                + "&auth=" + ArrayOps.bytesToHex(signedTime)).thenApply(res -> {
             return ((CborObject.CborLong)CborObject.fromByteArray(res)).value;
         });
     }

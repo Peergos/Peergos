@@ -36,11 +36,10 @@ public class UserStats {
                 Set<PublicKeyHash> ownedKeysRecursive =
                         DeletableContentAddressedStorage.getOwnedKeysRecursive(username, network.coreNode, network.mutable,
                                 (h, s) -> ContentAddressedStorage.getWriterData(owner, h, s, network.dhtClient), network.dhtClient, network.hasher).join();
-                long total = network.spaceUsage.getUsage(owner).join();
-                String summary = "User: " + username + ", expiry: " + expiry + " usage: " + total
+                String summary = "User: " + username + ", expiry: " + expiry
                         + ", owned keys: " + ownedKeysRecursive.size() + "\n";
                 System.out.println(summary);
-                return Stream.of(new Summary(username, expiry, total, hosts, ownedKeysRecursive));
+                return Stream.of(new Summary(username, expiry, hosts, ownedKeysRecursive));
             } catch (Exception e) {
                 String host = hosts.stream().findFirst().map(Object::toString).orElse("");
                 errors.add(username + ": " + host);
@@ -52,9 +51,6 @@ public class UserStats {
 
         System.out.println("Errors: " + errors.size());
         errors.forEach(System.out::println);
-
-        // Sort by usage
-        sortAndPrint(summaries, (a, b) -> Long.compare(b.usage, a.usage), "usage.txt");
 
         // Sort by expiry
         sortAndPrint(summaries, (a, b) -> a.expiry.compareTo(b.expiry), "expiry.txt");
@@ -81,21 +77,19 @@ public class UserStats {
     private static class Summary {
         public final String username;
         public final LocalDate expiry;
-        public final long usage;
         public final List<Multihash> storageProviders;
         public final Set<PublicKeyHash> ownedKeys;
 
-        public Summary(String username, LocalDate expiry, long usage, List<Multihash> storageProviders, Set<PublicKeyHash> ownedKeys) {
+        public Summary(String username, LocalDate expiry, List<Multihash> storageProviders, Set<PublicKeyHash> ownedKeys) {
             this.username = username;
             this.expiry = expiry;
-            this.usage = usage;
             this.storageProviders = storageProviders;
             this.ownedKeys = ownedKeys;
         }
 
         public String toString() {
-            return "User: " + username + ", expiry: " + expiry + ", usage: " + usage
-                    + ", hosts: " + storageProviders + ", owned keys: " + ownedKeys.size();
+            return "User: " + username + ", expiry: " + expiry + ", hosts: " + storageProviders
+                    + ", owned keys: " + ownedKeys.size();
         }
     }
 }

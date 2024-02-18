@@ -101,8 +101,9 @@ public class OfflineCorenode implements CoreNode {
     public CompletableFuture<UserSnapshot> migrateUser(String username,
                                                        List<UserPublicKeyLink> newChain,
                                                        Multihash currentStorageId,
-                                                       Optional<BatWithId> mirrorBat) {
-        return target.migrateUser(username, newChain, currentStorageId, mirrorBat);
+                                                       Optional<BatWithId> mirrorBat,
+                                                       long currentUsage) {
+        return target.migrateUser(username, newChain, currentStorageId, mirrorBat, currentUsage);
     }
 
     @Override

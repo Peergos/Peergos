@@ -12,7 +12,7 @@ public interface SpaceUsageProxy extends SpaceUsage {
                                                               boolean newClientSecret,
                                                               byte[] signedTime);
 
-    CompletableFuture<Long> getUsage(Multihash targetServerId, PublicKeyHash owner);
+    CompletableFuture<Long> getUsage(Multihash targetServerId, PublicKeyHash owner, byte[] signedTime);
 
     CompletableFuture<Long> getQuota(Multihash targetServerId, PublicKeyHash owner, byte[] signedTime);
 
