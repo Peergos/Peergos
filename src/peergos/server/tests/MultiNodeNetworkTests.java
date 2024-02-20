@@ -155,7 +155,8 @@ public class MultiNodeNetworkTests {
         UserContext context = ensureSignedUp(generateUsername(random), randomString(), getNode(iNode1), crypto);
 
         for (NetworkAccess node: nodes) {
-            long usage = node.spaceUsage.getUsage(context.signer.publicKeyHash).join();
+            long usage = node.spaceUsage.getUsage(context.signer.publicKeyHash,
+                    TimeLimitedClient.signNow(context.signer.secret)).join();
             byte[] signedTime = TimeLimitedClient.signNow(context.signer.secret);
             long quota = node.spaceUsage.getQuota(context.signer.publicKeyHash, signedTime).join();
             Assert.assertTrue(usage >0 && quota > 0);
@@ -216,7 +217,7 @@ public class MultiNodeNetworkTests {
         Assert.assertTrue(bats.equals(batsViaNewNode));
         Optional<BatWithId> mirrorBat = Optional.of(bats.get(bats.size() - 1));
         long usageVia1 = user.getSpaceUsage().join();
-        userViaNewServer.network.coreNode.migrateUser(username, newChain, originalNodeId, mirrorBat).join();
+        userViaNewServer.network.coreNode.migrateUser(username, newChain, originalNodeId, mirrorBat, usageVia1).join();
 
         List<UserPublicKeyLink> chain = userViaNewServer.network.coreNode.getChain(username).join();
         Multihash storageNode = chain.get(chain.size() - 1).claim.storageProviders.stream().findFirst().get();
@@ -240,7 +241,7 @@ public class MultiNodeNetworkTests {
 
         // check a reverse migration can't be triggered by anyone else
         try {
-            node1.coreNode.migrateUser(username, existing, newStorageNodeId, mirrorBat).join();
+            node1.coreNode.migrateUser(username, existing, newStorageNodeId, mirrorBat, usageVia2).join();
             throw new RuntimeException("Shouldn't get here!");
         } catch (CompletionException e) {
             if (! e.getCause().getMessage().startsWith("Migration+claim+has+earlier+expiry+than+current+one"))
@@ -285,7 +286,7 @@ public class MultiNodeNetworkTests {
         List<BatWithId> bats = user.network.batCave.getUserBats(username, userViaNewServer.signer).join();
         Optional<BatWithId> mirrorBat = Optional.of(bats.get(bats.size() - 1));
         try {
-            userViaNewServer.network.coreNode.migrateUser(username, newChain, originalNodeId, mirrorBat).join();
+            userViaNewServer.network.coreNode.migrateUser(username, newChain, originalNodeId, mirrorBat, 1_000_000).join();
             throw new RuntimeException("Shouldn't get here!");
         } catch (CompletionException e) {}
 

@@ -24,12 +24,12 @@ public class ProxyingSpaceUsage implements SpaceUsage {
     }
 
     @Override
-    public CompletableFuture<Long> getUsage(PublicKeyHash targetUser) {
+    public CompletableFuture<Long> getUsage(PublicKeyHash targetUser, byte[] signedTime) {
         return Proxy.redirectCall(core,
                 serverId,
                 targetUser,
-                () -> local.getUsage(targetUser),
-                targetServer -> p2p.getUsage(targetServer, targetUser));
+                () -> local.getUsage(targetUser, signedTime),
+                targetServer -> p2p.getUsage(targetServer, targetUser, signedTime));
     }
 
     @Override

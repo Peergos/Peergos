@@ -255,7 +255,8 @@ public class HTTPCoreNode implements CoreNode {
     public CompletableFuture<UserSnapshot> migrateUser(String username,
                                                        List<UserPublicKeyLink> newChain,
                                                        Multihash currentStorageId,
-                                                       Optional<BatWithId> mirrorBat) {
+                                                       Optional<BatWithId> mirrorBat,
+                                                       long currentUsage) {
         String modifiedPrefix = urlPrefix.isEmpty() ? "" : getProxyUrlPrefix(currentStorageId);
         try {
             ByteArrayOutputStream bout = new ByteArrayOutputStream();
@@ -267,6 +268,7 @@ public class HTTPCoreNode implements CoreNode {
             dout.writeBoolean(mirrorBat.isPresent());
             if (mirrorBat.isPresent())
                 Serialize.serialize(mirrorBat.get().serialize(), dout);
+            dout.writeLong(currentUsage);
             dout.flush();
 
             return poster.postUnzip(modifiedPrefix + Constants.CORE_URL + "migrateUser", bout.toByteArray(), -1)

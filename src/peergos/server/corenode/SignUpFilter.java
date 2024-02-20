@@ -164,20 +164,20 @@ public class SignUpFilter implements CoreNode {
     public CompletableFuture<UserSnapshot> migrateUser(String username,
                                                        List<UserPublicKeyLink> newChain,
                                                        Multihash currentStorageId,
-                                                       Optional<BatWithId> mirrorBat) {
+                                                       Optional<BatWithId> mirrorBat,
+                                                       long currentUsage) {
         if (forUs(newChain)) {
             if (! quotaStore.allowSignupOrUpdate(username, ""))
                 throw new IllegalStateException("This server is not currently accepting new user migrations.");
             PublicKeyHash owner = newChain.get(newChain.size() - 1).owner;
 
             // check we have enough local quota to mirror all user's data
-            long currentUsage = space.getUsage(currentStorageId, owner).join();
             long localQuota = quotaStore.getQuota(username);
             if (localQuota < currentUsage)
                 throw new IllegalStateException("Not enough space for user to migrate user to this server!");
         }
 
-        return target.migrateUser(username, newChain, currentStorageId, mirrorBat);
+        return target.migrateUser(username, newChain, currentStorageId, mirrorBat, currentUsage);
     }
 
     @Override

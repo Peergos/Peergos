@@ -176,8 +176,9 @@ public class TofuCoreNode implements CoreNode {
     public CompletableFuture<UserSnapshot> migrateUser(String username,
                                                        List<UserPublicKeyLink> newChain,
                                                        Multihash currentStorageId,
-                                                       Optional<BatWithId> mirrorBat) {
-        return source.migrateUser(username, newChain, currentStorageId, mirrorBat)
+                                                       Optional<BatWithId> mirrorBat,
+                                                       long currentUsage) {
+        return source.migrateUser(username, newChain, currentStorageId, mirrorBat, currentUsage)
                 .thenCompose(res -> source.getChain(username)
                         .thenCompose(chain -> tofu.updateChain(username, chain, network.dhtClient)
                                 .thenCompose(x -> commit())

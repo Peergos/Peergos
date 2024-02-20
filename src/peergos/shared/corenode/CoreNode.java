@@ -70,7 +70,8 @@ public interface CoreNode {
     CompletableFuture<UserSnapshot> migrateUser(String username,
                                                 List<UserPublicKeyLink> newChain,
                                                 Multihash currentStorageId,
-                                                Optional<BatWithId> mirrorBat);
+                                                Optional<BatWithId> mirrorBat,
+                                                long usage);
 
     /** This is only implemented by caching corenodes
      *

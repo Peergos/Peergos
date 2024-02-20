@@ -446,7 +446,8 @@ public class MirrorCoreNode implements CoreNode {
     public CompletableFuture<UserSnapshot> migrateUser(String username,
                                                        List<UserPublicKeyLink> newChain,
                                                        Multihash currentStorageId,
-                                                       Optional<BatWithId> mirrorBat) {
+                                                       Optional<BatWithId> mirrorBat,
+                                                       long currentUsage) {
         // check chain validity before proceeding further
         List<UserPublicKeyLink> existingChain = getChain(username).join();
         UserPublicKeyLink currentLast = existingChain.get(existingChain.size() - 1);
@@ -490,7 +491,7 @@ public class MirrorCoreNode implements CoreNode {
                     null, ipfs, rawPointers, rawAccount, transactions, hasher);
 
             // Proxy call to their current storage server
-            UserSnapshot res = writeTarget.migrateUser(username, newChain, currentStorageId, mirrorBat).join();
+            UserSnapshot res = writeTarget.migrateUser(username, newChain, currentStorageId, mirrorBat, currentUsage).join();
             // pick up the new pki data locally
             update();
 
@@ -520,7 +521,7 @@ public class MirrorCoreNode implements CoreNode {
             SpaceCheckingKeyFilter.processCorenodeEvent(username, owner, allUserKeys, usageStore, ipfs, p2pMutable, hasher);
             return Futures.of(res);
         } else // Proxy call to their target storage server
-            return writeTarget.migrateUser(username, newChain, migrationTargetNode, mirrorBat);
+            return writeTarget.migrateUser(username, newChain, migrationTargetNode, mirrorBat, currentUsage);
     }
 
     @Override

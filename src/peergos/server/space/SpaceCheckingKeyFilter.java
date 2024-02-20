@@ -331,7 +331,8 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
     }
 
     @Override
-    public CompletableFuture<Long> getUsage(PublicKeyHash owner) {
+    public CompletableFuture<Long> getUsage(PublicKeyHash owner, byte[] signedTime) {
+        TimeLimited.isAllowedTime(signedTime, 300, dht, owner);
         WriterUsage writerUsage = usageStore.getUsage(owner);
         if (writerUsage == null)
             return Futures.errored(new IllegalStateException("Unknown identity key: " + owner));

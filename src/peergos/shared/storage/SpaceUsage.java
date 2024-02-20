@@ -6,6 +6,6 @@ import java.util.concurrent.*;
 
 public interface SpaceUsage extends QuotaControl {
 
-    CompletableFuture<Long> getUsage(PublicKeyHash owner);
+    CompletableFuture<Long> getUsage(PublicKeyHash owner, byte[] signedTime);
 
 }
