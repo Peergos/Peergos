@@ -144,10 +144,12 @@ public abstract class StaticHandler implements HttpHandler
                                 "'sha256-pREzLwvoUb8brgTXz40H6u2wVsnoVOx6nKm3cHMzCeA=' 'sha256-oEVuyRoTUTkqiMx6eYf/c3fN6QSvvp3isF6sezjEtXU=' " +
                                 "'sha256-VKpq7Tv3d7WDY3HqKk+CBx8mgM7XzLNPrMaZ2ywNqJQ=' 'sha256-Srpwsy3vwG/eAJoQeBIuDByNVW8j1gAgEg+nlAj332o=' " +
                                 "'sha256-RrUjQF+NhOeE8uVQki4T3Yje+smugBEaN0NGPuR8tBg='";
+                String mathJaxHashes =
+                        "'sha256-dv0N/rLWOVtqbf65qBYm1NZb1MGPgXXhX9ln2WMlfmw='";
                 httpExchange.getResponseHeaders().set("content-security-policy",
                         "default-src 'self' " +  this.host + ";script-src 'self' " +
                         this.host +
-                        (isSubdomain ? " " + editorJsHashes : "") +
+                        (isSubdomain ? " " + (editorJsHashes + ' ' + mathJaxHashes) : "") +
                         ";" +
                         "style-src 'self' " +
                         " " + this.host +
