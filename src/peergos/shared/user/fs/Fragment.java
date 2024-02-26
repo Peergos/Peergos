@@ -7,7 +7,7 @@ import peergos.shared.storage.auth.*;
  */
 public class Fragment {
     // max message size allowed by bitswap protocol is 2 MiB, and the block must fit within that
-    public static final int MAX_LENGTH = 1024*1024;
+    public static final int MAX_LENGTH = 5 * 1024 * 1024;
     public static final int MAX_LENGTH_WITH_BAT_PREFIX = MAX_LENGTH + Bat.MAX_RAW_BLOCK_PREFIX_SIZE;
 
     public final byte[] data;

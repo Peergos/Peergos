@@ -22,6 +22,7 @@ import peergos.shared.crypto.hash.Hasher;
 import peergos.shared.io.ipfs.MultiAddress;
 import peergos.shared.storage.*;
 import peergos.shared.storage.auth.*;
+import peergos.shared.user.fs.*;
 import peergos.shared.util.*;
 
 import java.io.*;
@@ -337,7 +338,8 @@ public class IpfsWrapper implements AutoCloseable {
                 config.identity,
                 authoriser,
                 config.addresses.proxyTargetAddress.map(IpfsWrapper::proxyHandler),
-                Optional.of("/peergos/bitswap")
+                Optional.of("/peergos/bitswap"),
+                Optional.of(Fragment.MAX_LENGTH_WITH_BAT_PREFIX + 100) // allow some overhead for the protobuf framing
         );
         ipfsWrapper.embeddedIpfs.start();
         io.ipfs.multiaddr.MultiAddress apiAddress = config.addresses.apiAddress;
