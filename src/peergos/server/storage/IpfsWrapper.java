@@ -336,7 +336,8 @@ public class IpfsWrapper implements AutoCloseable {
                 config.bootstrap.getBootstrapAddresses(),
                 config.identity,
                 authoriser,
-                config.addresses.proxyTargetAddress.map(IpfsWrapper::proxyHandler)
+                config.addresses.proxyTargetAddress.map(IpfsWrapper::proxyHandler),
+                Optional.of("/peergos/bitswap")
         );
         ipfsWrapper.embeddedIpfs.start();
         io.ipfs.multiaddr.MultiAddress apiAddress = config.addresses.apiAddress;
