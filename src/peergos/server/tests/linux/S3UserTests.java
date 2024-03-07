@@ -45,10 +45,10 @@ public class S3UserTests extends UserTests {
     }
 
     private static final List<Args> argsToCleanUp = new ArrayList<>();
-    private static List<UserService> services = new ArrayList<>();
+    private static List<ServerProcesses> services = new ArrayList<>();
 
     public S3UserTests() {
-        super(getNetwork(), services.get(1));
+        super(getNetwork(), services.get(1).localApi);
     }
 
     private static NetworkAccess getNetwork() {
@@ -62,8 +62,8 @@ public class S3UserTests extends UserTests {
     @BeforeClass
     public static void init() throws Exception {
         // start pki node
-        UserService pki = Main.PKI_INIT.main(pkiArgs);
-        PublicKeyHash peergosId = pki.coreNode.getPublicKeyHash("peergos").join().get();
+        ServerProcesses pki = Main.PKI_INIT.main(pkiArgs);
+        PublicKeyHash peergosId = pki.localApi.coreNode.getPublicKeyHash("peergos").join().get();
         pkiArgs = pkiArgs.setArg("peergos.identity.hash", peergosId.toString());
         NetworkAccess toPki = buildApi(pkiArgs);
         Cid pkiNodeId = toPki.dhtClient.id().get();
@@ -94,7 +94,7 @@ public class S3UserTests extends UserTests {
         // start direct S3 node
         int peergosPort = TestPorts.getPort();
         Cid ourId = new ContentAddressedStorage.HTTP(new JavaPoster(new URL("http://localhost:" + ipfsApiPort), false), false, crypto.hasher).id().get();
-        Args peergosArgs = withS3(buildArgs())
+        Args peergosArgs = ipfsArgs
                 .with("port", "" + peergosPort)
                 .with("useIPFS", "false")
                 .with("enable-gc", "false")
@@ -107,7 +107,7 @@ public class S3UserTests extends UserTests {
                 .with("ipfs.id", ourId.toString())
                 .with("pki-node-id", pkiNodeId.toString())
                 .with("peergos.identity.hash", peergosId.toString());
-        UserService peergosS3 = Main.PEERGOS.main(peergosArgs);
+        ServerProcesses peergosS3 = Main.PEERGOS.main(peergosArgs);
         argsToCleanUp.add(peergosArgs);
         services.add(peergosS3);
     }

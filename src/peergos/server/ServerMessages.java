@@ -105,14 +105,17 @@ public class ServerMessages extends Builder {
         BlockRequestAuthoriser blockRequestAuthoriser = (b, d, s, auth) -> Futures.of(true); // not relevant for local only use here
         try {
             BlockMetadataStore metaDB = buildBlockMetadata(a);
-            DeletableContentAddressedStorage localStorage = buildLocalStorage(a, metaDB, transactions, blockRequestAuthoriser, hasher);
+            SqlSupplier cmds = getSqlCommands(a);
+            JdbcServerIdentityStore ids = JdbcServerIdentityStore.build(getDBConnector(a, "serverids-file", dbConnectionPool), cmds);
+            DeletableContentAddressedStorage localStorage = buildLocalStorage(a, metaDB, transactions,
+                    blockRequestAuthoriser, ids, hasher);
             JdbcIpnsAndSocial rawPointers = buildRawPointers(a, getDBConnector(a, "mutable-pointers-file", dbConnectionPool));
             MutablePointers localPointers = UserRepository.build(localStorage, rawPointers);
             MutablePointersProxy proxingMutable = new HttpMutablePointers(buildP2pHttpProxy(a), getPkiServerId(a));
-            JdbcIpnsAndSocial rawSocial = new JdbcIpnsAndSocial(getDBConnector(a, "social-sql-file", dbConnectionPool), getSqlCommands(a));
-            UsageStore usageStore = new JdbcUsageStore(getDBConnector(a, "space-usage-sql-file", dbConnectionPool), getSqlCommands(a));
+            JdbcIpnsAndSocial rawSocial = new JdbcIpnsAndSocial(getDBConnector(a, "social-sql-file", dbConnectionPool), cmds);
+            UsageStore usageStore = new JdbcUsageStore(getDBConnector(a, "space-usage-sql-file", dbConnectionPool), cmds);
             JdbcAccount account = new JdbcAccount(getDBConnector(a, "account-sql-file", dbConnectionPool),
-                    getSqlCommands(a), new com.webauthn4j.data.client.Origin("http://localhost:8000"), "localhost");
+                    cmds, new com.webauthn4j.data.client.Origin("http://localhost:8000"), "localhost");
             CoreNode core = buildCorenode(a, localStorage, transactions, rawPointers, localPointers, proxingMutable,
                     rawSocial, usageStore, account, null, new AccountWithStorage(localStorage, localPointers, account), hasher);
             return buildSpaceQuotas(a, localStorage, core,

@@ -60,6 +60,11 @@ public class FileContentAddressedStorage implements DeletableContentAddressedSto
     }
 
     @Override
+    public CompletableFuture<List<Cid>> ids() {
+        return CompletableFuture.completedFuture(List.of(new Cid(1, Cid.Codec.LibP2pKey, Multihash.Type.sha2_256, RAMStorage.hash("FileStorage".getBytes()))));
+    }
+
+    @Override
     public CompletableFuture<TransactionId> startTransaction(PublicKeyHash owner) {
         return CompletableFuture.completedFuture(transactions.startTransaction(owner));
     }
@@ -234,6 +239,11 @@ public class FileContentAddressedStorage implements DeletableContentAddressedSto
         Path path = getFilePath((Cid)h);
         File file = root.resolve(path).toFile();
         return CompletableFuture.completedFuture(file.exists() ? Optional.of((int) file.length()) : Optional.empty());
+    }
+
+    @Override
+    public CompletableFuture<IpnsEntry> getIpnsEntry(Multihash signer) {
+        throw new IllegalStateException("Unimplemented!");
     }
 
     @Override

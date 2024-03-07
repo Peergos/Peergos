@@ -215,7 +215,7 @@ public class NetworkAccess {
         return localDht.blockStoreProperties()
                 .exceptionally(t -> BlockStoreProperties.empty())
                 .thenCompose(bp -> bp.useDirectBlockStore() ?
-                        localDht.id().thenApply(id -> new DirectS3BlockStore(bp, direct, localDht, id, core, hasher)) :
+                        localDht.ids().thenApply(ids -> new DirectS3BlockStore(bp, direct, localDht, ids, core, hasher)) :
                         Futures.of(localDht));
     }
 
@@ -300,23 +300,23 @@ public class NetworkAccess {
                                                           List<String> usernames,
                                                           boolean isPeergosServer,
                                                           boolean isJavascript) {
-        return localDht.id()
-                .exceptionally(t -> new Cid(1, Cid.Codec.LibP2pKey, Multihash.Type.sha2_256, new byte[32]))
-                .thenApply(nodeId -> {
+        return localDht.ids()
+                .exceptionally(t -> Arrays.asList(new Cid(1, Cid.Codec.LibP2pKey, Multihash.Type.sha2_256, new byte[32])))
+                .thenApply(nodeIds -> {
                     if (isPeergosServer)
-                        return buildToPeergosServer(nodeId, core, localDht, apiPoster, p2pPoster, mutableCacheTime, hasher, usernames, isJavascript);
+                        return buildToPeergosServer(nodeIds, core, localDht, apiPoster, p2pPoster, mutableCacheTime, hasher, usernames, isJavascript);
                     ContentAddressedStorageProxy proxingDht = new ContentAddressedStorageProxy.HTTP(p2pPoster);
-                    ContentAddressedStorage storage = new ContentAddressedStorage.Proxying(localDht, proxingDht, nodeId, core);
+                    ContentAddressedStorage storage = new ContentAddressedStorage.Proxying(localDht, proxingDht, nodeIds, core);
                     ContentAddressedStorage p2pDht = new CachingVerifyingStorage(new RetryStorage(storage, 3),
-                            100 * 1024, 1_000, nodeId, hasher);
+                            100 * 1024, 1_000, nodeIds, hasher);
                     MutablePointersProxy httpMutable = new HttpMutablePointers(apiPoster, p2pPoster);
                     Account account = new HttpAccount(apiPoster, p2pPoster);
-                    MutablePointers p2pMutable = new ProxyingMutablePointers(nodeId, core, httpMutable, httpMutable);
+                    MutablePointers p2pMutable = new ProxyingMutablePointers(nodeIds, core, httpMutable, httpMutable);
 
                     SocialNetworkProxy httpSocial = new HttpSocialNetwork(apiPoster, p2pPoster);
-                    SocialNetwork p2pSocial = new ProxyingSocialNetwork(nodeId, core, httpSocial, httpSocial);
+                    SocialNetwork p2pSocial = new ProxyingSocialNetwork(nodeIds, core, httpSocial, httpSocial);
                     SpaceUsageProxy httpUsage = new HttpSpaceUsage(apiPoster, p2pPoster);
-                    SpaceUsage p2pUsage = new ProxyingSpaceUsage(nodeId, core, httpUsage, httpUsage);
+                    SpaceUsage p2pUsage = new ProxyingSpaceUsage(nodeIds, core, httpUsage, httpUsage);
                     ServerMessager serverMessager = new ServerMessager.HTTP(apiPoster);
                     BatCave batCave = new HttpBatCave(apiPoster, p2pPoster);
                     RetryMutablePointers retryMutable = new RetryMutablePointers(p2pMutable);
@@ -325,7 +325,7 @@ public class NetworkAccess {
                 });
     }
 
-    public static NetworkAccess buildToPeergosServer(Cid nodeId,
+    public static NetworkAccess buildToPeergosServer(List<Cid> nodeIds,
                                                      CoreNode core,
                                                      ContentAddressedStorage localDht,
                                                      HttpPoster apiPoster,
@@ -335,7 +335,7 @@ public class NetworkAccess {
                                                      List<String> usernames,
                                                      boolean isJavascript) {
         ContentAddressedStorage p2pDht = new CachingVerifyingStorage(new RetryStorage(localDht, 3),
-                100 * 1024, 1_000, nodeId, hasher);
+                100 * 1024, 1_000, nodeIds, hasher);
         MutablePointersProxy httpMutable = new HttpMutablePointers(apiPoster, p2pPoster);
         Account account = new HttpAccount(apiPoster, p2pPoster);
 

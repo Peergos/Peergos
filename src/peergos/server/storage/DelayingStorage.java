@@ -32,6 +32,11 @@ public class DelayingStorage implements ContentAddressedStorage {
     }
 
     @Override
+    public CompletableFuture<List<Cid>> ids() {
+        return source.ids();
+    }
+
+    @Override
     public CompletableFuture<TransactionId> startTransaction(PublicKeyHash owner) {
         sleep(writeDelay);
         return source.startTransaction(owner);
@@ -103,5 +108,10 @@ public class DelayingStorage implements ContentAddressedStorage {
         } catch (Exception e) {
             throw new RuntimeException(e.getMessage(), e);
         }
+    }
+
+    @Override
+    public CompletableFuture<IpnsEntry> getIpnsEntry(Multihash signer) {
+        throw new IllegalStateException("Unimplemented!");
     }
 }

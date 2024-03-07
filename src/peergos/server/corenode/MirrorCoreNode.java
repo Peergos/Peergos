@@ -539,6 +539,31 @@ public class MirrorCoreNode implements CoreNode {
     }
 
     @Override
+    public List<Multihash> getStorageProviders(PublicKeyHash owner) {
+        String username = getUsername(owner).join();
+        List<UserPublicKeyLink> chain = getChain(username).join();
+        if (chain.isEmpty())
+            return Collections.emptyList();
+        List<Multihash> fromPki = chain.get(chain.size() - 1).claim.storageProviders;
+        List<Multihash> withIdRotations = fromPki.stream()
+                .map(h -> rotatedServers.getOrDefault(h.bareMultihash(), h))
+                .collect(Collectors.toList());
+        return withIdRotations;
+    }
+
+    private final LRUCache<Multihash, Multihash> rotatedServers = new LRUCache<>(100);
+
+    @Override
+    public CompletableFuture<Optional<Multihash>> getNextServerId(Multihash serverId) {
+        return ipfs.getIpnsEntry(serverId)
+                .thenApply(e -> {
+                    if (e.getValue().moved)
+                        e.getValue().host.ifPresent(newHost -> rotatedServers.put(serverId, new Cid(1, Cid.Codec.LibP2pKey, newHost.type, newHost.getHash())));
+                    return e.getValue().host;
+                });
+    }
+
+    @Override
     public void close() {
         running = false;
     }

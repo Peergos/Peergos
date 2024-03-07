@@ -11,7 +11,7 @@ import peergos.server.*;
 import peergos.server.simulation.*;
 import peergos.server.simulation.FileSystem;
 import peergos.server.user.*;
-import peergos.server.util.Logging;
+import peergos.server.util.*;
 import peergos.shared.*;
 import peergos.shared.cbor.*;
 import peergos.shared.login.mfa.*;
@@ -636,9 +636,8 @@ public class CLI implements Runnable {
 
         boolean isRegistered = network.isUsernameRegistered(username).join();
         if (! isRegistered) {
-            writer.println("To create account, enter password,");
-            writer.println("we recommend a random alphanumeric password longer than 12 characters");
-            String password = reader.readLine(PROMPT, PASSWORD_MASK);
+            String password = Passwords.generate();
+            writer.println("Generated password: " + password);
             writer.println("Re-enter password");
             String password2 = reader.readLine(PROMPT, PASSWORD_MASK);
             if (! password.equals(password2)) {

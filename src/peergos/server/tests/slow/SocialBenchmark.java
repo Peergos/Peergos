@@ -38,7 +38,7 @@ public class SocialBenchmark {
 
     private static Pair<UserService, NetworkAccess> buildHttpNetworkAccess(boolean useIpfs, Random r) throws Exception {
         Args args = UserTests.buildArgs().with("useIPFS", "" + useIpfs);
-        UserService service = Main.PKI_INIT.main(args);
+        UserService service = Main.PKI_INIT.main(args).localApi;
         NetworkAccess net = Builder.buildJavaNetworkAccess(new URL("http://localhost:" + args.getInt("port")), false).join();
         int delayMillis = 50;
         NetworkAccess delayed = net.withStorage(s -> new DelayingStorage(s, delayMillis, delayMillis));

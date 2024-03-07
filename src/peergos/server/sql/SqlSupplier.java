@@ -12,6 +12,8 @@ public interface SqlSupplier {
 
     String insertTransactionCommand();
 
+    String insertServerIdCommand();
+
     String getByteArrayType();
 
     String getSerialIdType();
@@ -66,6 +68,13 @@ public interface SqlSupplier {
     default String createTransactionsTableCommand() {
         return "CREATE TABLE IF NOT EXISTS transactions (" +
                 "tid varchar(64) not null, owner varchar(64) not null, hash varchar(64) not null, time " + sqlInteger()+");";
+    }
+
+    default String createServerIdentitiesTableCommand() {
+        return "CREATE TABLE IF NOT EXISTS serverids (" +
+                "id " + getSerialIdType() + " primary key not null," +
+                "peerid varchar(64) not null, " +
+                "private varchar(512) not null, record varchar(1024) not null);";
     }
 
     default String createBlockMetadataStoreTableCommand() {

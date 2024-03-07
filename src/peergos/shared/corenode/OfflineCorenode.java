@@ -107,6 +107,11 @@ public class OfflineCorenode implements CoreNode {
     }
 
     @Override
+    public CompletableFuture<Optional<Multihash>> getNextServerId(Multihash serverId) {
+        return target.getNextServerId(serverId);
+    }
+
+    @Override
     public void close() throws IOException {
         target.close();
     }

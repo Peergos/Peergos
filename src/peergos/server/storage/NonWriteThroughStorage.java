@@ -31,6 +31,11 @@ public class NonWriteThroughStorage implements ContentAddressedStorage {
     }
 
     @Override
+    public CompletableFuture<List<Cid>> ids() {
+        return source.ids();
+    }
+
+    @Override
     public CompletableFuture<TransactionId> startTransaction(PublicKeyHash owner) {
         return modifications.startTransaction(owner);
     }
@@ -98,5 +103,10 @@ public class NonWriteThroughStorage implements ContentAddressedStorage {
         } catch (Exception e) {
             throw new RuntimeException(e.getMessage(), e);
         }
+    }
+
+    @Override
+    public CompletableFuture<IpnsEntry> getIpnsEntry(Multihash signer) {
+        throw new IllegalStateException("Unimplemented!");
     }
 }
