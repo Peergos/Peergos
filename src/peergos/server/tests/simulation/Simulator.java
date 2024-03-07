@@ -749,7 +749,7 @@ public class Simulator {
                 .with("pki.keygen.password", "testpkipassword")
                 .with("pki.keyfile.password", "testpassword")
                 .with(IpfsWrapper.IPFS_BOOTSTRAP_NODES, ""); // no bootstrapping
-        UserService service = Main.PKI_INIT.main(args);
+        UserService service = Main.PKI_INIT.main(args).localApi;
         LOG.info("***NETWORK READY***");
 
         Function<String, Pair<FileSystem, FileSystem>> fsPairBuilder = username -> {

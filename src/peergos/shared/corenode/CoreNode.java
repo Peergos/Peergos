@@ -73,6 +73,8 @@ public interface CoreNode {
                                                 Optional<BatWithId> mirrorBat,
                                                 long usage);
 
+    CompletableFuture<Optional<Multihash>> getNextServerId(Multihash serverId);
+
     /** This is only implemented by caching corenodes
      *
      * @param username

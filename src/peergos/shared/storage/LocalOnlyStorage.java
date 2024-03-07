@@ -59,6 +59,11 @@ public class LocalOnlyStorage implements ContentAddressedStorage {
     }
 
     @Override
+    public CompletableFuture<List<Cid>> ids() {
+        return Futures.of(Arrays.asList(new Cid(1, Cid.Codec.LibP2pKey, Multihash.Type.sha2_256, new byte[32])));
+    }
+
+    @Override
     public CompletableFuture<TransactionId> startTransaction(PublicKeyHash owner) {
         throw new IllegalStateException("Unimplemented!");
     }
@@ -95,6 +100,11 @@ public class LocalOnlyStorage implements ContentAddressedStorage {
 
     @Override
     public CompletableFuture<Optional<Integer>> getSize(Multihash block) {
+        throw new IllegalStateException("Unimplemented!");
+    }
+
+    @Override
+    public CompletableFuture<IpnsEntry> getIpnsEntry(Multihash signer) {
         throw new IllegalStateException("Unimplemented!");
     }
 

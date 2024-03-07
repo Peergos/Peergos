@@ -175,6 +175,11 @@ public class TransactionalIpfs extends DelegatingStorage implements DeletableCon
     }
 
     @Override
+    public void bulkDelete(List<BlockVersion> blocks) {
+        target.bulkDelete(blocks);
+    }
+
+    @Override
     public List<Cid> getOpenTransactionBlocks() {
         return transactions.getOpenTransactionBlocks();
     }

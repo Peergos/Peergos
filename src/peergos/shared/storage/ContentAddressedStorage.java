@@ -87,9 +87,15 @@ public interface ContentAddressedStorage {
 
     /**
      *
-     * @return The identity (hash of the public key) of the storage node we are talking to
+     * @return The identity (hash of the public key) of this server
      */
     CompletableFuture<Cid> id();
+
+    /**
+     *
+     * @return All previous and current identities (hash of the public key) of this server
+     */
+    CompletableFuture<List<Cid>> ids();
 
     /**
      *
@@ -187,6 +193,8 @@ public interface ContentAddressedStorage {
      */
     CompletableFuture<Optional<Integer>> getSize(Multihash block);
 
+    CompletableFuture<IpnsEntry> getIpnsEntry(Multihash signer);
+
     default CompletableFuture<Cid> hashToCid(byte[] input, boolean isRaw, Hasher hasher) {
         return hasher.sha256(input)
                 .thenApply(hash -> buildCid(hash, isRaw));
@@ -254,6 +262,7 @@ public interface ContentAddressedStorage {
         private final HttpPoster poster;
         public static final String apiPrefix = "api/v0/";
         public static final String ID = "id";
+        public static final String IDS = "ids";
         public static final String BLOCKSTORE_PROPERTIES = "blockstore/props";
         public static final String AUTH_READS = "blockstore/auth-reads";
         public static final String AUTH_WRITES = "blockstore/auth";
@@ -263,10 +272,12 @@ public interface ContentAddressedStorage {
         public static final String BLOCK_PUT = "block/put";
         public static final String BLOCK_GET = "block/get";
         public static final String BLOCK_RM = "block/rm";
+        public static final String BLOCK_RM_BULK = "block/rm/bulk";
         public static final String BLOOM_ADD = "bloom/add";
         public static final String BLOCK_PRESENT = "block/has";
         public static final String BLOCK_STAT = "block/stat";
         public static final String REFS_LOCAL = "refs/local";
+        public static final String IPNS_GET = "ipns/get";
 
         private final boolean isPeergosServer;
         private final Hasher hasher;
@@ -310,6 +321,15 @@ public interface ContentAddressedStorage {
         public CompletableFuture<Cid> id() {
             return poster.get(apiPrefix + ID)
                     .thenApply(raw -> Cid.decodePeerId((String)((Map)JSONParser.parse(new String(raw))).get("ID")));
+        }
+
+        @Override
+        public CompletableFuture<List<Cid>> ids() {
+            return poster.get(apiPrefix + IDS)
+                    .thenApply(raw -> ((List<String>)((Map)JSONParser.parse(new String(raw))).get("IDS"))
+                            .stream()
+                            .map(Cid::decodePeerId)
+                            .collect(Collectors.toList()));
         }
 
         @Override
@@ -522,29 +542,40 @@ public interface ContentAddressedStorage {
             return poster.get(apiPrefix + BLOCK_STAT + "?stream-channels=true&arg=" + block.toString() + "&auth=letmein")
                     .thenApply(raw -> Optional.of((Integer)((Map)JSONParser.parse(new String(raw))).get("Size")));
         }
+
+        @Override
+        public CompletableFuture<IpnsEntry> getIpnsEntry(Multihash signer) {
+            return poster.get(apiPrefix + IPNS_GET + "?arg=" + signer.toBase58())
+                    .thenApply(raw -> IpnsEntry.fromJson(JSONParser.parse(new String(raw))));
+        }
     }
 
     class Proxying implements ContentAddressedStorage {
         private final ContentAddressedStorage local;
         private final ContentAddressedStorageProxy p2p;
-        private final Multihash ourNodeId;
+        private final List<Cid> ourNodeIds;
         private final CoreNode core;
 
-        public Proxying(ContentAddressedStorage local, ContentAddressedStorageProxy p2p, Multihash ourNodeId, CoreNode core) {
+        public Proxying(ContentAddressedStorage local, ContentAddressedStorageProxy p2p, List<Cid> ourNodeIds, CoreNode core) {
             this.local = local;
             this.p2p = p2p;
-            this.ourNodeId = ourNodeId;
+            this.ourNodeIds = ourNodeIds;
             this.core = core;
         }
 
         @Override
         public ContentAddressedStorage directToOrigin() {
-            return new Proxying(local.directToOrigin(), p2p, ourNodeId, core);
+            return new Proxying(local.directToOrigin(), p2p, ourNodeIds, core);
         }
 
         @Override
         public CompletableFuture<Cid> id() {
             return local.id();
+        }
+
+        @Override
+        public CompletableFuture<List<Cid>> ids() {
+            return local.ids();
         }
 
         @Override
@@ -571,7 +602,7 @@ public interface ContentAddressedStorage {
         @Override
         public CompletableFuture<TransactionId> startTransaction(PublicKeyHash owner) {
             return Proxy.redirectCall(core,
-                    ourNodeId,
+                    ourNodeIds,
                     owner,
                     () -> local.startTransaction(owner),
                     target -> p2p.startTransaction(target, owner));
@@ -580,7 +611,7 @@ public interface ContentAddressedStorage {
         @Override
         public CompletableFuture<Boolean> closeTransaction(PublicKeyHash owner, TransactionId tid) {
             return Proxy.redirectCall(core,
-                    ourNodeId,
+                    ourNodeIds,
                     owner,
                     () -> local.closeTransaction(owner, tid),
                     target -> p2p.closeTransaction(target, owner, tid));
@@ -589,7 +620,7 @@ public interface ContentAddressedStorage {
         @Override
         public CompletableFuture<List<byte[]>> getChampLookup(PublicKeyHash owner, Cid root, byte[] champKey, Optional<BatWithId> bat, Optional<Cid> committedRoot) {
             return Proxy.redirectCall(core,
-                    ourNodeId,
+                    ourNodeIds,
                     owner,
                     () -> local.getChampLookup(owner, root, champKey, bat, committedRoot),
                     target -> p2p.getChampLookup(target, owner, root, champKey, bat));
@@ -611,13 +642,18 @@ public interface ContentAddressedStorage {
         }
 
         @Override
+        public CompletableFuture<IpnsEntry> getIpnsEntry(Multihash signer) {
+            return local.getIpnsEntry(signer);
+        }
+
+        @Override
         public CompletableFuture<List<Cid>> put(PublicKeyHash owner,
                                                 PublicKeyHash writer,
                                                 List<byte[]> signedHashes,
                                                 List<byte[]> blocks,
                                                 TransactionId tid) {
             return Proxy.redirectCall(core,
-                    ourNodeId,
+                    ourNodeIds,
                     owner,
                     () -> local.put(owner, writer, signedHashes, blocks, tid),
                     target -> p2p.put(target, owner, writer, signedHashes, blocks, tid));
@@ -631,7 +667,7 @@ public interface ContentAddressedStorage {
                                                    TransactionId tid,
                                                    ProgressConsumer<Long> progressConsumer) {
             return Proxy.redirectCall(core,
-                    ourNodeId,
+                    ourNodeIds,
                     owner,
                     () -> local.putRaw(owner, writer, signatures, blocks, tid, progressConsumer),
                     target -> p2p.putRaw(target, owner, writer, signatures, blocks, tid, progressConsumer));

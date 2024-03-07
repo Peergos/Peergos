@@ -40,6 +40,11 @@ public class PostgresCommands implements SqlSupplier {
     }
 
     @Override
+    public String insertServerIdCommand() {
+        return "INSERT INTO serverids (peerid, private, record) VALUES(?, ?, ?) ON CONFLICT DO NOTHING;";
+    }
+
+    @Override
     public String insertOrIgnoreCommand(String prefix, String suffix) {
         return prefix + suffix + " ON CONFLICT DO NOTHING;";
     }

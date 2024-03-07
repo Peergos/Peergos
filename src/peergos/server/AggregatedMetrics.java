@@ -23,15 +23,17 @@ public class AggregatedMetrics {
 
     public static final Counter PUBLIC_FILE_COUNTER = build("public_file_counter", "Total public files.");
 
-    public static final Counter DHT_ID  = build("dht_id", "Total id calls.");
-    public static final Counter DHT_BLOCK_PUT  = build("dht_block_put", "Total DHT block puts.");
-    public static final Counter DHT_BLOCK_GET  = build("dht_block_get", "Total DHT block gets.");
-    public static final Counter DHT_BLOCK_STAT  = build("dht_block_stat", "Total DHT block stats.");
-    public static final Counter DHT_BLOCK_REFS  = build("dht_block_refs", "Total DHT block refs.");
-    public static final Counter DHT_TRANSACTION_START  = build("dht_transaction_start", "Total DHT transaction starts.");
-    public static final Counter DHT_TRANSACTION_CLOSE  = build("dht_transaction_close", "Total DHT transaction closes.");
-    public static final Counter DHT_CHAMP_GET  = build("dht_champ_get", "Total champ gets");
-    public static final Histogram DHT_CHAMP_GET_DURATION = Histogram.build()
+    public static final Counter STORAGE_ID  = build("storage_id", "Total id calls.");
+    public static final Counter STORAGE_IDS  = build("storage_ids", "Total ids calls.");
+    public static final Counter STORAGE_BLOCK_PUT  = build("storage_block_put", "Total DHT block puts.");
+    public static final Counter STORAGE_BLOCK_GET  = build("storage_block_get", "Total DHT block gets.");
+    public static final Counter STORAGE_BLOCK_STAT  = build("storage_block_stat", "Total DHT block stats.");
+    public static final Counter STORAGE_BLOCK_REFS  = build("storage_block_refs", "Total DHT block refs.");
+    public static final Counter STORAGE_TRANSACTION_START  = build("storage_transaction_start", "Total DHT transaction starts.");
+    public static final Counter STORAGE_TRANSACTION_CLOSE  = build("storage_transaction_close", "Total DHT transaction closes.");
+    public static final Counter STORAGE_CHAMP_GET  = build("storage_champ_get", "Total champ gets");
+    public static final Counter STORAGE_IPNS_GET  = build("storage_ipns_get", "Total ipns gets");
+    public static final Histogram STORAGE_CHAMP_GET_DURATION = Histogram.build()
             .labelNames("duration")
             .name("champ_get_duration")
             .help("Time to respond to a champ.get call")

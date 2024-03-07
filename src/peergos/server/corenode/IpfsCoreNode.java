@@ -31,6 +31,7 @@ public class IpfsCoreNode implements CoreNode {
     private final PublicKeyHash peergosIdentity;
     private final DeletableContentAddressedStorage ipfs;
     private final Hasher hasher;
+    private final Crypto crypto;
     private final MutablePointers mutable;
     private final Account account;
     private final BatCave batCave;
@@ -48,7 +49,7 @@ public class IpfsCoreNode implements CoreNode {
     public IpfsCoreNode(SigningPrivateKeyAndPublicHash pkiSigner,
                         int maxSignupsPerDay,
                         DeletableContentAddressedStorage ipfs,
-                        Hasher hasher,
+                        Crypto crypto,
                         MutablePointers mutable,
                         Account account,
                         BatCave batCave,
@@ -56,7 +57,8 @@ public class IpfsCoreNode implements CoreNode {
         this.currentRoot = MaybeMultihash.empty();
         this.currentSequence = Optional.empty();
         this.ipfs = ipfs;
-        this.hasher = hasher;
+        this.hasher = crypto.hasher;
+        this.crypto = crypto;
         this.mutable = mutable;
         this.account = account;
         this.batCave = batCave;
@@ -492,6 +494,12 @@ public class IpfsCoreNode implements CoreNode {
     @Override
     public CompletableFuture<List<String>> getUsernames(String prefix) {
         return CompletableFuture.completedFuture(usernames);
+    }
+
+    @Override
+    public CompletableFuture<Optional<Multihash>> getNextServerId(Multihash serverId) {
+        return ipfs.getIpnsEntry(serverId)
+                .thenApply(e -> e.getValue(serverId, crypto).host);
     }
 
     @Override

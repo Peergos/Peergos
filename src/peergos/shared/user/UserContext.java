@@ -7,6 +7,7 @@ import peergos.shared.fingerprint.*;
 import peergos.shared.inode.*;
 import peergos.shared.io.ipfs.Cid;
 import peergos.shared.login.mfa.*;
+import peergos.shared.resolution.*;
 import peergos.shared.storage.auth.*;
 import peergos.shared.user.fs.cryptree.*;
 import peergos.shared.user.fs.transaction.*;
@@ -321,6 +322,43 @@ public class UserContext {
         return signUpGeneral(username, password, token, existingKeyPair, identityStorer,
                 addCard.map(f -> (p, i) -> f.apply(p).thenApply(s -> signSpaceRequest(username, i, s))),
                 expiry, network, crypto, algorithm, progressCallback);
+    }
+
+    /** Ensure we have signed the current peerid for our home server, verifying any key rotations
+     *
+     * @return whether we updated anything
+     */
+    @JsMethod
+    public CompletableFuture<Boolean> ensureCurrentHost() {
+        return network.coreNode.getChain(username)
+                .thenCompose(chain -> network.dhtClient.ids()
+                        .thenCompose(ids -> {
+                            Multihash pkiCurrent = chain.get(chain.size() - 1).claim.storageProviders.get(0).bareMultihash();
+                            List<Multihash> peerIds = ids.stream().map(c -> c.bareMultihash()).collect(Collectors.toList());
+                            boolean onHome = peerIds.contains(pkiCurrent);
+                            Multihash latest = peerIds.get(peerIds.size() - 1);
+                            if (! onHome || latest.equals(pkiCurrent))
+                                return Futures.of(false);
+                            // Need to check peerid chain and update our pki entry
+                            return getAndVerifyServerIdChain(pkiCurrent, latest)
+                                    .thenCompose(x -> updateHostInPki(username, signer, LocalDate.now().plusMonths(2), latest, crypto.hasher, network));
+                        }));
+    }
+
+    public CompletableFuture<Boolean> getAndVerifyServerIdChain(Multihash from, Multihash to) {
+        return network.dhtClient.getIpnsEntry(from)
+                .thenApply(res -> validateResolutionRecord(res, from))
+                .thenCompose(record -> {
+                    if (record.host.isEmpty() || ! record.moved)
+                        return Futures.errored(new IllegalStateException("Invalid server id update!"));
+                    if (record.host.get().equals(to))
+                        return Futures.of(true);
+                    return getAndVerifyServerIdChain(record.host.get(), to);
+                });
+    }
+
+    public ResolutionRecord validateResolutionRecord(IpnsEntry signedRecord, Multihash signer) {
+        return signedRecord.getValue(signer, crypto);
     }
 
     private static byte[] signSpaceRequest(String username, SigningPrivateKeyAndPublicHash identity, long desiredQuota) {
@@ -867,6 +905,22 @@ public class UserContext {
                     }
                     return Futures.of(true);
                 });
+    }
+
+    public static CompletableFuture<Boolean> updateHostInPki(String username,
+                                                             SigningPrivateKeyAndPublicHash signer,
+                                                             LocalDate expiry,
+                                                             Multihash newHost,
+                                                             Hasher hasher,
+                                                             NetworkAccess network) {
+        LOG.info("updating host for username: " + username + " to " + newHost);
+        return network.coreNode.getChain(username).thenCompose(existing -> {
+            List<Multihash> storage = Arrays.asList(new Cid(1, Cid.Codec.LibP2pKey, newHost.type, newHost.getHash()));
+            UserPublicKeyLink.Claim newClaim = UserPublicKeyLink.Claim.build(username, signer.secret, expiry, storage);
+            List<UserPublicKeyLink> updated = new ArrayList<>(existing.subList(0, existing.size() - 1));
+            updated.add(new UserPublicKeyLink(signer.publicKeyHash, newClaim, Optional.empty()));
+            return updateChainWithRetry(username, updated, "", hasher, network, x -> {});
+        });
     }
 
     public static CompletableFuture<Boolean> renewUsernameClaim(String username,

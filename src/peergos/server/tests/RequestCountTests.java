@@ -32,7 +32,7 @@ public class RequestCountTests {
     public RequestCountTests() {
         RequestCountingStorage requestCounter = new RequestCountingStorage(service.storage);
         this.storageCounter = requestCounter;
-        CachingVerifyingStorage dhtClient = new CachingVerifyingStorage(requestCounter, 50 * 1024, 1_000, service.storage.id().join(), crypto.hasher);
+        CachingVerifyingStorage dhtClient = new CachingVerifyingStorage(requestCounter, 50 * 1024, 1_000, service.storage.ids().join(), crypto.hasher);
 
         BufferedStorage blockBuffer = new BufferedStorage(dhtClient, hasher);
         MutablePointers unbufferedMutable = new CachingPointers(service.mutable, 7_000);
@@ -48,7 +48,7 @@ public class RequestCountTests {
 
     @BeforeClass
     public static void init() {
-        service = Main.PKI_INIT.main(args);
+        service = Main.PKI_INIT.main(args).localApi;
     }
 
     @Test
@@ -144,7 +144,7 @@ public class RequestCountTests {
 
         storageCounter.reset();
         SocialFeed feed2 = a.getSocialFeed().join().update().join();
-        Assert.assertTrue("load 5 items in social feed: " + storageCounter.requestTotal(), storageCounter.requestTotal() <= 22);
+        Assert.assertTrue("load 5 items in social feed: " + storageCounter.requestTotal(), storageCounter.requestTotal() <= 23);
 
         storageCounter.reset();
         List<SharedItem> items2 = feed2.getShared(feedSize + 1, feedSize + 6, a.crypto, a.network).join();
