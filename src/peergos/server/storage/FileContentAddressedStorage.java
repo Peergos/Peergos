@@ -78,7 +78,7 @@ public class FileContentAddressedStorage implements DeletableContentAddressedSto
     }
 
     @Override
-    public List<Multihash> getOpenTransactionBlocks() {
+    public List<Cid> getOpenTransactionBlocks() {
         return transactions.getOpenTransactionBlocks();
     }
 
@@ -242,8 +242,10 @@ public class FileContentAddressedStorage implements DeletableContentAddressedSto
     }
 
     @Override
-    public Stream<BlockVersion> getAllBlockHashVersions() {
-        return getAllBlockHashes(false).map(c -> new BlockVersion(c, null, true));
+    public void getAllBlockHashVersions(Consumer<List<BlockVersion>> res) {
+        res.accept(getAllBlockHashes(false)
+                .map(c -> new BlockVersion(c, null, true))
+                .collect(Collectors.toList()));
     }
 
     @Override

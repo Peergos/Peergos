@@ -12,6 +12,7 @@ import peergos.shared.util.*;
 
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.function.*;
 import java.util.stream.*;
 
 public class AuthedStorage extends DelegatingStorage implements DeletableContentAddressedStorage {
@@ -118,12 +119,12 @@ public class AuthedStorage extends DelegatingStorage implements DeletableContent
     }
 
     @Override
-    public Stream<BlockVersion> getAllBlockHashVersions() {
-        return target.getAllBlockHashVersions();
+    public void getAllBlockHashVersions(Consumer<List<BlockVersion>> res) {
+        target.getAllBlockHashVersions(res);
     }
 
     @Override
-    public List<Multihash> getOpenTransactionBlocks() {
+    public List<Cid> getOpenTransactionBlocks() {
         return target.getOpenTransactionBlocks();
     }
 

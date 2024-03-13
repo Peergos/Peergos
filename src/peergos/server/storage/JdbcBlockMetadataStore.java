@@ -150,7 +150,7 @@ public class JdbcBlockMetadataStore implements BlockMetadataStore {
     }
 
     @Override
-    public Stream<BlockVersion> listCbor() {
+    public void listCbor(Consumer<List<BlockVersion>> results) {
         try (Connection conn = getConnection();
              PreparedStatement stmt = conn.prepareStatement(LIST)) {
             ResultSet rs = stmt.executeQuery();
@@ -160,9 +160,12 @@ public class JdbcBlockMetadataStore implements BlockMetadataStore {
                 String version = rs.getString("version");
                 if (! cid.isRaw()) {
                     res.add(new BlockVersion(cid, version, true));
+                    if (res.size() == 1000) {
+                        results.accept(res);
+                        res = new ArrayList<>(1000);
+                    }
                 }
             }
-            return res.stream();
         } catch (SQLException sqe) {
             LOG.log(Level.WARNING, sqe.getMessage(), sqe);
             throw new RuntimeException(sqe);

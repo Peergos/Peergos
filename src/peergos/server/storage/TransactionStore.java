@@ -1,7 +1,7 @@
 package peergos.server.storage;
 
 import peergos.shared.crypto.hash.*;
-import peergos.shared.io.ipfs.Multihash;
+import peergos.shared.io.ipfs.*;
 import peergos.shared.storage.*;
 
 import java.util.*;
@@ -14,7 +14,7 @@ public interface TransactionStore {
 
     void closeTransaction(PublicKeyHash owner, TransactionId tid);
 
-    List<Multihash> getOpenTransactionBlocks();
+    List<Cid> getOpenTransactionBlocks();
 
     void clearOldTransactions(long cutoff);
 }

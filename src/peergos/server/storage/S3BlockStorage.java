@@ -470,7 +470,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
     }
 
     @Override
-    public List<Multihash> getOpenTransactionBlocks() {
+    public List<Cid> getOpenTransactionBlocks() {
         return transactions.getOpenTransactionBlocks();
     }
 
@@ -728,47 +728,17 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
     }
 
     @Override
-    public Stream<BlockVersion> getAllBlockHashVersions() {
-        // todo make this actually streaming
-        return getFileVersions(Long.MAX_VALUE).stream();
+    public void getAllBlockHashVersions(Consumer<List<BlockVersion>> res) {
+        getFileVersions(res);
     }
 
     @Override
-    public Stream<BlockVersion> getAllRawBlockVersions() {
-        // todo make this actually streaming
-        List<BlockVersion> results = new ArrayList<>();
-        applyToAllVersions("AFK", obj -> {
-            try {
-                results.add(new BlockVersion(keyToHash(obj.key), obj.version, obj.isLatest));
-            } catch (Exception e) {
-                LOG.warning("Couldn't parse S3 key to Cid: " + obj.key);
-            }
-        }, del -> {
-            try {
-                results.add(new BlockVersion(keyToHash(del.key), del.version, del.isLatest));
-            } catch (Exception e) {
-                LOG.warning("Couldn't parse S3 key to Cid: " + del.key);
-            }
-        }, Long.MAX_VALUE);
-        return results.stream();
+    public void getAllRawBlockVersions(Consumer<List<BlockVersion>> res) {
+        applyToAllVersions("AFK", res, res);
     }
 
-    private List<BlockVersion> getFileVersions(long maxReturned) {
-        List<BlockVersion> results = new ArrayList<>();
-        applyToAllVersions("", obj -> {
-            try {
-                results.add(new BlockVersion(keyToHash(obj.key), obj.version, obj.isLatest));
-            } catch (Exception e) {
-                LOG.warning("Couldn't parse S3 key to Cid: " + obj.key);
-            }
-        }, del -> {
-            try {
-                results.add(new BlockVersion(keyToHash(del.key), del.version, del.isLatest));
-            } catch (Exception e) {
-                LOG.warning("Couldn't parse S3 key to Cid: " + del.key);
-            }
-        }, maxReturned);
-        return results;
+    private void getFileVersions(Consumer<List<BlockVersion>> res) {
+        applyToAllVersions("", res, res);
     }
 
     private List<Cid> getFiles(long maxReturned) {
@@ -824,14 +794,12 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
     }
 
     private void applyToAllVersions(String prefix,
-                                    Consumer<S3AdminRequests.ObjectMetadataVersion> processor,
-                                    Consumer<S3AdminRequests.DeleteMarker> deleteProcessor,
-                                    long maxObjects) {
+                                    Consumer<List<BlockVersion>> processor,
+                                    Consumer<List<BlockVersion>> deleteProcessor) {
         try {
             Optional<String> keyMarker = Optional.empty();
             Optional<String> versionIdMarker = Optional.empty();
             S3AdminRequests.ListObjectVersionsReply result;
-            long processedObjects = 0;
             do {
                 result = S3AdminRequests.listObjectVersions(folder + prefix, 1_000, keyMarker, versionIdMarker,
                         ZonedDateTime.now(), host, region, accessKeyId, secretKey, url -> {
@@ -842,32 +810,22 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                             }
                         }, S3AdminRequests.builder::get, useHttps, hasher);
 
-                for (S3AdminRequests.ObjectMetadataVersion objectSummary : result.versions) {
-                    if (objectSummary.key.endsWith("/")) {
-                        LOG.fine(" - " + objectSummary.key + "  " + "(directory)");
-                        continue;
-                    }
-                    processor.accept(objectSummary);
-                    processedObjects++;
-                    if (processedObjects >= maxObjects)
-                        return;
-                }
-                for (S3AdminRequests.DeleteMarker deleteSummary : result.deletes) {
-                    if (deleteSummary.key.endsWith("/")) {
-                        LOG.fine(" - " + deleteSummary.key + "  " + "(directory)");
-                        continue;
-                    }
-                    deleteProcessor.accept(deleteSummary);
-                    processedObjects++;
-                    if (processedObjects >= maxObjects)
-                        return;
-                }
+                List<BlockVersion> versions = result.versions.stream()
+                        .filter(omv -> !omv.key.endsWith("/"))
+                        .map(omv -> new BlockVersion(keyToHash(omv.key), omv.version, omv.isLatest))
+                        .collect(Collectors.toList());
+                processor.accept(versions);
+
+                List<BlockVersion> deletes = result.deletes.stream()
+                        .filter(dm -> !dm.key.endsWith("/"))
+                        .map(dm -> new BlockVersion(keyToHash(dm.key), dm.version, dm.isLatest))
+                        .collect(Collectors.toList());
+                deleteProcessor.accept(deletes);
                 LOG.log(Level.FINE, "Next key marker : " + result.nextKeyMarker);
                 LOG.log(Level.FINE, "Next version id marker : " + result.nextVersionIdMarker);
                 keyMarker = result.nextKeyMarker;
                 versionIdMarker = result.nextVersionIdMarker;
             } while (result.isTruncated);
-
         } catch (Exception e) {
             LOG.log(Level.SEVERE, e.getMessage(), e);
         }

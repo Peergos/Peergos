@@ -30,13 +30,13 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
 
     Stream<Cid> getAllBlockHashes(boolean useBlockstore);
 
-    Stream<BlockVersion> getAllBlockHashVersions();
+    void getAllBlockHashVersions(Consumer<List<BlockVersion>> res);
 
-    default Stream<BlockVersion> getAllRawBlockVersions() {
-        return getAllBlockHashVersions().filter(v -> v.cid.isRaw());
+    default void getAllRawBlockVersions(Consumer<List<BlockVersion>> res) {
+        getAllBlockHashVersions(all -> res.accept(all.stream().filter(v -> v.cid.isRaw()).collect(Collectors.toList())));
     }
 
-    List<Multihash> getOpenTransactionBlocks();
+    List<Cid> getOpenTransactionBlocks();
 
     void clearOldTransactions(long cutoffMillis);
 
@@ -258,8 +258,10 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
         }
 
         @Override
-        public Stream<BlockVersion> getAllBlockHashVersions() {
-            return getAllBlockHashes(false).map(c -> new BlockVersion(c, null, true));
+        public void getAllBlockHashVersions(Consumer<List<BlockVersion>> res) {
+            res.accept(getAllBlockHashes(false)
+                    .map(c -> new BlockVersion(c, null, true))
+                    .collect(Collectors.toList()));
         }
 
         @Override
@@ -279,7 +281,7 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
         }
 
         @Override
-        public List<Multihash> getOpenTransactionBlocks() {
+        public List<Cid> getOpenTransactionBlocks() {
             throw new IllegalStateException("Unimplemented!");
         }
 

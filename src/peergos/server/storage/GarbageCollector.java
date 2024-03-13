@@ -2,6 +2,7 @@ package peergos.server.storage;
 
 import peergos.server.corenode.*;
 import peergos.server.space.*;
+import peergos.server.sql.*;
 import peergos.server.util.*;
 import peergos.shared.*;
 import peergos.shared.cbor.*;
@@ -13,6 +14,10 @@ import peergos.shared.mutable.*;
 import peergos.shared.storage.*;
 import peergos.shared.util.*;
 
+import java.io.*;
+import java.nio.file.*;
+import java.sql.*;
+import java.time.*;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.*;
@@ -72,16 +77,17 @@ public class GarbageCollector {
         garbageCollector.start();
     }
 
-    private static List<BlockVersion> listBlocks(boolean listFromBlockstore,
-                                                 DeletableContentAddressedStorage storage,
-                                                 BlockMetadataStore metadata) {
-        // dedupe to guarantee no duplicate cids which might result in data loss
-        Map<Cid, BlockVersion> deduped = (listFromBlockstore ?
-                storage.getAllBlockHashVersions() :
-                Stream.concat(storage.getAllRawBlockVersions(), metadata.listCbor()))
-                .collect(Collectors.toMap(v -> v.cid, v -> v,
-                        (a, b) -> a.isLatest ? a : b.isLatest ? b : a.version.isEmpty() ? b : a));
-        return new ArrayList<>(deduped.values());
+    private static void listBlocks(SqliteBlockReachability reachability,
+                                   boolean listFromBlockstore,
+                                   DeletableContentAddressedStorage storage,
+                                   BlockMetadataStore metadata) {
+        // the reachability store dedupes on cid + version to guarantee no duplicates which would result in data loss
+        if (listFromBlockstore)
+            storage.getAllBlockHashVersions(reachability::addBlocks);
+        else {
+            storage.getAllRawBlockVersions(reachability::addBlocks);
+            metadata.listCbor(reachability::addBlocks);
+        }
     }
 
     public static void checkIntegrity(DeletableContentAddressedStorage storage,
@@ -158,16 +164,18 @@ public class GarbageCollector {
                                BlockMetadataStore metadata,
                                boolean listFromBlockstore) {
         System.out.println("Starting blockstore garbage collection on node " + storage.id().join() + "...");
-        // TODO: do this more efficiently with a bloom filter, and actual streaming and multithreading
+        // TODO: do GC in O(1) RAM with a bloom filter?: mark into bloom. Then list and check bloom to delete.
         storage.clearOldTransactions(System.currentTimeMillis() - 24*3600*1000L);
         long t0 = System.nanoTime();
+        SqliteBlockReachability reachability = SqliteBlockReachability.createReachabilityDb("reachability.sql");
         // Versions are only relevant for versioned S3 buckets, otherwise version is null
         // For S3, clients write raw blocks directly, we need to get their version directly from S3
-        List<BlockVersion> present = listBlocks(listFromBlockstore, storage, metadata);
+        listBlocks(reachability, listFromBlockstore, storage, metadata);
         long t1 = System.nanoTime();
-        System.out.println("Listing " + present.size() + " blocks took " + (t1-t0)/1_000_000_000 + "s");
+        long nBlocks = reachability.size();
+        System.out.println("Listing " + nBlocks + " blocks took " + (t1-t0)/1_000_000_000 + "s");
 
-        List<Multihash> pending = storage.getOpenTransactionBlocks();
+        List<Cid> pending = storage.getOpenTransactionBlocks();
         long t2 = System.nanoTime();
         System.out.println("Listing " + pending.size() + " pending blocks took " + (t2-t1)/1_000_000_000 + "s");
 
@@ -179,16 +187,10 @@ public class GarbageCollector {
         // Get the current roots from the usage store which shouldn't be GC'd until usage has been updated
         List<Pair<Multihash, String>> usageRoots = usage.getAllTargets();
 
-        Map<Multihash, Integer> toIndex = new HashMap<>();
-        for (int i = 0; i < present.size(); i++)
-            if (present.get(i).isLatest)
-                toIndex.put(present.get(i).cid, i);
-        BitSet reachable = new BitSet(present.size());
-
         int markParallelism = 10;
         ForkJoinPool markPool = Threads.newPool(markParallelism, "GC-mark-");
         List<ForkJoinTask<Boolean>> usageMarked = usageRoots.stream()
-                .map(r -> markPool.submit(() -> markReachable(storage, (Cid)r.left, r.right, toIndex, reachable, metadata)))
+                .map(r -> markPool.submit(() -> markReachable(storage, (Cid)r.left, r.right, reachability, metadata)))
                 .collect(Collectors.toList());
         usageMarked.forEach(f -> f.join());
         long t4 = System.nanoTime();
@@ -197,17 +199,14 @@ public class GarbageCollector {
         Set<Multihash> fromUsage = new HashSet<>(usageRoots.size());
         fromUsage.addAll(usageRoots.stream().map(r -> r.left).collect(Collectors.toSet()));
         List<ForkJoinTask<Boolean>> marked = allPointers.entrySet().stream()
-                .map(e -> markPool.submit(() -> markReachable(e.getKey(), e.getValue(), reachable, toIndex, storage, usage, fromUsage, metadata)))
+                .map(e -> markPool.submit(() -> markReachable(e.getKey(), e.getValue(), reachability, storage, usage, fromUsage, metadata)))
                 .collect(Collectors.toList());
         long rootsProcessed = marked.stream().filter(ForkJoinTask::join).count();
 
         long t5 = System.nanoTime();
         System.out.println("Marking reachable from "+rootsProcessed+" pointers took " + (t5-t4)/1_000_000_000 + "s");
-        for (Multihash additional : pending) {
-            int index = toIndex.getOrDefault(additional, -1);
-            if (index >= 0)
-                reachable.set(index);
-        }
+        reachability.setReachable(pending);
+
         long t6 = System.nanoTime();
         System.out.println("Marking "+pending.size()+" pending blocks reachable took " + (t6-t5)/1_000_000_000 + "s");
 
@@ -216,12 +215,10 @@ public class GarbageCollector {
 
         int deleteParallelism = 4;
         ForkJoinPool pool = Threads.newPool(deleteParallelism, "GC-delete-");
-        int batchSize = present.size() / deleteParallelism;
         AtomicLong progressCounter = new AtomicLong(0);
-        List<ForkJoinTask<Pair<Long, Long>>> futures = IntStream.range(0, deleteParallelism)
-                .mapToObj(i -> pool.submit(() -> deleteUnreachableBlocks(i * batchSize,
-                        Math.min((i + 1) * batchSize, present.size()), reachable, present, progressCounter, storage, metadata)))
-                .collect(Collectors.toList());
+        List<ForkJoinTask<Pair<Long, Long>>> futures = new ArrayList<>();
+        reachability.getUnreachable(toDel -> futures.add(pool.submit(() ->
+                deleteUnreachableBlocks(toDel, progressCounter, storage, metadata))));
         Pair<Long, Long> deleted = futures.stream()
                 .map(ForkJoinTask::join).reduce((a, b) -> new Pair<>(a.left + b.left, a.right + b.right))
                 .get();
@@ -237,8 +234,7 @@ public class GarbageCollector {
 
     private static boolean markReachable(PublicKeyHash writerHash,
                                          byte[] signedRawCas,
-                                         BitSet reachable,
-                                         Map<Multihash, Integer> toIndex,
+                                         SqliteBlockReachability reachability,
                                          DeletableContentAddressedStorage storage,
                                          UsageStore usage,
                                          Set<Multihash> done,
@@ -248,7 +244,7 @@ public class GarbageCollector {
         PointerUpdate cas = PointerUpdate.fromCbor(CborObject.fromByteArray(bothHashes));
         MaybeMultihash updated = cas.updated;
         if (updated.isPresent() && ! done.contains(updated.get())) {
-            markReachable(storage, (Cid) updated.get(), toIndex, reachable, metadata, () -> getUsername(writerHash, usage));
+            markReachable(storage, true, new ArrayList<>(1000), (Cid) updated.get(), reachability, metadata, () -> getUsername(writerHash, usage));
             return true;
         }
         return false;
@@ -262,48 +258,21 @@ public class GarbageCollector {
         }
     }
 
-    private static Pair<Long, Long> deleteUnreachableBlocks(int startIndex,
-                                                            int endIndex,
-                                                            BitSet reachable,
-                                                            List<BlockVersion> present,
+    private static Pair<Long, Long> deleteUnreachableBlocks(List<BlockVersion> toDelete,
                                                             AtomicLong progress,
                                                             DeletableContentAddressedStorage storage,
                                                             BlockMetadataStore metadata) {
-        long deletedCborBlocks = 0, deletedRawBlocks = 0;
-        long logPoint = startIndex;
-        final int maxDeleteCount = 1000;
-        List<BlockVersion> pendingDeletes = new ArrayList<>();
-        for (int i = reachable.nextClearBit(startIndex); i >= startIndex && i < endIndex; i = reachable.nextClearBit(i + 1)) {
-            BlockVersion version = present.get(i);
-            Cid hash = version.cid;
-            if (hash.isRaw())
-                deletedRawBlocks++;
-            else
-                deletedCborBlocks++;
-            pendingDeletes.add(version);
-
-            if (pendingDeletes.size() >= maxDeleteCount) {
-                getWithBackoff(() -> {storage.bulkDelete(pendingDeletes); return true;});
-                for (BlockVersion block : pendingDeletes) {
-                    metadata.remove(block.cid);
-                }
-                pendingDeletes.clear();
-            }
-
-            int tenth = (endIndex - startIndex) / 10;
-            if (i > logPoint + tenth) {
-                logPoint += tenth;
-                long updatedProgress = progress.addAndGet(tenth);
-                if (updatedProgress * 10 / present.size() > (updatedProgress - tenth) * 10 / present.size())
-                    System.out.println("Deleting unreachable blocks: " + updatedProgress * 100 / present.size() + "% done");
-            }
+        long deletedCborBlocks = toDelete.stream().filter(v -> ! v.cid.isRaw()).count();
+        long deletedRawBlocks = toDelete.size() - deletedCborBlocks;
+        getWithBackoff(() -> {storage.bulkDelete(toDelete); return true;});
+        for (BlockVersion block : toDelete) {
+            metadata.remove(block.cid);
         }
-        if (pendingDeletes.size() > 0) {
-            getWithBackoff(() -> {storage.bulkDelete(pendingDeletes); return true;});
-            for (BlockVersion block : pendingDeletes) {
-                metadata.remove(block.cid);
-            }
-        }
+
+        long logEvery = 100_000;
+        long updatedProgress = progress.addAndGet(toDelete.size());
+        if (updatedProgress / logEvery > (updatedProgress - toDelete.size()) / logEvery)
+            System.out.println("Deleting unreachable blocks: " + updatedProgress + " done");
 
         return new Pair<>(deletedCborBlocks, deletedRawBlocks);
     }
@@ -311,33 +280,37 @@ public class GarbageCollector {
     private static boolean markReachable(DeletableContentAddressedStorage storage,
                                          Cid root,
                                          String username,
-                                         Map<Multihash, Integer> toIndex,
-                                         BitSet reachable,
+                                         SqliteBlockReachability reachability,
                                          BlockMetadataStore metadata) {
-        return markReachable(storage, root, toIndex, reachable, metadata, () -> username);
+        return markReachable(storage, true, new ArrayList<>(1000), root, reachability, metadata, () -> username);
     }
 
     private static boolean markReachable(DeletableContentAddressedStorage storage,
-                                         Cid root,
-                                         Map<Multihash, Integer> toIndex,
-                                         BitSet reachable,
+                                         boolean isRoot,
+                                         List<Cid> queue,
+                                         Cid block,
+                                         SqliteBlockReachability reachability,
                                          BlockMetadataStore metadata,
                                          Supplier<String> username) {
-        int index = toIndex.getOrDefault(root, -1);
-        if (index >= 0) {
-            synchronized (reachable) {
-                reachable.set(index);
-            }
-        }
+        if (isRoot)
+            queue.add(block);
+
         try {
-            List<Cid> links = metadata.get(root).map(m -> m.links)
-                    .orElseGet(() -> getWithBackoff(() -> storage.getLinks(root).join()));
+            List<Cid> links = metadata.get(block).map(m -> m.links)
+                    .orElseGet(() -> getWithBackoff(() -> storage.getLinks(block).join()));
+            queue.addAll(links);
+            if (queue.size() > 1000) {
+                reachability.setReachable(links);
+                links.clear();
+            }
             for (Cid link : links) {
-                markReachable(storage, link, toIndex, reachable, metadata, username);
+                markReachable(storage, false, queue, link, reachability, metadata, username);
             }
         } catch (Exception e) {
             LOG.info("Error processing user " + username.get());
         }
+        if (isRoot)
+            reachability.setReachable(queue);
         return true;
     }
 
