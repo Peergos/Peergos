@@ -220,8 +220,9 @@ public class GarbageCollector {
         reachability.getUnreachable(toDel -> futures.add(pool.submit(() ->
                 deleteUnreachableBlocks(toDel, progressCounter, storage, metadata))));
         Pair<Long, Long> deleted = futures.stream()
-                .map(ForkJoinTask::join).reduce((a, b) -> new Pair<>(a.left + b.left, a.right + b.right))
-                .get();
+                .map(ForkJoinTask::join)
+                .reduce((a, b) -> new Pair<>(a.left + b.left, a.right + b.right))
+                .orElse(new Pair<>(0L, 0L));
         long deletedCborBlocks = deleted.left;
         long deletedRawBlocks = deleted.right;
         long t7 = System.nanoTime();
