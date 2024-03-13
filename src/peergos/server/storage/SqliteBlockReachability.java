@@ -130,12 +130,11 @@ public class SqliteBlockReachability {
         }
     }
 
-    public static SqliteBlockReachability createReachabilityDb(String filename) {
+    public static SqliteBlockReachability createReachabilityDb(Path dbFile) {
         try {
-            Path dbFile = Path.of(filename);
             if (Files.exists(dbFile))
                 Files.delete(dbFile);
-            Connection memory = Sqlite.build(filename);
+            Connection memory = Sqlite.build(dbFile.toString());
             // We need a connection that ignores close
             Connection instance = new Sqlite.UncloseableConnection(memory);
             return new SqliteBlockReachability(() -> instance, new SqliteCommands());
@@ -148,10 +147,7 @@ public class SqliteBlockReachability {
         // This is a benchmark to test baseline speed of a blockstore GC
         String filename = "temp.sql";
         Path file = Path.of(filename);
-        if (Files.exists(file))
-            Files.delete(file);
-
-        SqliteBlockReachability reachabilityDb = createReachabilityDb(filename);
+        SqliteBlockReachability reachabilityDb = createReachabilityDb(file);
         List<BlockVersion> versions = new ArrayList<>();
         int count = 1_000_000;
         boolean versioned = true;

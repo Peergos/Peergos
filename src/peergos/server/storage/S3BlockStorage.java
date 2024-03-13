@@ -480,7 +480,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
     }
 
     private void collectGarbage(JdbcIpnsAndSocial pointers, UsageStore usage, BlockMetadataStore metadata, boolean listFromBlockstore) {
-        GarbageCollector.collect(this, pointers, usage,
+        GarbageCollector.collect(this, pointers, usage, Paths.get("reachability.sql"),
                 this::savePointerSnapshot, metadata, listFromBlockstore);
     }
 
