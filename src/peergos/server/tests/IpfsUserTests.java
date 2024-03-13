@@ -57,7 +57,7 @@ public class IpfsUserTests extends UserTests {
     }
 
     public long getBlockstoreSize() {
-        Path ipfsDir = args.fromPeergosDir("", ".ipfs");
+        Path ipfsDir = args.fromPeergosDir("", ".ipfs").resolve("blocks");
         try {
             return Files.walk(ipfsDir)
                     .filter(p -> p.toFile().isFile())
