@@ -91,10 +91,8 @@ public class SqliteBlockReachability {
                 update.setBytes(1, block.toBytes());
                 update.addBatch();
             }
-            int[] changed = update.executeBatch();
+            update.executeBatch(); //ignore update count
             conn.commit();
-            if (IntStream.of(changed).sum() < blocks.size())
-                throw new IllegalStateException("Couldn't set reachable");
         } catch (SQLException sqe) {
             LOG.log(Level.WARNING, sqe.getMessage(), sqe);
         }
@@ -186,6 +184,7 @@ public class SqliteBlockReachability {
         }
         long t2 = System.nanoTime();
         System.out.println("Marking reachable took " + (t2-t1)/1_000_000_000 + "s, batch size = " + markBatchSize);
+        reachabilityDb.setReachable(Arrays.asList(versions.get(0).cid));
 
         List<BlockVersion> unreachable = new ArrayList<>();
         long t3 = System.nanoTime();
