@@ -16,5 +16,5 @@ public interface TransactionStore {
 
     List<Cid> getOpenTransactionBlocks();
 
-    void clearOldTransactions(long cutoff);
+    void clearOldTransactions(long cutoffUtcMillis);
 }
