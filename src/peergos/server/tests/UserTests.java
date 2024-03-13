@@ -106,6 +106,10 @@ public abstract class UserTests {
         f.delete();
     }
 
+    public void gc() {
+        service.gc.collect(e -> Futures.of(true));
+    }
+
     protected String generateUsername() {
         return "test" + Math.abs(random.nextInt() % 1_000_000);
     }
