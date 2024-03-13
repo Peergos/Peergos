@@ -2,7 +2,6 @@ package peergos.server.storage;
 
 import peergos.server.corenode.*;
 import peergos.server.space.*;
-import peergos.server.sql.*;
 import peergos.server.util.*;
 import peergos.shared.*;
 import peergos.shared.cbor.*;
@@ -16,7 +15,6 @@ import peergos.shared.util.*;
 
 import java.io.*;
 import java.nio.file.*;
-import java.sql.*;
 import java.time.*;
 import java.util.*;
 import java.util.concurrent.*;
@@ -34,23 +32,23 @@ public class GarbageCollector {
     private final BlockMetadataStore metadata;
     private final boolean listRawFromBlockstore;
     private final AtomicBoolean running = new AtomicBoolean(false);
-    private final Path reachabilityDbFile;
+    private final Path reachabilityDbDir;
 
     public GarbageCollector(DeletableContentAddressedStorage storage,
                             JdbcIpnsAndSocial pointers,
                             UsageStore usage,
-                            Path reachabilityDbFile,
+                            Path reachabilityDbDir,
                             boolean listRawFromBlockstore) {
         this.storage = storage;
         this.pointers = pointers;
         this.usage = usage;
-        this.reachabilityDbFile = reachabilityDbFile;
+        this.reachabilityDbDir = reachabilityDbDir;
         this.listRawFromBlockstore = listRawFromBlockstore;
         this.metadata = storage.getBlockMetadataStore().orElseGet(RamBlockMetadataStore::new);
     }
 
     public synchronized void collect(Function<Stream<Map.Entry<PublicKeyHash, byte[]>>, CompletableFuture<Boolean>> snapshotSaver) {
-        collect(storage, pointers, usage, reachabilityDbFile, snapshotSaver, metadata, listRawFromBlockstore);
+        collect(storage, pointers, usage, reachabilityDbDir, snapshotSaver, metadata, listRawFromBlockstore);
     }
 
     public void stop() {
@@ -163,7 +161,7 @@ public class GarbageCollector {
     public static void collect(DeletableContentAddressedStorage storage,
                                JdbcIpnsAndSocial pointers,
                                UsageStore usage,
-                               Path reachabilityDbFile,
+                               Path reachabilityDbDir,
                                Function<Stream<Map.Entry<PublicKeyHash, byte[]>>, CompletableFuture<Boolean>> snapshotSaver,
                                BlockMetadataStore metadata,
                                boolean listFromBlockstore) {
@@ -171,7 +169,7 @@ public class GarbageCollector {
         // TODO: do GC in O(1) RAM with a bloom filter?: mark into bloom. Then list and check bloom to delete.
         storage.clearOldTransactions(System.currentTimeMillis() - 24*3600*1000L);
         long t0 = System.nanoTime();
-        reachabilityDbFile = PathUtil.get(reachabilityDbFile.toString() + LocalDateTime.now());
+        Path reachabilityDbFile = reachabilityDbDir.resolve("reachability-" + LocalDateTime.now() + ".sql");
         SqliteBlockReachability reachability = SqliteBlockReachability.createReachabilityDb(reachabilityDbFile);
         // Versions are only relevant for versioned S3 buckets, otherwise version is null
         // For S3, clients write raw blocks directly, we need to get their version directly from S3
