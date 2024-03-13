@@ -60,7 +60,7 @@ public class IpfsUserTests extends UserTests {
         Path ipfsDir = args.fromPeergosDir("", ".ipfs").resolve("blocks");
         try {
             return Files.walk(ipfsDir)
-                    .filter(p -> p.toFile().isFile())
+                    .filter(p -> p.toFile().isFile() && p.getFileName().toString().endsWith(".data"))
                     .mapToLong(p -> p.toFile().length())
                     .sum();
         } catch (IOException e) {
@@ -74,6 +74,7 @@ public class IpfsUserTests extends UserTests {
         UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
         gc();
         long sizeBefore = getBlockstoreSize();
+        long usageBefore = context.getSpaceUsage().join();
         int filesize = 10 * 1024 * 1024;
         String filename = "file.bin";
         context.getUserRoot().join().uploadOrReplaceFile(filename, AsyncReader.build(new byte[filesize]),
@@ -89,6 +90,8 @@ public class IpfsUserTests extends UserTests {
         transactionStore.clearOldTransactions(System.currentTimeMillis());
         List<Cid> open = transactionStore.getOpenTransactionBlocks();
         Assert.assertTrue(open.isEmpty());
+        long usageAfter = context.getSpaceUsage().join();
+        Assert.assertTrue(usageAfter == usageBefore);
         gc();
         long sizeAfterDelete = getBlockstoreSize();
         Assert.assertTrue(sizeAfterDelete - sizeBefore < 20*1024); // Why not equal?
