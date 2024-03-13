@@ -1,8 +1,6 @@
 package peergos.client;
 
 import jsinterop.annotations.*;
-import peergos.shared.cbor.CborObject;
-import peergos.shared.cbor.Cborable;
 import peergos.shared.login.mfa.MultiFactorAuthResponse;
 import peergos.shared.login.mfa.WebauthnResponse;
 import peergos.shared.util.Either;
@@ -15,6 +13,24 @@ import java.util.stream.Collectors;
  *
  */
 public class JsUtil {
+
+    @JsMethod
+    private static byte[] decodeBase64(String base64data) {
+        return Base64.getDecoder().decode(base64data);
+    }
+
+    @JsMethod
+    private static String encodeBase64(byte[] bytes) {
+        return new String(Base64.getEncoder().encode(bytes));
+    }
+    @JsMethod
+    public static <K,V> Map<K,V> asMap(K[] keys, V[] values) {
+        HashMap map = new HashMap<K,V>();
+        for(int i = 0; i < keys.length; i++) {
+            map.put(keys[i], values[i]);
+        }
+        return map;
+    }
 
     @JsMethod
     public static <T> List<T> asList(T[] array) {
