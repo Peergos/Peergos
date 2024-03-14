@@ -85,6 +85,8 @@ public class SqliteBlockReachability {
     }
 
     public void setReachable(List<Cid> blocks) {
+        if (blocks.isEmpty())
+            return;
         try (Connection conn = getNonCommittingConnection();
              PreparedStatement update = conn.prepareStatement(SET_REACHABLE)) {
             for (Cid block : blocks) {
