@@ -84,7 +84,7 @@ public class SqliteBlockReachability {
         }
     }
 
-    public void setReachable(List<Cid> blocks) {
+    public synchronized void setReachable(List<Cid> blocks) {
         if (blocks.isEmpty())
             return;
         try (Connection conn = getNonCommittingConnection();
@@ -93,8 +93,10 @@ public class SqliteBlockReachability {
                 update.setBytes(1, block.toBytes());
                 update.addBatch();
             }
-            update.executeBatch(); //ignore update count
-            conn.commit();
+            int[] res = update.executeBatch();
+            int changed = IntStream.of(res).sum();
+            if (changed > 0)
+                conn.commit();
         } catch (SQLException sqe) {
             LOG.log(Level.WARNING, sqe.getMessage(), sqe);
             throw new RuntimeException(sqe);
@@ -224,6 +226,9 @@ public class SqliteBlockReachability {
         Cid cid1 = new Cid(1, Cid.Codec.DagCbor, Multihash.Type.sha2_256, hash1);
         BlockVersion v1 = new BlockVersion(cid1, ArrayOps.bytesToHex(hash1), true);
         reachabilityDb.addBlocks(Arrays.asList(v1, v1, v1, v1, v1, v1, v1, v1, v1, v1));
+
+        reachabilityDb.setReachable(versions.subList(0, 10).stream().map(v ->v.cid).collect(Collectors.toList()));
+        reachabilityDb.setReachable(versions.subList(0, 10).stream().map(v ->v.cid).collect(Collectors.toList()));
         try {
             reachabilityDb.addBlocks(Arrays.asList(v1));
         } catch (Exception e) {}
