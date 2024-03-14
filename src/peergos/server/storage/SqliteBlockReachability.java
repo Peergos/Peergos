@@ -97,6 +97,7 @@ public class SqliteBlockReachability {
             conn.commit();
         } catch (SQLException sqe) {
             LOG.log(Level.WARNING, sqe.getMessage(), sqe);
+            throw new RuntimeException(sqe);
         }
     }
 
