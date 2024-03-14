@@ -72,6 +72,10 @@ public class IpfsUserTests extends UserTests {
         String username = generateUsername();
         String password = "password";
         UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
+        // need to clear transactions otherwise blocks won't be GC'd for a day
+        TransactionStore transactionStore = Builder.buildTransactionStore(args, Builder.getDBConnector(args.with("transactions-sql-file", "transactions.sql"),
+                "transactions-sql-file"));
+        transactionStore.clearOldTransactions(System.currentTimeMillis());
         gc();
         long sizeBefore = getBlockstoreSize();
         long usageBefore = context.getSpaceUsage().join();
@@ -81,12 +85,13 @@ public class IpfsUserTests extends UserTests {
                 filesize, network, crypto, x -> {}).join();
         long sizeWithFile = getBlockstoreSize();
         Assert.assertTrue(sizeWithFile > sizeBefore + filesize);
+        Threads.sleep(2_000); // Allow time for server to update usage
+        long usageWithFile = context.getSpaceUsage().join();
+        Assert.assertTrue(usageWithFile > usageBefore + filesize);
+
         Path filePath = PathUtil.get(username, filename);
         context.getByPath(filePath).join().get()
                 .remove(context.getUserRoot().join(), filePath, context).join();
-        // need to clear transactions otherwise blocks won't be GC'd for a day
-        TransactionStore transactionStore = Builder.buildTransactionStore(args, Builder.getDBConnector(args.with("transactions-sql-file", "transactions.sql"),
-                "transactions-sql-file"));
         transactionStore.clearOldTransactions(System.currentTimeMillis());
         List<Cid> open = transactionStore.getOpenTransactionBlocks();
         Assert.assertTrue(open.isEmpty());
@@ -94,6 +99,7 @@ public class IpfsUserTests extends UserTests {
         Assert.assertTrue(usageAfter == usageBefore);
         gc();
         long sizeAfterDelete = getBlockstoreSize();
-        Assert.assertTrue(sizeAfterDelete - sizeBefore < 20*1024); // Why not equal?
+        long diff = sizeAfterDelete - sizeBefore;
+        Assert.assertTrue(diff < 20*1024); // Why not equal?
     }
 }
