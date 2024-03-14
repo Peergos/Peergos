@@ -169,7 +169,8 @@ public class GarbageCollector {
         // TODO: do GC in O(1) RAM with a bloom filter?: mark into bloom. Then list and check bloom to delete.
         storage.clearOldTransactions(System.currentTimeMillis() - 24*3600*1000L);
         long t0 = System.nanoTime();
-        Path reachabilityDbFile = reachabilityDbDir.resolve("reachability-" + LocalDateTime.now() + ".sql");
+        Path reachabilityDbFile = reachabilityDbDir.resolve("reachability-" + LocalDate.now() + "-"
+                + new Random().nextInt(100_000)+".sql");
         SqliteBlockReachability reachability = SqliteBlockReachability.createReachabilityDb(reachabilityDbFile);
         // Versions are only relevant for versioned S3 buckets, otherwise version is null
         // For S3, clients write raw blocks directly, we need to get their version directly from S3
