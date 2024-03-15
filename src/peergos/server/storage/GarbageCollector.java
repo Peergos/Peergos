@@ -197,23 +197,25 @@ public class GarbageCollector {
 
         int markParallelism = 10;
         ForkJoinPool markPool = Threads.newPool(markParallelism, "GC-mark-");
+        AtomicLong totalReachable = new AtomicLong(0);
         List<ForkJoinTask<Boolean>> usageMarked = usageRoots.stream()
-                .map(r -> markPool.submit(() -> markReachable(storage, (Cid)r.left, r.right, reachability, metadata)))
+                .map(r -> markPool.submit(() -> markReachable(storage, (Cid)r.left, r.right, reachability, metadata, totalReachable)))
                 .collect(Collectors.toList());
         usageMarked.forEach(f -> f.join());
         long t4 = System.nanoTime();
-        System.out.println("Marking reachable from "+usageRoots.size()+" usage roots took " + (t4-t3)/1_000_000_000 + "s");
+        long reachableAfterUsage = totalReachable.get();
+        System.out.println("Marking " + reachableAfterUsage + " reachable from " + usageRoots.size() + " usage roots took " + (t4-t3)/1_000_000_000 + "s");
 
         Set<Multihash> fromUsage = new HashSet<>(usageRoots.size());
         fromUsage.addAll(usageRoots.stream().map(r -> r.left).collect(Collectors.toSet()));
         List<ForkJoinTask<Boolean>> marked = allPointers.entrySet().stream()
-                .map(e -> markPool.submit(() -> markReachable(e.getKey(), e.getValue(), reachability, storage, usage, fromUsage, metadata)))
+                .map(e -> markPool.submit(() -> markReachable(e.getKey(), e.getValue(), reachability, storage, usage, fromUsage, metadata, totalReachable)))
                 .collect(Collectors.toList());
         long rootsProcessed = marked.stream().filter(ForkJoinTask::join).count();
 
         long t5 = System.nanoTime();
-        System.out.println("Marking reachable from "+rootsProcessed+" pointers took " + (t5-t4)/1_000_000_000 + "s");
-        reachability.setReachable(pending);
+        System.out.println("Marking " + (totalReachable.get() - reachableAfterUsage) + " reachable from "+rootsProcessed+" pointers took " + (t5-t4)/1_000_000_000 + "s");
+        reachability.setReachable(pending, totalReachable);
 
         long t6 = System.nanoTime();
         System.out.println("Marking "+pending.size()+" pending blocks reachable took " + (t6-t5)/1_000_000_000 + "s");
@@ -254,16 +256,22 @@ public class GarbageCollector {
                                          DeletableContentAddressedStorage storage,
                                          UsageStore usage,
                                          Set<Multihash> done,
-                                         BlockMetadataStore metadata) {
-        PublicSigningKey writer = getWithBackoff(() -> storage.getSigningKey(null, writerHash).join().get());
-        byte[] bothHashes = writer.unsignMessage(signedRawCas);
-        PointerUpdate cas = PointerUpdate.fromCbor(CborObject.fromByteArray(bothHashes));
-        MaybeMultihash updated = cas.updated;
-        if (updated.isPresent() && ! done.contains(updated.get())) {
-            markReachable(storage, true, new ArrayList<>(1000), (Cid) updated.get(), reachability, metadata, () -> getUsername(writerHash, usage));
-            return true;
+                                         BlockMetadataStore metadata,
+                                         AtomicLong totalReachable) {
+        try {
+            PublicSigningKey writer = getWithBackoff(() -> storage.getSigningKey(null, writerHash).join().get());
+            byte[] bothHashes = writer.unsignMessage(signedRawCas);
+            PointerUpdate cas = PointerUpdate.fromCbor(CborObject.fromByteArray(bothHashes));
+            MaybeMultihash updated = cas.updated;
+            if (updated.isPresent() && !done.contains(updated.get())) {
+                markReachable(storage, true, new ArrayList<>(1000), (Cid) updated.get(), reachability, metadata, () -> getUsername(writerHash, usage), totalReachable);
+                return true;
+            }
+            return false;
+        } catch (Exception e) {
+            LOG.info("Error processing user " + getUsername(writerHash, usage));
+            return false;
         }
-        return false;
     }
 
     private static String getUsername(PublicKeyHash writer, UsageStore usage) {
@@ -300,8 +308,9 @@ public class GarbageCollector {
                                          Cid root,
                                          String username,
                                          SqliteBlockReachability reachability,
-                                         BlockMetadataStore metadata) {
-        return markReachable(storage, true, new ArrayList<>(1000), root, reachability, metadata, () -> username);
+                                         BlockMetadataStore metadata,
+                                         AtomicLong totalReachable) {
+        return markReachable(storage, true, new ArrayList<>(1000), root, reachability, metadata, () -> username, totalReachable);
     }
 
     private static boolean markReachable(DeletableContentAddressedStorage storage,
@@ -310,7 +319,8 @@ public class GarbageCollector {
                                          Cid block,
                                          SqliteBlockReachability reachability,
                                          BlockMetadataStore metadata,
-                                         Supplier<String> username) {
+                                         Supplier<String> username,
+                                         AtomicLong totalReachable) {
         if (isRoot)
             queue.add(block);
 
@@ -319,17 +329,17 @@ public class GarbageCollector {
                     .orElseGet(() -> getWithBackoff(() -> storage.getLinks(block).join()));
             queue.addAll(links);
             if (queue.size() > 1000) {
-                reachability.setReachable(links);
+                reachability.setReachable(links, totalReachable);
                 links.clear();
             }
             for (Cid link : links) {
-                markReachable(storage, false, queue, link, reachability, metadata, username);
+                markReachable(storage, false, queue, link, reachability, metadata, username, totalReachable);
             }
         } catch (Exception e) {
             LOG.info("Error processing user " + username.get());
         }
         if (isRoot)
-            reachability.setReachable(queue);
+            reachability.setReachable(queue, totalReachable);
         return true;
     }
 

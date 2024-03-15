@@ -9,6 +9,7 @@ import java.io.*;
 import java.nio.file.*;
 import java.sql.*;
 import java.util.*;
+import java.util.concurrent.atomic.*;
 import java.util.function.*;
 import java.util.logging.*;
 import java.util.stream.*;
@@ -84,7 +85,7 @@ public class SqliteBlockReachability {
         }
     }
 
-    public synchronized void setReachable(List<Cid> blocks) {
+    public synchronized void setReachable(List<Cid> blocks, AtomicLong totalReachable) {
         if (blocks.isEmpty())
             return;
         try (Connection conn = getNonCommittingConnection();
@@ -95,6 +96,7 @@ public class SqliteBlockReachability {
             }
             int[] res = update.executeBatch();
             int changed = IntStream.of(res).sum();
+            totalReachable.addAndGet(changed);
             if (changed > 0)
                 conn.commit();
         } catch (SQLException sqe) {
@@ -176,16 +178,17 @@ public class SqliteBlockReachability {
         long t1 = System.nanoTime();
         System.out.println("Load duration " + (t1-t0)/1_000_000_000 + "s, batch size = " + batchSize);
         int markBatchSize = 1000;
+        AtomicLong totalReachable = new AtomicLong();
         for (int i = 0; i < count / markBatchSize; i++) {
             List<Cid> batch = versions.subList(i * markBatchSize, (i + 1) * markBatchSize)
                     .stream()
                     .map(v -> v.cid)
                     .collect(Collectors.toList());
-            reachabilityDb.setReachable(batch);
+            reachabilityDb.setReachable(batch, totalReachable);
         }
         long t2 = System.nanoTime();
         System.out.println("Marking reachable took " + (t2-t1)/1_000_000_000 + "s, batch size = " + markBatchSize);
-        reachabilityDb.setReachable(Arrays.asList(versions.get(0).cid));
+        reachabilityDb.setReachable(Arrays.asList(versions.get(0).cid), totalReachable);
 
         List<BlockVersion> unreachable = new ArrayList<>();
         long t3 = System.nanoTime();
@@ -227,8 +230,8 @@ public class SqliteBlockReachability {
         BlockVersion v1 = new BlockVersion(cid1, ArrayOps.bytesToHex(hash1), true);
         reachabilityDb.addBlocks(Arrays.asList(v1, v1, v1, v1, v1, v1, v1, v1, v1, v1));
 
-        reachabilityDb.setReachable(versions.subList(0, 10).stream().map(v ->v.cid).collect(Collectors.toList()));
-        reachabilityDb.setReachable(versions.subList(0, 10).stream().map(v ->v.cid).collect(Collectors.toList()));
+        reachabilityDb.setReachable(versions.subList(0, 10).stream().map(v ->v.cid).collect(Collectors.toList()), totalReachable);
+        reachabilityDb.setReachable(versions.subList(0, 10).stream().map(v ->v.cid).collect(Collectors.toList()), totalReachable);
         try {
             reachabilityDb.addBlocks(Arrays.asList(v1));
         } catch (Exception e) {}
