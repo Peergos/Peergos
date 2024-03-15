@@ -279,6 +279,8 @@ public class GarbageCollector {
                                                             long totalBlocksToDelete,
                                                             DeletableContentAddressedStorage storage,
                                                             BlockMetadataStore metadata) {
+        if (toDelete.isEmpty())
+            return new Pair<>(0L, 0L);
         long deletedCborBlocks = toDelete.stream().filter(v -> ! v.cid.isRaw()).count();
         long deletedRawBlocks = toDelete.size() - deletedCborBlocks;
         for (BlockVersion block : toDelete) {
