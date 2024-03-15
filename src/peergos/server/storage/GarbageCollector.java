@@ -288,7 +288,7 @@ public class GarbageCollector {
         }
         getWithBackoff(() -> {storage.bulkDelete(toDelete); return true;});
 
-        long logEvery = totalBlocksToDelete / 10;
+        long logEvery = Math.max(1_000, totalBlocksToDelete / 10);
         long updatedProgress = progress.addAndGet(toDelete.size());
         if (updatedProgress / logEvery > (updatedProgress - toDelete.size()) / logEvery)
             System.out.println("Deleting unreachable blocks: " + updatedProgress * 100 / totalBlocksToDelete + "% done");
