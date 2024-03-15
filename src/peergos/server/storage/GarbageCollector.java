@@ -33,22 +33,25 @@ public class GarbageCollector {
     private final boolean listRawFromBlockstore;
     private final AtomicBoolean running = new AtomicBoolean(false);
     private final Path reachabilityDbDir;
+    private final BiFunction<Long, Long, CompletableFuture<Boolean>> deleteConfirm;
 
     public GarbageCollector(DeletableContentAddressedStorage storage,
                             JdbcIpnsAndSocial pointers,
                             UsageStore usage,
                             Path reachabilityDbDir,
+                            BiFunction<Long, Long, CompletableFuture<Boolean>> deleteConfirm,
                             boolean listRawFromBlockstore) {
         this.storage = storage;
         this.pointers = pointers;
         this.usage = usage;
         this.reachabilityDbDir = reachabilityDbDir;
+        this.deleteConfirm = deleteConfirm;
         this.listRawFromBlockstore = listRawFromBlockstore;
         this.metadata = storage.getBlockMetadataStore().orElseGet(RamBlockMetadataStore::new);
     }
 
     public synchronized void collect(Function<Stream<Map.Entry<PublicKeyHash, byte[]>>, CompletableFuture<Boolean>> snapshotSaver) {
-        collect(storage, pointers, usage, reachabilityDbDir, snapshotSaver, metadata, listRawFromBlockstore);
+        collect(storage, pointers, usage, reachabilityDbDir, snapshotSaver, metadata, deleteConfirm, listRawFromBlockstore);
     }
 
     public void stop() {
@@ -164,6 +167,7 @@ public class GarbageCollector {
                                Path reachabilityDbDir,
                                Function<Stream<Map.Entry<PublicKeyHash, byte[]>>, CompletableFuture<Boolean>> snapshotSaver,
                                BlockMetadataStore metadata,
+                               BiFunction<Long, Long, CompletableFuture<Boolean>> deleteConfirm,
                                boolean listFromBlockstore) {
         System.out.println("Starting blockstore garbage collection on node " + storage.id().join() + "...");
         // TODO: do GC in O(1) RAM with a bloom filter?: mark into bloom. Then list and check bloom to delete.
@@ -216,6 +220,10 @@ public class GarbageCollector {
 
         // Save pointers snapshot
         snapshotSaver.apply(allPointers.entrySet().stream()).join();
+
+        AtomicLong delCount = new AtomicLong(0);
+        reachability.getUnreachable(del ->  delCount.addAndGet(del.size()));
+        deleteConfirm.apply(delCount.get(), nBlocks).join();
 
         int deleteParallelism = 4;
         ForkJoinPool pool = Threads.newPool(deleteParallelism, "GC-delete-");

@@ -539,7 +539,7 @@ public class Main extends Builder {
             if (enableGC) {
                 boolean useS3 = S3Config.useS3(a);
                 boolean listRawBlocks = useS3 && a.getBoolean("s3.versioned-bucket");
-                gc = new GarbageCollector(localStorage, rawPointers, usageStore, a.fromPeergosDir("", ""), listRawBlocks);
+                gc = new GarbageCollector(localStorage, rawPointers, usageStore, a.fromPeergosDir("", ""), (d, c) -> Futures.of(true), listRawBlocks);
                 Function<Stream<Map.Entry<PublicKeyHash, byte[]>>, CompletableFuture<Boolean>> snapshotSaver =
                         useS3 ?
                                 ((S3BlockStorage) localStorage)::savePointerSnapshot :
