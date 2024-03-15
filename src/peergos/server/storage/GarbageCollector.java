@@ -230,7 +230,7 @@ public class GarbageCollector {
         AtomicLong progressCounter = new AtomicLong(0);
         List<ForkJoinTask<Pair<Long, Long>>> futures = new ArrayList<>();
         reachability.getUnreachable(toDel -> futures.add(pool.submit(() ->
-                deleteUnreachableBlocks(toDel, progressCounter, storage, metadata))));
+                deleteUnreachableBlocks(toDel, progressCounter, delCount.get(), storage, metadata))));
         Pair<Long, Long> deleted = futures.stream()
                 .map(ForkJoinTask::join)
                 .reduce((a, b) -> new Pair<>(a.left + b.left, a.right + b.right))
@@ -276,19 +276,20 @@ public class GarbageCollector {
 
     private static Pair<Long, Long> deleteUnreachableBlocks(List<BlockVersion> toDelete,
                                                             AtomicLong progress,
+                                                            long totalBlocksToDelete,
                                                             DeletableContentAddressedStorage storage,
                                                             BlockMetadataStore metadata) {
         long deletedCborBlocks = toDelete.stream().filter(v -> ! v.cid.isRaw()).count();
         long deletedRawBlocks = toDelete.size() - deletedCborBlocks;
-        getWithBackoff(() -> {storage.bulkDelete(toDelete); return true;});
         for (BlockVersion block : toDelete) {
             metadata.remove(block.cid);
         }
+        getWithBackoff(() -> {storage.bulkDelete(toDelete); return true;});
 
-        long logEvery = 100_000;
+        long logEvery = totalBlocksToDelete / 10;
         long updatedProgress = progress.addAndGet(toDelete.size());
         if (updatedProgress / logEvery > (updatedProgress - toDelete.size()) / logEvery)
-            System.out.println("Deleting unreachable blocks: " + updatedProgress + " done");
+            System.out.println("Deleting unreachable blocks: " + updatedProgress * 100 / totalBlocksToDelete + "% done");
 
         return new Pair<>(deletedCborBlocks, deletedRawBlocks);
     }

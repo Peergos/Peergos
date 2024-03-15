@@ -889,6 +889,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
 
     public static void main(String[] args) throws Exception {
         Args a = Args.parse(args);
+        Logging.init(a.with("log-to-console", "true"));
         Crypto crypto = Main.initCrypto();
         Hasher hasher = crypto.hasher;
         S3Config config = S3Config.build(a, Optional.empty());
