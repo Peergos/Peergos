@@ -65,7 +65,7 @@ public class SqliteBlockReachability {
         }
     }
 
-    public void addBlocks(List<BlockVersion> versions) {
+    public synchronized void addBlocks(List<BlockVersion> versions) {
         try (Connection conn = getNonCommittingConnection();
              PreparedStatement insert = conn.prepareStatement(cmds.insertOrIgnoreCommand("INSERT ", INSERT_SUFFIX))) {
             List<BlockVersion> distinct = versions.stream().distinct().collect(Collectors.toList());
