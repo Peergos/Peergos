@@ -304,7 +304,7 @@ public class GarbageCollector {
         return new Pair<>(deletedCborBlocks, deletedRawBlocks);
     }
 
-    private static boolean markReachable(DeletableContentAddressedStorage storage,
+    public static boolean markReachable(DeletableContentAddressedStorage storage,
                                          Cid root,
                                          String username,
                                          SqliteBlockReachability reachability,
@@ -329,8 +329,8 @@ public class GarbageCollector {
                     .orElseGet(() -> getWithBackoff(() -> storage.getLinks(block).join()));
             queue.addAll(links);
             if (queue.size() > 1000) {
-                reachability.setReachable(links, totalReachable);
-                links.clear();
+                reachability.setReachable(queue, totalReachable);
+                queue.clear();
             }
             for (Cid link : links) {
                 markReachable(storage, false, queue, link, reachability, metadata, username, totalReachable);
