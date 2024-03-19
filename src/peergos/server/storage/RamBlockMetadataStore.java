@@ -3,6 +3,7 @@ package peergos.server.storage;
 import peergos.shared.io.ipfs.Cid;
 
 import java.util.*;
+import java.util.function.*;
 import java.util.stream.*;
 
 public class RamBlockMetadataStore implements BlockMetadataStore {
@@ -34,11 +35,12 @@ public class RamBlockMetadataStore implements BlockMetadataStore {
     }
 
     @Override
-    public Stream<BlockVersion> listCbor() {
-        return store.keySet()
+    public void listCbor(Consumer<List<BlockVersion>> res) {
+        res.accept(store.keySet()
                 .stream()
                 .filter(c -> ! c.isRaw())
-                .map(c -> new BlockVersion(c, null, true));
+                .map(c -> new BlockVersion(c, null, true))
+                .collect(Collectors.toList()));
     }
 
     @Override

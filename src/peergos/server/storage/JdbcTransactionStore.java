@@ -100,11 +100,11 @@ public class JdbcTransactionStore implements TransactionStore {
     }
 
     @Override
-    public List<Multihash> getOpenTransactionBlocks() {
+    public List<Cid> getOpenTransactionBlocks() {
         try (Connection conn = getConnection();
              PreparedStatement select = conn.prepareStatement(SELECT_TRANSACTIONS_BLOCKS)) {
             ResultSet rs = select.executeQuery();
-            List<Multihash> results = new ArrayList<>();
+            List<Cid> results = new ArrayList<>();
             while (rs.next())
             {
                 String tid = rs.getString("tid");

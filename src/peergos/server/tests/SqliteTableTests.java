@@ -40,7 +40,7 @@ public class SqliteTableTests {
         txns.addBlock(hash1, TransactionId.build("tid1"), owner);
 
         // check both entries are correct
-        List<Multihash> open = txns.getOpenTransactionBlocks();
+        List<Cid> open = txns.getOpenTransactionBlocks();
         Assert.assertTrue(open.size() == 2);
 
         // check an immediate GC doesn't clear the new block
@@ -51,7 +51,7 @@ public class SqliteTableTests {
         txns.clearOldTransactions(System.currentTimeMillis() + 1000);
 
         // check there are no entries left
-        List<Multihash> empty = txns.getOpenTransactionBlocks();
+        List<Cid> empty = txns.getOpenTransactionBlocks();
         Assert.assertTrue(empty.isEmpty());
     }
 }

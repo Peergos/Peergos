@@ -12,6 +12,7 @@ import peergos.shared.util.*;
 import java.security.*;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.function.*;
 import java.util.stream.*;
 
 public class RAMStorage implements DeletableContentAddressedStorage {
@@ -64,8 +65,10 @@ public class RAMStorage implements DeletableContentAddressedStorage {
 
 
     @Override
-    public Stream<BlockVersion> getAllBlockHashVersions() {
-        return getAllBlockHashes(false).map(c -> new BlockVersion(c, null, true));
+    public void getAllBlockHashVersions(Consumer<List<BlockVersion>> res) {
+        res.accept(getAllBlockHashes(false)
+                .map(c -> new BlockVersion(c, null, true))
+                .collect(Collectors.toList()));
     }
 
     @Override
@@ -74,7 +77,7 @@ public class RAMStorage implements DeletableContentAddressedStorage {
     }
 
     @Override
-    public List<Multihash> getOpenTransactionBlocks() {
+    public List<Cid> getOpenTransactionBlocks() {
         return openTransactions.values()
                 .stream()
                 .flatMap(List::stream)

@@ -4,7 +4,8 @@ import io.ipfs.cid.Cid;
 import org.peergos.blockstore.metadatadb.BlockMetadata;
 import org.peergos.blockstore.metadatadb.BlockMetadataStore;
 
-import java.util.Optional;
+import java.util.*;
+import java.util.function.*;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -44,7 +45,12 @@ public class DelegatingBlockMetadataStore implements BlockMetadataStore {
 
     @Override
     public Stream<Cid> listCbor() {
-        return store.listCbor().filter(bv -> bv.isLatest).map(bv2 -> io.ipfs.cid.Cid.cast(bv2.cid.toBytes()));
+        List<Cid> res = new ArrayList<>(1000);
+        store.listCbor(results -> res.addAll(results.stream()
+                .filter(bv -> bv.isLatest)
+                .map(bv2 -> io.ipfs.cid.Cid.cast(bv2.cid.toBytes()))
+                .collect(Collectors.toList())));
+        return res.stream();
     }
 
     @Override

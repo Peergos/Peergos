@@ -57,11 +57,11 @@ public class TransactionsStoreTests {
             pending.add(block);
             store.addBlock(block, tid, owner);
         }
-        List<Multihash> uncommitted = store.getOpenTransactionBlocks();
+        List<Cid> uncommitted = store.getOpenTransactionBlocks();
         Assert.assertTrue("All blocks present", uncommitted.containsAll(pending));
 
         store.closeTransaction(owner, tid);
-        List<Multihash> empty = store.getOpenTransactionBlocks();
+        List<Cid> empty = store.getOpenTransactionBlocks();
         Assert.assertTrue("All blocks removed", empty.isEmpty());
     }
 }
