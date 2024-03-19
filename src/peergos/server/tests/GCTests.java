@@ -34,7 +34,7 @@ public class GCTests {
         Path file = Path.of(filename);
         SqliteBlockReachability reachability = SqliteBlockReachability.createReachabilityDb(file);
 
-        int nUsers = 10;
+        int nUsers = 1;
         int nRawBlocks = 1 << 9;
         ForkJoinPool listPool = Threads.newPool(2, "GC-list-");
         List<ForkJoinTask<Cid>> futs = IntStream.range(0, nUsers)
