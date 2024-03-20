@@ -10,6 +10,7 @@ import peergos.shared.crypto.hash.*;
 import peergos.shared.crypto.symmetric.SymmetricKey;
 import peergos.shared.display.*;
 import peergos.shared.email.*;
+import peergos.shared.email.Attachment;
 import peergos.shared.io.ipfs.Cid;
 import peergos.shared.io.ipfs.Multihash;
 import peergos.shared.messaging.*;
