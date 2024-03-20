@@ -28,7 +28,7 @@ public class FragmentedPaddedCipherTextTests {
     public void fragmentCountAndAlignment() {
         SymmetricKey from = SymmetricKey.random();
         for (int len: List.of(0, 4000, 4093, 4096, 4099,
-                Fragment.MAX_LENGTH - 3, Fragment.MAX_LENGTH, Fragment.MAX_LENGTH + 3,
+                Fragment.MAX_LENGTH - 3, Fragment.MAX_LENGTH, Math.min(Fragment.MAX_LENGTH + 3, Chunk.MAX_SIZE),
                 Chunk.MAX_SIZE - 4, Chunk.MAX_SIZE)) {
             byte[] data = new byte[len];
             int paddingBlockSize = 4096;
