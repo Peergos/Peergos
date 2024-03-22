@@ -16,7 +16,7 @@ public class IpnsEntry {
         this.data = data;
     }
 
-    public void verifySignature(Multihash signer, peergos.shared.Crypto crypto) {
+    private void verifySignature(Multihash signer, peergos.shared.Crypto crypto) {
         if (! signer.isIdentity())
             throw new IllegalStateException("Only Ed25519 keys  are supported for IPNS in client!");
         byte[] pubKeymaterial = Arrays.copyOfRange(signer.getHash(), 4, 36);
@@ -24,7 +24,8 @@ public class IpnsEntry {
         byte[] unsignedData = pub.unsignMessage(ArrayOps.concat(ArrayOps.concat(signature, "ipns-signature:".getBytes()), data));
     }
 
-    public ResolutionRecord getValue() {
+    public ResolutionRecord getValue(Multihash signer, peergos.shared.Crypto crypto) {
+        verifySignature(signer, crypto);
         CborObject cbor = CborObject.fromByteArray(data);
         if (! (cbor instanceof CborObject.CborMap))
             throw new IllegalStateException("Invalid cbor for IpnsEntry!");

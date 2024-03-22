@@ -32,7 +32,7 @@ public class ServerIdentity extends Builder {
                         new PostgresCommands() :
                         new SqliteCommands();
 
-                JdbcServerIdentityStore idstore = JdbcServerIdentityStore.build(getDBConnector(a, "serverids-file"), sqlCommands);
+                JdbcServerIdentityStore idstore = JdbcServerIdentityStore.build(getDBConnector(a, "serverids-file"), sqlCommands, Main.initCrypto());
                 List<PeerId> ids = idstore.getIdentities();
                 PeerId current = ids.get(ids.size() - 1);
                 byte[] currentRecord = idstore.getRecord(current);
@@ -108,7 +108,7 @@ public class ServerIdentity extends Builder {
                         new PostgresCommands() :
                         new SqliteCommands();
 
-                JdbcServerIdentityStore idstore = JdbcServerIdentityStore.build(getDBConnector(a, "serverids-file"), sqlCommands);
+                JdbcServerIdentityStore idstore = JdbcServerIdentityStore.build(getDBConnector(a, "serverids-file"), sqlCommands, Main.initCrypto());
                 List<PeerId> ids = idstore.getIdentities();
                 if (ids.isEmpty())
                     throw new IllegalStateException("Please run Peergos once before trying to rotate the server identity!");

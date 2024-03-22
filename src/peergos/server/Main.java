@@ -502,7 +502,7 @@ public class Main extends Builder {
             BatCave batStore = new JdbcBatCave(getDBConnector(a, "bat-store", dbConnectionPool), sqlCommands);
             BlockRequestAuthoriser blockAuth = blockAuthoriser(a, batStore, hasher);
             BlockMetadataStore meta = buildBlockMetadata(a);
-            JdbcServerIdentityStore ids = JdbcServerIdentityStore.build(getDBConnector(a, "serverids-file", dbConnectionPool), sqlCommands);
+            JdbcServerIdentityStore ids = JdbcServerIdentityStore.build(getDBConnector(a, "serverids-file", dbConnectionPool), sqlCommands, crypto);
             IpfsWrapper ipfsWrapper = useIPFS ? IpfsWrapper.launch(a, blockAuth, meta, ids) : null;
 
             boolean doExportAggregatedMetrics = a.getBoolean("collect-metrics");
@@ -563,15 +563,11 @@ public class Main extends Builder {
             AccountProxy accountProxy = new HttpAccount(p2pHttpProxy, pkiServerNodeId);
 
             CoreNode core = buildCorenode(a, localStorage, transactions, rawPointers, localPointers, proxingMutable,
-                    rawSocial, usageStore, rawAccount, batStore, account, hasher);
+                    rawSocial, usageStore, rawAccount, batStore, account, crypto);
             localStorage.setPki(core);
             core.initialize();
 
             boolean isPki = nodeIds.contains(pkiServerNodeId);
-            if (useIPFS && ids.getIdentities().size() > 1) {
-                // TODO start proxies for old server identities if any local users haven't updated pki to current id
-
-            }
             QuotaAdmin userQuotas = buildSpaceQuotas(a, localStorage, core,
                     getDBConnector(a, "space-requests-sql-file", dbConnectionPool),
                     getDBConnector(a, "quotas-sql-file", dbConnectionPool), isPki, localhostApi);

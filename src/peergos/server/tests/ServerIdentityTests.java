@@ -22,7 +22,7 @@ public class ServerIdentityTests {
 
     @Test
     public void rotation() {
-        JdbcServerIdentityStore idstore = JdbcServerIdentityStore.build(Builder.buildEphemeralSqlite(), new SqliteCommands());
+        JdbcServerIdentityStore idstore = JdbcServerIdentityStore.build(Builder.buildEphemeralSqlite(), new SqliteCommands(), Main.initCrypto());
         // create a new identity
         PrivKey currentPrivate = Ed25519Kt.generateEd25519KeyPair().getFirst();
         byte[] signedRecord = ServerIdentity.generateSignedIpnsRecord(currentPrivate, Optional.empty(), false,  1);

@@ -423,6 +423,9 @@ public class MultiNodeNetworkTests {
         rotateServerIdentity(iNode1);
         startServer(iNode1);
 
+        // login through other server
+        ensureSignedUp(username, password, getNode(iNode2), crypto);
+
         FileWrapper fromOtherServer = getNode(iNode2).getFile(cap, context.username).join().get();
 
         // update owner host and check cap still works from other server
@@ -430,6 +433,9 @@ public class MultiNodeNetworkTests {
         context.ensureCurrentHost().join();
         Multihash updatedHost = context.network.coreNode.getHomeServer(context.username).join().get();
         Assert.assertTrue(! updatedHost.equals(originalHost));
+
+        // login again through other server
+        ensureSignedUp(username, password, getNode(iNode2), crypto);
         FileWrapper afterRotation = getNode(iNode2).getFile(cap2, context.username).join().get();
     }
 }

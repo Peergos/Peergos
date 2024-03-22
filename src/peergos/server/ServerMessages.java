@@ -9,6 +9,7 @@ import peergos.server.storage.*;
 import peergos.server.storage.admin.*;
 import peergos.server.storage.auth.*;
 import peergos.server.util.*;
+import peergos.shared.*;
 import peergos.shared.corenode.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.mutable.*;
@@ -101,12 +102,13 @@ public class ServerMessages extends Builder {
     private static QuotaAdmin buildQuotaStore(Args a) {
         Supplier<Connection> dbConnectionPool = getDBConnector(a, "transactions-sql-file");
         TransactionStore transactions = buildTransactionStore(a, dbConnectionPool);
-        Hasher hasher = Main.initCrypto().hasher;
+        Crypto crypto = Main.initCrypto();
+        Hasher hasher = crypto.hasher;
         BlockRequestAuthoriser blockRequestAuthoriser = (b, d, s, auth) -> Futures.of(true); // not relevant for local only use here
         try {
             BlockMetadataStore metaDB = buildBlockMetadata(a);
             SqlSupplier cmds = getSqlCommands(a);
-            JdbcServerIdentityStore ids = JdbcServerIdentityStore.build(getDBConnector(a, "serverids-file", dbConnectionPool), cmds);
+            JdbcServerIdentityStore ids = JdbcServerIdentityStore.build(getDBConnector(a, "serverids-file", dbConnectionPool), cmds, crypto);
             DeletableContentAddressedStorage localStorage = buildLocalStorage(a, metaDB, transactions,
                     blockRequestAuthoriser, ids, hasher);
             JdbcIpnsAndSocial rawPointers = buildRawPointers(a, getDBConnector(a, "mutable-pointers-file", dbConnectionPool));
@@ -117,7 +119,7 @@ public class ServerMessages extends Builder {
             JdbcAccount account = new JdbcAccount(getDBConnector(a, "account-sql-file", dbConnectionPool),
                     cmds, new com.webauthn4j.data.client.Origin("http://localhost:8000"), "localhost");
             CoreNode core = buildCorenode(a, localStorage, transactions, rawPointers, localPointers, proxingMutable,
-                    rawSocial, usageStore, account, null, new AccountWithStorage(localStorage, localPointers, account), hasher);
+                    rawSocial, usageStore, account, null, new AccountWithStorage(localStorage, localPointers, account), crypto);
             return buildSpaceQuotas(a, localStorage, core,
                     getDBConnector(a, "space-requests-sql-file", dbConnectionPool),
                     getDBConnector(a, "quotas-sql-file", dbConnectionPool), false, true);

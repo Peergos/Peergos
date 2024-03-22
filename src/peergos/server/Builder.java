@@ -347,7 +347,7 @@ public class Builder {
 
             SigningPrivateKeyAndPublicHash pkiSigner = new SigningPrivateKeyAndPublicHash(pkiPublicHash, pkiSecretKey);
 
-            return new IpfsCoreNode(pkiSigner, a.getInt("max-daily-signups"), dht, crypto.hasher, mutable,
+            return new IpfsCoreNode(pkiSigner, a.getInt("max-daily-signups"), dht, crypto, mutable,
                     account, batCave, peergosIdentity);
         } catch (Exception e) {
             throw new RuntimeException(e);
@@ -369,7 +369,7 @@ public class Builder {
                                          JdbcAccount rawAccount,
                                          BatCave bats,
                                          Account account,
-                                         Hasher hasher) {
+                                         Crypto crypto) {
         Multihash nodeId = localStorage.id().join();
         PublicKeyHash peergosId = PublicKeyHash.fromString(a.getArg("peergos.identity.hash"));
         Multihash pkiServerId = getPkiServerId(a);
@@ -379,7 +379,7 @@ public class Builder {
                 buildPkiCorenode(localPointers, account, bats, localStorage, a) :
                 new MirrorCoreNode(new HTTPCoreNode(buildP2pHttpProxy(a), pkiServerId), rawAccount, bats, account, proxingMutable,
                         localStorage, rawPointers, localPointers, transactions, localSocial, usageStore, pkiServerId, peergosId,
-                        a.fromPeergosDir("pki-mirror-state-path","pki-state.cbor"), hasher);
+                        a.fromPeergosDir("pki-mirror-state-path","pki-state.cbor"), crypto);
     }
 
     public static JdbcIpnsAndSocial buildRawPointers(Args a, Supplier<Connection> dbConnectionPool) {

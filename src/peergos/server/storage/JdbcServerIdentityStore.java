@@ -5,6 +5,9 @@ import io.libp2p.core.crypto.*;
 import org.peergos.protocol.ipns.pb.*;
 import peergos.server.sql.*;
 import peergos.server.util.Logging;
+import peergos.shared.*;
+import peergos.shared.io.ipfs.*;
+import peergos.shared.resolution.*;
 import peergos.shared.storage.*;
 
 import java.sql.*;
@@ -23,11 +26,13 @@ public class JdbcServerIdentityStore implements ServerIdentityStore {
 
     private Supplier<Connection> conn;
     private final SqlSupplier commands;
+    private final Crypto crypto;
     private volatile boolean isClosed;
 
-    public JdbcServerIdentityStore(Supplier<Connection> conn, SqlSupplier commands) {
+    public JdbcServerIdentityStore(Supplier<Connection> conn, SqlSupplier commands, Crypto crypto) {
         this.conn = conn;
         this.commands = commands;
+        this.crypto = crypto;
         init(commands);
     }
 
@@ -123,12 +128,15 @@ public class JdbcServerIdentityStore implements ServerIdentityStore {
             Ipns.IpnsEntry newEntry = Ipns.IpnsEntry.parseFrom(newRecord);
             IpnsEntry existing = new IpnsEntry(currentEntry.getSignatureV2().toByteArray(), currentEntry.getData().toByteArray());
             IpnsEntry updated = new IpnsEntry(newEntry.getSignatureV2().toByteArray(), newEntry.getData().toByteArray());
-            if (updated.getValue().sequence <= existing.getValue().sequence)
-                throw new IllegalStateException("Invalid update!");
-            if (updated.getValue().sequence != newEntry.getSequence())
+            Multihash signer = Multihash.decode(peerId.getBytes());
+            ResolutionRecord existingValue = existing.getValue(signer, crypto);
+            ResolutionRecord updatedValue = updated.getValue(signer, crypto);
+
+            if (updatedValue.sequence != newEntry.getSequence())
                 throw new IllegalStateException("Non matching sequence!");
             if (updated.getIpnsSequence() != newEntry.getSequence())
                 throw new IllegalStateException("Non matching sequence!");
+            updatedValue.ensureValidUpdateTo(existingValue);
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
@@ -151,7 +159,7 @@ public class JdbcServerIdentityStore implements ServerIdentityStore {
         isClosed = true;
     }
 
-    public static JdbcServerIdentityStore build(Supplier<Connection> conn, SqlSupplier commands) {
-        return new JdbcServerIdentityStore(conn, commands);
+    public static JdbcServerIdentityStore build(Supplier<Connection> conn, SqlSupplier commands, Crypto crypto) {
+        return new JdbcServerIdentityStore(conn, commands, crypto);
     }
 }

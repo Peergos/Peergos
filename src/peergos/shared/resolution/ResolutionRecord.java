@@ -33,6 +33,18 @@ public class ResolutionRecord implements Cborable {
         this.sequence = sequence;
     }
 
+    public void ensureValidUpdateTo(ResolutionRecord existingValue) {
+        // sequence must be monotonic
+        if (sequence <= existingValue.sequence)
+            throw new IllegalStateException("Invalid update!");
+        // moved can only change from  false to true
+        if (! moved && existingValue.moved)
+            throw new IllegalStateException("Invalid update!");
+        //  host can only be set, not changed
+        if (existingValue.host.isPresent() && ! host.equals(existingValue.host))
+            throw new IllegalStateException("Invalid update!");
+    }
+
     @Override
     public CborObject toCbor() {
         SortedMap<String, Cborable> state = new TreeMap<>();

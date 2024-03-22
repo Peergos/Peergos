@@ -18,6 +18,7 @@ import peergos.server.storage.auth.JdbcBatCave;
 import peergos.server.util.*;
 import peergos.server.util.Args;
 import peergos.server.storage.auth.BlockRequestAuthoriser;
+import peergos.shared.*;
 import peergos.shared.crypto.hash.Hasher;
 import peergos.shared.io.ipfs.*;
 import peergos.shared.storage.*;
@@ -297,10 +298,11 @@ public class IpfsWrapper implements AutoCloseable {
         SqlSupplier sqlCommands = Builder.getSqlCommands(args);
         Supplier<Connection> dbConn = Builder.getDBConnector(args, "bat-store");
         BatCave batStore = new JdbcBatCave(dbConn, sqlCommands);
-        Hasher hasher = Builder.initCrypto().hasher;
+        Crypto crypto = Builder.initCrypto();
+        Hasher hasher = crypto.hasher;
         BlockRequestAuthoriser blockAuth = Builder.blockAuthoriser(args, batStore, hasher);
         BlockMetadataStore metaDB = Builder.buildBlockMetadata(args);
-        JdbcServerIdentityStore ids = JdbcServerIdentityStore.build(Builder.getDBConnector(args, "serverids-file"), sqlCommands);
+        JdbcServerIdentityStore ids = JdbcServerIdentityStore.build(Builder.getDBConnector(args, "serverids-file"), sqlCommands, crypto);
         return launch(args, blockAuth, metaDB, ids);
     }
 
