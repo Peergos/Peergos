@@ -89,6 +89,7 @@
       <manifest>
         <attribute name="Main-Class" value="peergos.server.Main"/>
         <attribute name="Class-Path" value="${manifest_cp}"/>
+        <attribute name="Multi-Release" value="true"/>
         <attribute name="Created-By" value="Java"/>
         <attribute name="Ant-Version" value="Ant"/>
       </manifest>
