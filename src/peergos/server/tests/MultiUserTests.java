@@ -48,7 +48,7 @@ public class MultiUserTests {
 
     @BeforeClass
     public static void init() {
-        service = Main.PKI_INIT.main(args);
+        service = Main.PKI_INIT.main(args).localApi;
     }
 
     public static void checkUserValidity(NetworkAccess network, String username) {

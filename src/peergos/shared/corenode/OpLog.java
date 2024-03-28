@@ -135,6 +135,11 @@ public class OpLog implements Cborable, Account, MutablePointers, ContentAddress
     }
 
     @Override
+    public CompletableFuture<List<Cid>> ids() {
+        throw new IllegalStateException("Unsupported operation!");
+    }
+
+    @Override
     public CompletableFuture<TransactionId> startTransaction(PublicKeyHash owner) {
         return Futures.of(new TransactionId("1"));
     }
@@ -194,6 +199,11 @@ public class OpLog implements Cborable, Account, MutablePointers, ContentAddress
     @Override
     public CompletableFuture<Optional<Integer>> getSize(Multihash block) {
         throw new IllegalStateException("Unsupported operation!");
+    }
+
+    @Override
+    public CompletableFuture<IpnsEntry> getIpnsEntry(Multihash signer) {
+        throw new IllegalStateException("Unimplemented!");
     }
 
     public static final class BlockWrite implements Cborable {

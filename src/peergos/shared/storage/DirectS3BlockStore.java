@@ -24,7 +24,7 @@ public class DirectS3BlockStore implements ContentAddressedStorage {
     private final Optional<String> baseAuthedUrl;
     private final HttpPoster direct;
     private final ContentAddressedStorage fallback;
-    private final Cid nodeId;
+    private final List<Cid> nodeIds;
     private final LRUCache<PublicKeyHash, Multihash> storageNodeByOwner = new LRUCache<>(100);
     private final CoreNode core;
     private final Hasher hasher;
@@ -32,7 +32,7 @@ public class DirectS3BlockStore implements ContentAddressedStorage {
     public DirectS3BlockStore(BlockStoreProperties blockStoreProperties,
                               HttpPoster direct,
                               ContentAddressedStorage fallback,
-                              Cid nodeId,
+                              List<Cid> nodeIds,
                               CoreNode core,
                               Hasher hasher) {
         this.directWrites = blockStoreProperties.directWrites;
@@ -42,7 +42,7 @@ public class DirectS3BlockStore implements ContentAddressedStorage {
         this.baseAuthedUrl = blockStoreProperties.baseAuthedUrl;
         this.direct = direct;
         this.fallback = fallback;
-        this.nodeId = nodeId;
+        this.nodeIds = nodeIds;
         this.core = core;
         this.hasher = hasher;
     }
@@ -72,7 +72,12 @@ public class DirectS3BlockStore implements ContentAddressedStorage {
 
     @Override
     public CompletableFuture<Cid> id() {
-        return Futures.of(nodeId);
+        return Futures.of(nodeIds.get(nodeIds.size() - 1));
+    }
+
+    @Override
+    public CompletableFuture<List<Cid>> ids() {
+        return Futures.of(nodeIds);
     }
 
     @Override
@@ -97,7 +102,7 @@ public class DirectS3BlockStore implements ContentAddressedStorage {
     private CompletableFuture<Boolean> onOwnersNode(PublicKeyHash owner) {
         Multihash cached = storageNodeByOwner.get(owner);
         if (cached != null)
-            return Futures.of(cached.equals(nodeId));
+            return Futures.of(nodeIds.contains(cached));
         return core.getUsername(owner)
                 .thenCompose(user -> core.getChain(user)
                         .thenApply(chain -> {
@@ -106,8 +111,8 @@ public class DirectS3BlockStore implements ContentAddressedStorage {
                             List<Multihash> storageProviders = chain.get(chain.size() - 1).claim.storageProviders;
                             Multihash mainNode = storageProviders.get(0);
                             storageNodeByOwner.put(owner, mainNode);
-                            Logger.getGlobal().info("Are we on owner's node? " + mainNode + " == " + nodeId);
-                            return mainNode.equals(nodeId);
+                            Logger.getGlobal().info("Are we on owner's node? " + mainNode + " in " + nodeIds);
+                            return nodeIds.contains(mainNode);
                         }));
     }
 
@@ -297,6 +302,11 @@ public class DirectS3BlockStore implements ContentAddressedStorage {
     @Override
     public CompletableFuture<Optional<Integer>> getSize(Multihash block) {
         return fallback.getSize(block);
+    }
+
+    @Override
+    public CompletableFuture<IpnsEntry> getIpnsEntry(Multihash signer) {
+        return fallback.getIpnsEntry(signer);
     }
 
     @Override

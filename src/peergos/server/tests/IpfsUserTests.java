@@ -34,7 +34,7 @@ public class IpfsUserTests extends UserTests {
 
     @Parameterized.Parameters()
     public static Collection<Object[]> parameters() throws Exception {
-        UserService service = Main.PKI_INIT.main(args);
+        UserService service = Main.PKI_INIT.main(args).localApi;
         return Arrays.asList(new Object[][] {
                 {
                         Builder.buildJavaNetworkAccess(new URL("http://localhost:" + args.getInt("port")), false).join(),

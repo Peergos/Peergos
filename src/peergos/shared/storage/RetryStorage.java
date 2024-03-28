@@ -82,11 +82,16 @@ public class RetryStorage implements ContentAddressedStorage {
     }
     @Override
     public CompletableFuture<BlockStoreProperties> blockStoreProperties() {
-        return runWithRetry(() -> target.blockStoreProperties());
+        return runWithRetry(target::blockStoreProperties);
     }
     @Override
     public CompletableFuture<Cid> id() {
-        return runWithRetry(() -> target.id());
+        return runWithRetry(target::id);
+    }
+
+    @Override
+    public CompletableFuture<List<Cid>> ids() {
+        return runWithRetry(target::ids);
     }
 
     @Override
@@ -132,6 +137,11 @@ public class RetryStorage implements ContentAddressedStorage {
     @Override
     public CompletableFuture<Optional<Integer>> getSize(Multihash block) {
         return runWithRetry(() -> target.getSize(block));
+    }
+
+    @Override
+    public CompletableFuture<IpnsEntry> getIpnsEntry(Multihash signer) {
+        return runWithRetry(() -> target.getIpnsEntry(signer));
     }
 
     @Override

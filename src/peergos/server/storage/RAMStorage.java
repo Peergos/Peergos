@@ -41,6 +41,11 @@ public class RAMStorage implements DeletableContentAddressedStorage {
     }
 
     @Override
+    public CompletableFuture<List<Cid>> ids() {
+        return CompletableFuture.completedFuture(List.of(new Cid(1, Cid.Codec.LibP2pKey, Multihash.Type.sha2_256, new byte[32])));
+    }
+
+    @Override
     public CompletableFuture<TransactionId> startTransaction(PublicKeyHash owner) {
         TransactionId tid = new TransactionId(Long.toString(System.currentTimeMillis()));
         openTransactions.put(tid, new ArrayList<>());
@@ -180,6 +185,11 @@ public class RAMStorage implements DeletableContentAddressedStorage {
         if (!storage.containsKey(block))
             return CompletableFuture.completedFuture(Optional.empty());
         return CompletableFuture.completedFuture(Optional.of(storage.get(block).length));
+    }
+
+    @Override
+    public CompletableFuture<IpnsEntry> getIpnsEntry(Multihash signer) {
+        throw new IllegalStateException("Unimplemented!");
     }
 
     public static Cid hashToCid(byte[] input, boolean isRaw) {

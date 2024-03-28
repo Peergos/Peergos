@@ -35,6 +35,11 @@ public abstract class DelegatingStorage implements ContentAddressedStorage {
     }
 
     @Override
+    public CompletableFuture<List<Cid>> ids() {
+        return target.ids();
+    }
+
+    @Override
     public CompletableFuture<TransactionId> startTransaction(PublicKeyHash owner) {
         return target.startTransaction(owner);
     }
@@ -77,6 +82,11 @@ public abstract class DelegatingStorage implements ContentAddressedStorage {
     @Override
     public CompletableFuture<Optional<Integer>> getSize(Multihash block) {
         return target.getSize(block);
+    }
+
+    @Override
+    public CompletableFuture<IpnsEntry> getIpnsEntry(Multihash signer) {
+        return target.getIpnsEntry(signer);
     }
 
     @Override
