@@ -369,7 +369,7 @@ public class IpfsWrapper implements AutoCloseable {
                 .exceptionally(ex -> false);
         };
 
-        Path datastorePath = ipfsWrapper.ipfsDir.resolve("datastore").resolve("h2.datastore");
+        Path datastorePath = ipfsWrapper.ipfsDir.resolve("datastore").resolve("h2-v2.datastore");
         DatabaseRecordStore records = new DatabaseRecordStore(datastorePath.toAbsolutePath().toString());
 
         org.peergos.blockstore.metadatadb.BlockMetadataStore meta =
