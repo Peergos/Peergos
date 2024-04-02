@@ -62,7 +62,6 @@ public class JdbcServerIdentityStore implements ServerIdentityStore {
     public void addIdentity(PrivKey privateKey, byte[] signedIpnsRecord) {
         try (Connection conn = getConnection();
              PreparedStatement insert = conn.prepareStatement(commands.insertServerIdCommand())) {
-            insert.clearParameters();
             insert.setBytes(1, PeerId.fromPubKey(privateKey.publicKey()).getBytes());
             insert.setBytes(2, privateKey.bytes());
             insert.setBytes(3, signedIpnsRecord);

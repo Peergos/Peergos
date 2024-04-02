@@ -73,8 +73,9 @@ public interface SqlSupplier {
     default String createServerIdentitiesTableCommand() {
         return "CREATE TABLE IF NOT EXISTS serverids (" +
                 "id " + getSerialIdType() + " primary key not null," +
-                "peerid varchar(64) not null, " +
-                "private varchar(512) not null, record varchar(1024) not null);";
+                "peerid " + getByteArrayType() + " not null, " +
+                "private " + getByteArrayType() + " not null, " +
+                "record " + getByteArrayType() + " not null);";
     }
 
     default String createBlockMetadataStoreTableCommand() {

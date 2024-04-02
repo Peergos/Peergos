@@ -18,7 +18,7 @@ public class IpnsEntry {
 
     private void verifySignature(Multihash signer, peergos.shared.Crypto crypto) {
         if (! signer.isIdentity())
-            throw new IllegalStateException("Only Ed25519 keys  are supported for IPNS in client!");
+            throw new IllegalStateException("Only Ed25519 keys are supported for IPNS in client!");
         byte[] pubKeymaterial = Arrays.copyOfRange(signer.getHash(), 4, 36);
         Ed25519PublicKey pub = new Ed25519PublicKey(pubKeymaterial, crypto.signer);
         byte[] unsignedData = pub.unsignMessage(ArrayOps.concat(ArrayOps.concat(signature, "ipns-signature:".getBytes()), data));
