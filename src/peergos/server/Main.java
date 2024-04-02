@@ -567,7 +567,9 @@ public class Main extends Builder {
             localStorage.setPki(core);
             core.initialize();
 
-            boolean isPki = nodeIds.contains(pkiServerNodeId);
+            boolean isPki = nodeIds.stream()
+                    .map(Cid::bareMultihash)
+                    .anyMatch(c -> c.equals(pkiServerNodeId.bareMultihash()));
             QuotaAdmin userQuotas = buildSpaceQuotas(a, localStorage, core,
                     getDBConnector(a, "space-requests-sql-file", dbConnectionPool),
                     getDBConnector(a, "quotas-sql-file", dbConnectionPool), isPki, localhostApi);

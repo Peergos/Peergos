@@ -374,7 +374,7 @@ public class Builder {
         PublicKeyHash peergosId = PublicKeyHash.fromString(a.getArg("peergos.identity.hash"));
         Multihash pkiServerId = getPkiServerId(a);
         // build a mirroring proxying corenode, unless we are the pki node
-        boolean isPkiNode = nodeId.equals(pkiServerId);
+        boolean isPkiNode = nodeId.bareMultihash().equals(pkiServerId);
         return isPkiNode ?
                 buildPkiCorenode(localPointers, account, bats, localStorage, a) :
                 new MirrorCoreNode(new HTTPCoreNode(buildP2pHttpProxy(a), pkiServerId), rawAccount, bats, account, proxingMutable,

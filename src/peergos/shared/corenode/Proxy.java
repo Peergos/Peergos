@@ -19,7 +19,9 @@ public class Proxy {
         if (storageIds.isEmpty())
             throw new IllegalStateException("Unable to find home server to send request to for " + ownerKey);
         Multihash target = storageIds.get(0);
-        if (serverIds.contains(target)) { // don't proxy
+        if (serverIds.stream()
+                .map(Cid::bareMultihash)
+                .anyMatch(c -> c.equals(target.bareMultihash()))) { // don't proxy
             return direct.get();
         } else {
             return Futures.asyncExceptionally(() -> proxied.apply(target),
