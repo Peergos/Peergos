@@ -6,6 +6,7 @@ import org.peergos.protocol.ipns.pb.*;
 import peergos.server.sql.*;
 import peergos.server.util.Logging;
 import peergos.shared.*;
+import peergos.shared.cbor.*;
 import peergos.shared.io.ipfs.*;
 import peergos.shared.resolution.*;
 import peergos.shared.storage.*;
@@ -119,6 +120,14 @@ public class JdbcServerIdentityStore implements ServerIdentityStore {
         }
     }
 
+    public ResolutionRecord getValue(IpnsEntry entry) {
+        CborObject cbor = CborObject.fromByteArray(entry.data);
+        if (! (cbor instanceof CborObject.CborMap))
+            throw new IllegalStateException("Invalid cbor for IpnsEntry!");
+        CborObject.CborMap map = (CborObject.CborMap) cbor;
+        return ResolutionRecord.fromCbor(CborObject.fromByteArray(map.getByteArray("Value")));
+    }
+
     @Override
     public void setRecord(PeerId peerId, byte[] newRecord) {
         byte[] currentRaw = getRecord(peerId);
@@ -128,7 +137,7 @@ public class JdbcServerIdentityStore implements ServerIdentityStore {
             IpnsEntry existing = new IpnsEntry(currentEntry.getSignatureV2().toByteArray(), currentEntry.getData().toByteArray());
             IpnsEntry updated = new IpnsEntry(newEntry.getSignatureV2().toByteArray(), newEntry.getData().toByteArray());
             Multihash signer = Multihash.decode(peerId.getBytes());
-            ResolutionRecord existingValue = existing.getValue(signer, crypto);
+            ResolutionRecord existingValue = getValue(existing);
             ResolutionRecord updatedValue = updated.getValue(signer, crypto);
 
             if (updatedValue.sequence != newEntry.getSequence())
