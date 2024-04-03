@@ -101,7 +101,7 @@ public class ServerIdentity extends Builder {
 
     public static final Command<Boolean> ROTATE = new Command<>("rotate",
             "Rotate the identity of this server. If this server has already generated a next identity," +
-                    "you will need the associated password, otherwise a new key pair wil be generated.",
+                    "you will need the associated password, otherwise a new key pair will be generated.",
             a -> {
                 boolean usePostgres = a.getBoolean("use-postgres", false);
                 SqlSupplier sqlCommands = usePostgres ?

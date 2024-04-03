@@ -136,9 +136,8 @@ public class JdbcServerIdentityStore implements ServerIdentityStore {
             Ipns.IpnsEntry newEntry = Ipns.IpnsEntry.parseFrom(newRecord);
             IpnsEntry existing = new IpnsEntry(currentEntry.getSignatureV2().toByteArray(), currentEntry.getData().toByteArray());
             IpnsEntry updated = new IpnsEntry(newEntry.getSignatureV2().toByteArray(), newEntry.getData().toByteArray());
-            Multihash signer = Multihash.decode(peerId.getBytes());
             ResolutionRecord existingValue = getValue(existing);
-            ResolutionRecord updatedValue = updated.getValue(signer, crypto);
+            ResolutionRecord updatedValue = getValue(updated);
 
             if (updatedValue.sequence != newEntry.getSequence())
                 throw new IllegalStateException("Non matching sequence!");
