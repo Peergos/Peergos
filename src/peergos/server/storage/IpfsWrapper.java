@@ -352,7 +352,8 @@ public class IpfsWrapper implements AutoCloseable {
             // make sure we are using the latest identity
             PeerId current = ourIds.get(ourIds.size() - 1);
             if (! current.equals(config.identity.peerId))
-                throw new IllegalStateException("Supplied peerid doesn't match latest in server identity db!");
+                throw new IllegalStateException("Supplied peerid ("+config.identity.peerId.toBase58()+
+                        ") doesn't match latest in server identity db ("+current.toBase58()+")!");
         }
 
         LOG.info("Starting Nabu version: " + APIHandler.CURRENT_VERSION + ", peerid: " + config.identity.peerId);

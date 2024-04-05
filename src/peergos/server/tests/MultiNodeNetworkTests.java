@@ -120,7 +120,11 @@ public class MultiNodeNetworkTests {
     private void rotateServerIdentity(int i)  {
         if (i == 0)
             throw new IllegalStateException("Rotating PKI identity not yet supported in test");
-        ServerIdentity.ROTATE.main(argsToCleanUp.get(i));
+        Optional<Path> config = Optional.of(argsToCleanUp.get(i).getPeergosDirChild("config"));
+        Args withPrivKey = Args.parse(new String[0], config, false);
+        ServerIdentity.ROTATE.main(withPrivKey);
+        Args withNewPrivKey = Args.parse(new String[0], config, false);
+        argsToCleanUp.set(i, withNewPrivKey);
     }
 
     private UserService getService(int i)  {
