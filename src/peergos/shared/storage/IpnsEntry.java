@@ -25,12 +25,18 @@ public class IpnsEntry {
     }
 
     public ResolutionRecord getValue(Multihash signer, peergos.shared.Crypto crypto) {
-        verifySignature(signer, crypto);
         CborObject cbor = CborObject.fromByteArray(data);
         if (! (cbor instanceof CborObject.CborMap))
             throw new IllegalStateException("Invalid cbor for IpnsEntry!");
         CborObject.CborMap map = (CborObject.CborMap) cbor;
-        return ResolutionRecord.fromCbor(CborObject.fromByteArray(map.getByteArray("Value")));
+        ResolutionRecord result = ResolutionRecord.fromCbor(CborObject.fromByteArray(map.getByteArray("Value")));
+        // hard code legacy RSA rotations to avoid an RSA implementation in client
+        if (signer.equals(Multihash.fromBase58("QmPqn9a1tJLpMtaCz1DSQNMAfsv6qXEx6XU2eLMTc2DVV4")) &&
+                result.moved && result.host.isPresent() &&
+                result.host.get().equals(Multihash.fromBase58("12D3KooWEnCzE4uSeniFaCGXQuV1UnYkvqvbQJnYC363S2abgknr")))
+            return result;
+        verifySignature(signer, crypto);
+        return result;
     }
 
     public long getIpnsSequence() {
