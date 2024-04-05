@@ -64,13 +64,16 @@ public class ServerIdentity extends Builder {
                 PrivKey nextPrivate = generateNextIdentity(password, current, crypto);
                 PeerId nextPeerId = PeerId.fromPubKey(nextPrivate.publicKey());
 
-                PrivKey currentPrivate = KeyKt.unmarshalPrivateKey(idstore.getPrivateKey(current));
+                PrivKey currentPrivate = KeyKt.unmarshalPrivateKey(Base64.getDecoder().decode(a.getArg("ipfs.identity.priv-key")));
                 idstore.setRecord(current, generateSignedIpnsRecord(currentPrivate, Optional.of(Multihash.decode(nextPeerId.getBytes())), false, res.sequence + 1));
                 System.out.println("The next server identity will be " + nextPeerId.toBase58());
 
                 return true;
             },
-            Arrays.asList()
+            Arrays.asList(
+                    ARG_SERVERIDS_SQL_FILE,
+                    new Command.Arg("ipfs.identity.priv-key", "Basse64 encoded server identity private key protobuf", true)
+            )
     );
 
     public static byte[] generateSignedIpnsRecord(PrivKey peerPrivate, Optional<Multihash> host, boolean moved, long sequence) {
@@ -132,7 +135,7 @@ public class ServerIdentity extends Builder {
                     nextPriv = Ed25519Kt.generateEd25519KeyPair().getFirst();
                 }
                 PeerId nextPeerId = PeerId.fromPubKey(nextPriv.publicKey());
-                PrivKey currentPrivate = KeyKt.unmarshalPrivateKey(idstore.getPrivateKey(current));
+                PrivKey currentPrivate = KeyKt.unmarshalPrivateKey(Base64.getDecoder().decode(a.getArg("ipfs.identity.priv-key")));
                 idstore.setPrivateKey(currentPrivate);
                 // update peergos config with new private key
                 String encodedPrivate = Base64.getEncoder().encodeToString(nextPriv.bytes());
@@ -148,7 +151,8 @@ public class ServerIdentity extends Builder {
                 return true;
             },
             Arrays.asList(
-                    ARG_SERVERIDS_SQL_FILE
+                    ARG_SERVERIDS_SQL_FILE,
+                    new Command.Arg("ipfs.identity.priv-key", "Basse64 encoded server identity private key protobuf", true)
             )
     );
 
