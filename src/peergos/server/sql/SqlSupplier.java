@@ -74,7 +74,7 @@ public interface SqlSupplier {
         return "CREATE TABLE IF NOT EXISTS serverids (" +
                 "id " + getSerialIdType() + " primary key not null," +
                 "peerid " + getByteArrayType() + " not null, " +
-                "private " + getByteArrayType() + " not null, " +
+                "private " + getByteArrayType() + ", " +
                 "record " + getByteArrayType() + " not null);";
     }
 

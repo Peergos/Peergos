@@ -26,7 +26,7 @@ public class ServerIdentityTests {
         // create a new identity
         PrivKey currentPrivate = Ed25519Kt.generateEd25519KeyPair().getFirst();
         byte[] signedRecord = ServerIdentity.generateSignedIpnsRecord(currentPrivate, Optional.empty(), false,  1);
-        idstore.addIdentity(currentPrivate, signedRecord);
+        idstore.addIdentity(PeerId.fromPubKey(currentPrivate.publicKey()), signedRecord);
 
         List<PeerId> ids = idstore.getIdentities();
         Assert.assertEquals(1, ids.size());
@@ -37,8 +37,9 @@ public class ServerIdentityTests {
         Crypto crypto = Main.initCrypto();
         PrivKey nextPriv = ServerIdentity.generateNextIdentity(password, current, crypto);
         PeerId nextPeerId = PeerId.fromPubKey(nextPriv.publicKey());
+        idstore.setPrivateKey(currentPrivate);
         idstore.setRecord(current, ServerIdentity.generateSignedIpnsRecord(currentPrivate, Optional.of(Multihash.decode(nextPeerId.getBytes())), true,2));
-        idstore.addIdentity(nextPriv, ServerIdentity.generateSignedIpnsRecord(nextPriv, Optional.empty(), false, 1));
+        idstore.addIdentity(nextPeerId, ServerIdentity.generateSignedIpnsRecord(nextPriv, Optional.empty(), false, 1));
 
         List<PeerId> updated = idstore.getIdentities();
         Assert.assertEquals(2, updated.size());

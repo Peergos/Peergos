@@ -40,7 +40,7 @@ public class SqliteCommands implements SqlSupplier {
 
     @Override
     public String insertServerIdCommand() {
-        return "INSERT OR IGNORE INTO serverids (peerid, private, record) VALUES (?, ?, ?);";
+        return "INSERT OR IGNORE INTO serverids (peerid, record) VALUES (?, ?);";
     }
 
     @Override

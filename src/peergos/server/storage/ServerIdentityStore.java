@@ -9,7 +9,9 @@ public interface ServerIdentityStore {
 
     List<PeerId> getIdentities();
 
-    void addIdentity(PrivKey privateKey, byte[] signedIpnsRecord);
+    void addIdentity(PeerId id, byte[] signedIpnsRecord);
+
+    void setPrivateKey(PrivKey privateKey);
 
     byte[] getPrivateKey(PeerId peerId);
 

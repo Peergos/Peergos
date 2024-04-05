@@ -24,6 +24,7 @@ public class JdbcServerIdentityStore implements ServerIdentityStore {
     private static final String SELECT_PRIVATE = "SELECT private FROM serverids WHERE peerid=?;";
     private static final String GET_RECORD = "SELECT record FROM serverids WHERE peerid=?;";
     private static final String SET_RECORD = "UPDATE serverids SET record=? WHERE peerid = ?;";
+    private static final String SET_PRIVATE = "UPDATE serverids SET private=? WHERE peerid = ?;";
 
     private Supplier<Connection> conn;
     private final SqlSupplier commands;
@@ -60,12 +61,23 @@ public class JdbcServerIdentityStore implements ServerIdentityStore {
     }
 
     @Override
-    public void addIdentity(PrivKey privateKey, byte[] signedIpnsRecord) {
+    public void addIdentity(PeerId id, byte[] signedIpnsRecord) {
         try (Connection conn = getConnection();
              PreparedStatement insert = conn.prepareStatement(commands.insertServerIdCommand())) {
-            insert.setBytes(1, PeerId.fromPubKey(privateKey.publicKey()).getBytes());
-            insert.setBytes(2, privateKey.bytes());
-            insert.setBytes(3, signedIpnsRecord);
+            insert.setBytes(1, id.getBytes());
+            insert.setBytes(2, signedIpnsRecord);
+            insert.executeUpdate();
+        } catch (SQLException sqe) {
+            LOG.log(Level.WARNING, sqe.getMessage(), sqe);
+        }
+    }
+
+    @Override
+    public void setPrivateKey(PrivKey privateKey) {
+        try (Connection conn = getConnection();
+             PreparedStatement insert = conn.prepareStatement(SET_PRIVATE)) {
+            insert.setBytes(1, privateKey.bytes());
+            insert.setBytes(2, PeerId.fromPubKey(privateKey.publicKey()).getBytes());
             insert.executeUpdate();
         } catch (SQLException sqe) {
             LOG.log(Level.WARNING, sqe.getMessage(), sqe);

@@ -344,17 +344,15 @@ public class IpfsWrapper implements AutoCloseable {
         // use identity from db if present, otherwise move to db
         List<PeerId> ourIds = ids.getIdentities();
         if (ourIds.isEmpty()) {
-            // initialise id db with our current peer id and sign an ipns record
+            // initialise id db with our current peerid and sign an ipns record
             PrivKey peerPrivate = KeyKt.unmarshalPrivateKey(config.identity.privKeyProtobuf);
             byte[] signedRecord = ServerIdentity.generateSignedIpnsRecord(peerPrivate, Optional.empty(), false, 1);
-            ids.addIdentity(peerPrivate, signedRecord);
+            ids.addIdentity(PeerId.fromPubKey(peerPrivate.publicKey()), signedRecord);
         } else {
-            // make sure we use the latest peerid from the db as the source of truth
+            // make sure we are using the latest identity
             PeerId current = ourIds.get(ourIds.size() - 1);
-            byte[] privateKeyProto = ids.getPrivateKey(current);
-            ipfsConfigParams = ipfsConfigParams.withIdentity(Optional.of(new IdentitySection(privateKeyProto, current)));
-            ipfsWrapper = new IpfsWrapper(ipfsDir, ipfsConfigParams);
-            config = ipfsWrapper.configure();
+            if (! current.equals(config.identity.peerId))
+                throw new IllegalStateException("Supplied peerid doesn't match latest in server identity db!");
         }
 
         LOG.info("Starting Nabu version: " + APIHandler.CURRENT_VERSION + ", peerid: " + config.identity.peerId);
