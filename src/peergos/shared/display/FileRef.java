@@ -1,6 +1,7 @@
 package peergos.shared.display;
 
 import jsinterop.annotations.*;
+import peergos.shared.io.ipfs.api.JSONParser;
 import peergos.shared.cbor.*;
 import peergos.shared.io.ipfs.Multihash;
 import peergos.shared.user.fs.*;
@@ -29,6 +30,20 @@ public class FileRef implements Cborable {
         state.put("h", new CborObject.CborMerkleLink(contentHash));
 
         return CborObject.CborMap.build(state);
+    }
+
+    public String toJson() {
+        return "{\"path\":\"" + path + "\", \"cap\":\"" + cap.toLink() + "\", \"contentHash\":\"" + contentHash.toString() + "\"}";
+    }
+
+    public static FileRef fromJson(String json) {
+        Map<String, Object> jsonMap = (Map) JSONParser.parse(json);
+        String path = (String) jsonMap.get("path");
+        String capStr = (String) jsonMap.get("cap");
+        String contentHashStr = (String) jsonMap.get("contentHash");
+        AbsoluteCapability cap = AbsoluteCapability.fromLink(capStr);
+        Multihash contentHash = Multihash.fromBase58(contentHashStr);
+        return new FileRef(path, cap, contentHash);
     }
 
     public static FileRef fromCbor(Cborable cbor) {

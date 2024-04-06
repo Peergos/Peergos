@@ -1,6 +1,7 @@
 package peergos.client;
 
 import jsinterop.annotations.*;
+import peergos.shared.cbor.CborObject;
 import peergos.shared.login.mfa.MultiFactorAuthResponse;
 import peergos.shared.login.mfa.WebauthnResponse;
 import peergos.shared.util.Either;
@@ -30,6 +31,11 @@ public class JsUtil {
             map.put(keys[i], values[i]);
         }
         return map;
+    }
+
+    @JsMethod
+    public static CborObject fromByteArray(byte[] cbor) {
+        return CborObject.fromByteArray(cbor);
     }
 
     @JsMethod
