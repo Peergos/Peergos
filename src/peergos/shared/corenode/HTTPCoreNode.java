@@ -279,5 +279,10 @@ public class HTTPCoreNode implements CoreNode {
         }
     }
 
+    @Override
+    public CompletableFuture<Optional<Multihash>> getNextServerId(Multihash serverId) {
+        throw new IllegalStateException("getNextServerId cannot be called remotely!");
+    }
+
     @Override public void close() {}
 }

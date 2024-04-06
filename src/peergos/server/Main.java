@@ -89,12 +89,13 @@ public class Main extends Builder {
                     new Command.Arg("s3.region.endpoint", "Base url for S3 service", false),
                     new Command.Arg("block-store-filter", "Indicate blockstore filter type. Can be 'none', 'bloom', 'infini'", false),
                     new Command.Arg("block-store-filter-false-positive-rate", "The false positive rate to apply to the block-store-filter. ", false),
-                    ARG_BAT_STORE
+                    ARG_BAT_STORE,
+                    ServerIdentity.ARG_SERVERIDS_SQL_FILE
                     )
     );
 
 
-    public static final Command<UserService> PEERGOS = new Command<>("daemon",
+    public static final Command<ServerProcesses> PEERGOS = new Command<>("daemon",
             "The user facing Peergos server",
             Main::startPeergos,
             Stream.of(
@@ -119,6 +120,7 @@ public class Main extends Builder {
                     new Command.Arg("space-usage-sql-file", "The filename for the space usage datastore", true, "space-usage.sql"),
                     new Command.Arg("server-messages-sql-file", "The filename for the server messages datastore", true, "server-messages.sql"),
                     ARG_TRANSACTIONS_SQL_FILE,
+                    ServerIdentity.ARG_SERVERIDS_SQL_FILE,
                     new Command.Arg("webroot", "the path to the directory to serve as the web root", false),
                     new Command.Arg("default-quota", "default maximum storage per user", false, Long.toString(1024L * 1024 * 1024)),
                     new Command.Arg("admin-usernames", "A comma separated list of usernames who can approve local space requests", false),
@@ -252,7 +254,7 @@ public class Main extends Builder {
         }
     }
 
-    public static final Command<UserService> PKI_INIT = new Command<>("pki-init",
+    public static final Command<ServerProcesses> PKI_INIT = new Command<>("pki-init",
             "Bootstrap and start the Peergos PKI Server",
             args -> {
                 try {
@@ -286,7 +288,7 @@ public class Main extends Builder {
                         }
                     }
 
-                    UserService daemon = PEERGOS.main(args);
+                    ServerProcesses daemon = PEERGOS.main(args);
                     poststrap(args);
                     return daemon;
                 } catch (Exception e) {
@@ -302,6 +304,7 @@ public class Main extends Builder {
                     new Command.Arg("mutable-pointers-file", "The filename for the mutable pointers (or :memory: for ram based)", true, "mutable.sql"),
                     new Command.Arg("social-sql-file", "The filename for the follow requests (or :memory: for ram based)", true, "social.sql"),
                     new Command.Arg("transactions-sql-file", "The filename for the open transactions datastore", true, "transactions.sql"),
+                    ServerIdentity.ARG_SERVERIDS_SQL_FILE,
                     new Command.Arg("space-requests-sql-file", "The filename for the space requests datastore", true, "space-requests.sql"),
                     new Command.Arg("account-sql-file", "The filename for the login datastore", true, "login.sql"),
                     new Command.Arg("space-usage-sql-file", "The filename for the space usage datastore", true, "space-usage.sql"),
@@ -317,7 +320,7 @@ public class Main extends Builder {
             )
     );
 
-    public static final Command<UserService> PKI = new Command<>("pki",
+    public static final Command<ServerProcesses> PKI = new Command<>("pki",
             "Start the Peergos PKI Server that has already been bootstrapped",
             args -> {
                 try {
@@ -335,15 +338,12 @@ public class Main extends Builder {
                     BatCave batStore = new JdbcBatCave(getDBConnector(args, "bat-store", transactionDb), sqlCommands);
                     BlockRequestAuthoriser authoriser = Builder.blockAuthoriser(args, batStore, crypto.hasher);
 
+                    if (S3Config.useS3(args))
+                        throw new IllegalStateException("S3 not supported for PKI!");
                     ContentAddressedStorage storage = useIPFS ?
                             new ContentAddressedStorage.HTTP(Builder.buildIpfsApi(args), false, crypto.hasher) :
-                            S3Config.useS3(args) ?
-                                    new S3BlockStorage(S3Config.build(args, Optional.empty()), Cid.decode(args.getArg("ipfs.id")),
-                                            BlockStoreProperties.empty(), transactions, authoriser, new RamBlockMetadataStore(),
-                                            new RamBlockCache(1024, 1000), crypto.hasher, new DeletableContentAddressedStorage.HTTP(Builder.buildIpfsApi(args), false, crypto.hasher),
-                                            new DeletableContentAddressedStorage.HTTP(Builder.buildIpfsApi(args), false, crypto.hasher)) :
-                                    new FileContentAddressedStorage(blockstorePath(args),
-                                            transactions, authoriser, crypto.hasher);
+                            new FileContentAddressedStorage(blockstorePath(args),
+                                    transactions, authoriser, crypto.hasher);
                     Multihash pkiIpfsNodeId = storage.id().get();
 
                     if (ipfs != null)
@@ -364,6 +364,7 @@ public class Main extends Builder {
                     new Command.Arg("mutable-pointers-file", "The filename for the mutable pointers (or :memory: for ram based)", true, "mutable.sql"),
                     new Command.Arg("social-sql-file", "The filename for the follow requests (or :memory: for ram based)", true, "social.sql"),
                     new Command.Arg("transactions-sql-file", "The filename for the open transactions datastore", true, "transactions.sql"),
+                    ServerIdentity.ARG_SERVERIDS_SQL_FILE,
                     new Command.Arg("space-requests-sql-file", "The filename for the space requests datastore", true, "space-requests.sql"),
                     new Command.Arg("space-usage-sql-file", "The filename for the space usage datastore", true, "space-usage.sql"),
                     ARG_IPFS_API_ADDRESS,
@@ -486,7 +487,7 @@ public class Main extends Builder {
             )
     );
 
-    public static UserService startPeergos(Args a) {
+    public static ServerProcesses startPeergos(Args a) {
         try {
             Crypto crypto = initCrypto();
             Hasher hasher = crypto.hasher;
@@ -501,7 +502,8 @@ public class Main extends Builder {
             BatCave batStore = new JdbcBatCave(getDBConnector(a, "bat-store", dbConnectionPool), sqlCommands);
             BlockRequestAuthoriser blockAuth = blockAuthoriser(a, batStore, hasher);
             BlockMetadataStore meta = buildBlockMetadata(a);
-            IpfsWrapper ipfsWrapper = useIPFS ? IpfsWrapper.launch(a, blockAuth, meta) : null;
+            JdbcServerIdentityStore ids = JdbcServerIdentityStore.build(getDBConnector(a, "serverids-file", dbConnectionPool), sqlCommands, crypto);
+            IpfsWrapper ipfsWrapper = useIPFS ? IpfsWrapper.launch(a, blockAuth, meta, ids) : null;
 
             boolean doExportAggregatedMetrics = a.getBoolean("collect-metrics");
             if (doExportAggregatedMetrics) {
@@ -523,11 +525,12 @@ public class Main extends Builder {
 
             TransactionStore transactions = buildTransactionStore(a, dbConnectionPool);
 
-            DeletableContentAddressedStorage localStorage = buildLocalStorage(a, meta, transactions, blockAuth, crypto.hasher);
+            DeletableContentAddressedStorage localStorage = buildLocalStorage(a, meta, transactions, blockAuth,
+                    ids, crypto.hasher);
             JdbcIpnsAndSocial rawPointers = buildRawPointers(a,
                     getDBConnector(a, "mutable-pointers-file", dbConnectionPool));
 
-            Multihash nodeId = localStorage.id().get();
+            List<Cid> nodeIds = localStorage.ids().get();
 
             MutablePointers localPointers = UserRepository.build(localStorage, rawPointers);
             MutablePointersProxy proxingMutable = new HttpMutablePointers(p2pHttpProxy, pkiServerNodeId);
@@ -560,15 +563,17 @@ public class Main extends Builder {
             AccountProxy accountProxy = new HttpAccount(p2pHttpProxy, pkiServerNodeId);
 
             CoreNode core = buildCorenode(a, localStorage, transactions, rawPointers, localPointers, proxingMutable,
-                    rawSocial, usageStore, rawAccount, batStore, account, hasher);
+                    rawSocial, usageStore, rawAccount, batStore, account, crypto);
             localStorage.setPki(core);
             core.initialize();
 
-            boolean isPki = Cid.decodePeerId(a.getArg("pki-node-id")).equals(nodeId);
+            boolean isPki = nodeIds.stream()
+                    .map(Cid::bareMultihash)
+                    .anyMatch(c -> c.equals(pkiServerNodeId.bareMultihash()));
             QuotaAdmin userQuotas = buildSpaceQuotas(a, localStorage, core,
                     getDBConnector(a, "space-requests-sql-file", dbConnectionPool),
                     getDBConnector(a, "quotas-sql-file", dbConnectionPool), isPki, localhostApi);
-            CoreNode signupFilter = new SignUpFilter(core, userQuotas, nodeId, httpSpaceUsage, hasher,
+            CoreNode signupFilter = new SignUpFilter(core, userQuotas, nodeIds.get(nodeIds.size() - 1), httpSpaceUsage, hasher,
                     a.getInt("max-daily-paid-signups", isPaidInstance(a) ? 10 : 0), isPki);
 
             if (a.getBoolean("update-usage", true))
@@ -584,17 +589,17 @@ public class Main extends Builder {
             int maxCachedBlockSize = a.getInt("max-cached-block-size", 50 * 1024);
             ContentAddressedStorage filteringDht = new WriteFilter(localStorage, spaceChecker::allowWrite);
             ContentAddressedStorageProxy proxingDht = new ContentAddressedStorageProxy.HTTP(p2pHttpProxy);
-            ContentAddressedStorage p2pDht = new ContentAddressedStorage.Proxying(filteringDht, proxingDht, nodeId, core);
+            ContentAddressedStorage p2pDht = new ContentAddressedStorage.Proxying(filteringDht, proxingDht, nodeIds, core);
 
             Path blacklistPath = a.fromPeergosDir("blacklist_file", "blacklist.txt");
             PublicKeyBlackList blacklist = new UserBasedBlacklist(blacklistPath, core, localMutable, localStorage, hasher);
             MutablePointers blockingMutablePointers = new BlockingMutablePointers(localMutable, blacklist);
-            MutablePointers p2mMutable = new ProxyingMutablePointers(nodeId, core, blockingMutablePointers, proxingMutable);
+            MutablePointers p2mMutable = new ProxyingMutablePointers(nodeIds, core, blockingMutablePointers, proxingMutable);
 
             SocialNetworkProxy httpSocial = new HttpSocialNetwork(p2pHttpProxy, p2pHttpProxy);
 
             SocialNetwork local = UserRepository.build(localStorage, rawSocial);
-            SocialNetwork p2pSocial = new ProxyingSocialNetwork(nodeId, core, local, httpSocial);
+            SocialNetwork p2pSocial = new ProxyingSocialNetwork(nodeIds, core, local, httpSocial);
 
             Set<String> adminUsernames = Arrays.asList(a.getArg("admin-usernames", "").split(","))
                     .stream()
@@ -602,14 +607,14 @@ public class Main extends Builder {
                     .collect(Collectors.toSet());
             boolean enableWaitlist = a.getBoolean("enable-wait-list", false);
             Admin storageAdmin = new Admin(adminUsernames, userQuotas, core, localStorage, enableWaitlist);
-            ProxyingSpaceUsage p2pSpaceUsage = new ProxyingSpaceUsage(nodeId, corePropagator, spaceChecker, httpSpaceUsage);
+            ProxyingSpaceUsage p2pSpaceUsage = new ProxyingSpaceUsage(nodeIds, corePropagator, spaceChecker, httpSpaceUsage);
 
-            Account p2pAccount = new ProxyingAccount(nodeId, core, account, accountProxy);
+            Account p2pAccount = new ProxyingAccount(nodeIds, core, account, accountProxy);
             VerifyingAccount verifyingAccount = new VerifyingAccount(p2pAccount, core, localStorage);
             ContentAddressedStorage cachingStorage = new AuthedCachingStorage(p2pDht, blockAuth, hasher, blockCacheSize, maxCachedBlockSize);
             ContentAddressedStorage incomingP2PStorage = new GetBlockingStorage(cachingStorage);
 
-            ProxyingBatCave p2pBats = new ProxyingBatCave(nodeId, core, batStore, new HttpBatCave(p2pHttpProxy, p2pHttpProxy));
+            ProxyingBatCave p2pBats = new ProxyingBatCave(nodeIds, core, batStore, new HttpBatCave(p2pHttpProxy, p2pHttpProxy));
             ServerMessageStore serverMessages = new ServerMessageStore(getDBConnector(a, "server-messages-sql-file", dbConnectionPool),
                     sqlCommands, core, p2pDht);
             UserService localAPI = new UserService(cachingStorage, p2pBats, crypto, corePropagator, verifyingAccount,
@@ -636,13 +641,12 @@ public class Main extends Builder {
             List<String> appSubdomains = Arrays.asList(a.getArg("apps", "markup-viewer,email,calendar,todo-board,code-editor,pdf").split(","));
             List<String> frameDomains = paymentDomain.map(Arrays::asList).orElse(Collections.emptyList());
 
-            localAPI.initAndStart(localAPIAddress, nodeId, tlsProps, publicHostname, blockstoreDomains, frameDomains, appSubdomains,
+            localAPI.initAndStart(localAPIAddress, nodeIds, tlsProps, publicHostname, blockstoreDomains, frameDomains, appSubdomains,
                     a.getBoolean("include-csp", true), basicAuth, webroot, appDevTarget, useWebAssetCache, isPublicServer, maxConnectionQueue, handlerThreads);
-            p2pAPI.initAndStart(p2pAPIAddress, nodeId, Optional.empty(), publicHostname, blockstoreDomains, frameDomains, appSubdomains,
+            p2pAPI.initAndStart(p2pAPIAddress, nodeIds, Optional.empty(), publicHostname, blockstoreDomains, frameDomains, appSubdomains,
                     a.getBoolean("include-csp", true), basicAuth, webroot, Optional.empty(), useWebAssetCache, isPublicServer, maxConnectionQueue, handlerThreads);
 
-            boolean isPkiNode = nodeId.equals(pkiServerNodeId);
-            if (! isPkiNode && useIPFS) {
+            if (! isPki && useIPFS) {
                 // ipfs-nucleus doesn't implement swarm. We may reinstate these in the bootstrap list in the future
 //                int pkiNodeSwarmPort = a.getInt("pki.node.swarm.port");
 //                InetAddress pkiNodeIpAddress = InetAddress.getByName(a.getArg("pki.node.ipaddress"));
@@ -736,7 +740,7 @@ public class Main extends Builder {
                 System.out.println("Peergos daemon started. Browse to " + host + "/ to sign up or login. \nRun with -generate-token true to generate a signup token.");
             InstanceAdmin.VersionInfo version = storageAdmin.getVersionInfo().join();
             System.out.println("Running version " + version);
-            return localAPI;
+            return new ServerProcesses(localAPI, p2pAPI, ipfsWrapper);
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
@@ -882,6 +886,7 @@ public class Main extends Builder {
                     QuotaCLI.QUOTA,
                     UsageCLI.USAGE,
                     ServerMessages.SERVER_MESSAGES,
+                    ServerIdentity.SERVER_IDENTITY,
                     GATEWAY,
                     Mirror.MIRROR,
                     MIGRATE,

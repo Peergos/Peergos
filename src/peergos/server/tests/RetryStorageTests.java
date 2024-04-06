@@ -8,10 +8,7 @@ import peergos.shared.cbor.CborObject;
 import peergos.shared.crypto.hash.PublicKeyHash;
 import peergos.shared.io.ipfs.Cid;
 import peergos.shared.io.ipfs.Multihash;
-import peergos.shared.storage.BlockStoreProperties;
-import peergos.shared.storage.ContentAddressedStorage;
-import peergos.shared.storage.RetryStorage;
-import peergos.shared.storage.TransactionId;
+import peergos.shared.storage.*;
 import peergos.shared.storage.auth.*;
 import peergos.shared.util.ProgressConsumer;
 import java.util.*;
@@ -38,6 +35,16 @@ public class RetryStorageTests {
             }else{
                 counter=1;
                 return CompletableFuture.completedFuture(new Cid(1, Cid.Codec.LibP2pKey, Multihash.Type.sha2_256, new byte[32]));
+            }
+        }
+
+        @Override
+        public CompletableFuture<List<Cid>> ids() {
+            if(counter++ % retryLimit != 0) {
+                return CompletableFuture.failedFuture(new Error("failure!"));
+            }else{
+                counter=1;
+                return CompletableFuture.completedFuture(List.of(new Cid(1, Cid.Codec.LibP2pKey, Multihash.Type.sha2_256, new byte[32])));
             }
         }
 
@@ -128,6 +135,11 @@ public class RetryStorageTests {
                 counter=1;
                 return CompletableFuture.completedFuture(Optional.empty());
             }
+        }
+
+        @Override
+        public CompletableFuture<IpnsEntry> getIpnsEntry(Multihash signer) {
+            throw new IllegalStateException("Unimplemented!");
         }
     }
 

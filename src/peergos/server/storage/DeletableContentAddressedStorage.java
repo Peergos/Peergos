@@ -266,17 +266,26 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
 
         @Override
         public void delete(Cid hash) {
-            poster.get(apiPrefix + BLOCK_RM + "?stream-channels=true&arg=" + hash.toString()).join();
+            poster.get(apiPrefix + BLOCK_RM + "?arg=" + hash.toString()).join();
+        }
+
+        @Override
+        public void bulkDelete(List<BlockVersion> blocks) {
+            Map<String, Object> json = new HashMap<>();
+            json.put("cids", blocks.stream()
+                    .map(v -> v.cid.toString())
+                    .collect(Collectors.toList()));
+            poster.post(apiPrefix + BLOCK_RM_BULK, JSONParser.toString(json).getBytes(), true);
         }
 
         @Override
         public void bloomAdd(Multihash hash) {
-            poster.get(apiPrefix + BLOOM_ADD + "?stream-channels=true&arg=" + hash.toString()).join();
+            poster.get(apiPrefix + BLOOM_ADD + "?arg=" + hash.toString()).join();
         }
 
         @Override
         public boolean hasBlock(Cid hash) {
-            return poster.get(apiPrefix + BLOCK_PRESENT + "?stream-channels=true&arg=" + hash.toString())
+            return poster.get(apiPrefix + BLOCK_PRESENT + "?arg=" + hash.toString())
                     .thenApply(raw -> new String(raw).equals("true")).join();
         }
 

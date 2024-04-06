@@ -186,5 +186,10 @@ public class TofuCoreNode implements CoreNode {
     }
 
     @Override
+    public CompletableFuture<Optional<Multihash>> getNextServerId(Multihash serverId) {
+        return source.getNextServerId(serverId);
+    }
+
+    @Override
     public void close() throws IOException {}
 }

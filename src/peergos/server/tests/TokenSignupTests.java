@@ -32,7 +32,7 @@ public class TokenSignupTests {
 
     @Parameterized.Parameters()
     public static Collection<Object[]> parameters() throws Exception {
-        UserService service = Main.PKI_INIT.main(args);
+        UserService service = Main.PKI_INIT.main(args).localApi;
         WriteSynchronizer synchronizer = new WriteSynchronizer(service.mutable, service.storage, crypto.hasher);
         MutableTree mutableTree = new MutableTreeImpl(service.mutable, service.storage, crypto.hasher, synchronizer);
         // use actual http messager

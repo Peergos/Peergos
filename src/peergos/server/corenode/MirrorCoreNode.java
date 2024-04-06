@@ -15,6 +15,7 @@ import peergos.shared.hamt.*;
 import peergos.shared.io.ipfs.Cid;
 import peergos.shared.io.ipfs.Multihash;
 import peergos.shared.mutable.*;
+import peergos.shared.resolution.*;
 import peergos.shared.social.*;
 import peergos.shared.storage.*;
 import peergos.shared.storage.auth.*;
@@ -47,6 +48,7 @@ public class MirrorCoreNode implements CoreNode {
     private final PublicKeyHash pkiOwnerIdentity;
     private final Multihash ourNodeId, pkiPeerId;
     private final Hasher hasher;
+    private final Crypto crypto;
 
     private volatile CorenodeState state;
     private final Path statePath;
@@ -66,7 +68,7 @@ public class MirrorCoreNode implements CoreNode {
                           Multihash pkiPeerId,
                           PublicKeyHash pkiOwnerIdentity,
                           Path statePath,
-                          Hasher hasher) {
+                          Crypto crypto) {
         this.writeTarget = writeTarget;
         this.rawAccount = rawAccount;
         this.batCave = batCave;
@@ -82,7 +84,8 @@ public class MirrorCoreNode implements CoreNode {
         this.pkiOwnerIdentity = pkiOwnerIdentity;
         this.statePath = statePath;
         this.ourNodeId = ipfs.id().join();
-        this.hasher = hasher;
+        this.hasher = crypto.hasher;
+        this.crypto = crypto;
         try {
             this.state = load(statePath, pkiOwnerIdentity);
         } catch (IOException e) {
@@ -536,6 +539,32 @@ public class MirrorCoreNode implements CoreNode {
     @Override
     public CompletableFuture<List<String>> getUsernames(String prefix) {
         return CompletableFuture.completedFuture(state.usernames);
+    }
+
+    @Override
+    public List<Multihash> getStorageProviders(PublicKeyHash owner) {
+        String username = getUsername(owner).join();
+        List<UserPublicKeyLink> chain = getChain(username).join();
+        if (chain.isEmpty())
+            return Collections.emptyList();
+        List<Multihash> fromPki = chain.get(chain.size() - 1).claim.storageProviders;
+        List<Multihash> withIdRotations = fromPki.stream()
+                .map(h -> rotatedServers.getOrDefault(h.bareMultihash(), h))
+                .collect(Collectors.toList());
+        return withIdRotations;
+    }
+
+    private final LRUCache<Multihash, Multihash> rotatedServers = new LRUCache<>(100);
+
+    @Override
+    public CompletableFuture<Optional<Multihash>> getNextServerId(Multihash serverId) {
+        return ipfs.getIpnsEntry(serverId)
+                .thenApply(e -> {
+                    ResolutionRecord value = e.getValue(serverId, crypto);
+                    if (value.moved)
+                        value.host.ifPresent(newHost -> rotatedServers.put(serverId, new Cid(1, Cid.Codec.LibP2pKey, newHost.type, newHost.getHash())));
+                    return value.host;
+                });
     }
 
     @Override
