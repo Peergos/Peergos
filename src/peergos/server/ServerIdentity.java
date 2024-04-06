@@ -21,7 +21,8 @@ import java.util.*;
 public class ServerIdentity extends Builder {
     public static final Command.Arg ARG_SERVERIDS_SQL_FILE =
             new Command.Arg("serverids-file", "The filename for the server ids datastore", false, "serverids.sql");
-
+    public static final Command.Arg ARG_PRIVATE_KEY =
+            new Command.Arg("ipfs.identity.priv-key", "Basse64 encoded server identity private key protobuf", true);
     public static final Command<Boolean> GEN_NEXT = new Command<>("gen-next",
             "Generate the next identity of this server. This will allow you to recover if the server is " +
                     "compromised its identity keypair is stolen. You will be given a password which can be used to " +
@@ -72,7 +73,7 @@ public class ServerIdentity extends Builder {
             },
             Arrays.asList(
                     ARG_SERVERIDS_SQL_FILE,
-                    new Command.Arg("ipfs.identity.priv-key", "Basse64 encoded server identity private key protobuf", true)
+                    ARG_PRIVATE_KEY
             )
     );
 
@@ -152,7 +153,7 @@ public class ServerIdentity extends Builder {
             },
             Arrays.asList(
                     ARG_SERVERIDS_SQL_FILE,
-                    new Command.Arg("ipfs.identity.priv-key", "Basse64 encoded server identity private key protobuf", true)
+                    ARG_PRIVATE_KEY
             )
     );
 
