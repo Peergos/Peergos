@@ -219,6 +219,7 @@ public class IpfsWrapper implements AutoCloseable {
     private EmbeddedIpfs embeddedIpfs;
     private HttpServer apiServer;
     private HttpServer p2pServer;
+    private volatile boolean running = true;
 
     public IpfsWrapper(Path ipfsDir, IpfsConfigParams ipfsConfigParams) {
         File ipfsDirF = ipfsDir.toFile();
@@ -266,6 +267,7 @@ public class IpfsWrapper implements AutoCloseable {
             embeddedIpfs.stop().join();
             apiServer.stop(0);
             p2pServer.stop(0);
+            running = false;
         } catch (Exception ex) {
             ex.printStackTrace();
         }
@@ -308,7 +310,7 @@ public class IpfsWrapper implements AutoCloseable {
 
     private void startIdPublisher(ServerIdentityStore ids) {
         Thread publisher = new Thread(() -> {
-            while (true) {
+            while (running) {
                 try {
                     List<PeerId> all = ids.getIdentities();
                     for (PeerId id : all) {
