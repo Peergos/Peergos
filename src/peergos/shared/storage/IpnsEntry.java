@@ -35,6 +35,10 @@ public class IpnsEntry {
                 result.moved && result.host.isPresent() &&
                 result.host.get().equals(Multihash.fromBase58("12D3KooWEnCzE4uSeniFaCGXQuV1UnYkvqvbQJnYC363S2abgknr")))
             return result;
+        if (signer.equals(Multihash.fromBase58("QmcoDbhCiVXGrWs6rwBvB59Gm44veo7Qxn2zmRnPw7BaCH")) &&
+                result.moved && result.host.isPresent() &&
+                result.host.get().equals(Multihash.fromBase58("12D3KooWFv6ZcoUKyaDBB7nR5SQg6HpmEbDXad48WyFSyEk7xrSR")))
+            return result;
         verifySignature(signer, crypto);
         return result;
     }
