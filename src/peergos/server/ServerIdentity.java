@@ -140,6 +140,7 @@ public class ServerIdentity extends Builder {
                 idstore.setPrivateKey(currentPrivate);
                 // update peergos config with new private key
                 String encodedPrivate = Base64.getEncoder().encodeToString(nextPriv.bytes());
+                boolean useIPFS = a.getBoolean("useIPFS", false);
                 a.with("ipfs.identity.priv-key", encodedPrivate)
                         .with("ipfs.identity.peerid", nextPeerId.toBase58())
                         .saveToFile();
@@ -147,7 +148,11 @@ public class ServerIdentity extends Builder {
                 idstore.setRecord(current, generateSignedIpnsRecord(currentPrivate, Optional.of(Multihash.decode(nextPeerId.getBytes())), true, res.sequence + 1));
                 idstore.addIdentity(nextPeerId, generateSignedIpnsRecord(nextPriv, Optional.empty(), false, 1));
                 System.out.println("Successfully rotated server identity from " + current + " to " + nextPeerId);
-                System.out.println("If running a multi-server instance, copy the new identity to the ipfs server.");
+                if (!useIPFS) {
+                    System.out.println("You are running a multi-server instance, copy the new identity to the ipfs server start script: \n" +
+                            "-ipfs.identity.peerid " + nextPeerId.toBase58() +
+                            " -ipfs.identity.priv-key " + Base64.getEncoder().encodeToString(nextPriv.bytes()));
+                }
 
                 return true;
             },
