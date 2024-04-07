@@ -25,7 +25,7 @@ public class ServerIdentity extends Builder {
             new Command.Arg("ipfs.identity.priv-key", "Basse64 encoded server identity private key protobuf", true);
     public static final Command<Boolean> GEN_NEXT = new Command<>("gen-next",
             "Generate the next identity of this server. This will allow you to recover if the server is " +
-                    "compromised its identity keypair is stolen. You will be given a password which can be used to " +
+                    "compromised and its identity keypair is stolen. You will be given a password which can be used to " +
                     "regenerate the next server identity and rotate to it.",
             a -> {
                 boolean usePostgres = a.getBoolean("use-postgres", false);
