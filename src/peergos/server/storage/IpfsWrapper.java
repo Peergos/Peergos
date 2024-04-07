@@ -47,8 +47,8 @@ public class IpfsWrapper implements AutoCloseable {
     public static final String DEFAULT_BOOTSTRAP_LIST = Stream.of(
             "/ip4/172.104.157.121/tcp/4001/p2p/QmVdFZgHnEgcedCS2G2ZNiEN59LuVrnRm7z3yXtEBv2XiF",
             "/ip6/2a01:7e01::f03c:92ff:fe26:f671/tcp/4001/p2p/QmVdFZgHnEgcedCS2G2ZNiEN59LuVrnRm7z3yXtEBv2XiF",
-            "/ip4/172.104.143.23/tcp/4001/p2p/QmcoDbhCiVXGrWs6rwBvB59Gm44veo7Qxn2zmRnPw7BaCH",
-            "/ip6/2a01:7e01::f03c:92ff:fee5:154a/tcp/4001/p2p/QmcoDbhCiVXGrWs6rwBvB59Gm44veo7Qxn2zmRnPw7BaCH",
+            "/ip4/172.104.143.23/tcp/4001/p2p/12D3KooWFv6ZcoUKyaDBB7nR5SQg6HpmEbDXad48WyFSyEk7xrSR",
+            "/ip6/2a01:7e01::f03c:92ff:fee5:154a/tcp/4001/p2p/12D3KooWFv6ZcoUKyaDBB7nR5SQg6HpmEbDXad48WyFSyEk7xrSR",
             "/dnsaddr/bootstrap.libp2p.io/p2p/QmNnooDu7bfjPFoTZYxMNLWUQJyrVwtbZg5gBMjTezGAJN",
             "/dnsaddr/bootstrap.libp2p.io/p2p/QmQCU2EcMqAqQPR2i9bChDtGNJchTbq5TbXJJ16u19uLTa",
             "/dnsaddr/bootstrap.libp2p.io/p2p/QmbLHAnMoJPWSCR5Zhtx6BHJX9KiKNN6tpvbUcqanj75Nb",
