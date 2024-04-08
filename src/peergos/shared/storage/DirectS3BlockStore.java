@@ -102,7 +102,7 @@ public class DirectS3BlockStore implements ContentAddressedStorage {
     private CompletableFuture<Boolean> onOwnersNode(PublicKeyHash owner) {
         Multihash cached = storageNodeByOwner.get(owner);
         if (cached != null)
-            return Futures.of(nodeIds.contains(cached));
+            return Futures.of(nodeIds.stream().map(Cid::bareMultihash).anyMatch(p -> p.equals(cached)));
         return core.getUsername(owner)
                 .thenCompose(user -> core.getChain(user)
                         .thenApply(chain -> {
@@ -110,9 +110,9 @@ public class DirectS3BlockStore implements ContentAddressedStorage {
                                 throw new IllegalStateException("Empty chain returned for " + user);
                             List<Multihash> storageProviders = chain.get(chain.size() - 1).claim.storageProviders;
                             Multihash mainNode = storageProviders.get(0);
-                            storageNodeByOwner.put(owner, mainNode);
+                            storageNodeByOwner.put(owner, mainNode.bareMultihash());
                             Logger.getGlobal().info("Are we on owner's node? " + mainNode + " in " + nodeIds);
-                            return nodeIds.contains(mainNode);
+                            return nodeIds.stream().map(Cid::bareMultihash).anyMatch(p -> p.equals(mainNode.bareMultihash()));
                         }));
     }
 
