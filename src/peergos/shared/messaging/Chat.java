@@ -351,7 +351,7 @@ public class Chat implements Cborable {
                     Invite invite = new Invite(username, identity, newMember);
 
                     TreeClock newTime = u.state.current.withMember(newMember);
-                    return u.state.sendMessage(invite, ourChatIdentity, userIdentity, ourStore, ipfs, crypto);
+                    return u.state.withTime(newTime).sendMessage(invite, ourChatIdentity, userIdentity, ourStore, ipfs, crypto);
                 },
                 (a, b) -> a.apply(b));
     }

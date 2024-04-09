@@ -1944,6 +1944,36 @@ public class PeergosNetworkUtils {
         Assert.assertTrue(client.getNewIncoming().join().isEmpty());
     }
 
+    public static void chatMultipleInvites(NetworkAccess network, Random random) {
+        CryptreeNode.setMaxChildLinkPerBlob(10);
+
+        String password = "notagoodone";
+
+        UserContext a = PeergosNetworkUtils.ensureSignedUp("a-" + generateUsername(random), password, network, crypto);
+        int otherMembersCount = 5;
+        List<String> passwords = IntStream.range(0, otherMembersCount)
+                .mapToObj(i -> generatePassword())
+                .collect(Collectors.toList());
+        List<UserContext> shareeUsers = getUserContextsForNode(network, random, otherMembersCount, passwords);
+        UserContext b = shareeUsers.get(0);
+
+        // friend sharer with others
+        friendBetweenGroups(Arrays.asList(a), shareeUsers);
+
+        Messenger msgA = new Messenger(a);
+        ChatController controllerA = msgA.createChat().join();
+        List<String> otherMembersUsernames = shareeUsers.stream().map(u -> u.username).collect(Collectors.toList());
+        List<PublicKeyHash> otherMembersPublicKeyHash = shareeUsers.stream().map(u -> u.signer.publicKeyHash).collect(Collectors.toList());
+
+        controllerA = msgA.invite(controllerA, otherMembersUsernames, otherMembersPublicKeyHash).join();
+        Set<String> allMemberNames = controllerA.getMemberNames();
+        Assert.assertTrue("all members", allMemberNames.size() == otherMembersCount + 1);
+
+        List<MessageEnvelope> messages = controllerA.getMessages(0, 10).join();
+        List<MessageEnvelope> inviteMessages = messages.stream().filter(m -> m.payload.type() == Message.Type.Invite).collect(Collectors.toList());
+        Assert.assertTrue("all invites", inviteMessages.size() == otherMembersCount);
+    }
+
     public static void chat(NetworkAccess network, Random random) {
         CryptreeNode.setMaxChildLinkPerBlob(10);
 
