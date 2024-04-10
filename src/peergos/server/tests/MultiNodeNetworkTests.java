@@ -124,7 +124,11 @@ public class MultiNodeNetworkTests {
         Args withPrivKey = Args.parse(new String[0], config, false);
         ServerIdentity.ROTATE.main(withPrivKey);
         Args withNewPrivKey = Args.parse(new String[0], config, false);
-        argsToCleanUp.set(i, withNewPrivKey);
+        String bootstrapList = Main.getLocalBootstrapAddress(argsToCleanUp.get(0).getInt("ipfs-swarm-port"), services.get(0).localApi.storage.id().join().bareMultihash()).toString();
+        for (int n = 1; n < 3; n++)
+            if (n != i)
+                bootstrapList += "," + Main.getLocalBootstrapAddress(argsToCleanUp.get(n).getInt("ipfs-swarm-port"), services.get(n).localApi.storage.id().join().bareMultihash());
+        argsToCleanUp.set(i, withNewPrivKey.with(IpfsWrapper.IPFS_BOOTSTRAP_NODES, bootstrapList));
     }
 
     private UserService getService(int i)  {

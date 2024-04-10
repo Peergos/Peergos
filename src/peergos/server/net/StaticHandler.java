@@ -2,6 +2,7 @@ package peergos.server.net;
 
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
+import io.prometheus.client.*;
 import peergos.server.util.*;
 import peergos.shared.crypto.hash.Hash;
 import peergos.shared.user.*;
@@ -15,6 +16,10 @@ import java.util.zip.GZIPOutputStream;
 
 public abstract class StaticHandler implements HttpHandler
 {
+    private static final Counter indexLoads = Counter.build()
+            .name("main_page_loads")
+            .help("Number of loads of web root")
+            .register();
     private final boolean isGzip;
     private final boolean includeCsp;
     private final CspHost host;
@@ -65,8 +70,10 @@ public abstract class StaticHandler implements HttpHandler
         try {
             path = path.substring(1);
             path = path.replaceAll("//", "/");
-            if (path.length() == 0)
+            if (path.length() == 0) {
+                indexLoads.inc();
                 path = "index.html";
+            }
 
             String reqHost = httpExchange.getRequestHeaders().get("Host").stream().findFirst().orElse("");
             boolean isSubdomain = host.validSubdomain(reqHost);
