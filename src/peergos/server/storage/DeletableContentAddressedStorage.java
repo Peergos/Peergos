@@ -1,5 +1,6 @@
 package peergos.server.storage;
 
+import peergos.server.storage.auth.*;
 import peergos.server.util.*;
 import peergos.shared.*;
 import peergos.shared.cbor.*;
@@ -133,24 +134,67 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
             return Futures.of(Collections.singletonList(newRoot));
 
         CborObject newBlock = CborObject.fromByteArray(newVal.get());
-        List<Multihash> newLinks = newBlock.links().stream()
+        List<Cid> newLinks = newBlock.links().stream()
                 .filter(h -> !h.isIdentity())
+                .map(m -> (Cid) m)
                 .collect(Collectors.toList());
-        List<Multihash> existingLinks = existing.map(h -> getLinks(h).join()
+        List<Cid> existingLinks = existing.map(h -> getLinks(h).join()
                         .stream()
                         .filter(c -> ! c.isIdentity())
-                        .map(c -> (Multihash) c)
                         .collect(Collectors.toList()))
                 .orElse(Collections.emptyList());
 
-        for (int i=0; i < newLinks.size(); i++) {
-            Optional<Cid> existingLink = i < existingLinks.size() ?
-                    Optional.of((Cid)existingLinks.get(i)) :
-                    Optional.empty();
-            Optional<Cid> updatedLink = Optional.of((Cid)newLinks.get(i));
-            mirror(owner, peerIds, existingLink, updatedLink, mirrorBat, ourNodeId, tid, hasher).join();
+        return bulkMirror(owner, peerIds, existingLinks, newLinks, mirrorBat, ourNodeId, tid, hasher);
+    }
+
+    default CompletableFuture<List<Cid>> bulkMirror(PublicKeyHash owner,
+                                                    List<Multihash> peerIds,
+                                                    List<Cid> existing,
+                                                    List<Cid> updated,
+                                                    Optional<BatWithId> mirrorBat,
+                                                    Cid ourNodeId,
+                                                    TransactionId tid,
+                                                    Hasher hasher) {
+        if (updated.isEmpty())
+            return Futures.of(updated);
+        Set<Cid> common = new HashSet<>();
+        common.addAll(existing);
+        common.retainAll(updated);
+
+        List<Cid> removed = existing.stream()
+                .filter(x -> ! common.contains(x))
+                .filter(c -> ! c.isIdentity())
+                .collect(Collectors.toList());
+        List<Cid> added = updated.stream()
+                .filter(x -> ! common.contains(x))
+                .filter(c -> ! c.isIdentity())
+                .collect(Collectors.toList());
+
+        List<List<Cid>> addedLinks = bulkGetLinks(peerIds, ourNodeId, added, mirrorBat, hasher);
+        for (int i=0; i < added.size(); i++) {
+            List<Cid> newLinks = addedLinks.get(i);
+            List<Cid> existingLinks = i >= removed.size() ?
+                    Collections.emptyList() :
+                    getLinks(removed.get(i)).join().stream()
+                            .filter(c -> ! c.isIdentity())
+                            .collect(Collectors.toList());
+            bulkMirror(owner, peerIds, existingLinks, newLinks, mirrorBat, ourNodeId, tid, hasher);
         }
-        return Futures.of(Collections.singletonList(newRoot));
+        return Futures.of(updated);
+    }
+
+    List<List<Cid>> bulkGetLinks(List<Multihash> peerIds, List<Want> wants);
+
+    default List<List<Cid>> bulkGetLinks(List<Multihash> peerIds,
+                                         Cid ourId,
+                                         List<Cid> blocks,
+                                         Optional<BatWithId> mirrorBat,
+                                         Hasher h) {
+        List<Want> wants = blocks.stream()
+                .map(c -> new Want(c, mirrorBat.map(b -> b.bat.generateAuth(c, ourId, 300, S3Request.currentDatetime(), b.id, h)
+                        .thenApply(BlockAuth::encode).join())))
+                .collect(Collectors.toList());
+        return bulkGetLinks(peerIds, wants);
     }
 
     /**
@@ -276,6 +320,21 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
                     .map(v -> v.cid.toString())
                     .collect(Collectors.toList()));
             poster.post(apiPrefix + BLOCK_RM_BULK, JSONParser.toString(json).getBytes(), true);
+        }
+
+        @Override
+        public List<List<Cid>> bulkGetLinks(List<Multihash> peerIds, List<Want> wants) {
+            Map<String, Object> json = new HashMap<>();
+            json.put("wants", wants.stream()
+                    .map(Want::toJson)
+                    .collect(Collectors.toList()));
+            String peers = peerIds.stream().map(Multihash::toBase58).collect(Collectors.joining(","));
+            return poster.post(apiPrefix + BLOCK_STAT_BULK + "?peers="+ peers, JSONParser.toString(json).getBytes(), true)
+                    .thenApply(raw -> ((List<List<String>>)JSONParser.parse(new String(raw)))
+                            .stream()
+                            .map(links -> links.stream().map(Cid::decode).collect(Collectors.toList()))
+                            .collect(Collectors.toList()))
+                    .join();
         }
 
         @Override

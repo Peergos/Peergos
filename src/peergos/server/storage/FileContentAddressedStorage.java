@@ -189,6 +189,11 @@ public class FileContentAddressedStorage implements DeletableContentAddressedSto
     }
 
     @Override
+    public List<List<Cid>> bulkGetLinks(List<Multihash> peerIds, List<Want> wants) {
+        throw new IllegalStateException("Unimplemented!");
+    }
+
+    @Override
     public CompletableFuture<List<Cid>> getLinks(Cid root) {
         if (root.codec == Cid.Codec.Raw)
             return CompletableFuture.completedFuture(Collections.emptyList());

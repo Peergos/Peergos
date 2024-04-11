@@ -1,5 +1,6 @@
 package peergos.server.storage;
 
+import peergos.server.storage.auth.*;
 import peergos.shared.cbor.*;
 import peergos.shared.corenode.*;
 import peergos.shared.crypto.hash.*;
@@ -163,6 +164,11 @@ public class RAMStorage implements DeletableContentAddressedStorage {
 
     public synchronized int size() {
         return storage.size();
+    }
+
+    @Override
+    public List<List<Cid>> bulkGetLinks(List<Multihash> peerIds, List<Want> wants) {
+        throw new IllegalStateException("Unimplemented!");
     }
 
     @Override

@@ -15,7 +15,7 @@ import java.util.concurrent.*;
 import java.util.function.*;
 import java.util.stream.*;
 
-public class TransactionalIpfs extends DelegatingStorage implements DeletableContentAddressedStorage {
+public class TransactionalIpfs extends DelegatingDeletableStorage {
 
     private final DeletableContentAddressedStorage target;
     private final TransactionStore transactions;

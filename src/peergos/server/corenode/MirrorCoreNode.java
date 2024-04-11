@@ -98,6 +98,22 @@ public class MirrorCoreNode implements CoreNode {
     @Override
     public void initialize() {
         try {
+            // first mirror pki blocks locally
+            if (state.usernames.isEmpty()) {
+                long t1 = System.currentTimeMillis();
+                CorenodeRoots remote = getPkiState().left;
+                List<Multihash> pkiStorageProviders = List.of(pkiPeerId);
+                TransactionId tid = transactions.startTransaction(pkiOwnerIdentity);
+                try {
+                    MaybeMultihash currentTree = IpfsCoreNode.getTreeRoot(pkiStorageProviders, remote.pkiKeyTarget, ipfs);
+                    ipfs.mirror(pkiOwnerIdentity, pkiStorageProviders, Optional.empty(), currentTree.toOptional().map(m -> (Cid)m),
+                            Optional.empty(), ipfs.id().join(), tid, hasher).join();
+                } finally {
+                    transactions.closeTransaction(pkiOwnerIdentity, tid);
+                }
+                long t2 = System.currentTimeMillis();
+                System.out.println("PKI MIRROR TOOK " + (t2-t1)/1000);
+            }
             boolean changed = update();
             if (changed)
                 saveState();
@@ -107,25 +123,43 @@ public class MirrorCoreNode implements CoreNode {
         }
     }
 
+    private static class CorenodeRoots {
+        final PublicKeyHash pkiOwnerIdentity, pkiKey;
+        final MaybeMultihash pkiOwnerTarget, pkiKeyTarget;
+
+        public CorenodeRoots(PublicKeyHash pkiOwnerIdentity, PublicKeyHash pkiKey, MaybeMultihash pkiOwnerTarget, MaybeMultihash pkiKeyTarget) {
+            this.pkiOwnerIdentity = pkiOwnerIdentity;
+            this.pkiKey = pkiKey;
+            this.pkiOwnerTarget = pkiOwnerTarget;
+            this.pkiKeyTarget = pkiKeyTarget;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (o == null || getClass() != o.getClass()) return false;
+            CorenodeRoots that = (CorenodeRoots) o;
+            return pkiOwnerIdentity.equals(that.pkiOwnerIdentity) && pkiKey.equals(that.pkiKey) && pkiOwnerTarget.equals(that.pkiOwnerTarget) && pkiKeyTarget.equals(that.pkiKeyTarget);
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(pkiOwnerIdentity, pkiKey, pkiOwnerTarget, pkiKeyTarget);
+        }
+    }
+
     private static class CorenodeState implements Cborable {
-        private final PublicKeyHash pkiOwnerIdentity, pkiKey;
-        private final MaybeMultihash pkiOwnerTarget, pkiKeyTarget;
+        private final CorenodeRoots roots;
 
         private final Map<String, List<UserPublicKeyLink>> chains;
         private final Map<PublicKeyHash, String> reverseLookup;
         private final List<String> usernames;
 
-        public CorenodeState(PublicKeyHash pkiOwnerIdentity,
-                             PublicKeyHash pkiKey,
-                             MaybeMultihash pkiOwnerTarget,
-                             MaybeMultihash pkiKeyTarget,
+        public CorenodeState(CorenodeRoots roots,
                              Map<String, List<UserPublicKeyLink>> chains,
                              Map<PublicKeyHash, String> reverseLookup,
                              List<String> usernames) {
-            this.pkiOwnerIdentity = pkiOwnerIdentity;
-            this.pkiKey = pkiKey;
-            this.pkiOwnerTarget = pkiOwnerTarget;
-            this.pkiKeyTarget = pkiKeyTarget;
+            this.roots = roots;
             this.chains = chains;
             this.reverseLookup = reverseLookup;
             this.usernames = usernames;
@@ -135,7 +169,7 @@ public class MirrorCoreNode implements CoreNode {
                                                PublicKeyHash pkiKey,
                                                MaybeMultihash pkiOwnerTarget,
                                                MaybeMultihash pkiKeyTarget) {
-            return new CorenodeState(pkiOwnerIdentity, pkiKey, pkiOwnerTarget, pkiKeyTarget, new HashMap<>(),
+            return new CorenodeState(new CorenodeRoots(pkiOwnerIdentity, pkiKey, pkiOwnerTarget, pkiKeyTarget), new HashMap<>(),
                     new HashMap<>(), new ArrayList<>());
         }
 
@@ -149,10 +183,10 @@ public class MirrorCoreNode implements CoreNode {
         @Override
         public CborObject toCbor() {
             Map<String, Cborable> res = new TreeMap<>();
-            res.put("peergosKey", pkiOwnerIdentity);
-            res.put("peergosTarget", pkiOwnerTarget);
-            res.put("pkiKey", pkiOwnerIdentity);
-            res.put("pkiTarget", pkiKeyTarget);
+            res.put("peergosKey", roots.pkiOwnerIdentity);
+            res.put("peergosTarget", roots.pkiOwnerTarget);
+            res.put("pkiKey", roots.pkiOwnerIdentity);
+            res.put("pkiTarget", roots.pkiKeyTarget);
 
             TreeMap<String, Cborable> chainsMap = chains.entrySet()
                 .stream()
@@ -196,7 +230,7 @@ public class MirrorCoreNode implements CoreNode {
                     .getMap(PublicKeyHash::fromCbor, fromString);
 
             List<String> usernames = map.getList("usernames", fromString);
-            return new CorenodeState(peergosKey, pkiKey, peergosTarget, pkiTarget, chains, reverse, usernames);
+            return new CorenodeState(new CorenodeRoots(peergosKey, pkiKey, peergosTarget, pkiTarget), chains, reverse, usernames);
         }
     }
 
@@ -231,15 +265,26 @@ public class MirrorCoreNode implements CoreNode {
 
     private static CorenodeState load(Path statePath, PublicKeyHash pkiNodeIdentity) throws IOException {
         boolean exists = Files.exists(statePath);
-        if (!exists && pkiNodeIdentity.equals(PublicKeyHash.fromString("z59vuwzfFDp3ZA8ZpnnmHEuMtyA1q34m3Th49DYXQVJntWpxdGrRqXi"))) {
-            // copy initial pki state snapshot from jar
-            byte[] pkiSnapshot = JarHandler.getAsset("pki-state.cbor", PathUtil.get("/pki"), false).data;
-            Files.write(statePath, pkiSnapshot);
-        }
         Logging.LOG().info("Reading state from " + statePath + " which exists ? " + exists);
         byte[] data = Files.readAllBytes(statePath);
         CborObject object = CborObject.fromByteArray(data);
         return CorenodeState.fromCbor(object);
+    }
+
+    private Pair<CorenodeRoots, byte[]> getPkiState() {
+        byte[] pkiIdPointer = p2pMutable.getPointer(pkiPeerId, pkiOwnerIdentity, pkiOwnerIdentity).join().get();
+        PointerUpdate fresh = MutablePointers.parsePointerTarget(pkiIdPointer, pkiOwnerIdentity, pkiOwnerIdentity, ipfs).join();
+        MaybeMultihash newPeergosRoot = fresh.updated;
+
+        CommittedWriterData currentPeergosWd = IpfsCoreNode.getWriterData(List.of(pkiPeerId), (Cid)newPeergosRoot.get(), fresh.sequence, ipfs).join();
+        PublicKeyHash pkiKey = currentPeergosWd.props.namedOwnedKeys.get("pki").ownedKey;
+        if (pkiKey == null)
+            throw new IllegalStateException("No pki key on owner: " + pkiOwnerIdentity);
+
+        byte[] newPointer = p2pMutable.getPointer(pkiPeerId, pkiOwnerIdentity, pkiKey).join().get();
+        PointerUpdate pkiUpdateCas = MutablePointers.parsePointerTarget(newPointer, pkiOwnerIdentity, pkiKey, ipfs).join();
+        MaybeMultihash currentPkiRoot = pkiUpdateCas.updated;
+        return new Pair<>(new CorenodeRoots(pkiOwnerIdentity, pkiKey, newPeergosRoot, currentPkiRoot), newPointer);
     }
 
     /**
@@ -248,39 +293,29 @@ public class MirrorCoreNode implements CoreNode {
      */
     private synchronized boolean update() {
         try {
-            byte[] pkiIdPointer = p2pMutable.getPointer(pkiPeerId, pkiOwnerIdentity, pkiOwnerIdentity).join().get();
-            PointerUpdate fresh = MutablePointers.parsePointerTarget(pkiIdPointer, pkiOwnerIdentity, pkiOwnerIdentity, ipfs).join();
-            MaybeMultihash newPeergosRoot = fresh.updated;
-
-            CommittedWriterData currentPeergosWd = IpfsCoreNode.getWriterData(List.of(pkiPeerId), (Cid)newPeergosRoot.get(), fresh.sequence, ipfs).join();
-            PublicKeyHash pkiKey = currentPeergosWd.props.namedOwnedKeys.get("pki").ownedKey;
-            if (pkiKey == null)
-                throw new IllegalStateException("No pki key on owner: " + pkiOwnerIdentity);
-
-            byte[] newPointer = p2pMutable.getPointer(pkiPeerId, pkiOwnerIdentity, pkiKey).join().get();
-            PointerUpdate pkiUpdateCas = MutablePointers.parsePointerTarget(newPointer, pkiOwnerIdentity, pkiKey, ipfs).join();
-            MaybeMultihash currentPkiRoot = pkiUpdateCas.updated;
+            Pair<CorenodeRoots, byte[]> remoteState = getPkiState();
+            CorenodeRoots remote = remoteState.left;
             CorenodeState current = state;
-            if (pkiOwnerIdentity.equals(current.pkiOwnerIdentity) &&
-                    newPeergosRoot.equals(current.pkiOwnerTarget) &&
-                    pkiKey.equals(current.pkiKey) &&
-                    currentPkiRoot.equals(current.pkiKeyTarget))
+            if (remote.pkiOwnerIdentity.equals(current.roots.pkiOwnerIdentity) &&
+                    remote.pkiOwnerTarget.equals(current.roots.pkiOwnerTarget) &&
+                    remote.pkiKey.equals(current.roots.pkiKey) &&
+                    remote.pkiKeyTarget.equals(current.roots.pkiKeyTarget))
                 return false;
 
             Logging.LOG().info("Updating pki mirror state... Please wait. This could take a minute or two");
-            CorenodeState updated = CorenodeState.buildEmpty(pkiOwnerIdentity, pkiKey, newPeergosRoot, currentPkiRoot);
+            CorenodeState updated = CorenodeState.buildEmpty(pkiOwnerIdentity, remote.pkiKey, remote.pkiOwnerTarget, remote.pkiKeyTarget);
             updated.load(current);
 
             // first retrieve all new blocks to be local
             TransactionId tid = transactions.startTransaction(pkiOwnerIdentity);
             List<Multihash> pkiStorageProviders = List.of(pkiPeerId);
-            MaybeMultihash currentTree = IpfsCoreNode.getTreeRoot(pkiStorageProviders, current.pkiKeyTarget, ipfs);
-            MaybeMultihash updatedTree = IpfsCoreNode.getTreeRoot(pkiStorageProviders, currentPkiRoot, ipfs);
+            MaybeMultihash currentTree = IpfsCoreNode.getTreeRoot(pkiStorageProviders, current.roots.pkiKeyTarget, ipfs);
+            MaybeMultihash updatedTree = IpfsCoreNode.getTreeRoot(pkiStorageProviders, remote.pkiKeyTarget, ipfs);
 
             // explicitly get other direct blocks, in theory need recursive mirror, but this is complete here
             if (updatedTree.isPresent()) {
                 CommittedWriterData currentWd = IpfsCoreNode.getWriterData(pkiStorageProviders,
-                        (Cid) currentPkiRoot.get(), Optional.empty(), ipfs).join();
+                        (Cid) remote.pkiKeyTarget.get(), Optional.empty(), ipfs).join();
                 List<Multihash> toAdd = currentWd.props.toCbor().links().stream()
                         .filter(h -> updatedTree.map(m -> !m.equals(h)).orElse(true))
                         .collect(Collectors.toList());
@@ -302,12 +337,12 @@ public class MirrorCoreNode implements CoreNode {
                     consumer, ChampWrapper.BIT_WIDTH, ipfs, c -> (CborObject.CborMerkleLink)c).get();
 
             // now update the mappings
-            IpfsCoreNode.updateAllMappings(pkiStorageProviders, current.pkiKeyTarget, currentPkiRoot, ipfs, updated.chains,
+            IpfsCoreNode.updateAllMappings(pkiStorageProviders, current.roots.pkiKeyTarget, remote.pkiKeyTarget, ipfs, updated.chains,
                     updated.reverseLookup, updated.usernames);
 
             // 'pin' the new pki version
-            Optional<byte[]> existingPointer = rawPointers.getPointer(pkiKey).join();
-            rawPointers.setPointer(pkiKey, existingPointer, newPointer).join();
+            Optional<byte[]> existingPointer = rawPointers.getPointer(remote.pkiKey).join();
+            rawPointers.setPointer(remote.pkiKey, existingPointer, remoteState.right).join();
             transactions.closeTransaction(pkiOwnerIdentity, tid);
 
             state = updated;

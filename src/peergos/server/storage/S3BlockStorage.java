@@ -675,6 +675,11 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
     }
 
     @Override
+    public List<List<Cid>> bulkGetLinks(List<Multihash> peerIds, List<Want> wants) {
+        throw new IllegalStateException("Unimplemented!");
+    }
+
+    @Override
     public CompletableFuture<List<Cid>> getLinks(Cid root) {
         if (root.isRaw())
             return CompletableFuture.completedFuture(Collections.emptyList());

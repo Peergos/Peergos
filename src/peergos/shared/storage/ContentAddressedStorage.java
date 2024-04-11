@@ -276,6 +276,7 @@ public interface ContentAddressedStorage {
         public static final String BLOOM_ADD = "bloom/add";
         public static final String BLOCK_PRESENT = "block/has";
         public static final String BLOCK_STAT = "block/stat";
+        public static final String BLOCK_STAT_BULK = "block/stat/bulk";
         public static final String REFS_LOCAL = "refs/local";
         public static final String IPNS_GET = "ipns/get";
 
