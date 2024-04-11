@@ -52,7 +52,7 @@ public class MirrorCoreNode implements CoreNode {
 
     private volatile CorenodeState state;
     private final Path statePath;
-    private volatile boolean running = true;
+    private volatile boolean running = true, initialized = false;
 
     public MirrorCoreNode(CoreNode writeTarget,
                           JdbcAccount rawAccount,
@@ -101,6 +101,7 @@ public class MirrorCoreNode implements CoreNode {
             boolean changed = update();
             if (changed)
                 saveState();
+            initialized = true;
         } catch (Throwable t) {
             Logging.LOG().log(Level.SEVERE, "Couldn't update mirror pki state: " + t.getMessage(), t);
         }
@@ -330,7 +331,8 @@ public class MirrorCoreNode implements CoreNode {
             return Futures.of(pkiResult);
         }
 
-        update();
+        if (initialized)
+            update();
         usageStore.addUserIfAbsent(username);
         usageStore.addWriter(username, chain.owner);
         IpfsCoreNode.applyOpLog(username, chain.owner, setupOperations, ipfs, localPointers, account, batCave);
@@ -370,6 +372,8 @@ public class MirrorCoreNode implements CoreNode {
 
     @Override
     public CompletableFuture<List<UserPublicKeyLink>> getChain(String username) {
+        if (! initialized)
+            return writeTarget.getChain(username);
         List<UserPublicKeyLink> chain = state.chains.get(username);
         if (chain != null)
             return CompletableFuture.completedFuture(chain);
@@ -529,6 +533,8 @@ public class MirrorCoreNode implements CoreNode {
 
     @Override
     public CompletableFuture<String> getUsername(PublicKeyHash key) {
+        if (! initialized)
+            return writeTarget.getUsername(key);
         String username = state.reverseLookup.get(key);
         if (username != null)
             return CompletableFuture.completedFuture(username);
@@ -538,6 +544,8 @@ public class MirrorCoreNode implements CoreNode {
 
     @Override
     public CompletableFuture<List<String>> getUsernames(String prefix) {
+        if (! initialized)
+            return writeTarget.getUsernames(prefix);
         return CompletableFuture.completedFuture(state.usernames);
     }
 
