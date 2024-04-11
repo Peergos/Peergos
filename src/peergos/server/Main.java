@@ -565,7 +565,7 @@ public class Main extends Builder {
             CoreNode core = buildCorenode(a, localStorage, transactions, rawPointers, localPointers, proxingMutable,
                     rawSocial, usageStore, rawAccount, batStore, account, crypto);
             localStorage.setPki(core);
-            core.initialize();
+            new Thread(core::initialize).start();
 
             boolean isPki = nodeIds.stream()
                     .map(Cid::bareMultihash)
