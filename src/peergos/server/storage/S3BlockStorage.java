@@ -401,7 +401,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         } catch (FileNotFoundException e) {
             return false;
         } catch (IOException e) {
-            String msg = e.getMessage();
+            String msg = e.getMessage().replaceAll("\\s","");
             if (msg == null) {
                 LOG.info("Error checking for " + hash + ": " + e);
                 return false;
