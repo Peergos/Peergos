@@ -401,11 +401,12 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         } catch (FileNotFoundException e) {
             return false;
         } catch (IOException e) {
-            String msg = e.getMessage().replaceAll("\\s","");
+            String msg = e.getMessage();
             if (msg == null) {
                 LOG.info("Error checking for " + hash + ": " + e);
                 return false;
             }
+            msg = msg.replaceAll("\\s","");
             boolean rateLimited = msg.contains("<Error><Code>SlowDown</Code>")
                     || msg.contains("<Error><Code>InternalError</Code>");
             if (rateLimited) {
