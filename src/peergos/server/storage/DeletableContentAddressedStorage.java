@@ -157,8 +157,7 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
                                                     Hasher hasher) {
         if (updated.isEmpty())
             return Futures.of(updated);
-        Set<Cid> common = new HashSet<>();
-        common.addAll(existing);
+        Set<Cid> common = new HashSet<>(existing);
         common.retainAll(updated);
 
         List<Cid> removed = existing.stream()
@@ -171,14 +170,25 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
                 .collect(Collectors.toList());
 
         List<List<Cid>> addedLinks = bulkGetLinks(peerIds, ourNodeId, added, mirrorBat, hasher);
-        for (int i=0; i < added.size(); i++) {
-            List<Cid> newLinks = addedLinks.get(i);
-            List<Cid> existingLinks = i >= removed.size() ?
-                    Collections.emptyList() :
-                    getLinks(removed.get(i)).join().stream()
-                            .filter(c -> ! c.isIdentity())
-                            .collect(Collectors.toList());
-            bulkMirror(owner, peerIds, existingLinks, newLinks, mirrorBat, ourNodeId, tid, hasher);
+        if (removed.isEmpty()) {
+            List<Cid> all = addedLinks.stream()
+                    .flatMap(Collection::stream)
+                    .collect(Collectors.toList());
+            for (int i=0; i < all.size();) {
+                int end = Math.min(all.size(), i + 1000);
+                bulkMirror(owner, peerIds, Collections.emptyList(), all.subList(i, end), mirrorBat, ourNodeId, tid, hasher);
+                i = end;
+            }
+        } else {
+            for (int i = 0; i < added.size(); i++) {
+                List<Cid> newLinks = addedLinks.get(i);
+                List<Cid> existingLinks = i >= removed.size() ?
+                        Collections.emptyList() :
+                        getLinks(removed.get(i)).join().stream()
+                                .filter(c -> !c.isIdentity())
+                                .collect(Collectors.toList());
+                bulkMirror(owner, peerIds, existingLinks, newLinks, mirrorBat, ourNodeId, tid, hasher);
+            }
         }
         return Futures.of(updated);
     }
