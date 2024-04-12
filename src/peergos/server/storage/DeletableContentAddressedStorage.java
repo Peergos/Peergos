@@ -173,6 +173,7 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
         if (removed.isEmpty()) {
             List<Cid> all = addedLinks.stream()
                     .flatMap(Collection::stream)
+                    .filter(c -> !c.isIdentity())
                     .collect(Collectors.toList());
             for (int i=0; i < all.size();) {
                 int end = Math.min(all.size(), i + 1000);
@@ -334,12 +335,17 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
 
         @Override
         public List<List<Cid>> bulkGetLinks(List<Multihash> peerIds, List<Want> wants) {
+            if (wants.isEmpty())
+                return Collections.emptyList();
             Map<String, Object> json = new HashMap<>();
             json.put("wants", wants.stream()
                     .map(Want::toJson)
                     .collect(Collectors.toList()));
-            String peers = peerIds.stream().map(Multihash::toBase58).collect(Collectors.joining(","));
-            return poster.post(apiPrefix + BLOCK_STAT_BULK + "?peers="+ peers, JSONParser.toString(json).getBytes(), true)
+            String peers = peerIds.stream()
+                    .map(Multihash::bareMultihash)
+                    .map(Multihash::toBase58)
+                    .collect(Collectors.joining(","));
+            return poster.post(apiPrefix + BLOCK_STAT_BULK + "?peers="+ peers, JSONParser.toString(json).getBytes(), true, 30_000)
                     .thenApply(raw -> ((List<List<String>>)JSONParser.parse(new String(raw)))
                             .stream()
                             .map(links -> links.stream().map(Cid::decode).collect(Collectors.toList()))
