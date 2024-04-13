@@ -2,7 +2,6 @@ package peergos.client;
 
 import jsinterop.annotations.*;
 import peergos.shared.cbor.CborObject;
-import peergos.shared.cbor.Cborable;
 import peergos.shared.login.mfa.MultiFactorAuthResponse;
 import peergos.shared.login.mfa.WebauthnResponse;
 import peergos.shared.util.Either;
@@ -15,6 +14,11 @@ import java.util.stream.Collectors;
  *
  */
 public class JsUtil {
+
+    @JsMethod
+    public static CborObject fromByteArray(byte[] cbor) {
+        return CborObject.fromByteArray(cbor);
+    }
 
     @JsMethod
     public static <T> List<T> asList(T[] array) {

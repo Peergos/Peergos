@@ -240,6 +240,11 @@ public class MultiUserTests {
     }
 
     @Test
+    public void chatMultipleInvites() {
+        PeergosNetworkUtils.chatMultipleInvites(network, random);
+    }
+
+    @Test
     public void chat() {
         PeergosNetworkUtils.chat(network, random);
     }
