@@ -118,6 +118,7 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
                                                 Optional<Cid> updated,
                                                 Optional<BatWithId> mirrorBat,
                                                 Cid ourNodeId,
+                                                Consumer<List<Cid>> newBlockProcessor,
                                                 TransactionId tid,
                                                 Hasher hasher) {
         if (updated.isEmpty())
@@ -144,7 +145,7 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
                         .collect(Collectors.toList()))
                 .orElse(Collections.emptyList());
 
-        return bulkMirror(owner, peerIds, existingLinks, newLinks, mirrorBat, ourNodeId, tid, hasher);
+        return bulkMirror(owner, peerIds, existingLinks, newLinks, mirrorBat, ourNodeId, newBlockProcessor, tid, hasher);
     }
 
     default CompletableFuture<List<Cid>> bulkMirror(PublicKeyHash owner,
@@ -153,6 +154,7 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
                                                     List<Cid> updated,
                                                     Optional<BatWithId> mirrorBat,
                                                     Cid ourNodeId,
+                                                    Consumer<List<Cid>> newBlockProcessor,
                                                     TransactionId tid,
                                                     Hasher hasher) {
         if (updated.isEmpty())
@@ -170,6 +172,7 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
                 .collect(Collectors.toList());
 
         List<List<Cid>> addedLinks = RetryStorage.runWithRetry(3, () -> Futures.of(bulkGetLinks(peerIds, ourNodeId, added, mirrorBat, hasher))).join();
+        newBlockProcessor.accept(added);
         if (removed.isEmpty()) {
             List<Cid> all = addedLinks.stream()
                     .flatMap(Collection::stream)
@@ -177,7 +180,7 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
                     .collect(Collectors.toList());
             for (int i=0; i < all.size();) {
                 int end = Math.min(all.size(), i + 1000);
-                bulkMirror(owner, peerIds, Collections.emptyList(), all.subList(i, end), mirrorBat, ourNodeId, tid, hasher);
+                bulkMirror(owner, peerIds, Collections.emptyList(), all.subList(i, end), mirrorBat, ourNodeId, newBlockProcessor, tid, hasher);
                 i = end;
             }
         } else {
@@ -188,7 +191,7 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
                         getLinks(removed.get(i)).join().stream()
                                 .filter(c -> !c.isIdentity())
                                 .collect(Collectors.toList());
-                bulkMirror(owner, peerIds, existingLinks, newLinks, mirrorBat, ourNodeId, tid, hasher);
+                bulkMirror(owner, peerIds, existingLinks, newLinks, mirrorBat, ourNodeId, newBlockProcessor, tid, hasher);
             }
         }
         return Futures.of(updated);
@@ -345,8 +348,8 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
                     .map(Multihash::bareMultihash)
                     .map(Multihash::toBase58)
                     .collect(Collectors.joining(","));
-            return poster.post(apiPrefix + BLOCK_STAT_BULK + "?peers="+ peers, JSONParser.toString(json).getBytes(), true, 30_000)
-                    .thenApply(raw -> ((List<List<String>>)JSONParser.parse(new String(raw)))
+            return poster.post(apiPrefix + BLOCK_STAT_BULK + "?peers=" + peers, JSONParser.toString(json).getBytes(), true, 30_000)
+                    .thenApply(raw -> ((List<List<String>>) JSONParser.parse(new String(raw)))
                             .stream()
                             .map(links -> links.stream().map(Cid::decode).collect(Collectors.toList()))
                             .collect(Collectors.toList()))
