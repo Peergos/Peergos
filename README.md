@@ -180,6 +180,14 @@ Use this method to run a new home-server (which is best with a publicly routable
 ```
 java -jar Peergos.jar daemon -generate-token true
 ```
+
+4. Ensure you can listen on a public IP address
+
+   Some cloud hosts don't add your public ip to the network interfaces by default. For these cases you may need to run something like
+```bash
+   sudo ip address add MY.PUBLIC.IP dev eth0
+```
+
 All the peergos data will be stored in ~/.peergos by default, which can be overridden with the environment var or arg - PEERGOS_PATH
 
 You can then access the web interface and signup via the localhost address printed, which includes a single use signup token.
