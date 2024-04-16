@@ -36,7 +36,9 @@ import java.util.stream.*;
 public class S3BlockStorage implements DeletableContentAddressedStorage {
 
     private static final Logger LOG = Logger.getGlobal();
-
+    private static final List<String> RETRY_S3_CODES = List.of("RequestError","RequestTimeout","Throttling"
+            ,"ThrottlingException","RequestLimitExceeded","RequestThrottled","InternalError","ExpiredToken","ExpiredTokenException","SlowDown");
+    
     private static final Histogram readTimerLog = Histogram.build()
             .labelNames("filesize")
             .name("block_read_seconds")
@@ -360,8 +362,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
             throw new RateLimitException();
         } catch (IOException e) {
             String msg = e.getMessage();
-            boolean rateLimited = msg.contains("<Error><Code>SlowDown</Code>")
-                    || msg.contains("<Error><Code>InternalError</Code>");
+            boolean rateLimited = isRateLimitedException(e);
             if (rateLimited) {
                 getRateLimited.inc();
                 S3BlockStorage.rateLimited.inc();
@@ -406,17 +407,31 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                 LOG.info("Error checking for " + hash + ": " + e);
                 return false;
             }
-            boolean rateLimited = msg.contains("<Error><Code>SlowDown</Code>")
-                    || msg.contains("<Error><Code>InternalError</Code>");
+            boolean rateLimited = isRateLimitedException(e);
             if (rateLimited) {
                 S3BlockStorage.rateLimited.inc();
                 throw new RateLimitException();
             }
-            boolean notFound = msg.startsWith("<?xml version=\"1.0\" encoding=\"UTF-8\"?><Error><Code>NoSuchKey</Code>");
+            boolean notFound = msg.contains("<Code>NoSuchKey</Code>");
             if (! notFound) {
                 LOG.warning("S3 error reading " + hash);
                 LOG.log(Level.WARNING, msg, e);
             }
+            return false;
+        }
+    }
+
+    private boolean isRateLimitedException(IOException e) {
+        String msg = e.getMessage();
+        if (msg == null) {
+            return false;
+        }
+        int startIndex = msg.indexOf("<Code>");
+        int endIndex = msg.indexOf("</Code>");
+        if (startIndex >=0 && endIndex >=0 && startIndex < endIndex) {
+            String code = msg.substring(startIndex + 6, endIndex).trim();
+            return RETRY_S3_CODES.contains(code);
+        } else {
             return false;
         }
     }
@@ -552,13 +567,12 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
             return Futures.of(Optional.empty());
         } catch (IOException e) {
             String msg = e.getMessage();
-            boolean rateLimited = msg.contains("<Error><Code>SlowDown</Code>")
-                    || msg.contains("<Error><Code>InternalError</Code>");
+            boolean rateLimited = isRateLimitedException(e);
             if (rateLimited) {
                 S3BlockStorage.rateLimited.inc();
                 throw new RateLimitException();
             }
-            boolean notFound = msg.startsWith("<?xml version=\"1.0\" encoding=\"UTF-8\"?><Error><Code>NoSuchKey</Code>");
+            boolean notFound = msg.contains("<Code>NoSuchKey</Code>");
             if (! notFound) {
                 LOG.warning("S3 error reading " + hash);
                 LOG.log(Level.WARNING, msg, e);
@@ -660,9 +674,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                 cborCache.put(cid, data);
             return cid;
         } catch (IOException e) {
-            String msg = e.getMessage();
-            boolean rateLimited = msg.contains("<Error><Code>SlowDown</Code>")
-                    || msg.contains("<Error><Code>InternalError</Code>");
+            boolean rateLimited = isRateLimitedException(e);
             if (rateLimited) {
                 S3BlockStorage.rateLimited.inc();
                 throw new RateLimitException();
@@ -879,9 +891,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                         try {
                             return HttpUtil.post(url, body);
                         } catch (IOException e) {
-                            String msg = e.getMessage();
-                            boolean rateLimited = msg.contains("<Error><Code>SlowDown</Code>")
-                                    || msg.contains("<Error><Code>InternalError</Code>");
+                            boolean rateLimited = isRateLimitedException(e);
                             if (rateLimited) {
                                 S3BlockStorage.rateLimited.inc();
                                 throw new RateLimitException();
