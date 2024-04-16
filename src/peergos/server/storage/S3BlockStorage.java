@@ -360,8 +360,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
             throw new RateLimitException();
         } catch (IOException e) {
             String msg = e.getMessage();
-            boolean rateLimited = msg.contains("<Error><Code>SlowDown</Code>")
-                    || msg.contains("<Error><Code>InternalError</Code>");
+            boolean rateLimited = isRateLimitedException(e);
             if (rateLimited) {
                 getRateLimited.inc();
                 S3BlockStorage.rateLimited.inc();
@@ -406,19 +405,28 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                 LOG.info("Error checking for " + hash + ": " + e);
                 return false;
             }
-            boolean rateLimited = msg.contains("<Error><Code>SlowDown</Code>")
-                    || msg.contains("<Error><Code>InternalError</Code>");
+            boolean rateLimited = isRateLimitedException(e);
             if (rateLimited) {
                 S3BlockStorage.rateLimited.inc();
                 throw new RateLimitException();
             }
-            boolean notFound = msg.startsWith("<?xml version=\"1.0\" encoding=\"UTF-8\"?><Error><Code>NoSuchKey</Code>");
+            boolean notFound = msg.contains("<Code>NoSuchKey</Code>");
             if (! notFound) {
                 LOG.warning("S3 error reading " + hash);
                 LOG.log(Level.WARNING, msg, e);
             }
             return false;
         }
+    }
+
+    private boolean isRateLimitedException(IOException e) {
+        String msg = e.getMessage();
+        if (msg == null) {
+            return false;
+        }
+        msg = msg.replaceAll("\\s","");
+        return msg.contains("<Error><Code>SlowDown</Code>")
+                || msg.contains("<Error><Code>InternalError</Code>");
     }
 
     @Override
@@ -552,13 +560,12 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
             return Futures.of(Optional.empty());
         } catch (IOException e) {
             String msg = e.getMessage();
-            boolean rateLimited = msg.contains("<Error><Code>SlowDown</Code>")
-                    || msg.contains("<Error><Code>InternalError</Code>");
+            boolean rateLimited = isRateLimitedException(e);
             if (rateLimited) {
                 S3BlockStorage.rateLimited.inc();
                 throw new RateLimitException();
             }
-            boolean notFound = msg.startsWith("<?xml version=\"1.0\" encoding=\"UTF-8\"?><Error><Code>NoSuchKey</Code>");
+            boolean notFound = msg.contains("<Code>NoSuchKey</Code>");
             if (! notFound) {
                 LOG.warning("S3 error reading " + hash);
                 LOG.log(Level.WARNING, msg, e);
@@ -660,9 +667,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                 cborCache.put(cid, data);
             return cid;
         } catch (IOException e) {
-            String msg = e.getMessage();
-            boolean rateLimited = msg.contains("<Error><Code>SlowDown</Code>")
-                    || msg.contains("<Error><Code>InternalError</Code>");
+            boolean rateLimited = isRateLimitedException(e);
             if (rateLimited) {
                 S3BlockStorage.rateLimited.inc();
                 throw new RateLimitException();
@@ -879,9 +884,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                         try {
                             return HttpUtil.post(url, body);
                         } catch (IOException e) {
-                            String msg = e.getMessage();
-                            boolean rateLimited = msg.contains("<Error><Code>SlowDown</Code>")
-                                    || msg.contains("<Error><Code>InternalError</Code>");
+                            boolean rateLimited = isRateLimitedException(e);
                             if (rateLimited) {
                                 S3BlockStorage.rateLimited.inc();
                                 throw new RateLimitException();
