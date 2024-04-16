@@ -36,7 +36,9 @@ import java.util.stream.*;
 public class S3BlockStorage implements DeletableContentAddressedStorage {
 
     private static final Logger LOG = Logger.getGlobal();
-
+    private static final List<String> RETRY_S3_CODES = List.of("RequestError","RequestTimeout","Throttling"
+            ,"ThrottlingException","RequestLimitExceeded","RequestThrottled","InternalError","ExpiredToken","ExpiredTokenException","SlowDown");
+    
     private static final Histogram readTimerLog = Histogram.build()
             .labelNames("filesize")
             .name("block_read_seconds")
@@ -424,9 +426,14 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         if (msg == null) {
             return false;
         }
-        msg = msg.replaceAll("\\s","");
-        return msg.contains("<Error><Code>SlowDown</Code>")
-                || msg.contains("<Error><Code>InternalError</Code>");
+        int startIndex = msg.indexOf("<Code>");
+        int endIndex = msg.indexOf("</Code>");
+        if (startIndex >=0 && endIndex >=0 && startIndex < endIndex) {
+            String code = msg.substring(startIndex + 6, endIndex).trim();
+            return RETRY_S3_CODES.contains(code);
+        } else {
+            return false;
+        }
     }
 
     @Override
