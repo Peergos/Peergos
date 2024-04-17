@@ -15,7 +15,7 @@ import java.util.concurrent.*;
 import java.util.function.*;
 import java.util.stream.*;
 
-public class AuthedStorage extends DelegatingStorage implements DeletableContentAddressedStorage {
+public class AuthedStorage extends DelegatingDeletableStorage {
     private final DeletableContentAddressedStorage target;
     private final BlockRequestAuthoriser authoriser;
     private final Hasher h;
@@ -62,6 +62,15 @@ public class AuthedStorage extends DelegatingStorage implements DeletableContent
     }
 
     @Override
+    public CompletableFuture<Optional<CborObject>> get(List<Multihash> peerIds, Cid hash, Optional<BatWithId> bat, Cid ourId, Hasher h) {
+        if (bat.isEmpty())
+            return get(peerIds, hash, "");
+        return bat.get().bat.generateAuth(hash, ourId, 300, S3Request.currentDatetime(), bat.get().id, h)
+                .thenApply(BlockAuth::encode)
+                .thenCompose(auth -> get(peerIds, hash, auth));
+    }
+
+    @Override
     public CompletableFuture<Optional<byte[]>> getRaw(PublicKeyHash owner, Cid hash, Optional<BatWithId> bat) {
         return getRaw(pki.getStorageProviders(owner), hash, bat, ourNodeId, h);
     }
@@ -75,6 +84,11 @@ public class AuthedStorage extends DelegatingStorage implements DeletableContent
     public CompletableFuture<BlockMetadata> getBlockMetadata(Cid block) {
         return getRaw(Collections.emptyList(), block, "", false)
                 .thenApply(rawOpt -> BlockMetadataStore.extractMetadata(block, rawOpt.get()));
+    }
+
+    @Override
+    public List<List<Cid>> bulkGetLinks(List<Multihash> peerIds, List<Want> wants) {
+        return target.bulkGetLinks(peerIds, wants);
     }
 
     @Override

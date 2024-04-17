@@ -443,6 +443,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                                                Optional<Cid> updated,
                                                Optional<BatWithId> mirrorBat,
                                                Cid ourNodeId,
+                                               Consumer<List<Cid>> newBlockProcessor,
                                                TransactionId tid,
                                                Hasher hasher) {
         if (updated.isEmpty())
@@ -474,7 +475,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                     Optional.of(existingLinks.get(i)) :
                     Optional.empty();
             Optional<Cid> updatedLink = Optional.of((Cid)newLinks.get(i));
-            mirror(owner, peerIds, existingLink, updatedLink, mirrorBat, ourNodeId, tid, hasher).join();
+            mirror(owner, peerIds, existingLink, updatedLink, mirrorBat, ourNodeId, newBlockProcessor, tid, hasher).join();
         }
         return Futures.of(Collections.singletonList(newRoot));
     }
@@ -684,6 +685,11 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         } finally {
             writeTimer.observeDuration();
         }
+    }
+
+    @Override
+    public List<List<Cid>> bulkGetLinks(List<Multihash> peerIds, List<Want> wants) {
+        throw new IllegalStateException("Unimplemented!");
     }
 
     @Override

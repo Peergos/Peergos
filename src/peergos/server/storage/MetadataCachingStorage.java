@@ -10,6 +10,7 @@ import peergos.shared.util.*;
 
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.function.*;
 import java.util.logging.*;
 
 public class MetadataCachingStorage extends DelegatingDeletableStorage {
@@ -121,5 +122,18 @@ public class MetadataCachingStorage extends DelegatingDeletableStorage {
             bopt.ifPresent(b -> cacheBlockMetadata(b, hash.isRaw()));
             return bopt;
         });
+    }
+
+    @Override
+    public CompletableFuture<List<Cid>> mirror(PublicKeyHash owner, List<Multihash> peerIds, Optional<Cid> existing,
+                                               Optional<Cid> updated, Optional<BatWithId> mirrorBat, Cid ourNodeId,
+                                               Consumer<List<Cid>> newBlockProcessor, TransactionId tid, Hasher hasher) {
+        return target.mirror(owner, peerIds, existing, updated, mirrorBat, ourNodeId, b -> addMetadata(owner, b), tid, hasher);
+    }
+
+    private void addMetadata(PublicKeyHash owner, List<Cid> hashes) {
+        for (Cid c : hashes) {
+            getRaw(owner, c, Optional.empty());
+        }
     }
 }

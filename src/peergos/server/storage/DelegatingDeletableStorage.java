@@ -1,5 +1,6 @@
 package peergos.server.storage;
 
+import peergos.server.storage.auth.*;
 import peergos.shared.cbor.*;
 import peergos.shared.corenode.*;
 import peergos.shared.crypto.hash.*;
@@ -26,6 +27,11 @@ public class DelegatingDeletableStorage implements DeletableContentAddressedStor
     @Override
     public void setPki(CoreNode pki) {
         target.setPki(pki);
+    }
+
+    @Override
+    public List<List<Cid>> bulkGetLinks(List<Multihash> peerIds, List<Want> wants) {
+        return target.bulkGetLinks(peerIds, wants);
     }
 
     @Override
@@ -79,8 +85,10 @@ public class DelegatingDeletableStorage implements DeletableContentAddressedStor
     }
 
     @Override
-    public CompletableFuture<List<Cid>> mirror(PublicKeyHash owner, List<Multihash> peerIds, Optional<Cid> existing, Optional<Cid> updated, Optional<BatWithId> mirrorBat, Cid ourNodeId, TransactionId tid, Hasher hasher) {
-        return target.mirror(owner, peerIds, existing, updated, mirrorBat, ourNodeId, tid, hasher);
+    public CompletableFuture<List<Cid>> mirror(PublicKeyHash owner, List<Multihash> peerIds, Optional<Cid> existing,
+                                               Optional<Cid> updated, Optional<BatWithId> mirrorBat, Cid ourNodeId,
+                                               Consumer<List<Cid>> newBlockProcessor, TransactionId tid, Hasher hasher) {
+        return target.mirror(owner, peerIds, existing, updated, mirrorBat, ourNodeId, newBlockProcessor, tid, hasher);
     }
 
     @Override

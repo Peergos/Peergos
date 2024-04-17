@@ -15,7 +15,7 @@ import java.util.concurrent.*;
 import java.util.function.*;
 import java.util.stream.*;
 
-public class TransactionalIpfs extends DelegatingStorage implements DeletableContentAddressedStorage {
+public class TransactionalIpfs extends DelegatingDeletableStorage {
 
     private final DeletableContentAddressedStorage target;
     private final TransactionStore transactions;
@@ -75,6 +75,15 @@ public class TransactionalIpfs extends DelegatingStorage implements DeletableCon
     }
 
     @Override
+    public CompletableFuture<Optional<CborObject>> get(List<Multihash> peerIds, Cid hash, Optional<BatWithId> bat, Cid ourId, Hasher h) {
+        if (bat.isEmpty())
+            return get(peerIds, hash, "");
+        return bat.get().bat.generateAuth(hash, ourId, 300, S3Request.currentDatetime(), bat.get().id, h)
+                .thenApply(BlockAuth::encode)
+                .thenCompose(auth -> get(peerIds, hash, auth));
+    }
+
+    @Override
     public CompletableFuture<Optional<byte[]>> getRaw(PublicKeyHash owner, Cid hash, Optional<BatWithId> bat) {
         return getRaw(pki.getStorageProviders(owner), hash, bat, id, hasher);
     }
@@ -111,6 +120,11 @@ public class TransactionalIpfs extends DelegatingStorage implements DeletableCon
                         .map(cbor -> cbor.links().stream().map(c -> (Cid) c).collect(Collectors.toList()))
                         .orElse(Collections.emptyList())
                 );
+    }
+
+    @Override
+    public List<List<Cid>> bulkGetLinks(List<Multihash> peerIds, List<Want> wants) {
+        return target.bulkGetLinks(peerIds, wants);
     }
 
     @Override

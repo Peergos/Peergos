@@ -81,7 +81,6 @@
     <copy todir="${build}/native-lib">
       <fileset dir="native-lib"/>
     </copy>
-    <copy todir="${build}/pki" file="assets/pki-state.cbor"></copy>
     <manifestclasspath property="manifest_cp" jarfile="myjar.jar">
       <classpath refid="dep.runtime" />
     </manifestclasspath>
