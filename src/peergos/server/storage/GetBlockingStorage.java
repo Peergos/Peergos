@@ -2,7 +2,7 @@ package peergos.server.storage;
 
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.hash.*;
-import peergos.shared.io.ipfs.Cid;
+import peergos.shared.io.ipfs.*;
 import peergos.shared.storage.*;
 import peergos.shared.storage.auth.*;
 
@@ -40,5 +40,10 @@ public class GetBlockingStorage extends DelegatingStorage {
     @Override
     public CompletableFuture<Optional<byte[]>> getRaw(PublicKeyHash owner, Cid key, Optional<BatWithId> bat) {
         throw new IllegalStateException("P2P block gets are not allowed, use bitswap!");
+    }
+
+    @Override
+    public CompletableFuture<IpnsEntry> getIpnsEntry(Multihash signer) {
+        throw new IllegalStateException("P2P IPNS gets are not allowed, use the DHT!");
     }
 }
