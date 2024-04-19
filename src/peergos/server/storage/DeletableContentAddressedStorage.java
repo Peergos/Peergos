@@ -348,7 +348,7 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
                     .map(Multihash::bareMultihash)
                     .map(Multihash::toBase58)
                     .collect(Collectors.joining(","));
-            return poster.post(apiPrefix + BLOCK_STAT_BULK + "?peers=" + peers, JSONParser.toString(json).getBytes(), true, 30_000)
+            return poster.post(apiPrefix + BLOCK_STAT_BULK + "?peers=" + peers, JSONParser.toString(json).getBytes(), true, -1)
                     .thenApply(raw -> ((List<List<String>>) JSONParser.parse(new String(raw)))
                             .stream()
                             .map(links -> links.stream().map(Cid::decode).collect(Collectors.toList()))
