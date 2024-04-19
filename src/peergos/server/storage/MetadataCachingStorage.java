@@ -128,12 +128,12 @@ public class MetadataCachingStorage extends DelegatingDeletableStorage {
     public CompletableFuture<List<Cid>> mirror(PublicKeyHash owner, List<Multihash> peerIds, Optional<Cid> existing,
                                                Optional<Cid> updated, Optional<BatWithId> mirrorBat, Cid ourNodeId,
                                                Consumer<List<Cid>> newBlockProcessor, TransactionId tid, Hasher hasher) {
-        return target.mirror(owner, peerIds, existing, updated, mirrorBat, ourNodeId, b -> addMetadata(owner, b), tid, hasher);
+        return target.mirror(owner, peerIds, existing, updated, mirrorBat, ourNodeId, b -> addMetadata(owner, b, mirrorBat), tid, hasher);
     }
 
-    private void addMetadata(PublicKeyHash owner, List<Cid> hashes) {
+    private void addMetadata(PublicKeyHash owner, List<Cid> hashes, Optional<BatWithId> mirrorBat) {
         for (Cid c : hashes) {
-            getRaw(owner, c, Optional.empty());
+            getRaw(owner, c, mirrorBat);
         }
     }
 }
