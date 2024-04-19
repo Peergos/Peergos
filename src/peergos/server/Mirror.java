@@ -47,7 +47,8 @@ public class Mirror {
                             Optional.of(UserUtil.generateUser(username, password, crypto.hasher, crypto.symmetricProvider,
                     crypto.random, crypto.signer, crypto.boxer, alg.get()).join().getUser());
 
-                    System.out.println("To mirror all your data on another server run daemon with these additional arguments:");
+                    System.out.println("To mirror all your data on another server run the \"daemon\" command with these additional arguments:");
+                    System.out.println("-mirror.username " + username);
                     mirrorBat.ifPresent(b -> System.out.println("Set daemon arg -mirror.bat " + b.encode()));
                     loginKeyPair.ifPresent(login -> System.out.println("Set daemon arg -login-keypair " + login));
                     return true;
