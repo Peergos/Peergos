@@ -51,6 +51,8 @@ public interface BlockRequestAuthoriser {
                 if (BlockRequestAuthoriser.isValidAuth(blockAuth, b, s, instanceBat.get().bat, h))
                     return true;
             }
+            String reason = BlockRequestAuthoriser.invalidReason(blockAuth, b, s, batids, h);
+            Logging.LOG().info("INVALID RAW BLOCK AUTH: source: " + s + ", cid: " + b + " reason: " + reason);
             return false;
         } else if (b.codec == Cid.Codec.DagCbor) {
             for (BatId bid : batids) {
