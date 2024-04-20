@@ -117,6 +117,11 @@ public class MetadataCachingStorage extends DelegatingDeletableStorage {
     }
 
     @Override
+    public CompletableFuture<Optional<byte[]>> getRaw(List<Multihash> peerIds, Cid hash, String auth, boolean doAuth) {
+        return target.getRaw(peerIds, hash, auth, doAuth);
+    }
+
+    @Override
     public CompletableFuture<Optional<byte[]>> getRaw(PublicKeyHash owner, Cid hash, Optional<BatWithId> bat) {
         return target.getRaw(owner, hash, bat).thenApply(bopt -> {
             bopt.ifPresent(b -> cacheBlockMetadata(b, hash.isRaw()));
@@ -128,12 +133,12 @@ public class MetadataCachingStorage extends DelegatingDeletableStorage {
     public CompletableFuture<List<Cid>> mirror(PublicKeyHash owner, List<Multihash> peerIds, Optional<Cid> existing,
                                                Optional<Cid> updated, Optional<BatWithId> mirrorBat, Cid ourNodeId,
                                                Consumer<List<Cid>> newBlockProcessor, TransactionId tid, Hasher hasher) {
-        return target.mirror(owner, peerIds, existing, updated, mirrorBat, ourNodeId, b -> addMetadata(owner, b, mirrorBat), tid, hasher);
+        return target.mirror(owner, peerIds, existing, updated, mirrorBat, ourNodeId, b -> addMetadata(peerIds, b), tid, hasher);
     }
 
-    private void addMetadata(PublicKeyHash owner, List<Cid> hashes, Optional<BatWithId> mirrorBat) {
+    private void addMetadata(List<Multihash> peerIds, List<Cid> hashes) {
         for (Cid c : hashes) {
-            getRaw(owner, c, mirrorBat);
+            getRaw(peerIds, c, "", false);
         }
     }
 }
