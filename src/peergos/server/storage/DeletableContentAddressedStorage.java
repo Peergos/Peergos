@@ -174,14 +174,21 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
         List<List<Cid>> addedLinks = RetryStorage.runWithRetry(3, () -> Futures.of(bulkGetLinks(peerIds, ourNodeId, added, mirrorBat, hasher))).join();
         newBlockProcessor.accept(added);
         if (removed.isEmpty()) {
-            List<Cid> all = addedLinks.stream()
+            List<Cid> allCbor = addedLinks.stream()
                     .flatMap(Collection::stream)
-                    .filter(c -> !c.isIdentity())
+                    .filter(c -> !c.isIdentity() && !c.isRaw())
                     .collect(Collectors.toList());
-            for (int i=0; i < all.size();) {
-                int end = Math.min(all.size(), i + 1000);
-                bulkMirror(owner, peerIds, Collections.emptyList(), all.subList(i, end), mirrorBat, ourNodeId, newBlockProcessor, tid, hasher);
+            for (int i=0; i < allCbor.size();) {
+                int end = Math.min(allCbor.size(), i + 1000);
+                bulkMirror(owner, peerIds, Collections.emptyList(), allCbor.subList(i, end), mirrorBat, ourNodeId, newBlockProcessor, tid, hasher);
                 i = end;
+            }
+            List<Cid> allRaw = addedLinks.stream()
+                    .flatMap(Collection::stream)
+                    .filter(c -> !c.isIdentity() && c.isRaw())
+                    .collect(Collectors.toList());
+            for (int i=0; i < allRaw.size();i++) {
+                bulkMirror(owner, peerIds, Collections.emptyList(), allRaw.subList(i, i+1), mirrorBat, ourNodeId, newBlockProcessor, tid, hasher);
             }
         } else {
             for (int i = 0; i < added.size(); i++) {
@@ -348,7 +355,7 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
                     .map(Multihash::bareMultihash)
                     .map(Multihash::toBase58)
                     .collect(Collectors.joining(","));
-            return poster.post(apiPrefix + BLOCK_STAT_BULK + "?peers=" + peers, JSONParser.toString(json).getBytes(), true, 30_000)
+            return poster.post(apiPrefix + BLOCK_STAT_BULK + "?peers=" + peers, JSONParser.toString(json).getBytes(), true, -1)
                     .thenApply(raw -> ((List<List<String>>) JSONParser.parse(new String(raw)))
                             .stream()
                             .map(links -> links.stream().map(Cid::decode).collect(Collectors.toList()))
