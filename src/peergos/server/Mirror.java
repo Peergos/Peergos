@@ -31,7 +31,14 @@ public class Mirror {
                 String peergosUrl = a.getArg("peergos-url");
                 try {
                     URL api = new URL(peergosUrl);
-                    NetworkAccess network = Main.buildJavaNetworkAccess(api, !peergosUrl.startsWith("http://localhost")).join();
+                    NetworkAccess network;
+                    try {
+                        network = Main.buildJavaNetworkAccess(api, !peergosUrl.startsWith("http://localhost")).join();
+                    } catch (Exception e) {
+                        System.err.println("Couldn't connect to peergos server at " + peergosUrl);
+                        System.err.println("To use a different server supply location, e.g. -peergos-url https://peergos.net");
+                        return false;
+                    }
                     Console console = System.console();
                     String username = a.getArg("username");
                     String password = new String(console.readPassword("Enter password for " + username + ": "));
