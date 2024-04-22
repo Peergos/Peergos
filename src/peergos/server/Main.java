@@ -565,7 +565,10 @@ public class Main extends Builder {
             CoreNode core = buildCorenode(a, localStorage, transactions, rawPointers, localPointers, proxingMutable,
                     rawSocial, usageStore, rawAccount, batStore, account, crypto);
             localStorage.setPki(core);
-            new Thread(core::initialize).start();
+            if (a.hasArg("mirror.username")) // mirror pki before starting user mirror
+                core.initialize();
+            else
+                new Thread(core::initialize).start();
 
             boolean isPki = nodeIds.stream()
                     .map(Cid::bareMultihash)
