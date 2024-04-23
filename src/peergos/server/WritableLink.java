@@ -1,5 +1,6 @@
 package peergos.server;
 
+import peergos.server.util.*;
 import peergos.shared.*;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
@@ -13,8 +14,10 @@ public class WritableLink {
 
     public static void main(String[] args) throws Exception {
         Crypto crypto = Main.initCrypto();
-        NetworkAccess network = Builder.buildJavaNetworkAccess(new URL("https://peergos.net"), true).get();
-        String username = args[0];
+        Args a = Args.parse(args);
+        String peergosUrl = a.getArg("peergos-url");
+        NetworkAccess network = Builder.buildJavaNetworkAccess(new URL(peergosUrl), !peergosUrl.startsWith("http://localhost")).get();
+        String username = a.getArg("username");
         Console console = System.console();
         String password = new String(console.readPassword("Enter password for " + username + ":"));
         UserContext context = UserContext.signIn(username, password, Main::getMfaResponseCLI, network, crypto).get();
