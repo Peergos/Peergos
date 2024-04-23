@@ -16,7 +16,8 @@ public class WritableLink {
         Crypto crypto = Main.initCrypto();
         Args a = Args.parse(args);
         String peergosUrl = a.getArg("peergos-url");
-        NetworkAccess network = Builder.buildJavaNetworkAccess(new URL(peergosUrl), !peergosUrl.startsWith("http://localhost")).get();
+        boolean isLocal = peergosUrl.startsWith("http://localhost");
+        NetworkAccess network = Builder.buildJavaNetworkAccess(new URL(peergosUrl), !isLocal).get();
         String username = a.getArg("username");
         Console console = System.console();
         String password = new String(console.readPassword("Enter password for " + username + ":"));
@@ -42,6 +43,7 @@ public class WritableLink {
         FileWrapper file = context.getByPath(path).join().get();
         String link = file.writableFilePointer().toLink();
         System.out.println("***** Writable secret link, only share with people you trust *****");
-        System.out.println("https://peergos.net/#" + URLEncoder.encode("{\"secretLink\":true,\"open\":true,\"link\":\""+link.substring(1) + "\"}"));
+        String host = isLocal ? "https://peergos.net" : peergosUrl;
+        System.out.println(host + "/#" + URLEncoder.encode("{\"secretLink\":true,\"open\":true,\"link\":\""+link.substring(1) + "\"}"));
     }
 }
