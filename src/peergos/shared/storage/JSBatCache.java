@@ -6,7 +6,6 @@ import peergos.shared.crypto.symmetric.*;
 import peergos.shared.storage.auth.*;
 import peergos.shared.user.NativeJSBatCache;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
