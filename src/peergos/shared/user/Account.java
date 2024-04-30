@@ -34,7 +34,8 @@ public interface Account {
     CompletableFuture<Either<UserStaticData, MultiFactorAuthRequest>> getLoginData(String username,
                                                                                    PublicSigningKey authorisedReader,
                                                                                    byte[] auth,
-                                                                                   Optional<MultiFactorAuthResponse>  mfa);
+                                                                                   Optional<MultiFactorAuthResponse>  mfa,
+                                                                                   boolean cacheMfaLoginData);
 
     /** Auth signed by identity
      *

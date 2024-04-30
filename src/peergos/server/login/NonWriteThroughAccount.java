@@ -28,10 +28,11 @@ public class NonWriteThroughAccount implements Account {
     public CompletableFuture<Either<UserStaticData, MultiFactorAuthRequest>> getLoginData(String username,
                                                                                           PublicSigningKey authorisedReader,
                                                                                           byte[] auth,
-                                                                                          Optional<MultiFactorAuthResponse>  mfa) {
+                                                                                          Optional<MultiFactorAuthResponse>  mfa,
+                                                                                          boolean cacheMfaLoginData) {
         LoginData updated = modifications.get(username);
         if (updated == null)
-            return source.getLoginData(username, authorisedReader, auth, mfa);
+            return source.getLoginData(username, authorisedReader, auth, mfa, false);
         return Futures.of(Either.a(updated.entryPoints));
     }
 

@@ -139,13 +139,14 @@ public class UserContext {
                                                         Function<MultiFactorAuthRequest, CompletableFuture<MultiFactorAuthResponse>> mfa,
                                                         NetworkAccess network,
                                                         Crypto crypto) {
-        return signIn(username, password, mfa, network, crypto, t -> {});
+        return signIn(username, password, mfa, false, network, crypto, t -> {});
     }
 
     @JsMethod
     public static CompletableFuture<UserContext> signIn(String username,
                                                         String password,
                                                         Function<MultiFactorAuthRequest, CompletableFuture<MultiFactorAuthResponse>> mfa,
+                                                        boolean cacheMfaLoginData,
                                                         NetworkAccess network,
                                                         Crypto crypto,
                                                         Consumer<String> progressCallback) {
@@ -165,7 +166,7 @@ public class UserContext {
                     crypto.random, crypto.signer, crypto.boxer, algorithm)
                     .thenCompose(userWithRoot -> {
                         progressCallback.accept("Logging in");
-                        return login(username, userWithRoot, mfa, pair, network, crypto, progressCallback);
+                        return login(username, userWithRoot, mfa, cacheMfaLoginData, pair, network, crypto, progressCallback);
                     });
         }).exceptionally(Futures::logAndThrow);
     }
@@ -178,7 +179,7 @@ public class UserContext {
                                                         Consumer<String> progressCallback) {
         progressCallback.accept("Logging in");
         return getWriterDataCbor(network, username)
-                .thenCompose(pair -> login(username, userWithRoot, mfa, pair, network, crypto, progressCallback))
+                .thenCompose(pair -> login(username, userWithRoot, mfa, false, pair, network, crypto, progressCallback))
                 .exceptionally(Futures::logAndThrow);
     }
 
@@ -210,14 +211,15 @@ public class UserContext {
                                                                   PublicSigningKey loginPub,
                                                                   SecretSigningKey loginSecret,
                                                                   Function<MultiFactorAuthRequest, CompletableFuture<MultiFactorAuthResponse>> mfa,
+                                                                  boolean cacheMfaLoginData,
                                                                   NetworkAccess network) {
-        return network.account.getLoginData(username, loginPub, TimeLimitedClient.signNow(loginSecret), Optional.empty())
+        return network.account.getLoginData(username, loginPub, TimeLimitedClient.signNow(loginSecret), Optional.empty(), cacheMfaLoginData)
                 .thenCompose(res -> {
                     if (res.isA())
                         return Futures.of(res.a());
                     MultiFactorAuthRequest authReq = res.b();
                     return mfa.apply(authReq)
-                            .thenCompose(authResp -> network.account.getLoginData(username, loginPub, TimeLimitedClient.signNow(loginSecret), Optional.of(authResp)))
+                            .thenCompose(authResp -> network.account.getLoginData(username, loginPub, TimeLimitedClient.signNow(loginSecret), Optional.of(authResp), cacheMfaLoginData))
                             .thenApply(login -> {
                                 if (login.isB())
                                     throw new IllegalStateException("Server rejected second factor auth");
@@ -229,6 +231,7 @@ public class UserContext {
     private static CompletableFuture<UserContext> login(String username,
                                                         UserWithRoot generatedCredentials,
                                                         Function<MultiFactorAuthRequest, CompletableFuture<MultiFactorAuthResponse>> mfa,
+                                                        boolean cacheMfaLoginData,
                                                         Pair<PointerUpdate, CborObject> pair,
                                                         NetworkAccess network,
                                                         Crypto crypto,
@@ -241,7 +244,7 @@ public class UserContext {
             SecretSigningKey loginSecret = generatedCredentials.getUser().secretSigningKey;
             return (legacyAccount ?
                     Futures.of(userData.staticData.get()) :
-                    getLoginData(username, loginPub, loginSecret, mfa, network)).thenCompose(entryData -> {
+                    getLoginData(username, loginPub, loginSecret, mfa, cacheMfaLoginData, network)).thenCompose(entryData -> {
                 UserStaticData.EntryPoints staticData;
                 try {
                     staticData = entryData.getData(loginRoot);
@@ -991,7 +994,7 @@ public class UserContext {
                                 PublicKeyHash existingOwner = ContentAddressedStorage.hashKey(existingLogin.getUser().publicSigningKey);
                                 if (! isLegacy) {
                                     // identity doesn't change here, just need to update the secret UserStaticData
-                                    return getLoginData(username, existingLogin.getUser().publicSigningKey, existingLoginSecret, mfa, network).thenCompose(usd -> {
+                                    return getLoginData(username, existingLogin.getUser().publicSigningKey, existingLoginSecret, mfa, false, network).thenCompose(usd -> {
                                         UserStaticData.EntryPoints entry = usd.getData(existingLogin.getRoot());
                                         UserStaticData updatedEntry = new UserStaticData(entry.entries, updatedLogin.getRoot(), entry.identity, entry.boxer);
                                         // need to commit new login algorithm too in the same call

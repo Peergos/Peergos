@@ -36,8 +36,9 @@ public class VerifyingAccount implements Account {
     public CompletableFuture<Either<UserStaticData, MultiFactorAuthRequest>> getLoginData(String username,
                                                                                           PublicSigningKey authorisedReader,
                                                                                           byte[] auth,
-                                                                                          Optional<MultiFactorAuthResponse>  mfa) {
-        return target.getLoginData(username, authorisedReader, auth, mfa).thenApply(res -> {
+                                                                                          Optional<MultiFactorAuthResponse>  mfa,
+                                                                                          boolean cacheMfaLoginData) {
+        return target.getLoginData(username, authorisedReader, auth, mfa, cacheMfaLoginData).thenApply(res -> {
             TimeLimited.isAllowedTime(auth, 24*3600, authorisedReader);
             return res;
         });

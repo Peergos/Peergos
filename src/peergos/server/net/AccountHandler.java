@@ -61,7 +61,7 @@ public class AccountHandler implements HttpHandler {
                     Optional<MultiFactorAuthResponse> mfa = params.containsKey("mfa") ?
                             Optional.of(MultiFactorAuthResponse.fromCbor(CborObject.fromByteArray(ArrayOps.hexToBytes(params.get("mfa").get(0))))) :
                             Optional.empty();
-                    Either<UserStaticData, MultiFactorAuthRequest> res = account.getLoginData(username, authorisedReader, auth, mfa).join();
+                    Either<UserStaticData, MultiFactorAuthRequest> res = account.getLoginData(username, authorisedReader, auth, mfa, false).join();
                     byte[] resBytes = new LoginResponse(res).serialize();
                     dout.write(resBytes);
                     break;

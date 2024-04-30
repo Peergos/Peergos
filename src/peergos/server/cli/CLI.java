@@ -654,7 +654,7 @@ public class CLI implements Runnable {
             writer.println("Enter password for '" + username + "'");
             String password = reader.readLine(PROMPT, PASSWORD_MASK);
             UserContext userContext = UserContext.signIn(username, password,
-                    methods -> mfa(methods, writer, reader), network, CRYPTO, progressConsumer).join();
+                    methods -> mfa(methods, writer, reader), false, network, CRYPTO, progressConsumer).join();
             return new CLIContext(userContext, serverURL.toString(), username);
         }
     }
