@@ -13,5 +13,7 @@ public class NativeJSAccountCache {
 
     public native CompletableFuture<Boolean> setLoginData(String key, byte[] entryPoints);
 
+    public native CompletableFuture<Boolean> remove(String key);
+
     public native CompletableFuture<byte[]> getEntryData(String key);
 }

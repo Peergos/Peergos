@@ -9,5 +9,7 @@ public interface LoginCache {
 
     CompletableFuture<Boolean> setLoginData(LoginData login);
 
+    CompletableFuture<Boolean> removeLoginData(String username);
+
     CompletableFuture<UserStaticData> getEntryData(String username, PublicSigningKey authorisedReader);
 }
