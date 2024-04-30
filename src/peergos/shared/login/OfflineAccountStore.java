@@ -41,6 +41,8 @@ public class OfflineAccountStore implements Account {
                                 .thenApply(res -> {
                                     if (res.isA())
                                         local.setLoginData(new LoginData(username, res.a(), authorisedReader, Optional.empty()));
+                                    else // disable offline login if MFA is enabled
+                                        local.removeLoginData(username);
                                     return res;
                                 });
                     online.updateAsync();

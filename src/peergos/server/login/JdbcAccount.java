@@ -22,7 +22,7 @@ import java.util.function.*;
 import java.util.logging.*;
 import java.util.stream.*;
 
-public class JdbcAccount implements LoginCache {
+public class JdbcAccount {
     private static final Logger LOG = Logging.LOG();
 
     private static final String CREATE = "INSERT INTO login (username, entry, reader) VALUES(?, ?, ?)";

@@ -6,6 +6,7 @@ import peergos.shared.login.LoginCache;
 import peergos.shared.user.LoginData;
 import peergos.shared.user.NativeJSAccountCache;
 import peergos.shared.user.UserStaticData;
+import peergos.shared.util.*;
 
 import java.util.concurrent.CompletableFuture;
 
@@ -20,6 +21,12 @@ public class JSAccountCache implements LoginCache {
     public CompletableFuture<Boolean> setLoginData(LoginData login) {
         byte[] entrySerialized = login.entryPoints.toCbor().serialize();
         return cache.setLoginData(login.username, entrySerialized);
+    }
+
+    @Override
+    public CompletableFuture<Boolean> removeLoginData(String username) {
+        cache.remove(username);
+        return Futures.of(true);
     }
 
     @Override
