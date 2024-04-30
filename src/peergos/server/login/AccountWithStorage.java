@@ -43,7 +43,8 @@ public class AccountWithStorage implements Account {
     public CompletableFuture<Either<UserStaticData, MultiFactorAuthRequest>> getLoginData(String username,
                                                                                           PublicSigningKey authorisedReader,
                                                                                           byte[] auth,
-                                                                                          Optional<MultiFactorAuthResponse> mfa) {
+                                                                                          Optional<MultiFactorAuthResponse> mfa,
+                                                                                          boolean cacheMfaLoginData) {
         return target.getEntryData(username, authorisedReader, mfa);
     }
 

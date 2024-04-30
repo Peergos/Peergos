@@ -66,7 +66,8 @@ public class OpLog implements Cborable, Account, MutablePointers, ContentAddress
     public synchronized CompletableFuture<Either<UserStaticData, MultiFactorAuthRequest>> getLoginData(String username,
                                                                                                        PublicSigningKey authorisedReader,
                                                                                                        byte[] auth,
-                                                                                                       Optional<MultiFactorAuthResponse> mfa) {
+                                                                                                       Optional<MultiFactorAuthResponse> mfa,
+                                                                                                       boolean cacheMfaLoginData) {
         if (loginData == null)
             throw new IllegalStateException("No login data present!");
         if (! loginData.left.username.equals(username))

@@ -34,12 +34,13 @@ public class OfflineAccountStore implements Account {
     public CompletableFuture<Either<UserStaticData, MultiFactorAuthRequest>> getLoginData(String username,
                                                                                           PublicSigningKey authorisedReader,
                                                                                           byte[] auth,
-                                                                                          Optional<MultiFactorAuthResponse>  mfa) {
+                                                                                          Optional<MultiFactorAuthResponse>  mfa,
+                                                                                          boolean cacheMfaLoginData) {
         return Futures.asyncExceptionally(() -> {
                     if (online.isOnline())
-                        return target.getLoginData(username, authorisedReader, auth, mfa)
+                        return target.getLoginData(username, authorisedReader, auth, mfa, cacheMfaLoginData)
                                 .thenApply(res -> {
-                                    if (res.isA() && mfa.isEmpty())
+                                    if (res.isA() && (mfa.isEmpty() || cacheMfaLoginData))
                                         local.setLoginData(new LoginData(username, res.a(), authorisedReader, Optional.empty()));
                                     else // disable offline login if MFA is enabled
                                         local.removeLoginData(username);

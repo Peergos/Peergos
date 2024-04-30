@@ -36,11 +36,12 @@ public class ProxyingAccount implements Account {
     public CompletableFuture<Either<UserStaticData, MultiFactorAuthRequest>> getLoginData(String username,
                                                                                           PublicSigningKey authorisedReader,
                                                                                           byte[] auth,
-                                                                                          Optional<MultiFactorAuthResponse>  mfa) {
+                                                                                          Optional<MultiFactorAuthResponse>  mfa,
+                                                                                          boolean cacheMfaLoginData) {
         return core.getPublicKeyHash(username).thenCompose(idOpt -> Proxy.redirectCall(core,
                 serverIds,
                 idOpt.get(),
-                () -> local.getLoginData(username, authorisedReader, auth, mfa),
+                () -> local.getLoginData(username, authorisedReader, auth, mfa, false),
                 target -> p2p.getLoginData(target, username, authorisedReader, auth, mfa)));
     }
 
