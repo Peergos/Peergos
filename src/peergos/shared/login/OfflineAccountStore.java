@@ -39,7 +39,7 @@ public class OfflineAccountStore implements Account {
                     if (online.isOnline())
                         return target.getLoginData(username, authorisedReader, auth, mfa)
                                 .thenApply(res -> {
-                                    if (res.isA())
+                                    if (res.isA() && mfa.isEmpty())
                                         local.setLoginData(new LoginData(username, res.a(), authorisedReader, Optional.empty()));
                                     else // disable offline login if MFA is enabled
                                         local.removeLoginData(username);
