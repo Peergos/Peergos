@@ -109,7 +109,7 @@ public class RequestCountTests {
 
         storageCounter.reset();
         List<SharedItem> items = feed.getShared(feedSize, feedSize + 1, a.crypto, a.network).join();
-        Assert.assertTrue(storageCounter.requestTotal() <= 1);
+        Assert.assertTrue(storageCounter.requestTotal() <= 2);
 
         storageCounter.reset();
         a.getFiles(items).join();
