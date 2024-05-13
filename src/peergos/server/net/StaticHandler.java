@@ -71,7 +71,8 @@ public abstract class StaticHandler implements HttpHandler
             path = path.substring(1);
             path = path.replaceAll("//", "/");
             if (path.length() == 0) {
-                indexLoads.inc();
+                if (httpExchange.getRequestMethod().equals("GET"))
+                    indexLoads.inc();
                 path = "index.html";
             }
 
