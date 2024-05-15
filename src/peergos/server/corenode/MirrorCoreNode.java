@@ -407,11 +407,11 @@ public class MirrorCoreNode implements CoreNode {
 
     @Override
     public CompletableFuture<List<UserPublicKeyLink>> getChain(String username) {
-        if (! initialized)
-            return writeTarget.getChain(username);
         List<UserPublicKeyLink> chain = state.chains.get(username);
         if (chain != null)
             return CompletableFuture.completedFuture(chain);
+        if (! initialized)
+            return writeTarget.getChain(username);
 
         update();
         return CompletableFuture.completedFuture(state.chains.getOrDefault(username, Collections.emptyList()));
@@ -568,17 +568,19 @@ public class MirrorCoreNode implements CoreNode {
 
     @Override
     public CompletableFuture<String> getUsername(PublicKeyHash key) {
-        if (! initialized)
-            return writeTarget.getUsername(key);
         String username = state.reverseLookup.get(key);
         if (username != null)
             return CompletableFuture.completedFuture(username);
+        if (! initialized)
+            return writeTarget.getUsername(key);
         update();
         return CompletableFuture.completedFuture(state.reverseLookup.get(key));
     }
 
     @Override
     public CompletableFuture<List<String>> getUsernames(String prefix) {
+        if (! state.usernames.isEmpty())
+            return CompletableFuture.completedFuture(state.usernames);
         if (! initialized)
             return writeTarget.getUsernames(prefix);
         return CompletableFuture.completedFuture(state.usernames);
