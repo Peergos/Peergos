@@ -119,7 +119,8 @@ public abstract class StaticHandler implements HttpHandler
                 httpExchange.getResponseHeaders().set("Content-Type", "application/font-woff");
             else if (path.endsWith(".svg"))
                 httpExchange.getResponseHeaders().set("Content-Type", "image/svg+xml");
-
+            else if (path.endsWith(".wasm"))
+                httpExchange.getResponseHeaders().set("Content-Type", "application/wasm");
 
             if (httpExchange.getRequestMethod().equals("HEAD")) {
                 httpExchange.getResponseHeaders().set("Content-Length", "" + res.data.length);
