@@ -290,8 +290,13 @@ public class Messenger {
                 .thenCompose(home -> home.getOrMkdirs(PathUtil.get(MESSAGING_BASE_DIR), network, true, context.mirrorBatId(), crypto))
                 .thenCompose(chatsRoot -> chatsRoot.getChildren(hasher, network))
                 .thenCompose(chatDirs -> Futures.combineAll(chatDirs.stream()
-                        .map(d -> ChatController.getChatController(d, context, cache))
-                        .collect(Collectors.toList())));
+                        .map(d -> ChatController.getChatController(d, context, cache)
+                                .thenApply(Optional::of)
+                                .exceptionally(t -> Optional.empty()))
+                        .collect(Collectors.toList()))
+                        .thenApply(res -> res.stream()
+                                .flatMap(Optional::stream)
+                                .collect(Collectors.toSet())));
     }
 
     private CompletableFuture<MessageStore> getMessageStoreMirror(String username, String uuid) {
