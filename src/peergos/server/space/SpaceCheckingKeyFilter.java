@@ -266,12 +266,14 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
             throw new IllegalStateException("Unknown writer key hash: " + writer);
         List<Multihash> us = List.of(dht.id().join().bareMultihash());
         if (! newRoot.isPresent()) {
+            LOG.info("Removing usage for (" + owner + ", " + writer + ") from " + current.directRetainedStorage());
+            state.confirmUsage(current.owner, writer, -current.directRetainedStorage(), false);
             state.updateWriterUsage(writer, MaybeMultihash.empty(), Collections.emptySet(), Collections.emptySet(), 0);
             if (existingRoot.isPresent()) {
                 try {
                     // subtract data size from orphaned child keys (this assumes the keys form a tree without dupes)
                     Set<PublicKeyHash> updatedOwned =
-                            DeletableContentAddressedStorage.getDirectOwnedKeys(owner, writer, newRoot,
+                            DeletableContentAddressedStorage.getDirectOwnedKeys(owner, writer, existingRoot,
                                     (h, s) -> DeletableContentAddressedStorage.getWriterData(us, h,s, dht),  dht, hasher).join();
                     processRemovedOwnedKeys(state, owner, updatedOwned, mutable, dht, hasher);
                 } catch (Exception e) {
@@ -307,7 +309,7 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
                     MaybeMultihash updatedRoot = mutable.getPointerTarget(owner, added, dht).join().updated;
                     processMutablePointerEvent(state, owner, added, currentAdded.target(), updatedRoot, mutable, dht, hasher);
                 }
-                System.out.println("Updated usage from " + current.directRetainedStorage() + ", adding " + changeInStorage);
+                LOG.info("Updated usage for (" + owner + ", " + writer + ") from " + current.directRetainedStorage() + ", adding " + changeInStorage);
             }
         } catch (Exception e) {
             Exceptions.getRootCause(e).printStackTrace();

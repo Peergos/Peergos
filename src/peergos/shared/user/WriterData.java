@@ -315,6 +315,22 @@ public class WriterData implements Cborable {
                 });
     }
 
+    public static CompletableFuture<Snapshot> commitDeletion(PublicKeyHash owner,
+                                                             SigningPrivateKeyAndPublicHash signer,
+                                                             MaybeMultihash currentHash,
+                                                             Optional<Long> currentSequence,
+                                                             MutablePointers mutable) {
+        MaybeMultihash newHash = MaybeMultihash.empty();
+        PointerUpdate cas = new PointerUpdate(currentHash, newHash, PointerUpdate.increment(currentSequence));
+        return mutable.setPointer(owner, signer, cas)
+                .thenApply(res -> {
+                    if (!res)
+                        throw new IllegalStateException("Mutable pointer update failed! Concurrent Modification.");
+                    CommittedWriterData committed = new CommittedWriterData(newHash, null, cas.sequence);
+                    return new Snapshot(signer.publicKeyHash, committed);
+                });
+    }
+
     @Override
     public CborObject toCbor() {
         Map<String, Cborable> result = new TreeMap<>();

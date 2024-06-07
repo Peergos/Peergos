@@ -1936,7 +1936,7 @@ public class FileWrapper {
                                                                 tid, hasher, network, v, committer),
                                                         (x, y) -> y));
                                     })
-                                    .thenCompose(s -> removeSigningKey(currentCap.writer, signer, currentCap.owner, network, s, committer));
+                                    .thenCompose(s -> removeSigningKey(ourSigner, signer, currentCap.owner, network, s, committer));
                         }));
     }
 
@@ -2050,24 +2050,27 @@ public class FileWrapper {
                 .thenCompose(s -> parent.getUpdated(s, network));
     }
 
-    public static CompletableFuture<Snapshot> removeSigningKey(PublicKeyHash signerToRemove,
+    public static CompletableFuture<Snapshot> removeSigningKey(SigningPrivateKeyAndPublicHash signerToRemove,
                                                                SigningPrivateKeyAndPublicHash parentSigner,
                                                                PublicKeyHash owner,
                                                                NetworkAccess network,
                                                                Snapshot current,
                                                                Committer committer) {
         PublicKeyHash parentWriter = parentSigner.publicKeyHash;
-        if (parentWriter.equals(signerToRemove))
+        if (parentWriter.equals(signerToRemove.publicKeyHash))
             return CompletableFuture.completedFuture(current);
+        CommittedWriterData toRemove = current.get(signerToRemove.publicKeyHash);
 
         return current.withWriter(owner, parentWriter, network)
                 .thenCompose(s -> s.get(parentSigner).props
-                        .removeOwnedKey(owner, parentSigner, signerToRemove, network.dhtClient, network.hasher)
+                        .removeOwnedKey(owner, parentSigner, signerToRemove.publicKeyHash, network.dhtClient, network.hasher)
                         .thenCompose(removed -> IpfsTransaction.call(
                                 owner,
                                 tid -> committer.commit(owner, parentSigner, removed, s.get(parentSigner), tid),
                                 network.dhtClient))
-                        .thenApply(committed -> s.withVersion(parentWriter, committed.get(parentWriter))));
+                        .thenApply(committed -> s.withVersion(parentWriter, committed.get(parentWriter))))
+                .thenCompose(s -> IpfsTransaction.call(owner,
+                        tid -> committer.commit(owner, signerToRemove, null, toRemove, tid), network.dhtClient));
     }
 
     public CompletableFuture<? extends AsyncReader> getInputStream(NetworkAccess network,

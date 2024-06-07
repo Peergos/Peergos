@@ -63,8 +63,11 @@ public class WriteSynchronizer {
 
     public CompletableFuture<Snapshot> getWriterData(PublicKeyHash owner, PublicKeyHash writer) {
         return mutable.getPointerTarget(owner, writer, dht)
-                .thenCompose(x -> WriterData.getWriterData(owner, (Cid)x.updated.get(), x.sequence, dht))
-                .thenApply(cwd -> new Snapshot(writer, cwd));
+                .thenCompose(x -> x.updated.isPresent() ?
+                        WriterData.getWriterData(owner, (Cid)x.updated.get(), x.sequence, dht)
+                                .thenApply(cwd -> new Snapshot(writer, cwd)) :
+                        Futures.of(new Snapshot(Collections.emptyMap()))
+                );
     }
 
     /**
@@ -107,8 +110,10 @@ public class WriteSynchronizer {
                                                           Supplier<Boolean> commitWatcher) {
         return pending.computeIfAbsent(new Pair<>(owner, writer.publicKeyHash), p -> new AsyncLock<>(getWriterData(owner, p.right)))
                 .runWithLock(current -> transformer.apply(current,
-                                        committerBuilder.buildCommitter((aOwner, signer, wd, existing, tid) -> wd.commit(aOwner, signer, existing.hash, existing.sequence, mutable, dht, hasher, tid)
-                                                .thenCompose(s -> updateWriterState(owner, signer.publicKeyHash, s).thenApply(x -> s)), owner, commitWatcher))
+                                        committerBuilder.buildCommitter((aOwner, signer, wd, existing, tid) -> wd != null ?
+                                                wd.commit(aOwner, signer, existing.hash, existing.sequence, mutable, dht, hasher, tid) :
+                                                WriterData.commitDeletion(aOwner, signer, existing.hash, existing.sequence, mutable)
+                                                        .thenCompose(s -> updateWriterState(owner, signer.publicKeyHash, s).thenApply(x -> s)), owner, commitWatcher))
                                 .thenCompose(v -> flusher.commit(owner, v, commitWatcher)),
                         () -> getWriterData(owner, writer.publicKeyHash));
     }
