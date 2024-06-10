@@ -354,7 +354,7 @@ public abstract class UserTests {
         Pair<PublicKeyHash, PublicBoxingKey> keyPairs = userContext.getPublicKeys(username).join().get();
         PublicBoxingKey initialBoxer = keyPairs.right;
         PublicKeyHash initialIdentity = keyPairs.left;
-        WriterData initialWd = WriterData.getWriterData(initialIdentity, initialIdentity, network.mutable, network.dhtClient).join().props;
+        WriterData initialWd = WriterData.getWriterData(initialIdentity, initialIdentity, network.mutable, network.dhtClient).join().props.get();
         Assert.assertTrue(initialWd.staticData.isPresent());
 
         UserContext login = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
@@ -372,7 +372,7 @@ public abstract class UserTests {
 
         SecretGenerationAlgorithm alg = WriterData.fromCbor(UserContext.getWriterDataCbor(network, username).join().right).generationAlgorithm.get();
         Assert.assertTrue("password change upgrades legacy accounts", ! alg.generateBoxerAndIdentity());
-        WriterData finalWd = WriterData.getWriterData(newIdentity, newIdentity, network.mutable, network.dhtClient).join().props;
+        WriterData finalWd = WriterData.getWriterData(newIdentity, newIdentity, network.mutable, network.dhtClient).join().props.get();
         Assert.assertTrue(finalWd.staticData.isEmpty());
     }
 
@@ -1133,7 +1133,7 @@ public abstract class UserTests {
         modified.remove("bats");
         CborObject.CborMap noBats = CborObject.CborMap.build(modified);
         CommittedWriterData cwd = WriterData.getWriterData(owner, file.writer(), network.mutable, network.dhtClient).join();
-        WriterData wd = cwd.props;
+        WriterData wd = cwd.props.get();
         SigningPrivateKeyAndPublicHash signingPair = file.signingPair();
         Cid cryptreeCid = network.dhtClient.put(owner, signingPair, noBats.serialize(), crypto.hasher,
                 TransactionId.build("hey")).join();
@@ -1180,7 +1180,7 @@ public abstract class UserTests {
                 updatedFile.getFileProperties().streamSecret, newcap.getMapKey(), Optional.empty(), crypto.hasher).join();
         Assert.assertTrue(nextChunkRel.right.isEmpty());
         NetworkAccess cleared = network.clear();
-        WriterData uwd = WriterData.getWriterData(owner, updatedFile.writer(), network.mutable, network.dhtClient).join().props;
+        WriterData uwd = WriterData.getWriterData(owner, updatedFile.writer(), network.mutable, network.dhtClient).join().props.get();
         Optional<CryptreeNode> secondChunk = cleared.getMetadata(uwd, newcap.withMapKey(nextChunkRel.left, Optional.empty())).join();
         Assert.assertTrue(secondChunk.isPresent());
         // now the third chunk
@@ -1277,7 +1277,7 @@ public abstract class UserTests {
         // check we can't get the third chunk any more
         WritableAbsoluteCapability pointer = original.writableFilePointer();
         CommittedWriterData cwd = network.synchronizer.getValue(pointer.owner, pointer.writer).join().get(pointer.writer);
-        Optional<CryptreeNode> thirdChunk = network.getMetadata(cwd.props, pointer.withMapKey(thirdChunkLabel.left, thirdChunkLabel.right)).join();
+        Optional<CryptreeNode> thirdChunk = network.getMetadata(cwd.props.get(), pointer.withMapKey(thirdChunkLabel.left, thirdChunkLabel.right)).join();
         Assert.assertTrue("File is truncated", ! thirdChunk.isPresent());
         Assert.assertTrue("File has correct size", truncated.getFileProperties().size == truncateLength);
 
@@ -1497,7 +1497,7 @@ public abstract class UserTests {
 
         AbsoluteCapability pointer = subfolder.getPointer().capability;
         CommittedWriterData cwd = network.synchronizer.getValue(pointer.owner, pointer.writer).join().get(pointer.writer);
-        Optional<CryptreeNode> subdir = network.getMetadata(cwd.props, pointer).join();
+        Optional<CryptreeNode> subdir = network.getMetadata(cwd.props.get(), pointer).join();
         Assert.assertTrue("Child deleted", ! subdir.isPresent());
     }
 

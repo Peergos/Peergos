@@ -2424,7 +2424,7 @@ public class PeergosNetworkUtils {
         Snapshot version = new Snapshot(cap.writer,
                 WriterData.getWriterData(cap.owner, (Cid) pointer.updated.get(), pointer.sequence, network.dhtClient).join());
 
-        Optional<CryptreeNode> next = network.getMetadata(version.get(nextChunkCap.writer).props, nextChunkCap).join();
+        Optional<CryptreeNode> next = network.getMetadata(version.get(nextChunkCap.writer).props.get(), nextChunkCap).join();
         Set<AbsoluteCapability> directUnnamed = direct.stream().map(n -> n.cap).collect(Collectors.toSet());
         if (! next.isPresent())
             return Arrays.asList(directUnnamed);

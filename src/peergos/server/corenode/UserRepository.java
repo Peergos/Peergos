@@ -81,7 +81,7 @@ public class UserRepository implements SocialNetwork, MutablePointers {
                                             if (cas.updated.isPresent()) {
                                                 Multihash newHash = cas.updated.get();
                                                 CommittedWriterData newWriterData = DeletableContentAddressedStorage.getWriterData(us, (Cid) newHash, cas.sequence, ipfs).join();
-                                                if (!newWriterData.props.controller.equals(writer))
+                                                if (!newWriterData.props.get().controller.equals(writer))
                                                     return Futures.of(false);
                                             }
 

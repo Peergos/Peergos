@@ -103,7 +103,7 @@ public class Serialize
 
     public static CompletableFuture<byte[]> readFully(FileWrapper f, Crypto crypto, NetworkAccess network) {
         long size = f.getSize();
-        return f.getInputStream(f.version.get(f.writer()).props, network, crypto, x -> {})
+        return f.getInputStream(f.version.get(f.writer()).props.get(), network, crypto, x -> {})
                 .thenCompose(stream -> readFully(stream, size));
     }
 
@@ -122,7 +122,7 @@ public class Serialize
                                                  NetworkAccess network,
                                                  Crypto crypto) {
         byte[] res = new byte[(int)f.getSize()];
-        return f.getInputStream(f.version.get(f.writer()).props,network, crypto, x -> {})
+        return f.getInputStream(f.version.get(f.writer()).props.get(),network, crypto, x -> {})
                 .thenCompose(reader -> reader.readIntoArray(res, 0, (int) f.getSize()))
                 .thenApply(i -> Cborable.parser(parser).apply(res));
     }

@@ -38,7 +38,7 @@ public class FileBackedMessageStore implements MessageStore {
     private CompletableFuture<Pair<Long, Integer>> getChunkByteOffset(long index) {
         if (messages.getSize() < 5*1024*1024)
             return Futures.of(new Pair<>(0L, (int) index));
-        return indexFile.getInputStream(indexFile.version.get(indexFile.writer()).props, network, crypto, x -> {})
+        return indexFile.getInputStream(indexFile.version.get(indexFile.writer()).props.get(), network, crypto, x -> {})
                         .thenCompose(reader -> findOffset(reader, new byte[1024],
                                 0L, 0L, index, indexFile.getSize()));
     }
@@ -74,7 +74,7 @@ public class FileBackedMessageStore implements MessageStore {
     @Override
     public CompletableFuture<List<SignedMessage>> getMessagesFrom(long index) {
         List<SignedMessage> res = new ArrayList<>();
-        return messages.getInputStream(messages.version.get(messages.writer()).props, network, crypto, x -> {})
+        return messages.getInputStream(messages.version.get(messages.writer()).props.get(), network, crypto, x -> {})
                         .thenCompose(reader -> getChunkByteOffset(index)
                                 .thenCompose(p -> reader.seek(p.left)
                                         .thenCompose(seeked -> seeked.parseLimitedStream(SignedMessage::fromCbor,
@@ -85,7 +85,7 @@ public class FileBackedMessageStore implements MessageStore {
     @Override
     public CompletableFuture<List<SignedMessage>> getMessages(long fromIndex, long toIndex) {
         List<SignedMessage> res = new ArrayList<>();
-        return messages.getInputStream(messages.version.get(messages.writer()).props, network, crypto, x -> {})
+        return messages.getInputStream(messages.version.get(messages.writer()).props.get(), network, crypto, x -> {})
                         .thenCompose(reader -> getChunkByteOffset(fromIndex)
                                 .thenCompose(p -> reader.seek(p.left)
                                         .thenCompose(seeked -> seeked.parseLimitedStream(SignedMessage::fromCbor,

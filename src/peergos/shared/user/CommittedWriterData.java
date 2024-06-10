@@ -10,12 +10,16 @@ public class CommittedWriterData {
 
     public final MaybeMultihash hash;
     public final Optional<Long> sequence;
-    public final WriterData props;
+    public final Optional<WriterData> props;
 
-    public CommittedWriterData(MaybeMultihash hash, WriterData props, Optional<Long> sequence) {
+    public CommittedWriterData(MaybeMultihash hash, Optional<WriterData> props, Optional<Long> sequence) {
         this.hash = hash;
         this.props = props;
         this.sequence = sequence;
+    }
+
+    public CommittedWriterData(MaybeMultihash hash, WriterData props, Optional<Long> sequence) {
+        this(hash, Optional.of(props), sequence);
     }
 
     @Override
