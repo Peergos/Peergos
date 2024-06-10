@@ -1245,7 +1245,8 @@ public class PeergosNetworkUtils {
         Assert.assertEquals(sharedFolder.getFileProperties().name, filename);
 
         // delete the parent folder
-        sharer.getByPath(dirPath).join().get().remove(sharer.getUserRoot().join(), dirPath, sharer).join();
+        FileWrapper parent = sharer.getByPath(dirPath).join().get();
+        parent.remove(sharer.getUserRoot().join(), dirPath, sharer).join();
         // check 'a' can't see the shared directory
         FileWrapper unsharedLocation = a.getByPath(sharer.username).join().get();
         Set<FileWrapper> children = unsharedLocation.getChildren(crypto.hasher, a.network).join();

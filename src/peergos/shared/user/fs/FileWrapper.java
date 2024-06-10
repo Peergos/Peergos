@@ -2070,7 +2070,8 @@ public class FileWrapper {
                                 network.dhtClient))
                         .thenApply(committed -> s.withVersion(parentWriter, committed.get(parentWriter))))
                 .thenCompose(s -> IpfsTransaction.call(owner,
-                        tid -> committer.commit(owner, signerToRemove, null, toRemove, tid), network.dhtClient));
+                        tid -> committer.commit(owner, signerToRemove, null, toRemove, tid), network.dhtClient)
+                        .thenApply(s::mergeAndOverwriteWith));
     }
 
     public CompletableFuture<? extends AsyncReader> getInputStream(NetworkAccess network,
