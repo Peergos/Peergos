@@ -1014,7 +1014,7 @@ public class MultiUserTests {
         // share the file from "a" to each of the others
         String originalPath = u1.username + "/" + filename;
         FileWrapper u1File = u1.getByPath(originalPath).get().get();
-        u1.shareReadAccessWith(PathUtil.get(u1.username, filename), friends.stream().map(u -> u.username).collect(Collectors.toSet()));
+        u1.shareReadAccessWith(PathUtil.get(u1.username, filename), friends.stream().map(u -> u.username).collect(Collectors.toSet())).join();
 
         // check other users can read the file
         for (UserContext friend : friends) {
