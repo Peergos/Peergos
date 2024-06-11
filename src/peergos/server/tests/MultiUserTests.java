@@ -41,9 +41,9 @@ public class MultiUserTests {
         this.userCount = 2;
         WriteSynchronizer synchronizer = new WriteSynchronizer(service.mutable, service.storage, crypto.hasher);
         MutableTree mutableTree = new MutableTreeImpl(service.mutable, service.storage, crypto.hasher, synchronizer);
-        this.network = new NetworkAccess(service.coreNode, service.account, service.social, new CachingStorage(service.storage, 1_000, 50 * 1024),
-                service.bats, Optional.empty(), service.mutable, mutableTree, synchronizer, service.controller, service.usage, service.serverMessages,
-                crypto.hasher, Arrays.asList("peergos"), false);
+        this.network = NetworkAccess.buildBuffered(new CachingStorage(service.storage, 1_000, 50 * 1024),
+                service.bats, service.coreNode, service.account, service.mutable, 5_000, service.social,
+                service.controller, service.usage, service.serverMessages, crypto.hasher, Arrays.asList("peergos"), false);
     }
 
     @BeforeClass
@@ -542,6 +542,78 @@ public class MultiUserTests {
         Assert.assertTrue("New writer key not present", ! updatedKeysOwnedByRootSigner.contains(theFile.writer()));
     }
 
+    @Test
+    public void deleteFolderSharedWithWriteAccess() throws Exception {
+        UserContext u1 = PeergosNetworkUtils.ensureSignedUp(random(), "a", network.clear(), crypto);
+
+        // send follow requests from each other user to u1
+        List<String> shareePasswords = IntStream.range(0, 1)
+                .mapToObj(i -> PeergosNetworkUtils.generatePassword())
+                .collect(Collectors.toList());
+        List<UserContext> userContexts = getUserContexts(1, shareePasswords);
+
+        // make u1 friend all users
+        PeergosNetworkUtils.friendBetweenGroups(Arrays.asList(u1), userContexts);
+
+        // upload a file to u1's space in a subdir
+        FileWrapper u1Root = u1.getUserRoot().get();
+        String filename = "somefile.txt";
+        byte[] data1 = "Hello Peergos friend!".getBytes();
+        AsyncReader file1Reader = new AsyncReader.ArrayBacked(data1);
+        String subdirName = "subdir";
+        u1Root.mkdir(subdirName, u1.network, false, u1.mirrorBatId(), crypto).get();
+        Path subdirPath = PathUtil.get(u1.username, subdirName);
+        FileWrapper subdir = u1.getByPath(subdirPath).get().get();
+        FileWrapper uploaded = subdir.uploadOrReplaceFile(filename, file1Reader, data1.length,
+                u1.network, u1.crypto, l -> {}).get();
+
+        Path dirPath = PathUtil.get(u1.username, subdirName);
+        u1.shareWriteAccessWith(dirPath, userContexts.stream().map(u -> u.username).collect(Collectors.toSet())).join();
+
+        // check other users can read the file
+        for (UserContext userContext : userContexts) {
+            Optional<FileWrapper> sharedFile = userContext.getByPath(dirPath.resolve(filename)).get();
+            Assert.assertTrue("shared file present", sharedFile.isPresent());
+
+            AsyncReader inputStream = sharedFile.get().getInputStream(userContext.network,
+                    userContext.crypto, l -> {}).get();
+
+            byte[] fileContents = Serialize.readFully(inputStream, sharedFile.get().getFileProperties().size).get();
+            Assert.assertTrue("shared file contents correct", Arrays.equals(data1, fileContents));
+        }
+        //delete folder
+        FileWrapper theDir = u1.getByPath(dirPath).get().get();
+        FileWrapper parentFolder = u1.getUserRoot().join();
+        FileWrapper metaOnlyParent = theDir.retrieveParent(u1.network).get().get();
+
+        Assert.assertTrue("Following parent link results in read only parent",
+                ! metaOnlyParent.isWritable() && ! metaOnlyParent.isReadable());
+
+        Set<PublicKeyHash> keysOwnedByRootSigner = DeletableContentAddressedStorage.getDirectOwnedKeys(theDir.owner(), parentFolder.writer(),
+                u1.network.mutable, (h, s) -> ContentAddressedStorage.getWriterData(parentFolder.writer(), h,s, u1.network.dhtClient),
+                u1.network.dhtClient, u1.network.hasher).join();
+        Assert.assertTrue("New writer key present", keysOwnedByRootSigner.contains(theDir.writer()));
+
+        Set<String> sharedWriteAccessWithBefore = u1.sharedWith(dirPath).join().get(SharedWithCache.Access.WRITE);
+        Assert.assertTrue("file shared", ! sharedWriteAccessWithBefore.isEmpty());
+
+        theDir.remove(parentFolder, dirPath, u1).get();
+        Optional<FileWrapper> removedFile = u1.getByPath(dirPath).get();
+        Assert.assertTrue("dir removed", removedFile.isEmpty());
+
+        Set<String> sharedWriteAccessWithAfter = u1.sharedWith(dirPath).join().get(SharedWithCache.Access.WRITE);
+        Assert.assertTrue("dir unshared", sharedWriteAccessWithAfter.isEmpty());
+
+        for (UserContext userContext : userContexts) {
+            Optional<FileWrapper> sharedDir = userContext.getByPath(dirPath).get();
+            Assert.assertTrue("shared dir removed", sharedDir.isEmpty());
+        }
+        Set<PublicKeyHash> updatedKeysOwnedByRootSigner = DeletableContentAddressedStorage.getDirectOwnedKeys(theDir.owner(),
+                parentFolder.writer(), u1.network.mutable,
+                (h, s) -> ContentAddressedStorage.getWriterData(theDir.owner(), h,s, u1.network.dhtClient),
+                u1.network.dhtClient, u1.network.hasher).join();
+        Assert.assertTrue("New writer key not present", ! updatedKeysOwnedByRootSigner.contains(theDir.writer()));
+    }
 
     @Test
     public void renamedFileSharedWith() throws Exception {

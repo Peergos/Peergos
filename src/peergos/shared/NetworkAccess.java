@@ -320,7 +320,7 @@ public class NetworkAccess {
                     ServerMessager serverMessager = new ServerMessager.HTTP(apiPoster);
                     BatCave batCave = new HttpBatCave(apiPoster, p2pPoster);
                     RetryMutablePointers retryMutable = new RetryMutablePointers(p2pMutable);
-                    return build(p2pDht, batCave, core, account, retryMutable, mutableCacheTime, p2pSocial,
+                    return buildBuffered(p2pDht, batCave, core, account, retryMutable, mutableCacheTime, p2pSocial,
                             new HttpInstanceAdmin(apiPoster), p2pUsage, serverMessager, hasher, usernames, isJavascript);
                 });
     }
@@ -344,23 +344,23 @@ public class NetworkAccess {
         ServerMessager serverMessager = new ServerMessager.HTTP(apiPoster);
         BatCave batCave = new HttpBatCave(apiPoster, p2pPoster);
         RetryMutablePointers retryMutable = new RetryMutablePointers(httpMutable);
-        return build(p2pDht, batCave, core, account, retryMutable, mutableCacheTime, httpSocial,
+        return buildBuffered(p2pDht, batCave, core, account, retryMutable, mutableCacheTime, httpSocial,
                 new HttpInstanceAdmin(apiPoster), httpUsage, serverMessager, hasher, usernames, isJavascript);
     }
 
-    private static NetworkAccess build(ContentAddressedStorage dht,
-                                       BatCave batCave,
-                                       CoreNode coreNode,
-                                       Account account,
-                                       MutablePointers mutable,
-                                       int mutableCacheTime,
-                                       SocialNetwork social,
-                                       InstanceAdmin instanceAdmin,
-                                       SpaceUsage usage,
-                                       ServerMessager serverMessager,
-                                       Hasher hasher,
-                                       List<String> usernames,
-                                       boolean isJavascript) {
+    public static NetworkAccess buildBuffered(ContentAddressedStorage dht,
+                                               BatCave batCave,
+                                               CoreNode coreNode,
+                                               Account account,
+                                               MutablePointers mutable,
+                                               int mutableCacheTime,
+                                               SocialNetwork social,
+                                               InstanceAdmin instanceAdmin,
+                                               SpaceUsage usage,
+                                               ServerMessager serverMessager,
+                                               Hasher hasher,
+                                               List<String> usernames,
+                                               boolean isJavascript) {
         BufferedStorage blockBuffer = new BufferedStorage(dht, hasher);
         MutablePointers unbufferedMutable = mutableCacheTime > 0 ? new CachingPointers(mutable, mutableCacheTime) : mutable;
         BufferedPointers mutableBuffer = new BufferedPointers(unbufferedMutable);
@@ -694,7 +694,9 @@ public class NetworkAccess {
                                 tree.remove(wd.get(), owner, writer, p.left, p.right, tid).thenApply(Optional::of) :
                                 Futures.of(wd)),
                         (a, b) -> b)
-                .thenCompose(wd -> committer.commit(owner, writer, wd, version, tid))
+                .thenCompose(wd -> wd.equals(version.props) ?
+                        Futures.of(current) :
+                        committer.commit(owner, writer, wd, version, tid))
                 .thenApply(committed -> current.withVersion(writer.publicKeyHash, committed.get(writer)));
     }
 
