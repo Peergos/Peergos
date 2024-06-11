@@ -48,7 +48,7 @@ public class UserCleanup {
                 .collect(Collectors.toSet());
 
         Set<PublicKeyHash> namedOwnedKeys = WriterData.getWriterData(owner, owner, mutable, storage).join()
-                .props.namedOwnedKeys.values().stream()
+                .props.get().namedOwnedKeys.values().stream()
                 .map(p -> p.ownedKey)
                 .collect(Collectors.toSet());
 
@@ -81,7 +81,7 @@ public class UserCleanup {
             Map<ByteArrayWrapper, CborObject.CborMerkleLink> allKeys = new HashMap<>();
             Set<ByteArrayWrapper> emptyKeys = new HashSet<>();
             CommittedWriterData wd = WriterData.getWriterData(owner, writer, mutable, storage).join();
-            ChampWrapper<CborObject.CborMerkleLink> champ = ChampWrapper.create(owner, (Cid) wd.props.tree.get(),
+            ChampWrapper<CborObject.CborMerkleLink> champ = ChampWrapper.create(owner, (Cid) wd.props.get().tree.get(),
                     x -> Futures.of(x.data), storage, hasher, b -> (CborObject.CborMerkleLink) b).join();
             champ.applyToAllMappings(owner, p -> {
                 if (p.right.isPresent())
@@ -110,7 +110,7 @@ public class UserCleanup {
                 CommittedWriterData pwd = WriterData.getWriterData(owner, parent, mutable, storage).join();
                 c.network.synchronizer.applyComplexComputation(owner, parentKeypair.get(), (s, comm) -> {
                     TransactionId tid = storage.startTransaction(owner).join();
-                    WriterData newPwd = pwd.props.removeOwnedKey(owner, parentKeypair.get(), writer, storage, hasher).join();
+                    WriterData newPwd = pwd.props.get().removeOwnedKey(owner, parentKeypair.get(), writer, storage, hasher).join();
                     Snapshot updated = comm.commit(owner, parentKeypair.get(), newPwd, pwd, tid).join();
                     storage.closeTransaction(owner, tid).join();
                     return Futures.of(new Pair<>(updated, true));
@@ -124,7 +124,7 @@ public class UserCleanup {
             if (! emptyKeys.isEmpty()) {
                 c.network.synchronizer.applyComplexComputation(owner, signer, (s, comm) -> {
                     TransactionId tid = storage.startTransaction(owner).join();
-                    WriterData current = wd.props;
+                    WriterData current = wd.props.get();
 
                     for (ByteArrayWrapper key : emptyKeys) {
                         current = c.network.tree.remove(current, owner, signer, key.data, MaybeMultihash.empty(), tid).join();
@@ -140,7 +140,7 @@ public class UserCleanup {
 
             c.network.synchronizer.applyComplexComputation(owner, signer, (s, comm) -> {
                 TransactionId tid = storage.startTransaction(owner).join();
-                WriterData current = wd.props;
+                WriterData current = wd.props.get();
 
                 for (ByteArrayWrapper key : unreachableKeys) {
                     current = c.network.tree.remove(current, owner, signer, key.data, MaybeMultihash.of(allKeys.get(key).target), tid).join();

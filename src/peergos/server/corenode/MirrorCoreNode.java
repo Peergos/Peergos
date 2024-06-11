@@ -277,7 +277,7 @@ public class MirrorCoreNode implements CoreNode {
         MaybeMultihash newPeergosRoot = fresh.updated;
 
         CommittedWriterData currentPeergosWd = IpfsCoreNode.getWriterData(List.of(pkiPeerId), (Cid)newPeergosRoot.get(), fresh.sequence, ipfs).join();
-        PublicKeyHash pkiKey = currentPeergosWd.props.namedOwnedKeys.get("pki").ownedKey;
+        PublicKeyHash pkiKey = currentPeergosWd.props.get().namedOwnedKeys.get("pki").ownedKey;
         if (pkiKey == null)
             throw new IllegalStateException("No pki key on owner: " + pkiOwnerIdentity);
 
@@ -316,7 +316,7 @@ public class MirrorCoreNode implements CoreNode {
             if (updatedTree.isPresent()) {
                 CommittedWriterData currentWd = IpfsCoreNode.getWriterData(pkiStorageProviders,
                         (Cid) remote.pkiKeyTarget.get(), Optional.empty(), ipfs).join();
-                List<Multihash> toAdd = currentWd.props.toCbor().links().stream()
+                List<Multihash> toAdd = currentWd.props.get().toCbor().links().stream()
                         .filter(h -> updatedTree.map(m -> !m.equals(h)).orElse(true))
                         .collect(Collectors.toList());
                 for (Multihash m : toAdd) {

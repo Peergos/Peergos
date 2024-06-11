@@ -1245,7 +1245,8 @@ public class PeergosNetworkUtils {
         Assert.assertEquals(sharedFolder.getFileProperties().name, filename);
 
         // delete the parent folder
-        sharer.getByPath(dirPath).join().get().remove(sharer.getUserRoot().join(), dirPath, sharer).join();
+        FileWrapper parent = sharer.getByPath(dirPath).join().get();
+        parent.remove(sharer.getUserRoot().join(), dirPath, sharer).join();
         // check 'a' can't see the shared directory
         FileWrapper unsharedLocation = a.getByPath(sharer.username).join().get();
         Set<FileWrapper> children = unsharedLocation.getChildren(crypto.hasher, a.network).join();
@@ -2423,7 +2424,7 @@ public class PeergosNetworkUtils {
         Snapshot version = new Snapshot(cap.writer,
                 WriterData.getWriterData(cap.owner, (Cid) pointer.updated.get(), pointer.sequence, network.dhtClient).join());
 
-        Optional<CryptreeNode> next = network.getMetadata(version.get(nextChunkCap.writer).props, nextChunkCap).join();
+        Optional<CryptreeNode> next = network.getMetadata(version.get(nextChunkCap.writer).props.get(), nextChunkCap).join();
         Set<AbsoluteCapability> directUnnamed = direct.stream().map(n -> n.cap).collect(Collectors.toSet());
         if (! next.isPresent())
             return Arrays.asList(directUnnamed);

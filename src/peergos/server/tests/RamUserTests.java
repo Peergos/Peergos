@@ -212,11 +212,61 @@ public class RamUserTests extends UserTests {
         Assert.assertTrue(usageAfterFail > size / 2);
         context.cleanPartialUploads(t -> true).join();
         long usageAfterCleanup = context.getSpaceUsage().join();
-        while (usageAfterCleanup >= initialUsage + 16000) {
+        while (usageAfterCleanup >= initialUsage + 5000) {
             Thread.sleep(1_000);
             usageAfterCleanup = context.getSpaceUsage().join();
         }
-        Assert.assertTrue(usageAfterCleanup < initialUsage + 16000); // TODO: investigate why 16000 more (open transactions in db referencing blocks?)
+        Assert.assertTrue(usageAfterCleanup < initialUsage + 5000); // TODO: investigate why 5000 more (open transactions in db referencing blocks?)
+    }
+
+    @Test
+    public void cleanupFailedUploadsInDifferentWritingSpace() throws Exception {
+        String username = generateUsername();
+        String password = "terriblepassword";
+        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
+        FileWrapper userRoot = context.getUserRoot().join();
+        String subdir = "subdir";
+        userRoot.mkdir(subdir, network, false, Optional.empty(), crypto).join();
+        Path subdirPath = PathUtil.get(username, subdir);
+        FileWrapper subdirectory = context.getByPath(subdirPath).join().get();
+        // put sub directory in a new writing space
+        context.shareWriteAccessWith(subdirPath, Collections.emptySet()).join();
+
+        userRoot = context.getUserRoot().join();
+
+        long initialUsage = context.getSpaceUsage().join();
+        int size = 100*1024*1024;
+        byte[] data = new byte[size];
+        AsyncReader thrower = new ThrowingStream(data, size/2);
+        FileWrapper txnDir = context.getByPath(Paths.get(username, UserContext.TRANSACTIONS_DIR_NAME)).join().get();
+        TransactionService txns = new NonClosingTransactionService(network, crypto, txnDir);
+        try {
+            FileWrapper.FileUploadProperties fileUpload = new FileWrapper.FileUploadProperties("somefile", thrower, 0, size, false, false, x -> {});
+            FileWrapper.FolderUploadProperties dirUploads = new FileWrapper.FolderUploadProperties(Arrays.asList(subdir), Arrays.asList(fileUpload));
+            userRoot.uploadSubtree(Stream.of(dirUploads), context.mirrorBatId(), network, crypto, txns, f -> Futures.of(false), () -> true).join();
+        } catch (Exception e) {}
+        long usageAfterFail = context.getSpaceUsage().join();
+        if (usageAfterFail <= size / 2) { // give server a chance to recalculate usage
+            Thread.sleep(2_000);
+            usageAfterFail = context.getSpaceUsage().join();
+        }
+        Assert.assertTrue(usageAfterFail > size / 2);
+
+        // delete the new writing space
+        FileWrapper sub = context.getByPath(subdirPath).join().get();
+
+        sub.remove(context.getUserRoot().get(), subdirPath, context).join();
+        long usageAfterDelete = context.getSpaceUsage().join();
+        while (usageAfterDelete >= size / 2) { // give server a chance to recalculate usage
+            Thread.sleep(2_000);
+            usageAfterDelete = context.getSpaceUsage().join();
+        }
+        Assert.assertTrue(usageAfterDelete < initialUsage);
+
+        // clean the partial upload
+        context.cleanPartialUploads(t -> true).join();
+        long usageAfterCleanup = context.getSpaceUsage().join();
+        Assert.assertTrue(usageAfterCleanup < usageAfterDelete);
     }
 
     private static byte[] get(URL target) throws IOException {

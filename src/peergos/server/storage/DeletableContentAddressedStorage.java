@@ -487,10 +487,10 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
                                 Stream.empty()).collect(Collectors.toSet()));
 
         return retriever.getWriterData((Cid)root.get(), Optional.empty())
-                .thenCompose(wd -> wd.props.applyToOwnedKeys(owner, owned ->
+                .thenCompose(wd -> wd.props.get().applyToOwnedKeys(owner, owned ->
                                 owned.applyToAllMappings(owner, Collections.emptySet(), composer, ipfs), ipfs, hasher)
                         .thenApply(owned -> Stream.concat(owned.stream(),
-                                wd.props.namedOwnedKeys.values().stream()).collect(Collectors.toSet())))
+                                wd.props.get().namedOwnedKeys.values().stream()).collect(Collectors.toSet())))
                 .thenCompose(all -> Futures.reduceAll(all, Collections.emptySet(),
                         proofComposer,
                         (a, b) -> Stream.concat(a.stream(), b.stream())

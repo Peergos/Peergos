@@ -113,7 +113,7 @@ public class WriterData implements Cborable {
                 .thenCompose(champ -> champ.add(owner, signer, newOwned, network.hasher, tid)
                         .thenApply(newRoot -> new WriterData(controller, generationAlgorithm, publicData,
                                 followRequestReceiver, Optional.of(newRoot), namedOwnedKeys, staticData, tree)))
-                .thenCompose(wd -> c.commit(owner, signer, wd, new CommittedWriterData(currentHash, this, currentSequence), tid));
+                .thenCompose(wd -> c.commit(owner, signer, wd, new CommittedWriterData(currentHash,this, currentSequence), tid));
     }
 
     public CompletableFuture<WriterData> removeOwnedKey(PublicKeyHash owner,
@@ -146,7 +146,8 @@ public class WriterData implements Cborable {
                                             return Futures.of(b);
                                         PublicKeyHash childKey = p.left;
                                         return UserContext.getWriterData(ipfs, mutable, identityKey, childKey)
-                                                .thenCompose(wd -> wd.props.ownsKey(identityKey, ownedKey, ipfs, mutable, hasher));
+                                                .thenCompose(wd -> wd.props.map(w -> w.ownsKey(identityKey, ownedKey, ipfs, mutable, hasher))
+                                                        .orElse(Futures.of(false)));
                                     },
                                     ipfs);
                         }));
@@ -267,7 +268,7 @@ public class WriterData implements Cborable {
                                         );
                             }));
                 })
-                .thenApply(version -> version.get(signer).props)
+                .thenApply(version -> version.get(signer).props.get())
                 .exceptionally(t -> {
                     if (t.getMessage().contains("cas+failed"))
                         throw new IllegalStateException("You cannot reuse a previous password!");
@@ -312,6 +313,22 @@ public class WriterData implements Cborable {
                                 CommittedWriterData committed = committed(newHash, cas.sequence);
                                 return new Snapshot(signer.publicKeyHash, committed);
                             });
+                });
+    }
+
+    public static CompletableFuture<Snapshot> commitDeletion(PublicKeyHash owner,
+                                                             SigningPrivateKeyAndPublicHash signer,
+                                                             MaybeMultihash currentHash,
+                                                             Optional<Long> currentSequence,
+                                                             MutablePointers mutable) {
+        MaybeMultihash newHash = MaybeMultihash.empty();
+        PointerUpdate cas = new PointerUpdate(currentHash, newHash, PointerUpdate.increment(currentSequence));
+        return mutable.setPointer(owner, signer, cas)
+                .thenApply(res -> {
+                    if (!res)
+                        throw new IllegalStateException("Mutable pointer update failed! Concurrent Modification.");
+                    CommittedWriterData committed = new CommittedWriterData(newHash, Optional.empty(), cas.sequence);
+                    return new Snapshot(signer.publicKeyHash, committed);
                 });
     }
 

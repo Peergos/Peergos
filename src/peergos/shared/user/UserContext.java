@@ -635,7 +635,7 @@ public class UserContext {
                 throw new IllegalStateException("Owner doesn't exist for path " + originalPath);
             PublicKeyHash owner = ownerOpt.get();
             return WriterData.getWriterData(owner, owner, network.mutable, network.dhtClient).thenCompose(userData -> {
-                Optional<Multihash> publicData = userData.props.publicData;
+                Optional<Multihash> publicData = userData.props.get().publicData;
                 if (! publicData.isPresent())
                     throw new IllegalStateException("User " + ownerName + " has not made any files public.");
 
@@ -945,13 +945,13 @@ public class UserContext {
 
     public CompletableFuture<SecretGenerationAlgorithm> getKeyGenAlgorithm() {
         return getWriterData(network, signer.publicKeyHash, signer.publicKeyHash)
-                .thenApply(wd -> wd.props.generationAlgorithm
+                .thenApply(wd -> wd.props.get().generationAlgorithm
                         .orElseThrow(() -> new IllegalStateException("No login algorithm specified in user data!")));
     }
 
     public CompletableFuture<Optional<PublicKeyHash>> getNamedKey(String name) {
         return getWriterData(network, signer.publicKeyHash, signer.publicKeyHash)
-                .thenApply(wd -> wd.props.namedOwnedKeys.get(name))
+                .thenApply(wd -> wd.props.get().namedOwnedKeys.get(name))
                 .thenApply(res -> Optional.ofNullable(res).map(p -> p.ownedKey));
     }
 
@@ -999,7 +999,7 @@ public class UserContext {
                                         UserStaticData updatedEntry = new UserStaticData(entry.entries, updatedLogin.getRoot(), entry.identity, entry.boxer);
                                         // need to commit new login algorithm too in the same call
                                         return WriterData.getWriterData(signer.publicKeyHash, signer.publicKeyHash, network.mutable, network.dhtClient).thenCompose(cwd -> {
-                                            WriterData newIdBlock = cwd.props.withAlgorithm(newAlgorithm);
+                                            WriterData newIdBlock = cwd.props.get().withAlgorithm(newAlgorithm);
                                             byte[] rawBlock = newIdBlock.serialize();
                                             return crypto.hasher.sha256(rawBlock).thenCompose(blockHash -> {
                                                 OpLog.BlockWrite blockWrite = new OpLog.BlockWrite(signer.publicKeyHash, signer.secret.signMessage(blockHash), rawBlock, false, Optional.empty());
@@ -1039,7 +1039,7 @@ public class UserContext {
                                         OwnerProof proof = OwnerProof.build(newIdentity, signer.publicKeyHash);
                                         return writeSynchronizer.applyUpdate(signer.publicKeyHash, signer, (wd, tid) ->
                                                 wd.addOwnedKey(signer.publicKeyHash, signer, proof, network.dhtClient, network.hasher))
-                                                .thenCompose(version -> version.get(signer).props.changeKeys(username,
+                                                .thenCompose(version -> version.get(signer).props.get().changeKeys(username,
                                                         signer,
                                                         newIdentity,
                                                         newIdentityPair,
@@ -1106,7 +1106,7 @@ public class UserContext {
 
             // and authorise the writer key
             return network.synchronizer.applyComplexUpdate(owner.publicKeyHash, owner,
-                    (s, committer) -> s.get(owner.publicKeyHash).props.addOwnedKeyAndCommit(owner.publicKeyHash, owner,
+                    (s, committer) -> s.get(owner.publicKeyHash).props.get().addOwnedKeyAndCommit(owner.publicKeyHash, owner,
                             OwnerProof.build(writerPair, owner.publicKeyHash),
                                     s.get(owner.publicKeyHash).hash, s.get(owner.publicKeyHash).sequence, network, committer, tid)
                             .thenCompose(s2 -> {
@@ -1155,7 +1155,7 @@ public class UserContext {
                         throw new IllegalStateException("Couldn't retrieve identity key for " + username);
                     return getSigningKey(signerOpt.get())
                             .thenCompose(signer2 -> getWriterData(network, signerOpt.get(), signerOpt.get())
-                                    .thenApply(wd -> new Pair<>(signerOpt.get(), wd.props.followRequestReceiver.get())));
+                                    .thenApply(wd -> new Pair<>(signerOpt.get(), wd.props.get().followRequestReceiver.get())));
                 });
     }
 
@@ -1165,7 +1165,7 @@ public class UserContext {
                 .thenCompose(signerOpt ->
                         signerOpt.map(signer -> getSigningKey(signer)
                                 .thenCompose(signer2 -> getWriterData(network, signerOpt.get(), signerOpt.get())
-                                        .thenCompose(wd -> getBoxingKey(signer, wd.props.followRequestReceiver.get())
+                                        .thenCompose(wd -> getBoxingKey(signer, wd.props.get().followRequestReceiver.get())
                                                 .thenApply(boxer -> Optional.of(new Pair<>(signerOpt.get(), boxer))))))
                                 .orElse(CompletableFuture.completedFuture(Optional.empty())));
     }
@@ -2033,7 +2033,7 @@ public class UserContext {
                                                                           NetworkAccess network,
                                                                           TransactionId tid) {
         CommittedWriterData cwd = version.get(owner.publicKeyHash);
-        WriterData wd = cwd.props;
+        WriterData wd = cwd.props.get();
         if (wd.staticData.isEmpty()) {
             UserStaticData updated = new UserStaticData(current.getData(rootKey).addEntryPoint(entry), rootKey);
             return network.account.setLoginData(new LoginData(entry.ownerName, updated, loginPublic, Optional.empty()), owner)
@@ -2344,7 +2344,7 @@ public class UserContext {
                                                                                               Snapshot s,
                                                                                               NetworkAccess network) {
         return homeDir.getChild(ENTRY_POINTS_FROM_FRIENDS_GROUPS_FILENAME, crypto.hasher, network)
-                .thenCompose(fopt -> fopt.map(f -> f.getInputStream(s.get(f.writer()).props, network, crypto, x -> {})
+                .thenCompose(fopt -> fopt.map(f -> f.getInputStream(s.get(f.writer()).props.get(), network, crypto, x -> {})
                         .thenCompose(reader -> Serialize.parse(reader, f.getSize(), FriendsGroups::fromCbor))
                         .thenApply(g -> new Pair<>(g, fopt)))
                         .orElse(CompletableFuture.completedFuture(new Pair<>(FriendsGroups.empty(), Optional.empty()))));

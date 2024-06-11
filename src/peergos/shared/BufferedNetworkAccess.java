@@ -63,11 +63,12 @@ public class BufferedNetworkAccess extends NetworkAccess {
 
     @Override
     public Committer buildCommitter(Committer c, PublicKeyHash owner, Supplier<Boolean> commitWatcher) {
-        return (o, w, wd, e, tid) -> blockBuffer.put(o, w.publicKeyHash, new byte[0], wd.serialize(), tid)
+        return (o, w, wd, e, tid) -> (wd.isEmpty() ? Futures.of(MaybeMultihash.empty()) :
+                blockBuffer.put(o, w.publicKeyHash, new byte[0], wd.get().serialize(), tid).thenApply(MaybeMultihash::new))
                 .thenCompose(newHash -> {
-                    PointerUpdate update = pointerBuffer.addWrite(w, MaybeMultihash.of(newHash), e.hash, e.sequence);
+                    PointerUpdate update = pointerBuffer.addWrite(w, newHash, e.hash, e.sequence);
                     return maybeCommit(o, commitWatcher)
-                            .thenApply(x -> new Snapshot(w.publicKeyHash, new CommittedWriterData(MaybeMultihash.of(newHash), wd, update.sequence)));
+                            .thenApply(x -> new Snapshot(w.publicKeyHash, new CommittedWriterData(newHash, wd, update.sequence)));
                 });
     }
 

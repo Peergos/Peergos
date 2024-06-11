@@ -50,7 +50,7 @@ public class Playground {
                 continue; // only the writer has a tree
             CommittedWriterData existing = WriterData.getWriterData(context.signer.publicKeyHash, ownedKey,
                     network.mutable, network.dhtClient).get();
-            if (existing.props.tree.isPresent())
+            if (existing.props.get().tree.isPresent())
                 continue;
             // Do something risky
         }

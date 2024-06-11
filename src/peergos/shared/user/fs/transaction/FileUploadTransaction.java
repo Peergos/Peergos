@@ -84,7 +84,10 @@ public class FileUploadTransaction implements Transaction {
 
     private CompletableFuture<Snapshot> clear(Snapshot version, Committer committer, NetworkAccess networkAccess, Location location) {
         return IpfsTransaction.call(owner,
-                tid -> networkAccess.deleteChunkIfPresent(version, committer, location.owner, writer, location.getMapKey(), tid), networkAccess.dhtClient);
+                tid -> version.withWriter(owner, writer.publicKeyHash, networkAccess)
+                        .thenCompose(v -> v.contains(writer.publicKeyHash) ?
+                                networkAccess.deleteChunkIfPresent(v, committer, location.owner, writer, location.getMapKey(), tid) :
+                                Futures.of(v)), networkAccess.dhtClient);
     }
 
     public CompletableFuture<Snapshot> clear(Snapshot version, Committer committer, NetworkAccess network, Hasher h) {

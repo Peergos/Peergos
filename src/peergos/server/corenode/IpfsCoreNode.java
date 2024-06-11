@@ -114,7 +114,7 @@ public class IpfsCoreNode implements CoreNode {
         if (! pointerTarget.isPresent())
             return MaybeMultihash.empty();
         CommittedWriterData current = getWriterData(peerIds, (Cid)pointerTarget.get(), Optional.empty(), ipfs).join();
-        return current.props.tree.map(MaybeMultihash::of).orElseGet(MaybeMultihash::empty);
+        return current.props.get().tree.map(MaybeMultihash::of).orElseGet(MaybeMultihash::empty);
 
     }
 
@@ -422,7 +422,7 @@ public class IpfsCoreNode implements CoreNode {
 
         try {
             CommittedWriterData current = WriterData.getWriterData(peergosIdentity, (Cid)currentRoot.get(), currentSequence, ipfs).get();
-            MaybeMultihash currentTree = current.props.tree.map(MaybeMultihash::of).orElseGet(MaybeMultihash::empty);
+            MaybeMultihash currentTree = current.props.get().tree.map(MaybeMultihash::of).orElseGet(MaybeMultihash::empty);
 
             ChampWrapper<CborObject.CborMerkleLink> champ = currentTree.isPresent() ?
                     ChampWrapper.create(peergosIdentity, (Cid)currentTree.get(), IpfsCoreNode::keyHash, ipfs, hasher, c -> (CborObject.CborMerkleLink)c).get() :
@@ -461,7 +461,7 @@ public class IpfsCoreNode implements CoreNode {
             synchronized (this) {
                 return IpfsTransaction.call(peergosIdentity,
                         tid -> champ.put(signer.publicKeyHash, signer, username.getBytes(), existing, new CborObject.CborMerkleLink(mergedChainHash), tid)
-                                .thenCompose(newPkiRoot -> current.props.withChamp(newPkiRoot)
+                                .thenCompose(newPkiRoot -> current.props.get().withChamp(newPkiRoot)
                                         .commit(peergosIdentity, signer, currentRoot, currentSequence, mutable, ipfs, hasher, tid)),
                         ipfs
                 ).thenApply(committed -> {

@@ -229,7 +229,7 @@ public class IncomingCapCache {
                     if (capsOpt.isEmpty())
                         return recurse.get();
                     FileWrapper capsFile = capsOpt.get();
-                    return capsFile.getInputStream(capsFile.version.get(capsFile.writer()).props, network, crypto, x-> {})
+                    return capsFile.getInputStream(capsFile.version.get(capsFile.writer()).props.get(), network, crypto, x-> {})
                             .thenCompose(r -> Serialize.readFully(r, capsFile.getSize()))
                             .thenApply(CborObject::fromByteArray)
                             .thenApply(CapsInDirectory::fromCbor)

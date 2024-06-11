@@ -414,7 +414,7 @@ public class NetworkAccess {
     public CompletableFuture<List<RetrievedCapability>> retrieveAllMetadata(List<AbsoluteCapability> links, Snapshot current) {
         List<CompletableFuture<Optional<RetrievedCapability>>> all = links.stream()
                 .map(link -> current.withWriter(link.owner, link.writer, this)
-                        .thenCompose(version -> getMetadata(version.get(link.writer).props, link)
+                        .thenCompose(version -> getMetadata(version.get(link.writer).props.get(), link)
                                 .thenApply(copt -> copt.map(c -> new RetrievedCapability(link, c)))))
                 .collect(Collectors.toList());
 
@@ -490,7 +490,7 @@ public class NetworkAccess {
                                                             Optional<SigningPrivateKeyAndPublicHash> entryWriter,
                                                             String ownerName) {
         return version.withWriter(cap.owner, cap.writer, this)
-                .thenCompose(v -> getMetadata(v.get(cap.writer).props, cap)
+                .thenCompose(v -> getMetadata(v.get(cap.writer).props.get(), cap)
                 .thenCompose(faOpt -> {
                     if (! faOpt.isPresent())
                         return Futures.of(Optional.empty());
@@ -623,11 +623,11 @@ public class NetworkAccess {
             return hasher.sha256(metaBlob)
                     .thenCompose(blobSha -> dhtClient.put(owner, writer.publicKeyHash,
                             writer.secret.signMessage(blobSha), metaBlob, tid))
-                    .thenCompose(blobHash -> tree.put(version.props, owner, writer, mapKey,
+                    .thenCompose(blobHash -> tree.put(version.props.get(), owner, writer, mapKey,
                             metadata.committedHash(), blobHash, tid)
                             .thenCompose(wd -> committer.commit(owner, writer, wd, version, tid)
                                     .thenApply(s -> {
-                                        cache.update(version.props.tree, new Pair<>(wd.tree.get(), new ByteArrayWrapper(mapKey)), Optional.of(metadata.withHash(blobHash)));
+                                        cache.update(version.props.get().tree, new Pair<>(wd.tree.get(), new ByteArrayWrapper(mapKey)), Optional.of(metadata.withHash(blobHash)));
                                         return s;
                                     })))
                     .thenApply(committed -> current.withVersion(writer.publicKeyHash, committed.get(writer)));
@@ -645,7 +645,7 @@ public class NetworkAccess {
                                                            Snapshot current,
                                                            Committer committer) {
         CommittedWriterData version = current.get(writer);
-        return tree.put(version.props, owner, writer, mapKey, metadata.committedHash(), metadata.committedHash().get(), tid)
+        return tree.put(version.props.get(), owner, writer, mapKey, metadata.committedHash(), metadata.committedHash().get(), tid)
                 .thenCompose(wd -> committer.commit(owner, writer, wd, version, tid));
     }
 
@@ -657,7 +657,7 @@ public class NetworkAccess {
                                                    SigningPrivateKeyAndPublicHash writer,
                                                    TransactionId tid) {
         CommittedWriterData version = current.get(writer);
-        return tree.remove(version.props, owner, writer, mapKey, metadata.committedHash(), tid)
+        return tree.remove(version.props.get(), owner, writer, mapKey, metadata.committedHash(), tid)
                 .thenCompose(wd -> committer.commit(owner, writer, wd, version, tid))
                 .thenApply(committed -> current.withVersion(writer.publicKeyHash, committed.get(writer)));
     }
@@ -669,10 +669,10 @@ public class NetworkAccess {
                                                             byte[] mapKey,
                                                             TransactionId tid) {
         CommittedWriterData version = current.get(writer);
-        return tree.get(version.props, owner, writer.publicKeyHash, mapKey)
+        return tree.get(version.props.get(), owner, writer.publicKeyHash, mapKey)
                 .thenCompose(valueHash ->
                         ! valueHash.isPresent() ? CompletableFuture.completedFuture(current) :
-                                tree.remove(version.props, owner, writer, mapKey, valueHash, tid)
+                                tree.remove(version.props.get(), owner, writer, mapKey, valueHash, tid)
                                         .thenCompose(wd -> committer.commit(owner, writer, wd, version, tid)))
                 .thenApply(committed -> current.withVersion(writer.publicKeyHash, committed.get(writer)));
     }
@@ -686,12 +686,12 @@ public class NetworkAccess {
         CommittedWriterData version = current.get(writer);
         List<CompletableFuture<Pair<byte[], MaybeMultihash>>> withValues = mapKeys.stream()
                 .parallel()
-                .map(mapKey -> tree.get(version.props, owner, writer.publicKeyHash, mapKey)
+                .map(mapKey -> tree.get(version.props.get(), owner, writer.publicKeyHash, mapKey)
                         .thenApply(valueHash -> new Pair<>(mapKey, valueHash)))
                 .collect(Collectors.toList());
         return Futures.reduceAll(withValues, version.props,
                         (wd, f) -> f.thenCompose(p -> p.right.isPresent() ?
-                                tree.remove(wd, owner, writer, p.left, p.right, tid) :
+                                tree.remove(wd.get(), owner, writer, p.left, p.right, tid).thenApply(Optional::of) :
                                 Futures.of(wd)),
                         (a, b) -> b)
                 .thenCompose(wd -> committer.commit(owner, writer, wd, version, tid))
@@ -703,7 +703,7 @@ public class NetworkAccess {
                                                      PublicKeyHash writer,
                                                      byte[] mapKey) {
         CommittedWriterData version = current.get(writer);
-        return tree.get(version.props, owner, writer, mapKey)
+        return tree.get(version.props.get(), owner, writer, mapKey)
                 .thenApply(valueHash -> valueHash.isPresent());
     }
 
