@@ -696,7 +696,9 @@ public class CryptreeNode implements Cborable {
         CommittedWriterData cwd = version.get(parentSigner);
         return IpfsTransaction.call(owner, tid -> cwd.props.get().removeOwnedKey(owner, parentSigner, signer,
                 network.dhtClient, network.hasher)
-                .thenCompose(wd -> committer.commit(owner, parentSigner, wd, cwd, tid)), network.dhtClient)
+                .thenCompose(wd -> wd.equals(cwd.props.get()) ?
+                        Futures.of(version) :
+                        committer.commit(owner, parentSigner, wd, cwd, tid)), network.dhtClient)
                 .thenApply(committed -> version.withVersion(parentWriter, committed.get(parentWriter)));
     }
 
