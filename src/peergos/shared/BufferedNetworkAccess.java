@@ -177,7 +177,10 @@ public class BufferedNetworkAccess extends NetworkAccess {
                         .thenApply(x -> {
                             pointerBuffer.clear();
                             return commitWatcher.get();
-                        }));
+                        })).exceptionally(t -> {
+                            pointerBuffer.clear();
+                            return true;
+                });
     }
 
     @Override
