@@ -164,7 +164,8 @@ public class BufferedNetworkAccess extends NetworkAccess {
         blockBuffer.gc(roots);
         Map<PublicKeyHash, SigningPrivateKeyAndPublicHash> writers = pointerBuffer.getSigners();
         List<Pair<BufferedPointers.WriterUpdate, Optional<CommittedWriterData>>> writes = blockBuffer.getAllWriterData(writerUpdates);
-        return blockBuffer.signBlocks(writers)
+        CompletableFuture<Boolean> res = new CompletableFuture<>();
+        blockBuffer.signBlocks(writers)
                 .thenCompose(b -> blocks.startTransaction(owner))
                 .thenCompose(tid -> Futures.reduceAll(writes.stream(), true, (a,u) ->
                                  blockBuffer.commit(owner, u.left.writer, tid)
@@ -177,7 +178,13 @@ public class BufferedNetworkAccess extends NetworkAccess {
                         .thenApply(x -> {
                             pointerBuffer.clear();
                             return commitWatcher.get();
-                        }));
+                        })).thenApply(res::complete)
+                .exceptionally(t -> {
+                    pointerBuffer.clear();
+                    res.completeExceptionally(t);
+                    return true;
+                });
+        return res;
     }
 
     @Override

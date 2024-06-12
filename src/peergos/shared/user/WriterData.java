@@ -392,4 +392,17 @@ public class WriterData implements Cborable {
                     return new CommittedWriterData(MaybeMultihash.of(hash), WriterData.fromCbor(cborOpt.get()), sequence);
                 });
     }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+        WriterData that = (WriterData) o;
+        return Objects.equals(controller, that.controller) && Objects.equals(generationAlgorithm, that.generationAlgorithm) && Objects.equals(publicData, that.publicData) && Objects.equals(followRequestReceiver, that.followRequestReceiver) && Objects.equals(ownedKeys, that.ownedKeys) && Objects.equals(namedOwnedKeys, that.namedOwnedKeys) && Objects.equals(staticData, that.staticData) && Objects.equals(tree, that.tree);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(controller, generationAlgorithm, publicData, followRequestReceiver, ownedKeys, namedOwnedKeys, staticData, tree);
+    }
 }
