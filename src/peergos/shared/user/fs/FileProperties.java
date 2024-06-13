@@ -250,6 +250,8 @@ public class FileProperties implements Cborable {
             return "pdf";
         if (mimeType.equals("application/zip"))
             return "zip";
+        if (mimeType.equals("application/json"))
+            return "text";
         if (mimeType.equals("application/java-archive"))
             return "java-archive";
 
