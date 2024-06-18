@@ -117,6 +117,8 @@ public class CLI implements Runnable {
                     return get(parsedCommand, terminal.writer());
                 case put:  //upload
                     return put(parsedCommand, terminal.writer());
+                case mkdir:
+                    return mkdir(parsedCommand);
                 case rm:
                     return rm(parsedCommand);
                 case exit:
@@ -278,6 +280,14 @@ public class CLI implements Runnable {
             writerForProgress.flush();
             return "Successfully uploaded " + localPath + " to remote " + remotePath;
         }
+    }
+
+    public String mkdir(ParsedCommand cmd) throws IOException {
+        String remoteDirArg = cmd.firstArgument();
+        Path remoteDirPath = cliContext.pwd.resolve(remoteDirArg);
+        peergosFileSystem.mkdir(remoteDirPath);
+
+        return "\nSuccessfully created " + remoteDirPath;
     }
 
     public String rm(ParsedCommand cmd) {
