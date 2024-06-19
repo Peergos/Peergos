@@ -622,7 +622,7 @@ public class CLI implements Runnable {
                         "http://localhost:8000"))
                 .build();
 
-        String address = reader.readLine("Enter Server address \n > ").trim();
+        String address = reader.readLine("Enter Server address (e.g. https://peergos.net)\n > ").trim();
         URL serverURL = null;
 
         final PrintWriter writer = terminal.writer();

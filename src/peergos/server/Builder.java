@@ -403,7 +403,10 @@ public class Builder {
     public static CompletableFuture<NetworkAccess> buildJavaNetworkAccess(URL target,
                                                                           boolean isPublicServer,
                                                                           Optional<String> basicAuth) {
-        return buildNonCachingJavaNetworkAccess(target, isPublicServer, 7_000, basicAuth);
+        return buildNonCachingJavaNetworkAccess(target, isPublicServer, 7_000, basicAuth)
+                .thenApply(net -> NetworkAccess.buildBuffered(net.dhtClient, net.batCave, net.coreNode, net.account,
+                        net.mutable, 7_000, net.social, net.instanceAdmin, net.spaceUsage,
+                        net.serverMessager, net.hasher, net.usernames, net.isJavascript()));
     }
 
     public static CompletableFuture<NetworkAccess> buildNonCachingJavaNetworkAccess(URL target,
