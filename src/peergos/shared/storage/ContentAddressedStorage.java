@@ -195,6 +195,8 @@ public interface ContentAddressedStorage {
 
     CompletableFuture<IpnsEntry> getIpnsEntry(Multihash signer);
 
+    CompletableFuture<EncryptedCapability> getSecretLink(SecretLink link);
+
     default CompletableFuture<Cid> hashToCid(byte[] input, boolean isRaw, Hasher hasher) {
         return hasher.sha256(input)
                 .thenApply(hash -> buildCid(hash, isRaw));
@@ -269,6 +271,7 @@ public interface ContentAddressedStorage {
         public static final String TRANSACTION_START = "transaction/start";
         public static final String TRANSACTION_CLOSE = "transaction/close";
         public static final String CHAMP_GET = "champ/get";
+        public static final String LINK_GET = "link/get";
         public static final String BLOCK_PUT = "block/put";
         public static final String BLOCK_GET = "block/get";
         public static final String BLOCK_RM = "block/rm";
@@ -404,6 +407,16 @@ public interface ContentAddressedStorage {
                     .thenApply(CborObject::fromByteArray)
                     .thenApply(c -> (CborObject.CborList)c)
                     .thenApply(res -> res.map(c -> ((CborObject.CborByteArray)c).value));
+        }
+
+        @Override
+        public CompletableFuture<EncryptedCapability> getSecretLink(SecretLink link) {
+            return poster.get(apiPrefix + LINK_GET
+                    + "?label=" + link.labelString()
+                    + "&owner=" + encode(link.owner.toString())
+            ).thenApply(CborObject::fromByteArray)
+                    .thenApply(CipherText::fromCbor)
+                    .thenApply(EncryptedCapability::new);
         }
 
         @Override
@@ -625,6 +638,15 @@ public interface ContentAddressedStorage {
                     owner,
                     () -> local.getChampLookup(owner, root, champKey, bat, committedRoot),
                     target -> p2p.getChampLookup(target, owner, root, champKey, bat));
+        }
+
+        @Override
+        public CompletableFuture<EncryptedCapability> getSecretLink(SecretLink link) {
+            return Proxy.redirectCall(core,
+                    ourNodeIds,
+                    link.owner,
+                    () -> local.getSecretLink(link),
+                    target -> p2p.getSecretLink(target, link));
         }
 
         @Override

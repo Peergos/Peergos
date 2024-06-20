@@ -319,4 +319,9 @@ public class DirectS3BlockStore implements ContentAddressedStorage {
                     return getChampLookup(owner, root, champKey, bat, committedRoot, hasher);
                 });
     }
+
+    @Override
+    public CompletableFuture<EncryptedCapability> getSecretLink(SecretLink link) {
+        return fallback.getSecretLink(link);
+    }
 }

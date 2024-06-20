@@ -7,7 +7,7 @@ import java.util.*;
 
 public class ScryptGenerator implements SecretGenerationAlgorithm {
 
-    public static final int MIN_MEMORY_COST = 17;
+    public static final int MIN_MEMORY_COST = 15; // 15 is only used for secret links, 17 is used for login
 
     @JsProperty
     public final int memoryCost, cpuCost, parallelism, outputBytes;

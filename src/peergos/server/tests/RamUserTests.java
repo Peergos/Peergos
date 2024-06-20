@@ -544,4 +544,32 @@ public class RamUserTests extends UserTests {
         // check user1 can still log in
         UserContext freshUser1 = PeergosNetworkUtils.ensureSignedUp(username1, password, network, crypto);
     }
+
+    @Test
+    public void secretLinkV2() throws Exception {
+        String username = generateUsername();
+        String password = "test";
+        UserContext user = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
+        FileWrapper userRoot = user.getUserRoot().join();
+
+        String filename = "somedata.txt";
+        // write empty file
+        byte[] data = new byte[1025*1024*5];
+        userRoot.uploadOrReplaceFile(filename, new AsyncReader.ArrayBacked(data), data.length, user.network,
+                        crypto, l -> {}).join();
+
+        Path filePath = PathUtil.get(username, filename);
+
+        boolean writable = false;
+        Optional<LocalDateTime> expiry = Optional.of(LocalDateTime.now().plusDays(1));
+        Optional<Integer> maxRetrievals = Optional.of(1);
+
+        String linkPassword = "youre-terrible-muriel";
+        SecretLink link = user.createSecretLink(filePath, writable, expiry, maxRetrievals, linkPassword).join();
+
+        EncryptedCapability retrieved = network.getSecretLink(link).join();
+        AbsoluteCapability cap = retrieved.decryptFromPassword(link.labelString(), linkPassword, crypto).join();
+        FileWrapper resolvedFile = network.getFile(cap, username).join().get();
+        Assert.assertTrue(! (resolvedFile.isWritable() ^ writable));
+    }
 }

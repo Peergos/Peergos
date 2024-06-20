@@ -10,6 +10,7 @@ import peergos.shared.mutable.*;
 import peergos.shared.storage.*;
 import peergos.shared.storage.auth.*;
 import peergos.shared.user.*;
+import peergos.shared.user.fs.*;
 import peergos.shared.util.*;
 
 import java.util.*;
@@ -195,6 +196,11 @@ public class OpLog implements Cborable, Account, MutablePointers, ContentAddress
     @Override
     public CompletableFuture<List<byte[]>> getChampLookup(PublicKeyHash owner, Cid root, byte[] champKey, Optional<BatWithId> bat, Optional<Cid> committedRoot) {
         return Futures.of(new ArrayList<>(storage.values()));
+    }
+
+    @Override
+    public CompletableFuture<EncryptedCapability> getSecretLink(SecretLink link) {
+        throw new IllegalStateException("Unsupported operation!");
     }
 
     @Override

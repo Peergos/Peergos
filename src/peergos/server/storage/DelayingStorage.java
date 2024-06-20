@@ -6,6 +6,7 @@ import peergos.shared.io.ipfs.Cid;
 import peergos.shared.io.ipfs.Multihash;
 import peergos.shared.storage.*;
 import peergos.shared.storage.auth.*;
+import peergos.shared.user.fs.*;
 import peergos.shared.util.*;
 
 import java.util.*;
@@ -99,6 +100,16 @@ public class DelayingStorage implements ContentAddressedStorage {
     public CompletableFuture<List<byte[]>> getChampLookup(PublicKeyHash owner, Cid root, byte[] champKey, Optional<BatWithId> bat, Optional<Cid> committedRoot) {
         sleep(4*readDelay);
         return source.getChampLookup(owner, root, champKey, bat, committedRoot);
+    }
+
+    @Override
+    public CompletableFuture<EncryptedCapability> getSecretLink(SecretLink link) {
+        try {
+            sleep(4*readDelay);
+            return source.getSecretLink(link);
+        } catch (Exception e) {
+            throw new RuntimeException(e.getMessage(), e);
+        }
     }
 
     @Override

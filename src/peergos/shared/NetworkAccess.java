@@ -469,6 +469,10 @@ public class NetworkAccess {
                 });
     }
 
+    public CompletableFuture<EncryptedCapability> getSecretLink(SecretLink link) {
+        return dhtClient.getSecretLink(link);
+    }
+
     @JsMethod
     public CompletableFuture<Optional<FileWrapper>> getFile(AbsoluteCapability cap, String owner) {
         return synchronizer.getValue(cap.owner, cap.writer)

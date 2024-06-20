@@ -35,7 +35,7 @@ import java.util.stream.*;
 import jsinterop.annotations.*;
 
 /**
- * The UserContext class represents a logged in user, or a retrieved public link and the resulting view of the global
+ * The UserContext class represents a logged in user, or a retrieved secret link and the resulting view of the global
  * filesystem.
  */
 public class UserContext {
@@ -602,6 +602,7 @@ public class UserContext {
                         Optional.empty(),
                         Collections.emptyMap(),
                         Optional.empty(),
+                        Optional.empty(),
                         Optional.empty());
         CommittedWriterData userData = new CommittedWriterData(MaybeMultihash.empty(), empty, Optional.empty());
         UserContext context = new UserContext(null, null, null, null, network,
@@ -625,6 +626,30 @@ public class UserContext {
                         throw new IllegalStateException("Invalid link!");
                     return currentRoot.put(r.getPath(), entry);
                 }));
+    }
+
+    public CompletableFuture<SecretLink> createSecretLink(Path toFile,
+                                                          boolean isWritable,
+                                                          Optional<LocalDateTime> expiry,
+                                                          Optional<Integer> maxRetrievals,
+                                                          String linkPassword) {
+        // put encrypted secret link in champ on identity, champ root must have mirror bat to make it private
+        PublicKeyHash id = signer.publicKeyHash;
+        FileWrapper file = getByPath(toFile).join().get();
+        AbsoluteCapability cap = isWritable ? file.getPointer().capability : file.getPointer().capability.readOnly();
+        byte[] labelBytes = crypto.random.randomBytes(2);
+        long label = ((labelBytes[0] & 0xFF) << 8) | (labelBytes[1] & 0xFF);
+        SecretLink res = new SecretLink(id, label);
+        return EncryptedCapability.createFromPassword(cap, res.labelString(), linkPassword, crypto)
+                .thenApply(payload -> new SecretLinkTarget(payload, expiry, maxRetrievals))
+                .thenCompose(value -> writeSynchronizer.applyComplexUpdate(id, signer,
+                        (v, c) -> IpfsTransaction.call(id,
+                                tid -> v.get(id).props.get().addLink(signer, label, value, tid, network.dhtClient, network.hasher)
+                                        .thenCompose(wd -> c.commit(id, signer, wd, v.get(id), tid)), network.dhtClient)))
+                .thenApply(s -> res);
+
+        // TODO put link in sharedWithCache
+//        sharedWithCache.addSecretLink()
     }
 
     public static CompletableFuture<AbsoluteCapability> getPublicCapability(Path originalPath, NetworkAccess network) {

@@ -1,0 +1,86 @@
+package peergos.shared.user;
+
+import peergos.shared.cbor.*;
+import peergos.shared.crypto.*;
+import peergos.shared.crypto.hash.*;
+import peergos.shared.hamt.*;
+import peergos.shared.io.ipfs.*;
+import peergos.shared.storage.*;
+import peergos.shared.user.fs.*;
+import peergos.shared.util.*;
+
+import java.util.*;
+import java.util.concurrent.*;
+import java.util.function.*;
+
+public class SecretLinkChamp {
+
+    public final Multihash root;
+    private final ChampWrapper<CborObject.CborMerkleLink> champ;
+    private final ContentAddressedStorage ipfs;
+    private final Hasher hasher;
+
+    private SecretLinkChamp(Multihash root, ChampWrapper<CborObject.CborMerkleLink> champ, ContentAddressedStorage ipfs, Hasher hasher) {
+        this.root = root;
+        this.champ = champ;
+        this.ipfs = ipfs;
+        this.hasher = hasher;
+    }
+
+    public static CompletableFuture<Cid> createEmpty(PublicKeyHash owner,
+                                                     SigningPrivateKeyAndPublicHash writer,
+                                                     ContentAddressedStorage ipfs,
+                                                     Hasher hasher,
+                                                     TransactionId tid) {
+        Champ<CborObject.CborMerkleLink> newRoot = Champ.empty(c -> (CborObject.CborMerkleLink)c);
+        byte[] raw = newRoot.serialize();
+        return hasher.sha256(raw)
+                .thenCompose(hash -> ipfs.put(owner, writer.publicKeyHash, writer.secret.signMessage(hash), raw, tid));
+    }
+
+    public static CompletableFuture<SecretLinkChamp> build(PublicKeyHash owner, Cid root, ContentAddressedStorage ipfs, Hasher hasher) {
+        return ChampWrapper.create(owner, root, b -> Futures.of(b.data), ipfs, hasher, c -> (CborObject.CborMerkleLink)c)
+                .thenApply(c -> new SecretLinkChamp(root, c, ipfs, hasher));
+    }
+
+    private CompletableFuture<byte[]> keyToBytes(long key) {
+        byte[] raw = {(byte) key, (byte) (key >> 8), (byte) (key >> 16), (byte) (key >> 24),
+                (byte) (key >> 32), (byte) (key >> 40), (byte) (key >> 48), (byte) (key >> 56)};
+        return hasher.sha256(raw);
+    }
+
+    public CompletableFuture<Optional<SecretLinkTarget>> get(PublicKeyHash owner,
+                                                             long label) {
+        return keyToBytes(label)
+                .thenCompose(champ::get)
+                .thenCompose(res -> res.isPresent() ?
+                        ipfs.get(owner, (Cid)res.get().target, Optional.empty()).thenApply(raw -> raw.map(SecretLinkTarget::fromCbor)) :
+                        CompletableFuture.completedFuture(Optional.empty()));
+    }
+
+    public CompletableFuture<Multihash> add(SigningPrivateKeyAndPublicHash owner,
+                                            long label,
+                                            SecretLinkTarget target,
+                                            Hasher hasher,
+                                            TransactionId tid) {
+        return keyToBytes(label)
+                .thenCompose(key -> ipfs.put(owner.publicKeyHash, owner, target.serialize(), hasher, tid)
+                        .thenCompose(valueHash ->
+                                champ.put(owner.publicKeyHash, owner, key, Optional.empty(), new CborObject.CborMerkleLink(valueHash), tid)));
+    }
+
+    public CompletableFuture<Multihash> remove(PublicKeyHash owner,
+                                               SigningPrivateKeyAndPublicHash writer,
+                                               long label,
+                                               TransactionId tid) {
+        return keyToBytes(label)
+                .thenCompose(key -> champ.get(key)
+                        .thenCompose(existing -> champ.remove(owner, writer, key, existing, tid)));
+    }
+
+    public CompletableFuture<Boolean> contains(long label) {
+        return keyToBytes(label)
+                .thenCompose(champ::get)
+                .thenApply(Optional::isPresent);
+    }
+}

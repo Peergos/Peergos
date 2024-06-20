@@ -15,6 +15,7 @@ import peergos.shared.io.ipfs.api.*;
 import peergos.shared.storage.*;
 import com.sun.net.httpserver.*;
 import peergos.shared.storage.auth.*;
+import peergos.shared.user.fs.*;
 import peergos.shared.util.*;
 
 import static peergos.shared.storage.ContentAddressedStorage.HTTP.*;
@@ -132,6 +133,21 @@ public class StorageHandler implements HttpHandler {
                         dht.getChampLookup(ownerHash, root, champKey, bat, Optional.empty()).thenAccept(blocks -> {
                             replyBytes(httpExchange, new CborObject.CborList(blocks.stream()
                                     .map(CborObject.CborByteArray::new).collect(Collectors.toList())).serialize(), Optional.of(root));
+                        }).exceptionally(Futures::logAndThrow).get();
+                    } finally {
+                        timer.observeDuration();
+                    }
+                    break;
+                }
+                case LINK_GET: {
+                    AggregatedMetrics.STORAGE_LINK_GET.inc();
+                    Histogram.Timer timer = AggregatedMetrics.STORAGE_LINK_GET_DURATION.labels("duration").startTimer();
+                    PublicKeyHash ownerHash = PublicKeyHash.fromString(last.apply("owner"));
+                    long label = Long.parseLong(last.apply("label"));
+                    SecretLink lookup = new SecretLink(ownerHash, label);
+                    try {
+                        dht.getSecretLink(lookup).thenAccept(link -> {
+                            replyBytes(httpExchange, link.payload.serialize(), Optional.empty());
                         }).exceptionally(Futures::logAndThrow).get();
                     } finally {
                         timer.observeDuration();

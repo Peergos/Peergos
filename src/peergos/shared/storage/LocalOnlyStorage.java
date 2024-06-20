@@ -104,6 +104,11 @@ public class LocalOnlyStorage implements ContentAddressedStorage {
     }
 
     @Override
+    public CompletableFuture<EncryptedCapability> getSecretLink(SecretLink link) {
+        throw new IllegalStateException("Unimplemented!");
+    }
+
+    @Override
     public CompletableFuture<IpnsEntry> getIpnsEntry(Multihash signer) {
         throw new IllegalStateException("Unimplemented!");
     }

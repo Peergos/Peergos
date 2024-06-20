@@ -525,15 +525,17 @@ public class Main extends Builder {
 
             TransactionStore transactions = buildTransactionStore(a, dbConnectionPool);
 
-            DeletableContentAddressedStorage localStorage = buildLocalStorage(a, meta, transactions, blockAuth,
+            DeletableContentAddressedStorage localStorageForLinks = buildLocalStorage(a, meta, transactions, blockAuth,
                     ids, crypto.hasher);
             JdbcIpnsAndSocial rawPointers = buildRawPointers(a,
                     getDBConnector(a, "mutable-pointers-file", dbConnectionPool));
 
-            List<Cid> nodeIds = localStorage.ids().get();
 
-            MutablePointers localPointers = UserRepository.build(localStorage, rawPointers);
+            MutablePointers localPointers = UserRepository.build(localStorageForLinks, rawPointers);
             MutablePointersProxy proxingMutable = new HttpMutablePointers(p2pHttpProxy, pkiServerNodeId);
+            DeletableContentAddressedStorage localStorage = new SecretLinkStorage(localStorageForLinks, localPointers, new RamLinkRetrievalCounter(), hasher);
+
+            List<Cid> nodeIds = localStorage.ids().get();
 
             Supplier<Connection> usageDb = getDBConnector(a, "space-usage-sql-file", dbConnectionPool);
             UsageStore usageStore = new JdbcUsageStore(usageDb, sqlCommands);

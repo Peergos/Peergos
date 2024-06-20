@@ -10,6 +10,7 @@ import peergos.shared.io.ipfs.Cid;
 import peergos.shared.io.ipfs.Multihash;
 import peergos.shared.storage.*;
 import peergos.shared.storage.auth.*;
+import peergos.shared.user.fs.*;
 import peergos.shared.util.ProgressConsumer;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
@@ -125,6 +126,11 @@ public class RetryStorageTests {
                 counter=1;
                 return CompletableFuture.completedFuture(Collections.emptyList());
             }
+        }
+
+        @Override
+        public CompletableFuture<EncryptedCapability> getSecretLink(SecretLink link) {
+            throw new IllegalStateException("Unimplemented!");
         }
 
         @Override

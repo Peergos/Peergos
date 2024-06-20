@@ -182,6 +182,11 @@ public class DelegatingDeletableStorage implements DeletableContentAddressedStor
     }
 
     @Override
+    public CompletableFuture<EncryptedCapability> getSecretLink(SecretLink link) {
+        return target.getSecretLink(link);
+    }
+
+    @Override
     public CompletableFuture<List<FragmentWithHash>> downloadFragments(PublicKeyHash owner,
                                                                        List<Cid> hashes,
                                                                        List<BatWithId> bats,

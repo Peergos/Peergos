@@ -5,7 +5,7 @@ import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.Cid;
 import peergos.shared.io.ipfs.Multihash;
 import peergos.shared.storage.auth.*;
-import peergos.shared.user.fs.FragmentWithHash;
+import peergos.shared.user.fs.*;
 import peergos.shared.util.*;
 
 import java.net.*;
@@ -132,6 +132,11 @@ public class RetryStorage implements ContentAddressedStorage {
     @Override
     public CompletableFuture<List<byte[]>> getChampLookup(PublicKeyHash owner, Cid root, byte[] champKey, Optional<BatWithId> bat, Optional<Cid> committedRoot) {
         return runWithRetry(() -> target.getChampLookup(owner, root, champKey, bat,committedRoot));
+    }
+
+    @Override
+    public CompletableFuture<EncryptedCapability> getSecretLink(SecretLink link) {
+        return runWithRetry(() -> target.getSecretLink(link));
     }
 
     @Override

@@ -9,6 +9,7 @@ import peergos.shared.io.ipfs.Cid;
 import peergos.shared.io.ipfs.Multihash;
 import peergos.shared.storage.*;
 import peergos.shared.storage.auth.*;
+import peergos.shared.user.fs.*;
 import peergos.shared.util.*;
 
 import java.io.*;
@@ -346,6 +347,11 @@ public class FileContentAddressedStorage implements DeletableContentAddressedSto
             file = root.resolve(path.getFileName()).toFile();
         }
         return file.exists();
+    }
+
+    @Override
+    public CompletableFuture<EncryptedCapability> getSecretLink(SecretLink link) {
+        throw new IllegalStateException("Shouldn't get here.");
     }
 
     @Override

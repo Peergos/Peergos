@@ -32,11 +32,19 @@ public class AggregatedMetrics {
     public static final Counter STORAGE_TRANSACTION_START  = build("storage_transaction_start", "Total DHT transaction starts.");
     public static final Counter STORAGE_TRANSACTION_CLOSE  = build("storage_transaction_close", "Total DHT transaction closes.");
     public static final Counter STORAGE_CHAMP_GET  = build("storage_champ_get", "Total champ gets");
+    public static final Counter STORAGE_LINK_GET  = build("storage_link_get", "Total link gets");
     public static final Counter STORAGE_IPNS_GET  = build("storage_ipns_get", "Total ipns gets");
     public static final Histogram STORAGE_CHAMP_GET_DURATION = Histogram.build()
             .labelNames("duration")
             .name("champ_get_duration")
             .help("Time to respond to a champ.get call")
+            .exponentialBuckets(0.01, 2, 16)
+            .register();
+
+    public static final Histogram STORAGE_LINK_GET_DURATION = Histogram.build()
+            .labelNames("duration")
+            .name("link_get_duration")
+            .help("Time to respond to a link.get call")
             .exponentialBuckets(0.01, 2, 16)
             .register();
 

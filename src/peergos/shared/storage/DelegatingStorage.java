@@ -80,6 +80,11 @@ public abstract class DelegatingStorage implements ContentAddressedStorage {
     }
 
     @Override
+    public CompletableFuture<EncryptedCapability> getSecretLink(SecretLink link) {
+        return target.getSecretLink(link);
+    }
+
+    @Override
     public CompletableFuture<Optional<Integer>> getSize(Multihash block) {
         return target.getSize(block);
     }
