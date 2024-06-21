@@ -1,6 +1,5 @@
 package peergos.shared.storage;
 
-import peergos.server.storage.*;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.Cid;
@@ -111,7 +110,7 @@ public class LocalOnlyStorage implements ContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<LinkRetrievalCounter.LinkCounts> getLinkCounts(String owner, LocalDateTime after, BatWithId mirrorBat) {
+    public CompletableFuture<LinkCounts> getLinkCounts(String owner, LocalDateTime after, BatWithId mirrorBat) {
         throw new IllegalStateException("Unimplemented!");
     }
 

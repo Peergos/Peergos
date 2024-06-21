@@ -1,5 +1,6 @@
 package peergos.server.storage;
 
+import peergos.shared.storage.*;
 import peergos.shared.util.*;
 
 import java.time.*;

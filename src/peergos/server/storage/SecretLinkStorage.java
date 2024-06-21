@@ -4,6 +4,7 @@ import peergos.shared.corenode.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.*;
 import peergos.shared.mutable.*;
+import peergos.shared.storage.*;
 import peergos.shared.storage.auth.*;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
@@ -58,9 +59,9 @@ public class SecretLinkStorage extends DelegatingDeletableStorage {
     }
 
     @Override
-    public CompletableFuture<LinkRetrievalCounter.LinkCounts> getLinkCounts(String owner,
-                                                                            LocalDateTime after,
-                                                                            BatWithId mirrorBat) {
+    public CompletableFuture<LinkCounts> getLinkCounts(String owner,
+                                                       LocalDateTime after,
+                                                       BatWithId mirrorBat) {
         byte[] supplied = hasher.sha256(mirrorBat.serialize()).join();
         List<BatWithId> mirrorBats = batstore.getUserBats(owner, new byte[0]).join();
         byte[] expected = hasher.sha256(mirrorBats.get(mirrorBats.size() - 1).serialize()).join();

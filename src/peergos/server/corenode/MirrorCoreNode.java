@@ -2,7 +2,6 @@ package peergos.server.corenode;
 
 import peergos.server.*;
 import peergos.server.login.*;
-import peergos.server.net.*;
 import peergos.server.space.*;
 import peergos.server.storage.*;
 import peergos.server.util.*;
@@ -509,7 +508,7 @@ public class MirrorCoreNode implements CoreNode {
         if (currentStorageId.equals(ourNodeId)) {
             // a user is migrating away from this server
             ProofOfWork work = ProofOfWork.empty();
-            LinkRetrievalCounter.LinkCounts updated = linkCounts.getUpdatedCounts(latestLinkCountUpdate);
+            LinkCounts updated = linkCounts.getUpdatedCounts(latestLinkCountUpdate);
             UserSnapshot snapshot = getUserSnapshot(owner, currentLast.claim.storageProviders, p2pMutable, ipfs, hasher)
                     .thenApply(pointers -> new UserSnapshot(pointers,
                             localSocial.getAndParseFollowRequests(owner),

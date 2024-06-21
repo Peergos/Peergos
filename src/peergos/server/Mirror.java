@@ -162,7 +162,7 @@ public class Mirror {
         }
         if (mirrorBat.isPresent()) { // get link count db
             Optional<LocalDateTime> latest = linkCounts.getLatestModificationTime(username);
-            LinkRetrievalCounter.LinkCounts updatedCounts = storage.getLinkCounts(username, latest.orElse(LocalDateTime.MIN), mirrorBat.get()).join();
+            LinkCounts updatedCounts = storage.getLinkCounts(username, latest.orElse(LocalDateTime.MIN), mirrorBat.get()).join();
             linkCounts.setCounts(username, updatedCounts);
         }
         Logging.LOG().log(Level.INFO, "Finished mirroring data for " + username);

@@ -206,7 +206,7 @@ public class RAMStorage implements DeletableContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<LinkRetrievalCounter.LinkCounts> getLinkCounts(String owner, LocalDateTime after, BatWithId mirrorBat) {
+    public CompletableFuture<LinkCounts> getLinkCounts(String owner, LocalDateTime after, BatWithId mirrorBat) {
         throw new IllegalStateException("Shouldn't get here.");
     }
 

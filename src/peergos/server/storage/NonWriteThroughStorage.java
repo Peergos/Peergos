@@ -113,7 +113,7 @@ public class NonWriteThroughStorage implements ContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<LinkRetrievalCounter.LinkCounts> getLinkCounts(String owner, LocalDateTime after, BatWithId mirrorBat) {
+    public CompletableFuture<LinkCounts> getLinkCounts(String owner, LocalDateTime after, BatWithId mirrorBat) {
         throw new IllegalStateException("Unsupported operation!");
     }
 

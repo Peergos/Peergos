@@ -1,6 +1,5 @@
 package peergos.shared.storage;
 
-import peergos.server.storage.*;
 import peergos.shared.*;
 import peergos.shared.cbor.*;
 import peergos.shared.corenode.*;
@@ -199,7 +198,7 @@ public interface ContentAddressedStorage {
 
     CompletableFuture<EncryptedCapability> getSecretLink(SecretLink link);
 
-    CompletableFuture<LinkRetrievalCounter.LinkCounts> getLinkCounts(String owner, LocalDateTime after, BatWithId mirrorBat);
+    CompletableFuture<LinkCounts> getLinkCounts(String owner, LocalDateTime after, BatWithId mirrorBat);
 
     default CompletableFuture<Cid> hashToCid(byte[] input, boolean isRaw, Hasher hasher) {
         return hasher.sha256(input)
@@ -425,13 +424,13 @@ public interface ContentAddressedStorage {
         }
 
         @Override
-        public CompletableFuture<LinkRetrievalCounter.LinkCounts> getLinkCounts(String owner, LocalDateTime after, BatWithId mirrorBat) {
+        public CompletableFuture<LinkCounts> getLinkCounts(String owner, LocalDateTime after, BatWithId mirrorBat) {
             return poster.get(apiPrefix + LINK_COUNTS
                     + "?after=" + after.toEpochSecond(ZoneOffset.UTC)
                     + "?bat=" + mirrorBat.encode()
                     + "&owner=" + owner
             ).thenApply(CborObject::fromByteArray)
-                    .thenApply(LinkRetrievalCounter.LinkCounts::fromCbor);
+                    .thenApply(LinkCounts::fromCbor);
         }
 
         @Override
@@ -665,7 +664,7 @@ public interface ContentAddressedStorage {
         }
 
         @Override
-        public CompletableFuture<LinkRetrievalCounter.LinkCounts> getLinkCounts(String owner, LocalDateTime after, BatWithId mirrorBat) {
+        public CompletableFuture<LinkCounts> getLinkCounts(String owner, LocalDateTime after, BatWithId mirrorBat) {
             return core.getPublicKeyHash(owner)
                     .thenCompose(id -> Proxy.redirectCall(core,
                             ourNodeIds,

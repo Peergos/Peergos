@@ -114,7 +114,7 @@ public class DelayingStorage implements ContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<LinkRetrievalCounter.LinkCounts> getLinkCounts(String owner, LocalDateTime after, BatWithId mirrorBat) {
+    public CompletableFuture<LinkCounts> getLinkCounts(String owner, LocalDateTime after, BatWithId mirrorBat) {
         return source.getLinkCounts(owner, after, mirrorBat);
     }
 

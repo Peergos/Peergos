@@ -1,6 +1,5 @@
 package peergos.shared.corenode;
 
-import peergos.server.storage.*;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.hash.*;
@@ -206,7 +205,7 @@ public class OpLog implements Cborable, Account, MutablePointers, ContentAddress
     }
 
     @Override
-    public CompletableFuture<LinkRetrievalCounter.LinkCounts> getLinkCounts(String owner, LocalDateTime after, BatWithId mirrorBat) {
+    public CompletableFuture<LinkCounts> getLinkCounts(String owner, LocalDateTime after, BatWithId mirrorBat) {
         throw new IllegalStateException("Unsupported operation!");
     }
 
