@@ -10,6 +10,7 @@ import peergos.shared.user.*;
 import peergos.shared.util.*;
 
 import java.io.*;
+import java.time.*;
 import java.util.*;
 import java.util.concurrent.*;
 
@@ -102,8 +103,9 @@ public class OfflineCorenode implements CoreNode {
                                                        List<UserPublicKeyLink> newChain,
                                                        Multihash currentStorageId,
                                                        Optional<BatWithId> mirrorBat,
+                                                       LocalDateTime latestLinkCountUpdate,
                                                        long currentUsage) {
-        return target.migrateUser(username, newChain, currentStorageId, mirrorBat, currentUsage);
+        return target.migrateUser(username, newChain, currentStorageId, mirrorBat, latestLinkCountUpdate, currentUsage);
     }
 
     @Override

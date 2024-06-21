@@ -17,6 +17,7 @@ import peergos.shared.user.*;
 import peergos.shared.util.*;
 
 import java.io.*;
+import java.time.*;
 import java.util.*;
 import java.util.logging.*;
 import java.util.zip.*;
@@ -182,8 +183,9 @@ public class CoreNodeHandler implements HttpHandler
         Optional<BatWithId> mirrorBat = hasBat ?
                 Optional.of(BatWithId.fromCbor(CborObject.fromByteArray(Serialize.deserializeByteArray(din, 128)))) :
                 Optional.empty();
+        long seconds = din.readLong();
         long currentUsage = din.readLong();
-        UserSnapshot state = coreNode.migrateUser(username, newChain, currentStorageId, mirrorBat, currentUsage).join();
+        UserSnapshot state = coreNode.migrateUser(username, newChain, currentStorageId, mirrorBat, LocalDateTime.ofEpochSecond(seconds, 0, ZoneOffset.UTC), currentUsage).join();
         dout.write(state.serialize());
     }
 

@@ -12,6 +12,7 @@ import peergos.shared.user.fs.*;
 import peergos.shared.util.*;
 
 import java.io.*;
+import java.time.*;
 import java.util.*;
 import java.util.concurrent.*;
 
@@ -177,8 +178,9 @@ public class TofuCoreNode implements CoreNode {
                                                        List<UserPublicKeyLink> newChain,
                                                        Multihash currentStorageId,
                                                        Optional<BatWithId> mirrorBat,
+                                                       LocalDateTime latestLinkCountUpdate,
                                                        long currentUsage) {
-        return source.migrateUser(username, newChain, currentStorageId, mirrorBat, currentUsage)
+        return source.migrateUser(username, newChain, currentStorageId, mirrorBat, latestLinkCountUpdate, currentUsage)
                 .thenCompose(res -> source.getChain(username)
                         .thenCompose(chain -> tofu.updateChain(username, chain, network.dhtClient)
                                 .thenCompose(x -> commit())

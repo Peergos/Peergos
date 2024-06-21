@@ -119,7 +119,7 @@ public class ServerMessages extends Builder {
             JdbcAccount account = new JdbcAccount(getDBConnector(a, "account-sql-file", dbConnectionPool),
                     cmds, new com.webauthn4j.data.client.Origin("http://localhost:8000"), "localhost");
             CoreNode core = buildCorenode(a, localStorage, transactions, rawPointers, localPointers, proxingMutable,
-                    rawSocial, usageStore, account, null, new AccountWithStorage(localStorage, localPointers, account), crypto);
+                    rawSocial, usageStore, account, null, new AccountWithStorage(localStorage, localPointers, account), null, crypto);
             return buildSpaceQuotas(a, localStorage, core,
                     getDBConnector(a, "space-requests-sql-file", dbConnectionPool),
                     getDBConnector(a, "quotas-sql-file", dbConnectionPool), false, true);

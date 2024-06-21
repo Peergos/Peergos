@@ -15,6 +15,7 @@ import peergos.shared.util.*;
 import java.io.*;
 import java.nio.file.*;
 import java.nio.file.attribute.*;
+import java.time.*;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.function.*;
@@ -351,6 +352,11 @@ public class FileContentAddressedStorage implements DeletableContentAddressedSto
 
     @Override
     public CompletableFuture<EncryptedCapability> getSecretLink(SecretLink link) {
+        throw new IllegalStateException("Shouldn't get here.");
+    }
+
+    @Override
+    public CompletableFuture<LinkRetrievalCounter.LinkCounts> getLinkCounts(String owner, LocalDateTime after, BatWithId mirrorBat) {
         throw new IllegalStateException("Shouldn't get here.");
     }
 

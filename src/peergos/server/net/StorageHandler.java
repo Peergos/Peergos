@@ -1,4 +1,5 @@
 package peergos.server.net;
+import java.time.*;
 import java.util.function.Supplier;
 import java.util.logging.*;
 
@@ -152,6 +153,17 @@ public class StorageHandler implements HttpHandler {
                     } finally {
                         timer.observeDuration();
                     }
+                    break;
+                }
+                case LINK_COUNTS: {
+                    AggregatedMetrics.STORAGE_LINK_COUNTS.inc();
+                    String owner = last.apply("owner");
+                    long seconds = Long.parseLong(last.apply("after"));
+                    LocalDateTime after = LocalDateTime.ofEpochSecond(seconds, 0, ZoneOffset.UTC);
+                    BatWithId mirrorBat = BatWithId.decode(last.apply("bat"));
+                    dht.getLinkCounts(owner, after, mirrorBat).thenAccept(counts -> {
+                        replyBytes(httpExchange, counts.serialize(), Optional.empty());
+                    }).exceptionally(Futures::logAndThrow).get();
                     break;
                 }
                 case BLOCK_PUT: {

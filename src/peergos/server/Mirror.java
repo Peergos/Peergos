@@ -19,6 +19,7 @@ import peergos.shared.util.*;
 
 import java.io.*;
 import java.net.*;
+import java.time.*;
 import java.util.*;
 import java.util.logging.*;
 
@@ -91,6 +92,7 @@ public class Mirror {
                                   DeletableContentAddressedStorage storage,
                                   JdbcIpnsAndSocial targetPointers,
                                   TransactionStore transactions,
+                                  LinkRetrievalCounter linkCounts,
                                   Hasher hasher) {
         Logging.LOG().log(Level.INFO, "Mirroring data for node " + nodeId);
         List<String> allUsers = core.getUsernames("").join();
@@ -100,7 +102,7 @@ public class Mirror {
             if (chain.get(chain.size() - 1).claim.storageProviders.contains(nodeId)) {
                 try {
                     mirrorUser(username, Optional.empty(), Optional.of(mirrorBat), core, p2pPointers, null,
-                            storage, targetPointers, null, transactions, hasher);
+                            storage, targetPointers, null, transactions, linkCounts, hasher);
                     userCount++;
                 } catch (Exception e) {
                     Logging.LOG().log(Level.WARNING, "Couldn't mirror user: " + username, e);
@@ -131,6 +133,7 @@ public class Mirror {
                                                         JdbcIpnsAndSocial targetPointers,
                                                         JdbcAccount targetAccount,
                                                         TransactionStore transactions,
+                                                        LinkRetrievalCounter linkCounts,
                                                         Hasher hasher) {
         Logging.LOG().log(Level.INFO, "Mirroring data for " + username + loginAuth.map(k -> " including login data").orElse(" excluding login data"));
         Optional<PublicKeyHash> identity = core.getPublicKeyHash(username).join();
@@ -156,6 +159,11 @@ public class Mirror {
                 targetAccount.setLoginData(new LoginData(username, entryData, login.publicSigningKey, Optional.empty())).join();
             } else
                 Logging.LOG().log(Level.WARNING, "Unable to mirror login data because 2FA is required");
+        }
+        if (mirrorBat.isPresent()) { // get link count db
+            Optional<LocalDateTime> latest = linkCounts.getLatestModificationTime(username);
+            LinkRetrievalCounter.LinkCounts updatedCounts = storage.getLinkCounts(username, latest.orElse(LocalDateTime.MIN), mirrorBat.get()).join();
+            linkCounts.setCounts(username, updatedCounts);
         }
         Logging.LOG().log(Level.INFO, "Finished mirroring data for " + username);
         return versions;

@@ -1,5 +1,6 @@
 package peergos.shared.storage;
 
+import peergos.server.storage.*;
 import peergos.shared.cbor.CborObject;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.Cid;
@@ -9,6 +10,7 @@ import peergos.shared.user.fs.*;
 import peergos.shared.util.*;
 
 import java.net.*;
+import java.time.*;
 import java.util.List;
 import java.util.Optional;
 import java.util.Random;
@@ -137,6 +139,11 @@ public class RetryStorage implements ContentAddressedStorage {
     @Override
     public CompletableFuture<EncryptedCapability> getSecretLink(SecretLink link) {
         return runWithRetry(() -> target.getSecretLink(link));
+    }
+
+    @Override
+    public CompletableFuture<LinkRetrievalCounter.LinkCounts> getLinkCounts(String owner, LocalDateTime after, BatWithId mirrorBat) {
+        return runWithRetry(() -> target.getLinkCounts(owner, after, mirrorBat));
     }
 
     @Override

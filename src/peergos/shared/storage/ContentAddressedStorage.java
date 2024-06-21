@@ -1,5 +1,6 @@
 package peergos.shared.storage;
 
+import peergos.server.storage.*;
 import peergos.shared.*;
 import peergos.shared.cbor.*;
 import peergos.shared.corenode.*;
@@ -18,6 +19,7 @@ import peergos.shared.util.*;
 
 import java.io.*;
 import java.net.*;
+import java.time.*;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.stream.*;
@@ -197,6 +199,8 @@ public interface ContentAddressedStorage {
 
     CompletableFuture<EncryptedCapability> getSecretLink(SecretLink link);
 
+    CompletableFuture<LinkRetrievalCounter.LinkCounts> getLinkCounts(String owner, LocalDateTime after, BatWithId mirrorBat);
+
     default CompletableFuture<Cid> hashToCid(byte[] input, boolean isRaw, Hasher hasher) {
         return hasher.sha256(input)
                 .thenApply(hash -> buildCid(hash, isRaw));
@@ -272,6 +276,7 @@ public interface ContentAddressedStorage {
         public static final String TRANSACTION_CLOSE = "transaction/close";
         public static final String CHAMP_GET = "champ/get";
         public static final String LINK_GET = "link/get";
+        public static final String LINK_COUNTS = "link/counts";
         public static final String BLOCK_PUT = "block/put";
         public static final String BLOCK_GET = "block/get";
         public static final String BLOCK_RM = "block/rm";
@@ -417,6 +422,16 @@ public interface ContentAddressedStorage {
             ).thenApply(CborObject::fromByteArray)
                     .thenApply(CipherText::fromCbor)
                     .thenApply(EncryptedCapability::new);
+        }
+
+        @Override
+        public CompletableFuture<LinkRetrievalCounter.LinkCounts> getLinkCounts(String owner, LocalDateTime after, BatWithId mirrorBat) {
+            return poster.get(apiPrefix + LINK_COUNTS
+                    + "?after=" + after.toEpochSecond(ZoneOffset.UTC)
+                    + "?bat=" + mirrorBat.encode()
+                    + "&owner=" + owner
+            ).thenApply(CborObject::fromByteArray)
+                    .thenApply(LinkRetrievalCounter.LinkCounts::fromCbor);
         }
 
         @Override
@@ -647,6 +662,16 @@ public interface ContentAddressedStorage {
                     link.owner,
                     () -> local.getSecretLink(link),
                     target -> p2p.getSecretLink(target, link));
+        }
+
+        @Override
+        public CompletableFuture<LinkRetrievalCounter.LinkCounts> getLinkCounts(String owner, LocalDateTime after, BatWithId mirrorBat) {
+            return core.getPublicKeyHash(owner)
+                    .thenCompose(id -> Proxy.redirectCall(core,
+                            ourNodeIds,
+                            id.get(),
+                            () -> local.getLinkCounts(owner, after, mirrorBat),
+                            target -> p2p.getLinkCounts(target, owner, after, mirrorBat)));
         }
 
         @Override

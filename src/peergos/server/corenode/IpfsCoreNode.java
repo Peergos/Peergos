@@ -1,4 +1,5 @@
 package peergos.server.corenode;
+import java.time.*;
 import java.util.logging.*;
 
 import peergos.server.storage.*;
@@ -507,6 +508,7 @@ public class IpfsCoreNode implements CoreNode {
                                                        List<UserPublicKeyLink> newChain,
                                                        Multihash currentStorageId,
                                                        Optional<BatWithId> mirrorBat,
+                                                       LocalDateTime latestLinkCountUpdate,
                                                        long currentUsage) {
         throw new IllegalStateException("Migration from pki node unimplemented!");
     }

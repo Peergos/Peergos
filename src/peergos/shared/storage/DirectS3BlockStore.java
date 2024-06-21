@@ -1,5 +1,6 @@
 package peergos.shared.storage;
 
+import peergos.server.storage.*;
 import peergos.shared.*;
 import peergos.shared.cbor.*;
 import peergos.shared.corenode.*;
@@ -12,6 +13,7 @@ import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
 import peergos.shared.util.*;
 
+import java.time.*;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.logging.*;
@@ -323,5 +325,10 @@ public class DirectS3BlockStore implements ContentAddressedStorage {
     @Override
     public CompletableFuture<EncryptedCapability> getSecretLink(SecretLink link) {
         return fallback.getSecretLink(link);
+    }
+
+    @Override
+    public CompletableFuture<LinkRetrievalCounter.LinkCounts> getLinkCounts(String owner, LocalDateTime after, BatWithId mirrorBat) {
+        return fallback.getLinkCounts(owner, after, mirrorBat);
     }
 }

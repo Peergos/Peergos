@@ -499,7 +499,7 @@ public class Main extends Builder {
 
             boolean useIPFS = a.getBoolean("useIPFS");
             Supplier<Connection> dbConnectionPool = getDBConnector(a, "transactions-sql-file");
-            BatCave batStore = new JdbcBatCave(getDBConnector(a, "bat-store", dbConnectionPool), sqlCommands);
+            JdbcBatCave batStore = new JdbcBatCave(getDBConnector(a, "bat-store", dbConnectionPool), sqlCommands);
             BlockRequestAuthoriser blockAuth = blockAuthoriser(a, batStore, hasher);
             BlockMetadataStore meta = buildBlockMetadata(a);
             JdbcServerIdentityStore ids = JdbcServerIdentityStore.build(getDBConnector(a, "serverids-file", dbConnectionPool), sqlCommands, crypto);
@@ -533,7 +533,8 @@ public class Main extends Builder {
 
             MutablePointers localPointers = UserRepository.build(localStorageForLinks, rawPointers);
             MutablePointersProxy proxingMutable = new HttpMutablePointers(p2pHttpProxy, pkiServerNodeId);
-            DeletableContentAddressedStorage localStorage = new SecretLinkStorage(localStorageForLinks, localPointers, new RamLinkRetrievalCounter(), hasher);
+            RamLinkRetrievalCounter linkCounts = new RamLinkRetrievalCounter();
+            DeletableContentAddressedStorage localStorage = new SecretLinkStorage(localStorageForLinks, localPointers, linkCounts, batStore, hasher);
 
             List<Cid> nodeIds = localStorage.ids().get();
 
@@ -547,7 +548,7 @@ public class Main extends Builder {
                 gc = new GarbageCollector(localStorage, rawPointers, usageStore, a.fromPeergosDir("", ""), (d, c) -> Futures.of(true), listRawBlocks);
                 Function<Stream<Map.Entry<PublicKeyHash, byte[]>>, CompletableFuture<Boolean>> snapshotSaver =
                         useS3 ?
-                                ((S3BlockStorage) localStorage)::savePointerSnapshot :
+                                ((S3BlockStorage) localStorage)::savePointerSnapshot : // TODO remove this which will fail with S3
                                 s -> Futures.of(true);
                 int gcInterval = 12 * 60 * 60 * 1000;
                 gc.start(a.getInt("gc.period.millis", gcInterval), snapshotSaver);
@@ -565,7 +566,7 @@ public class Main extends Builder {
             AccountProxy accountProxy = new HttpAccount(p2pHttpProxy, pkiServerNodeId);
 
             CoreNode core = buildCorenode(a, localStorage, transactions, rawPointers, localPointers, proxingMutable,
-                    rawSocial, usageStore, rawAccount, batStore, account, crypto);
+                    rawSocial, usageStore, rawAccount, batStore, account, linkCounts, crypto);
             localStorage.setPki(core);
             if (a.hasArg("mirror.username")) // mirror pki before starting user mirror
                 core.initialize();
@@ -667,7 +668,7 @@ public class Main extends Builder {
                     while (true) {
                         try {
                             BatWithId mirrorBat = BatWithId.decode(a.getArg("mirror.bat"));
-                            Mirror.mirrorNode(nodeToMirrorId, mirrorBat, core, p2mMutable, localStorage, rawPointers, transactions, hasher);
+                            Mirror.mirrorNode(nodeToMirrorId, mirrorBat, core, p2mMutable, localStorage, rawPointers, transactions, linkCounts, hasher);
                             try {
                                 Thread.sleep(60_000);
                             } catch (InterruptedException f) {}
@@ -699,7 +700,7 @@ public class Main extends Builder {
                                     batStore.addBat(username, mirrorId, mirrorBat.get().bat, new byte[0]).join();
                             }
                             Mirror.mirrorUser(username, mirrorLoginDataPair, mirrorBat, core, p2mMutable, p2pAccount, localStorage,
-                                    rawPointers, rawAccount, transactions, hasher);
+                                    rawPointers, rawAccount, transactions, linkCounts, hasher);
                             try {
                                 Thread.sleep(60_000);
                             } catch (InterruptedException f) {}
@@ -862,7 +863,9 @@ public class Main extends Builder {
             user.ensureMirrorId().join().get();
             Optional<BatWithId> current = user.getMirrorBat().join();
             long usage = user.getSpaceUsage().join();
-            user.network.coreNode.migrateUser(username, newChain, currentStorageNodeId, current, usage).join();
+            LinkRetrievalCounter linkCounts = new RamLinkRetrievalCounter();
+            LocalDateTime latestLinkUpdate = linkCounts.getLatestModificationTime(username).orElse(LocalDateTime.MIN);
+            user.network.coreNode.migrateUser(username, newChain, currentStorageNodeId, current, latestLinkUpdate, usage).join();
             List<UserPublicKeyLink> updatedChain = user.network.coreNode.getChain(username).join();
             if (!updatedChain.get(updatedChain.size() - 1).claim.storageProviders.contains(newStorageNodeId))
                 throw new IllegalStateException("Migration failed. Please try again later");

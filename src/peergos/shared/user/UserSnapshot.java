@@ -1,10 +1,13 @@
 package peergos.shared.user;
 
+import peergos.server.storage.*;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.social.*;
 import peergos.shared.storage.auth.*;
+import peergos.shared.util.*;
 
+import java.time.*;
 import java.util.*;
 import java.util.stream.*;
 
@@ -14,15 +17,18 @@ public class UserSnapshot implements Cborable {
     public final List<BlindFollowRequest> pendingFollowReqs;
     public final List<BatWithId> mirrorBats;
     public final Optional<LoginData> login;
+    public final LinkRetrievalCounter.LinkCounts linkCounts;
 
     public UserSnapshot(Map<PublicKeyHash, byte[]> pointerState,
                         List<BlindFollowRequest> pendingFollowReqs,
                         List<BatWithId> mirrorBats,
-                        Optional<LoginData> login) {
+                        Optional<LoginData> login,
+                        LinkRetrievalCounter.LinkCounts linkCounts) {
         this.pointerState = pointerState;
         this.pendingFollowReqs = pendingFollowReqs;
         this.mirrorBats = mirrorBats;
         this.login = login;
+        this.linkCounts = linkCounts;
     }
 
     @Override
@@ -40,6 +46,7 @@ public class UserSnapshot implements Cborable {
         state.put("p", new CborObject.CborList(pointerMap));
         state.put("b", new CborObject.CborList(mirrorBats));
         login.ifPresent(d -> state.put("l", d));
+        state.put("lc", linkCounts.toCbor());
         return CborObject.CborMap.build(state);
     }
 
@@ -52,10 +59,12 @@ public class UserSnapshot implements Cborable {
                 .getMap(PublicKeyHash::fromCbor, c -> ((CborObject.CborByteArray)c).value);
         List<BatWithId> mirrorBats = m.getList("b", BatWithId::fromCbor);
         Optional<LoginData> login = m.getOptional("l", LoginData::fromCbor);
-        return new UserSnapshot(pointerState, pendingFollowReqs, mirrorBats, login);
+        LinkRetrievalCounter.LinkCounts lc = m.get("lc", LinkRetrievalCounter.LinkCounts::fromCbor);
+        return new UserSnapshot(pointerState, pendingFollowReqs, mirrorBats, login, lc);
     }
 
     public static UserSnapshot empty() {
-        return new UserSnapshot(Collections.emptyMap(), Collections.emptyList(), Collections.emptyList(), Optional.empty());
+        return new UserSnapshot(Collections.emptyMap(), Collections.emptyList(), Collections.emptyList(),
+                Optional.empty(), new LinkRetrievalCounter.LinkCounts(Collections.emptyMap()));
     }
 }

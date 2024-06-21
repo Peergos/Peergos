@@ -1,5 +1,6 @@
 
 package peergos.shared.corenode;
+import java.time.*;
 import java.util.logging.*;
 
 import peergos.shared.cbor.*;
@@ -256,6 +257,7 @@ public class HTTPCoreNode implements CoreNode {
                                                        List<UserPublicKeyLink> newChain,
                                                        Multihash currentStorageId,
                                                        Optional<BatWithId> mirrorBat,
+                                                       LocalDateTime latestLinkCountUpdate,
                                                        long currentUsage) {
         String modifiedPrefix = urlPrefix.isEmpty() ? "" : getProxyUrlPrefix(currentStorageId);
         try {
@@ -268,6 +270,7 @@ public class HTTPCoreNode implements CoreNode {
             dout.writeBoolean(mirrorBat.isPresent());
             if (mirrorBat.isPresent())
                 Serialize.serialize(mirrorBat.get().serialize(), dout);
+            dout.writeLong(latestLinkCountUpdate.toEpochSecond(ZoneOffset.UTC));
             dout.writeLong(currentUsage);
             dout.flush();
 

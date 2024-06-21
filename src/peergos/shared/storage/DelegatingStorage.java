@@ -1,5 +1,6 @@
 package peergos.shared.storage;
 
+import peergos.server.storage.*;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.Cid;
@@ -8,6 +9,7 @@ import peergos.shared.storage.auth.*;
 import peergos.shared.user.fs.*;
 import peergos.shared.util.*;
 
+import java.time.*;
 import java.util.*;
 import java.util.concurrent.*;
 
@@ -82,6 +84,11 @@ public abstract class DelegatingStorage implements ContentAddressedStorage {
     @Override
     public CompletableFuture<EncryptedCapability> getSecretLink(SecretLink link) {
         return target.getSecretLink(link);
+    }
+
+    @Override
+    public CompletableFuture<LinkRetrievalCounter.LinkCounts> getLinkCounts(String owner, LocalDateTime after, BatWithId mirrorBat) {
+        return target.getLinkCounts(owner, after, mirrorBat);
     }
 
     @Override

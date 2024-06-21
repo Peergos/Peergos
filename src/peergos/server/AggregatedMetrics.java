@@ -33,6 +33,7 @@ public class AggregatedMetrics {
     public static final Counter STORAGE_TRANSACTION_CLOSE  = build("storage_transaction_close", "Total DHT transaction closes.");
     public static final Counter STORAGE_CHAMP_GET  = build("storage_champ_get", "Total champ gets");
     public static final Counter STORAGE_LINK_GET  = build("storage_link_get", "Total link gets");
+    public static final Counter STORAGE_LINK_COUNTS  = build("storage_link_counts", "Total link counts");
     public static final Counter STORAGE_IPNS_GET  = build("storage_ipns_get", "Total ipns gets");
     public static final Histogram STORAGE_CHAMP_GET_DURATION = Histogram.build()
             .labelNames("duration")

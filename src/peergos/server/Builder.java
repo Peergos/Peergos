@@ -369,6 +369,7 @@ public class Builder {
                                          JdbcAccount rawAccount,
                                          BatCave bats,
                                          Account account,
+                                         LinkRetrievalCounter linkCounts,
                                          Crypto crypto) {
         Multihash nodeId = localStorage.id().join();
         PublicKeyHash peergosId = PublicKeyHash.fromString(a.getArg("peergos.identity.hash"));
@@ -378,7 +379,7 @@ public class Builder {
         return isPkiNode ?
                 buildPkiCorenode(localPointers, account, bats, localStorage, a) :
                 new MirrorCoreNode(new HTTPCoreNode(buildP2pHttpProxy(a), pkiServerId), rawAccount, bats, account, proxingMutable,
-                        localStorage, rawPointers, localPointers, transactions, localSocial, usageStore, pkiServerId, peergosId,
+                        localStorage, rawPointers, localPointers, transactions, localSocial, usageStore, linkCounts, pkiServerId, peergosId,
                         a.fromPeergosDir("pki-mirror-state-path","pki-state.cbor"), crypto);
     }
 

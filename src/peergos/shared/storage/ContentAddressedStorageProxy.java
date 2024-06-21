@@ -1,5 +1,6 @@
 package peergos.shared.storage;
 
+import peergos.server.storage.*;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
@@ -13,6 +14,7 @@ import peergos.shared.util.*;
 
 import java.io.*;
 import java.net.*;
+import java.time.*;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.stream.*;
@@ -26,6 +28,8 @@ public interface ContentAddressedStorageProxy {
     CompletableFuture<List<byte[]>> getChampLookup(Multihash targetServerId, PublicKeyHash owner, Multihash root, byte[] champKey, Optional<BatWithId> bat);
 
     CompletableFuture<EncryptedCapability> getSecretLink(Multihash targetServerId, SecretLink link);
+
+    CompletableFuture<LinkRetrievalCounter.LinkCounts> getLinkCounts(Multihash targetServerId, String owner, LocalDateTime after, BatWithId mirrorBat);
 
     CompletableFuture<List<Cid>> put(Multihash targetServerId,
                                      PublicKeyHash owner,
@@ -114,6 +118,19 @@ public interface ContentAddressedStorageProxy {
                     .thenApply(CborObject::fromByteArray)
                     .thenApply(CipherText::fromCbor)
                     .thenApply(EncryptedCapability::new);
+        }
+
+        @Override
+        public CompletableFuture<LinkRetrievalCounter.LinkCounts> getLinkCounts(Multihash targetServerId,
+                                                                                String owner,
+                                                                                LocalDateTime after,
+                                                                                BatWithId mirrorBat) {
+            return poster.get(getProxyUrlPrefix(targetServerId) + apiPrefix
+                    + "link/counts?after=" + after.toEpochSecond(ZoneOffset.UTC)
+                    + "?bat=" + mirrorBat.encode()
+                    + "&owner=" + owner)
+                    .thenApply(CborObject::fromByteArray)
+                    .thenApply(LinkRetrievalCounter.LinkCounts::fromCbor);
         }
 
         @Override
