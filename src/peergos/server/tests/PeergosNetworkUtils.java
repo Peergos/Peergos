@@ -239,7 +239,7 @@ public class PeergosNetworkUtils {
         List<UserContext> updatedShareeUsers = shareeUsers.stream()
                 .map(e -> {
                     try {
-                        return ensureSignedUp(e.username, shareePasswords.get(shareeUsers.indexOf(e)), shareeNode, crypto);
+                        return ensureSignedUp(e.username, shareePasswords.get(shareeUsers.indexOf(e)), shareeNode.clear(), crypto);
                     } catch (Exception ex) {
                         throw new IllegalStateException(ex.getMessage(), ex);
 
