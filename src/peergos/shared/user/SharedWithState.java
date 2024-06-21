@@ -2,6 +2,7 @@ package peergos.shared.user;
 
 import jsinterop.annotations.*;
 import peergos.shared.cbor.*;
+import peergos.shared.util.*;
 
 import java.util.*;
 import java.util.function.*;
@@ -13,10 +14,17 @@ import java.util.stream.*;
 public class SharedWithState implements Cborable {
     private final Map<String, Set<String>> readShares;
     private final Map<String, Set<String>> writeShares;
+    private final Map<String, Set<LinkProperties>> readLinks;
+    private final Map<String, Set<LinkProperties>> writeLinks;
 
-    public SharedWithState(Map<String, Set<String>> readShares, Map<String, Set<String>> writeShares) {
+    public SharedWithState(Map<String, Set<String>> readShares,
+                           Map<String, Set<String>> writeShares,
+                           Map<String, Set<LinkProperties>> readLinks,
+                           Map<String, Set<LinkProperties>> writeLinks) {
         this.readShares = readShares;
         this.writeShares = writeShares;
+        this.readLinks = readLinks;
+        this.writeLinks = writeLinks;
     }
 
     public boolean isEmpty() {
@@ -24,7 +32,7 @@ public class SharedWithState implements Cborable {
     }
 
     public static SharedWithState empty() {
-        return new SharedWithState(new HashMap<>(), new HashMap<>());
+        return new SharedWithState(new HashMap<>(), new HashMap<>(), new HashMap<>(), new HashMap<>());
     }
 
     public Map<String, Set<String>> readShares() {
@@ -39,7 +47,10 @@ public class SharedWithState implements Cborable {
     public FileSharedWithState get(String filename) {
         return new FileSharedWithState(
                 readShares.getOrDefault(filename, Collections.emptySet()),
-                writeShares.getOrDefault(filename, Collections.emptySet()));
+                writeShares.getOrDefault(filename, Collections.emptySet()),
+                readLinks.getOrDefault(filename, Collections.emptySet()),
+                writeLinks.getOrDefault(filename, Collections.emptySet())
+        );
     }
 
     public Optional<SharedWithState> filter(String childName) {
@@ -56,7 +67,40 @@ public class SharedWithState implements Cborable {
                 newWrites.put(e.getKey(), new HashSet<>(e.getValue()));
         }
 
-        return Optional.of(new SharedWithState(newReads, newWrites));
+        Map<String, Set<LinkProperties>> newReadLinks = new HashMap<>();
+        readLinks.forEach((k, v) -> {
+            if (k.equals(childName))
+                newReadLinks.put(k, new HashSet<>(v));
+        });
+
+        Map<String, Set<LinkProperties>> newWriteLinks = new HashMap<>();
+        writeLinks.forEach((k, v) -> {
+            if (k.equals(childName))
+                newWriteLinks.put(k, new HashSet<>(v));
+        });
+
+        return Optional.of(new SharedWithState(newReads, newWrites, newReadLinks, newWriteLinks));
+    }
+
+    public SharedWithState addLink(SharedWithCache.Access access, String filename, long label, String password) {
+        Map<String, Set<LinkProperties>> newReadLinks = new HashMap<>();
+        readLinks.forEach((k, v) -> {
+            newReadLinks.put(k, new HashSet<>(v));
+        });
+
+        Map<String, Set<LinkProperties>> newWriteLinks = new HashMap<>();
+        writeLinks.forEach((k, v) -> {
+            newWriteLinks.put(k, new HashSet<>(v));
+        });
+
+        if (access == SharedWithCache.Access.READ) {
+            newReadLinks.putIfAbsent(filename, new HashSet<>());
+            newReadLinks.get(filename).add(new LinkProperties(label, password));
+        } else if (access == SharedWithCache.Access.WRITE) {
+            newWriteLinks.putIfAbsent(filename, new HashSet<>());
+            newWriteLinks.get(filename).add(new LinkProperties(label, password));
+        }
+        return new SharedWithState(readShares, writeShares, newReadLinks, newWriteLinks);
     }
 
     public SharedWithState add(SharedWithCache.Access access, String filename, Set<String> names) {
@@ -79,7 +123,7 @@ public class SharedWithState implements Cborable {
             newWrites.get(filename).addAll(names);
         }
 
-        return new SharedWithState(newReads, newWrites);
+        return new SharedWithState(newReads, newWrites, readLinks, writeLinks);
     }
 
     public SharedWithState remove(SharedWithCache.Access access, String filename, Set<String> names) {
@@ -104,7 +148,7 @@ public class SharedWithState implements Cborable {
             }
         }
 
-        return new SharedWithState(newReads, newWrites);
+        return new SharedWithState(newReads, newWrites, readLinks, writeLinks);
     }
 
     public SharedWithState clear(String filename) {
@@ -120,12 +164,30 @@ public class SharedWithState implements Cborable {
         newReads.remove(filename);
         newWrites.remove(filename);
 
-        return new SharedWithState(newReads, newWrites);
+        Map<String, Set<LinkProperties>> newReadLinks = new HashMap<>();
+        readLinks.forEach((k, v) -> {
+            newReadLinks.put(k, new HashSet<>(v));
+        });
+
+        Map<String, Set<LinkProperties>> newWriteLinks = new HashMap<>();
+        writeLinks.forEach((k, v) -> {
+            newWriteLinks.put(k, new HashSet<>(v));
+        });
+
+        newReadLinks.remove(filename);
+        newWriteLinks.remove(filename);
+
+        return new SharedWithState(newReads, newWrites, newReadLinks, newWriteLinks);
     }
 
     @JsMethod
     public boolean isShared(String filename) {
         return readShares.containsKey(filename) || writeShares.containsKey(filename);
+    }
+
+    @JsMethod
+    public boolean hasLink(String filename) {
+        return readLinks.containsKey(filename) || writeLinks.containsKey(filename);
     }
 
     @Override
@@ -142,6 +204,19 @@ public class SharedWithState implements Cborable {
 
         state.put("r", CborObject.CborMap.build(readState));
         state.put("w", CborObject.CborMap.build(writeState));
+
+        SortedMap<String, Cborable> readLinkState = new TreeMap<>();
+        readLinks.forEach((k, v) -> {
+            readLinkState.put(k, new CborObject.CborList(v.stream().map(LinkProperties::toCbor).collect(Collectors.toList())));
+        });
+
+        SortedMap<String, Cborable> writeLinkState = new TreeMap<>();
+        writeLinks.forEach((k, v) -> {
+            writeLinkState.put(k, new CborObject.CborList(v.stream().map(LinkProperties::toCbor).collect(Collectors.toList())));
+        });
+
+        state.put("rl", CborObject.CborMap.build(readLinkState));
+        state.put("wl", CborObject.CborMap.build(writeLinkState));
         return CborObject.CborMap.build(state);
     }
 
@@ -160,7 +235,17 @@ public class SharedWithState implements Cborable {
                 getString,
                 c -> new HashSet<>(((CborObject.CborList)c).map(getString)));
 
-        return new SharedWithState(readShares, writehares);
+        CborObject.CborMap rl = m.get("rl", c -> (CborObject.CborMap) c);
+        Map<String, Set<LinkProperties>> readLinks = rl.toMap(
+                getString,
+                c -> new HashSet<>(((CborObject.CborList)c).map(LinkProperties::fromCbor)));
+
+        CborObject.CborMap wl = m.get("wl", c -> (CborObject.CborMap) c);
+        Map<String, Set<LinkProperties>> writeLinks = wl.toMap(
+                getString,
+                c -> new HashSet<>(((CborObject.CborList)c).map(LinkProperties::fromCbor)));
+
+        return new SharedWithState(readShares, writehares, readLinks, writeLinks);
     }
 
     @Override
@@ -168,11 +253,11 @@ public class SharedWithState implements Cborable {
         if (this == o) return true;
         if (o == null || getClass() != o.getClass()) return false;
         SharedWithState that = (SharedWithState) o;
-        return Objects.equals(readShares, that.readShares) && Objects.equals(writeShares, that.writeShares);
+        return Objects.equals(readShares, that.readShares) && Objects.equals(writeShares, that.writeShares) && Objects.equals(readLinks, that.readLinks) && Objects.equals(writeLinks, that.writeLinks);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(readShares, writeShares);
+        return Objects.hash(readShares, writeShares, readLinks, writeLinks);
     }
 }

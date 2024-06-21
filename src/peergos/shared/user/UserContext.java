@@ -645,11 +645,10 @@ public class UserContext {
                 .thenCompose(value -> writeSynchronizer.applyComplexUpdate(id, signer,
                         (v, c) -> IpfsTransaction.call(id,
                                 tid -> v.get(id).props.get().addLink(signer, label, value, tid, network.dhtClient, network.hasher)
-                                        .thenCompose(wd -> c.commit(id, signer, wd, v.get(id), tid)), network.dhtClient)))
+                                        .thenCompose(wd -> c.commit(id, signer, wd, v.get(id), tid))
+                                        .thenCompose(s -> sharedWithCache.addSecretLink(isWritable ? SharedWithCache.Access.WRITE : SharedWithCache.Access.READ,
+                                                toFile, label, linkPassword, s, c, network)), network.dhtClient)))
                 .thenApply(s -> res);
-
-        // TODO put link in sharedWithCache
-//        sharedWithCache.addSecretLink()
     }
 
     public static CompletableFuture<AbsoluteCapability> getPublicCapability(Path originalPath, NetworkAccess network) {
