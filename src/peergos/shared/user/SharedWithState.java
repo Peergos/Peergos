@@ -4,6 +4,7 @@ import jsinterop.annotations.*;
 import peergos.shared.cbor.*;
 import peergos.shared.util.*;
 
+import java.time.*;
 import java.util.*;
 import java.util.function.*;
 import java.util.stream.*;
@@ -82,7 +83,7 @@ public class SharedWithState implements Cborable {
         return Optional.of(new SharedWithState(newReads, newWrites, newReadLinks, newWriteLinks));
     }
 
-    public SharedWithState addLink(SharedWithCache.Access access, String filename, long label, String password) {
+    public SharedWithState addLink(SharedWithCache.Access access, String filename, long label, String password, Optional<Integer> maxCount, Optional<LocalDateTime> expiry) {
         Map<String, Set<LinkProperties>> newReadLinks = new HashMap<>();
         readLinks.forEach((k, v) -> {
             newReadLinks.put(k, new HashSet<>(v));
@@ -95,10 +96,10 @@ public class SharedWithState implements Cborable {
 
         if (access == SharedWithCache.Access.READ) {
             newReadLinks.putIfAbsent(filename, new HashSet<>());
-            newReadLinks.get(filename).add(new LinkProperties(label, password));
+            newReadLinks.get(filename).add(new LinkProperties(label, password, maxCount, expiry));
         } else if (access == SharedWithCache.Access.WRITE) {
             newWriteLinks.putIfAbsent(filename, new HashSet<>());
-            newWriteLinks.get(filename).add(new LinkProperties(label, password));
+            newWriteLinks.get(filename).add(new LinkProperties(label, password, maxCount, expiry));
         }
         return new SharedWithState(readShares, writeShares, newReadLinks, newWriteLinks);
     }

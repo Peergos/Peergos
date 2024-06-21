@@ -647,7 +647,7 @@ public class UserContext {
                                 tid -> v.get(id).props.get().addLink(signer, label, value, tid, network.dhtClient, network.hasher)
                                         .thenCompose(wd -> c.commit(id, signer, wd, v.get(id), tid))
                                         .thenCompose(s -> sharedWithCache.addSecretLink(isWritable ? SharedWithCache.Access.WRITE : SharedWithCache.Access.READ,
-                                                toFile, label, linkPassword, s, c, network)), network.dhtClient)))
+                                                toFile, label, linkPassword, maxRetrievals, expiry, s, c, network)), network.dhtClient)))
                 .thenApply(s -> res);
     }
 

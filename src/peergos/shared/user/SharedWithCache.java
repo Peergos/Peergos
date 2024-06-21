@@ -8,6 +8,7 @@ import peergos.shared.user.fs.*;
 import peergos.shared.util.*;
 
 import java.nio.file.*;
+import java.time.*;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.function.*;
@@ -336,8 +337,10 @@ public class SharedWithCache {
                                 .clear(initialFilename), in, committer, network));
     }
 
-    public CompletableFuture<Snapshot> addSecretLink(Access access, Path p, long label, String password, Snapshot in, Committer committer, NetworkAccess network) {
-        return applyAndCommit(p, current -> current.addLink(access, getFilename(p), label, password), in, committer, network);
+    public CompletableFuture<Snapshot> addSecretLink(Access access, Path p, long label, String password,
+                                                     Optional<Integer> maxCount, Optional<LocalDateTime> expiry,
+                                                     Snapshot in, Committer committer, NetworkAccess network) {
+        return applyAndCommit(p, current -> current.addLink(access, getFilename(p), label, password, maxCount, expiry), in, committer, network);
     }
 
     public CompletableFuture<Snapshot> addSharedWith(Access access, Path p, Set<String> names, Snapshot in, Committer committer, NetworkAccess network) {
