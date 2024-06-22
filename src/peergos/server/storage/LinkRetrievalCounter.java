@@ -15,6 +15,6 @@ public interface LinkRetrievalCounter {
 
     void setCounts(String owner, LinkCounts counts);
 
-    LinkCounts getUpdatedCounts(LocalDateTime after);
+    LinkCounts getUpdatedCounts(String owner, LocalDateTime after);
 
 }

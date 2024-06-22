@@ -508,7 +508,7 @@ public class MirrorCoreNode implements CoreNode {
         if (currentStorageId.equals(ourNodeId)) {
             // a user is migrating away from this server
             ProofOfWork work = ProofOfWork.empty();
-            LinkCounts updated = linkCounts.getUpdatedCounts(latestLinkCountUpdate);
+            LinkCounts updated = linkCounts.getUpdatedCounts(username, latestLinkCountUpdate);
             UserSnapshot snapshot = getUserSnapshot(owner, currentLast.claim.storageProviders, p2pMutable, ipfs, hasher)
                     .thenApply(pointers -> new UserSnapshot(pointers,
                             localSocial.getAndParseFollowRequests(owner),

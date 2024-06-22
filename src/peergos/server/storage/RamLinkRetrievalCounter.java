@@ -42,10 +42,10 @@ public class RamLinkRetrievalCounter implements LinkRetrievalCounter {
     }
 
     @Override
-    public LinkCounts getUpdatedCounts(LocalDateTime after) {
+    public LinkCounts getUpdatedCounts(String owner, LocalDateTime after) {
         return new LinkCounts(counts.entrySet()
                 .stream()
-                .filter(e -> e.getValue().right.isAfter(after))
+                .filter(e -> e.getKey().left.equals(owner) && e.getValue().right.isAfter(after))
                 .collect(Collectors.toMap(e -> e.getKey().right, Map.Entry::getValue)));
     }
 }

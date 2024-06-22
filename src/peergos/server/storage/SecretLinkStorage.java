@@ -67,6 +67,6 @@ public class SecretLinkStorage extends DelegatingDeletableStorage {
         byte[] expected = hasher.sha256(mirrorBats.get(mirrorBats.size() - 1).serialize()).join();
         if (! Arrays.equals(expected, supplied))
             throw new IllegalStateException("Unauthorized!");
-        return Futures.of(counter.getUpdatedCounts(after));
+        return Futures.of(counter.getUpdatedCounts(owner, after));
     }
 }

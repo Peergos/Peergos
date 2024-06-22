@@ -118,6 +118,7 @@ public class Main extends Builder {
                     new Command.Arg("account-sql-file", "The filename for the login datastore", true, "login.sql"),
                     new Command.Arg("quotas-sql-file", "The filename for the quotas datastore", true, "quotas.sql"),
                     new Command.Arg("space-usage-sql-file", "The filename for the space usage datastore", true, "space-usage.sql"),
+                    new Command.Arg("link-counts-sql-file", "The filename for the secret link counts datastore", true, "link-counts.sql"),
                     new Command.Arg("server-messages-sql-file", "The filename for the server messages datastore", true, "server-messages.sql"),
                     ARG_TRANSACTIONS_SQL_FILE,
                     ServerIdentity.ARG_SERVERIDS_SQL_FILE,
@@ -308,6 +309,7 @@ public class Main extends Builder {
                     new Command.Arg("space-requests-sql-file", "The filename for the space requests datastore", true, "space-requests.sql"),
                     new Command.Arg("account-sql-file", "The filename for the login datastore", true, "login.sql"),
                     new Command.Arg("space-usage-sql-file", "The filename for the space usage datastore", true, "space-usage.sql"),
+                    new Command.Arg("link-counts-sql-file", "The filename for the secret link counts datastore", true, "link-counts.sql"),
                     new Command.Arg("ipfs-api-address", "ipfs api port", true, "/ip4/127.0.0.1/tcp/5001"),
                     new Command.Arg("ipfs-gateway-address", "ipfs gateway port", true, "/ip4/127.0.0.1/tcp/8080"),
                     ARG_IPFS_PROXY_TARGET,
@@ -367,6 +369,7 @@ public class Main extends Builder {
                     ServerIdentity.ARG_SERVERIDS_SQL_FILE,
                     new Command.Arg("space-requests-sql-file", "The filename for the space requests datastore", true, "space-requests.sql"),
                     new Command.Arg("space-usage-sql-file", "The filename for the space usage datastore", true, "space-usage.sql"),
+                    new Command.Arg("link-counts-sql-file", "The filename for the secret link counts datastore", true, "link-counts.sql"),
                     ARG_IPFS_API_ADDRESS,
                     new Command.Arg("ipfs-gateway-address", "ipfs gateway port", true, "/ip4/127.0.0.1/tcp/8080"),
                     ARG_IPFS_PROXY_TARGET,
@@ -533,7 +536,7 @@ public class Main extends Builder {
 
             MutablePointers localPointers = UserRepository.build(localStorageForLinks, rawPointers);
             MutablePointersProxy proxingMutable = new HttpMutablePointers(p2pHttpProxy, pkiServerNodeId);
-            RamLinkRetrievalCounter linkCounts = new RamLinkRetrievalCounter();
+            LinkRetrievalCounter linkCounts = new JdbcLinkRetrievalcounter(getDBConnector(a, "link-counts-sql-file", dbConnectionPool), sqlCommands);
             DeletableContentAddressedStorage localStorage = new SecretLinkStorage(localStorageForLinks, localPointers, linkCounts, batStore, hasher);
 
             List<Cid> nodeIds = localStorage.ids().get();
@@ -863,9 +866,7 @@ public class Main extends Builder {
             user.ensureMirrorId().join().get();
             Optional<BatWithId> current = user.getMirrorBat().join();
             long usage = user.getSpaceUsage().join();
-            LinkRetrievalCounter linkCounts = new RamLinkRetrievalCounter();
-            LocalDateTime latestLinkUpdate = linkCounts.getLatestModificationTime(username).orElse(LocalDateTime.MIN);
-            user.network.coreNode.migrateUser(username, newChain, currentStorageNodeId, current, latestLinkUpdate, usage).join();
+            user.network.coreNode.migrateUser(username, newChain, currentStorageNodeId, current, LocalDateTime.MIN, usage).join();
             List<UserPublicKeyLink> updatedChain = user.network.coreNode.getChain(username).join();
             if (!updatedChain.get(updatedChain.size() - 1).claim.storageProviders.contains(newStorageNodeId))
                 throw new IllegalStateException("Migration failed. Please try again later");
