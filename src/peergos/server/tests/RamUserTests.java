@@ -570,7 +570,7 @@ public class RamUserTests extends UserTests {
         EncryptedCapability retrieved = network.getSecretLink(link).join();
         AbsoluteCapability cap = retrieved.decryptFromPassword(link.labelString(), linkPassword, crypto).join();
         FileWrapper resolvedFile = network.getFile(cap, username).join().get();
-        Assert.assertTrue(! (resolvedFile.isWritable() ^ writable));
+        Assert.assertTrue(resolvedFile.isWritable() == writable);
 
         SharedWithState sharingState = user.getDirectorySharingState(Paths.get(username)).join();
         Assert.assertTrue(sharingState.hasLink(filename));

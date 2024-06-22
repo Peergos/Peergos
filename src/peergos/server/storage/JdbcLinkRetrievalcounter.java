@@ -81,7 +81,7 @@ public class JdbcLinkRetrievalcounter implements LinkRetrievalCounter {
             if (rs.next()) {
                 return rs.getLong(1);
             }
-            throw new IllegalStateException("No link present!");
+            return 0;
         } catch (SQLException sqe) {
             LOG.log(Level.WARNING, sqe.getMessage(), sqe);
             throw new RuntimeException(sqe);
