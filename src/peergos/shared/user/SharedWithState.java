@@ -104,6 +104,35 @@ public class SharedWithState implements Cborable {
         return new SharedWithState(readShares, writeShares, newReadLinks, newWriteLinks);
     }
 
+    public SharedWithState removeLink(SharedWithCache.Access access, String filename, long label) {
+        Map<String, Set<LinkProperties>> newReadLinks = new HashMap<>();
+        readLinks.forEach((k, v) -> {
+            newReadLinks.put(k, new HashSet<>(v));
+        });
+
+        Map<String, Set<LinkProperties>> newWriteLinks = new HashMap<>();
+        writeLinks.forEach((k, v) -> {
+            newWriteLinks.put(k, new HashSet<>(v));
+        });
+
+        if (access == SharedWithCache.Access.READ) {
+            Set<LinkProperties> val = newReadLinks.get(filename);
+            Set<LinkProperties> updated = val.stream().filter(lp -> lp.label != label).collect(Collectors.toSet());
+            if (updated.isEmpty())
+                newReadLinks.remove(filename);
+            else
+                newReadLinks.put(filename, updated);
+        } else if (access == SharedWithCache.Access.WRITE) {
+            Set<LinkProperties> val = newWriteLinks.get(filename);
+            Set<LinkProperties> updated = val.stream().filter(lp -> lp.label != label).collect(Collectors.toSet());
+            if (updated.isEmpty())
+                newWriteLinks.remove(filename);
+            else
+                newWriteLinks.put(filename, updated);
+        }
+        return new SharedWithState(readShares, writeShares, newReadLinks, newWriteLinks);
+    }
+
     public SharedWithState add(SharedWithCache.Access access, String filename, Set<String> names) {
         if (names.isEmpty())
             return this;

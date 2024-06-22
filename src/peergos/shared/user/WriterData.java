@@ -121,6 +121,19 @@ public class WriterData implements Cborable {
                         ownedKeys, namedOwnedKeys, staticData, tree, Optional.of(newLinksRoot)));
     }
 
+    public CompletableFuture<WriterData> removeLink(SigningPrivateKeyAndPublicHash owner,
+                                                 long label,
+                                                    TransactionId tid,
+                                                    ContentAddressedStorage ipfs,
+                                                    Hasher hasher) {
+        if (secretLinks.isEmpty())
+            return Futures.of(this);
+        return getSecretLinkChamp(owner.publicKeyHash, ipfs, hasher)
+                .thenCompose(champ -> champ.remove(owner.publicKeyHash, owner, label, tid))
+                .thenApply(newLinksRoot -> new WriterData(controller, generationAlgorithm, publicData, followRequestReceiver,
+                        ownedKeys, namedOwnedKeys, staticData, tree, Optional.of(newLinksRoot)));
+    }
+
     public CompletableFuture<Snapshot> addOwnedKeyAndCommit(PublicKeyHash owner,
                                                             SigningPrivateKeyAndPublicHash signer,
                                                             OwnerProof newOwned,

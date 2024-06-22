@@ -574,5 +574,12 @@ public class RamUserTests extends UserTests {
 
         SharedWithState sharingState = user.getDirectorySharingState(Paths.get(username)).join();
         Assert.assertTrue(sharingState.hasLink(filename));
+
+        user.deleteSecretLink(link.label, filePath, writable).join();
+
+        try {
+            network.getSecretLink(link).join();
+            throw new RuntimeException("Shouldn't get here");
+        } catch (IllegalStateException expected) {}
     }
 }
