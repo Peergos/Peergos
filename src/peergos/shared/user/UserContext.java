@@ -586,6 +586,14 @@ public class UserContext {
     }
 
     @JsMethod
+    public static CompletableFuture<UserContext> fromSecretLinkV2(String linkString, String linkPassword, NetworkAccess network, Crypto crypto) {
+        SecretLink link = SecretLink.fromLink(linkString);
+        return network.getSecretLink(link)
+                .thenCompose(retrieved -> retrieved.decryptFromPassword(link.labelString(), linkPassword, crypto))
+                .thenCompose(cap -> fromSecretLink(cap, network, crypto));
+    }
+
+    @JsMethod
     public static CompletableFuture<UserContext> fromSecretLink(String link, NetworkAccess network, Crypto crypto) {
         AbsoluteCapability cap;
         try {
@@ -595,15 +603,19 @@ public class UserContext {
             invalidLink.completeExceptionally(e);
             return invalidLink;
         }
+        return fromSecretLink(cap, network, crypto);
+    }
+
+    private static CompletableFuture<UserContext> fromSecretLink(AbsoluteCapability cap, NetworkAccess network, Crypto crypto) {
         WriterData empty = new WriterData(cap.owner,
-                        Optional.empty(),
-                        Optional.empty(),
-                        Optional.empty(),
-                        Optional.empty(),
-                        Collections.emptyMap(),
-                        Optional.empty(),
-                        Optional.empty(),
-                        Optional.empty());
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty(),
+                Collections.emptyMap(),
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty());
         CommittedWriterData userData = new CommittedWriterData(MaybeMultihash.empty(), empty, Optional.empty());
         UserContext context = new UserContext(null, null, null, null, network,
                 crypto, userData, TrieNodeImpl.empty(), null, null,
@@ -651,6 +663,7 @@ public class UserContext {
                 .thenApply(s -> res);
     }
 
+    @JsMethod
     public CompletableFuture<Snapshot> deleteSecretLink(long label, Path toFile, boolean isWritable) {
         PublicKeyHash id = signer.publicKeyHash;
         return writeSynchronizer.applyComplexUpdate(id, signer,
