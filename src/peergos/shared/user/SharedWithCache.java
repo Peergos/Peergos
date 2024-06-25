@@ -334,6 +334,7 @@ public class SharedWithCache {
                 .thenCompose(sharees -> applyAndCommit(after, current ->
                         current.add(Access.READ, newFilename, sharees.readAccess)
                                 .add(Access.WRITE, newFilename, sharees.writeAccess)
+                                .addLinks(newFilename, current.get(initialFilename).readLinks, current.get(initialFilename).writelinks)
                                 .clear(initialFilename), in, committer, network));
     }
 

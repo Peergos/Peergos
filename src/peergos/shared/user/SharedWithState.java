@@ -104,6 +104,28 @@ public class SharedWithState implements Cborable {
         return new SharedWithState(readShares, writeShares, newReadLinks, newWriteLinks);
     }
 
+    public SharedWithState addLinks(String filename, Set<LinkProperties> newFileReadLinks, Set<LinkProperties> newFileWritelinks) {
+        Map<String, Set<LinkProperties>> newReadLinks = new HashMap<>();
+        readLinks.forEach((k, v) -> {
+            newReadLinks.put(k, new HashSet<>(v));
+        });
+
+        Map<String, Set<LinkProperties>> newWriteLinks = new HashMap<>();
+        writeLinks.forEach((k, v) -> {
+            newWriteLinks.put(k, new HashSet<>(v));
+        });
+
+        if (! newFileReadLinks.isEmpty()) {
+            newReadLinks.putIfAbsent(filename, new HashSet<>());
+            newReadLinks.get(filename).addAll(newFileReadLinks);
+        }
+        if (! newFileWritelinks.isEmpty()) {
+            newWriteLinks.putIfAbsent(filename, new HashSet<>());
+            newWriteLinks.get(filename).addAll(newFileWritelinks);
+        }
+        return new SharedWithState(readShares, writeShares, newReadLinks, newWriteLinks);
+    }
+
     public SharedWithState removeLink(SharedWithCache.Access access, String filename, long label) {
         Map<String, Set<LinkProperties>> newReadLinks = new HashMap<>();
         readLinks.forEach((k, v) -> {
