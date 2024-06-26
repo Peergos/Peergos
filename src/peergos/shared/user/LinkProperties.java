@@ -22,8 +22,8 @@ class LinkProperties implements Cborable {
     }
 
     @JsMethod
-    public String getLinkLabel() {
-        return "" + label;
+    public long getLinkLabel() {
+        return label;
     }
 
     @Override
