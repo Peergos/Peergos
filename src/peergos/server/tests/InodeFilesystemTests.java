@@ -215,7 +215,7 @@ public class InodeFilesystemTests {
             PublicKeyHash ownerHash = ContentAddressedStorage.hashKey(random.publicSigningKey);
             TransactionId tid = storage.startTransaction(ownerHash).join();
             PublicKeyHash publicHash = storage.putSigningKey(
-                    random.secretSigningKey.signMessage(random.publicSigningKey.serialize()),
+                    random.secretSigningKey.signMessage(random.publicSigningKey.serialize()).join(),
                     ownerHash,
                     random.publicSigningKey, tid).join();
             return new SigningPrivateKeyAndPublicHash(publicHash, random.secretSigningKey);

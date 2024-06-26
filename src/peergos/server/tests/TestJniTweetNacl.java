@@ -65,8 +65,8 @@ public class TestJniTweetNacl {
         signer.crypto_sign_keypair(publicSignBytes, secretSignBytes);
         byte[] message = new byte[messageLength];
         random.nextBytes(message);
-        byte[] signed = signer.crypto_sign(message, secretSignBytes);
-        byte[] unsigned = signer.crypto_sign_open(signed, publicSignBytes);
+        byte[] signed = signer.crypto_sign(message, secretSignBytes).join();
+        byte[] unsigned = signer.crypto_sign_open(signed, publicSignBytes).join();
 
         Assert.assertArrayEquals(message, unsigned);
         Assert.assertFalse(Arrays.equals(message, signed));

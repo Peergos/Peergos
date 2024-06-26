@@ -121,8 +121,8 @@ public class BufferedPointers implements MutablePointers {
     public CompletableFuture<Boolean> commit(PublicKeyHash owner,
                                              SigningPrivateKeyAndPublicHash signer,
                                              PointerUpdate casUpdate) {
-        byte[] signed = signer.secret.signMessage(casUpdate.serialize());
-        return target.setPointer(owner, signer.publicKeyHash, signed);
+        return signer.secret.signMessage(casUpdate.serialize())
+                .thenCompose(signed -> target.setPointer(owner, signer.publicKeyHash, signed));
     }
 
     @Override

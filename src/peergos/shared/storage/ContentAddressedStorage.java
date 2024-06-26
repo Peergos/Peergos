@@ -64,7 +64,8 @@ public interface ContentAddressedStorage {
                                        Hasher hasher,
                                        TransactionId tid) {
         return hasher.sha256(block)
-                .thenCompose(hash -> put(owner, writer.publicKeyHash, writer.secret.signMessage(hash), block, tid));
+                .thenCompose(hash -> writer.secret.signMessage(hash))
+                .thenCompose(sig -> put(owner, writer.publicKeyHash, sig, block, tid));
     }
 
     default CompletableFuture<Cid> put(PublicKeyHash owner,

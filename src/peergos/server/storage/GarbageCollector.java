@@ -105,7 +105,7 @@ public class GarbageCollector {
         System.out.println("Checking integrity from pointer targets...");
         allPointers.forEach((writerHash, signedRawCas) -> {
             PublicSigningKey writer = getWithBackoff(() -> storage.getSigningKey(null, writerHash).join().get());
-            byte[] bothHashes = writer.unsignMessage(signedRawCas);
+            byte[] bothHashes = writer.unsignMessage(signedRawCas).join();
             PointerUpdate cas = PointerUpdate.fromCbor(CborObject.fromByteArray(bothHashes));
             MaybeMultihash updated = cas.updated;
             if (updated.isPresent() && !done.contains(updated.get())) {
@@ -260,7 +260,7 @@ public class GarbageCollector {
                                          AtomicLong totalReachable) {
         try {
             PublicSigningKey writer = getWithBackoff(() -> storage.getSigningKey(null, writerHash).join().get());
-            byte[] bothHashes = writer.unsignMessage(signedRawCas);
+            byte[] bothHashes = writer.unsignMessage(signedRawCas).join();
             PointerUpdate cas = PointerUpdate.fromCbor(CborObject.fromByteArray(bothHashes));
             MaybeMultihash updated = cas.updated;
             if (updated.isPresent() && !done.contains(updated.get())) {

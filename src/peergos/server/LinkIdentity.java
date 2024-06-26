@@ -40,7 +40,7 @@ public class LinkIdentity {
         boolean encrypted = a.getBoolean("encrypted");
         boolean publish = ! encrypted && a.getBoolean("publish", false);
 
-        IdentityLinkProof proof = IdentityLinkProof.buildAndSign(context.signer, username, usernameB, serviceB);
+        IdentityLinkProof proof = IdentityLinkProof.buildAndSign(context.signer, username, usernameB, serviceB).join();
         if (encrypted)
             proof = proof.withKey(SymmetricKey.random());
 
@@ -86,7 +86,7 @@ public class LinkIdentity {
         if (idKey.isEmpty())
             throw new IllegalStateException("Couldn't retrieve key for " + username);
 
-        proof.isValid(idKey.get());
+        proof.isValid(idKey.get()).join();
         System.out.println("Identity link proof is correct - it was signed by the Peergos user " + username);
     }
 }

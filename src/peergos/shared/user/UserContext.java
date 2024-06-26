@@ -213,13 +213,15 @@ public class UserContext {
                                                                   Function<MultiFactorAuthRequest, CompletableFuture<MultiFactorAuthResponse>> mfa,
                                                                   boolean cacheMfaLoginData,
                                                                   NetworkAccess network) {
-        return network.account.getLoginData(username, loginPub, TimeLimitedClient.signNow(loginSecret), Optional.empty(), cacheMfaLoginData)
+        return TimeLimitedClient.signNow(loginSecret)
+                .thenCompose(signedTime -> network.account.getLoginData(username, loginPub, signedTime, Optional.empty(), cacheMfaLoginData))
                 .thenCompose(res -> {
                     if (res.isA())
                         return Futures.of(res.a());
                     MultiFactorAuthRequest authReq = res.b();
                     return mfa.apply(authReq)
-                            .thenCompose(authResp -> network.account.getLoginData(username, loginPub, TimeLimitedClient.signNow(loginSecret), Optional.of(authResp), cacheMfaLoginData))
+                            .thenCompose(authResp -> TimeLimitedClient.signNow(loginSecret)
+                                    .thenCompose(signedTime -> network.account.getLoginData(username, loginPub, signedTime, Optional.of(authResp), cacheMfaLoginData)))
                             .thenApply(login -> {
                                 if (login.isB())
                                     throw new IllegalStateException("Server rejected second factor auth");
@@ -323,7 +325,7 @@ public class UserContext {
                 .map(CborObject::fromByteArray)
                 .map(SigningKeyPair::fromCbor);
         return signUpGeneral(username, password, token, existingKeyPair, identityStorer,
-                addCard.map(f -> (p, i) -> f.apply(p).thenApply(s -> signSpaceRequest(username, i, s))),
+                addCard.map(f -> (p, i) -> f.apply(p).thenCompose(s -> signSpaceRequest(username, i, s))),
                 expiry, network, crypto, algorithm, progressCallback);
     }
 
@@ -350,7 +352,7 @@ public class UserContext {
 
     public CompletableFuture<Boolean> getAndVerifyServerIdChain(Multihash from, Multihash to) {
         return network.dhtClient.getIpnsEntry(from)
-                .thenApply(res -> validateResolutionRecord(res, from))
+                .thenCompose(res -> validateResolutionRecord(res, from))
                 .thenCompose(record -> {
                     if (record.host.isEmpty() || ! record.moved)
                         return Futures.errored(new IllegalStateException("Invalid server id update!"));
@@ -360,11 +362,11 @@ public class UserContext {
                 });
     }
 
-    public ResolutionRecord validateResolutionRecord(IpnsEntry signedRecord, Multihash signer) {
+    public CompletableFuture<ResolutionRecord> validateResolutionRecord(IpnsEntry signedRecord, Multihash signer) {
         return signedRecord.getValue(signer, crypto);
     }
 
-    private static byte[] signSpaceRequest(String username, SigningPrivateKeyAndPublicHash identity, long desiredQuota) {
+    private static CompletableFuture<byte[]> signSpaceRequest(String username, SigningPrivateKeyAndPublicHash identity, long desiredQuota) {
         SpaceUsage.SpaceRequest req = new SpaceUsage.SpaceRequest(username, desiredQuota, System.currentTimeMillis(), Optional.empty());
         return identity.secret.signMessage(req.serialize());
     }
@@ -426,15 +428,17 @@ public class UserContext {
                             .thenCompose(batid -> opLog.addBat(username, batid, mirror, identity)
                                     .thenCompose(b -> initialNetwork.dhtClient.id()
                             .thenApply(id -> UserPublicKeyLink.createInitial(identity, username, expiry, Arrays.asList(id)))
-                            .thenCompose(chain -> IpfsTransaction.call(identityHash, tid -> network.dhtClient.putSigningKey(
-                                    identityPair.secretSigningKey.signMessage(identityPair.publicSigningKey.serialize()),
+                            .thenCompose(chain -> IpfsTransaction.call(identityHash, tid -> identityPair.secretSigningKey.signMessage(identityPair.publicSigningKey.serialize())
+                                    .thenCompose(signedIdentity -> network.dhtClient.putSigningKey(
+                                    signedIdentity,
                                     identityHash,
-                                    identityPair.publicSigningKey, tid).thenCompose(returnedIdentityHash -> {
+                                    identityPair.publicSigningKey, tid)).thenCompose(returnedIdentityHash -> {
                                 PublicBoxingKey publicBoxingKey = userWithRoot.getBoxingPair().publicBoxingKey;
                                 return crypto.hasher.sha256(publicBoxingKey.serialize())
-                                        .thenCompose(boxerHash -> network.dhtClient.putBoxingKey(identityHash,
-                                                identityPair.secretSigningKey.signMessage(boxerHash), publicBoxingKey, tid));
-                            }).thenCompose(boxerHash -> {
+                                        .thenCompose(boxerHash -> identityPair.secretSigningKey.signMessage(boxerHash)
+                                                .thenCompose(signedBoxerHash -> network.dhtClient.putBoxingKey(identityHash,
+                                                        signedBoxerHash, publicBoxingKey, tid)));
+                                            }).thenCompose(boxerHash -> {
                                 progressCallback.accept("Creating filesystem");
                                 return WriterData.createIdentity(identityHash,
                                         identity,
@@ -496,8 +500,8 @@ public class UserContext {
                                                                           Supplier<CompletableFuture<PaymentProperties>> retry,
                                                                           long sleepMillis,
                                                                           int attemptsLeft) {
-        byte[] signedTime = TimeLimitedClient.signNow(identity.secret);
-        return network.spaceUsage.getQuota(identity.publicKeyHash, signedTime)
+        return TimeLimitedClient.signNow(identity.secret)
+                .thenCompose(signedTime -> network.spaceUsage.getQuota(identity.publicKeyHash, signedTime))
                 .thenCompose(quota -> {
                     if (quota > 0)
                         return Futures.of(true);
@@ -851,9 +855,9 @@ public class UserContext {
      */
     @JsMethod
     public CompletableFuture<List<SpaceUsage.LabelledSignedSpaceRequest>> getPendingSpaceRequests() {
-        byte[] signedTime = TimeLimitedClient.signNow(signer.secret);
-        return network.dhtClient.id()
-                .thenCompose(id -> network.instanceAdmin.getPendingSpaceRequests(signer.publicKeyHash, id, signedTime));
+        return TimeLimitedClient.signNow(signer.secret)
+                .thenCompose(signedTime -> network.dhtClient.id()
+                        .thenCompose(id -> network.instanceAdmin.getPendingSpaceRequests(signer.publicKeyHash, id, signedTime)));
     }
 
     /**
@@ -873,10 +877,10 @@ public class UserContext {
      */
     @JsMethod
     public CompletableFuture<Boolean> approveSpaceRequest(DecodedSpaceRequest req) {
-        byte[] adminSignedRequest = signer.secret.signMessage(req.source.serialize());
-        return network.dhtClient.id()
-                .thenCompose(instanceId -> network.instanceAdmin
-                        .approveSpaceRequest(signer.publicKeyHash, instanceId, adminSignedRequest));
+        return signer.secret.signMessage(req.source.serialize())
+                .thenCompose(adminSignedRequest -> network.dhtClient.id()
+                        .thenCompose(instanceId -> network.instanceAdmin
+                                .approveSpaceRequest(signer.publicKeyHash, instanceId, adminSignedRequest)));
     }
 
     /**
@@ -895,8 +899,8 @@ public class UserContext {
 
     @JsMethod
     public CompletableFuture<PaymentProperties> getPaymentProperties(boolean newClientSecret) {
-        byte[] signedTime = TimeLimitedClient.signNow(signer.secret);
-        return network.spaceUsage.getPaymentProperties(signer.publicKeyHash, newClientSecret, signedTime);
+        return TimeLimitedClient.signNow(signer.secret)
+                .thenCompose(signedTime -> network.spaceUsage.getPaymentProperties(signer.publicKeyHash, newClientSecret, signedTime));
     }
 
     /**
@@ -905,8 +909,8 @@ public class UserContext {
      */
     @JsMethod
     public CompletableFuture<Long> getQuota() {
-        byte[] signedTime = TimeLimitedClient.signNow(signer.secret);
-        return network.spaceUsage.getQuota(signer.publicKeyHash, signedTime);
+        return TimeLimitedClient.signNow(signer.secret)
+                .thenCompose(signedTime -> network.spaceUsage.getQuota(signer.publicKeyHash, signedTime));
     }
 
     /**
@@ -915,8 +919,8 @@ public class UserContext {
      */
     @JsMethod
     public CompletableFuture<Long> getSpaceUsage() {
-        byte[] signedTime = TimeLimitedClient.signNow(signer.secret);
-        return network.spaceUsage.getUsage(signer.publicKeyHash, signedTime);
+        return TimeLimitedClient.signNow(signer.secret)
+                .thenCompose(signedTime -> network.spaceUsage.getUsage(signer.publicKeyHash, signedTime));
     }
 
     /**
@@ -1094,14 +1098,20 @@ public class UserContext {
                                             WriterData newIdBlock = cwd.props.get().withAlgorithm(newAlgorithm);
                                             byte[] rawBlock = newIdBlock.serialize();
                                             return crypto.hasher.sha256(rawBlock).thenCompose(blockHash -> {
-                                                OpLog.BlockWrite blockWrite = new OpLog.BlockWrite(signer.publicKeyHash, signer.secret.signMessage(blockHash), rawBlock, false, Optional.empty());
-                                                MaybeMultihash newHash = MaybeMultihash.of(new Cid(1, Cid.Codec.DagCbor, Multihash.Type.sha2_256, blockHash));
-                                                PointerUpdate pointerCas = new PointerUpdate(cwd.hash, newHash, PointerUpdate.increment(cwd.sequence));
-                                                OpLog.PointerWrite pointerWrite = new OpLog.PointerWrite(signer.publicKeyHash, signer.secret.signMessage(pointerCas.serialize()));
-                                                LoginData updatedLoginData = new LoginData(username, updatedEntry, newLoginPublicKey, Optional.of(new Pair<>(blockWrite, pointerWrite)));
-                                                return network.account.setLoginData(updatedLoginData, signer)
-                                                        .thenCompose(b -> UserContext.login(username, newIdBlock, entry,
-                                                                signer, entry.boxer.get(), updatedLogin.getRoot(), new Pair<>(pointerCas, newIdBlock.toCbor()), network.clear(), crypto, p -> {}));
+                                                return signer.secret.signMessage(blockHash)
+                                                        .thenCompose(signed -> {
+                                                            OpLog.BlockWrite blockWrite = new OpLog.BlockWrite(signer.publicKeyHash, signed, rawBlock, false, Optional.empty());
+                                                            MaybeMultihash newHash = MaybeMultihash.of(new Cid(1, Cid.Codec.DagCbor, Multihash.Type.sha2_256, blockHash));
+                                                            PointerUpdate pointerCas = new PointerUpdate(cwd.hash, newHash, PointerUpdate.increment(cwd.sequence));
+                                                            return signer.secret.signMessage(pointerCas.serialize())
+                                                                    .thenCompose(signedCas -> {
+                                                                        OpLog.PointerWrite pointerWrite = new OpLog.PointerWrite(signer.publicKeyHash, signedCas);
+                                                                        LoginData updatedLoginData = new LoginData(username, updatedEntry, newLoginPublicKey, Optional.of(new Pair<>(blockWrite, pointerWrite)));
+                                                                        return network.account.setLoginData(updatedLoginData, signer)
+                                                                                .thenCompose(b -> UserContext.login(username, newIdBlock, entry,
+                                                                                        signer, entry.boxer.get(), updatedLogin.getRoot(), new Pair<>(pointerCas, newIdBlock.toCbor()), network.clear(), crypto, p -> {}));
+                                                                    });
+                                                        });
                                             });
                                         });
                                     });
@@ -1110,52 +1120,55 @@ public class UserContext {
                                 BoxingKeyPair newBoxingKeypair = newAlgorithm.generateBoxerAndIdentity() ? updatedLogin.getBoxingPair() : boxer;
                                 SigningKeyPair newIdentityPair = SigningKeyPair.random(crypto.random, crypto.signer);
                                 PublicSigningKey newIdentityPub = newIdentityPair.publicSigningKey;
-                                return IpfsTransaction.call(existingOwner,
-                                        tid -> network.dhtClient.putSigningKey(
-                                                existingLoginSecret.signMessage(newIdentityPub.serialize()),
-                                                existingOwner,
-                                                newIdentityPub,
-                                                tid),
-                                        network.dhtClient
-                                ).thenCompose(newIdentityHash -> {
-                                    SigningPrivateKeyAndPublicHash newIdentity =
-                                            new SigningPrivateKeyAndPublicHash(newIdentityHash, newIdentityPair.secretSigningKey);
-                                    Map<PublicKeyHash, SigningPrivateKeyAndPublicHash> ownedKeys = new HashMap<>();
-                                    return getUserRoot().thenCompose(homeDir -> {
-                                        // If we ever implement plausibly deniable dual (N) login this will need to include all the other keys
-                                        ownedKeys.put(homeDir.writer(), homeDir.signingPair());
-                                        // Add any named owned key to lookup as well
-                                        // TODO need to get the pki keypair here if we are the 'peergos' user
+                                return existingLoginSecret.signMessage(newIdentityPub.serialize())
+                                        .thenCompose(signed -> IpfsTransaction.call(existingOwner,
+                                                tid -> network.dhtClient.putSigningKey(
+                                                        signed,
+                                                        existingOwner,
+                                                        newIdentityPub,
+                                                        tid),
+                                                network.dhtClient
+                                        )).thenCompose(newIdentityHash -> {
+                                            SigningPrivateKeyAndPublicHash newIdentity =
+                                                    new SigningPrivateKeyAndPublicHash(newIdentityHash, newIdentityPair.secretSigningKey);
+                                            Map<PublicKeyHash, SigningPrivateKeyAndPublicHash> ownedKeys = new HashMap<>();
+                                            return getUserRoot().thenCompose(homeDir -> {
+                                                // If we ever implement plausibly deniable dual (N) login this will need to include all the other keys
+                                                ownedKeys.put(homeDir.writer(), homeDir.signingPair());
+                                                // Add any named owned key to lookup as well
+                                                // TODO need to get the pki keypair here if we are the 'peergos' user
 
-                                        // auth new key by adding to existing writer data first
-                                        OwnerProof proof = OwnerProof.build(newIdentity, signer.publicKeyHash);
-                                        return writeSynchronizer.applyUpdate(signer.publicKeyHash, signer, (wd, tid) ->
-                                                wd.addOwnedKey(signer.publicKeyHash, signer, proof, network.dhtClient, network.hasher))
-                                                .thenCompose(version -> version.get(signer).props.get().changeKeys(username,
-                                                        signer,
-                                                        newIdentity,
-                                                        newIdentityPair,
-                                                        newLoginPublicKey,
-                                                        newBoxingKeypair,
-                                                        existingLogin.getRoot(),
-                                                        updatedLogin.getRoot(),
-                                                        newAlgorithm,
-                                                        ownedKeys,
-                                                        network)).thenCompose(writerData -> {
-                                                    return network.coreNode.getChain(username).thenCompose(existing -> {
-                                                        List<Multihash> storage = existing.get(existing.size() - 1).claim.storageProviders;
-                                                        List<UserPublicKeyLink> claimChain = UserPublicKeyLink.createChain(signer, newIdentity, username, expiry, storage);
-                                                        return updateChainWithRetry(username, claimChain, "", crypto.hasher, network, x -> {})
-                                                                .thenCompose(updatedChain -> {
-                                                                    if (!updatedChain)
-                                                                        throw new IllegalStateException("Couldn't register new public keys during password change!");
+                                                // auth new key by adding to existing writer data first
+                                                return OwnerProof.build(newIdentity, signer.publicKeyHash).thenCompose(proof -> {
+                                                    return writeSynchronizer.applyUpdate(signer.publicKeyHash, signer, (wd, tid) ->
+                                                                    wd.addOwnedKey(signer.publicKeyHash, signer, proof, network.dhtClient, network.hasher))
+                                                            .thenCompose(version -> version.get(signer).props.get().changeKeys(username,
+                                                                    signer,
+                                                                    newIdentity,
+                                                                    newIdentityPair,
+                                                                    newLoginPublicKey,
+                                                                    newBoxingKeypair,
+                                                                    existingLogin.getRoot(),
+                                                                    updatedLogin.getRoot(),
+                                                                    newAlgorithm,
+                                                                    ownedKeys,
+                                                                    network)).thenCompose(writerData -> {
+                                                                return network.coreNode.getChain(username).thenCompose(existing -> {
+                                                                    List<Multihash> storage = existing.get(existing.size() - 1).claim.storageProviders;
+                                                                    List<UserPublicKeyLink> claimChain = UserPublicKeyLink.createChain(signer, newIdentity, username, expiry, storage);
+                                                                    return updateChainWithRetry(username, claimChain, "", crypto.hasher, network, x -> {
+                                                                    })
+                                                                            .thenCompose(updatedChain -> {
+                                                                                if (!updatedChain)
+                                                                                    throw new IllegalStateException("Couldn't register new public keys during password change!");
 
-                                                                    return UserContext.signIn(username, newPassword, mfas -> null, network, crypto);
+                                                                                return UserContext.signIn(username, newPassword, mfas -> null, network, crypto);
+                                                                            });
                                                                 });
-                                                    });
+                                                            });
                                                 });
-                                    });
-                                });
+                                            });
+                                        });
                             });
                 });
     }
@@ -1190,17 +1203,18 @@ public class UserContext {
         WritableAbsoluteCapability rootPointer =
                 new WritableAbsoluteCapability(owner.publicKeyHash, preHash, rootMapKey, rootBat, rootRKey, rootWKey);
         EntryPoint entry = new EntryPoint(rootPointer, directoryName);
-        return IpfsTransaction.call(owner.publicKeyHash, tid -> network.dhtClient.putSigningKey(
-                owner.secret.signMessage(writer.publicSigningKey.serialize()),
+        return owner.secret.signMessage(writer.publicSigningKey.serialize()).thenCompose(signed -> IpfsTransaction.call(owner.publicKeyHash, tid -> network.dhtClient.putSigningKey(
+                signed,
                 owner.publicKeyHash,
                 writer.publicSigningKey,
                 tid).thenCompose(writerHash -> {
 
             // and authorise the writer key
             return network.synchronizer.applyComplexUpdate(owner.publicKeyHash, owner,
-                    (s, committer) -> s.get(owner.publicKeyHash).props.get().addOwnedKeyAndCommit(owner.publicKeyHash, owner,
-                            OwnerProof.build(writerPair, owner.publicKeyHash),
-                                    s.get(owner.publicKeyHash).hash, s.get(owner.publicKeyHash).sequence, network, committer, tid)
+                    (s, committer) -> OwnerProof.build(writerPair, owner.publicKeyHash)
+                            .thenCompose(proof -> s.get(owner.publicKeyHash).props.get().addOwnedKeyAndCommit(owner.publicKeyHash, owner,
+                                    proof,
+                                    s.get(owner.publicKeyHash).hash, s.get(owner.publicKeyHash).sequence, network, committer, tid))
                             .thenCompose(s2 -> {
                                 long t2 = System.currentTimeMillis();
                                 RelativeCapability nextChunk =
@@ -1213,7 +1227,7 @@ public class UserContext {
                                         .thenCompose(root -> {
                                             LOG.info("Uploading entry point directory");
                                             return WriterData.createEmpty(owner.publicKeyHash, writerPair,
-                                                    network.dhtClient, network.hasher, tid)
+                                                            network.dhtClient, network.hasher, tid)
                                                     .thenCompose(empty -> committer.commit(owner.publicKeyHash, writerPair, empty, new CommittedWriterData(MaybeMultihash.empty(), empty, Optional.empty()), tid))
                                                     .thenCompose(s3 -> root.commit(s3, committer, rootPointer, Optional.of(writerPair), network, tid)
                                                             .thenApply(finalSnapshot -> {
@@ -1224,7 +1238,7 @@ public class UserContext {
                                                     .thenCompose(x -> addRootEntryPointAndCommit(x.merge(s2), entry, current, loginPublic, owner, userRootKey, committer, network, tid));
                                         });
                             }));
-        }), network.dhtClient).thenApply(s -> TrieNodeImpl.empty().put("/" + directoryName, entry));
+        }), network.dhtClient).thenApply(s -> TrieNodeImpl.empty().put("/" + directoryName, entry)));
     }
 
     public CompletableFuture<PublicSigningKey> getSigningKey(PublicKeyHash owner) {
@@ -1262,18 +1276,11 @@ public class UserContext {
                                 .orElse(CompletableFuture.completedFuture(Optional.empty())));
     }
 
-    private CompletableFuture<CommittedWriterData> addOwnedKeyAndCommit(SigningPrivateKeyAndPublicHash owned) {
-        return writeSynchronizer.applyUpdate(signer.publicKeyHash, signer,
-                (wd, tid) -> wd.addOwnedKey(signer.publicKeyHash, signer,
-                        OwnerProof.build(owned, signer.publicKeyHash), network.dhtClient, network.hasher))
-                .thenApply(v -> v.get(signer));
-    }
-
     public CompletableFuture<CommittedWriterData> addNamedOwnedKeyAndCommit(String keyName,
                                                                             SigningPrivateKeyAndPublicHash owned) {
-        return writeSynchronizer.applyUpdate(signer.publicKeyHash, signer,
-                (wd, tid) -> CompletableFuture.completedFuture(wd.addNamedKey(keyName, OwnerProof.build(owned, signer.publicKeyHash))))
-                .thenApply(v -> v.get(signer));
+        return OwnerProof.build(owned, signer.publicKeyHash).thenCompose(proof -> writeSynchronizer.applyUpdate(signer.publicKeyHash, signer,
+                        (wd, tid) -> CompletableFuture.completedFuture(wd.addNamedKey(keyName, proof)))
+                .thenApply(v -> v.get(signer)));
     }
 
     @JsMethod
@@ -1288,14 +1295,14 @@ public class UserContext {
                         SigningPrivateKeyAndPublicHash pair = root.signingPair();
                         CommittedWriterData current = root.getVersionRoot();
                         PointerUpdate cas = new PointerUpdate(current.hash, MaybeMultihash.empty(), PointerUpdate.increment(current.sequence));
-                        byte[] signed = pair.secret.signMessage(cas.serialize());
-                        return network.mutable.setPointer(this.signer.publicKeyHash, pair.publicKeyHash, signed);
+                        return pair.secret.signMessage(cas.serialize())
+                                .thenCompose(signed -> network.mutable.setPointer(this.signer.publicKeyHash, pair.publicKeyHash, signed));
                     }).thenCompose(x -> network.spaceUsage.requestQuota(username, identity, 1_000_000))
                             .thenCompose(x -> network.mutable.getPointerTarget(owner, owner, network.dhtClient)
                                     .thenCompose(current -> {
                                         PointerUpdate cas = new PointerUpdate(current.updated, MaybeMultihash.empty(), PointerUpdate.increment(current.sequence));
-                                        byte[] signed = identity.secret.signMessage(cas.serialize());
-                                        return network.mutable.setPointer(owner, owner, signed);
+                                        return identity.secret.signMessage(cas.serialize())
+                                                .thenCompose(signed -> network.mutable.setPointer(owner, owner, signed));
                                     })
                             );
                 });
@@ -1577,7 +1584,8 @@ public class UserContext {
                 return blindAndSendFollowRequest(initialRequest.entry.get().pointer.owner, targetUser, reply)
                         .thenCompose(b ->
                                 // remove pending follow request from them
-                                network.social.removeFollowRequest(signer.publicKeyHash, signer.secret.signMessage(initialRequestAndRaw.cipher.serialize()))
+                                signer.secret.signMessage(initialRequestAndRaw.cipher.serialize())
+                                        .thenCompose(signed -> network.social.removeFollowRequest(signer.publicKeyHash, signed))
                         );
             });
         }
@@ -1640,7 +1648,8 @@ public class UserContext {
         }).thenCompose(trie -> {
             // remove original request
             entrie = trie;
-            return network.social.removeFollowRequest(signer.publicKeyHash, signer.secret.signMessage(initialRequestAndRaw.cipher.serialize()));
+            return signer.secret.signMessage(initialRequestAndRaw.cipher.serialize())
+                    .thenCompose(signed -> network.social.removeFollowRequest(signer.publicKeyHash, signed));
         });
     }
 
@@ -2169,15 +2178,15 @@ public class UserContext {
     }
 
     public CompletableFuture<List<BlindFollowRequest>> getFollowRequests() {
-        byte[] auth = TimeLimitedClient.signNow(signer.secret);
-        return network.social.getFollowRequests(signer.publicKeyHash, auth).thenApply(reqs -> {
-            CborObject cbor = CborObject.fromByteArray(reqs);
-            if (!(cbor instanceof CborObject.CborList))
-                throw new IllegalStateException("Invalid cbor for list of follow requests: " + cbor);
-            return ((CborObject.CborList) cbor).value.stream()
-                    .map(BlindFollowRequest::fromCbor)
-                    .collect(Collectors.toList());
-        });
+        return TimeLimitedClient.signNow(signer.secret)
+                .thenCompose(auth -> network.social.getFollowRequests(signer.publicKeyHash, auth)).thenApply(reqs -> {
+                    CborObject cbor = CborObject.fromByteArray(reqs);
+                    if (!(cbor instanceof CborObject.CborList))
+                        throw new IllegalStateException("Invalid cbor for list of follow requests: " + cbor);
+                    return ((CborObject.CborList) cbor).value.stream()
+                            .map(BlindFollowRequest::fromCbor)
+                            .collect(Collectors.toList());
+                });
     }
 
     /**
@@ -2212,11 +2221,13 @@ public class UserContext {
                             return updatedRoot.thenCompose(newRoot -> {
                                 entrie = newRoot;
                                 // clear their response follow req too
-                                return network.social.removeFollowRequest(signer.publicKeyHash, signer.secret.signMessage(p.cipher.serialize()))
+                                return signer.secret.signMessage(p.cipher.serialize())
+                                        .thenCompose(signed -> network.social.removeFollowRequest(signer.publicKeyHash, signed))
                                         .thenApply(b -> newRoot);
                             });
                         }
-                        return network.social.removeFollowRequest(signer.publicKeyHash, signer.secret.signMessage(p.cipher.serialize()))
+                        return signer.secret.signMessage(p.cipher.serialize())
+                                .thenCompose(signed -> network.social.removeFollowRequest(signer.publicKeyHash, signed))
                                 .thenApply(b -> root);
                     };
 
@@ -2244,7 +2255,8 @@ public class UserContext {
                             return getGroupUid(SocialState.FOLLOWERS_GROUP_NAME)
                                     .thenCompose(followersUidOpt -> shareReadAccessWith(PathUtil.get(username,
                                             SHARED_DIR_NAME, followersUidOpt.get()), Collections.singleton(theirName)))
-                                    .thenCompose(x -> network.social.removeFollowRequest(signer.publicKeyHash, signer.secret.signMessage(p.cipher.serialize())))
+                                    .thenCompose(x -> signer.secret.signMessage(p.cipher.serialize())
+                                            .thenCompose(signed -> network.social.removeFollowRequest(signer.publicKeyHash, signed)))
                                     .thenApply(x -> trie);
                         } else {
                             // they accepted and reciprocated
@@ -2528,9 +2540,9 @@ public class UserContext {
                                                                                         PublicKeyHash writer) {
         return mutable.getPointer(owner, writer)
                 .thenCompose(casOpt -> ipfs.getSigningKey(owner, writer)
-                        .thenApply(signer -> casOpt.map(raw -> PointerUpdate.fromCbor(CborObject.fromByteArray(
-                                signer.get().unsignMessage(raw))))
-                                .orElse(PointerUpdate.empty())))
+                        .thenCompose(signer -> casOpt.map(raw -> signer.get().unsignMessage(raw)
+                                        .thenApply(unsigned -> PointerUpdate.fromCbor(CborObject.fromByteArray(unsigned))))
+                                .orElse(Futures.of(PointerUpdate.empty()))))
                 .thenCompose(pointer -> ipfs.get(owner, (Cid)pointer.updated.get(), Optional.empty())
                         .thenApply(Optional::get)
                         .thenApply(cbor -> new Pair<>(pointer, cbor))

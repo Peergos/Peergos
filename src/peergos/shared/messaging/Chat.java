@@ -93,9 +93,10 @@ public class Chat implements Cborable {
                                                       Crypto crypto) {
         TreeClock msgTime = current.increment(host);
         MessageEnvelope msg = new MessageEnvelope(host, msgTime, LocalDateTime.now(ZoneOffset.UTC), recentRefs, body);
-        byte[] signature = signer.secret.signatureOnly(msg.serialize());
-        SignedMessage signed = new SignedMessage(signature, msg);
-        return mergeMessage(chatUid, signed, host(), userIdentity, ipfs, crypto);
+        return signer.secret.signatureOnly(msg.serialize()).thenCompose(signature -> {
+            SignedMessage signed = new SignedMessage(signature, msg);
+            return mergeMessage(chatUid, signed, host(), userIdentity, ipfs, crypto);
+        });
     }
 
     public synchronized List<MessageEnvelope> getRecent() {
@@ -162,17 +163,18 @@ public class Chat implements Cborable {
                 Member host = host();
                 if (host.username.equals(username) && host.removed) {
                     PrivateChatState newIdentity = generateChatIdentity(crypto);
-                    OwnerProof chatId = OwnerProof.build(userIdentity, newIdentity.chatIdentity.publicKeyHash);
-                    Member newHost = new Member(username, newMember, identity, indexIntoParent, 0);
-                    updated.put(newMember, newHost);
-                    ChatUpdate afterInvite = new ChatUpdate(withMembers(updated).addToRecent(msg), Arrays.asList(signed), Collections.emptyList(), Collections.emptySet());
-                    Join joinMsg = new Join(host.username, host.identity, chatId, newIdentity.chatIdPublic);
-                    return crypto.hasher.bareHash(signed.msg.serialize())
-                            .thenApply(MessageRef::new)
-                            .thenCompose(ref -> afterInvite.state.withTime(afterInvite.state.current.withMember(newHost.id))
-                                    .withHost(newHost.id)
-                                    .sendMessage(joinMsg, userIdentity, userIdentity, Arrays.asList(ref), ipfs, crypto)
-                                    .thenApply(afterInvite::apply));
+                    return OwnerProof.build(userIdentity, newIdentity.chatIdentity.publicKeyHash).thenCompose(chatId -> {
+                        Member newHost = new Member(username, newMember, identity, indexIntoParent, 0);
+                        updated.put(newMember, newHost);
+                        ChatUpdate afterInvite = new ChatUpdate(withMembers(updated).addToRecent(msg), Arrays.asList(signed), Collections.emptyList(), Collections.emptySet());
+                        Join joinMsg = new Join(host.username, host.identity, chatId, newIdentity.chatIdPublic);
+                        return crypto.hasher.bareHash(signed.msg.serialize())
+                                .thenApply(MessageRef::new)
+                                .thenCompose(ref -> afterInvite.state.withTime(afterInvite.state.current.withMember(newHost.id))
+                                        .withHost(newHost.id)
+                                        .sendMessage(joinMsg, userIdentity, userIdentity, Arrays.asList(ref), ipfs, crypto)
+                                        .thenApply(afterInvite::apply));
+                    });
                 }
 
                 updated.put(newMember, new Member(username, newMember, identity, indexIntoParent, 0));

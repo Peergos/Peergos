@@ -46,7 +46,7 @@ public class UserRepository implements SocialNetwork, MutablePointers {
     public CompletableFuture<Boolean> removeFollowRequest(PublicKeyHash owner, byte[] data) {
         return ipfs.getSigningKey(owner, owner).thenCompose(signerOpt -> {
             try {
-                byte[] unsigned = signerOpt.get().unsignMessage(data);
+                byte[] unsigned = signerOpt.get().unsignMessage(data).join();
                 return store.removeFollowRequest(owner, unsigned);
             } catch (TweetNaCl.InvalidSignatureException e) {
                 return CompletableFuture.completedFuture(false);
@@ -70,7 +70,7 @@ public class UserRepository implements SocialNetwork, MutablePointers {
                                 if (! writerOpt.isPresent())
                                     throw new IllegalStateException("Couldn't retrieve writer key from ipfs with hash " + writer);
                                 PublicSigningKey writerKey = writerOpt.get();
-                                byte[] bothHashes = writerKey.unsignMessage(writerSignedBtreeRootHash);
+                                byte[] bothHashes = writerKey.unsignMessage(writerSignedBtreeRootHash).join();
                                 PointerUpdate cas = PointerUpdate.fromCbor(CborObject.fromByteArray(bothHashes));
                                 MaybeMultihash claimedCurrentHash = cas.original;
 

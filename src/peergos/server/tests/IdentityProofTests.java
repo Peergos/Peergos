@@ -24,15 +24,15 @@ public class IdentityProofTests {
         PublicKeyHash publicHash = ContentAddressedStorage.hashKey(pair.publicSigningKey);
         SigningPrivateKeyAndPublicHash signer = new SigningPrivateKeyAndPublicHash(publicHash, pair.secretSigningKey);
 
-        IdentityLinkProof proof = IdentityLinkProof.buildAndSign(signer, username, "twitterusername", "Twitter");
-        Assert.assertTrue(proof.isValid(peergosIdentityKey));
+        IdentityLinkProof proof = IdentityLinkProof.buildAndSign(signer, username, "twitterusername", "Twitter").join();
+        Assert.assertTrue(proof.isValid(peergosIdentityKey).join());
 
         String toPost = proof.postText("https://peergos.net/public/" + username + "/.profile/ids/" + proof.getFilename() + "?open=true");
         int twitterCharacterCount = toPost.substring(0, toPost.indexOf("https://")).length() + 23;
         Assert.assertTrue(twitterCharacterCount < 280);
 
         IdentityLinkProof parsed = IdentityLinkProof.parse(toPost);
-        Assert.assertTrue(parsed.isValid(peergosIdentityKey));
+        Assert.assertTrue(parsed.isValid(peergosIdentityKey).join());
 
         // Now do an encrypted version
         SymmetricKey key = SymmetricKey.random();
@@ -40,7 +40,7 @@ public class IdentityProofTests {
         String encrypted = withKey.encryptedPostText();
         Assert.assertTrue(encrypted.length() < 280);
 
-        IdentityLink decrypted = IdentityLink.decrypt(encrypted, key, peergosIdentityKey);
+        IdentityLink decrypted = IdentityLink.decrypt(encrypted, key, peergosIdentityKey).join();
         Assert.assertTrue(decrypted.equals(proof.claim));
 
         // test mimetype detection

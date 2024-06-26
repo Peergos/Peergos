@@ -5,6 +5,7 @@ import peergos.shared.crypto.asymmetric.PublicSigningKey;
 import peergos.shared.crypto.asymmetric.SecretSigningKey;
 
 import java.util.*;
+import java.util.concurrent.*;
 
 public class Ed25519SecretKey implements SecretSigningKey {
 
@@ -41,13 +42,14 @@ public class Ed25519SecretKey implements SecretSigningKey {
     }
 
     @Override
-    public byte[] signMessage(byte[] message) {
+    public CompletableFuture<byte[]> signMessage(byte[] message) {
         return implementation.crypto_sign(message, secretKey);
     }
 
     @Override
-    public byte[] signatureOnly(byte[] message) {
-        return Arrays.copyOf(implementation.crypto_sign(message, secretKey), Ed25519PublicKey.SIGNATURE_SIZE_BYTES);
+    public CompletableFuture<byte[]> signatureOnly(byte[] message) {
+        return implementation.crypto_sign(message, secretKey)
+                .thenApply(res -> Arrays.copyOf(res, Ed25519PublicKey.SIGNATURE_SIZE_BYTES));
     }
 
     public static SecretSigningKey fromCbor(Cborable cbor, Ed25519 provider) {

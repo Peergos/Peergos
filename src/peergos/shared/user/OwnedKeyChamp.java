@@ -33,7 +33,8 @@ public class OwnedKeyChamp {
         Champ<CborObject.CborMerkleLink> newRoot = Champ.empty(c -> (CborObject.CborMerkleLink)c);
         byte[] raw = newRoot.serialize();
         return hasher.sha256(raw)
-                .thenCompose(hash -> ipfs.put(owner, writer.publicKeyHash, writer.secret.signMessage(hash), raw, tid));
+                .thenCompose(writer.secret::signMessage)
+                .thenCompose(signed -> ipfs.put(owner, writer.publicKeyHash, signed, raw, tid));
     }
 
     public static CompletableFuture<OwnedKeyChamp> build(PublicKeyHash owner, Cid root, ContentAddressedStorage ipfs, Hasher hasher) {

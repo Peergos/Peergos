@@ -614,7 +614,7 @@ public class MirrorCoreNode implements CoreNode {
     public CompletableFuture<Optional<Multihash>> getNextServerId(Multihash serverId) {
         return ipfs.getIpnsEntry(serverId)
                 .thenApply(e -> {
-                    ResolutionRecord value = e.getValue(serverId, crypto);
+                    ResolutionRecord value = e.getValue(serverId, crypto).join();
                     if (value.moved)
                         value.host.ifPresent(newHost -> rotatedServers.put(serverId, new Cid(1, Cid.Codec.LibP2pKey, newHost.type, newHost.getHash())));
                     return value.host;

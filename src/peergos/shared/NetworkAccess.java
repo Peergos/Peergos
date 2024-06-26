@@ -597,16 +597,17 @@ public class NetworkAccess {
         return Futures.combineAllInOrder(fragments.stream()
                 .map(f -> hasher.sha256(f.data))
                 .collect(Collectors.toList()))
-                .thenCompose(hashes -> bulkUploadFragments(
-                        fragments,
-                        owner,
-                        writer.publicKeyHash,
-                        hashes.stream()
-                                .map(writer.secret::signMessage)
-                                .collect(Collectors.toList()),
-                        tid,
-                        progressCounter
-                ));
+                .thenCompose(hashes -> Futures.combineAllInOrder(hashes.stream()
+                        .map(writer.secret::signMessage)
+                        .collect(Collectors.toList()))
+                        .thenCompose(signedHashes -> bulkUploadFragments(
+                                fragments,
+                                owner,
+                                writer.publicKeyHash,
+                                signedHashes,
+                                tid,
+                                progressCounter
+                        )));
     }
 
     public CompletableFuture<Snapshot> uploadChunk(Snapshot current,
@@ -625,8 +626,9 @@ public class NetworkAccess {
             byte[] metaBlob = metadata.serialize();
             CommittedWriterData version = current.get(writer);
             return hasher.sha256(metaBlob)
-                    .thenCompose(blobSha -> dhtClient.put(owner, writer.publicKeyHash,
-                            writer.secret.signMessage(blobSha), metaBlob, tid))
+                    .thenCompose(blobSha -> writer.secret.signMessage(blobSha))
+                    .thenCompose(sig -> dhtClient.put(owner, writer.publicKeyHash,
+                            sig, metaBlob, tid))
                     .thenCompose(blobHash -> tree.put(version.props.get(), owner, writer, mapKey,
                             metadata.committedHash(), blobHash, tid)
                             .thenCompose(wd -> committer.commit(owner, writer, wd, version, tid)

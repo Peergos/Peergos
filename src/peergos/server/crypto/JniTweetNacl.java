@@ -7,6 +7,7 @@ import peergos.shared.util.*;
 import java.io.*;
 import java.nio.file.*;
 import java.util.*;
+import java.util.concurrent.*;
 
 public class JniTweetNacl {
 
@@ -68,19 +69,19 @@ public class JniTweetNacl {
         }
 
         @Override
-        public byte[] crypto_sign_open(byte[] signed, byte[] publicSigningKey) {
+        public CompletableFuture<byte[]> crypto_sign_open(byte[] signed, byte[] publicSigningKey) {
             byte[] message = new byte[signed.length];
             int res = impl.crypto_sign_open(message, message.length, signed, signed.length, publicSigningKey);
             if (res != 0)
                 throw new TweetNaCl.InvalidSignatureException();
-            return Arrays.copyOfRange(message, 0, message.length - TweetNaCl.SIGNATURE_SIZE_BYTES);
+            return Futures.of(Arrays.copyOfRange(message, 0, message.length - TweetNaCl.SIGNATURE_SIZE_BYTES));
         }
 
         @Override
-        public byte[] crypto_sign(byte[] message, byte[] secretSigningKey) {
+        public CompletableFuture<byte[]> crypto_sign(byte[] message, byte[] secretSigningKey) {
             byte[] signedMessage = new byte[message.length + TweetNaCl.SIGNATURE_SIZE_BYTES];
             impl.crypto_sign(signedMessage, signedMessage.length, message, message.length, secretSigningKey);
-            return signedMessage;
+            return Futures.of(signedMessage);
         }
 
         @Override

@@ -95,7 +95,7 @@ public class UserPublicKeyLink implements Cborable {
         Claim newClaim = Claim.build(username, newUser.secret, expiry, storageProviders);
 
         // sign new key with old
-        byte[] link = oldUser.secret.signMessage(newUser.publicKeyHash.serialize());
+        byte[] link = oldUser.secret.signMessage(newUser.publicKeyHash.serialize()).join();
 
         // create link from old that never expires
         UserPublicKeyLink fromOld = new UserPublicKeyLink(oldUser.publicKeyHash,
@@ -156,7 +156,7 @@ public class UserPublicKeyLink implements Cborable {
                     Serialize.serialize(storageProvider.toBytes(), dout);
                 }
                 byte[] payload = bout.toByteArray();
-                byte[] signed = from.signMessage(payload);
+                byte[] signed = from.signMessage(payload).join();
                 return new Claim(username, expiryDate, storageProviders, signed);
             } catch (IOException e) {
                 throw new RuntimeException(e);
@@ -164,7 +164,7 @@ public class UserPublicKeyLink implements Cborable {
         }
 
         public static Claim deserialize(byte[] signedContents, PublicSigningKey signer) throws IOException {
-            byte[] contents = signer.unsignMessage(signedContents);
+            byte[] contents = signer.unsignMessage(signedContents).join();
             ByteArrayInputStream bin = new ByteArrayInputStream(contents);
             DataInputStream din = new DataInputStream(bin);
             String username = Serialize.deserializeString(din, MAX_USERNAME_SIZE);
@@ -286,7 +286,7 @@ public class UserPublicKeyLink implements Cborable {
             return ipfs.getSigningKey(from.owner, from.owner).thenApply(ownerKeyOpt -> {
                 if (!ownerKeyOpt.isPresent())
                     return false;
-                PublicKeyHash targetKey = PublicKeyHash.fromCbor(CborObject.fromByteArray(ownerKeyOpt.get().unsignMessage(keyChangeProof.get())));
+                PublicKeyHash targetKey = PublicKeyHash.fromCbor(CborObject.fromByteArray(ownerKeyOpt.get().unsignMessage(keyChangeProof.get()).join()));
                 if (!Arrays.equals(targetKey.serialize(), target.serialize()))
                     return false;
 

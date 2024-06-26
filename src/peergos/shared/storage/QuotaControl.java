@@ -21,8 +21,8 @@ public interface QuotaControl {
 
     default CompletableFuture<PaymentProperties> requestQuota(String username, SigningPrivateKeyAndPublicHash identity, long space) {
         SpaceUsage.SpaceRequest req = new SpaceUsage.SpaceRequest(username, space, System.currentTimeMillis(), Optional.empty());
-        byte[] signedRequest = identity.secret.signMessage(req.serialize());
-        return requestQuota(identity.publicKeyHash, signedRequest);
+        return identity.secret.signMessage(req.serialize())
+                .thenCompose(signedRequest -> requestQuota(identity.publicKeyHash, signedRequest));
     }
 
     class LabelledSignedSpaceRequest implements Cborable {

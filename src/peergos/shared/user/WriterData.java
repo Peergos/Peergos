@@ -283,35 +283,39 @@ public class WriterData implements Cborable {
                             });
                     return network.account.setLoginData(new LoginData(username, newEntryPoints.get(), newLogin, Optional.empty()), oldSigner)
                             .thenCompose(b -> network.hasher.sha256(followRequestReceiver.serialize())
-                            .thenCompose(boxerHash -> network.dhtClient.putBoxingKey(oldSigner.publicKeyHash,
-                                    oldSigner.secret.signMessage(boxerHash),
-                                    followRequestReceiver.publicBoxingKey, tid
-                            ))).thenCompose(boxerHash -> OwnedKeyChamp.createEmpty(oldSigner.publicKeyHash, oldSigner,
-                            network.dhtClient, network.hasher, tid)
-                            .thenCompose(ownedRoot -> {
-                                Map<String, OwnerProof> newNamedOwnedKeys = namedOwnedKeys.entrySet()
-                                        .stream()
-                                        .collect(Collectors.toMap(e -> e.getKey(),
-                                                e -> OwnerProof.build(ownedKeys.get(e.getValue().ownedKey), signer.publicKeyHash)));
+                                    .thenCompose(boxerHash -> oldSigner.secret.signMessage(boxerHash)
+                                            .thenCompose(signedBoxer -> network.dhtClient.putBoxingKey(oldSigner.publicKeyHash,
+                                                    signedBoxer,
+                                                    followRequestReceiver.publicBoxingKey, tid
+                                            )))).thenCompose(boxerHash -> OwnedKeyChamp.createEmpty(oldSigner.publicKeyHash, oldSigner,
+                                            network.dhtClient, network.hasher, tid)
+                                    .thenCompose(ownedRoot -> {
+                                        return Futures.combineAll(namedOwnedKeys.entrySet()
+                                                .stream()
+                                                        .map(e -> OwnerProof.build(ownedKeys.get(e.getValue().ownedKey), signer.publicKeyHash).thenApply(proof -> new Pair<>(e.getKey(), proof)))
+                                                .collect(Collectors.toList())).thenApply(res -> res.stream()
+                                                .collect(Collectors.toMap(p -> p.left, p -> p.right))).thenCompose(newNamedOwnedKeys -> {
 
-                                // need to add all our owned keys back with the new owner, except for the new signer itself
-                                WriterData base = new WriterData(signer.publicKeyHash,
-                                        Optional.of(newAlgorithm),
-                                        publicData,
-                                        Optional.of(new PublicKeyHash(boxerHash)),
-                                        Optional.of(ownedRoot),
-                                        newNamedOwnedKeys,
-                                        Optional.empty(),
-                                        tree,
+                                            // need to add all our owned keys back with the new owner, except for the new signer itself
+                                            WriterData base = new WriterData(signer.publicKeyHash,
+                                                    Optional.of(newAlgorithm),
+                                                    publicData,
+                                                    Optional.of(new PublicKeyHash(boxerHash)),
+                                                    Optional.of(ownedRoot),
+                                                    newNamedOwnedKeys,
+                                                    Optional.empty(),
+                                                    tree,
                                         secretLinks);
-                                return getOwnedKeyChamp(oldSigner.publicKeyHash, network.dhtClient, network.hasher)
-                                        .thenCompose(okChamp -> okChamp.applyToAllMappings(oldSigner.publicKeyHash, base, (nwd, p) ->
-                                                p.left.equals(signer.publicKeyHash) ? Futures.of(nwd) :
-                                                nwd.addOwnedKey(oldSigner.publicKeyHash, signer,
-                                                        OwnerProof.build(ownedKeys.get(p.left), signer.publicKeyHash),
-                                                        network.dhtClient, network.hasher), network.dhtClient)
-                                        );
-                            }));
+                                            return getOwnedKeyChamp(oldSigner.publicKeyHash, network.dhtClient, network.hasher)
+                                                    .thenCompose(okChamp -> okChamp.applyToAllMappings(oldSigner.publicKeyHash, base, (nwd, p) ->
+                                                            p.left.equals(signer.publicKeyHash) ? Futures.of(nwd) :
+                                                                    OwnerProof.build(ownedKeys.get(p.left), signer.publicKeyHash)
+                                                                            .thenCompose(proof -> nwd.addOwnedKey(oldSigner.publicKeyHash, signer,
+                                                                                    proof,
+                                                                                    network.dhtClient, network.hasher)), network.dhtClient)
+                                                    );
+                                        });
+                                    }));
                 })
                 .thenApply(version -> version.get(signer).props.get())
                 .exceptionally(t -> {
@@ -342,7 +346,8 @@ public class WriterData implements Cborable {
         byte[] raw = serialize();
 
         return hasher.sha256(raw)
-                .thenCompose(hash -> immutable.put(owner, signer.publicKeyHash, signer.secret.signMessage(hash), raw, tid))
+                .thenCompose(hash -> signer.secret.signMessage(hash))
+                .thenCompose(sig -> immutable.put(owner, signer.publicKeyHash, sig, raw, tid))
                 .thenCompose(blobHash -> {
                     MaybeMultihash newHash = MaybeMultihash.of(blobHash);
                     if (newHash.equals(currentHash)) {

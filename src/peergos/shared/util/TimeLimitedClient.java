@@ -4,6 +4,7 @@ import peergos.shared.cbor.*;
 import peergos.shared.crypto.asymmetric.*;
 
 import java.util.*;
+import java.util.concurrent.*;
 
 public class TimeLimitedClient {
 
@@ -24,7 +25,7 @@ public class TimeLimitedClient {
             return CborObject.CborMap.build(state);
         }
 
-        public byte[] sign(SecretSigningKey signer) {
+        public CompletableFuture<byte[]> sign(SecretSigningKey signer) {
             return signer.signMessage(serialize());
         }
 
@@ -38,7 +39,7 @@ public class TimeLimitedClient {
         }
     }
 
-    public static byte[] signNow(SecretSigningKey signer) {
+    public static CompletableFuture<byte[]> signNow(SecretSigningKey signer) {
         byte[] time = new CborObject.CborLong(System.currentTimeMillis()).serialize();
         return signer.signMessage(time);
     }
