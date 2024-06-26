@@ -44,9 +44,11 @@ public class SecretLinkChamp {
     }
 
     private CompletableFuture<byte[]> keyToBytes(long key) {
-        byte[] raw = {(byte) key, (byte) (key >> 8), (byte) (key >> 16), (byte) (key >> 24),
-                (byte) (key >> 32), (byte) (key >> 40), (byte) (key >> 48), (byte) (key >> 56)};
-        return hasher.sha256(raw);
+        byte[] copy = new byte[8];
+        for(int i=0; i < 8; i++) {
+            copy[0] = (byte) (key >> (8 * i));
+        }
+        return hasher.sha256(copy);
     }
 
     public CompletableFuture<Optional<SecretLinkTarget>> get(PublicKeyHash owner,
