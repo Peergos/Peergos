@@ -640,6 +640,7 @@ public class UserContext {
                 }));
     }
 
+    @JsMethod
     public CompletableFuture<SecretLink> createSecretLink(Path toFile,
                                                           boolean isWritable,
                                                           Optional<LocalDateTime> expiry,
