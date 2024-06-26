@@ -53,7 +53,7 @@ public class SecretLinkStorage extends DelegatingDeletableStorage {
             throw new IllegalStateException("Secret link expired!");
         String username = pki.getUsername(owner).join();
         if (target.maxRetrievals.isPresent() && counter.getCount(username, link.label) >= target.maxRetrievals.get())
-            throw new IllegalStateException("Invalid secret link!");
+            throw new IllegalStateException("Maximum link retrievals exceed!");
         counter.increment(username, link.label);
         return Futures.of(target.cap);
     }
