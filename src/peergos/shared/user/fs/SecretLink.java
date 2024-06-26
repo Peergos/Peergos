@@ -26,6 +26,8 @@ public class SecretLink {
 
     @JsMethod
     public static SecretLink fromLink(String link) {
+        if (link.startsWith("/"))
+            link = link.substring(1);
         String[] parts = link.split("/");
         if (parts.length != 3)
             throw new IllegalStateException("Invalid secret link");
