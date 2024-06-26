@@ -1,9 +1,11 @@
 package peergos.shared.user;
 
+import jsinterop.annotations.JsMethod;
 import peergos.shared.cbor.*;
 
 import java.time.*;
 import java.util.*;
+
 
 class LinkProperties implements Cborable {
     public final long label;
@@ -17,6 +19,11 @@ class LinkProperties implements Cborable {
         this.password = password;
         this.maxCount = maxCount;
         this.expiry = expiry;
+    }
+
+    @JsMethod
+    public String getLinkLabel() {
+        return "" + label;
     }
 
     @Override
