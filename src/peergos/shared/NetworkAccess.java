@@ -223,7 +223,7 @@ public class NetworkAccess {
     public static CompletableFuture<NetworkAccess> buildJS(boolean isPublic,
                                                            int cacheSizeKiB,
                                                            boolean allowOfflineLogin) {
-        JavaScriptPoster relative = new JavaScriptPoster(false, isPublic);
+        JavaScriptPoster relative = new JavaScriptPoster(true, isPublic);
         ScryptJS hasher = new ScryptJS();
         boolean isPeergosServer = true; // we used to support using web ui through an ipfs gateway directly
         ContentAddressedStorage localDht = buildLocalDht(relative, isPeergosServer, hasher);
