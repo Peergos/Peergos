@@ -10,6 +10,7 @@ import peergos.shared.user.fs.*;
 import peergos.shared.util.*;
 
 import java.util.*;
+import java.util.concurrent.*;
 
 public class IdentityLinkProof implements Cborable {
     public static final String SIG_PREFIX = "\nsig: ";
@@ -42,12 +43,13 @@ public class IdentityLinkProof implements Cborable {
         return ArrayOps.concat(signature, body);
     }
 
-    public boolean isValid(PublicSigningKey peergosIdentity) {
-        byte[] unsigned = peergosIdentity.unsignMessage(signedClaim());
-        IdentityLink signedClaim = IdentityLink.fromCbor(CborObject.fromByteArray(unsigned));
-        if (! signedClaim.equals(claim))
-            throw new IllegalStateException("Signature invalid!");
-        return true;
+    public CompletableFuture<Boolean> isValid(PublicSigningKey peergosIdentity) {
+        return peergosIdentity.unsignMessage(signedClaim()).thenApply(unsigned -> {
+            IdentityLink signedClaim = IdentityLink.fromCbor(CborObject.fromByteArray(unsigned));
+            if (!signedClaim.equals(claim))
+                throw new IllegalStateException("Signature invalid!");
+            return true;
+        });
     }
 
     @JsMethod
@@ -136,14 +138,14 @@ public class IdentityLinkProof implements Cborable {
     }
 
     @JsMethod
-    public static IdentityLinkProof buildAndSign(SigningPrivateKeyAndPublicHash signer,
-                                                 String peergosUsername,
-                                                 String alternateUsername,
-                                                 String alternateService) {
+    public static CompletableFuture<IdentityLinkProof> buildAndSign(SigningPrivateKeyAndPublicHash signer,
+                                                                   String peergosUsername,
+                                                                   String alternateUsername,
+                                                                   String alternateService) {
         IdentityLink.IdentityService serviceA = new IdentityLink.IdentityService(Either.a(IdentityLink.KnownService.Peergos));
         IdentityLink.IdentityService serviceB = IdentityLink.IdentityService.parse(alternateService);
         IdentityLink claim = new IdentityLink(peergosUsername, serviceA, alternateUsername, serviceB);
-        byte[] signature = signer.secret.signatureOnly(claim.serialize());
-        return new IdentityLinkProof(claim, signature, Optional.empty(), Optional.empty());
+        return signer.secret.signatureOnly(claim.serialize())
+                .thenApply(signature -> new IdentityLinkProof(claim, signature, Optional.empty(), Optional.empty()));
     }
 }

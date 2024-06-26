@@ -6,6 +6,7 @@ import peergos.shared.crypto.asymmetric.curve25519.*;
 import peergos.shared.util.*;
 
 import java.util.*;
+import java.util.concurrent.*;
 
 public interface PublicSigningKey extends Cborable {
     int MAX_SIZE = 10*1024*1024;
@@ -38,7 +39,7 @@ public interface PublicSigningKey extends Cborable {
     Type type();
 
     @JsMethod
-    byte[] unsignMessage(byte[] signed);
+    CompletableFuture<byte[]> unsignMessage(byte[] signed);
 
     static PublicSigningKey fromString(String b64) {
         return fromByteArray(Base64.getDecoder().decode(b64));

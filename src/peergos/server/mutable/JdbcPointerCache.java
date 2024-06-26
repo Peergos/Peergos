@@ -25,7 +25,7 @@ public class JdbcPointerCache implements PointerCache {
                 .thenCompose(current -> storage.getSigningKey(owner, writer).thenCompose(signerOpt -> {
                     if (signerOpt.isEmpty())
                         throw new IllegalStateException("Couldn't retrieve signing key!");
-                    if (doUpdate(current, signedUpdate, signerOpt.get()))
+                    if (doUpdate(current, signedUpdate, signerOpt.get()).join())
                         return store.setPointer(writer, current, signedUpdate);
                     return Futures.of(false);
                 }));

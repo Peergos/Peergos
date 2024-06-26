@@ -167,9 +167,9 @@ public class ChatController {
     }
 
     public CompletableFuture<ChatController> join(SigningPrivateKeyAndPublicHash identity) {
-        OwnerProof chatId = OwnerProof.build(identity, privateChatState.chatIdentity.publicKeyHash);
-        return applyAndCommit(chat -> chat.join(state.host(), chatId, privateChatState.chatIdPublic, identity, store,
-                context.network.dhtClient, context.crypto), context.username);
+        return OwnerProof.build(identity, privateChatState.chatIdentity.publicKeyHash)
+                .thenCompose(chatId -> applyAndCommit(chat -> chat.join(state.host(), chatId, privateChatState.chatIdPublic,
+                        identity, store, context.network.dhtClient, context.crypto), context.username));
     }
 
     @JsMethod

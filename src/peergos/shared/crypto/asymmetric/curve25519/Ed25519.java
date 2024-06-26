@@ -2,11 +2,13 @@ package peergos.shared.crypto.asymmetric.curve25519;
 
 import peergos.shared.crypto.random.JSNaCl;
 
+import java.util.concurrent.*;
+
 public interface Ed25519 {
 
-    byte[] crypto_sign_open(byte[] signed, byte[] publicSigningKey);
+    CompletableFuture<byte[]> crypto_sign_open(byte[] signed, byte[] publicSigningKey);
 
-    byte[] crypto_sign(byte[] message, byte[] secretSigningKey);
+    CompletableFuture<byte[]> crypto_sign(byte[] message, byte[] secretSigningKey);
 
     void crypto_sign_keypair(byte[] pk, byte[] sk);
 
@@ -14,12 +16,12 @@ public interface Ed25519 {
         JSNaCl scriptJS = new JSNaCl();
 
         @Override
-        public byte[] crypto_sign_open(byte[] signed, byte[] publicSigningKey) {
+        public CompletableFuture<byte[]> crypto_sign_open(byte[] signed, byte[] publicSigningKey) {
             return scriptJS.crypto_sign_open(signed, publicSigningKey);
         }
 
         @Override
-        public byte[] crypto_sign(byte[] message, byte[] secretSigningKey) {
+        public CompletableFuture<byte[]> crypto_sign(byte[] message, byte[] secretSigningKey) {
             return scriptJS.crypto_sign(message, secretSigningKey);
         }
 

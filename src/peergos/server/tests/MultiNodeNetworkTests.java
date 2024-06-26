@@ -200,8 +200,8 @@ public class MultiNodeNetworkTests {
 
         for (NetworkAccess node: nodes) {
             long usage = node.spaceUsage.getUsage(context.signer.publicKeyHash,
-                    TimeLimitedClient.signNow(context.signer.secret)).join();
-            byte[] signedTime = TimeLimitedClient.signNow(context.signer.secret);
+                    TimeLimitedClient.signNow(context.signer.secret).join()).join();
+            byte[] signedTime = TimeLimitedClient.signNow(context.signer.secret).join();
             long quota = node.spaceUsage.getQuota(context.signer.publicKeyHash, signedTime).join();
             Assert.assertTrue(usage >0 && quota > 0);
         }

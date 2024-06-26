@@ -19,8 +19,8 @@ public interface Account {
     CompletableFuture<Boolean> setLoginData(LoginData login, byte[] auth);
 
     default CompletableFuture<Boolean> setLoginData(LoginData login, SigningPrivateKeyAndPublicHash identity) {
-        byte[] auth = identity.secret.signatureOnly(login.serialize());
-        return setLoginData(login, auth);
+        return identity.secret.signatureOnly(login.serialize())
+                .thenCompose(auth -> setLoginData(login, auth));
     }
 
     /** Auth signed by login keypair
@@ -49,8 +49,8 @@ public interface Account {
     default CompletableFuture<List<MultiFactorAuthMethod>> getSecondAuthMethods(String username, SigningPrivateKeyAndPublicHash identity) {
         TimeLimitedClient.SignedRequest req =
                 new TimeLimitedClient.SignedRequest(Constants.LOGIN_URL + "listMfa", System.currentTimeMillis());
-        byte[] auth = req.sign(identity.secret);
-        return getSecondAuthMethods(username, auth);
+        return req.sign(identity.secret)
+                .thenCompose(auth -> getSecondAuthMethods(username, auth));
     }
 
     CompletableFuture<Boolean> enableTotpFactor(String username, byte[] credentialId, String code, byte[] auth);
@@ -62,8 +62,8 @@ public interface Account {
                                                         SigningPrivateKeyAndPublicHash identity) {
         TimeLimitedClient.SignedRequest req =
                 new TimeLimitedClient.SignedRequest(Constants.LOGIN_URL + "enableTotp", System.currentTimeMillis());
-        byte[] auth = req.sign(identity.secret);
-        return enableTotpFactor(username, credentialId, code, auth);
+        return req.sign(identity.secret)
+                .thenCompose(auth -> enableTotpFactor(username, credentialId, code, auth));
     }
 
     CompletableFuture<TotpKey> addTotpFactor(String username, byte[] auth);
@@ -72,8 +72,8 @@ public interface Account {
     default CompletableFuture<TotpKey> addTotpFactor(String username, SigningPrivateKeyAndPublicHash identity) {
         TimeLimitedClient.SignedRequest req =
                 new TimeLimitedClient.SignedRequest(Constants.LOGIN_URL + "addTotp", System.currentTimeMillis());
-        byte[] auth = req.sign(identity.secret);
-        return addTotpFactor(username, auth);
+        return req.sign(identity.secret)
+                .thenCompose(auth -> addTotpFactor(username, auth));
     }
 
     CompletableFuture<byte[]> registerSecurityKeyStart(String username, byte[] auth);
@@ -82,8 +82,8 @@ public interface Account {
     default CompletableFuture<byte[]> registerSecurityKeyStart(String username, SigningPrivateKeyAndPublicHash identity) {
         TimeLimitedClient.SignedRequest req =
                 new TimeLimitedClient.SignedRequest(Constants.LOGIN_URL + "registerWebauthnStart", System.currentTimeMillis());
-        byte[] auth = req.sign(identity.secret);
-        return registerSecurityKeyStart(username, auth);
+        return req.sign(identity.secret)
+                .thenCompose(auth -> registerSecurityKeyStart(username, auth));
     }
 
     CompletableFuture<Boolean> registerSecurityKeyComplete(String username, String keyName, MultiFactorAuthResponse resp, byte[] auth);
@@ -95,8 +95,8 @@ public interface Account {
                                                                    SigningPrivateKeyAndPublicHash identity) {
         TimeLimitedClient.SignedRequest req =
                 new TimeLimitedClient.SignedRequest(Constants.LOGIN_URL + "registerWebauthnComplete", System.currentTimeMillis());
-        byte[] auth = req.sign(identity.secret);
-        return registerSecurityKeyComplete(username, keyName, resp, auth);
+        return req.sign(identity.secret)
+                .thenCompose(auth -> registerSecurityKeyComplete(username, keyName, resp, auth));
     }
 
     CompletableFuture<Boolean> deleteSecondFactor(String username, byte[] credentialId, byte[] auth);
@@ -104,8 +104,8 @@ public interface Account {
     default CompletableFuture<Boolean> deleteSecondFactor(String username, byte[] credentialId, SigningPrivateKeyAndPublicHash identity) {
         TimeLimitedClient.SignedRequest req =
                 new TimeLimitedClient.SignedRequest(Constants.LOGIN_URL + "deleteMfa", System.currentTimeMillis());
-        byte[] auth = req.sign(identity.secret);
-        return deleteSecondFactor(username, credentialId, auth);
+        return req.sign(identity.secret)
+                .thenCompose(auth -> deleteSecondFactor(username, credentialId, auth));
     }
 
 }

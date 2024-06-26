@@ -4,6 +4,8 @@ import jsinterop.annotations.JsType;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.asymmetric.curve25519.*;
 
+import java.util.concurrent.*;
+
 @JsType
 public interface SecretSigningKey extends Cborable {
 
@@ -14,14 +16,14 @@ public interface SecretSigningKey extends Cborable {
      * @param message
      * @return The signature + message
      */
-    byte[] signMessage(byte[] message);
+    CompletableFuture<byte[]> signMessage(byte[] message);
 
     /**
      *
      * @param message
      * @return Only the signature, excluding the original message
      */
-    byte[] signatureOnly(byte[] message);
+    CompletableFuture<byte[]> signatureOnly(byte[] message);
 
     @SuppressWarnings("unusable-by-js")
     static SecretSigningKey fromCbor(Cborable cbor) {

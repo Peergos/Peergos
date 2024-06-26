@@ -17,13 +17,13 @@ public interface ServerMessager {
     default CompletableFuture<List<ServerMessage>> getMessages(String username, SecretSigningKey signer) {
         TimeLimitedClient.SignedRequest req =
                 new TimeLimitedClient.SignedRequest(Constants.SERVER_MESSAGE_URL + "retrieve", System.currentTimeMillis());
-        byte[] auth = req.sign(signer);
-        return getMessages(username, auth);
+        return req.sign(signer)
+                .thenCompose(auth -> getMessages(username, auth));
     }
 
     default CompletableFuture<Boolean> sendMessage(String username, ServerMessage message, SecretSigningKey signer) {
-        byte[] signedBody = signer.signMessage(message.serialize());
-        return sendMessage(username, signedBody);
+        return signer.signMessage(message.serialize())
+                .thenCompose(signedBody -> sendMessage(username, signedBody));
     }
 
     class HTTP implements ServerMessager {

@@ -58,15 +58,15 @@ public class CachingPointers implements MutablePointers {
 
     @Override
     public CompletableFuture<Boolean> setPointer(PublicKeyHash owner, SigningPrivateKeyAndPublicHash writer, PointerUpdate casUpdate) {
-        byte[] signed = writer.secret.signMessage(casUpdate.serialize());
-        return setPointer(owner, writer.publicKeyHash, signed).thenApply(res -> {
-            if (res) {
-                synchronized (targetCache) {
-                    targetCache.put(writer.publicKeyHash, new Pair<>(casUpdate, System.currentTimeMillis()));
-                }
-            }
-            return res;
-        });
+        return writer.secret.signMessage(casUpdate.serialize())
+                .thenCompose(signed -> setPointer(owner, writer.publicKeyHash, signed).thenApply(res -> {
+                    if (res) {
+                        synchronized (targetCache) {
+                            targetCache.put(writer.publicKeyHash, new Pair<>(casUpdate, System.currentTimeMillis()));
+                        }
+                    }
+                    return res;
+                }));
     }
 
     @Override

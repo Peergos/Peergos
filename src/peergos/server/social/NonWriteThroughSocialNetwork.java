@@ -68,7 +68,7 @@ public class NonWriteThroughSocialNetwork implements SocialNetwork {
     public CompletableFuture<Boolean> removeFollowRequest(PublicKeyHash owner, byte[] signedEncryptedPermission) {
         try {
             PublicSigningKey signer = ipfs.getSigningKey(owner, owner).join().get();
-            byte[] unsigned = signer.unsignMessage(signedEncryptedPermission);
+            byte[] unsigned = signer.unsignMessage(signedEncryptedPermission).join();
 
             newFollowRequests.putIfAbsent(owner, new ArrayList<>());
             ByteArrayWrapper wrappped = new ByteArrayWrapper(unsigned);

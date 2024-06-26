@@ -33,7 +33,7 @@ public class MessagingTests {
         List<RamMessageStore> stores = IntStream.range(0, 2).mapToObj(i -> new RamMessageStore()).collect(Collectors.toList());
 
         Chat chat1 = Chat.createNew("uid", "user1", identities.get(0).publicKeyHash);
-        OwnerProof user1ChatId = OwnerProof.build(identities.get(0), chatIdentities.get(0).chatIdentity.publicKeyHash);
+        OwnerProof user1ChatId = OwnerProof.build(identities.get(0), chatIdentities.get(0).chatIdentity.publicKeyHash).join();
         ChatUpdate u1_1 = chat1.join(chat1.host(), user1ChatId, chatIdentities.get(0).chatIdPublic, identities.get(0), stores.get(0), ipfs, crypto).join();
         stores.get(0).apply(u1_1);
 
@@ -43,7 +43,7 @@ public class MessagingTests {
         Member user2 = u1_2.state.getMember("user2");
         Chat chat2 = u1_2.state.copy(user2);
         stores.get(1).mirror(stores.get(0));
-        OwnerProof user2ChatId = OwnerProof.build(identities.get(1), chatIdentities.get(1).chatIdentity.publicKeyHash);
+        OwnerProof user2ChatId = OwnerProof.build(identities.get(1), chatIdentities.get(1).chatIdentity.publicKeyHash).join();
         ChatUpdate u2_1 = chat2.join(user2, user2ChatId, chatIdentities.get(1).chatIdPublic, identities.get(1), stores.get(1), ipfs, crypto).join();
         stores.get(1).apply(u2_1);
 
@@ -71,7 +71,7 @@ public class MessagingTests {
         List<RamMessageStore> stores = IntStream.range(0, 3).mapToObj(i -> new RamMessageStore()).collect(Collectors.toList());
 
         Chat chat1 = Chat.createNew("uid", "user1", identities.get(0).publicKeyHash);
-        OwnerProof user1ChatId = OwnerProof.build(identities.get(0), chatIdentities.get(0).chatIdentity.publicKeyHash);
+        OwnerProof user1ChatId = OwnerProof.build(identities.get(0), chatIdentities.get(0).chatIdentity.publicKeyHash).join();
         ChatUpdate u1_1 = chat1.join(chat1.host(), user1ChatId, chatIdentities.get(0).chatIdPublic, identities.get(0), stores.get(0), ipfs, crypto).join();
         stores.get(0).apply(u1_1);
 
@@ -82,7 +82,7 @@ public class MessagingTests {
 
         Chat chat2 = u1_2.state.copy(user2);
         stores.get(1).mirror(stores.get(0));
-        OwnerProof user2ChatId = OwnerProof.build(identities.get(1), chatIdentities.get(1).chatIdentity.publicKeyHash);
+        OwnerProof user2ChatId = OwnerProof.build(identities.get(1), chatIdentities.get(1).chatIdentity.publicKeyHash).join();
         chat2.join(user2, user2ChatId, chatIdentities.get(1).chatIdPublic, identities.get(1), stores.get(1), ipfs, crypto).join();
 
         ChatUpdate u1_3 = u1_2.state.inviteMember("user3", identities.get(2).publicKeyHash,
@@ -92,7 +92,7 @@ public class MessagingTests {
 
         Chat chat3 = u1_3.state.copy(user3);
         stores.get(2).mirror(stores.get(0));
-        OwnerProof user3ChatId = OwnerProof.build(identities.get(2), chatIdentities.get(2).chatIdentity.publicKeyHash);
+        OwnerProof user3ChatId = OwnerProof.build(identities.get(2), chatIdentities.get(2).chatIdentity.publicKeyHash).join();
         chat3.join(user3, user3ChatId, chatIdentities.get(2).chatIdPublic, identities.get(2), stores.get(0), ipfs, crypto).join();
 
         Assert.assertTrue(! user2.id.equals(user3.id));
@@ -105,7 +105,7 @@ public class MessagingTests {
         List<RamMessageStore> stores = IntStream.range(0, 3).mapToObj(i -> new RamMessageStore()).collect(Collectors.toList());
 
         Chat chat1 = Chat.createNew("uid", "user1", identities.get(0).publicKeyHash);
-        OwnerProof user1ChatId = OwnerProof.build(identities.get(0), chatIdentities.get(0).chatIdentity.publicKeyHash);
+        OwnerProof user1ChatId = OwnerProof.build(identities.get(0), chatIdentities.get(0).chatIdentity.publicKeyHash).join();
         ChatUpdate u1_1 = chat1.join(chat1.host(), user1ChatId, chatIdentities.get(0).chatIdPublic, identities.get(0), stores.get(0), ipfs, crypto).join();
         stores.get(0).apply(u1_1);
 
@@ -115,7 +115,7 @@ public class MessagingTests {
         Member user2 = u1_2.state.getMember("user2");
         Chat chat2 = u1_2.state.copy(user2);
         stores.get(1).mirror(stores.get(0));
-        OwnerProof user2ChatId = OwnerProof.build(identities.get(1), chatIdentities.get(1).chatIdentity.publicKeyHash);
+        OwnerProof user2ChatId = OwnerProof.build(identities.get(1), chatIdentities.get(1).chatIdentity.publicKeyHash).join();
         ChatUpdate u2_1 = chat2.join(user2, user2ChatId, chatIdentities.get(1).chatIdPublic, identities.get(1), stores.get(1), ipfs, crypto).join();
         stores.get(1).apply(u2_1);
 
@@ -125,7 +125,7 @@ public class MessagingTests {
         Member user3 = u2_2.state.getMember("user3");
         Chat chat3 = u2_2.state.copy(user3);
         stores.get(2).mirror(stores.get(1));
-        OwnerProof user3ChatId = OwnerProof.build(identities.get(2), chatIdentities.get(2).chatIdentity.publicKeyHash);
+        OwnerProof user3ChatId = OwnerProof.build(identities.get(2), chatIdentities.get(2).chatIdentity.publicKeyHash).join();
         ChatUpdate u3_1 = chat3.join(user3, user3ChatId, chatIdentities.get(2).chatIdPublic, identities.get(2), stores.get(2), ipfs, crypto).join();
         stores.get(2).apply(u3_1);
 
@@ -155,19 +155,19 @@ public class MessagingTests {
         Chat chat2 = chats.get(1);
         Chat chat3 = chats.get(2);
         Chat chat4 = chats.get(3);
-        OwnerProof user1ChatId = OwnerProof.build(identities.get(0), chatIdentities.get(0).chatIdentity.publicKeyHash);
+        OwnerProof user1ChatId = OwnerProof.build(identities.get(0), chatIdentities.get(0).chatIdentity.publicKeyHash).join();
         ChatUpdate u1_1 = chat1.join(chat1.host(), user1ChatId, chatIdentities.get(0).chatIdPublic, identities.get(0), stores.get(0), ipfs, crypto).join();
         stores.get(0).apply(u1_1);
 
-        OwnerProof user2ChatId = OwnerProof.build(identities.get(1), chatIdentities.get(1).chatIdentity.publicKeyHash);
+        OwnerProof user2ChatId = OwnerProof.build(identities.get(1), chatIdentities.get(1).chatIdentity.publicKeyHash).join();
         ChatUpdate u2_1 = chat2.join(chat2.host(), user2ChatId, chatIdentities.get(1).chatIdPublic, identities.get(1), stores.get(1), ipfs, crypto).join();
         stores.get(1).apply(u2_1);
 
-        OwnerProof user3ChatId = OwnerProof.build(identities.get(2), chatIdentities.get(2).chatIdentity.publicKeyHash);
+        OwnerProof user3ChatId = OwnerProof.build(identities.get(2), chatIdentities.get(2).chatIdentity.publicKeyHash).join();
         ChatUpdate u3_1 = chat3.join(chat3.host(), user3ChatId, chatIdentities.get(2).chatIdPublic, identities.get(2), stores.get(2), ipfs, crypto).join();
         stores.get(2).apply(u3_1);
 
-        OwnerProof user4ChatId = OwnerProof.build(identities.get(3), chatIdentities.get(3).chatIdentity.publicKeyHash);
+        OwnerProof user4ChatId = OwnerProof.build(identities.get(3), chatIdentities.get(3).chatIdentity.publicKeyHash).join();
         ChatUpdate u4_1 = chat4.join(chat4.host(), user4ChatId, chatIdentities.get(3).chatIdPublic, identities.get(3), stores.get(3), ipfs, crypto).join();
         stores.get(3).apply(u4_1);
 

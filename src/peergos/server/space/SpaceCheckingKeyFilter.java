@@ -229,7 +229,7 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
         List<Multihash> us = List.of(dht.id().join().bareMultihash());
         PointerUpdate pointerUpdate = dht.getSigningKey(event.owner, event.writer)
                 .thenApply(signer -> PointerUpdate.fromCbor(CborObject.fromByteArray(signer.get()
-                        .unsignMessage(event.writerSignedBtreeRootHash)))).join();
+                        .unsignMessage(event.writerSignedBtreeRootHash).join()))).join();
         Set<PublicKeyHash> updatedOwned =
                 DeletableContentAddressedStorage.getDirectOwnedKeys(event.owner, event.writer, pointerUpdate.updated,
                         (h, s) -> DeletableContentAddressedStorage.getWriterData(us, h,s, dht), dht, hasher).join();
@@ -243,7 +243,7 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
         try {
             PointerUpdate pointerUpdate = dht.getSigningKey(event.owner, event.writer)
                     .thenApply(signer -> PointerUpdate.fromCbor(CborObject.fromByteArray(signer.get()
-                            .unsignMessage(event.writerSignedBtreeRootHash)))).join();
+                            .unsignMessage(event.writerSignedBtreeRootHash).join()))).join();
             processMutablePointerEvent(usageStore, event.owner, event.writer, pointerUpdate.original, pointerUpdate.updated,
                     mutable, dht, hasher);
         } catch (Exception e) {

@@ -47,20 +47,19 @@ public class DecodedSpaceRequest {
                                 throw new IllegalStateException("Couldn't retrieve public key for " + req.username);
                             PublicKeyHash identityHash = keyHashOpt.get();
                             return dht.getSigningKey(identityHash, identityHash);
-                        }).thenApply(keyOpt -> {
+                        }).thenCompose(keyOpt -> {
                             if (! keyOpt.isPresent())
                                 throw new IllegalStateException("Couldn't retrieve public key for " + req.username);
-                            try {
-                                PublicSigningKey pubKey = keyOpt.get();
-                                byte[] raw = pubKey.unsignMessage(req.signedRequest);
+                            PublicSigningKey pubKey = keyOpt.get();
+                            return pubKey.unsignMessage(req.signedRequest).thenApply(raw -> {
                                 QuotaControl.SpaceRequest parsed = QuotaControl.SpaceRequest.fromCbor(CborObject.fromByteArray(raw));
                                 return Optional.of(new DecodedSpaceRequest(req, parsed));
-                            } catch (Exception e) {
+                            }).exceptionally(e -> {
                                 e.printStackTrace();
                                 return Optional.<DecodedSpaceRequest>empty();
-                            }
+                            });
                         }))
-                .collect(Collectors.toList()))
+                        .collect(Collectors.toList()))
                 .thenApply(all -> all.stream()
                         .flatMap(Optional::stream)
                         .collect(Collectors.toList()));
