@@ -1,4 +1,5 @@
 package peergos.shared.user;
+import java.util.*;
 import java.util.logging.*;
 
 import peergos.shared.*;
@@ -51,7 +52,7 @@ public class MutableTreeImpl implements MutableTree {
         return (base.tree.isPresent() ?
                 ChampWrapper.create(owner, (Cid)base.tree.get(), hasher, dht, writeHasher, c -> (CborObject.CborMerkleLink)c) :
                 ChampWrapper.create(owner, writer, hasher, tid, dht, writeHasher, c -> (CborObject.CborMerkleLink)c)
-        ).thenCompose(tree -> tree.put(owner, writer, mapKey, existing.map(CborObject.CborMerkleLink::new), new CborObject.CborMerkleLink(value), tid))
+        ).thenCompose(tree -> tree.put(owner, writer, mapKey, existing.map(CborObject.CborMerkleLink::new), new CborObject.CborMerkleLink(value), Optional.empty(), tid))
                 .thenApply(newRoot -> LOGGING ? log(newRoot, "TREE.put (" + ArrayOps.bytesToHex(mapKey)
                         + ", " + value + ") => CAS(" + base.tree + ", " + newRoot + ")") : newRoot)
                 .thenApply(base::withChamp);
@@ -78,7 +79,7 @@ public class MutableTreeImpl implements MutableTree {
         if (! base.tree.isPresent())
             throw new IllegalStateException("Tree root not present!");
         return ChampWrapper.create(owner, (Cid)base.tree.get(), hasher, dht, writeHasher, c -> (CborObject.CborMerkleLink)c)
-                .thenCompose(tree -> tree.remove(owner, writer, mapKey, existing.map(CborObject.CborMerkleLink::new), tid))
+                .thenCompose(tree -> tree.remove(owner, writer, mapKey, existing.map(CborObject.CborMerkleLink::new), Optional.empty(), tid))
                 .thenApply(pair -> LOGGING ? log(pair, "TREE.rm ("
                         + ArrayOps.bytesToHex(mapKey) + "  => " + pair) : pair)
                 .thenApply(newTreeRoot -> base.withChamp(newTreeRoot));

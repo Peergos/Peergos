@@ -67,7 +67,7 @@ public class OwnedKeyChamp {
                                             TransactionId tid) {
         return ipfs.put(owner, writer, proof.serialize(), hasher, tid)
                 .thenCompose(valueHash ->
-                        champ.put(owner, writer, keyToBytes(proof.ownedKey), Optional.empty(), new CborObject.CborMerkleLink(valueHash), tid));
+                        champ.put(owner, writer, keyToBytes(proof.ownedKey), Optional.empty(), new CborObject.CborMerkleLink(valueHash), Optional.empty(), tid));
     }
 
     public CompletableFuture<Multihash> remove(PublicKeyHash owner,
@@ -76,7 +76,7 @@ public class OwnedKeyChamp {
                                                TransactionId tid) {
         byte[] keyBytes = keyToBytes(key);
         return champ.get(keyBytes)
-                .thenCompose(existing -> champ.remove(owner, writer, keyBytes, existing, tid));
+                .thenCompose(existing -> champ.remove(owner, writer, keyBytes, existing, Optional.empty(), tid));
     }
 
     public CompletableFuture<Boolean> contains(PublicKeyHash ownedKey) {

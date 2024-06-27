@@ -461,7 +461,7 @@ public class IpfsCoreNode implements CoreNode {
                     ipfs).get();
             synchronized (this) {
                 return IpfsTransaction.call(peergosIdentity,
-                        tid -> champ.put(signer.publicKeyHash, signer, username.getBytes(), existing, new CborObject.CborMerkleLink(mergedChainHash), tid)
+                        tid -> champ.put(signer.publicKeyHash, signer, username.getBytes(), existing, new CborObject.CborMerkleLink(mergedChainHash), Optional.empty(), tid)
                                 .thenCompose(newPkiRoot -> current.props.get().withChamp(newPkiRoot)
                                         .commit(peergosIdentity, signer, currentRoot, currentSequence, mutable, ipfs, hasher, tid)),
                         ipfs

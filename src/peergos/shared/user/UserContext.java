@@ -657,7 +657,7 @@ public class UserContext {
                 .thenApply(payload -> new SecretLinkTarget(payload, expiry, maxRetrievals))
                 .thenCompose(value -> writeSynchronizer.applyComplexUpdate(id, signer,
                         (v, c) -> IpfsTransaction.call(id,
-                                tid -> v.get(id).props.get().addLink(signer, label, value, tid, network.dhtClient, network.hasher)
+                                tid -> v.get(id).props.get().addLink(signer, label, value, mirrorBatId(), tid, network.dhtClient, network.hasher)
                                         .thenCompose(wd -> c.commit(id, signer, wd, v.get(id), tid))
                                         .thenCompose(s -> sharedWithCache.addSecretLink(isWritable ? SharedWithCache.Access.WRITE : SharedWithCache.Access.READ,
                                                 toFile, label, linkPassword, maxRetrievals, expiry, s, c, network)), network.dhtClient)))
@@ -669,7 +669,7 @@ public class UserContext {
         PublicKeyHash id = signer.publicKeyHash;
         return writeSynchronizer.applyComplexUpdate(id, signer,
                         (v, c) -> IpfsTransaction.call(id,
-                                tid -> v.get(id).props.get().removeLink(signer, label, tid, network.dhtClient, network.hasher)
+                                tid -> v.get(id).props.get().removeLink(signer, label, mirrorBatId(), tid, network.dhtClient, network.hasher)
                                         .thenCompose(wd -> c.commit(id, signer, wd, v.get(id), tid))
                                         .thenCompose(s -> sharedWithCache.removeSecretLink(isWritable ? SharedWithCache.Access.WRITE : SharedWithCache.Access.READ,
                                                 toFile, label, s, c, network)), network.dhtClient));

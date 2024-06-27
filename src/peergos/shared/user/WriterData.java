@@ -11,6 +11,7 @@ import peergos.shared.io.ipfs.Cid;
 import peergos.shared.io.ipfs.Multihash;
 import peergos.shared.mutable.*;
 import peergos.shared.storage.*;
+import peergos.shared.storage.auth.*;
 import peergos.shared.user.fs.*;
 import peergos.shared.util.*;
 
@@ -109,27 +110,29 @@ public class WriterData implements Cborable {
     public CompletableFuture<WriterData> addLink(SigningPrivateKeyAndPublicHash owner,
                                                  long label,
                                                  SecretLinkTarget value,
+                                                 Optional<BatId> mirrorBat,
                                                  TransactionId tid,
                                                  ContentAddressedStorage ipfs,
                                                  Hasher hasher) {
         return (secretLinks.isEmpty() ?
-                SecretLinkChamp.createEmpty(owner.publicKeyHash, owner, ipfs, hasher, tid)
+                SecretLinkChamp.createEmpty(owner.publicKeyHash, owner, mirrorBat, ipfs, hasher, tid)
                         .thenCompose(root -> SecretLinkChamp.build(owner.publicKeyHash, root, ipfs, hasher)) :
                 getSecretLinkChamp(owner.publicKeyHash, ipfs, hasher))
-                .thenCompose(champ -> champ.add(owner, label, value, hasher, tid))
+                .thenCompose(champ -> champ.add(owner, label, value, mirrorBat, hasher, tid))
                 .thenApply(newLinksRoot -> new WriterData(controller, generationAlgorithm, publicData, followRequestReceiver,
                         ownedKeys, namedOwnedKeys, staticData, tree, Optional.of(newLinksRoot)));
     }
 
     public CompletableFuture<WriterData> removeLink(SigningPrivateKeyAndPublicHash owner,
-                                                 long label,
+                                                    long label,
+                                                    Optional<BatId> mirrorBat,
                                                     TransactionId tid,
                                                     ContentAddressedStorage ipfs,
                                                     Hasher hasher) {
         if (secretLinks.isEmpty())
             return Futures.of(this);
         return getSecretLinkChamp(owner.publicKeyHash, ipfs, hasher)
-                .thenCompose(champ -> champ.remove(owner.publicKeyHash, owner, label, tid))
+                .thenCompose(champ -> champ.remove(owner.publicKeyHash, owner, label, mirrorBat, tid))
                 .thenApply(newLinksRoot -> new WriterData(controller, generationAlgorithm, publicData, followRequestReceiver,
                         ownedKeys, namedOwnedKeys, staticData, tree, Optional.of(newLinksRoot)));
     }

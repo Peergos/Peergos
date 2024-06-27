@@ -6,6 +6,7 @@ import peergos.shared.crypto.hash.*;
 import peergos.shared.hamt.*;
 import peergos.shared.io.ipfs.*;
 import peergos.shared.storage.*;
+import peergos.shared.storage.auth.*;
 import peergos.shared.user.fs.*;
 import peergos.shared.util.*;
 
@@ -29,10 +30,11 @@ public class SecretLinkChamp {
 
     public static CompletableFuture<Cid> createEmpty(PublicKeyHash owner,
                                                      SigningPrivateKeyAndPublicHash writer,
+                                                     Optional<BatId> mirrorBat,
                                                      ContentAddressedStorage ipfs,
                                                      Hasher hasher,
                                                      TransactionId tid) {
-        Champ<CborObject.CborMerkleLink> newRoot = Champ.empty(c -> (CborObject.CborMerkleLink)c);
+        Champ<CborObject.CborMerkleLink> newRoot = Champ.empty(c -> (CborObject.CborMerkleLink)c).withBat(mirrorBat);
         byte[] raw = newRoot.serialize();
         return hasher.sha256(raw)
                 .thenCompose(hash -> ipfs.put(owner, writer.publicKeyHash, writer.secret.signMessage(hash), raw, tid));
@@ -63,21 +65,23 @@ public class SecretLinkChamp {
     public CompletableFuture<Multihash> add(SigningPrivateKeyAndPublicHash owner,
                                             long label,
                                             SecretLinkTarget target,
+                                            Optional<BatId> mirrorBat,
                                             Hasher hasher,
                                             TransactionId tid) {
         return keyToBytes(label)
                 .thenCompose(key -> ipfs.put(owner.publicKeyHash, owner, target.serialize(), hasher, tid)
                         .thenCompose(valueHash ->
-                                champ.put(owner.publicKeyHash, owner, key, Optional.empty(), new CborObject.CborMerkleLink(valueHash), tid)));
+                                champ.put(owner.publicKeyHash, owner, key, Optional.empty(), new CborObject.CborMerkleLink(valueHash), mirrorBat, tid)));
     }
 
     public CompletableFuture<Multihash> remove(PublicKeyHash owner,
                                                SigningPrivateKeyAndPublicHash writer,
                                                long label,
+                                               Optional<BatId> mirrorBat,
                                                TransactionId tid) {
         return keyToBytes(label)
                 .thenCompose(key -> champ.get(key)
-                        .thenCompose(existing -> champ.remove(owner, writer, key, existing, tid)));
+                        .thenCompose(existing -> champ.remove(owner, writer, key, existing, mirrorBat, tid)));
     }
 
     public CompletableFuture<Boolean> contains(long label) {

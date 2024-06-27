@@ -5,6 +5,7 @@ import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.Multihash;
 import peergos.shared.storage.*;
+import peergos.shared.storage.auth.*;
 
 import java.io.*;
 import java.util.*;
@@ -35,6 +36,7 @@ public interface ImmutableTree<V extends Cborable> {
                                      byte[] rawKey,
                                      Optional<V> existing,
                                      V value,
+                                     Optional<BatId> mirrorBat,
                                      TransactionId tid);
 
     /**
@@ -47,5 +49,6 @@ public interface ImmutableTree<V extends Cborable> {
                                         SigningPrivateKeyAndPublicHash writer,
                                         byte[] rawKey,
                                         Optional<V> existing,
+                                        Optional<BatId> mirrorBat,
                                         TransactionId tid);
 }
