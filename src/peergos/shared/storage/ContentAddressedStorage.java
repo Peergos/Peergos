@@ -177,7 +177,7 @@ public interface ContentAddressedStorage {
                                                            Optional<Cid> committedRoot,
                                                            Hasher hasher) {
         CachingStorage cache = new CachingStorage(this, 100, 1024 * 1024);
-        return ChampWrapper.create(owner, (Cid)root, x -> Futures.of(x.data), cache, hasher, c -> (CborObject.CborMerkleLink) c)
+        return ChampWrapper.create(owner, (Cid)root, Optional.empty(), x -> Futures.of(x.data), cache, hasher, c -> (CborObject.CborMerkleLink) c)
                 .thenCompose(tree -> tree.get(champKey))
                 .thenApply(c -> c.map(x -> x.target).map(MaybeMultihash::of).orElse(MaybeMultihash.empty()))
                 .thenApply(btreeValue -> {
@@ -419,8 +419,7 @@ public interface ContentAddressedStorage {
                     + "?label=" + link.labelString()
                     + "&owner=" + encode(link.owner.toString())
             ).thenApply(CborObject::fromByteArray)
-                    .thenApply(CipherText::fromCbor)
-                    .thenApply(EncryptedCapability::new);
+                    .thenApply(EncryptedCapability::fromCbor);
         }
 
         @Override

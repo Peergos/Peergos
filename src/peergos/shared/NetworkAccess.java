@@ -558,7 +558,7 @@ public class NetworkAccess {
                 .thenCompose(bat -> Futures.asyncExceptionally(
                         () -> dhtClient.getChampLookup(cap.owner, (Cid) base.tree.get(), cap.getMapKey(), bat,committedRoot),
                         t -> dhtClient.getChampLookup(cap.owner, (Cid) base.tree.get(), cap.getMapKey(), bat, committedRoot, hasher)
-                ).thenCompose(blocks -> ChampWrapper.create(cap.owner, (Cid)base.tree.get(), x -> Futures.of(x.data), dhtClient, hasher, c -> (CborObject.CborMerkleLink) c)
+                ).thenCompose(blocks -> ChampWrapper.create(cap.owner, (Cid)base.tree.get(), Optional.empty(), x -> Futures.of(x.data), dhtClient, hasher, c -> (CborObject.CborMerkleLink) c)
                         .thenCompose(tree -> tree.get(cap.getMapKey()))
                         .thenApply(c -> c.map(x -> x.target))
                         .thenCompose(btreeValue -> {

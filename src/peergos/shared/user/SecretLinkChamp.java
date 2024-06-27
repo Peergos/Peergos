@@ -40,8 +40,8 @@ public class SecretLinkChamp {
                 .thenCompose(hash -> ipfs.put(owner, writer.publicKeyHash, writer.secret.signMessage(hash), raw, tid));
     }
 
-    public static CompletableFuture<SecretLinkChamp> build(PublicKeyHash owner, Cid root, ContentAddressedStorage ipfs, Hasher hasher) {
-        return ChampWrapper.create(owner, root, b -> Futures.of(b.data), ipfs, hasher, c -> (CborObject.CborMerkleLink)c)
+    public static CompletableFuture<SecretLinkChamp> build(PublicKeyHash owner, Cid root, Optional<BatWithId> mirrorBat, ContentAddressedStorage ipfs, Hasher hasher) {
+        return ChampWrapper.create(owner, root, mirrorBat, b -> Futures.of(b.data), ipfs, hasher, c -> (CborObject.CborMerkleLink)c)
                 .thenApply(c -> new SecretLinkChamp(root, c, ipfs, hasher));
     }
 

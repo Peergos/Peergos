@@ -9,14 +9,15 @@ import java.util.*;
 
 class LinkProperties implements Cborable {
     public final long label;
-    public final String password;
+    public final String linkPassword, userPassword;
     public final Optional<Integer> maxCount;
     public final Optional<LocalDateTime> expiry;
 
 
-    public LinkProperties(long label, String password, Optional<Integer> maxCount, Optional<LocalDateTime> expiry) {
+    public LinkProperties(long label, String linkPassword, String userPassword, Optional<Integer> maxCount, Optional<LocalDateTime> expiry) {
         this.label = label;
-        this.password = password;
+        this.linkPassword = linkPassword;
+        this.userPassword = userPassword;
         this.maxCount = maxCount;
         this.expiry = expiry;
     }
@@ -30,7 +31,8 @@ class LinkProperties implements Cborable {
     public CborObject toCbor() {
         SortedMap<String, Cborable> state = new TreeMap<>();
         state.put("l", new CborObject.CborLong(label));
-        state.put("p", new CborObject.CborString(password));
+        state.put("p", new CborObject.CborString(linkPassword));
+        state.put("u", new CborObject.CborString(userPassword));
         maxCount.ifPresent(m -> state.put("m", new CborObject.CborLong(m)));
         expiry.ifPresent(e -> state.put("e", new CborObject.CborLong(e.toEpochSecond(ZoneOffset.UTC))));
         return CborObject.CborMap.build(state);
@@ -42,8 +44,9 @@ class LinkProperties implements Cborable {
         CborObject.CborMap m = (CborObject.CborMap) cbor;
         long label = m.getLong("l");
         String password = m.getString("p");
+        String userPassword = m.getString("u");
         Optional<Integer> maxCount = m.getOptionalLong("m").map(Long::intValue);
         Optional<LocalDateTime> expiry = m.getOptionalLong("e").map(s -> LocalDateTime.ofEpochSecond(s, 0, ZoneOffset.UTC));
-        return new LinkProperties(label, password, maxCount, expiry);
+        return new LinkProperties(label, password, userPassword, maxCount, expiry);
     }
 }

@@ -110,29 +110,29 @@ public class WriterData implements Cborable {
     public CompletableFuture<WriterData> addLink(SigningPrivateKeyAndPublicHash owner,
                                                  long label,
                                                  SecretLinkTarget value,
-                                                 Optional<BatId> mirrorBat,
+                                                 Optional<BatWithId> mirrorBat,
                                                  TransactionId tid,
                                                  ContentAddressedStorage ipfs,
                                                  Hasher hasher) {
         return (secretLinks.isEmpty() ?
-                SecretLinkChamp.createEmpty(owner.publicKeyHash, owner, mirrorBat, ipfs, hasher, tid)
-                        .thenCompose(root -> SecretLinkChamp.build(owner.publicKeyHash, root, ipfs, hasher)) :
-                getSecretLinkChamp(owner.publicKeyHash, ipfs, hasher))
-                .thenCompose(champ -> champ.add(owner, label, value, mirrorBat, hasher, tid))
+                SecretLinkChamp.createEmpty(owner.publicKeyHash, owner, mirrorBat.map(BatWithId::id), ipfs, hasher, tid)
+                        .thenCompose(root -> SecretLinkChamp.build(owner.publicKeyHash, root, mirrorBat, ipfs, hasher)) :
+                getSecretLinkChamp(owner.publicKeyHash, mirrorBat, ipfs, hasher))
+                .thenCompose(champ -> champ.add(owner, label, value, mirrorBat.map(BatWithId::id), hasher, tid))
                 .thenApply(newLinksRoot -> new WriterData(controller, generationAlgorithm, publicData, followRequestReceiver,
                         ownedKeys, namedOwnedKeys, staticData, tree, Optional.of(newLinksRoot)));
     }
 
     public CompletableFuture<WriterData> removeLink(SigningPrivateKeyAndPublicHash owner,
                                                     long label,
-                                                    Optional<BatId> mirrorBat,
+                                                    Optional<BatWithId> mirrorBat,
                                                     TransactionId tid,
                                                     ContentAddressedStorage ipfs,
                                                     Hasher hasher) {
         if (secretLinks.isEmpty())
             return Futures.of(this);
-        return getSecretLinkChamp(owner.publicKeyHash, ipfs, hasher)
-                .thenCompose(champ -> champ.remove(owner.publicKeyHash, owner, label, mirrorBat, tid))
+        return getSecretLinkChamp(owner.publicKeyHash, mirrorBat, ipfs, hasher)
+                .thenCompose(champ -> champ.remove(owner.publicKeyHash, owner, label, mirrorBat.map(BatWithId::id), tid))
                 .thenApply(newLinksRoot -> new WriterData(controller, generationAlgorithm, publicData, followRequestReceiver,
                         ownedKeys, namedOwnedKeys, staticData, tree, Optional.of(newLinksRoot)));
     }
@@ -194,8 +194,8 @@ public class WriterData implements Cborable {
                 .orElseThrow(() -> new IllegalStateException("Owned key champ absent!"));
     }
 
-    public CompletableFuture<SecretLinkChamp> getSecretLinkChamp(PublicKeyHash owner, ContentAddressedStorage ipfs, Hasher hasher) {
-        return secretLinks.map(root -> SecretLinkChamp.build(owner, (Cid)root, ipfs, hasher))
+    public CompletableFuture<SecretLinkChamp> getSecretLinkChamp(PublicKeyHash owner, Optional<BatWithId> mirrorBat, ContentAddressedStorage ipfs, Hasher hasher) {
+        return secretLinks.map(root -> SecretLinkChamp.build(owner, (Cid)root, mirrorBat, ipfs, hasher))
                 .orElseThrow(() -> new IllegalStateException("Owned key champ absent!"));
     }
 

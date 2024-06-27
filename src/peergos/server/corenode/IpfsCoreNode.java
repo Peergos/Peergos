@@ -426,7 +426,7 @@ public class IpfsCoreNode implements CoreNode {
             MaybeMultihash currentTree = current.props.get().tree.map(MaybeMultihash::of).orElseGet(MaybeMultihash::empty);
 
             ChampWrapper<CborObject.CborMerkleLink> champ = currentTree.isPresent() ?
-                    ChampWrapper.create(peergosIdentity, (Cid)currentTree.get(), IpfsCoreNode::keyHash, ipfs, hasher, c -> (CborObject.CborMerkleLink)c).get() :
+                    ChampWrapper.create(peergosIdentity, (Cid)currentTree.get(), Optional.empty(), IpfsCoreNode::keyHash, ipfs, hasher, c -> (CborObject.CborMerkleLink)c).get() :
                     IpfsTransaction.call(peergosIdentity,
                             tid -> ChampWrapper.create(signer.publicKeyHash, signer, IpfsCoreNode::keyHash, tid, ipfs, hasher, c -> (CborObject.CborMerkleLink)c),
                             ipfs).get();

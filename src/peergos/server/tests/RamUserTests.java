@@ -564,11 +564,11 @@ public class RamUserTests extends UserTests {
         Optional<LocalDateTime> expiry = Optional.of(LocalDateTime.now().plusDays(1));
         Optional<Integer> maxRetrievals = Optional.of(1);
 
-        String linkPassword = "youre-terrible-muriel";
-        SecretLink link = user.createSecretLink(filePath, writable, expiry, maxRetrievals, linkPassword).join();
+        String userPassword = "youre-terrible-muriel";
+        SecretLink link = user.createSecretLink(filePath, writable, expiry, maxRetrievals, userPassword).join();
 
         EncryptedCapability retrieved = network.getSecretLink(link).join();
-        AbsoluteCapability cap = retrieved.decryptFromPassword(link.labelString(), linkPassword, crypto).join();
+        AbsoluteCapability cap = retrieved.decryptFromPassword(link.labelString(), link.linkPassword + userPassword, crypto).join();
         FileWrapper resolvedFile = network.getFile(cap, username).join().get();
         Assert.assertTrue(resolvedFile.isWritable() == writable);
 

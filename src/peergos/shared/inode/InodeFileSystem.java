@@ -270,7 +270,7 @@ public class InodeFileSystem implements Cborable {
         Function<ByteArrayWrapper, CompletableFuture<byte[]>> keyHasher = b -> hasher.sha256(b.data);
         Function<Cborable, DirectoryInode> fromCbor =
                 c -> DirectoryInode.fromCbor(c, hasher, ChampWrapper.BIT_WIDTH, owner, keyHasher, storage);
-        return ChampWrapper.create(owner, (Cid)root, keyHasher, storage, hasher, fromCbor)
+        return ChampWrapper.create(owner, (Cid)root, Optional.empty(), keyHasher, storage, hasher, fromCbor)
                 .thenApply(cw -> new InodeFileSystem(inodeCount, cw, storage));
     }
 

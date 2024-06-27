@@ -145,10 +145,10 @@ public class StorageHandler implements HttpHandler {
                     Histogram.Timer timer = AggregatedMetrics.STORAGE_LINK_GET_DURATION.labels("duration").startTimer();
                     PublicKeyHash ownerHash = PublicKeyHash.fromString(last.apply("owner"));
                     long label = Long.parseLong(last.apply("label"));
-                    SecretLink lookup = new SecretLink(ownerHash, label);
+                    SecretLink lookup = new SecretLink(ownerHash, label, "");
                     try {
                         dht.getSecretLink(lookup).thenAccept(link -> {
-                            replyBytes(httpExchange, link.payload.serialize(), Optional.empty());
+                            replyBytes(httpExchange, link.serialize(), Optional.empty());
                         }).exceptionally(Futures::logAndThrow).get();
                     } finally {
                         timer.observeDuration();

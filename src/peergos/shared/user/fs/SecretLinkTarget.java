@@ -27,7 +27,7 @@ public class SecretLinkTarget implements Cborable {
     @Override
     public CborObject toCbor() {
         SortedMap<String, Cborable> state = new TreeMap<>();
-        state.put("cap", cap.payload.toCbor());
+        state.put("cap", cap.toCbor());
         expiry.ifPresent(e -> state.put("expiry", new CborObject.CborLong(e.toEpochSecond(ZoneOffset.UTC))));
         maxRetrievals.ifPresent(m -> state.put("max", new CborObject.CborLong(m)));
         return CborObject.CborMap.build(state);
@@ -37,7 +37,7 @@ public class SecretLinkTarget implements Cborable {
         if (! (cbor instanceof CborObject.CborMap))
             throw new IllegalStateException("Invalid cbor for SecretLinkTarget! " + cbor);
         CborObject.CborMap m = (CborObject.CborMap) cbor;
-        return new SecretLinkTarget(new EncryptedCapability(m.get("cap", CipherText::fromCbor)),
+        return new SecretLinkTarget(m.get("cap", EncryptedCapability::fromCbor),
                 m.getOptionalLong("expiry").map(l -> LocalDateTime.ofEpochSecond(l, 0, ZoneOffset.UTC)),
                 m.getOptionalLong("max").map(Long::intValue));
     }

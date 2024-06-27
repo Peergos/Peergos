@@ -645,22 +645,24 @@ public class UserContext {
                                                           boolean isWritable,
                                                           Optional<LocalDateTime> expiry,
                                                           Optional<Integer> maxRetrievals,
-                                                          String linkPassword) {
+                                                          String userPassword) {
         // put encrypted secret link in champ on identity, champ root must have mirror bat to make it private
         PublicKeyHash id = signer.publicKeyHash;
         FileWrapper file = getByPath(toFile).join().get();
         AbsoluteCapability cap = isWritable ? file.getPointer().capability : file.getPointer().capability.readOnly();
-        byte[] labelBytes = crypto.random.randomBytes(2);
-        long label = ((labelBytes[0] & 0xFF) << 8) | (labelBytes[1] & 0xFF);
-        SecretLink res = new SecretLink(id, label);
-        return EncryptedCapability.createFromPassword(cap, res.labelString(), linkPassword, crypto)
+        byte[] labelBytes = crypto.random.randomBytes(3);
+        long label = (labelBytes[0] & 0xFF) | ((labelBytes[1] & 0xFF) << 8) | ((labelBytes[2] & 0xFF) << 16);
+        String linkPassword = EncryptedCapability.createLinkPassword(crypto.random);
+        SecretLink res = new SecretLink(id, label, linkPassword);
+        String fullPassword = linkPassword + userPassword;
+        return EncryptedCapability.createFromPassword(cap, res.labelString(), fullPassword, ! userPassword.isEmpty(), crypto)
                 .thenApply(payload -> new SecretLinkTarget(payload, expiry, maxRetrievals))
                 .thenCompose(value -> writeSynchronizer.applyComplexUpdate(id, signer,
                         (v, c) -> IpfsTransaction.call(id,
-                                tid -> v.get(id).props.get().addLink(signer, label, value, mirrorBatId(), tid, network.dhtClient, network.hasher)
+                                tid -> v.get(id).props.get().addLink(signer, label, value, mirrorBat, tid, network.dhtClient, network.hasher)
                                         .thenCompose(wd -> c.commit(id, signer, wd, v.get(id), tid))
                                         .thenCompose(s -> sharedWithCache.addSecretLink(isWritable ? SharedWithCache.Access.WRITE : SharedWithCache.Access.READ,
-                                                toFile, label, linkPassword, maxRetrievals, expiry, s, c, network)), network.dhtClient)))
+                                                toFile, label, linkPassword, userPassword, maxRetrievals, expiry, s, c, network)), network.dhtClient)))
                 .thenApply(s -> res);
     }
 
@@ -669,7 +671,7 @@ public class UserContext {
         PublicKeyHash id = signer.publicKeyHash;
         return writeSynchronizer.applyComplexUpdate(id, signer,
                         (v, c) -> IpfsTransaction.call(id,
-                                tid -> v.get(id).props.get().removeLink(signer, label, mirrorBatId(), tid, network.dhtClient, network.hasher)
+                                tid -> v.get(id).props.get().removeLink(signer, label, mirrorBat, tid, network.dhtClient, network.hasher)
                                         .thenCompose(wd -> c.commit(id, signer, wd, v.get(id), tid))
                                         .thenCompose(s -> sharedWithCache.removeSecretLink(isWritable ? SharedWithCache.Access.WRITE : SharedWithCache.Access.READ,
                                                 toFile, label, s, c, network)), network.dhtClient));

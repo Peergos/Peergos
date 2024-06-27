@@ -44,14 +44,16 @@ public class SecretLinkStorage extends DelegatingDeletableStorage {
         WriterData wd = WriterData.getWriterData(owner, owner, pointers, target).join().props.get();
         if (wd.secretLinks.isEmpty())
             throw new IllegalStateException("No secret link published!");
-        SecretLinkChamp champ = SecretLinkChamp.build(owner, (Cid) wd.secretLinks.get(), this, hasher).join();
+        String username = pki.getUsername(owner).join();
+        Optional<BatWithId> mirrorBat = batstore.getUserBats(username, new byte[0]).join().stream().findFirst();
+        SecretLinkChamp champ = SecretLinkChamp.build(owner, (Cid) wd.secretLinks.get(), mirrorBat, this, hasher).join();
         Optional<SecretLinkTarget> res = champ.get(owner, link.label).join();
         if (res.isEmpty())
             throw new IllegalStateException("No secret link present!");
         SecretLinkTarget target = res.get();
         if (target.expiry.isPresent() && target.expiry.get().isBefore(LocalDateTime.now()))
             throw new IllegalStateException("Secret link expired!");
-        String username = pki.getUsername(owner).join();
+
         if (target.maxRetrievals.isPresent() && counter.getCount(username, link.label) >= target.maxRetrievals.get())
             throw new IllegalStateException("Maximum link retrievals exceed!");
         counter.increment(username, link.label);

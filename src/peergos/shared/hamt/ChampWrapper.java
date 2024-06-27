@@ -48,11 +48,12 @@ public class ChampWrapper<V extends Cborable> implements ImmutableTree<V>
 
     public static <V extends Cborable> CompletableFuture<ChampWrapper<V>> create(PublicKeyHash owner,
                                                                                  Cid rootHash,
+                                                                                 Optional<BatWithId> bat,
                                                                                  Function<ByteArrayWrapper, CompletableFuture<byte[]>> hasher,
                                                                                  ContentAddressedStorage dht,
                                                                                  Hasher writeHasher,
                                                                                  Function<Cborable, V> fromCbor) {
-        return dht.get(owner, rootHash, Optional.empty()).thenApply(rawOpt -> {
+        return dht.get(owner, rootHash, bat).thenApply(rawOpt -> {
             if (! rawOpt.isPresent())
                 throw new IllegalStateException("Champ root not present: " + rootHash);
             return new ChampWrapper<>(Champ.fromCbor(rawOpt.get(), fromCbor), rootHash, owner, hasher, dht, writeHasher, BIT_WIDTH);

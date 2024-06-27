@@ -115,8 +115,7 @@ public interface ContentAddressedStorageProxy {
                     + "link/get?label=" + link.labelString()
                     + "&owner=" + encode(link.owner.toString()))
                     .thenApply(CborObject::fromByteArray)
-                    .thenApply(CipherText::fromCbor)
-                    .thenApply(EncryptedCapability::new);
+                    .thenApply(EncryptedCapability::fromCbor);
         }
 
         @Override
