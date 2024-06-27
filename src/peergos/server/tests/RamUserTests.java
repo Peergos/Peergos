@@ -562,7 +562,7 @@ public class RamUserTests extends UserTests {
 
         boolean writable = false;
         Optional<LocalDateTime> expiry = Optional.of(LocalDateTime.now().plusDays(1));
-        Optional<Integer> maxRetrievals = Optional.of(1);
+        Optional<Integer> maxRetrievals = Optional.of(2);
 
         String userPassword = "youre-terrible-muriel";
         SecretLink link = user.createSecretLink(filePath, writable, expiry, maxRetrievals, userPassword).join();
@@ -574,6 +574,12 @@ public class RamUserTests extends UserTests {
 
         SharedWithState sharingState = user.getDirectorySharingState(Paths.get(username)).join();
         Assert.assertTrue(sharingState.hasLink(filename));
+
+        UserContext.fromSecretLinkV2(link.toLink(), userPassword, network, crypto).join();
+        try {
+            UserContext.fromSecretLinkV2(link.toLink(), userPassword, network, crypto).join();
+            throw new RuntimeException("Shouldn't get here");
+        } catch (IllegalStateException expected) {}
 
         user.deleteSecretLink(link.label, filePath, writable).join();
 
