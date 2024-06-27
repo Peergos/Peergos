@@ -575,9 +575,9 @@ public class RamUserTests extends UserTests {
         SharedWithState sharingState = user.getDirectorySharingState(Paths.get(username)).join();
         Assert.assertTrue(sharingState.hasLink(filename));
 
-        UserContext.fromSecretLinkV2(link.toLink(), userPassword, network, crypto).join();
+        UserContext.fromSecretLinkV2(link.toLink(), () -> Futures.of(userPassword), network, crypto).join();
         try {
-            UserContext.fromSecretLinkV2(link.toLink(), userPassword, network, crypto).join();
+            UserContext.fromSecretLinkV2(link.toLink(), () -> Futures.of(userPassword), network, crypto).join();
             throw new RuntimeException("Shouldn't get here");
         } catch (IllegalStateException expected) {}
 

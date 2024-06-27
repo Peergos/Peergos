@@ -586,10 +586,14 @@ public class UserContext {
     }
 
     @JsMethod
-    public static CompletableFuture<UserContext> fromSecretLinkV2(String linkString, String userPassword, NetworkAccess network, Crypto crypto) {
+    public static CompletableFuture<UserContext> fromSecretLinkV2(String linkString,
+                                                                  Supplier<CompletableFuture<String>> userPassword,
+                                                                  NetworkAccess network,
+                                                                  Crypto crypto) {
         SecretLink link = SecretLink.fromLink(linkString);
         return network.getSecretLink(link)
-                .thenCompose(retrieved -> retrieved.decryptFromPassword(link.labelString(), link.linkPassword + userPassword, crypto))
+                .thenCompose(retrieved -> (retrieved.hasUserPassword ? userPassword.get() : Futures.of(""))
+                        .thenCompose(upass -> retrieved.decryptFromPassword(link.labelString(), link.linkPassword + upass, crypto)))
                 .thenCompose(cap -> fromSecretLink(cap, network, crypto));
     }
 
