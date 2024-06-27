@@ -47,8 +47,8 @@ public class SecretLinkChamp {
 
     private CompletableFuture<byte[]> keyToBytes(long key) {
         byte[] copy = new byte[8];
-        for(int i=0; i < 8; i++) {
-            copy[0] = (byte) (key >> (8 * i));
+        for (int i=0; i < 8; i++) {
+            copy[i] = (byte) (key >> (8 * i));
         }
         return hasher.sha256(copy);
     }
@@ -68,6 +68,7 @@ public class SecretLinkChamp {
                                             Optional<BatId> mirrorBat,
                                             Hasher hasher,
                                             TransactionId tid) {
+        System.out.println("adding label " + label);
         return keyToBytes(label)
                 .thenCompose(key -> ipfs.put(owner.publicKeyHash, owner, target.serialize(), hasher, tid)
                         .thenCompose(valueHash ->
