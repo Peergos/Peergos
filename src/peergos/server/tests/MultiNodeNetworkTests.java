@@ -431,9 +431,6 @@ public class MultiNodeNetworkTests {
         rotateServerIdentity(iNode1);
         startServer(iNode1);
 
-        stopServer(iNode2);
-        startServer(iNode2);
-
         // login through other server
         ensureSignedUp(username, password, getNode(iNode2), crypto);
 
