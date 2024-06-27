@@ -28,12 +28,14 @@ public class SecretLink {
 
     @JsMethod
     public static SecretLink fromLink(String link) {
+        // e.g secret/z59vuwzfFDorjWRiEtcEu6BQWWsLYCAJpmkAcVkuV8P5b4ykYwm1NE6/8057131#moCvfdkPxWLb
         if (link.startsWith("/"))
             link = link.substring(1);
-        String fragment = link.substring(link.indexOf("#") + 1);
+        int hashIndex = link.indexOf("#");
+        String fragment = link.substring(hashIndex + 1);
         if (fragment.contains("?"))
             fragment = fragment.substring(0, fragment.indexOf("?"));
-        String[] parts = link.split("/");
+        String[] parts = link.substring(0, hashIndex).split("/");
         if (parts.length != 3)
             throw new IllegalStateException("Invalid secret link");
         PublicKeyHash owner = PublicKeyHash.fromString(parts[1]);
