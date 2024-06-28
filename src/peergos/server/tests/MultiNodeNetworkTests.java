@@ -430,6 +430,7 @@ public class MultiNodeNetworkTests {
         stopServer(iNode1);
         rotateServerIdentity(iNode1);
         startServer(iNode1);
+        Thread.sleep(60_000); // wait one DNS cycle
 
         // login through other server
         ensureSignedUp(username, password, getNode(iNode2), crypto);
