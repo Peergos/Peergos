@@ -338,10 +338,9 @@ public class SharedWithCache {
                                 .clear(initialFilename), in, committer, network));
     }
 
-    public CompletableFuture<Snapshot> addSecretLink(Access access, Path p, long label, String linkPassword, String userPassword,
-                                                     Optional<Integer> maxCount, Optional<LocalDateTime> expiry,
+    public CompletableFuture<Snapshot> addSecretLink(Access access, Path p, LinkProperties link,
                                                      Snapshot in, Committer committer, NetworkAccess network) {
-        return applyAndCommit(p, current -> current.addLink(access, getFilename(p), label, linkPassword, userPassword, maxCount, expiry), in, committer, network);
+        return applyAndCommit(p, current -> current.addLink(access, getFilename(p), link), in, committer, network);
     }
 
     public CompletableFuture<Snapshot> removeSecretLink(Access access, Path p, long label, Snapshot in, Committer committer, NetworkAccess network) {

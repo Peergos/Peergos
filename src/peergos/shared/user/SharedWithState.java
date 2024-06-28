@@ -83,7 +83,7 @@ public class SharedWithState implements Cborable {
         return Optional.of(new SharedWithState(newReads, newWrites, newReadLinks, newWriteLinks));
     }
 
-    public SharedWithState addLink(SharedWithCache.Access access, String filename, long label, String linkPassword, String userPassword, Optional<Integer> maxCount, Optional<LocalDateTime> expiry) {
+    public SharedWithState addLink(SharedWithCache.Access access, String filename, LinkProperties link) {
         Map<String, Set<LinkProperties>> newReadLinks = new HashMap<>();
         readLinks.forEach((k, v) -> {
             newReadLinks.put(k, new HashSet<>(v));
@@ -96,10 +96,10 @@ public class SharedWithState implements Cborable {
 
         if (access == SharedWithCache.Access.READ) {
             newReadLinks.putIfAbsent(filename, new HashSet<>());
-            newReadLinks.get(filename).add(new LinkProperties(label, linkPassword, userPassword, maxCount, expiry));
+            newReadLinks.get(filename).add(link);
         } else if (access == SharedWithCache.Access.WRITE) {
             newWriteLinks.putIfAbsent(filename, new HashSet<>());
-            newWriteLinks.get(filename).add(new LinkProperties(label, linkPassword, userPassword, maxCount, expiry));
+            newWriteLinks.get(filename).add(link);
         }
         return new SharedWithState(readShares, writeShares, newReadLinks, newWriteLinks);
     }

@@ -2,24 +2,31 @@ package peergos.shared.user;
 
 import jsinterop.annotations.JsMethod;
 import peergos.shared.cbor.*;
+import peergos.shared.io.ipfs.*;
 
 import java.time.*;
 import java.util.*;
 
 
-class LinkProperties implements Cborable {
+public class LinkProperties implements Cborable {
     public final long label;
     public final String linkPassword, userPassword;
-    public final Optional<Integer> maxCount;
+    public final Optional<Integer> maxRetrievals;
     public final Optional<LocalDateTime> expiry;
+    public final Optional<Multihash> existing;
 
 
-    public LinkProperties(long label, String linkPassword, String userPassword, Optional<Integer> maxCount, Optional<LocalDateTime> expiry) {
+    public LinkProperties(long label, String linkPassword, String userPassword, Optional<Integer> maxRetrievals, Optional<LocalDateTime> expiry, Optional<Multihash> existing) {
         this.label = label;
         this.linkPassword = linkPassword;
         this.userPassword = userPassword;
-        this.maxCount = maxCount;
+        this.maxRetrievals = maxRetrievals;
         this.expiry = expiry;
+        this.existing = existing;
+    }
+
+    public LinkProperties withExisting(Optional<Multihash> existing) {
+        return new LinkProperties(label, linkPassword, userPassword, maxRetrievals, expiry, existing);
     }
 
     @JsMethod
@@ -33,7 +40,8 @@ class LinkProperties implements Cborable {
         state.put("l", new CborObject.CborLong(label));
         state.put("p", new CborObject.CborString(linkPassword));
         state.put("u", new CborObject.CborString(userPassword));
-        maxCount.ifPresent(m -> state.put("m", new CborObject.CborLong(m)));
+        existing.ifPresent(e -> state.put("h", new CborObject.CborMerkleLink(e)));
+        maxRetrievals.ifPresent(m -> state.put("m", new CborObject.CborLong(m)));
         expiry.ifPresent(e -> state.put("e", new CborObject.CborLong(e.toEpochSecond(ZoneOffset.UTC))));
         return CborObject.CborMap.build(state);
     }
@@ -47,6 +55,6 @@ class LinkProperties implements Cborable {
         String userPassword = m.getString("u");
         Optional<Integer> maxCount = m.getOptionalLong("m").map(Long::intValue);
         Optional<LocalDateTime> expiry = m.getOptionalLong("e").map(s -> LocalDateTime.ofEpochSecond(s, 0, ZoneOffset.UTC));
-        return new LinkProperties(label, password, userPassword, maxCount, expiry);
+        return new LinkProperties(label, password, userPassword, maxCount, expiry, m.getOptional("h", c -> ((CborObject.CborMerkleLink)c).target));
     }
 }

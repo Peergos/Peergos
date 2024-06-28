@@ -107,20 +107,21 @@ public class WriterData implements Cborable {
                                 Optional.of(newRoot), namedOwnedKeys, staticData, tree, secretLinks)), ipfs);
     }
 
-    public CompletableFuture<WriterData> addLink(SigningPrivateKeyAndPublicHash owner,
-                                                 long label,
-                                                 SecretLinkTarget value,
-                                                 Optional<BatWithId> mirrorBat,
-                                                 TransactionId tid,
-                                                 ContentAddressedStorage ipfs,
-                                                 Hasher hasher) {
+    public CompletableFuture<Pair<WriterData, Cid>> addLink(SigningPrivateKeyAndPublicHash owner,
+                                                            long label,
+                                                            SecretLinkTarget value,
+                                                            Optional<CborObject.CborMerkleLink> existing,
+                                                            Optional<BatWithId> mirrorBat,
+                                                            TransactionId tid,
+                                                            ContentAddressedStorage ipfs,
+                                                            Hasher hasher) {
         return (secretLinks.isEmpty() ?
                 SecretLinkChamp.createEmpty(owner.publicKeyHash, owner, mirrorBat.map(BatWithId::id), ipfs, hasher, tid)
                         .thenCompose(root -> SecretLinkChamp.build(owner.publicKeyHash, root, mirrorBat, ipfs, hasher)) :
                 getSecretLinkChamp(owner.publicKeyHash, mirrorBat, ipfs, hasher))
-                .thenCompose(champ -> champ.add(owner, label, value, mirrorBat.map(BatWithId::id), hasher, tid))
-                .thenApply(newLinksRoot -> new WriterData(controller, generationAlgorithm, publicData, followRequestReceiver,
-                        ownedKeys, namedOwnedKeys, staticData, tree, Optional.of(newLinksRoot)));
+                .thenCompose(champ -> champ.add(owner, label, value, existing, mirrorBat.map(BatWithId::id), hasher, tid))
+                .thenApply(newLinksRoot -> new Pair<>(new WriterData(controller, generationAlgorithm, publicData, followRequestReceiver,
+                        ownedKeys, namedOwnedKeys, staticData, tree, Optional.of(newLinksRoot.left)), newLinksRoot.right));
     }
 
     public CompletableFuture<WriterData> removeLink(SigningPrivateKeyAndPublicHash owner,

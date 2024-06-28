@@ -62,17 +62,17 @@ public class SecretLinkChamp {
                         CompletableFuture.completedFuture(Optional.empty()));
     }
 
-    public CompletableFuture<Multihash> add(SigningPrivateKeyAndPublicHash owner,
+    public CompletableFuture<Pair<Multihash, Cid>> add(SigningPrivateKeyAndPublicHash owner,
                                             long label,
                                             SecretLinkTarget target,
+                                            Optional<CborObject.CborMerkleLink> existing,
                                             Optional<BatId> mirrorBat,
                                             Hasher hasher,
                                             TransactionId tid) {
-        System.out.println("adding label " + label);
         return keyToBytes(label)
                 .thenCompose(key -> ipfs.put(owner.publicKeyHash, owner, target.serialize(), hasher, tid)
                         .thenCompose(valueHash ->
-                                champ.put(owner.publicKeyHash, owner, key, Optional.empty(), new CborObject.CborMerkleLink(valueHash), mirrorBat, tid)));
+                                champ.put(owner.publicKeyHash, owner, key, existing, new CborObject.CborMerkleLink(valueHash), mirrorBat, tid).thenApply(root -> new Pair<>(root, valueHash))));
     }
 
     public CompletableFuture<Multihash> remove(PublicKeyHash owner,
