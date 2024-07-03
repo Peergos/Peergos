@@ -673,18 +673,21 @@ public class UserContext {
                                                          Committer c) {
         // put encrypted secret link in champ on identity, champ root must have mirror bat to make it private
         PublicKeyHash id = signer.publicKeyHash;
-        FileWrapper file = getByPath(toFile.toString(), v1).join().get();
-        AbsoluteCapability cap = isWritable ? file.getPointer().capability : file.getPointer().capability.readOnly();
-        SecretLink res = new SecretLink(id, props.label, props.linkPassword);
-        String fullPassword = props.linkPassword + props.userPassword;
-        return EncryptedCapability.createFromPassword(cap, res.labelString(), fullPassword, ! props.userPassword.isEmpty(), crypto)
-                .thenApply(payload -> new SecretLinkTarget(payload, props.expiry, props.maxRetrievals))
-                .thenCompose(value -> IpfsTransaction.call(id,
-                        tid -> v1.withWriter(id, id, network).thenCompose(v2 -> v2.get(id).props.get().addLink(signer, props.label, value,
-                                        props.existing.map(CborObject.CborMerkleLink::new), mirrorBat, tid, network.dhtClient, network.hasher)
-                                .thenCompose(p -> c.commit(id, signer, p.left, v2.get(id), tid)
-                                        .thenCompose(s -> sharedWithCache.addSecretLink(isWritable ? SharedWithCache.Access.WRITE : SharedWithCache.Access.READ,
-                                                toFile, props.withExisting(Optional.of(p.right)), v2.mergeAndOverwriteWith(s), c, network)))), network.dhtClient));
+        return getByPath(toFile.toString(), v1)
+                .thenApply(fopt -> fopt.get())
+                .thenCompose(file -> {
+                    AbsoluteCapability cap = isWritable ? file.getPointer().capability : file.getPointer().capability.readOnly();
+                    SecretLink res = new SecretLink(id, props.label, props.linkPassword);
+                    String fullPassword = props.linkPassword + props.userPassword;
+                    return EncryptedCapability.createFromPassword(cap, res.labelString(), fullPassword, !props.userPassword.isEmpty(), crypto)
+                            .thenApply(payload -> new SecretLinkTarget(payload, props.expiry, props.maxRetrievals))
+                            .thenCompose(value -> IpfsTransaction.call(id,
+                                    tid -> v1.withWriter(id, id, network).thenCompose(v2 -> v2.get(id).props.get().addLink(signer, props.label, value,
+                                                    props.existing.map(CborObject.CborMerkleLink::new), mirrorBat, tid, network.dhtClient, network.hasher)
+                                            .thenCompose(p -> c.commit(id, signer, p.left, v2.get(id), tid)
+                                                    .thenCompose(s -> sharedWithCache.addSecretLink(isWritable ? SharedWithCache.Access.WRITE : SharedWithCache.Access.READ,
+                                                            toFile, props.withExisting(Optional.of(p.right)), v2.mergeAndOverwriteWith(s), c, network)))), network.dhtClient));
+                });
     }
     @JsMethod
     public CompletableFuture<Snapshot> deleteSecretLink(long label, Path toFile, boolean isWritable) {
