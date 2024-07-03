@@ -1964,7 +1964,7 @@ public class UserContext {
         return Futures.reduceAll(file.readShares().entrySet(), in,
                 (s, e) -> shareReadAccessWith(start.resolve(e.getKey()), e.getValue(), s, c),
                 (a, b) -> b).thenCompose(s2 -> Futures.reduceAll(file.writeShares().entrySet(),
-                in,
+                s2,
                 (s, e) -> sendWriteCapToAll(start.resolve(e.getKey()), e.getValue(), s, c),
                 (a, b) -> b)); // TODO update links
     }
