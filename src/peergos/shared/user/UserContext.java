@@ -1818,8 +1818,7 @@ public class UserContext {
                     .thenCompose(parent -> rotateAllKeys(toUnshare, parent.get(), false, toUnshare.version, c)
                             .thenCompose(markedDirty -> {
                                 return sharedWithCache.removeSharedWith(SharedWithCache.Access.READ, path, readersToRemove, markedDirty, c, network)
-                                        .thenCompose(s2 -> reSendAllWriteAccessRecursive(path, s2, c)
-                                                .thenCompose(s3 -> reSendAllReadAccessRecursive(path, s3, c)));
+                                        .thenCompose(s2 -> reSendAllSharesAndLinksRecursive(path, s2, c));
                             }));
         });
     }
@@ -1864,8 +1863,7 @@ public class UserContext {
                                             .thenCompose(s2 ->
                                                     sharedWithCache.removeSharedWith(SharedWithCache.Access.WRITE,
                                                             path, writersToRemove, s2, c, network))
-                                                    .thenCompose(s3 -> reSendAllWriteAccessRecursive(path, s3, c)
-                                                            .thenCompose(s4 -> reSendAllReadAccessRecursive(path, s4, c))));
+                                                    .thenCompose(s3 -> reSendAllSharesAndLinksRecursive(path, s3, c)));
                                 });
                     });
                 });
@@ -1954,20 +1952,21 @@ public class UserContext {
                         new IllegalStateException("Could not find path " + path)), path, readersToAdd, s, c));
     }
 
-    public CompletableFuture<Snapshot> reSendAllWriteAccessRecursive(Path start, Snapshot in, Committer c) {
-        return sharedWithCache.getAllWriteShares(start, in)
+    public CompletableFuture<Snapshot> reSendAllSharesAndLinksRecursive(Path start, Snapshot in, Committer c) {
+        return sharedWithCache.getAllDescendantShares(start, in)
                 .thenCompose(toReshare -> Futures.reduceAll(toReshare.entrySet(),
                         in,
-                        (s, e) -> sendWriteCapToAll(e.getKey(), e.getValue(), s, c),
+                        (s, e) -> reshareAndUpdateLinks(e.getKey(), e.getValue(), s, c),
                         (a, b) -> b));
     }
 
-    public CompletableFuture<Snapshot> reSendAllReadAccessRecursive(Path start, Snapshot in, Committer c) {
-        return sharedWithCache.getAllReadShares(start, in)
-                .thenCompose(toReshare -> Futures.reduceAll(toReshare.entrySet(),
-                        in,
-                        (s, e) -> shareReadAccessWith(e.getKey(), e.getValue(), s, c),
-                        (a, b) -> b));
+    private CompletableFuture<Snapshot> reshareAndUpdateLinks(Path start, SharedWithState file, Snapshot in, Committer c) {
+        return Futures.reduceAll(file.readShares().entrySet(), in,
+                (s, e) -> shareReadAccessWith(start.resolve(e.getKey()), e.getValue(), s, c),
+                (a, b) -> b).thenCompose(s2 -> Futures.reduceAll(file.writeShares().entrySet(),
+                in,
+                (s, e) -> sendWriteCapToAll(start.resolve(e.getKey()), e.getValue(), s, c),
+                (a, b) -> b)); // TODO update links
     }
 
     private CompletableFuture<Snapshot> shareReadAccessWith(FileWrapper file,
@@ -2027,8 +2026,7 @@ public class UserContext {
                         .thenCompose(s2 -> getByPath(pathToFile.toString(), s2)
                                 .thenCompose(newFileOpt -> sharedWithCache
                                         .addSharedWith(SharedWithCache.Access.WRITE, pathToFile, writersToAdd, s2, c, network))
-                                .thenCompose(s3 -> reSendAllWriteAccessRecursive(pathToFile, s3, c)
-                                        .thenCompose(s4 -> reSendAllReadAccessRecursive(pathToFile, s4, c)))
+                                .thenCompose(s3 -> reSendAllSharesAndLinksRecursive(pathToFile, s3, c))
                         ));
     }
 
