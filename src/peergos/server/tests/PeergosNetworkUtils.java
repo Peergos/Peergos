@@ -206,6 +206,10 @@ public class PeergosNetworkUtils {
                 sharerUser.network, crypto, l -> {}).join();
         Optional<Bat> originalBat = uploaded.writableFilePointer().bat;
 
+        // create a secret link to the file
+        String userLinkPassword = "forbob";
+        SecretLink link = sharerUser.createSecretLink(Paths.get(sharerUser.username, filename), false, Optional.empty(), Optional.empty(), userLinkPassword).join();
+
         // share the file from sharer to each of the sharees
         Set<String> shareeNames = shareeUsers.stream()
                 .map(u -> u.username)
@@ -219,6 +223,9 @@ public class PeergosNetworkUtils {
             Assert.assertTrue("File is read only", ! sharedFile.get().isWritable());
             checkFileContents(originalFileContents, sharedFile.get(), userContext);
         }
+
+        // check secret link works
+        UserContext.fromSecretLinkV2(link.toLink(), () -> Futures.of(userLinkPassword), shareeNode, crypto).join();
 
         // check other users can browse to the friend's root
         for (UserContext userContext : shareeUsers) {
@@ -245,6 +252,9 @@ public class PeergosNetworkUtils {
 
                     }
                 }).collect(Collectors.toList());
+
+        // check secret link works
+        UserContext.fromSecretLinkV2(link.toLink(), () -> Futures.of(userLinkPassword), shareeNode, crypto).join();
 
         //test that the other user cannot access it from scratch
         Optional<FileWrapper> otherUserView = updatedShareeUsers.get(0).getByPath(sharerUser.username + "/" + filename).join();

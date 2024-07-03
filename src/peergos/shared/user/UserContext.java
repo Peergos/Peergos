@@ -661,22 +661,30 @@ public class UserContext {
     public CompletableFuture<SecretLink> updateSecretLink(Path toFile,
                                                           boolean isWritable,
                                                           LinkProperties props) {
+        SecretLink res = new SecretLink(signer.publicKeyHash, props.label, props.linkPassword);
+        return writeSynchronizer.applyComplexUpdate(signer.publicKeyHash, signer, (v, c) -> updateSecretLink(toFile, isWritable, props, v, c))
+                .thenApply(s -> res);
+    }
+
+    private CompletableFuture<Snapshot> updateSecretLink(Path toFile,
+                                                         boolean isWritable,
+                                                         LinkProperties props,
+                                                         Snapshot v1,
+                                                         Committer c) {
         // put encrypted secret link in champ on identity, champ root must have mirror bat to make it private
         PublicKeyHash id = signer.publicKeyHash;
-        FileWrapper file = getByPath(toFile).join().get();
+        FileWrapper file = getByPath(toFile.toString(), v1).join().get();
         AbsoluteCapability cap = isWritable ? file.getPointer().capability : file.getPointer().capability.readOnly();
         SecretLink res = new SecretLink(id, props.label, props.linkPassword);
         String fullPassword = props.linkPassword + props.userPassword;
         return EncryptedCapability.createFromPassword(cap, res.labelString(), fullPassword, ! props.userPassword.isEmpty(), crypto)
                 .thenApply(payload -> new SecretLinkTarget(payload, props.expiry, props.maxRetrievals))
-                .thenCompose(value -> writeSynchronizer.applyComplexUpdate(id, signer,
-                        (v, c) -> IpfsTransaction.call(id,
-                                tid -> v.get(id).props.get().addLink(signer, props.label, value,
-                                                props.existing.map(CborObject.CborMerkleLink::new), mirrorBat, tid, network.dhtClient, network.hasher)
-                                        .thenCompose(p -> c.commit(id, signer, p.left, v.get(id), tid)
-                                                .thenCompose(s -> sharedWithCache.addSecretLink(isWritable ? SharedWithCache.Access.WRITE : SharedWithCache.Access.READ,
-                                                        toFile, props.withExisting(Optional.of(p.right)), s, c, network))), network.dhtClient)))
-                .thenApply(s -> res);
+                .thenCompose(value -> IpfsTransaction.call(id,
+                        tid -> v1.withWriter(id, id, network).thenCompose(v2 -> v2.get(id).props.get().addLink(signer, props.label, value,
+                                        props.existing.map(CborObject.CborMerkleLink::new), mirrorBat, tid, network.dhtClient, network.hasher)
+                                .thenCompose(p -> c.commit(id, signer, p.left, v2.get(id), tid)
+                                        .thenCompose(s -> sharedWithCache.addSecretLink(isWritable ? SharedWithCache.Access.WRITE : SharedWithCache.Access.READ,
+                                                toFile, props.withExisting(Optional.of(p.right)), v2.mergeAndOverwriteWith(s), c, network)))), network.dhtClient));
     }
     @JsMethod
     public CompletableFuture<Snapshot> deleteSecretLink(long label, Path toFile, boolean isWritable) {
@@ -1962,11 +1970,24 @@ public class UserContext {
 
     private CompletableFuture<Snapshot> reshareAndUpdateLinks(Path start, SharedWithState file, Snapshot in, Committer c) {
         return Futures.reduceAll(file.readShares().entrySet(), in,
-                (s, e) -> shareReadAccessWith(start.resolve(e.getKey()), e.getValue(), s, c),
-                (a, b) -> b).thenCompose(s2 -> Futures.reduceAll(file.writeShares().entrySet(),
-                s2,
-                (s, e) -> sendWriteCapToAll(start.resolve(e.getKey()), e.getValue(), s, c),
-                (a, b) -> b)); // TODO update links
+                        (s, e) -> shareReadAccessWith(start.resolve(e.getKey()), e.getValue(), s, c),
+                        (a, b) -> b)
+                .thenCompose(s2 -> Futures.reduceAll(file.writeShares().entrySet(),
+                        s2,
+                        (s, e) -> sendWriteCapToAll(start.resolve(e.getKey()), e.getValue(), s, c),
+                        (a, b) -> b))
+                .thenCompose(s3 -> Futures.reduceAll(file.readLinks().entrySet(), s3,
+                        (s, e) -> Futures.reduceAll(e.getValue(),
+                                s,
+                                (v, p) -> updateSecretLink(start.resolve(e.getKey()), false, p, v, c),
+                                (a, b) -> b),
+                        (a, b) -> b))
+                .thenCompose(s4 -> Futures.reduceAll(file.writeLinks().entrySet(), s4,
+                        (s, e) -> Futures.reduceAll(e.getValue(),
+                                s,
+                                (v, p) -> updateSecretLink(start.resolve(e.getKey()), true, p, v, c),
+                                (a, b) -> b),
+                        (a, b) -> b));
     }
 
     private CompletableFuture<Snapshot> shareReadAccessWith(FileWrapper file,

@@ -40,6 +40,14 @@ public class SharedWithState implements Cborable {
         return readShares;
     }
 
+    public Map<String, Set<LinkProperties>> readLinks() {
+        return readLinks;
+    }
+
+    public Map<String, Set<LinkProperties>> writeLinks() {
+        return writeLinks;
+    }
+
     public Map<String, Set<String>> writeShares() {
         return writeShares;
     }
@@ -96,9 +104,11 @@ public class SharedWithState implements Cborable {
 
         if (access == SharedWithCache.Access.READ) {
             newReadLinks.putIfAbsent(filename, new HashSet<>());
+            newReadLinks.get(filename).removeIf(p -> p.label == link.label); // make sure we replace any old version
             newReadLinks.get(filename).add(link);
         } else if (access == SharedWithCache.Access.WRITE) {
             newWriteLinks.putIfAbsent(filename, new HashSet<>());
+            newWriteLinks.get(filename).removeIf(p -> p.label == link.label); // make sure we replace any old version
             newWriteLinks.get(filename).add(link);
         }
         return new SharedWithState(readShares, writeShares, newReadLinks, newWriteLinks);
