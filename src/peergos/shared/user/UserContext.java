@@ -654,7 +654,14 @@ public class UserContext {
         long label = (labelBytes[0] & 0xFF) | ((labelBytes[1] & 0xFF) << 8) | ((labelBytes[2] & 0xFF) << 16);
         String linkPassword = EncryptedCapability.createLinkPassword(crypto.random);
         LinkProperties props = new LinkProperties(label, linkPassword, userPassword, maxRetrievals, expiry, Optional.empty());
-        return updateSecretLink(toFile, isWritable, props);
+        if (! isWritable)
+            return updateSecretLink(toFile, isWritable, props);
+        SecretLink res = new SecretLink(signer.publicKeyHash, props.label, props.linkPassword);
+        return getByPath(toFile.getParent())
+                .thenCompose(parent -> parent.get().getChild(toFile.getFileName().toString(), crypto.hasher, network)
+                        .thenCompose(fopt -> shareWriteAccessWith(toFile, Collections.emptySet())))
+                .thenCompose(s -> writeSynchronizer.applyComplexUpdate(signer.publicKeyHash, signer, (v, c) -> updateSecretLink(toFile, isWritable, props, v.mergeAndOverwriteWith(s), c)))
+                .thenApply(s -> res);
     }
 
     @JsMethod
@@ -674,8 +681,11 @@ public class UserContext {
         // put encrypted secret link in champ on identity, champ root must have mirror bat to make it private
         PublicKeyHash id = signer.publicKeyHash;
         return getByPath(toFile.toString(), v1)
-                .thenApply(fopt -> fopt.get())
+                .thenApply(Optional::get)
                 .thenCompose(file -> {
+                    boolean differentWriter = file.getPointer().getParentCap().writer.map(parentWriter -> ! parentWriter.equals(file.writer())).orElse(false);
+                    if (isWritable && ! differentWriter)
+                        throw new IllegalStateException("To generate a writable secret link, the target must already be in a different writing space!");
                     AbsoluteCapability cap = isWritable ? file.getPointer().capability : file.getPointer().capability.readOnly();
                     SecretLink res = new SecretLink(id, props.label, props.linkPassword);
                     String fullPassword = props.linkPassword + props.userPassword;
@@ -2035,6 +2045,7 @@ public class UserContext {
         // 2) update parent pointer
         // 3) delete old subtree
         // 4) then reshare all sub sharees
+        System.out.println("Sharing write: " + parent.writer() + " child " + file.writer());
         ensureAllowedToShare(file, username, true);
         SigningPrivateKeyAndPublicHash currentSigner = file.signingPair();
         boolean changeSigner = currentSigner.publicKeyHash.equals(parent.signingPair().publicKeyHash);
@@ -2048,8 +2059,11 @@ public class UserContext {
         return network.synchronizer.applyComplexUpdate(signer.publicKeyHash,
                 file.signingPair(), (s, c) -> rotateAllKeys(file, parent, true, s, c)
                         .thenCompose(s2 -> getByPath(pathToFile.toString(), s2)
-                                .thenCompose(newFileOpt -> sharedWithCache
-                                        .addSharedWith(SharedWithCache.Access.WRITE, pathToFile, writersToAdd, s2, c, network))
+                                .thenCompose(newFileOpt -> {
+                                    System.out.println("New child writer: " + newFileOpt.get().writer());
+                                    return sharedWithCache
+                                            .addSharedWith(SharedWithCache.Access.WRITE, pathToFile, writersToAdd, s2, c, network);
+                                })
                                 .thenCompose(s3 -> reSendAllSharesAndLinksRecursive(pathToFile, s3, c))
                         ));
     }

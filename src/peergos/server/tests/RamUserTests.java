@@ -592,5 +592,12 @@ public class RamUserTests extends UserTests {
             network.getSecretLink(link).join();
             throw new RuntimeException("Shouldn't get here");
         } catch (IllegalStateException expected) {}
+
+        // now a writable secret link
+        String wpass = "modifyme";
+        SecretLink writeLink = user.createSecretLink(filePath, true, Optional.empty(), Optional.empty(), wpass).join();
+        UserContext writableContext = UserContext.fromSecretLinkV2(writeLink.toLink(), () -> Futures.of(wpass), network, crypto).join();
+        FileWrapper wf = writableContext.getByPath(filePath).join().get();
+        Assert.assertTrue(wf.isWritable());
     }
 }
