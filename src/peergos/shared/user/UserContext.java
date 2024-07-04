@@ -650,8 +650,8 @@ public class UserContext {
                                                           Optional<LocalDateTime> expiry,
                                                           Optional<Integer> maxRetrievals,
                                                           String userPassword) {
-        byte[] labelBytes = crypto.random.randomBytes(3);
-        long label = (labelBytes[0] & 0xFF) | ((labelBytes[1] & 0xFF) << 8) | ((labelBytes[2] & 0xFF) << 16);
+        byte[] labelBytes = crypto.random.randomBytes(4);
+        long label = (labelBytes[0] & 0xFF) | ((labelBytes[1] & 0xFF) << 8) | ((labelBytes[2] & 0xFF) << 16) | ((labelBytes[3] & 0xFF) << 24);
         String linkPassword = EncryptedCapability.createLinkPassword(crypto.random);
         LinkProperties props = new LinkProperties(label, linkPassword, userPassword, maxRetrievals, expiry, Optional.empty());
         if (! isWritable)
