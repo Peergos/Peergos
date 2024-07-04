@@ -2,6 +2,7 @@ package peergos.shared.user.fs;
 
 import jsinterop.annotations.*;
 import peergos.shared.crypto.hash.*;
+import peergos.shared.crypto.random.*;
 import peergos.shared.io.ipfs.bases.*;
 
 public class SecretLink {
@@ -41,5 +42,12 @@ public class SecretLink {
         PublicKeyHash owner = PublicKeyHash.fromString(parts[1]);
         long ref = Long.parseLong(parts[2]);
         return new SecretLink(owner, ref, fragment);
+    }
+
+    public static SecretLink create(PublicKeyHash owner, SafeRandom r) {
+        byte[] labelBytes = r.randomBytes(4);
+        long label = (labelBytes[0] & 0xFF) | ((labelBytes[1] & 0xFF) << 8) | ((labelBytes[2] & 0xFF) << 16) | (((labelBytes[3] & 0xFF) << 24) & 0xFFFFFFFFL);
+        String linkPassword = EncryptedCapability.createLinkPassword(r);
+        return new SecretLink(owner, label, linkPassword);
     }
 }

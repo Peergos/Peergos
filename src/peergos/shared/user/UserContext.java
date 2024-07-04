@@ -650,13 +650,10 @@ public class UserContext {
                                                           Optional<LocalDateTime> expiry,
                                                           Optional<Integer> maxRetrievals,
                                                           String userPassword) {
-        byte[] labelBytes = crypto.random.randomBytes(4);
-        long label = (labelBytes[0] & 0xFF) | ((labelBytes[1] & 0xFF) << 8) | ((labelBytes[2] & 0xFF) << 16) | ((labelBytes[3] & 0xFF) << 24);
-        String linkPassword = EncryptedCapability.createLinkPassword(crypto.random);
-        LinkProperties props = new LinkProperties(label, linkPassword, userPassword, maxRetrievals, expiry, Optional.empty());
+        SecretLink res = SecretLink.create(signer.publicKeyHash, crypto.random);
+        LinkProperties props = new LinkProperties(res.label, res.linkPassword, userPassword, maxRetrievals, expiry, Optional.empty());
         if (! isWritable)
             return updateSecretLink(toFile, isWritable, props);
-        SecretLink res = new SecretLink(signer.publicKeyHash, props.label, props.linkPassword);
         return getByPath(toFile.getParent())
                 .thenCompose(parent -> parent.get().getChild(toFile.getFileName().toString(), crypto.hasher, network)
                         .thenCompose(fopt -> shareWriteAccessWith(toFile, Collections.emptySet())))
