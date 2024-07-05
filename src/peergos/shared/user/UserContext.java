@@ -643,41 +643,45 @@ public class UserContext {
                     return currentRoot.put(r.getPath(), entry);
                 }));
     }
+    @JsMethod
+    public String getLinkString(LinkProperties props) {
+        return props.toLinkString(signer.publicKeyHash);
+    }
 
     @JsMethod
-    public CompletableFuture<SecretLink> createSecretLink(Path toFile,
-                                                          boolean isWritable,
-                                                          Optional<LocalDateTime> expiry,
-                                                          Optional<Integer> maxRetrievals,
-                                                          String userPassword) {
+    public CompletableFuture<LinkProperties> createSecretLink(String filePath,
+                                                              boolean isWritable,
+                                                              Optional<LocalDateTime> expiry,
+                                                              Optional<Integer> maxRetrievals,
+                                                              String userPassword) {
         SecretLink res = SecretLink.create(signer.publicKeyHash, crypto.random);
         LinkProperties props = new LinkProperties(res.label, res.linkPassword, userPassword, maxRetrievals, expiry, Optional.empty());
+        Path toFile = PathUtil.get(filePath);
         if (! isWritable)
-            return updateSecretLink(toFile, isWritable, props);
+            return updateSecretLink(filePath, isWritable, props);
         return getByPath(toFile.getParent())
                 .thenCompose(parent -> parent.get().getChild(toFile.getFileName().toString(), crypto.hasher, network)
                         .thenCompose(fopt -> shareWriteAccessWith(toFile, Collections.emptySet())))
-                .thenCompose(s -> writeSynchronizer.applyComplexUpdate(signer.publicKeyHash, signer, (v, c) -> updateSecretLink(toFile, isWritable, props, v.mergeAndOverwriteWith(s), c)))
-                .thenApply(s -> res);
+                .thenCompose(s -> writeSynchronizer.applyComplexComputation(signer.publicKeyHash, signer, (v, c) -> updateSecretLink(filePath, isWritable, props, v.mergeAndOverwriteWith(s), c)))
+                .thenApply(x -> x.right);
     }
 
     @JsMethod
-    public CompletableFuture<SecretLink> updateSecretLink(Path toFile,
-                                                          boolean isWritable,
-                                                          LinkProperties props) {
-        SecretLink res = new SecretLink(signer.publicKeyHash, props.label, props.linkPassword);
-        return writeSynchronizer.applyComplexUpdate(signer.publicKeyHash, signer, (v, c) -> updateSecretLink(toFile, isWritable, props, v, c))
-                .thenApply(s -> res);
+    public CompletableFuture<LinkProperties> updateSecretLink(String filePath,
+                                                              boolean isWritable,
+                                                              LinkProperties props) {
+        return writeSynchronizer.applyComplexComputation(signer.publicKeyHash, signer, (v, c) -> updateSecretLink(filePath, isWritable, props, v, c))
+                .thenApply(p -> p.right);
     }
 
-    private CompletableFuture<Snapshot> updateSecretLink(Path toFile,
-                                                         boolean isWritable,
-                                                         LinkProperties props,
-                                                         Snapshot v1,
-                                                         Committer c) {
+    private CompletableFuture<Pair<Snapshot, LinkProperties>> updateSecretLink(String filePath,
+                                                                               boolean isWritable,
+                                                                               LinkProperties props,
+                                                                               Snapshot v1,
+                                                                               Committer c) {
         // put encrypted secret link in champ on identity, champ root must have mirror bat to make it private
         PublicKeyHash id = signer.publicKeyHash;
-        return getByPath(toFile.toString(), v1)
+        return getByPath(filePath, v1)
                 .thenApply(Optional::get)
                 .thenCompose(file -> {
                     boolean differentWriter = file.getPointer().getParentCap().writer.map(parentWriter -> ! parentWriter.equals(file.writer())).orElse(false);
@@ -693,7 +697,8 @@ public class UserContext {
                                                     props.existing.map(CborObject.CborMerkleLink::new), mirrorBat, tid, network.dhtClient, network.hasher)
                                             .thenCompose(p -> c.commit(id, signer, p.left, v2.get(id), tid)
                                                     .thenCompose(s -> sharedWithCache.addSecretLink(isWritable ? SharedWithCache.Access.WRITE : SharedWithCache.Access.READ,
-                                                            toFile, props.withExisting(Optional.of(p.right)), v2.mergeAndOverwriteWith(s), c, network)))), network.dhtClient));
+                                                            PathUtil.get(filePath), props.withExisting(Optional.of(p.right)), v2.mergeAndOverwriteWith(s), c, network))
+                                                    .thenApply(s -> new Pair<>(s, props.withExisting(Optional.of(p.right)))))), network.dhtClient));
                 });
     }
     @JsMethod
@@ -1989,13 +1994,13 @@ public class UserContext {
                 .thenCompose(s3 -> Futures.reduceAll(file.readLinks().entrySet(), s3,
                         (s, e) -> Futures.reduceAll(e.getValue(),
                                 s,
-                                (v, p) -> updateSecretLink(start.resolve(e.getKey()), false, p, v, c),
+                                (v, p) -> updateSecretLink(start.resolve(e.getKey()).toString(), false, p, v, c).thenApply(x -> x.left),
                                 (a, b) -> b),
                         (a, b) -> b))
                 .thenCompose(s4 -> Futures.reduceAll(file.writeLinks().entrySet(), s4,
                         (s, e) -> Futures.reduceAll(e.getValue(),
                                 s,
-                                (v, p) -> updateSecretLink(start.resolve(e.getKey()), true, p, v, c),
+                                (v, p) -> updateSecretLink(start.resolve(e.getKey()).toString(), true, p, v, c).thenApply(x -> x.left),
                                 (a, b) -> b),
                         (a, b) -> b));
     }

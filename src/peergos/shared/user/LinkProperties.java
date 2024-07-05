@@ -2,7 +2,9 @@ package peergos.shared.user;
 
 import jsinterop.annotations.JsMethod;
 import peergos.shared.cbor.*;
+import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.*;
+import peergos.shared.user.fs.*;
 
 import java.time.*;
 import java.util.*;
@@ -27,6 +29,15 @@ public class LinkProperties implements Cborable {
 
     public LinkProperties withExisting(Optional<Multihash> existing) {
         return new LinkProperties(label, linkPassword, userPassword, maxRetrievals, expiry, existing);
+    }
+
+    public SecretLink toLink(PublicKeyHash owner) {
+        return new SecretLink(owner, label, linkPassword);
+    }
+
+    @JsMethod
+    public String toLinkString(PublicKeyHash owner) {
+        return toLink(owner).toLink();
     }
 
     @JsMethod

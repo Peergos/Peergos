@@ -565,7 +565,8 @@ public class RamUserTests extends UserTests {
         Optional<Integer> maxRetrievals = Optional.of(2);
 
         String userPassword = "youre-terrible-muriel";
-        SecretLink link = user.createSecretLink(filePath, writable, expiry, maxRetrievals, userPassword).join();
+        LinkProperties linkProps = user.createSecretLink(filePath.toString(), writable, expiry, maxRetrievals, userPassword).join();
+        SecretLink link = linkProps.toLink(userRoot.owner());
 
         EncryptedCapability retrieved = network.getSecretLink(link).join();
         AbsoluteCapability cap = retrieved.decryptFromPassword(link.labelString(), link.linkPassword + userPassword, crypto).join();
@@ -578,7 +579,7 @@ public class RamUserTests extends UserTests {
 
         // try changing the password
         String newPass = "different";
-        user.updateSecretLink(filePath, writable, new LinkProperties(props.label, props.linkPassword, newPass, props.maxRetrievals, props.expiry, props.existing)).join();
+        user.updateSecretLink(filePath.toString(), writable, new LinkProperties(props.label, props.linkPassword, newPass, props.maxRetrievals, props.expiry, props.existing)).join();
 
         UserContext.fromSecretLinkV2(link.toLink(), () -> Futures.of(newPass), network, crypto).join();
         try {
@@ -595,8 +596,8 @@ public class RamUserTests extends UserTests {
 
         // now a writable secret link
         String wpass = "modifyme";
-        SecretLink writeLink = user.createSecretLink(filePath, true, Optional.empty(), Optional.empty(), wpass).join();
-        UserContext writableContext = UserContext.fromSecretLinkV2(writeLink.toLink(), () -> Futures.of(wpass), network, crypto).join();
+        LinkProperties writeLink = user.createSecretLink(filePath.toString(), true, Optional.empty(), Optional.empty(), wpass).join();
+        UserContext writableContext = UserContext.fromSecretLinkV2(writeLink.toLinkString(userRoot.owner()), () -> Futures.of(wpass), network, crypto).join();
         FileWrapper wf = writableContext.getByPath(filePath).join().get();
         Assert.assertTrue(wf.isWritable());
     }

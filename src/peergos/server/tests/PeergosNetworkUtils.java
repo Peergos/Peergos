@@ -208,7 +208,7 @@ public class PeergosNetworkUtils {
 
         // create a secret link to the file
         String userLinkPassword = "forbob";
-        SecretLink link = sharerUser.createSecretLink(Paths.get(sharerUser.username, filename), false, Optional.empty(), Optional.empty(), userLinkPassword).join();
+        LinkProperties link = sharerUser.createSecretLink(Paths.get(sharerUser.username, filename).toString(), false, Optional.empty(), Optional.empty(), userLinkPassword).join();
 
         // share the file from sharer to each of the sharees
         Set<String> shareeNames = shareeUsers.stream()
@@ -225,7 +225,7 @@ public class PeergosNetworkUtils {
         }
 
         // check secret link works
-        UserContext.fromSecretLinkV2(link.toLink(), () -> Futures.of(userLinkPassword), shareeNode, crypto).join();
+        UserContext.fromSecretLinkV2(link.toLinkString(uploaded.owner()), () -> Futures.of(userLinkPassword), shareeNode, crypto).join();
 
         // check other users can browse to the friend's root
         for (UserContext userContext : shareeUsers) {
@@ -254,7 +254,7 @@ public class PeergosNetworkUtils {
                 }).collect(Collectors.toList());
 
         // check secret link works
-        UserContext.fromSecretLinkV2(link.toLink(), () -> Futures.of(userLinkPassword), shareeNode, crypto).join();
+        UserContext.fromSecretLinkV2(link.toLinkString(uploaded.owner()), () -> Futures.of(userLinkPassword), shareeNode, crypto).join();
 
         //test that the other user cannot access it from scratch
         Optional<FileWrapper> otherUserView = updatedShareeUsers.get(0).getByPath(sharerUser.username + "/" + filename).join();
