@@ -575,11 +575,11 @@ public class RamUserTests extends UserTests {
 
         SharedWithState sharingState = user.getDirectorySharingState(Paths.get(username)).join();
         Assert.assertTrue(sharingState.hasLink(filename));
-        LinkProperties props = sharingState.get(filename).readLinks.stream().findFirst().get();
+        LinkProperties props = sharingState.get(filename).links.stream().findFirst().get();
 
         // try changing the password
         String newPass = "different";
-        user.updateSecretLink(filePath.toString(), writable, new LinkProperties(props.label, props.linkPassword, newPass, props.maxRetrievals, props.expiry, props.existing)).join();
+        user.updateSecretLink(filePath.toString(), new LinkProperties(props.label, props.linkPassword, newPass, writable, props.maxRetrievals, props.expiry, props.existing)).join();
 
         UserContext.fromSecretLinkV2(link.toLink(), () -> Futures.of(newPass), network, crypto).join();
         try {

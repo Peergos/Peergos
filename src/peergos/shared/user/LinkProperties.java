@@ -13,15 +13,18 @@ import java.util.*;
 public class LinkProperties implements Cborable {
     public final long label;
     public final String linkPassword, userPassword;
+    public final boolean isWritable;
     public final Optional<Integer> maxRetrievals;
     public final Optional<LocalDateTime> expiry;
     public final Optional<Multihash> existing;
 
 
-    public LinkProperties(long label, String linkPassword, String userPassword, Optional<Integer> maxRetrievals, Optional<LocalDateTime> expiry, Optional<Multihash> existing) {
+    public LinkProperties(long label, String linkPassword, String userPassword, boolean isWritable,
+                          Optional<Integer> maxRetrievals, Optional<LocalDateTime> expiry, Optional<Multihash> existing) {
         this.label = label;
         this.linkPassword = linkPassword;
         this.userPassword = userPassword;
+        this.isWritable = isWritable;
         this.maxRetrievals = maxRetrievals;
         this.expiry = expiry;
         this.existing = existing;
@@ -29,11 +32,11 @@ public class LinkProperties implements Cborable {
 
     @JsMethod
     public LinkProperties with(String userPassword, Optional<Integer> maxRetrievals, Optional<LocalDateTime> expiry) {
-        return new LinkProperties(label, linkPassword, userPassword, maxRetrievals, expiry, existing);
+        return new LinkProperties(label, linkPassword, userPassword, isWritable, maxRetrievals, expiry, existing);
     }
 
     public LinkProperties withExisting(Optional<Multihash> existing) {
-        return new LinkProperties(label, linkPassword, userPassword, maxRetrievals, expiry, existing);
+        return new LinkProperties(label, linkPassword, userPassword, isWritable, maxRetrievals, expiry, existing);
     }
 
     public SecretLink toLink(PublicKeyHash owner) {
@@ -56,6 +59,7 @@ public class LinkProperties implements Cborable {
         state.put("l", new CborObject.CborLong(label));
         state.put("p", new CborObject.CborString(linkPassword));
         state.put("u", new CborObject.CborString(userPassword));
+        state.put("w", new CborObject.CborBoolean(isWritable));
         existing.ifPresent(e -> state.put("h", new CborObject.CborMerkleLink(e)));
         maxRetrievals.ifPresent(m -> state.put("m", new CborObject.CborLong(m)));
         expiry.ifPresent(e -> state.put("e", new CborObject.CborLong(e.toEpochSecond(ZoneOffset.UTC))));
@@ -69,8 +73,9 @@ public class LinkProperties implements Cborable {
         long label = m.getLong("l");
         String password = m.getString("p");
         String userPassword = m.getString("u");
+        boolean isWritable = m.getBoolean("w");
         Optional<Integer> maxCount = m.getOptionalLong("m").map(Long::intValue);
         Optional<LocalDateTime> expiry = m.getOptionalLong("e").map(s -> LocalDateTime.ofEpochSecond(s, 0, ZoneOffset.UTC));
-        return new LinkProperties(label, password, userPassword, maxCount, expiry, m.getOptional("h", c -> ((CborObject.CborMerkleLink)c).target));
+        return new LinkProperties(label, password, userPassword, isWritable, maxCount, expiry, m.getOptional("h", c -> ((CborObject.CborMerkleLink)c).target));
     }
 }

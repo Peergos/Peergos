@@ -334,17 +334,17 @@ public class SharedWithCache {
                 .thenCompose(sharees -> applyAndCommit(after, current ->
                         current.add(Access.READ, newFilename, sharees.readAccess)
                                 .add(Access.WRITE, newFilename, sharees.writeAccess)
-                                .addLinks(newFilename, current.get(initialFilename).readLinks, current.get(initialFilename).writelinks)
+                                .addLinks(newFilename, current.get(initialFilename).links)
                                 .clear(initialFilename), in, committer, network));
     }
 
-    public CompletableFuture<Snapshot> addSecretLink(Access access, Path p, LinkProperties link,
+    public CompletableFuture<Snapshot> addSecretLink(Path p, LinkProperties link,
                                                      Snapshot in, Committer committer, NetworkAccess network) {
-        return applyAndCommit(p, current -> current.addLink(access, getFilename(p), link), in, committer, network);
+        return applyAndCommit(p, current -> current.addLink(getFilename(p), link), in, committer, network);
     }
 
-    public CompletableFuture<Snapshot> removeSecretLink(Access access, Path p, long label, Snapshot in, Committer committer, NetworkAccess network) {
-        return applyAndCommit(p, current -> current.removeLink(access, getFilename(p), label), in, committer, network);
+    public CompletableFuture<Snapshot> removeSecretLink(Path p, long label, Snapshot in, Committer committer, NetworkAccess network) {
+        return applyAndCommit(p, current -> current.removeLink(getFilename(p), label), in, committer, network);
     }
 
     public CompletableFuture<Snapshot> addSharedWith(Access access, Path p, Set<String> names, Snapshot in, Committer committer, NetworkAccess network) {
