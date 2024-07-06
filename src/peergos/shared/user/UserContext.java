@@ -652,6 +652,16 @@ public class UserContext {
     public CompletableFuture<LinkProperties> createSecretLink(String filePath,
                                                               boolean isWritable,
                                                               Optional<LocalDateTime> expiry,
+                                                              String maxRetrievals,
+                                                              String userPassword) {
+        return createSecretLink(filePath, isWritable, expiry,
+                maxRetrievals.isEmpty() ? Optional.empty() : Optional.of(Integer.parseInt(maxRetrievals)),
+                userPassword);
+    }
+
+    public CompletableFuture<LinkProperties> createSecretLink(String filePath,
+                                                              boolean isWritable,
+                                                              Optional<LocalDateTime> expiry,
                                                               Optional<Integer> maxRetrievals,
                                                               String userPassword) {
         SecretLink res = SecretLink.create(signer.publicKeyHash, crypto.random);

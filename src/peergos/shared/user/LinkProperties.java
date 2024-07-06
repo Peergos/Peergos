@@ -31,8 +31,9 @@ public class LinkProperties implements Cborable {
     }
 
     @JsMethod
-    public LinkProperties with(String userPassword, Optional<Integer> maxRetrievals, Optional<LocalDateTime> expiry) {
-        return new LinkProperties(label, linkPassword, userPassword, isWritable, maxRetrievals, expiry, existing);
+    public LinkProperties with(String userPassword, String maxRetrievals, Optional<LocalDateTime> expiry) {
+        Optional<Integer> maxRetrievalsOpt = maxRetrievals.isEmpty() ? Optional.empty() : Optional.of(Integer.parseInt(maxRetrievals));
+        return new LinkProperties(label, linkPassword, userPassword, isWritable, maxRetrievalsOpt, expiry, existing);
     }
 
     public LinkProperties withExisting(Optional<Multihash> existing) {
