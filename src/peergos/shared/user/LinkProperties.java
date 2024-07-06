@@ -45,6 +45,11 @@ public class LinkProperties implements Cborable {
     }
 
     @JsMethod
+    public String maxRetrievalsString() {
+        return maxRetrievals.map(Long::toString).orElse("");
+    }
+
+    @JsMethod
     public String toLinkString(PublicKeyHash owner) {
         return toLink(owner).toLink();
     }
