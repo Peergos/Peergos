@@ -7,6 +7,7 @@ import peergos.shared.login.mfa.WebauthnResponse;
 import peergos.shared.util.Either;
 
 import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -14,6 +15,11 @@ import java.util.stream.Collectors;
  *
  */
 public class JsUtil {
+
+    @JsMethod
+    public static LocalDateTime fromUtcMillis(long millis) {
+        return LocalDateTime.ofEpochSecond(millis/1_000, ((int)(millis % 1000)) * 1_000_000, ZoneOffset.UTC);
+    }
 
     @JsMethod
     public static CborObject fromByteArray(byte[] cbor) {
