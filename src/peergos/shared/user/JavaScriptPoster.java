@@ -61,7 +61,7 @@ public class JavaScriptPoster implements HttpPoster {
                 headersArray[index++] = e.getKey();
                 headersArray[index++] = e.getValue();
             }
-            return http.getWithHeaders(url, headersArray);
+            return http.getWithHeaders(canonicalise(url), headersArray);
         }
         return postUnzip(url, new byte[0]);
     }
