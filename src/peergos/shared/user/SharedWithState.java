@@ -241,8 +241,8 @@ public class SharedWithState implements Cborable {
         if (! m.containsKey("l"))
             return new SharedWithState(readShares, writehares, Collections.emptyMap());
 
-        CborObject.CborMap rl = m.get("l", c -> (CborObject.CborMap) c);
-        Map<String, Set<LinkProperties>> links = rl.toMap(
+        CborObject.CborMap l = m.get("l", c -> (CborObject.CborMap) c);
+        Map<String, Set<LinkProperties>> links = l.toMap(
                 getString,
                 c -> new HashSet<>(((CborObject.CborList)c).map(LinkProperties::fromCbor)));
 
