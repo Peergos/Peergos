@@ -1,4 +1,5 @@
 package peergos.server.net;
+import java.time.*;
 import java.util.function.Supplier;
 import java.util.logging.*;
 
@@ -15,6 +16,7 @@ import peergos.shared.io.ipfs.api.*;
 import peergos.shared.storage.*;
 import com.sun.net.httpserver.*;
 import peergos.shared.storage.auth.*;
+import peergos.shared.user.fs.*;
 import peergos.shared.util.*;
 
 import static peergos.shared.storage.ContentAddressedStorage.HTTP.*;
@@ -136,6 +138,32 @@ public class StorageHandler implements HttpHandler {
                     } finally {
                         timer.observeDuration();
                     }
+                    break;
+                }
+                case LINK_GET: {
+                    AggregatedMetrics.STORAGE_LINK_GET.inc();
+                    Histogram.Timer timer = AggregatedMetrics.STORAGE_LINK_GET_DURATION.labels("duration").startTimer();
+                    PublicKeyHash ownerHash = PublicKeyHash.fromString(last.apply("owner"));
+                    long label = Long.parseLong(last.apply("label"));
+                    SecretLink lookup = new SecretLink(ownerHash, label, "");
+                    try {
+                        dht.getSecretLink(lookup).thenAccept(link -> {
+                            replyBytes(httpExchange, link.serialize(), Optional.empty());
+                        }).exceptionally(Futures::logAndThrow).get();
+                    } finally {
+                        timer.observeDuration();
+                    }
+                    break;
+                }
+                case LINK_COUNTS: {
+                    AggregatedMetrics.STORAGE_LINK_COUNTS.inc();
+                    String owner = last.apply("owner");
+                    long seconds = Long.parseLong(last.apply("after"));
+                    LocalDateTime after = LocalDateTime.ofEpochSecond(seconds, 0, ZoneOffset.UTC);
+                    BatWithId mirrorBat = BatWithId.decode(last.apply("bat"));
+                    dht.getLinkCounts(owner, after, mirrorBat).thenAccept(counts -> {
+                        replyBytes(httpExchange, counts.serialize(), Optional.empty());
+                    }).exceptionally(Futures::logAndThrow).get();
                     break;
                 }
                 case BLOCK_PUT: {

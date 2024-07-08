@@ -118,6 +118,7 @@ public class Main extends Builder {
                     new Command.Arg("account-sql-file", "The filename for the login datastore", true, "login.sql"),
                     new Command.Arg("quotas-sql-file", "The filename for the quotas datastore", true, "quotas.sql"),
                     new Command.Arg("space-usage-sql-file", "The filename for the space usage datastore", true, "space-usage.sql"),
+                    new Command.Arg("link-counts-sql-file", "The filename for the secret link counts datastore", true, "link-counts.sql"),
                     new Command.Arg("server-messages-sql-file", "The filename for the server messages datastore", true, "server-messages.sql"),
                     ARG_TRANSACTIONS_SQL_FILE,
                     ServerIdentity.ARG_SERVERIDS_SQL_FILE,
@@ -308,6 +309,7 @@ public class Main extends Builder {
                     new Command.Arg("space-requests-sql-file", "The filename for the space requests datastore", true, "space-requests.sql"),
                     new Command.Arg("account-sql-file", "The filename for the login datastore", true, "login.sql"),
                     new Command.Arg("space-usage-sql-file", "The filename for the space usage datastore", true, "space-usage.sql"),
+                    new Command.Arg("link-counts-sql-file", "The filename for the secret link counts datastore", true, "link-counts.sql"),
                     new Command.Arg("ipfs-api-address", "ipfs api port", true, "/ip4/127.0.0.1/tcp/5001"),
                     new Command.Arg("ipfs-gateway-address", "ipfs gateway port", true, "/ip4/127.0.0.1/tcp/8080"),
                     ARG_IPFS_PROXY_TARGET,
@@ -367,6 +369,7 @@ public class Main extends Builder {
                     ServerIdentity.ARG_SERVERIDS_SQL_FILE,
                     new Command.Arg("space-requests-sql-file", "The filename for the space requests datastore", true, "space-requests.sql"),
                     new Command.Arg("space-usage-sql-file", "The filename for the space usage datastore", true, "space-usage.sql"),
+                    new Command.Arg("link-counts-sql-file", "The filename for the secret link counts datastore", true, "link-counts.sql"),
                     ARG_IPFS_API_ADDRESS,
                     new Command.Arg("ipfs-gateway-address", "ipfs gateway port", true, "/ip4/127.0.0.1/tcp/8080"),
                     ARG_IPFS_PROXY_TARGET,
@@ -499,7 +502,7 @@ public class Main extends Builder {
 
             boolean useIPFS = a.getBoolean("useIPFS");
             Supplier<Connection> dbConnectionPool = getDBConnector(a, "transactions-sql-file");
-            BatCave batStore = new JdbcBatCave(getDBConnector(a, "bat-store", dbConnectionPool), sqlCommands);
+            JdbcBatCave batStore = new JdbcBatCave(getDBConnector(a, "bat-store", dbConnectionPool), sqlCommands);
             BlockRequestAuthoriser blockAuth = blockAuthoriser(a, batStore, hasher);
             BlockMetadataStore meta = buildBlockMetadata(a);
             JdbcServerIdentityStore ids = JdbcServerIdentityStore.build(getDBConnector(a, "serverids-file", dbConnectionPool), sqlCommands, crypto);
@@ -525,15 +528,18 @@ public class Main extends Builder {
 
             TransactionStore transactions = buildTransactionStore(a, dbConnectionPool);
 
-            DeletableContentAddressedStorage localStorage = buildLocalStorage(a, meta, transactions, blockAuth,
+            DeletableContentAddressedStorage localStorageForLinks = buildLocalStorage(a, meta, transactions, blockAuth,
                     ids, crypto.hasher);
             JdbcIpnsAndSocial rawPointers = buildRawPointers(a,
                     getDBConnector(a, "mutable-pointers-file", dbConnectionPool));
 
-            List<Cid> nodeIds = localStorage.ids().get();
 
-            MutablePointers localPointers = UserRepository.build(localStorage, rawPointers);
+            MutablePointers localPointers = UserRepository.build(localStorageForLinks, rawPointers);
             MutablePointersProxy proxingMutable = new HttpMutablePointers(p2pHttpProxy, pkiServerNodeId);
+            LinkRetrievalCounter linkCounts = new JdbcLinkRetrievalcounter(getDBConnector(a, "link-counts-sql-file", dbConnectionPool), sqlCommands);
+            DeletableContentAddressedStorage localStorage = new SecretLinkStorage(localStorageForLinks, localPointers, linkCounts, batStore, hasher);
+
+            List<Cid> nodeIds = localStorage.ids().get();
 
             Supplier<Connection> usageDb = getDBConnector(a, "space-usage-sql-file", dbConnectionPool);
             UsageStore usageStore = new JdbcUsageStore(usageDb, sqlCommands);
@@ -545,7 +551,7 @@ public class Main extends Builder {
                 gc = new GarbageCollector(localStorage, rawPointers, usageStore, a.fromPeergosDir("", ""), (d, c) -> Futures.of(true), listRawBlocks);
                 Function<Stream<Map.Entry<PublicKeyHash, byte[]>>, CompletableFuture<Boolean>> snapshotSaver =
                         useS3 ?
-                                ((S3BlockStorage) localStorage)::savePointerSnapshot :
+                                ((S3BlockStorage) localStorage)::savePointerSnapshot : // TODO remove this which will fail with S3
                                 s -> Futures.of(true);
                 int gcInterval = 12 * 60 * 60 * 1000;
                 gc.start(a.getInt("gc.period.millis", gcInterval), snapshotSaver);
@@ -563,7 +569,7 @@ public class Main extends Builder {
             AccountProxy accountProxy = new HttpAccount(p2pHttpProxy, pkiServerNodeId);
 
             CoreNode core = buildCorenode(a, localStorage, transactions, rawPointers, localPointers, proxingMutable,
-                    rawSocial, usageStore, rawAccount, batStore, account, crypto);
+                    rawSocial, usageStore, rawAccount, batStore, account, linkCounts, crypto);
             localStorage.setPki(core);
             if (a.hasArg("mirror.username")) // mirror pki before starting user mirror
                 core.initialize();
@@ -665,7 +671,7 @@ public class Main extends Builder {
                     while (true) {
                         try {
                             BatWithId mirrorBat = BatWithId.decode(a.getArg("mirror.bat"));
-                            Mirror.mirrorNode(nodeToMirrorId, mirrorBat, core, p2mMutable, localStorage, rawPointers, transactions, hasher);
+                            Mirror.mirrorNode(nodeToMirrorId, mirrorBat, core, p2mMutable, localStorage, rawPointers, transactions, linkCounts, hasher);
                             try {
                                 Thread.sleep(60_000);
                             } catch (InterruptedException f) {}
@@ -697,7 +703,7 @@ public class Main extends Builder {
                                     batStore.addBat(username, mirrorId, mirrorBat.get().bat, new byte[0]).join();
                             }
                             Mirror.mirrorUser(username, mirrorLoginDataPair, mirrorBat, core, p2mMutable, p2pAccount, localStorage,
-                                    rawPointers, rawAccount, transactions, hasher);
+                                    rawPointers, rawAccount, transactions, linkCounts, hasher);
                             try {
                                 Thread.sleep(60_000);
                             } catch (InterruptedException f) {}
@@ -860,7 +866,7 @@ public class Main extends Builder {
             user.ensureMirrorId().join().get();
             Optional<BatWithId> current = user.getMirrorBat().join();
             long usage = user.getSpaceUsage().join();
-            user.network.coreNode.migrateUser(username, newChain, currentStorageNodeId, current, usage).join();
+            user.network.coreNode.migrateUser(username, newChain, currentStorageNodeId, current, LocalDateTime.MIN, usage).join();
             List<UserPublicKeyLink> updatedChain = user.network.coreNode.getChain(username).join();
             if (!updatedChain.get(updatedChain.size() - 1).claim.storageProviders.contains(newStorageNodeId))
                 throw new IllegalStateException("Migration failed. Please try again later");

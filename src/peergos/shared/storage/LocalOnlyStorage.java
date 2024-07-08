@@ -8,6 +8,7 @@ import peergos.shared.storage.auth.*;
 import peergos.shared.user.fs.*;
 import peergos.shared.util.*;
 
+import java.time.*;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.function.*;
@@ -100,6 +101,16 @@ public class LocalOnlyStorage implements ContentAddressedStorage {
 
     @Override
     public CompletableFuture<Optional<Integer>> getSize(Multihash block) {
+        throw new IllegalStateException("Unimplemented!");
+    }
+
+    @Override
+    public CompletableFuture<EncryptedCapability> getSecretLink(SecretLink link) {
+        throw new IllegalStateException("Unimplemented!");
+    }
+
+    @Override
+    public CompletableFuture<LinkCounts> getLinkCounts(String owner, LocalDateTime after, BatWithId mirrorBat) {
         throw new IllegalStateException("Unimplemented!");
     }
 

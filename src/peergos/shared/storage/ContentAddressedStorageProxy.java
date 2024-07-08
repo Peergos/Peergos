@@ -1,16 +1,19 @@
 package peergos.shared.storage;
 
 import peergos.shared.cbor.*;
+import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.Cid;
 import peergos.shared.io.ipfs.Multihash;
 import peergos.shared.io.ipfs.api.*;
 import peergos.shared.storage.auth.*;
 import peergos.shared.user.*;
+import peergos.shared.user.fs.*;
 import peergos.shared.util.*;
 
 import java.io.*;
 import java.net.*;
+import java.time.*;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.stream.*;
@@ -22,6 +25,10 @@ public interface ContentAddressedStorageProxy {
     CompletableFuture<Boolean> closeTransaction(Multihash targetServerId, PublicKeyHash owner, TransactionId tid);
 
     CompletableFuture<List<byte[]>> getChampLookup(Multihash targetServerId, PublicKeyHash owner, Multihash root, byte[] champKey, Optional<BatWithId> bat);
+
+    CompletableFuture<EncryptedCapability> getSecretLink(Multihash targetServerId, SecretLink link);
+
+    CompletableFuture<LinkCounts> getLinkCounts(Multihash targetServerId, String owner, LocalDateTime after, BatWithId mirrorBat);
 
     CompletableFuture<List<Cid>> put(Multihash targetServerId,
                                      PublicKeyHash owner,
@@ -99,6 +106,29 @@ public interface ContentAddressedStorageProxy {
                     .thenApply(CborObject::fromByteArray)
                     .thenApply(c -> (CborObject.CborList)c)
                     .thenApply(res -> res.map(c -> ((CborObject.CborByteArray)c).value));
+        }
+
+        @Override
+        public CompletableFuture<EncryptedCapability> getSecretLink(Multihash targetServerId,
+                                                                    SecretLink link) {
+            return poster.get(getProxyUrlPrefix(targetServerId) + apiPrefix
+                    + "link/get?label=" + link.labelString()
+                    + "&owner=" + encode(link.owner.toString()))
+                    .thenApply(CborObject::fromByteArray)
+                    .thenApply(EncryptedCapability::fromCbor);
+        }
+
+        @Override
+        public CompletableFuture<LinkCounts> getLinkCounts(Multihash targetServerId,
+                                                           String owner,
+                                                           LocalDateTime after,
+                                                           BatWithId mirrorBat) {
+            return poster.get(getProxyUrlPrefix(targetServerId) + apiPrefix
+                    + "link/counts?after=" + after.toEpochSecond(ZoneOffset.UTC)
+                    + "?bat=" + mirrorBat.encode()
+                    + "&owner=" + owner)
+                    .thenApply(CborObject::fromByteArray)
+                    .thenApply(LinkCounts::fromCbor);
         }
 
         @Override

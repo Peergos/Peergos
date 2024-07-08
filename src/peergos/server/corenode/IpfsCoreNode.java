@@ -1,4 +1,5 @@
 package peergos.server.corenode;
+import java.time.*;
 import java.util.logging.*;
 
 import peergos.server.storage.*;
@@ -425,7 +426,7 @@ public class IpfsCoreNode implements CoreNode {
             MaybeMultihash currentTree = current.props.get().tree.map(MaybeMultihash::of).orElseGet(MaybeMultihash::empty);
 
             ChampWrapper<CborObject.CborMerkleLink> champ = currentTree.isPresent() ?
-                    ChampWrapper.create(peergosIdentity, (Cid)currentTree.get(), IpfsCoreNode::keyHash, ipfs, hasher, c -> (CborObject.CborMerkleLink)c).get() :
+                    ChampWrapper.create(peergosIdentity, (Cid)currentTree.get(), Optional.empty(), IpfsCoreNode::keyHash, ipfs, hasher, c -> (CborObject.CborMerkleLink)c).get() :
                     IpfsTransaction.call(peergosIdentity,
                             tid -> ChampWrapper.create(signer.publicKeyHash, signer, IpfsCoreNode::keyHash, tid, ipfs, hasher, c -> (CborObject.CborMerkleLink)c),
                             ipfs).get();
@@ -460,7 +461,7 @@ public class IpfsCoreNode implements CoreNode {
                     ipfs).get();
             synchronized (this) {
                 return IpfsTransaction.call(peergosIdentity,
-                        tid -> champ.put(signer.publicKeyHash, signer, username.getBytes(), existing, new CborObject.CborMerkleLink(mergedChainHash), tid)
+                        tid -> champ.put(signer.publicKeyHash, signer, username.getBytes(), existing, new CborObject.CborMerkleLink(mergedChainHash), Optional.empty(), tid)
                                 .thenCompose(newPkiRoot -> current.props.get().withChamp(newPkiRoot)
                                         .commit(peergosIdentity, signer, currentRoot, currentSequence, mutable, ipfs, hasher, tid)),
                         ipfs
@@ -507,6 +508,7 @@ public class IpfsCoreNode implements CoreNode {
                                                        List<UserPublicKeyLink> newChain,
                                                        Multihash currentStorageId,
                                                        Optional<BatWithId> mirrorBat,
+                                                       LocalDateTime latestLinkCountUpdate,
                                                        long currentUsage) {
         throw new IllegalStateException("Migration from pki node unimplemented!");
     }

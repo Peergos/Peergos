@@ -6,8 +6,10 @@ import peergos.shared.io.ipfs.Cid;
 import peergos.shared.io.ipfs.Multihash;
 import peergos.shared.storage.*;
 import peergos.shared.storage.auth.*;
+import peergos.shared.user.fs.*;
 import peergos.shared.util.*;
 
+import java.time.*;
 import java.util.*;
 import java.util.concurrent.*;
 
@@ -103,6 +105,16 @@ public class NonWriteThroughStorage implements ContentAddressedStorage {
         } catch (Exception e) {
             throw new RuntimeException(e.getMessage(), e);
         }
+    }
+
+    @Override
+    public CompletableFuture<EncryptedCapability> getSecretLink(SecretLink link) {
+        throw new IllegalStateException("Unsupported operation!");
+    }
+
+    @Override
+    public CompletableFuture<LinkCounts> getLinkCounts(String owner, LocalDateTime after, BatWithId mirrorBat) {
+        throw new IllegalStateException("Unsupported operation!");
     }
 
     @Override

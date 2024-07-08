@@ -92,7 +92,7 @@ public class DirectoryInode implements Cborable {
                                 .thenApply(d -> d.children.b()) :
                         Futures.of(children.b())
                 ).thenCompose(champ -> champ.put(owner, writer, key, keyHash, 0, Optional.empty(), Optional.of(child), bitWidth,
-                        ChampWrapper.MAX_HASH_COLLISIONS_PER_LEVEL, keyHasher, tid, storage, writeHasher, null)
+                        ChampWrapper.MAX_HASH_COLLISIONS_PER_LEVEL, Optional.empty(), keyHasher, tid, storage, writeHasher, null)
                         .thenApply(rootPair -> new DirectoryInode(rootPair.left, writeHasher, bitWidth, owner, keyHasher, storage)))
         );
     }
@@ -112,7 +112,7 @@ public class DirectoryInode implements Cborable {
         ByteArrayWrapper key = new ByteArrayWrapper(child.inode.name.name.getBytes());
         return keyHasher.apply(key).thenCompose(keyHash ->
                 children.b().remove(owner, writer, key, keyHash, 0, Optional.of(child), bitWidth,
-                        ChampWrapper.MAX_HASH_COLLISIONS_PER_LEVEL, tid, storage, writeHasher, null)
+                        ChampWrapper.MAX_HASH_COLLISIONS_PER_LEVEL, Optional.empty(), tid, storage, writeHasher, null)
                         .thenApply(rootPair -> new DirectoryInode(rootPair.left, writeHasher, bitWidth, owner, keyHasher, storage)));
     }
 
@@ -140,7 +140,7 @@ public class DirectoryInode implements Cborable {
         return Futures.reduceAll(children, Champ.empty(InodeCap::fromCbor),
                 (c, v) -> keyHasher.apply(toChampKey(v)).thenCompose(keyHash ->
                         c.put(owner, writer, toChampKey(v), keyHash, 0, Optional.empty(), Optional.of(v), bitWidth,
-                                ChampWrapper.MAX_HASH_COLLISIONS_PER_LEVEL, keyHasher, tid, storage, writeHasher, null))
+                                ChampWrapper.MAX_HASH_COLLISIONS_PER_LEVEL, Optional.empty(), keyHasher, tid, storage, writeHasher, null))
                         .thenApply(p -> p.left),
                 (a, b) -> b)
                 .thenApply(champ -> new DirectoryInode(champ, writeHasher, bitWidth, owner, keyHasher, storage));

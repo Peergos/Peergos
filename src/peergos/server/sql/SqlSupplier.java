@@ -56,6 +56,11 @@ public interface SqlSupplier {
                 "CREATE UNIQUE INDEX IF NOT EXISTS bat_index ON bats (id);";
     }
 
+    default String createLinkCountTableCommand() {
+        return "CREATE TABLE IF NOT EXISTS linkcounts (username text not null, label "+sqlInteger()+" not null, count "+sqlInteger()+" not null, modified "+sqlInteger()+" not null); " +
+                "CREATE UNIQUE INDEX IF NOT EXISTS bat_index ON linkcounts (username, label);";
+    }
+
     default String createSpaceRequestsTableCommand() {
         return "CREATE TABLE IF NOT EXISTS spacerequests (name text primary key not null, spacerequest text not null);";
     }

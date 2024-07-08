@@ -35,7 +35,7 @@ import java.util.stream.*;
 import jsinterop.annotations.*;
 
 /**
- * The UserContext class represents a logged in user, or a retrieved public link and the resulting view of the global
+ * The UserContext class represents a logged in user, or a retrieved secret link and the resulting view of the global
  * filesystem.
  */
 public class UserContext {
@@ -586,6 +586,18 @@ public class UserContext {
     }
 
     @JsMethod
+    public static CompletableFuture<UserContext> fromSecretLinkV2(String linkString,
+                                                                  Supplier<CompletableFuture<String>> userPassword,
+                                                                  NetworkAccess network,
+                                                                  Crypto crypto) {
+        SecretLink link = SecretLink.fromLink(linkString);
+        return network.getSecretLink(link)
+                .thenCompose(retrieved -> (retrieved.hasUserPassword ? userPassword.get() : Futures.of(""))
+                        .thenCompose(upass -> retrieved.decryptFromPassword(link.labelString(), link.linkPassword + upass, crypto)))
+                .thenCompose(cap -> fromSecretLink(cap, network, crypto));
+    }
+
+    @JsMethod
     public static CompletableFuture<UserContext> fromSecretLink(String link, NetworkAccess network, Crypto crypto) {
         AbsoluteCapability cap;
         try {
@@ -595,14 +607,19 @@ public class UserContext {
             invalidLink.completeExceptionally(e);
             return invalidLink;
         }
+        return fromSecretLink(cap, network, crypto);
+    }
+
+    private static CompletableFuture<UserContext> fromSecretLink(AbsoluteCapability cap, NetworkAccess network, Crypto crypto) {
         WriterData empty = new WriterData(cap.owner,
-                        Optional.empty(),
-                        Optional.empty(),
-                        Optional.empty(),
-                        Optional.empty(),
-                        Collections.emptyMap(),
-                        Optional.empty(),
-                        Optional.empty());
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty(),
+                Collections.emptyMap(),
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty());
         CommittedWriterData userData = new CommittedWriterData(MaybeMultihash.empty(), empty, Optional.empty());
         UserContext context = new UserContext(null, null, null, null, network,
                 crypto, userData, TrieNodeImpl.empty(), null, null,
@@ -625,6 +642,81 @@ public class UserContext {
                         throw new IllegalStateException("Invalid link!");
                     return currentRoot.put(r.getPath(), entry);
                 }));
+    }
+    @JsMethod
+    public String getLinkString(LinkProperties props) {
+        return props.toLinkString(signer.publicKeyHash);
+    }
+
+    @JsMethod
+    public CompletableFuture<LinkProperties> createSecretLink(String filePath,
+                                                              boolean isWritable,
+                                                              Optional<LocalDateTime> expiry,
+                                                              String maxRetrievals,
+                                                              String userPassword) {
+        return createSecretLink(filePath, isWritable, expiry,
+                maxRetrievals.isEmpty() ? Optional.empty() : Optional.of(Integer.parseInt(maxRetrievals)),
+                userPassword);
+    }
+
+    public CompletableFuture<LinkProperties> createSecretLink(String filePath,
+                                                              boolean isWritable,
+                                                              Optional<LocalDateTime> expiry,
+                                                              Optional<Integer> maxRetrievals,
+                                                              String userPassword) {
+        SecretLink res = SecretLink.create(signer.publicKeyHash, crypto.random);
+        LinkProperties props = new LinkProperties(res.label, res.linkPassword, userPassword, isWritable, maxRetrievals, expiry, Optional.empty());
+        Path toFile = PathUtil.get(filePath);
+        if (! isWritable)
+            return updateSecretLink(filePath, props);
+        return getByPath(toFile.getParent())
+                .thenCompose(parent -> parent.get().getChild(toFile.getFileName().toString(), crypto.hasher, network)
+                        .thenCompose(fopt -> shareWriteAccessWith(toFile, Collections.emptySet())))
+                .thenCompose(s -> writeSynchronizer.applyComplexComputation(signer.publicKeyHash, signer, (v, c) -> updateSecretLink(filePath, props, v.mergeAndOverwriteWith(s), c)))
+                .thenApply(x -> x.right);
+    }
+
+    @JsMethod
+    public CompletableFuture<LinkProperties> updateSecretLink(String filePath,
+                                                              LinkProperties props) {
+        return writeSynchronizer.applyComplexComputation(signer.publicKeyHash, signer, (v, c) -> updateSecretLink(filePath, props, v, c))
+                .thenApply(p -> p.right);
+    }
+
+    private CompletableFuture<Pair<Snapshot, LinkProperties>> updateSecretLink(String filePath,
+                                                                               LinkProperties props,
+                                                                               Snapshot v1,
+                                                                               Committer c) {
+        // put encrypted secret link in champ on identity, champ root must have mirror bat to make it private
+        PublicKeyHash id = signer.publicKeyHash;
+        return getByPath(filePath, v1)
+                .thenApply(Optional::get)
+                .thenCompose(file -> {
+                    boolean differentWriter = file.getPointer().getParentCap().writer.map(parentWriter -> ! parentWriter.equals(file.writer())).orElse(false);
+                    if (props.isLinkWritable && ! differentWriter)
+                        throw new IllegalStateException("To generate a writable secret link, the target must already be in a different writing space!");
+                    AbsoluteCapability cap = props.isLinkWritable ? file.getPointer().capability : file.getPointer().capability.readOnly();
+                    SecretLink res = new SecretLink(id, props.label, props.linkPassword);
+                    String fullPassword = props.linkPassword + props.userPassword;
+                    return EncryptedCapability.createFromPassword(cap, res.labelString(), fullPassword, !props.userPassword.isEmpty(), crypto)
+                            .thenApply(payload -> new SecretLinkTarget(payload, props.expiry, props.maxRetrievals))
+                            .thenCompose(value -> IpfsTransaction.call(id,
+                                    tid -> v1.withWriter(id, id, network).thenCompose(v2 -> v2.get(id).props.get().addLink(signer, props.label, value,
+                                                    props.existing.map(CborObject.CborMerkleLink::new), mirrorBat, tid, network.dhtClient, network.hasher)
+                                            .thenCompose(p -> c.commit(id, signer, p.left, v2.get(id), tid)
+                                                    .thenCompose(s -> sharedWithCache.addSecretLink(PathUtil.get(filePath),
+                                                            props.withExisting(Optional.of(p.right)), v2.mergeAndOverwriteWith(s), c, network))
+                                                    .thenApply(s -> new Pair<>(s, props.withExisting(Optional.of(p.right)))))), network.dhtClient));
+                });
+    }
+    @JsMethod
+    public CompletableFuture<Snapshot> deleteSecretLink(long label, Path toFile, boolean isWritable) {
+        PublicKeyHash id = signer.publicKeyHash;
+        return writeSynchronizer.applyComplexUpdate(id, signer,
+                        (v, c) -> IpfsTransaction.call(id,
+                                tid -> v.get(id).props.get().removeLink(signer, label, mirrorBat, tid, network.dhtClient, network.hasher)
+                                        .thenCompose(wd -> c.commit(id, signer, wd, v.get(id), tid))
+                                        .thenCompose(s -> sharedWithCache.removeSecretLink(toFile, label, s, c, network)), network.dhtClient));
     }
 
     public static CompletableFuture<AbsoluteCapability> getPublicCapability(Path originalPath, NetworkAccess network) {
@@ -1756,8 +1848,7 @@ public class UserContext {
                     .thenCompose(parent -> rotateAllKeys(toUnshare, parent.get(), false, toUnshare.version, c)
                             .thenCompose(markedDirty -> {
                                 return sharedWithCache.removeSharedWith(SharedWithCache.Access.READ, path, readersToRemove, markedDirty, c, network)
-                                        .thenCompose(s2 -> reSendAllWriteAccessRecursive(path, s2, c)
-                                                .thenCompose(s3 -> reSendAllReadAccessRecursive(path, s3, c)));
+                                        .thenCompose(s2 -> reSendAllSharesAndLinksRecursive(path, s2, c));
                             }));
         });
     }
@@ -1802,8 +1893,7 @@ public class UserContext {
                                             .thenCompose(s2 ->
                                                     sharedWithCache.removeSharedWith(SharedWithCache.Access.WRITE,
                                                             path, writersToRemove, s2, c, network))
-                                                    .thenCompose(s3 -> reSendAllWriteAccessRecursive(path, s3, c)
-                                                            .thenCompose(s4 -> reSendAllReadAccessRecursive(path, s4, c))));
+                                                    .thenCompose(s3 -> reSendAllSharesAndLinksRecursive(path, s3, c)));
                                 });
                     });
                 });
@@ -1892,19 +1982,27 @@ public class UserContext {
                         new IllegalStateException("Could not find path " + path)), path, readersToAdd, s, c));
     }
 
-    public CompletableFuture<Snapshot> reSendAllWriteAccessRecursive(Path start, Snapshot in, Committer c) {
-        return sharedWithCache.getAllWriteShares(start, in)
+    public CompletableFuture<Snapshot> reSendAllSharesAndLinksRecursive(Path start, Snapshot in, Committer c) {
+        return sharedWithCache.getAllDescendantShares(start, in)
                 .thenCompose(toReshare -> Futures.reduceAll(toReshare.entrySet(),
                         in,
-                        (s, e) -> sendWriteCapToAll(e.getKey(), e.getValue(), s, c),
+                        (s, e) -> reshareAndUpdateLinks(e.getKey(), e.getValue(), s, c),
                         (a, b) -> b));
     }
 
-    public CompletableFuture<Snapshot> reSendAllReadAccessRecursive(Path start, Snapshot in, Committer c) {
-        return sharedWithCache.getAllReadShares(start, in)
-                .thenCompose(toReshare -> Futures.reduceAll(toReshare.entrySet(),
-                        in,
-                        (s, e) -> shareReadAccessWith(e.getKey(), e.getValue(), s, c),
+    private CompletableFuture<Snapshot> reshareAndUpdateLinks(Path start, SharedWithState file, Snapshot in, Committer c) {
+        return Futures.reduceAll(file.readShares().entrySet(), in,
+                        (s, e) -> shareReadAccessWith(start.resolve(e.getKey()), e.getValue(), s, c),
+                        (a, b) -> b)
+                .thenCompose(s2 -> Futures.reduceAll(file.writeShares().entrySet(),
+                        s2,
+                        (s, e) -> sendWriteCapToAll(start.resolve(e.getKey()), e.getValue(), s, c),
+                        (a, b) -> b))
+                .thenCompose(s3 -> Futures.reduceAll(file.links().entrySet(), s3,
+                        (s, e) -> Futures.reduceAll(e.getValue(),
+                                s,
+                                (v, p) -> updateSecretLink(start.resolve(e.getKey()).toString(), p, v, c).thenApply(x -> x.left),
+                                (a, b) -> b),
                         (a, b) -> b));
     }
 
@@ -1950,6 +2048,7 @@ public class UserContext {
         // 2) update parent pointer
         // 3) delete old subtree
         // 4) then reshare all sub sharees
+        System.out.println("Sharing write: " + parent.writer() + " child " + file.writer());
         ensureAllowedToShare(file, username, true);
         SigningPrivateKeyAndPublicHash currentSigner = file.signingPair();
         boolean changeSigner = currentSigner.publicKeyHash.equals(parent.signingPair().publicKeyHash);
@@ -1963,10 +2062,12 @@ public class UserContext {
         return network.synchronizer.applyComplexUpdate(signer.publicKeyHash,
                 file.signingPair(), (s, c) -> rotateAllKeys(file, parent, true, s, c)
                         .thenCompose(s2 -> getByPath(pathToFile.toString(), s2)
-                                .thenCompose(newFileOpt -> sharedWithCache
-                                        .addSharedWith(SharedWithCache.Access.WRITE, pathToFile, writersToAdd, s2, c, network))
-                                .thenCompose(s3 -> reSendAllWriteAccessRecursive(pathToFile, s3, c)
-                                        .thenCompose(s4 -> reSendAllReadAccessRecursive(pathToFile, s4, c)))
+                                .thenCompose(newFileOpt -> {
+                                    System.out.println("New child writer: " + newFileOpt.get().writer());
+                                    return sharedWithCache
+                                            .addSharedWith(SharedWithCache.Access.WRITE, pathToFile, writersToAdd, s2, c, network);
+                                })
+                                .thenCompose(s3 -> reSendAllSharesAndLinksRecursive(pathToFile, s3, c))
                         ));
     }
 

@@ -2,7 +2,6 @@ package peergos.server.corenode;
 
 import peergos.server.*;
 import peergos.server.login.*;
-import peergos.server.net.*;
 import peergos.server.space.*;
 import peergos.server.storage.*;
 import peergos.server.util.*;
@@ -24,6 +23,7 @@ import peergos.shared.util.*;
 
 import java.io.*;
 import java.nio.file.*;
+import java.time.*;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.function.*;
@@ -45,6 +45,7 @@ public class MirrorCoreNode implements CoreNode {
     private final TransactionStore transactions;
     private final JdbcIpnsAndSocial localSocial;
     private final UsageStore usageStore;
+    private final LinkRetrievalCounter linkCounts;
     private final PublicKeyHash pkiOwnerIdentity;
     private final Multihash ourNodeId, pkiPeerId;
     private final Hasher hasher;
@@ -65,6 +66,7 @@ public class MirrorCoreNode implements CoreNode {
                           TransactionStore transactions,
                           JdbcIpnsAndSocial localSocial,
                           UsageStore usageStore,
+                          LinkRetrievalCounter linkCounts,
                           Multihash pkiPeerId,
                           PublicKeyHash pkiOwnerIdentity,
                           Path statePath,
@@ -80,6 +82,7 @@ public class MirrorCoreNode implements CoreNode {
         this.transactions = transactions;
         this.localSocial = localSocial;
         this.usageStore = usageStore;
+        this.linkCounts = linkCounts;
         this.pkiPeerId = pkiPeerId;
         this.pkiOwnerIdentity = pkiOwnerIdentity;
         this.statePath = statePath;
@@ -438,7 +441,8 @@ public class MirrorCoreNode implements CoreNode {
                 .collect(Collectors.toMap(p -> p.left, p -> p.right)),
                 in.pendingFollowReqs,
                 in.mirrorBats,
-                in.login);
+                in.login,
+                in.linkCounts);
     }
 
     public static CompletableFuture<Map<PublicKeyHash, byte[]>> getUserSnapshotRecursive(List<Multihash> peerIds,
@@ -489,6 +493,7 @@ public class MirrorCoreNode implements CoreNode {
                                                        List<UserPublicKeyLink> newChain,
                                                        Multihash currentStorageId,
                                                        Optional<BatWithId> mirrorBat,
+                                                       LocalDateTime latestLinkCountUpdate,
                                                        long currentUsage) {
         // check chain validity before proceeding further
         List<UserPublicKeyLink> existingChain = getChain(username).join();
@@ -503,12 +508,12 @@ public class MirrorCoreNode implements CoreNode {
         if (currentStorageId.equals(ourNodeId)) {
             // a user is migrating away from this server
             ProofOfWork work = ProofOfWork.empty();
-
+            LinkCounts updated = linkCounts.getUpdatedCounts(username, latestLinkCountUpdate);
             UserSnapshot snapshot = getUserSnapshot(owner, currentLast.claim.storageProviders, p2pMutable, ipfs, hasher)
                     .thenApply(pointers -> new UserSnapshot(pointers,
                             localSocial.getAndParseFollowRequests(owner),
                             batCave.getUserBats(username, new byte[0]).join(),
-                            rawAccount.getLoginData(username))).join();
+                            rawAccount.getLoginData(username), updated)).join();
             updateChain(username, newChain, work, "").join();
             // from this point on new writes are proxied to the new storage server
             return Futures.of(update(snapshot));
@@ -528,12 +533,13 @@ public class MirrorCoreNode implements CoreNode {
             }
             List<Multihash> storageProviders = getStorageProviders(owner);
             // Mirror all the data locally
-            Mirror.mirrorUser(username, Optional.empty(), mirrorBat, this, p2pMutable, null, ipfs, rawPointers, rawAccount, transactions, hasher);
+            Mirror.mirrorUser(username, Optional.empty(), mirrorBat, this, p2pMutable, null, ipfs, rawPointers, rawAccount, transactions, linkCounts, hasher);
             Map<PublicKeyHash, byte[]> mirrored = Mirror.mirrorUser(username, Optional.empty(), mirrorBat, this, p2pMutable,
-                    null, ipfs, rawPointers, rawAccount, transactions, hasher);
+                    null, ipfs, rawPointers, rawAccount, transactions, linkCounts, hasher);
 
             // Proxy call to their current storage server
-            UserSnapshot res = writeTarget.migrateUser(username, newChain, currentStorageId, mirrorBat, currentUsage).join();
+            LocalDateTime localLatestLinkCountTime = linkCounts.getLatestModificationTime(username).orElse(LocalDateTime.MIN);
+            UserSnapshot res = writeTarget.migrateUser(username, newChain, currentStorageId, mirrorBat, localLatestLinkCountTime, currentUsage).join();
             // pick up the new pki data locally
             update();
 
@@ -556,6 +562,9 @@ public class MirrorCoreNode implements CoreNode {
                 localSocial.addFollowRequest(owner, req.serialize()).join();
             }
 
+            // update local link counts
+            linkCounts.setCounts(username, res.linkCounts);
+
             // Make sure usage is updated
             List<Multihash> us = List.of(ourNodeId.bareMultihash());
             Set<PublicKeyHash> allUserKeys = DeletableContentAddressedStorage.getOwnedKeysRecursive(owner, owner, p2pMutable,
@@ -563,7 +572,7 @@ public class MirrorCoreNode implements CoreNode {
             SpaceCheckingKeyFilter.processCorenodeEvent(username, owner, allUserKeys, usageStore, ipfs, p2pMutable, hasher);
             return Futures.of(res);
         } else // Proxy call to their target storage server
-            return writeTarget.migrateUser(username, newChain, migrationTargetNode, mirrorBat, currentUsage);
+            return writeTarget.migrateUser(username, newChain, migrationTargetNode, mirrorBat, latestLinkCountUpdate, currentUsage);
     }
 
     @Override

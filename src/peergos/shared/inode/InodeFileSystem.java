@@ -38,7 +38,7 @@ public class InodeFileSystem implements Cborable {
                                                         DirectoryInode value,
                                                         TransactionId tid) {
         byte[] raw = key.serialize();
-        return champ.put(owner, writer, raw, existing, value, tid)
+        return champ.put(owner, writer, raw, existing, value, Optional.empty(), tid)
                 .thenApply(h -> new InodeFileSystem(existing.isPresent() ? inodeCount : inodeCount + 1, champ, storage));
     }
 
@@ -48,7 +48,7 @@ public class InodeFileSystem implements Cborable {
                                                       Optional<DirectoryInode> existing,
                                                       TransactionId tid) {
         byte[] raw = key.serialize();
-        return champ.remove(owner, writer, raw, existing, tid)
+        return champ.remove(owner, writer, raw, existing, Optional.empty(), tid)
                 .thenApply(h -> new InodeFileSystem(inodeCount, champ, storage));
     }
 
@@ -270,7 +270,7 @@ public class InodeFileSystem implements Cborable {
         Function<ByteArrayWrapper, CompletableFuture<byte[]>> keyHasher = b -> hasher.sha256(b.data);
         Function<Cborable, DirectoryInode> fromCbor =
                 c -> DirectoryInode.fromCbor(c, hasher, ChampWrapper.BIT_WIDTH, owner, keyHasher, storage);
-        return ChampWrapper.create(owner, (Cid)root, keyHasher, storage, hasher, fromCbor)
+        return ChampWrapper.create(owner, (Cid)root, Optional.empty(), keyHasher, storage, hasher, fromCbor)
                 .thenApply(cw -> new InodeFileSystem(inodeCount, cw, storage));
     }
 

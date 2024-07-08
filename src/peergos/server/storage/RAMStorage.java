@@ -8,9 +8,11 @@ import peergos.shared.io.ipfs.Cid;
 import peergos.shared.io.ipfs.Multihash;
 import peergos.shared.storage.*;
 import peergos.shared.storage.auth.*;
+import peergos.shared.user.fs.*;
 import peergos.shared.util.*;
 
 import java.security.*;
+import java.time.*;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.function.*;
@@ -196,6 +198,16 @@ public class RAMStorage implements DeletableContentAddressedStorage {
     @Override
     public CompletableFuture<IpnsEntry> getIpnsEntry(Multihash signer) {
         throw new IllegalStateException("Unimplemented!");
+    }
+
+    @Override
+    public CompletableFuture<EncryptedCapability> getSecretLink(SecretLink link) {
+        throw new IllegalStateException("Shouldn't get here.");
+    }
+
+    @Override
+    public CompletableFuture<LinkCounts> getLinkCounts(String owner, LocalDateTime after, BatWithId mirrorBat) {
+        throw new IllegalStateException("Shouldn't get here.");
     }
 
     public static Cid hashToCid(byte[] input, boolean isRaw) {

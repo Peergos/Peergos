@@ -56,6 +56,7 @@ public class WriteSynchronizer {
                 Optional.empty(),
                 Collections.emptyMap(),
                 Optional.empty(),
+                Optional.empty(),
                 Optional.empty());
         CommittedWriterData emptyUserData = new CommittedWriterData(MaybeMultihash.empty(), emptyWD, Optional.empty());
         put(owner, writer, emptyUserData);

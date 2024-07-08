@@ -223,7 +223,7 @@ public class NetworkAccess {
     public static CompletableFuture<NetworkAccess> buildJS(boolean isPublic,
                                                            int cacheSizeKiB,
                                                            boolean allowOfflineLogin) {
-        JavaScriptPoster relative = new JavaScriptPoster(false, isPublic);
+        JavaScriptPoster relative = new JavaScriptPoster(true, isPublic);
         ScryptJS hasher = new ScryptJS();
         boolean isPeergosServer = true; // we used to support using web ui through an ipfs gateway directly
         ContentAddressedStorage localDht = buildLocalDht(relative, isPeergosServer, hasher);
@@ -469,6 +469,10 @@ public class NetworkAccess {
                 });
     }
 
+    public CompletableFuture<EncryptedCapability> getSecretLink(SecretLink link) {
+        return dhtClient.getSecretLink(link);
+    }
+
     @JsMethod
     public CompletableFuture<Optional<FileWrapper>> getFile(AbsoluteCapability cap, String owner) {
         return synchronizer.getValue(cap.owner, cap.writer)
@@ -554,7 +558,7 @@ public class NetworkAccess {
                 .thenCompose(bat -> Futures.asyncExceptionally(
                         () -> dhtClient.getChampLookup(cap.owner, (Cid) base.tree.get(), cap.getMapKey(), bat,committedRoot),
                         t -> dhtClient.getChampLookup(cap.owner, (Cid) base.tree.get(), cap.getMapKey(), bat, committedRoot, hasher)
-                ).thenCompose(blocks -> ChampWrapper.create(cap.owner, (Cid)base.tree.get(), x -> Futures.of(x.data), dhtClient, hasher, c -> (CborObject.CborMerkleLink) c)
+                ).thenCompose(blocks -> ChampWrapper.create(cap.owner, (Cid)base.tree.get(), Optional.empty(), x -> Futures.of(x.data), dhtClient, hasher, c -> (CborObject.CborMerkleLink) c)
                         .thenCompose(tree -> tree.get(cap.getMapKey()))
                         .thenApply(c -> c.map(x -> x.target))
                         .thenCompose(btreeValue -> {

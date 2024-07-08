@@ -17,6 +17,7 @@ import peergos.shared.io.ipfs.Cid;
 import peergos.shared.io.ipfs.Multihash;
 import peergos.shared.storage.*;
 import peergos.shared.storage.auth.*;
+import peergos.shared.user.fs.*;
 import peergos.shared.util.*;
 
 import javax.net.ssl.*;
@@ -915,6 +916,15 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         }
     }
 
+    @Override
+    public CompletableFuture<EncryptedCapability> getSecretLink(SecretLink link) {
+        throw new IllegalStateException("Shouldn't get here.");
+    }
+
+    @Override
+    public CompletableFuture<LinkCounts> getLinkCounts(String owner, LocalDateTime after, BatWithId mirrorBat) {
+        throw new IllegalStateException("Shouldn't get here.");
+    }
     public static void main(String[] args) throws Exception {
         Args a = Args.parse(args);
         Logging.init(a.with("log-to-console", "true"));

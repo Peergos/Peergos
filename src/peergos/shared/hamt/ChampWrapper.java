@@ -6,6 +6,7 @@ import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.Cid;
 import peergos.shared.io.ipfs.Multihash;
 import peergos.shared.storage.*;
+import peergos.shared.storage.auth.*;
 import peergos.shared.user.*;
 import peergos.shared.util.*;
 
@@ -47,11 +48,12 @@ public class ChampWrapper<V extends Cborable> implements ImmutableTree<V>
 
     public static <V extends Cborable> CompletableFuture<ChampWrapper<V>> create(PublicKeyHash owner,
                                                                                  Cid rootHash,
+                                                                                 Optional<BatWithId> bat,
                                                                                  Function<ByteArrayWrapper, CompletableFuture<byte[]>> hasher,
                                                                                  ContentAddressedStorage dht,
                                                                                  Hasher writeHasher,
                                                                                  Function<Cborable, V> fromCbor) {
-        return dht.get(owner, rootHash, Optional.empty()).thenApply(rawOpt -> {
+        return dht.get(owner, rootHash, bat).thenApply(rawOpt -> {
             if (! rawOpt.isPresent())
                 throw new IllegalStateException("Champ root not present: " + rootHash);
             return new ChampWrapper<>(Champ.fromCbor(rawOpt.get(), fromCbor), rootHash, owner, hasher, dht, writeHasher, BIT_WIDTH);
@@ -98,11 +100,12 @@ public class ChampWrapper<V extends Cborable> implements ImmutableTree<V>
                                             byte[] rawKey,
                                             Optional<V> existing,
                                             V value,
+                                            Optional<BatId> mirrorBat,
                                             TransactionId tid) {
         ByteArrayWrapper key = new ByteArrayWrapper(rawKey);
         return keyHasher.apply(key)
                 .thenCompose(keyHash -> root.left.put(owner, writer, key, keyHash, 0, existing, Optional.of(value),
-                        BIT_WIDTH, MAX_HASH_COLLISIONS_PER_LEVEL, keyHasher, tid, storage, writeHasher, root.right))
+                        BIT_WIDTH, MAX_HASH_COLLISIONS_PER_LEVEL, mirrorBat, keyHasher, tid, storage, writeHasher, root.right))
                 .thenCompose(newRoot -> commit(writer, newRoot));
     }
 
@@ -117,11 +120,12 @@ public class ChampWrapper<V extends Cborable> implements ImmutableTree<V>
                                                SigningPrivateKeyAndPublicHash writer,
                                                byte[] rawKey,
                                                Optional<V> existing,
+                                               Optional<BatId> mirrorBat,
                                                TransactionId tid) {
         ByteArrayWrapper key = new ByteArrayWrapper(rawKey);
         return keyHasher.apply(key)
                 .thenCompose(keyHash -> root.left.remove(owner, writer, key, keyHash, 0, existing,
-                        BIT_WIDTH, MAX_HASH_COLLISIONS_PER_LEVEL, tid, storage, writeHasher, root.right))
+                        BIT_WIDTH, MAX_HASH_COLLISIONS_PER_LEVEL, mirrorBat, tid, storage, writeHasher, root.right))
                 .thenCompose(newRoot -> commit(writer, newRoot));
     }
 

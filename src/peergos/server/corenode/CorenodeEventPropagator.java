@@ -10,6 +10,7 @@ import peergos.shared.user.*;
 import peergos.shared.util.*;
 
 import java.io.*;
+import java.time.*;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.function.*;
@@ -110,8 +111,9 @@ public class CorenodeEventPropagator implements CoreNode {
                                                        List<UserPublicKeyLink> newChain,
                                                        Multihash currentStorageId,
                                                        Optional<BatWithId> mirrorBat,
+                                                       LocalDateTime latestLinkCountUpdate,
                                                        long currentUsage) {
-        return target.migrateUser(username, newChain, currentStorageId, mirrorBat, currentUsage).thenApply(res -> {
+        return target.migrateUser(username, newChain, currentStorageId, mirrorBat, latestLinkCountUpdate, currentUsage).thenApply(res -> {
             processEvent(newChain);
             return res;
         });

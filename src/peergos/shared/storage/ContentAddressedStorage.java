@@ -18,6 +18,7 @@ import peergos.shared.util.*;
 
 import java.io.*;
 import java.net.*;
+import java.time.*;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.stream.*;
@@ -176,7 +177,7 @@ public interface ContentAddressedStorage {
                                                            Optional<Cid> committedRoot,
                                                            Hasher hasher) {
         CachingStorage cache = new CachingStorage(this, 100, 1024 * 1024);
-        return ChampWrapper.create(owner, (Cid)root, x -> Futures.of(x.data), cache, hasher, c -> (CborObject.CborMerkleLink) c)
+        return ChampWrapper.create(owner, (Cid)root, Optional.empty(), x -> Futures.of(x.data), cache, hasher, c -> (CborObject.CborMerkleLink) c)
                 .thenCompose(tree -> tree.get(champKey))
                 .thenApply(c -> c.map(x -> x.target).map(MaybeMultihash::of).orElse(MaybeMultihash.empty()))
                 .thenApply(btreeValue -> {
@@ -194,6 +195,10 @@ public interface ContentAddressedStorage {
     CompletableFuture<Optional<Integer>> getSize(Multihash block);
 
     CompletableFuture<IpnsEntry> getIpnsEntry(Multihash signer);
+
+    CompletableFuture<EncryptedCapability> getSecretLink(SecretLink link);
+
+    CompletableFuture<LinkCounts> getLinkCounts(String owner, LocalDateTime after, BatWithId mirrorBat);
 
     default CompletableFuture<Cid> hashToCid(byte[] input, boolean isRaw, Hasher hasher) {
         return hasher.sha256(input)
@@ -269,6 +274,8 @@ public interface ContentAddressedStorage {
         public static final String TRANSACTION_START = "transaction/start";
         public static final String TRANSACTION_CLOSE = "transaction/close";
         public static final String CHAMP_GET = "champ/get";
+        public static final String LINK_GET = "link/get";
+        public static final String LINK_COUNTS = "link/counts";
         public static final String BLOCK_PUT = "block/put";
         public static final String BLOCK_GET = "block/get";
         public static final String BLOCK_RM = "block/rm";
@@ -404,6 +411,25 @@ public interface ContentAddressedStorage {
                     .thenApply(CborObject::fromByteArray)
                     .thenApply(c -> (CborObject.CborList)c)
                     .thenApply(res -> res.map(c -> ((CborObject.CborByteArray)c).value));
+        }
+
+        @Override
+        public CompletableFuture<EncryptedCapability> getSecretLink(SecretLink link) {
+            return poster.get(apiPrefix + LINK_GET
+                    + "?label=" + link.labelString()
+                    + "&owner=" + encode(link.owner.toString())
+            ).thenApply(CborObject::fromByteArray)
+                    .thenApply(EncryptedCapability::fromCbor);
+        }
+
+        @Override
+        public CompletableFuture<LinkCounts> getLinkCounts(String owner, LocalDateTime after, BatWithId mirrorBat) {
+            return poster.get(apiPrefix + LINK_COUNTS
+                    + "?after=" + after.toEpochSecond(ZoneOffset.UTC)
+                    + "?bat=" + mirrorBat.encode()
+                    + "&owner=" + owner
+            ).thenApply(CborObject::fromByteArray)
+                    .thenApply(LinkCounts::fromCbor);
         }
 
         @Override
@@ -625,6 +651,25 @@ public interface ContentAddressedStorage {
                     owner,
                     () -> local.getChampLookup(owner, root, champKey, bat, committedRoot),
                     target -> p2p.getChampLookup(target, owner, root, champKey, bat));
+        }
+
+        @Override
+        public CompletableFuture<EncryptedCapability> getSecretLink(SecretLink link) {
+            return Proxy.redirectCall(core,
+                    ourNodeIds,
+                    link.owner,
+                    () -> local.getSecretLink(link),
+                    target -> p2p.getSecretLink(target, link));
+        }
+
+        @Override
+        public CompletableFuture<LinkCounts> getLinkCounts(String owner, LocalDateTime after, BatWithId mirrorBat) {
+            return core.getPublicKeyHash(owner)
+                    .thenCompose(id -> Proxy.redirectCall(core,
+                            ourNodeIds,
+                            id.get(),
+                            () -> local.getLinkCounts(owner, after, mirrorBat),
+                            target -> p2p.getLinkCounts(target, owner, after, mirrorBat)));
         }
 
         @Override

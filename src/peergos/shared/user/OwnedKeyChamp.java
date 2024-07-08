@@ -37,7 +37,7 @@ public class OwnedKeyChamp {
     }
 
     public static CompletableFuture<OwnedKeyChamp> build(PublicKeyHash owner, Cid root, ContentAddressedStorage ipfs, Hasher hasher) {
-        return ChampWrapper.create(owner, root, b -> Futures.of(b.data), ipfs, hasher, c -> (CborObject.CborMerkleLink)c)
+        return ChampWrapper.create(owner, root, Optional.empty(), b -> Futures.of(b.data), ipfs, hasher, c -> (CborObject.CborMerkleLink)c)
                 .thenApply(c -> new OwnedKeyChamp(root, c, ipfs));
     }
 
@@ -67,7 +67,7 @@ public class OwnedKeyChamp {
                                             TransactionId tid) {
         return ipfs.put(owner, writer, proof.serialize(), hasher, tid)
                 .thenCompose(valueHash ->
-                        champ.put(owner, writer, keyToBytes(proof.ownedKey), Optional.empty(), new CborObject.CborMerkleLink(valueHash), tid));
+                        champ.put(owner, writer, keyToBytes(proof.ownedKey), Optional.empty(), new CborObject.CborMerkleLink(valueHash), Optional.empty(), tid));
     }
 
     public CompletableFuture<Multihash> remove(PublicKeyHash owner,
@@ -76,7 +76,7 @@ public class OwnedKeyChamp {
                                                TransactionId tid) {
         byte[] keyBytes = keyToBytes(key);
         return champ.get(keyBytes)
-                .thenCompose(existing -> champ.remove(owner, writer, keyBytes, existing, tid));
+                .thenCompose(existing -> champ.remove(owner, writer, keyBytes, existing, Optional.empty(), tid));
     }
 
     public CompletableFuture<Boolean> contains(PublicKeyHash ownedKey) {

@@ -12,6 +12,7 @@ import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
 import peergos.shared.util.*;
 
+import java.time.*;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.logging.*;
@@ -318,5 +319,15 @@ public class DirectS3BlockStore implements ContentAddressedStorage {
                         return Futures.errored(t);
                     return getChampLookup(owner, root, champKey, bat, committedRoot, hasher);
                 });
+    }
+
+    @Override
+    public CompletableFuture<EncryptedCapability> getSecretLink(SecretLink link) {
+        return fallback.getSecretLink(link);
+    }
+
+    @Override
+    public CompletableFuture<LinkCounts> getLinkCounts(String owner, LocalDateTime after, BatWithId mirrorBat) {
+        return fallback.getLinkCounts(owner, after, mirrorBat);
     }
 }

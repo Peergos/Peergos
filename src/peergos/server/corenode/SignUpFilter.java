@@ -14,6 +14,7 @@ import peergos.shared.storage.*;
 import peergos.shared.user.*;
 
 import java.io.*;
+import java.time.*;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.logging.*;
@@ -165,6 +166,7 @@ public class SignUpFilter implements CoreNode {
                                                        List<UserPublicKeyLink> newChain,
                                                        Multihash currentStorageId,
                                                        Optional<BatWithId> mirrorBat,
+                                                       LocalDateTime linkCountsAfter,
                                                        long currentUsage) {
         if (forUs(newChain)) {
             if (! quotaStore.allowSignupOrUpdate(username, ""))
@@ -177,7 +179,7 @@ public class SignUpFilter implements CoreNode {
                 throw new IllegalStateException("Not enough space for user to migrate user to this server!");
         }
 
-        return target.migrateUser(username, newChain, currentStorageId, mirrorBat, currentUsage);
+        return target.migrateUser(username, newChain, currentStorageId, mirrorBat, linkCountsAfter, currentUsage);
     }
 
     @Override

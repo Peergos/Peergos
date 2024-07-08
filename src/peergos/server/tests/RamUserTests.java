@@ -544,4 +544,61 @@ public class RamUserTests extends UserTests {
         // check user1 can still log in
         UserContext freshUser1 = PeergosNetworkUtils.ensureSignedUp(username1, password, network, crypto);
     }
+
+    @Test
+    public void secretLinkV2() throws Exception {
+        String username = generateUsername();
+        String password = "test";
+        UserContext user = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
+        FileWrapper userRoot = user.getUserRoot().join();
+
+        String filename = "somedata.txt";
+        // write empty file
+        byte[] data = new byte[1025*1024*5];
+        userRoot.uploadOrReplaceFile(filename, new AsyncReader.ArrayBacked(data), data.length, user.network,
+                        crypto, l -> {}).join();
+
+        Path filePath = PathUtil.get(username, filename);
+
+        boolean writable = false;
+        Optional<LocalDateTime> expiry = Optional.of(LocalDateTime.now().plusDays(1));
+        Optional<Integer> maxRetrievals = Optional.of(2);
+
+        String userPassword = "youre-terrible-muriel";
+        LinkProperties linkProps = user.createSecretLink(filePath.toString(), writable, expiry, maxRetrievals, userPassword).join();
+        SecretLink link = linkProps.toLink(userRoot.owner());
+
+        EncryptedCapability retrieved = network.getSecretLink(link).join();
+        AbsoluteCapability cap = retrieved.decryptFromPassword(link.labelString(), link.linkPassword + userPassword, crypto).join();
+        FileWrapper resolvedFile = network.getFile(cap, username).join().get();
+        Assert.assertTrue(resolvedFile.isWritable() == writable);
+
+        SharedWithState sharingState = user.getDirectorySharingState(Paths.get(username)).join();
+        Assert.assertTrue(sharingState.hasLink(filename));
+        LinkProperties props = sharingState.get(filename).links.stream().findFirst().get();
+
+        // try changing the password
+        String newPass = "different";
+        user.updateSecretLink(filePath.toString(), new LinkProperties(props.label, props.linkPassword, newPass, writable, props.maxRetrievals, props.expiry, props.existing)).join();
+
+        UserContext.fromSecretLinkV2(link.toLink(), () -> Futures.of(newPass), network, crypto).join();
+        try {
+            UserContext.fromSecretLinkV2(link.toLink(), () -> Futures.of(newPass), network, crypto).join();
+            throw new RuntimeException("Shouldn't get here");
+        } catch (IllegalStateException expected) {}
+
+        user.deleteSecretLink(link.label, filePath, writable).join();
+
+        try {
+            network.getSecretLink(link).join();
+            throw new RuntimeException("Shouldn't get here");
+        } catch (IllegalStateException expected) {}
+
+        // now a writable secret link
+        String wpass = "modifyme";
+        LinkProperties writeLink = user.createSecretLink(filePath.toString(), true, Optional.empty(), Optional.empty(), wpass).join();
+        UserContext writableContext = UserContext.fromSecretLinkV2(writeLink.toLinkString(userRoot.owner()), () -> Futures.of(wpass), network, crypto).join();
+        FileWrapper wf = writableContext.getByPath(filePath).join().get();
+        Assert.assertTrue(wf.isWritable());
+    }
 }
