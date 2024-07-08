@@ -13,8 +13,11 @@ import peergos.shared.util.*;
 import java.time.*;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.logging.*;
 
 public class SecretLinkStorage extends DelegatingDeletableStorage {
+
+    private static final Logger LOG = Logger.getGlobal();
 
     private final DeletableContentAddressedStorage target;
     private final MutablePointers pointers;
@@ -51,8 +54,13 @@ public class SecretLinkStorage extends DelegatingDeletableStorage {
         if (res.isEmpty())
             throw new IllegalStateException("No secret link present!");
         SecretLinkTarget target = res.get();
-        if (target.expiry.isPresent() && target.expiry.get().isBefore(LocalDateTime.now()))
-            throw new IllegalStateException("Secret link expired!");
+        if (target.expiry.isPresent()) {
+            LocalDateTime now = LocalDateTime.now();
+            if (target.expiry.get().isBefore(now)) {
+                LOG.info("Expired secret link: " + owner + "-" + link.label + " " + target.expiry.get() + " < " + now);
+                throw new IllegalStateException("Secret link expired!");
+            }
+        }
 
         if (target.maxRetrievals.isPresent() && counter.getCount(username, link.label) >= target.maxRetrievals.get())
             throw new IllegalStateException("Maximum link retrievals exceed!");
