@@ -427,7 +427,7 @@ public class UserContext {
                     return BatId.sha256(mirror, crypto.hasher)
                             .thenCompose(batid -> opLog.addBat(username, batid, mirror, identity)
                                     .thenCompose(b -> initialNetwork.dhtClient.id()
-                            .thenApply(id -> UserPublicKeyLink.createInitial(identity, username, expiry, Arrays.asList(id)))
+                            .thenCompose(id -> UserPublicKeyLink.createInitial(identity, username, expiry, Arrays.asList(id)))
                             .thenCompose(chain -> IpfsTransaction.call(identityHash, tid -> identityPair.secretSigningKey.signMessage(identityPair.publicSigningKey.serialize())
                                     .thenCompose(signedIdentity -> network.dhtClient.putSigningKey(
                                     signedIdentity,
@@ -1016,10 +1016,12 @@ public class UserContext {
         LOG.info("updating host for username: " + username + " to " + newHost);
         return network.coreNode.getChain(username).thenCompose(existing -> {
             List<Multihash> storage = Arrays.asList(new Cid(1, Cid.Codec.LibP2pKey, newHost.type, newHost.getHash()));
-            UserPublicKeyLink.Claim newClaim = UserPublicKeyLink.Claim.build(username, signer.secret, expiry, storage);
-            List<UserPublicKeyLink> updated = new ArrayList<>(existing.subList(0, existing.size() - 1));
-            updated.add(new UserPublicKeyLink(signer.publicKeyHash, newClaim, Optional.empty()));
-            return updateChainWithRetry(username, updated, "", hasher, network, x -> {});
+            return UserPublicKeyLink.Claim.build(username, signer.secret, expiry, storage).thenCompose(newClaim -> {
+                List<UserPublicKeyLink> updated = new ArrayList<>(existing.subList(0, existing.size() - 1));
+                updated.add(new UserPublicKeyLink(signer.publicKeyHash, newClaim, Optional.empty()));
+                return updateChainWithRetry(username, updated, "", hasher, network, x -> {
+                });
+            });
         });
     }
 
@@ -1032,10 +1034,12 @@ public class UserContext {
         return network.coreNode.getChain(username).thenCompose(existing -> {
             UserPublicKeyLink last = existing.get(existing.size() - 1);
             List<Multihash> storage = last.claim.storageProviders;
-            UserPublicKeyLink.Claim newClaim = UserPublicKeyLink.Claim.build(username, signer.secret, expiry, storage);
-            List<UserPublicKeyLink> updated = new ArrayList<>(existing.subList(0, existing.size() - 1));
-            updated.add(new UserPublicKeyLink(signer.publicKeyHash, newClaim, Optional.empty()));
-            return updateChainWithRetry(username, updated, "", hasher, network, x -> {});
+            return UserPublicKeyLink.Claim.build(username, signer.secret, expiry, storage).thenCompose(newClaim -> {
+                List<UserPublicKeyLink> updated = new ArrayList<>(existing.subList(0, existing.size() - 1));
+                updated.add(new UserPublicKeyLink(signer.publicKeyHash, newClaim, Optional.empty()));
+                return updateChainWithRetry(username, updated, "", hasher, network, x -> {
+                });
+            });
         });
     }
 
@@ -1155,9 +1159,9 @@ public class UserContext {
                                                                     network)).thenCompose(writerData -> {
                                                                 return network.coreNode.getChain(username).thenCompose(existing -> {
                                                                     List<Multihash> storage = existing.get(existing.size() - 1).claim.storageProviders;
-                                                                    List<UserPublicKeyLink> claimChain = UserPublicKeyLink.createChain(signer, newIdentity, username, expiry, storage);
-                                                                    return updateChainWithRetry(username, claimChain, "", crypto.hasher, network, x -> {
-                                                                    })
+                                                                    return UserPublicKeyLink.createChain(signer, newIdentity, username, expiry, storage).thenCompose(claimChain ->
+                                                                                    updateChainWithRetry(username, claimChain, "", crypto.hasher, network, x -> {
+                                                                                    }))
                                                                             .thenCompose(updatedChain -> {
                                                                                 if (!updatedChain)
                                                                                     throw new IllegalStateException("Couldn't register new public keys during password change!");

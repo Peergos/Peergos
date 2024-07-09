@@ -86,23 +86,23 @@ public class UserPublicKeyLink implements Cborable {
         return new UserPublicKeyLink(owner, claim, keyChangeProof);
     }
 
-    public static List<UserPublicKeyLink> createChain(SigningPrivateKeyAndPublicHash oldUser,
-                                                      SigningPrivateKeyAndPublicHash newUser,
-                                                      String username,
-                                                      LocalDate expiry,
-                                                      List<Multihash> storageProviders) {
+    public static CompletableFuture<List<UserPublicKeyLink>> createChain(SigningPrivateKeyAndPublicHash oldUser,
+                                                                         SigningPrivateKeyAndPublicHash newUser,
+                                                                         String username,
+                                                                         LocalDate expiry,
+                                                                         List<Multihash> storageProviders) {
         // sign new claim to username, with provided expiry
-        Claim newClaim = Claim.build(username, newUser.secret, expiry, storageProviders);
+        return Claim.build(username, newUser.secret, expiry, storageProviders).thenCompose(newClaim ->
+                // sign new key with old
+                oldUser.secret.signMessage(newUser.publicKeyHash.serialize()).thenCompose(link -> {
 
-        // sign new key with old
-        byte[] link = oldUser.secret.signMessage(newUser.publicKeyHash.serialize()).join();
-
-        // create link from old that never expires
-        UserPublicKeyLink fromOld = new UserPublicKeyLink(oldUser.publicKeyHash,
-                Claim.build(username, oldUser.secret, LocalDate.MAX, Collections.emptyList()),
-                Optional.of(link));
-
-        return Arrays.asList(fromOld, new UserPublicKeyLink(newUser.publicKeyHash, newClaim));
+                    // create link from old that never expires
+                    return Claim.build(username, oldUser.secret, LocalDate.MAX, Collections.emptyList())
+                            .thenApply(claim -> new UserPublicKeyLink(oldUser.publicKeyHash,
+                                    claim,
+                                    Optional.of(link))).thenApply(fromOld ->
+                                    Arrays.asList(fromOld, new UserPublicKeyLink(newUser.publicKeyHash, newClaim)));
+                }));
     }
 
     public static class Claim implements Cborable {
@@ -145,7 +145,7 @@ public class UserPublicKeyLink implements Cborable {
             return new Claim(username, expiry, storageProviders, signedContents);
         }
 
-        public static Claim build(String username, SecretSigningKey from, LocalDate expiryDate, List<Multihash> storageProviders) {
+        public static CompletableFuture<Claim> build(String username, SecretSigningKey from, LocalDate expiryDate, List<Multihash> storageProviders) {
             try {
                 ByteArrayOutputStream bout = new ByteArrayOutputStream();
                 DataOutputStream dout = new DataOutputStream(bout);
@@ -156,25 +156,30 @@ public class UserPublicKeyLink implements Cborable {
                     Serialize.serialize(storageProvider.toBytes(), dout);
                 }
                 byte[] payload = bout.toByteArray();
-                byte[] signed = from.signMessage(payload).join();
-                return new Claim(username, expiryDate, storageProviders, signed);
+                return from.signMessage(payload)
+                        .thenApply(signed -> new Claim(username, expiryDate, storageProviders, signed));
             } catch (IOException e) {
                 throw new RuntimeException(e);
             }
         }
 
-        public static Claim deserialize(byte[] signedContents, PublicSigningKey signer) throws IOException {
-            byte[] contents = signer.unsignMessage(signedContents).join();
-            ByteArrayInputStream bin = new ByteArrayInputStream(contents);
-            DataInputStream din = new DataInputStream(bin);
-            String username = Serialize.deserializeString(din, MAX_USERNAME_SIZE);
-            LocalDate expiry = LocalDate.parse(Serialize.deserializeString(din, 16));
-            int nStorageProviders = din.readInt();
-            List<Multihash> storageProviders = new ArrayList<>();
-            for (int i=0; i < nStorageProviders; i++) {
-                storageProviders.add(Cid.cast(Serialize.deserializeByteArray(din, 100)));
-            }
-            return new Claim(username, expiry, storageProviders, signedContents);
+        public static CompletableFuture<Claim> deserialize(byte[] signedContents, PublicSigningKey signer) throws IOException {
+            return signer.unsignMessage(signedContents).thenApply(contents -> {
+                try {
+                    ByteArrayInputStream bin = new ByteArrayInputStream(contents);
+                    DataInputStream din = new DataInputStream(bin);
+                    String username = Serialize.deserializeString(din, MAX_USERNAME_SIZE);
+                    LocalDate expiry = LocalDate.parse(Serialize.deserializeString(din, 16));
+                    int nStorageProviders = din.readInt();
+                    List<Multihash> storageProviders = new ArrayList<>();
+                    for (int i = 0; i < nStorageProviders; i++) {
+                        storageProviders.add(Cid.cast(Serialize.deserializeByteArray(din, 100)));
+                    }
+                    return new Claim(username, expiry, storageProviders, signedContents);
+                } catch(IOException e) {
+                    throw new RuntimeException(e);
+                }
+            });
         }
 
         @Override
@@ -201,13 +206,12 @@ public class UserPublicKeyLink implements Cborable {
         }
     }
 
-    public static List<UserPublicKeyLink> createInitial(SigningPrivateKeyAndPublicHash signer,
+    public static CompletableFuture<List<UserPublicKeyLink>> createInitial(SigningPrivateKeyAndPublicHash signer,
                                                         String username,
                                                         LocalDate expiry,
                                                         List<Multihash> storageProviders) {
-        Claim newClaim = Claim.build(username, signer.secret, expiry, storageProviders);
-
-        return Collections.singletonList(new UserPublicKeyLink(signer.publicKeyHash, newClaim));
+        return Claim.build(username, signer.secret, expiry, storageProviders)
+                .thenApply(newClaim -> Collections.singletonList(new UserPublicKeyLink(signer.publicKeyHash, newClaim)));
     }
 
     public static CompletableFuture<List<UserPublicKeyLink>> merge(List<UserPublicKeyLink> existing,
@@ -283,14 +287,16 @@ public class UserPublicKeyLink implements Cborable {
             Optional<byte[]> keyChangeProof = from.getKeyChangeProof();
             if (!keyChangeProof.isPresent())
                 return CompletableFuture.completedFuture(false);
-            return ipfs.getSigningKey(from.owner, from.owner).thenApply(ownerKeyOpt -> {
+            return ipfs.getSigningKey(from.owner, from.owner).thenCompose(ownerKeyOpt -> {
                 if (!ownerKeyOpt.isPresent())
-                    return false;
-                PublicKeyHash targetKey = PublicKeyHash.fromCbor(CborObject.fromByteArray(ownerKeyOpt.get().unsignMessage(keyChangeProof.get()).join()));
-                if (!Arrays.equals(targetKey.serialize(), target.serialize()))
-                    return false;
+                    return Futures.of(false);
+                return ownerKeyOpt.get().unsignMessage(keyChangeProof.get()).thenApply(unsigned -> {
+                    PublicKeyHash targetKey = PublicKeyHash.fromCbor(CborObject.fromByteArray(unsigned));
+                    if (!Arrays.equals(targetKey.serialize(), target.serialize()))
+                        return false;
 
-                return true;
+                    return true;
+                });
             });
         });
     }

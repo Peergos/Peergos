@@ -323,7 +323,7 @@ public class MultiNodeNetworkTests {
         List<UserPublicKeyLink> evilChain = evil.network.coreNode.getChain(evilusername).join();
         UserPublicKeyLink evilLast = evilChain.get(0);
         UserPublicKeyLink.Claim newClaim = UserPublicKeyLink.Claim.build(username, evil.signer.secret,
-                LocalDate.now().plusMonths(2), Arrays.asList(newStorageNodeId));
+                LocalDate.now().plusMonths(2), Arrays.asList(newStorageNodeId)).join();
         UserPublicKeyLink evilUpdate = evilLast.withClaim(newClaim);
         List<UserPublicKeyLink> newChain = Arrays.asList(evilUpdate);
         UserContext userViaNewServer = ensureSignedUp(username, password, getNode(iNode2), crypto);
