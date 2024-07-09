@@ -310,14 +310,15 @@ public class UserPublicKeyLink implements Cborable {
             return CompletableFuture.completedFuture(false);
         if (from.claim.storageProviders.size() > 1)
             return CompletableFuture.completedFuture(false);
-        return ipfs.getSigningKey(from.owner, from.owner).thenApply(ownerKeyOpt -> {
+        return ipfs.getSigningKey(from.owner, from.owner).thenCompose(ownerKeyOpt -> {
             if (!ownerKeyOpt.isPresent())
-                return false;
+                return Futures.of(false);
             try {
-                return from.claim.equals(Claim.deserialize(from.claim.signedContents, ownerKeyOpt.get()));
+                return Claim.deserialize(from.claim.signedContents, ownerKeyOpt.get())
+                        .thenApply(decoded -> from.claim.equals(decoded));
             } catch (Exception e) {
                 e.printStackTrace();
-                return false;
+                return Futures.of(false);
             }
         });
     }
