@@ -263,40 +263,49 @@ public class BufferedStorage extends DelegatingStorage {
         int maxBlocksPerBatch = ContentAddressedStorage.MAX_BLOCK_AUTHS;
         List<List<OpLog.BlockWrite>> cborBatches = new ArrayList<>();
         List<List<OpLog.BlockWrite>> rawBatches = new ArrayList<>();
+        List<List<OpLog.BlockWrite>> smallRawBatches = new ArrayList<>();
 
-        int cborCount = 0, rawcount = 0;
+        int cborCount = 0, rawcount = 0, smallRawCount = 0;
+        int smallBlockMax = DirectS3BlockStore.MIN_SMALL_BLOCK_SIZE;
         if (! cborBatches.isEmpty() && ! cborBatches.get(cborBatches.size() - 1).isEmpty())
             cborBatches.add(new ArrayList<>());
         if (! rawBatches.isEmpty() && ! rawBatches.get(rawBatches.size() - 1).isEmpty())
             rawBatches.add(new ArrayList<>());
+        if (! smallRawBatches.isEmpty() && ! smallRawBatches.get(rawBatches.size() - 1).isEmpty())
+            smallRawBatches.add(new ArrayList<>());
         for (OpLog.BlockWrite val : forWriter) {
-            List<List<OpLog.BlockWrite>> batches = val.isRaw ? rawBatches : cborBatches;
-            int count = val.isRaw ? rawcount : cborCount;
+            List<List<OpLog.BlockWrite>> batches = val.isRaw ? val.block.length < smallBlockMax ? smallRawBatches : rawBatches : cborBatches;
+            int count = val.isRaw ? val.block.length < smallBlockMax ? smallRawCount : rawcount : cborCount;
             if (count % maxBlocksPerBatch == 0)
                 batches.add(new ArrayList<>());
             batches.get(batches.size() - 1).add(val);
             count = (count + 1) % maxBlocksPerBatch;
-            if (val.isRaw)
-                rawcount = count;
-            else
+            if (val.isRaw) {
+                if (val.block.length < smallBlockMax)
+                    smallRawCount = count;
+                else
+                    rawcount = count;
+            } else
                 cborCount = count;
         }
-        return Futures.combineAllInOrder(rawBatches.stream()
-                        .filter(b -> ! b.isEmpty())
-                        .map(batch -> target.putRaw(owner, writer,
-                                batch.stream().map(w -> w.signature).collect(Collectors.toList()),
-                                batch.stream().map(w -> w.block).collect(Collectors.toList()), tid, x-> {})
-                                .thenApply(res -> {
-                                    batch.stream().forEach(w ->  w.progressMonitor.ifPresent(m -> m.accept((long)w.block.length)));
-                                    return res;
-                                }))
+        return Futures.combineAllInOrder(Stream.concat(
+                                rawBatches.stream().map(bs -> new Pair<>(true, bs)),
+                                Stream.concat(
+                                        smallRawBatches.stream().map(bs -> new Pair<>(true, bs)),
+                                        cborBatches.stream().map(bs -> new Pair<>(false, bs))))
+                        .filter(p -> ! p.right.isEmpty())
+                        .map(p -> p.left ?
+                                target.putRaw(owner, writer,
+                                                p.right.stream().map(w -> w.signature).collect(Collectors.toList()),
+                                                p.right.stream().map(w -> w.block).collect(Collectors.toList()), tid, x-> {})
+                                        .thenApply(res -> {
+                                            p.right.stream().forEach(w ->  w.progressMonitor.ifPresent(m -> m.accept((long)w.block.length)));
+                                            return res;
+                                        }) :
+                                target.put(owner, writer,
+                                        p.right.stream().map(w -> w.signature).collect(Collectors.toList()),
+                                        p.right.stream().map(w -> w.block).collect(Collectors.toList()), tid))
                         .collect(Collectors.toList()))
-                .thenCompose(a -> Futures.combineAllInOrder(cborBatches.stream()
-                        .filter(b -> ! b.isEmpty())
-                        .map(batch -> target.put(owner, writer,
-                                batch.stream().map(w -> w.signature).collect(Collectors.toList()),
-                                batch.stream().map(w -> w.block).collect(Collectors.toList()), tid))
-                        .collect(Collectors.toList())))
                 .thenApply(a -> true);
     }
 

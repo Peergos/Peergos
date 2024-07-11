@@ -20,6 +20,8 @@ import java.util.stream.*;
 
 public class DirectS3BlockStore implements ContentAddressedStorage {
 
+    public static final int MIN_SMALL_BLOCK_SIZE = 100 * 1024;
+
     private final boolean directWrites, publicReads, authedReads;
     private final Optional<String> basePublicReadUrl;
     private final Optional<String> baseAuthedUrl;
@@ -124,6 +126,10 @@ public class DirectS3BlockStore implements ContentAddressedStorage {
                                                List<byte[]> blocks,
                                                TransactionId tid,
                                                ProgressConsumer<Long> progressCounter) {
+        //  raw blocks smaller than 100 KiB are written directly to server rather than S3 (if S3 blockstore)
+        // otherwise we suffer disproportionally from latency to S3 from the client
+        if (blocks.stream().allMatch(b -> b.length < MIN_SMALL_BLOCK_SIZE))
+            return fallback.putRaw(owner, writer, signatures, blocks, tid, progressCounter);
         return onOwnersNode(owner).thenCompose(ownersNode -> {
             if (ownersNode && directWrites) {
                 // we have a trade-off here. The first block upload cannot start until the auth call returns.
