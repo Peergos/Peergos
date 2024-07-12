@@ -23,9 +23,11 @@ public class JSPointerCache implements PointerCache {
                 .thenCompose(current -> storage.getSigningKey(owner, writer).thenCompose(signerOpt -> {
                     if (signerOpt.isEmpty())
                         throw new IllegalStateException("Couldn't retrieve signing key!");
-                    if (doUpdate(current, signedUpdate, signerOpt.get()))
-                        return cache.put(owner, writer, signedUpdate);
-                    return Futures.of(false);
+                    return doUpdate(current, signedUpdate, signerOpt.get()).thenCompose(res -> {
+                        if (res)
+                            return cache.put(owner, writer, signedUpdate);
+                        return Futures.of(false);
+                    });
                 }));
     }
 

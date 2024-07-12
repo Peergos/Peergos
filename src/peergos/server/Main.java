@@ -168,7 +168,7 @@ public class Main extends Builder {
                     crypto.random, crypto.signer, crypto.boxer, SecretGenerationAlgorithm.getDefaultWithoutExtraSalt()).get().getUser();
             IpfsTransaction.call(peergosPublicHash,
                     tid -> dht.putSigningKey(peergosIdentityKeys.secretSigningKey.signMessage(
-                            pkiKeys.publicSigningKey.serialize()),
+                            pkiKeys.publicSigningKey.serialize()).join(),
                             peergosPublicHash,
                             pkiKeys.publicSigningKey, tid), dht).get();
 
@@ -222,7 +222,7 @@ public class Main extends Builder {
                 // write pki public key to ipfs
                 IpfsTransaction.call(context.signer.publicKeyHash,
                         tid -> network.dhtClient.putSigningKey(context.signer.secret
-                                .signMessage(pkiPublic.serialize()), context.signer.publicKeyHash, pkiPublic, tid),
+                                .signMessage(pkiPublic.serialize()).join(), context.signer.publicKeyHash, pkiPublic, tid),
                         network.dhtClient).join();
                 context.addNamedOwnedKeyAndCommit("pki", pkiKeyPair).join();
             }

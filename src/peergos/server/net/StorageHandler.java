@@ -217,7 +217,7 @@ public class StorageHandler implements HttpHandler {
                     for (int i = 0; i < data.size(); i++) {
                         byte[] signature = signatures.get(i);
                         byte[] hash = hasher.sha256(data.get(i)).join();
-                        byte[] unsigned = writer.unsignMessage(signature);
+                        byte[] unsigned = writer.unsignMessage(signature).join();
                         if (! Arrays.equals(unsigned, hash))
                             throw new IllegalStateException("Invalid signature for block!");
                     }

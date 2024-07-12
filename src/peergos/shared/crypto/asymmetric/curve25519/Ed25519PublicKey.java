@@ -2,8 +2,10 @@ package peergos.shared.crypto.asymmetric.curve25519;
 
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.asymmetric.PublicSigningKey;
+import peergos.shared.util.*;
 
 import java.util.*;
+import java.util.concurrent.*;
 
 public class Ed25519PublicKey implements PublicSigningKey {
     public static final int SIGNATURE_SIZE_BYTES = 64;
@@ -45,7 +47,7 @@ public class Ed25519PublicKey implements PublicSigningKey {
         return new CborObject.CborList(Arrays.asList(new CborObject.CborLong(type().value), new CborObject.CborByteArray(publicKey)));
     }
 
-    public byte[] unsignMessage(byte[] signed) {
+    public CompletableFuture<byte[]> unsignMessage(byte[] signed) {
         if (implementation == null)
             throw new IllegalStateException("Uninitialized crypto-implementation: call peergos.shared.Crypto::init");
         return implementation.crypto_sign_open(signed, publicKey);

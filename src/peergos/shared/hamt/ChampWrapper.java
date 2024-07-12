@@ -70,7 +70,8 @@ public class ChampWrapper<V extends Cborable> implements ImmutableTree<V>
         Champ<V> newRoot = Champ.empty(fromCbor);
         byte[] raw = newRoot.serialize();
         return writeHasher.sha256(raw)
-                .thenCompose(hash -> dht.put(owner, writer.publicKeyHash, writer.secret.signMessage(hash), raw, tid))
+                .thenCompose(hash -> writer.secret.signMessage(hash))
+                .thenCompose(signed -> dht.put(owner, writer.publicKeyHash, signed, raw, tid))
                 .thenApply(put -> new ChampWrapper<>(newRoot, put, owner, hasher, dht, writeHasher, BIT_WIDTH));
     }
 

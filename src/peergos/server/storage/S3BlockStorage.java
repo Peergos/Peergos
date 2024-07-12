@@ -247,7 +247,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                 Cid.Codec codec = isRaw ? Cid.Codec.Raw : Cid.Codec.DagCbor;
                 if (! isRaw)
                     throw new IllegalStateException("Only raw blocks can be pre-authed for writes");
-                Cid cid = new Cid(1, codec, Multihash.Type.sha2_256, writer.unsignMessage(signedHashes.get(i)));
+                Cid cid = new Cid(1, codec, Multihash.Type.sha2_256, writer.unsignMessage(signedHashes.get(i)).join());
                 blockProps.add(new Pair<>(cid, new BlockMetadata(blockSizes.get(i), Collections.emptyList(), batIds.get(i))));
             }
             List<PresignedUrl> res = new ArrayList<>();

@@ -153,7 +153,7 @@ public class Mirror {
         if (loginAuth.isPresent()) {
             SigningKeyPair login = loginAuth.get();
             Either<UserStaticData, MultiFactorAuthRequest> loginData = p2pAccount.getLoginData(username, login.publicSigningKey,
-                    TimeLimitedClient.signNow(login.secretSigningKey), Optional.empty(), false).join();
+                    TimeLimitedClient.signNow(login.secretSigningKey).join(), Optional.empty(), false).join();
             if (loginData.isA()) {
                 UserStaticData entryData = loginData.a();
                 targetAccount.setLoginData(new LoginData(username, entryData, login.publicSigningKey, Optional.empty())).join();

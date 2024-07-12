@@ -668,21 +668,20 @@ public class CryptreeNode implements Cborable {
             NetworkAccess network,
             Snapshot version,
             Committer committer) {
-        byte[] signature = parentSigner.secret.signMessage(newSignerPair.publicSigningKey.serialize());
-        return IpfsTransaction.call(owner,
+        return parentSigner.secret.signMessage(newSignerPair.publicSigningKey.serialize()).thenCompose(signature -> IpfsTransaction.call(owner,
                 tid -> network.dhtClient.putSigningKey(signature, owner, parentSigner.publicKeyHash,
-                        newSignerPair.publicSigningKey, tid)
+                                newSignerPair.publicSigningKey, tid)
                         .thenCompose(newSignerHash -> {
                             SigningPrivateKeyAndPublicHash newSigner =
                                     new SigningPrivateKeyAndPublicHash(newSignerHash, newSignerPair.secretSigningKey);
                             CommittedWriterData cwd = version.get(parentSigner);
-                            OwnerProof proof = OwnerProof.build(newSigner, parentSigner.publicKeyHash);
-                            return cwd.props.get().addOwnedKeyAndCommit(owner, parentSigner, proof, cwd.hash, cwd.sequence, network, committer, tid)
+                            return OwnerProof.build(newSigner, parentSigner.publicKeyHash)
+                                    .thenCompose(proof -> cwd.props.get().addOwnedKeyAndCommit(owner, parentSigner, proof, cwd.hash, cwd.sequence, network, committer, tid))
                                     .thenCompose(v -> WriterData.createEmpty(owner, newSigner, network.dhtClient,
-                                            network.hasher, tid)
+                                                    network.hasher, tid)
                                             .thenCompose(wd -> committer.commit(owner, newSigner, wd, new CommittedWriterData(MaybeMultihash.empty(), Optional.empty(), Optional.empty()), tid))
                                             .thenApply(s -> new Pair<>(version.mergeAndOverwriteWith(v).mergeAndOverwriteWith(s), newSigner)));
-                        }), network.dhtClient);
+                        }), network.dhtClient));
     }
 
     public static CompletableFuture<Snapshot> deAuthoriseSigner(

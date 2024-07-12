@@ -25,8 +25,8 @@ public interface MutablePointers {
     CompletableFuture<Boolean> setPointer(PublicKeyHash owner, PublicKeyHash writer, byte[] writerSignedBtreeRootHash);
 
     default CompletableFuture<Boolean> setPointer(PublicKeyHash owner, SigningPrivateKeyAndPublicHash writer, PointerUpdate casUpdate) {
-        byte[] signed = writer.secret.signMessage(casUpdate.serialize());
-        return setPointer(owner, writer.publicKeyHash, signed);
+        return writer.secret.signMessage(casUpdate.serialize())
+                .thenCompose(signed -> setPointer(owner, writer.publicKeyHash, signed));
     }
 
     /** Get the current hash a public key maps to
@@ -56,33 +56,39 @@ public interface MutablePointers {
                                                                PublicKeyHash writerKeyHash,
                                                                ContentAddressedStorage ipfs) {
         return ipfs.getSigningKey(owner, writerKeyHash)
-                .thenApply(writerOpt -> writerOpt.map(writerKey -> PointerUpdate.fromCbor(CborObject.fromByteArray(writerKey.unsignMessage(pointerCas))))
-                        .orElse(PointerUpdate.empty()));
+                .thenCompose(writerOpt -> writerOpt.map(writerKey -> writerKey.unsignMessage(pointerCas)
+                                .thenApply(signed -> PointerUpdate.fromCbor(CborObject.fromByteArray(signed))))
+                        .orElse(Futures.of(PointerUpdate.empty())));
     }
 
     static CompletableFuture<Boolean> isValidUpdate(PublicSigningKey writerKey, Optional<byte[]> current, byte[] writerSignedBtreeRootHash) {
-        byte[] bothHashes = writerKey.unsignMessage(writerSignedBtreeRootHash);
-        PointerUpdate cas = PointerUpdate.fromCbor(CborObject.fromByteArray(bothHashes));
-        MaybeMultihash claimedCurrentHash = cas.original;
-        Multihash newHash = cas.updated.get();
+        return writerKey.unsignMessage(writerSignedBtreeRootHash).thenCompose(bothHashes -> {
+            PointerUpdate cas = PointerUpdate.fromCbor(CborObject.fromByteArray(bothHashes));
+            MaybeMultihash claimedCurrentHash = cas.original;
+            Multihash newHash = cas.updated.get();
 
-        return isValidUpdate(writerKey, current, claimedCurrentHash, cas.sequence);
+            return isValidUpdate(writerKey, current, claimedCurrentHash, cas.sequence);
+        });
     }
 
     static CompletableFuture<Boolean> isValidUpdate(PublicSigningKey writerKey,
                                                     Optional<byte[]> current,
                                                     MaybeMultihash claimedCurrentHash,
                                                     Optional<Long> newSequence) {
-        Optional<PointerUpdate> decoded = current.map(signed ->
-                PointerUpdate.fromCbor(CborObject.fromByteArray(writerKey.unsignMessage(signed))));
-        MaybeMultihash existing = decoded.map(p -> p.updated).orElse(MaybeMultihash.empty());
-        Optional<Long> currentSequence = decoded.flatMap(p -> p.sequence);
-        // check CAS [current hash, new hash]
-        boolean validSequence = currentSequence.isEmpty() || (newSequence.isPresent() && newSequence.get() > currentSequence.get());
-        if (! existing.equals(claimedCurrentHash))
-            return Futures.errored(new CasException(existing, claimedCurrentHash));
-        if (! validSequence)
-            return Futures.errored(new IllegalStateException("Invalid sequence number update in mutable pointer: " + currentSequence + " => " + newSequence));
-        return Futures.of(true);
+        Optional<CompletableFuture<PointerUpdate>> decoded = current.map(signed ->
+                writerKey.unsignMessage(signed)
+                        .thenApply(msg -> PointerUpdate.fromCbor(CborObject.fromByteArray(msg))));
+        return decoded.map(f -> f.thenApply(p -> p.updated)).orElse(Futures.of(MaybeMultihash.empty()))
+                .thenCompose(existing -> decoded.map(f -> f.thenApply(p -> p.sequence))
+                        .orElse(Futures.of(Optional.empty()))
+                        .thenCompose(currentSequence -> {
+                            // check CAS [current hash, new hash]
+                            boolean validSequence = currentSequence.isEmpty() || (newSequence.isPresent() && newSequence.get() > currentSequence.get());
+                            if (!existing.equals(claimedCurrentHash))
+                                return Futures.errored(new CasException(existing, claimedCurrentHash));
+                            if (!validSequence)
+                                return Futures.errored(new IllegalStateException("Invalid sequence number update in mutable pointer: " + currentSequence + " => " + newSequence));
+                            return Futures.of(true);
+                        }));
     }
 }

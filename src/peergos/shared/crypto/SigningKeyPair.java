@@ -8,6 +8,7 @@ import peergos.shared.crypto.random.*;
 import peergos.shared.io.ipfs.bases.*;
 
 import java.util.*;
+import java.util.concurrent.*;
 
 public class SigningKeyPair implements Cborable
 {
@@ -20,7 +21,7 @@ public class SigningKeyPair implements Cborable
         this.secretSigningKey = secretSigningKey;
     }
 
-    public byte[] signMessage(byte[] message)
+    public CompletableFuture<byte[]> signMessage(byte[] message)
     {
         return secretSigningKey.signMessage(message);
     }

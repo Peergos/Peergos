@@ -187,17 +187,20 @@ public class BufferedStorage extends DelegatingStorage {
     }
 
     public CompletableFuture<Boolean> signBlocks(Map<PublicKeyHash, SigningPrivateKeyAndPublicHash> writers) {
-        storage.putAll(storage.entrySet().stream()
-                .map(e -> {
-                    OpLog.BlockWrite block = e.getValue();
-                    return new Pair<>(e.getKey(), new OpLog.BlockWrite(block.writer,
-                            block.signature.length > 0 ?
-                                    block.signature :
-                                    writers.get(block.writer).secret.signMessage(e.getKey().getHash()),
-                            block.block, block.isRaw, block.progressMonitor));
-                })
-                .collect(Collectors.toMap(p -> p.left, p -> p.right)));
-        return Futures.of(true);
+        return Futures.combineAll(storage.entrySet().stream()
+                        .map(e -> {
+                            OpLog.BlockWrite block = e.getValue();
+                            return (block.signature.length > 0 ?
+                                    Futures.of(block.signature) :
+                                    writers.get(block.writer).secret.signMessage(e.getKey().getHash()))
+                                    .thenApply(sig -> new Pair<>(e.getKey(), new OpLog.BlockWrite(block.writer,
+                                            sig,
+                                            block.block, block.isRaw, block.progressMonitor)));
+                        }).collect(Collectors.toList()))
+                .thenApply(pairs -> pairs.stream()
+                        .collect(Collectors.toMap(p -> p.left, p -> p.right)))
+                .thenAccept(all -> storage.putAll(all))
+                .thenApply(x -> true);
     }
 
     public synchronized void gc(List<Cid> roots) {

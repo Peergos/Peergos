@@ -41,7 +41,7 @@ public class UserPublicKeyLinkTests {
     private PublicKeyHash putPublicSigningKey(SigningKeyPair user) throws Exception {
         PublicKeyHash owner = ContentAddressedStorage.hashKey(user.publicSigningKey);
         return ipfs.putSigningKey(
-                user.secretSigningKey.signMessage(user.publicSigningKey.serialize()),
+                user.secretSigningKey.signMessage(user.publicSigningKey.serialize()).join(),
                 owner,
                 user.publicSigningKey, ipfs.startTransaction(owner).join()).get();
     }
@@ -49,7 +49,7 @@ public class UserPublicKeyLinkTests {
     @Test
     public void createInitial() throws Exception {
         SigningKeyPair user = SigningKeyPair.random(new SafeRandomJava(), new Ed25519Java());
-        UserPublicKeyLink.Claim node = UserPublicKeyLink.Claim.build("someuser", user.secretSigningKey, LocalDate.now().plusYears(2), id);
+        UserPublicKeyLink.Claim node = UserPublicKeyLink.Claim.build("someuser", user.secretSigningKey, LocalDate.now().plusYears(2), id).join();
 
         PublicKeyHash owner = putPublicSigningKey(user);
         UserPublicKeyLink upl = new UserPublicKeyLink(owner, node);
@@ -74,7 +74,7 @@ public class UserPublicKeyLinkTests {
         SigningPrivateKeyAndPublicHash oldSigner = new SigningPrivateKeyAndPublicHash(oldHash, oldUser.secretSigningKey);
         SigningPrivateKeyAndPublicHash newSigner = new SigningPrivateKeyAndPublicHash(newHash, newUser.secretSigningKey);
 
-        List<UserPublicKeyLink> links = UserPublicKeyLink.createChain(oldSigner, newSigner, "someuser", LocalDate.now().plusYears(2), id);
+        List<UserPublicKeyLink> links = UserPublicKeyLink.createChain(oldSigner, newSigner, "someuser", LocalDate.now().plusYears(2), id).join();
         links.forEach(link -> testSerialization(link));
     }
 
@@ -90,10 +90,10 @@ public class UserPublicKeyLinkTests {
 
         String username = "someuser";
         LocalDate expiry = LocalDate.now().plusYears(2);
-        List<UserPublicKeyLink> initial = UserPublicKeyLink.createInitial(oldSigner, username, expiry, id);
-        List<UserPublicKeyLink> newPassword = UserPublicKeyLink.createChain(oldSigner, newSigner, username, expiry, id);
+        List<UserPublicKeyLink> initial = UserPublicKeyLink.createInitial(oldSigner, username, expiry, id).join();
+        List<UserPublicKeyLink> newPassword = UserPublicKeyLink.createChain(oldSigner, newSigner, username, expiry, id).join();
         List<UserPublicKeyLink> changed = UserPublicKeyLink.merge(initial, newPassword, ipfs).join();
-        List<UserPublicKeyLink> backToOldPassword = UserPublicKeyLink.createChain(newSigner, oldSigner, username, expiry, id);
+        List<UserPublicKeyLink> backToOldPassword = UserPublicKeyLink.createChain(newSigner, oldSigner, username, expiry, id).join();
         List<UserPublicKeyLink> finalChain = Arrays.asList(changed.get(0), backToOldPassword.get(0), backToOldPassword.get(1));
         try {
             UserPublicKeyLink.merge(changed, finalChain, ipfs).join();

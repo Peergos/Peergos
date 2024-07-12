@@ -500,7 +500,7 @@ public class IpfsCoreNode implements CoreNode {
     @Override
     public CompletableFuture<Optional<Multihash>> getNextServerId(Multihash serverId) {
         return ipfs.getIpnsEntry(serverId)
-                .thenApply(e -> e.getValue(serverId, crypto).host);
+                .thenApply(e -> e.getValue(serverId, crypto).join().host);
     }
 
     @Override
