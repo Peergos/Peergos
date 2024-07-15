@@ -250,6 +250,8 @@ public class GatewayHandler implements HttpHandler {
             httpExchange.getResponseHeaders().set("Content-Type", "application/xml");
         else if (start!= null && start.length > 15 && Arrays.equals("<!DOCTYPE html>".getBytes(), Arrays.copyOfRange(start, 0, 15)))
             httpExchange.getResponseHeaders().set("Content-Type", "text/html");
+        else
+            httpExchange.getResponseHeaders().set("Content-Type", props.mimeType);
     }
 
     private void serve404(HttpExchange httpExchange, FileWrapper webroot) throws IOException {
