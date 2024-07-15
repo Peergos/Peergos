@@ -37,6 +37,10 @@ Media
 ---------
 The slides of a talk introducing Peergos are [here](https://speakerdeck.com/ianopolous/peergos-architecture) 
 
+Deep dive at Devstaff Crete:
+
+[![Deep dive](https://img.youtube.com/vi/Po_fdZYcfXo/0.jpg)](https://www.youtube.com/watch?v=Po_fdZYcfXo)
+
 Overview at IPFS Thing:
 
 [![Overview](https://img.youtube.com/vi/g1vzoZjG9Zo/0.jpg)](https://www.youtube.com/watch?v=g1vzoZjG9Zo)
