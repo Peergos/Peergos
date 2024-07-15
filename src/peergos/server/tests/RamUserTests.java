@@ -601,4 +601,35 @@ public class RamUserTests extends UserTests {
         FileWrapper wf = writableContext.getByPath(filePath).join().get();
         Assert.assertTrue(wf.isWritable());
     }
+
+    @Test
+    public void concurrentChangesCASException() throws Exception {
+        String username = generateUsername();
+        String password = "test01";
+        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
+
+        String foldername = "dir";
+        String filename = "file.txt";
+        byte[] data = "some content".getBytes();
+        FileWrapper rootFolder = context.getUserRoot().join().mkdir(foldername, context.network, false, context.mirrorBatId(), crypto).join();
+        FileWrapper folder = rootFolder.getChild(foldername, context.crypto.hasher, context.network).join().get();
+        folder = folder.uploadOrReplaceFile(filename, new AsyncReader.ArrayBacked(data), data.length,
+                context.network, context.crypto, l -> {}).get();
+        FileWrapper currentFile = folder.getChild(filename, context.crypto.hasher, context.network).join().get();
+        byte[] data2 = "some updated content".getBytes();
+        currentFile = currentFile.overwriteFileJS(new AsyncReader.ArrayBacked(data2), 0, data2.length, context.network, context.crypto, len -> {}).join();
+
+        String secondFilename = "second.txt";
+        byte[] data3 = "some content".getBytes();
+        /*
+        context.getByPath(foldername).thenApply(dirOpt ->
+                dirOpt.get().uploadOrReplaceFile(secondFilename, new AsyncReader.ArrayBacked(data3),
+                        0, data3.length, context.network, context.crypto, x -> {}).join());
+        */
+        folder.uploadOrReplaceFile(secondFilename, new AsyncReader.ArrayBacked(data3),
+                        0, data3.length, context.network, context.crypto, x -> {}).join();
+        byte[] data4 = "some changed content".getBytes();
+        currentFile = currentFile.overwriteFileJS(new AsyncReader.ArrayBacked(data4), 0, data2.length, context.network, context.crypto, len -> {}).join();
+        System.currentTimeMillis();
+    }
 }
