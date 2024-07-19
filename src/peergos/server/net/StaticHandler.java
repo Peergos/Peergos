@@ -20,6 +20,10 @@ public abstract class StaticHandler implements HttpHandler
             .name("main_page_loads")
             .help("Number of loads of web root")
             .register();
+    private static final Counter signupLoads = Counter.build()
+            .name("signup_page_loads")
+            .help("Number of loads of signup page")
+            .register();
     private final boolean isGzip;
     private final boolean includeCsp;
     private final CspHost host;
@@ -74,6 +78,9 @@ public abstract class StaticHandler implements HttpHandler
                 if (httpExchange.getRequestMethod().equals("GET"))
                     indexLoads.inc();
                 path = "index.html";
+            }
+            if (path.equals("index.html") && httpExchange.getRequestURI().getQuery().contains("?signup=true")) {
+                signupLoads.inc();
             }
             if (path.startsWith("secret/")) // secret links of form /secret/$owner/$label all get same page
                 path = "secret.html";
