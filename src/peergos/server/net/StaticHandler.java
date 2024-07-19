@@ -79,7 +79,8 @@ public abstract class StaticHandler implements HttpHandler
                     indexLoads.inc();
                 path = "index.html";
             }
-            if (path.equals("index.html") && httpExchange.getRequestURI().getQuery().contains("?signup=true")) {
+            String query = httpExchange.getRequestURI().getQuery();
+            if (path.equals("index.html") && query != null && query.contains("?signup=true")) {
                 signupLoads.inc();
             }
             if (path.startsWith("secret/")) // secret links of form /secret/$owner/$label all get same page
