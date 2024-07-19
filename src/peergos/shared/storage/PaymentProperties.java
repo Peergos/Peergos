@@ -52,6 +52,11 @@ public final class PaymentProperties  implements Cborable {
     }
 
     @JsMethod
+    public boolean isAnnual() {
+        return annual;
+    }
+
+    @JsMethod
     public boolean hasError() {
         return error.isPresent();
     }
