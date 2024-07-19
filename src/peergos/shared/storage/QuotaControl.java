@@ -19,8 +19,8 @@ public interface QuotaControl {
 
     CompletableFuture<PaymentProperties> requestQuota(PublicKeyHash owner, byte[] signedRequest);
 
-    default CompletableFuture<PaymentProperties> requestQuota(String username, SigningPrivateKeyAndPublicHash identity, long space) {
-        SpaceUsage.SpaceRequest req = new SpaceUsage.SpaceRequest(username, space, System.currentTimeMillis(), Optional.empty());
+    default CompletableFuture<PaymentProperties> requestQuota(String username, SigningPrivateKeyAndPublicHash identity, long space, boolean annual) {
+        SpaceUsage.SpaceRequest req = new SpaceUsage.SpaceRequest(username, space, annual, System.currentTimeMillis(), Optional.empty());
         return identity.secret.signMessage(req.serialize())
                 .thenCompose(signedRequest -> requestQuota(identity.publicKeyHash, signedRequest));
     }
@@ -57,14 +57,16 @@ public interface QuotaControl {
     class SpaceRequest implements Cborable {
         public final String username;
         public final long bytes;
+        public final boolean annual;
         public final long utcMillis;
         Optional<byte[]> paymentProof;
 
-        public SpaceRequest(String username, long bytes, long utcMillis, Optional<byte[]> paymentProof) {
+        public SpaceRequest(String username, long bytes, boolean annual, long utcMillis, Optional<byte[]> paymentProof) {
             if (paymentProof.isPresent() && paymentProof.get().length > 4096)
                 throw new IllegalStateException("Payment proof too big!");
             this.username = username;
             this.bytes = bytes;
+            this.annual = annual;
             this.utcMillis = utcMillis;
             this.paymentProof = paymentProof;
         }
@@ -78,6 +80,7 @@ public interface QuotaControl {
             Map<String, Cborable> props = new TreeMap<>();
             props.put("u", new CborObject.CborString(username));
             props.put("s", new CborObject.CborLong(bytes));
+            props.put("a", new CborObject.CborBoolean(annual));
             props.put("t", new CborObject.CborLong(utcMillis));
             if (paymentProof.isPresent())
                 props.put("p", new CborObject.CborByteArray(paymentProof.get()));
@@ -88,9 +91,10 @@ public interface QuotaControl {
             CborObject.CborMap map = (CborObject.CborMap) cbor;
             String username = map.getString("u");
             long bytes = map.getLong("s");
+            boolean annual = map.getBoolean("a", false);
             long time = map.getLong("t");
             Optional<byte[]> proof = map.getOptionalByteArray("p");
-            return new SpaceRequest(username, bytes, time, proof);
+            return new SpaceRequest(username, bytes, annual, time, proof);
         }
 
         @Override

@@ -12,25 +12,28 @@ public final class PaymentProperties  implements Cborable {
     public final Optional<String> error;
     public final long freeQuota;
     public final long desiredQuota;
+    public final boolean annual;
 
     private PaymentProperties(Optional<String> paymentServerUrl,
                               Optional<String> error,
                               Optional<String> clientSecret,
                               long freeQuota,
-                              long desiredQuota) {
+                              long desiredQuota,
+                              boolean annual) {
         this.paymentServerUrl = paymentServerUrl;
         this.error = error;
         this.clientSecret = clientSecret;
         this.freeQuota = freeQuota;
         this.desiredQuota = desiredQuota;
+        this.annual = annual;
     }
 
     public PaymentProperties(long freeQuota) {
-        this(Optional.empty(), Optional.empty(), Optional.empty(), freeQuota, 0);
+        this(Optional.empty(), Optional.empty(), Optional.empty(), freeQuota, 0, false);
     }
 
-    public PaymentProperties(String paymentServerUrl, Optional<String> clientSecret, long freeQuota, long desiredQuota) {
-        this(Optional.of(paymentServerUrl), Optional.empty(), clientSecret, freeQuota, desiredQuota);
+    public PaymentProperties(String paymentServerUrl, Optional<String> clientSecret, long freeQuota, long desiredQuota, boolean annual) {
+        this(Optional.of(paymentServerUrl), Optional.empty(), clientSecret, freeQuota, desiredQuota, annual);
     }
 
     @JsMethod
@@ -72,8 +75,9 @@ public final class PaymentProperties  implements Cborable {
                                             String error,
                                             Optional<String> clientSecret,
                                             long freeQuota,
-                                            long desiredQuota) {
-        return new PaymentProperties(Optional.of(paymentServerUrl), Optional.of(error), clientSecret, freeQuota, desiredQuota);
+                                            long desiredQuota,
+                                            boolean annual) {
+        return new PaymentProperties(Optional.of(paymentServerUrl), Optional.of(error), clientSecret, freeQuota, desiredQuota, annual);
     }
 
     @Override
@@ -81,6 +85,7 @@ public final class PaymentProperties  implements Cborable {
         SortedMap<String, Cborable> state = new TreeMap<>();
         state.put("freeQuota", new CborObject.CborLong(freeQuota));
         state.put("desiredQuota", new CborObject.CborLong(desiredQuota));
+        state.put("annual", new CborObject.CborBoolean(annual));
         paymentServerUrl.ifPresent(url -> state.put("url", new CborObject.CborString(url)));
         error.ifPresent(err -> state.put("err", new CborObject.CborString(err)));
         if (clientSecret.isPresent())
@@ -97,6 +102,7 @@ public final class PaymentProperties  implements Cborable {
         Optional<String> client_secret = m.getOptional("client_secret", c -> ((CborObject.CborString) c).value);
         long freeQuota = m.getLong("freeQuota");
         long desiredQuota = m.getLong("desiredQuota");
-        return new PaymentProperties(url, err, client_secret, freeQuota, desiredQuota);
+        boolean annual = m.getBoolean("annual, false");
+        return new PaymentProperties(url, err, client_secret, freeQuota, desiredQuota, annual);
     }
 }

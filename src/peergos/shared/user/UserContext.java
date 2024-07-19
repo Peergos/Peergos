@@ -314,7 +314,7 @@ public class UserContext {
                                                         String token,
                                                         Optional<String> existingIdentity,
                                                         Consumer<String> identityStorer,
-                                                        Optional<Function<PaymentProperties, CompletableFuture<Long>>> addCard,
+                                                        Optional<Function<PaymentProperties, CompletableFuture<Pair<Long, Boolean>>>> addCard,
                                                         NetworkAccess network,
                                                         Crypto crypto,
                                                         Consumer<String> progressCallback) {
@@ -325,7 +325,7 @@ public class UserContext {
                 .map(CborObject::fromByteArray)
                 .map(SigningKeyPair::fromCbor);
         return signUpGeneral(username, password, token, existingKeyPair, identityStorer,
-                addCard.map(f -> (p, i) -> f.apply(p).thenCompose(s -> signSpaceRequest(username, i, s))),
+                addCard.map(f -> (p, i) -> f.apply(p).thenCompose(s -> signSpaceRequest(username, i, s.left, s.right))),
                 expiry, network, crypto, algorithm, progressCallback);
     }
 
@@ -366,8 +366,8 @@ public class UserContext {
         return signedRecord.getValue(signer, crypto);
     }
 
-    private static CompletableFuture<byte[]> signSpaceRequest(String username, SigningPrivateKeyAndPublicHash identity, long desiredQuota) {
-        SpaceUsage.SpaceRequest req = new SpaceUsage.SpaceRequest(username, desiredQuota, System.currentTimeMillis(), Optional.empty());
+    private static CompletableFuture<byte[]> signSpaceRequest(String username, SigningPrivateKeyAndPublicHash identity, long desiredQuota, boolean annual) {
+        SpaceUsage.SpaceRequest req = new SpaceUsage.SpaceRequest(username, desiredQuota, annual, System.currentTimeMillis(), Optional.empty());
         return identity.secret.signMessage(req.serialize());
     }
 
@@ -930,8 +930,8 @@ public class UserContext {
      * @return true when completed successfully
      */
     @JsMethod
-    public CompletableFuture<PaymentProperties> requestSpace(long requestedQuota) {
-        return network.spaceUsage.requestQuota(username, signer, requestedQuota);
+    public CompletableFuture<PaymentProperties> requestSpace(long requestedQuota, boolean annual) {
+        return network.spaceUsage.requestQuota(username, signer, requestedQuota, annual);
     }
 
     @JsMethod
@@ -1303,7 +1303,7 @@ public class UserContext {
                         PointerUpdate cas = new PointerUpdate(current.hash, MaybeMultihash.empty(), PointerUpdate.increment(current.sequence));
                         return pair.secret.signMessage(cas.serialize())
                                 .thenCompose(signed -> network.mutable.setPointer(this.signer.publicKeyHash, pair.publicKeyHash, signed));
-                    }).thenCompose(x -> network.spaceUsage.requestQuota(username, identity, 1_000_000))
+                    }).thenCompose(x -> network.spaceUsage.requestQuota(username, identity, 1_000_000, false))
                             .thenCompose(x -> network.mutable.getPointerTarget(owner, owner, network.dhtClient)
                                     .thenCompose(current -> {
                                         PointerUpdate cas = new PointerUpdate(current.updated, MaybeMultihash.empty(), PointerUpdate.increment(current.sequence));
