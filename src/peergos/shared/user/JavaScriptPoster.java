@@ -16,7 +16,7 @@ public class JavaScriptPoster implements HttpPoster {
     }
 
     private String canonicalise(String url) {
-        if (isAbsolute && ! url.startsWith("/"))
+        if (isAbsolute && ! url.startsWith("/") && ! url.startsWith("https://") && ! url.startsWith("http://"))
             return "/" + url;
         return url;
     }
