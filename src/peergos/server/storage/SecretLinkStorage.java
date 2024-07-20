@@ -62,8 +62,13 @@ public class SecretLinkStorage extends DelegatingDeletableStorage {
             }
         }
 
-        if (target.maxRetrievals.isPresent() && counter.getCount(username, link.label) >= target.maxRetrievals.get())
-            throw new IllegalStateException("Maximum link retrievals exceed!");
+        if (target.maxRetrievals.isPresent()) {
+            long retrievals = counter.getCount(username, link.label);
+            if (retrievals >= target.maxRetrievals.get()) {
+                LOG.info("Unavailable secret link: " + owner + "-" + link.label + " " + target.maxRetrievals.get() + " >= " + retrievals);
+                throw new IllegalStateException("Maximum link retrievals exceed!");
+            }
+        }
         counter.increment(username, link.label);
         return Futures.of(target.cap);
     }

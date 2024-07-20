@@ -57,8 +57,8 @@ public interface SqlSupplier {
     }
 
     default String createLinkCountTableCommand() {
-        return "CREATE TABLE IF NOT EXISTS linkcounts (username text not null, label "+sqlInteger()+" not null, count "+sqlInteger()+" not null, modified "+sqlInteger()+" not null); " +
-                "CREATE UNIQUE INDEX IF NOT EXISTS bat_index ON linkcounts (username, label);";
+        return "CREATE TABLE IF NOT EXISTS linkcounts (username text not null, label "+sqlInteger()+" not null, count "+
+                sqlInteger()+" not null, modified "+sqlInteger()+" not null, PRIMARY KEY (username, label)); ";
     }
 
     default String createSpaceRequestsTableCommand() {
