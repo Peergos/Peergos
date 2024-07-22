@@ -208,7 +208,7 @@ public class PeergosNetworkUtils {
 
         // create a secret link to the file
         String userLinkPassword = "forbob";
-        LinkProperties link = sharerUser.createSecretLink(Paths.get(sharerUser.username, filename).toString(), false, Optional.empty(), Optional.empty(), userLinkPassword).join();
+        LinkProperties link = sharerUser.createSecretLink(Paths.get(sharerUser.username, filename).toString(), false, Optional.empty(), Optional.empty(), userLinkPassword, false).join();
 
         // share the file from sharer to each of the sharees
         Set<String> shareeNames = shareeUsers.stream()
