@@ -565,7 +565,7 @@ public class RamUserTests extends UserTests {
         Optional<Integer> maxRetrievals = Optional.of(2);
 
         String userPassword = "youre-terrible-muriel";
-        LinkProperties linkProps = user.createSecretLink(filePath.toString(), writable, expiry, maxRetrievals, userPassword).join();
+        LinkProperties linkProps = user.createSecretLink(filePath.toString(), writable, expiry, maxRetrievals, userPassword, false).join();
         SecretLink link = linkProps.toLink(userRoot.owner());
 
         EncryptedCapability retrieved = network.getSecretLink(link).join();
@@ -579,7 +579,7 @@ public class RamUserTests extends UserTests {
 
         // try changing the password
         String newPass = "different";
-        user.updateSecretLink(filePath.toString(), new LinkProperties(props.label, props.linkPassword, newPass, writable, props.maxRetrievals, props.expiry, props.existing)).join();
+        user.updateSecretLink(filePath.toString(), new LinkProperties(props.label, props.linkPassword, newPass, writable, props.maxRetrievals, props.expiry, props.open, props.existing)).join();
 
         UserContext.fromSecretLinkV2(link.toLink(), () -> Futures.of(newPass), network, crypto).join();
         try {
@@ -596,7 +596,7 @@ public class RamUserTests extends UserTests {
 
         // now a writable secret link
         String wpass = "modifyme";
-        LinkProperties writeLink = user.createSecretLink(filePath.toString(), true, Optional.empty(), Optional.empty(), wpass).join();
+        LinkProperties writeLink = user.createSecretLink(filePath.toString(), true, Optional.empty(), Optional.empty(), wpass, false).join();
         UserContext writableContext = UserContext.fromSecretLinkV2(writeLink.toLinkString(userRoot.owner()), () -> Futures.of(wpass), network, crypto).join();
         FileWrapper wf = writableContext.getByPath(filePath).join().get();
         Assert.assertTrue(wf.isWritable());
