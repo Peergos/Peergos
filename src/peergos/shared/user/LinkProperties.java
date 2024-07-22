@@ -46,6 +46,11 @@ public class LinkProperties implements Cborable {
     }
 
     @JsMethod
+    public boolean autoOpen() {
+        return open;
+    }
+
+    @JsMethod
     public String maxRetrievalsString() {
         return maxRetrievals.map(Long::toString).orElse("");
     }
