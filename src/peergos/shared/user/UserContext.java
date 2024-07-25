@@ -696,7 +696,7 @@ public class UserContext {
         // put encrypted secret link in champ on identity, champ root must have mirror bat to make it private
         PublicKeyHash id = signer.publicKeyHash;
         return getByPath(filePath, v1)
-                .thenApply(Optional::get)
+                .thenApply(opt -> opt.orElseThrow(() -> new IllegalStateException("Couldn't retrieve " + filePath)))
                 .thenCompose(file -> {
                     boolean differentWriter = file.getPointer().getParentCap().writer.map(parentWriter -> ! parentWriter.equals(file.writer())).orElse(false);
                     if (props.isLinkWritable && ! differentWriter)
