@@ -712,7 +712,7 @@ public class UserContext {
                                             .thenCompose(p -> c.commit(id, signer, p.left, v2.get(id), tid)
                                                     .thenCompose(s -> sharedWithCache.addSecretLink(PathUtil.get(filePath),
                                                             props.withExisting(Optional.of(p.right)), v2.mergeAndOverwriteWith(s), c, network))
-                                                    .thenApply(s -> new Pair<>(s, props.withExisting(Optional.of(p.right)))))), network.dhtClient));
+                                                    .thenApply(s -> new Pair<>(new Snapshot(id, s.get(id)), props.withExisting(Optional.of(p.right)))))), network.dhtClient));
                 });
     }
     @JsMethod

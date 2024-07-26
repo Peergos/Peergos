@@ -550,30 +550,39 @@ public class RamUserTests extends UserTests {
         String username = generateUsername();
         String password = "test";
         UserContext user = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
-        FileWrapper userRoot = user.getUserRoot().join();
-
-        String filename = "somedata.txt";
-        // write empty file
-        byte[] data = new byte[1025*1024*5];
-        userRoot.uploadOrReplaceFile(filename, new AsyncReader.ArrayBacked(data), data.length, user.network,
-                        crypto, l -> {}).join();
-
-        Path filePath = PathUtil.get(username, filename);
-
         boolean writable = false;
-        Optional<LocalDateTime> expiry = Optional.of(LocalDateTime.now().plusDays(1));
-        Optional<Integer> maxRetrievals = Optional.of(2);
+        String filename = "somedata.txt";
+        Path filePath = null;
+        SecretLink link = null;
 
-        String userPassword = "youre-terrible-muriel";
-        LinkProperties linkProps = user.createSecretLink(filePath.toString(), writable, expiry, maxRetrievals, userPassword, false).join();
-        SecretLink link = linkProps.toLink(userRoot.owner());
+        for (int i=0; i < 3; i++) {
+            FileWrapper userRoot = user.getUserRoot().join();
 
-        EncryptedCapability retrieved = network.getSecretLink(link).join();
-        AbsoluteCapability cap = retrieved.decryptFromPassword(link.labelString(), link.linkPassword + userPassword, crypto).join();
-        FileWrapper resolvedFile = network.getFile(cap, username).join().get();
-        Assert.assertTrue(resolvedFile.isWritable() == writable);
+            String subdir1 = "subdir" + i;
+            userRoot.mkdir(subdir1, network, false, user.mirrorBatId(), crypto).join();
 
-        SharedWithState sharingState = user.getDirectorySharingState(Paths.get(username)).join();
+            // write empty file
+            byte[] data = new byte[1025 * 1024 * 5];
+            user.getByPath(Paths.get(username, subdir1)).join().get().uploadOrReplaceFile(filename, new AsyncReader.ArrayBacked(data), data.length, user.network,
+                    crypto, l -> {
+                    }).join();
+
+            filePath = PathUtil.get(username, subdir1, filename);
+
+            Optional<LocalDateTime> expiry = Optional.of(LocalDateTime.now().plusDays(1));
+            Optional<Integer> maxRetrievals = Optional.of(2);
+
+            String userPassword = "youre-terrible-muriel";
+            LinkProperties linkProps = user.createSecretLink(filePath.toString(), writable, expiry, maxRetrievals, userPassword, false).join();
+            link = linkProps.toLink(userRoot.owner());
+
+            EncryptedCapability retrieved = network.getSecretLink(link).join();
+            AbsoluteCapability cap = retrieved.decryptFromPassword(link.labelString(), link.linkPassword + userPassword, crypto).join();
+            FileWrapper resolvedFile = network.getFile(cap, username).join().get();
+            Assert.assertTrue(resolvedFile.isWritable() == writable);
+        }
+
+        SharedWithState sharingState = user.getDirectorySharingState(filePath.getParent()).join();
         Assert.assertTrue(sharingState.hasLink(filename));
         LinkProperties props = sharingState.get(filename).links.stream().findFirst().get();
 
@@ -597,7 +606,7 @@ public class RamUserTests extends UserTests {
         // now a writable secret link
         String wpass = "modifyme";
         LinkProperties writeLink = user.createSecretLink(filePath.toString(), true, Optional.empty(), Optional.empty(), wpass, false).join();
-        UserContext writableContext = UserContext.fromSecretLinkV2(writeLink.toLinkString(userRoot.owner()), () -> Futures.of(wpass), network, crypto).join();
+        UserContext writableContext = UserContext.fromSecretLinkV2(writeLink.toLinkString(user.signer.publicKeyHash), () -> Futures.of(wpass), network, crypto).join();
         FileWrapper wf = writableContext.getByPath(filePath).join().get();
         Assert.assertTrue(wf.isWritable());
     }
