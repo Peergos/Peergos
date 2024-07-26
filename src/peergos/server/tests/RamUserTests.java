@@ -609,5 +609,9 @@ public class RamUserTests extends UserTests {
         UserContext writableContext = UserContext.fromSecretLinkV2(writeLink.toLinkString(user.signer.publicKeyHash), () -> Futures.of(wpass), network, crypto).join();
         FileWrapper wf = writableContext.getByPath(filePath).join().get();
         Assert.assertTrue(wf.isWritable());
+
+        // test creating a secret link from a fresh login
+        LinkProperties dirlink = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto)
+                .createSecretLink(filePath.getParent().toString(), writable, Optional.empty(), Optional.empty(), "", false).join();
     }
 }

@@ -710,9 +710,9 @@ public class UserContext {
                                     tid -> v1.withWriter(id, id, network).thenCompose(v2 -> v2.get(id).props.get().addLink(signer, props.label, value,
                                                     props.existing.map(CborObject.CborMerkleLink::new), mirrorBat, tid, network.dhtClient, network.hasher)
                                             .thenCompose(p -> c.commit(id, signer, p.left, v2.get(id), tid)
-                                                    .thenCompose(s -> sharedWithCache.addSecretLink(PathUtil.get(filePath),
-                                                            props.withExisting(Optional.of(p.right)), v2.mergeAndOverwriteWith(s), c, network))
-                                                    .thenApply(s -> new Pair<>(new Snapshot(id, s.get(id)), props.withExisting(Optional.of(p.right)))))), network.dhtClient));
+                                                    .thenCompose(v3 -> sharedWithCache.addSecretLink(PathUtil.get(filePath),
+                                                                    props.withExisting(Optional.of(p.right)), v2.mergeAndOverwriteWith(v3), c, network)
+                                                            .thenApply(v4 -> new Pair<>(new Snapshot(id, v3.get(id)), props.withExisting(Optional.of(p.right))))))), network.dhtClient));
                 });
     }
     @JsMethod
