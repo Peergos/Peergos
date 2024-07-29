@@ -107,10 +107,12 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
     private final BlockRequestAuthoriser authoriser;
     private final BlockMetadataStore blockMetadata;
     private final BlockCache cborCache;
+    private final BlockBuffer blockBuffer;
     private final Hasher hasher;
     private final DeletableContentAddressedStorage p2pFallback, bloomTarget;
 
     private final LinkedBlockingQueue<Cid> bloomAdds = new LinkedBlockingQueue<>();
+    private final LinkedBlockingQueue<Cid> blocksToFlush = new LinkedBlockingQueue<>();
     private CoreNode pki;
 
     public S3BlockStorage(S3Config config,
@@ -120,6 +122,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                           BlockRequestAuthoriser authoriser,
                           BlockMetadataStore blockMetadata,
                           BlockCache cborCache,
+                          BlockBuffer blockBuffer,
                           Hasher hasher,
                           DeletableContentAddressedStorage p2pFallback,
                           DeletableContentAddressedStorage bloomTarget) {
@@ -141,10 +144,22 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         this.authoriser = authoriser;
         this.blockMetadata = blockMetadata;
         this.cborCache = cborCache;
+        this.blockBuffer = blockBuffer;
         this.hasher = hasher;
         this.p2pFallback = p2pFallback;
         this.bloomTarget = bloomTarget;
         startBloomThread();
+        startFlusherThread();
+        new Thread(() -> blockBuffer.applyToAll(c -> {
+            bulkPutPool.submit(() -> getWithBackoff(() -> {
+                Optional<byte[]> block = blockBuffer.get(c).join();
+                if (block.isPresent()) {
+                    put(c, block.get());
+                    blockBuffer.delete(c);
+                }
+                return true;
+            }));
+        })).start();
     }
 
     @Override
@@ -170,6 +185,33 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         });
         bloomer.setDaemon(true);
         bloomer.start();
+    }
+
+    private void startFlusherThread() {
+        Thread flusher = new Thread(() -> {
+            while (true) {
+                try {
+                    Cid h = blocksToFlush.peek();
+                    if (h == null) {
+                        Thread.sleep(1_000);
+                        continue;
+                    }
+                    bulkPutPool.submit(() -> getWithBackoff(() -> {
+                        Optional<byte[]> block = blockBuffer.get(h).join();
+                        if (block.isPresent()) {
+                            put(h, block.get());
+                            blockBuffer.delete(h);
+                        }
+                        return true;
+                    }));
+                    blocksToFlush.poll();
+                } catch (Exception e) {
+                    LOG.log(Level.INFO, e.getMessage(), e);
+                }
+            }
+        });
+        flusher.setDaemon(true);
+        flusher.start();
     }
 
     @Override
@@ -329,6 +371,12 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                 return Futures.of(Optional.of(new Pair<>(cached.get(), null)));
             }
         }
+        Optional<byte[]> buffered = blockBuffer.get(hash).join();
+        if (buffered.isPresent()) {
+            if (enforceAuth && ! authoriser.allowRead(hash, buffered.get(), id, auth).join())
+                    throw new IllegalStateException("Unauthorised!");
+                return Futures.of(Optional.of(new Pair<>(buffered.get(), null)));
+        }
         return getWithBackoff(() -> getRawWithoutBackoff(peerIds, hash, range, auth, enforceAuth, bat))
                 .thenApply(res -> {
                     if (hash.isRaw())
@@ -390,6 +438,8 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
 
     @Override
     public boolean hasBlock(Cid hash) {
+        if (blockBuffer.hasBlock(hash))
+            return true;
         return getWithBackoff(() -> hasBlockWithoutBackoff(hash));
     }
 
@@ -644,9 +694,18 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                                              boolean isRaw,
                                              TransactionId tid) {
         List<ForkJoinTask<Cid>> puts = blocks.stream()
-                .map(b -> bulkPutPool.submit(() -> getWithBackoff(() -> put(b, isRaw, tid, owner))))
+                .map(b -> bulkPutPool.submit(() -> getWithBackoff(() -> putToBuffer(b, isRaw, tid, owner).join())))
                 .collect(Collectors.toList());
         return Futures.of(puts.stream().map(f ->  f.join()).collect(Collectors.toList()));
+    }
+
+    private CompletableFuture<Cid> putToBuffer(byte[] data, boolean isRaw, TransactionId tid, PublicKeyHash owner) {
+        if (data.length > DirectS3BlockStore.MAX_SMALL_BLOCK_SIZE)
+            throw new IllegalStateException("Block too big for block buffer!");
+        Multihash hash = new Multihash(Multihash.Type.sha2_256, Hash.sha256(data));
+        Cid h = new Cid(1, isRaw ? Cid.Codec.Raw : Cid.Codec.DagCbor, hash.type, hash.getHash());
+        blocksToFlush.add(h);
+        return blockBuffer.put(h, data).thenApply(x -> h);
     }
 
     /** Must be atomic relative to reads of the same key
@@ -654,17 +713,21 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
      * @param data
      */
     public Cid put(byte[] data, boolean isRaw, TransactionId tid, PublicKeyHash owner) {
-        Histogram.Timer writeTimer = writeTimerLog.labels("write").startTimer();
         Multihash hash = new Multihash(Multihash.Type.sha2_256, Hash.sha256(data));
         Cid cid = new Cid(1, isRaw ? Cid.Codec.Raw : Cid.Codec.DagCbor, hash.type, hash.getHash());
+        transactions.addBlock(cid, tid, owner);
+        return put(cid, data);
+    }
+
+    public Cid put(Cid cid, byte[] data) {
+        Histogram.Timer writeTimer = writeTimerLog.labels("write").startTimer();
         String key = hashToKey(cid);
         try {
-            transactions.addBlock(cid, tid, owner);
             String s3Key = folder + key;
             Map<String, String> extraHeaders = new TreeMap<>();
             extraHeaders.put("Content-Type", "application/octet-stream");
             boolean hashContent = true;
-            String contentHash = hashContent ? ArrayOps.bytesToHex(hash.getHash()) : "UNSIGNED-PAYLOAD";
+            String contentHash = hashContent ? ArrayOps.bytesToHex(cid.getHash()) : "UNSIGNED-PAYLOAD";
             PresignedUrl putUrl = S3Request.preSignPut(s3Key, data.length, contentHash, false,
                     S3AdminRequests.asAwsDate(ZonedDateTime.now()), host, extraHeaders, region, accessKeyId, secretKey, useHttps, hasher).join();
             String version = HttpUtil.putWithVersion(putUrl, data).right;
@@ -672,7 +735,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
             bloomAdds.add(cid);
             blockPuts.inc();
             blockPutBytes.labels("size").observe(data.length);
-            if (! isRaw)
+            if (! cid.isRaw())
                 cborCache.put(cid, data);
             return cid;
         } catch (IOException e) {
@@ -925,6 +988,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
     public CompletableFuture<LinkCounts> getLinkCounts(String owner, LocalDateTime after, BatWithId mirrorBat) {
         throw new IllegalStateException("Shouldn't get here.");
     }
+
     public static void main(String[] args) throws Exception {
         Args a = Args.parse(args);
         Logging.init(a.with("log-to-console", "true"));
@@ -942,7 +1006,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         BlockMetadataStore meta = Builder.buildBlockMetadata(a);
         S3BlockStorage s3 = new S3BlockStorage(config, List.of(Cid.decode(a.getArg("ipfs.id"))),
                 BlockStoreProperties.empty(), transactions, authoriser, meta,
-                new RamBlockCache(1024, 100), hasher, new RAMStorage(hasher), new RAMStorage(hasher));
+                new RamBlockCache(1024, 100), new FileBlockBuffer(a.fromPeergosDir("s3-block-buffer-dir", "block-buffer")), hasher, new RAMStorage(hasher), new RAMStorage(hasher));
         JdbcIpnsAndSocial rawPointers = new JdbcIpnsAndSocial(database, sqlCommands);
         Supplier<Connection> usageDb = Main.getDBConnector(a, "space-usage-sql-file");
         UsageStore usageStore = new JdbcUsageStore(usageDb, sqlCommands);
