@@ -227,8 +227,9 @@ public class Builder {
                 TransactionalIpfs p2pBlockRetriever = new TransactionalIpfs(ipfs, transactions, authoriser, ipfs.id().join(), hasher);
 
                 FileBlockCache cborCache = new FileBlockCache(a.fromPeergosDir("block-cache-dir", "block-cache"), 1024 * 1024 * 1024L);
+                FileBlockBuffer blockBuffer = new FileBlockBuffer(a.fromPeergosDir("s3-block-buffer-dir", "block-buffer"));
                 S3BlockStorage s3 = new S3BlockStorage(config, ipfs.ids().join(), props, transactions, authoriser,
-                        meta, cborCache, hasher, p2pBlockRetriever, ipfs);
+                        meta, cborCache, blockBuffer, hasher, p2pBlockRetriever, ipfs);
                 s3.updateMetadataStoreIfEmpty();
                 return new LocalIpnsStorage(s3, ids);
             } else if (enableGC) {
@@ -255,8 +256,9 @@ public class Builder {
                 DeletableContentAddressedStorage.HTTP bloomTarget = new DeletableContentAddressedStorage.HTTP(bloomApiTarget, false, hasher);
 
                 FileBlockCache cborCache = new FileBlockCache(a.fromPeergosDir("block-cache-dir", "block-cache"), 10 * 1024 * 1024 * 1024L);
+                FileBlockBuffer blockBuffer = new FileBlockBuffer(a.fromPeergosDir("s3-block-buffer-dir", "block-buffer"));
                 S3BlockStorage s3 = new S3BlockStorage(config, ipfs.ids().join(), props, transactions, authoriser,
-                        meta, cborCache, hasher, p2pBlockRetriever, bloomTarget);
+                        meta, cborCache, blockBuffer, hasher, p2pBlockRetriever, bloomTarget);
                 s3.updateMetadataStoreIfEmpty();
                 return new LocalIpnsStorage(s3, ids);
             } else {

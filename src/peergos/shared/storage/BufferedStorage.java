@@ -266,7 +266,7 @@ public class BufferedStorage extends DelegatingStorage {
         List<List<OpLog.BlockWrite>> smallRawBatches = new ArrayList<>();
 
         int cborCount = 0, rawcount = 0, smallRawCount = 0;
-        int smallBlockMax = DirectS3BlockStore.MIN_SMALL_BLOCK_SIZE;
+        int smallBlockMax = DirectS3BlockStore.MAX_SMALL_BLOCK_SIZE;
         if (! cborBatches.isEmpty() && ! cborBatches.get(cborBatches.size() - 1).isEmpty())
             cborBatches.add(new ArrayList<>());
         if (! rawBatches.isEmpty() && ! rawBatches.get(rawBatches.size() - 1).isEmpty())
