@@ -17,12 +17,12 @@ public interface QuotaControl {
 
     CompletableFuture<Long> getQuota(PublicKeyHash owner, byte[] signedTime);
 
-    CompletableFuture<PaymentProperties> requestQuota(PublicKeyHash owner, byte[] signedRequest);
+    CompletableFuture<PaymentProperties> requestQuota(PublicKeyHash owner, byte[] signedRequest, long usage);
 
     default CompletableFuture<PaymentProperties> requestQuota(String username, SigningPrivateKeyAndPublicHash identity, long space, boolean annual) {
         SpaceUsage.SpaceRequest req = new SpaceUsage.SpaceRequest(username, space, annual, System.currentTimeMillis(), Optional.empty());
         return identity.secret.signMessage(req.serialize())
-                .thenCompose(signedRequest -> requestQuota(identity.publicKeyHash, signedRequest));
+                .thenCompose(signedRequest -> requestQuota(identity.publicKeyHash, signedRequest, 0));
     }
 
     class LabelledSignedSpaceRequest implements Cborable {

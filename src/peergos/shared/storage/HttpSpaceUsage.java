@@ -82,7 +82,7 @@ public class HttpSpaceUsage implements SpaceUsageProxy {
     }
 
     @Override
-    public CompletableFuture<PaymentProperties> requestQuota(PublicKeyHash owner, byte[] signedRequest) {
+    public CompletableFuture<PaymentProperties> requestQuota(PublicKeyHash owner, byte[] signedRequest, long usage) {
         return requestSpace("", direct, owner, signedRequest);
     }
 

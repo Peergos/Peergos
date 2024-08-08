@@ -109,13 +109,13 @@ public class SignUpFilter implements CoreNode {
             return target.completePaidSignup(username, chain, setupOperations, signedSpaceRequest, proof);
         // take payment, and if successful, finalise account creation
         quotaStore.getQuota(username); // This will throw if the user doesn't exist in quota store
-        PaymentProperties result = quotaStore.requestQuota(chain.owner, signedSpaceRequest).join();
+        PaymentProperties result = quotaStore.requestQuota(chain.owner, signedSpaceRequest, 0).join();
         long quota = quotaStore.getQuota(username);
         if (quota == 0 && ! result.hasError()) {// try again if no card showed up yet
             for (int i = 0; i < 3; i++) {
                 LOG.info("Paid signup: no cards available, sleeping for 3s...");
                 try {Thread.sleep(3_000);} catch (InterruptedException e) {}
-                result = quotaStore.requestQuota(chain.owner, signedSpaceRequest).join();
+                result = quotaStore.requestQuota(chain.owner, signedSpaceRequest,0).join();
                 quota = quotaStore.getQuota(username);
                 if (quota > 0 || result.hasError())
                     break;

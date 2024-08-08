@@ -359,8 +359,10 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
     }
 
     @Override
-    public CompletableFuture<PaymentProperties> requestQuota(PublicKeyHash owner, byte[] signedRequest) {
-        return quotaAdmin.requestQuota(owner, signedRequest);
+    public CompletableFuture<PaymentProperties> requestQuota(PublicKeyHash owner, byte[] signedRequest, long claimedUsage) {
+        String username = core.getUsername(owner).join();
+        UserUsage usage = usageStore.getUsage(username);
+        return quotaAdmin.requestQuota(owner, signedRequest,  usage.totalUsage());
     }
 
     public boolean allowWrite(PublicKeyHash writer, int size) {
