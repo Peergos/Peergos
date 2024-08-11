@@ -314,7 +314,7 @@ public class UserContext {
                                                         String token,
                                                         Optional<String> existingIdentity,
                                                         Consumer<String> identityStorer,
-                                                        Optional<Function<PaymentProperties, CompletableFuture<Pair<Long, Boolean>>>> addCard,
+                                                        Optional<Function<PaymentProperties, CompletableFuture<Plan>>> addCard,
                                                         NetworkAccess network,
                                                         Crypto crypto,
                                                         Consumer<String> progressCallback) {
@@ -325,7 +325,7 @@ public class UserContext {
                 .map(CborObject::fromByteArray)
                 .map(SigningKeyPair::fromCbor);
         return signUpGeneral(username, password, token, existingKeyPair, identityStorer,
-                addCard.map(f -> (p, i) -> f.apply(p).thenCompose(s -> signSpaceRequest(username, i, s.left, s.right))),
+                addCard.map(f -> (p, i) -> f.apply(p).thenCompose(s -> signSpaceRequest(username, i, s.desiredQuota, s.annual))),
                 expiry, network, crypto, algorithm, progressCallback);
     }
 
