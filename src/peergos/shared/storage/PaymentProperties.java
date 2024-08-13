@@ -107,7 +107,7 @@ public final class PaymentProperties  implements Cborable {
         Optional<String> client_secret = m.getOptional("client_secret", c -> ((CborObject.CborString) c).value);
         long freeQuota = m.getLong("freeQuota");
         long desiredQuota = m.getLong("desiredQuota");
-        boolean annual = m.getBoolean("annual, false");
+        boolean annual = m.getBoolean("annual", false);
         return new PaymentProperties(url, err, client_secret, freeQuota, desiredQuota, annual);
     }
 }
