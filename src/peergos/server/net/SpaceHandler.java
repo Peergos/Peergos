@@ -68,7 +68,7 @@ public class SpaceHandler implements HttpHandler {
                 }
                 case "request": {
                     byte[] signedReq = ArrayOps.hexToBytes(last.apply("req"));
-                    result = spaceUsage.requestQuota(owner, signedReq).join();
+                    result = spaceUsage.requestQuota(owner, signedReq,  0).join();
                     break;
                 }
                 default:

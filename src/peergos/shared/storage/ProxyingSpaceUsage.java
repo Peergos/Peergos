@@ -52,11 +52,11 @@ public class ProxyingSpaceUsage implements SpaceUsage {
     }
 
     @Override
-    public CompletableFuture<PaymentProperties> requestQuota(PublicKeyHash owner, byte[] signedRequest) {
+    public CompletableFuture<PaymentProperties> requestQuota(PublicKeyHash owner, byte[] signedRequest, long usage) {
         return Proxy.redirectCall(core,
                 serverIds,
                 owner,
-                () -> local.requestQuota(owner, signedRequest),
+                () -> local.requestQuota(owner, signedRequest, usage),
                 targetServer -> p2p.requestSpace(targetServer, owner, signedRequest));
     }
 }

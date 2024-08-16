@@ -60,7 +60,7 @@ public class UserQuotas implements QuotaAdmin {
     }
 
     @Override
-    public CompletableFuture<PaymentProperties> requestQuota(PublicKeyHash owner, byte[] signedRequest) {
+    public CompletableFuture<PaymentProperties> requestQuota(PublicKeyHash owner, byte[] signedRequest, long usage) {
         SpaceUsage.SpaceRequest req = QuotaAdmin.parseQuotaRequest(owner, signedRequest, dht);
         // TODO check user is signed up to this server
         boolean added = spaceRequests.addSpaceRequest(req.username, signedRequest);

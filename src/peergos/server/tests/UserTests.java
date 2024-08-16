@@ -1895,7 +1895,7 @@ public abstract class UserTests {
         Assert.assertTrue("Non admins get an empty list", nonAdmin.join().isEmpty());
 
         // Now let's request some more quota and get it approved by an admin
-        context.requestSpace(quota * 2).join();
+        context.requestSpace(quota * 2, false).join();
 
         // retrieve, decode and approve request as admin
         UserContext admin = PeergosNetworkUtils.ensureSignedUp("peergos", "testpassword", network.clear(), crypto);
