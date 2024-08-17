@@ -68,19 +68,43 @@ public abstract class StaticHandler implements HttpHandler
         return isGzip;
     }
 
+
+    private static boolean isBot(String ua) {
+        if (ua == null)
+            return true;
+        ua = ua.toLowerCase();
+        return ua.contains("googlebot") ||
+                ua.contains("bingbot") ||
+                ua.contains("crawler") ||
+                ua.contains("inspect") ||
+                ua.contains("search") ||
+                ua.contains("link-check") ||
+                ua.contains("gpt") ||
+                ua.contains("go-http") ||
+                ua.contains("mastodon") ||
+                ua.contains("curl") ||
+                ua.contains("measurement") ||
+                ua.contains("python") ||
+                ua.contains("googleother") ||
+                ua.contains("bot") ||
+                ua.contains("spider");
+    }
+
     @Override
     public void handle(HttpExchange httpExchange) throws IOException {
         String path = httpExchange.getRequestURI().getPath();
         try {
             path = path.substring(1);
             path = path.replaceAll("//", "/");
+            String userAgent = httpExchange.getRequestHeaders().getFirst("User-Agent");
+            boolean isBot = isBot(userAgent);
             if (path.length() == 0) {
-                if (httpExchange.getRequestMethod().equals("GET"))
+                if (! isBot && httpExchange.getRequestMethod().equals("GET"))
                     indexLoads.inc();
                 path = "index.html";
             }
             String query = httpExchange.getRequestURI().getQuery();
-            if (path.equals("index.html") && query != null && query.contains("signup=true")) {
+            if (! isBot && path.equals("index.html") && query != null && query.contains("signup=true")) {
                 signupLoads.inc();
             }
             if (path.startsWith("secret/")) // secret links of form /secret/$owner/$label all get same page
