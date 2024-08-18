@@ -1712,10 +1712,73 @@ public class FileWrapper {
     }
 
     @JsMethod
-    public CompletableFuture<Boolean> moveTo(FileWrapper target, FileWrapper parent, Path ourPath, UserContext context) {
-        return copyTo(target, context)
-                .thenCompose(fw -> remove(parent, ourPath, context))
-                .thenApply(newAccess -> true);
+    public CompletableFuture<Boolean> moveTo(FileWrapper target, FileWrapper parent, Path ourPath, UserContext context, Supplier<CompletableFuture<Boolean>> preserveAccess) {
+        ensureUnmodified();
+
+        if (! parent.isWritable())
+            return Futures.errored(new IllegalStateException("Cannot move file without write access to parent"));
+        if (! target.isDirectory()) {
+            return Futures.errored(new IllegalStateException("CopyTo target " + target + " must be a directory"));
+        }
+
+        Optional<BatId> targetMirrorBatId = target.mirrorBatId()
+                .or(() -> target.owner().equals(context.signer.publicKeyHash) ?
+                        context.mirrorBatId() :
+                        Optional.empty());
+
+        NetworkAccess net = context.network;
+        Hasher hasher = context.crypto.hasher;
+
+        return net.synchronizer.applyComplexUpdate(owner(), signingPair(),
+                (v, c) -> context.getPublicFile(ourPath).thenApply(opt ->  opt.isPresent())
+                        .thenCompose(isPublic -> context.sharedWithCache.getAllDescendantShares(ourPath, v)
+                                .thenCompose(shared -> {
+                                    return (isPublic || ! owner().equals(target.owner()) ?
+                                            Futures.of(false) :
+                                            shared.isEmpty() // fast path
+                                                    ? Futures.of(true) : preserveAccess.get())
+                                            .thenCompose(keepAccess -> {
+                                                if (keepAccess) {
+                                                    // just update parent and child pointers, no need to re-upload, rotate keys etc.
+                                                    boolean differentWriter = !target.writer().equals(writer());
+                                                    RelativeCapability newParentLink = new RelativeCapability(differentWriter ?
+                                                            Optional.of(parent.writer()) :
+                                                            Optional.empty(),
+                                                            parent.getLocation().getMapKey(), parent.writableFilePointer().bat, parent.getParentKey(), Optional.empty());
+                                                    CryptreeNode newMetadata = pointer.fileAccess.withParentLink(getParentKey(), newParentLink);
+                                                    RelativeCapability ourNewcap = target.writableFilePointer().relativise(pointer.capability);
+                                                    return IpfsTransaction.call(owner(),
+                                                            tid -> target.getPath(net).thenCompose(newPath -> v.withWriter(owner(), target.writer(), net)
+                                                                    .thenCompose(w -> net.uploadChunk(w, c, newMetadata, owner(), pointer.capability.getMapKey(), signingPair(), tid))
+                                                                    .thenCompose(v2 -> target.pointer.fileAccess.addChildrenAndCommit(v2, c,
+                                                                            Arrays.asList(new NamedRelativeCapability(getName(), ourNewcap)),
+                                                                            target.writableFilePointer(), target.signingPair(), targetMirrorBatId, net, context.crypto))
+                                                                    .thenCompose(v3 -> parent.pointer.fileAccess
+                                                                            .removeChildren(v3, c, Arrays.asList(getPointer().capability), parent.writableFilePointer(),
+                                                                                    parent.entryWriter, net, context.crypto.random, hasher))
+                                                                    .thenCompose(v4 -> shared.isEmpty() ? Futures.of(v4) : context.sharedWithCache.clearSharedWith(ourPath, v4, c, net))
+                                                                    .thenCompose(v5 -> shared.isEmpty() ? Futures.of(v5) : context.sharedWithCache.addAllSharedWith(shared.entrySet().stream()
+                                                                            .collect(Collectors.toMap(e ->  PathUtil.get(newPath).resolve(e.getKey().relativize(ourPath)), e -> e.getValue())), v5, c, net))),
+                                                            net.dhtClient);
+
+                                                }
+                                                return version.withWriter(owner(), writer(), net)
+                                                        .thenCompose(both -> copyTo(target, this.props.thumbnail, targetMirrorBatId, net, context.crypto, both, c))
+                                                        .thenCompose(v2 -> version.withWriter(owner(), parent.writer(), net)
+                                                                .thenCompose(v3 -> parent.pointer.fileAccess
+                                                                        .removeChildren(v2, c, Arrays.asList(getPointer().capability), parent.writableFilePointer(),
+                                                                                parent.entryWriter, net, context.crypto.random, hasher))
+                                                                .thenCompose(v4 -> IpfsTransaction.call(owner(),
+                                                                                tid -> FileWrapper.deleteAllChunks(
+                                                                                        isLink() ?
+                                                                                                (WritableAbsoluteCapability) getLinkPointer().capability :
+                                                                                                writableFilePointer(),
+                                                                                        parent.signingPair(), tid, hasher, net, v4, c), net.dhtClient)
+                                                                        .thenCompose(v5 -> context.isSecretLink() ? Futures.of(v5) :
+                                                                                context.sharedWithCache.clearSharedWith(ourPath, v5, c, net)))
+                                                        );
+                                            });
+                                }))).thenApply(s -> true);
     }
 
     @JsMethod

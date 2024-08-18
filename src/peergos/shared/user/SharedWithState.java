@@ -142,6 +142,37 @@ public class SharedWithState implements Cborable {
         return new SharedWithState(newReads, newWrites, links);
     }
 
+    public SharedWithState addAll(SharedWithState other) {
+        Map<String, Set<String>> newReads = new HashMap<>();
+        for (Map.Entry<String, Set<String>> e : readShares.entrySet()) {
+            newReads.put(e.getKey(), new HashSet<>(e.getValue()));
+        }
+        for (Map.Entry<String, Set<String>> newRead : other.readShares.entrySet()) {
+            newReads.putIfAbsent(newRead.getKey(), new HashSet<>());
+            newReads.get(newRead.getKey()).addAll(newRead.getValue());
+        }
+
+        Map<String, Set<String>> newWrites = new HashMap<>();
+        for (Map.Entry<String, Set<String>> e : writeShares.entrySet()) {
+            newWrites.put(e.getKey(), new HashSet<>(e.getValue()));
+        }
+        for (Map.Entry<String, Set<String>> newWrite : other.writeShares.entrySet()) {
+            newWrites.putIfAbsent(newWrite.getKey(), new HashSet<>());
+            newWrites.get(newWrite.getKey()).addAll(newWrite.getValue());
+        }
+
+        Map<String, Set<LinkProperties>> newLinks = new HashMap<>();
+        links.forEach((k, v) -> {
+            newLinks.put(k, new HashSet<>(v));
+        });
+        for (Map.Entry<String, Set<LinkProperties>> newLink : other.links.entrySet()) {
+            newLinks.putIfAbsent(newLink.getKey(),  new HashSet<>());
+            newLinks.get(newLink.getKey()).addAll(newLink.getValue());
+        }
+
+        return new SharedWithState(newReads, newWrites, newLinks);
+    }
+
     public SharedWithState remove(SharedWithCache.Access access, String filename, Set<String> names) {
         Map<String, Set<String>> newReads = new HashMap<>();
         for (Map.Entry<String, Set<String>> e : readShares.entrySet()) {

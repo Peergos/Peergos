@@ -909,7 +909,7 @@ public class MultiUserTests {
         Path destSubdirPath = PathUtil.get(u1.username, destinationSubdirName);
         FileWrapper destSubdir = u1.getByPath(destSubdirPath).get().get();
 
-        theFile.moveTo(destSubdir, theParent, filePath, u1).join();
+        theFile.moveTo(destSubdir, theParent, filePath, u1, () -> Futures.of(true)).join();
 
         //old copy sharedWith entries should be removed
         Set<String> sharedWriteAccessWithOriginal = u1.sharedWith(filePath).join().get(sharedWithAccess);
@@ -919,9 +919,9 @@ public class MultiUserTests {
         theFile = u1.getByPath(filePath).get().get();
         cap = theFile.getPointer().capability;
 
-        //new copy sharedWith entry should also be empty
+        //new copy sharedWith entry should not be empty
         Set<String> sharedWriteAccessWithNewCopy = u1.sharedWith(filePath).join().get(sharedWithAccess);
-        Assert.assertTrue("file shared", sharedWriteAccessWithNewCopy.isEmpty());
+        Assert.assertTrue("file shared", ! sharedWriteAccessWithNewCopy.isEmpty());
     }
 
     @Test
@@ -972,7 +972,7 @@ public class MultiUserTests {
         Path destSubdirPath = PathUtil.get(u1.username, destinationSubdirName);
         FileWrapper destSubdir = u1.getByPath(destSubdirPath).get().get();
 
-        theDir.moveTo(destSubdir, theParent, dirPath, u1);
+        theDir.moveTo(destSubdir, theParent, dirPath, u1, () -> Futures.of(true));
 
         //old copy sharedWith entries should be removed
         Set<String> sharedWriteAccessWithOriginal = u1.sharedWith(dirPath).join().get(sharedWithAccess);
@@ -982,9 +982,9 @@ public class MultiUserTests {
         theDir = u1.getByPath(dirPath).get().get();
         cap = theDir.getPointer().capability;
 
-        //new copy sharedWith entry should also be empty
+        //new copy sharedWith entry should not be empty
         Set<String> sharedWriteAccessWithNewCopy = u1.sharedWith(dirPath).join().get(sharedWithAccess);
-        Assert.assertTrue("directory shared", sharedWriteAccessWithNewCopy.isEmpty());
+        Assert.assertTrue("directory shared", ! sharedWriteAccessWithNewCopy.isEmpty());
     }
 
     @Test
