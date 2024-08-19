@@ -1738,9 +1738,12 @@ public class FileWrapper {
                                             shared.isEmpty() // fast path
                                                     ? Futures.of(true) : preserveAccess.get())
                                             .thenCompose(keepAccess -> {
-                                                if (keepAccess) {
+                                                boolean differentParentWriter = !target.writer().equals(parent.writer());
+                                                // TODO optimise different parent writer case by correcting owned keys
+                                                if (keepAccess && ! differentParentWriter) {
                                                     // just update parent and child pointers, no need to re-upload, rotate keys etc.
                                                     boolean differentWriter = !target.writer().equals(writer());
+                                                    boolean ourFile = target.owner().equals(context.signer.publicKeyHash);
                                                     RelativeCapability newParentLink = new RelativeCapability(differentWriter ?
                                                             Optional.of(parent.writer()) :
                                                             Optional.empty(),
@@ -1756,8 +1759,8 @@ public class FileWrapper {
                                                                     .thenCompose(v3 -> parent.pointer.fileAccess
                                                                             .removeChildren(v3, c, Arrays.asList(getPointer().capability), parent.writableFilePointer(),
                                                                                     parent.entryWriter, net, context.crypto.random, hasher))
-                                                                    .thenCompose(v4 -> shared.isEmpty() ? Futures.of(v4) : context.sharedWithCache.clearSharedWith(ourPath, v4, c, net))
-                                                                    .thenCompose(v5 -> shared.isEmpty() ? Futures.of(v5) : context.sharedWithCache.addAllSharedWith(shared.entrySet().stream()
+                                                                    .thenCompose(v4 -> ! ourFile || shared.isEmpty() ? Futures.of(v4) : context.sharedWithCache.clearSharedWith(ourPath, v4, c, net))
+                                                                    .thenCompose(v5 -> ! ourFile || shared.isEmpty() ? Futures.of(v5) : context.sharedWithCache.addAllSharedWith(shared.entrySet().stream()
                                                                             .collect(Collectors.toMap(e ->  PathUtil.get(newPath).resolve(e.getKey().relativize(ourPath)), e -> e.getValue())), v5, c, net))),
                                                             net.dhtClient);
 

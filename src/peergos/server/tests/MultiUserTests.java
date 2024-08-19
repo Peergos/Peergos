@@ -972,7 +972,7 @@ public class MultiUserTests {
         Path destSubdirPath = PathUtil.get(u1.username, destinationSubdirName);
         FileWrapper destSubdir = u1.getByPath(destSubdirPath).get().get();
 
-        theDir.moveTo(destSubdir, theParent, dirPath, u1, () -> Futures.of(true));
+        theDir.moveTo(destSubdir, theParent, dirPath, u1, () -> Futures.of(true)).join();
 
         //old copy sharedWith entries should be removed
         Set<String> sharedWriteAccessWithOriginal = u1.sharedWith(dirPath).join().get(sharedWithAccess);
