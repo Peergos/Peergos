@@ -1742,12 +1742,12 @@ public class FileWrapper {
                                                 // TODO optimise different parent writer case by correcting owned keys
                                                 if (keepAccess && ! differentParentWriter) {
                                                     // just update parent and child pointers, no need to re-upload, rotate keys etc.
-                                                    boolean differentWriter = !target.writer().equals(writer());
+                                                    boolean differentWriter = ! target.writer().equals(writer());
                                                     boolean ourFile = target.owner().equals(context.signer.publicKeyHash);
                                                     RelativeCapability newParentLink = new RelativeCapability(differentWriter ?
-                                                            Optional.of(parent.writer()) :
+                                                            Optional.of(target.writer()) :
                                                             Optional.empty(),
-                                                            parent.getLocation().getMapKey(), parent.writableFilePointer().bat, parent.getParentKey(), Optional.empty());
+                                                            target.getLocation().getMapKey(), target.writableFilePointer().bat, target.getParentKey(), Optional.empty());
                                                     CryptreeNode newMetadata = pointer.fileAccess.withParentLink(getParentKey(), newParentLink);
                                                     RelativeCapability ourNewcap = target.writableFilePointer().relativise(pointer.capability);
                                                     return IpfsTransaction.call(owner(),
