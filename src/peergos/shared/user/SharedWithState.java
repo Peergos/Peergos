@@ -55,7 +55,7 @@ public class SharedWithState implements Cborable {
     }
 
     public Optional<SharedWithState> filter(String childName) {
-        if (! readShares.containsKey(childName) && ! writeShares.containsKey(childName))
+        if (! readShares.containsKey(childName) && ! writeShares.containsKey(childName) && ! links.containsKey(childName))
             return Optional.empty();
         Map<String, Set<String>> newReads = new HashMap<>();
         for (Map.Entry<String, Set<String>> e : readShares.entrySet()) {

@@ -22,6 +22,7 @@ import java.io.*;
 import java.nio.file.*;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
+import java.util.function.Predicate;
 import java.util.stream.*;
 
 import static org.junit.Assert.assertTrue;
@@ -927,21 +928,28 @@ public class MultiUserTests {
     @Test
     public void moveToDirectorySharedWith()
             throws Exception {
-        //read access
-        TriFunction<UserContext, List<UserContext>, Path, CompletableFuture<Snapshot>> readAccessSharingFunction =
+        // Secret link
+        TriFunction<UserContext, List<UserContext>, Path, Object> linkSharingFunction =
                 (u1, u2List, filePath) ->
-                        u1.shareReadAccessWith(filePath, u2List.stream().map(u -> u.username).collect(Collectors.toSet()));
+                        u1.createSecretLink(filePath.toString(), false, Optional.empty(), Optional.empty(), "", false).join();
 
-        moveToDirectorySharedWith(readAccessSharingFunction, SharedWithCache.Access.READ);
-        //write access
-        TriFunction<UserContext, List<UserContext>, Path, CompletableFuture<Snapshot>> writeAccessSharingFunction =
+        moveToDirectorySharedWith(linkSharingFunction, s -> ! s.links.isEmpty());
+
+        //read access
+        TriFunction<UserContext, List<UserContext>, Path, Object> readAccessSharingFunction =
                 (u1, u2List, filePath) ->
-                        u1.shareWriteAccessWith(filePath, u2List.stream().map(u -> u.username).collect(Collectors.toSet()));
-        moveToDirectorySharedWith(writeAccessSharingFunction, SharedWithCache.Access.WRITE);
+                        u1.shareReadAccessWith(filePath, u2List.stream().map(u -> u.username).collect(Collectors.toSet())).join();
+
+        moveToDirectorySharedWith(readAccessSharingFunction, s -> ! s.readAccess.isEmpty());
+        //write access
+        TriFunction<UserContext, List<UserContext>, Path, Object> writeAccessSharingFunction =
+                (u1, u2List, filePath) ->
+                        u1.shareWriteAccessWith(filePath, u2List.stream().map(u -> u.username).collect(Collectors.toSet())).join();
+        moveToDirectorySharedWith(writeAccessSharingFunction, s -> ! s.writeAccess.isEmpty());
     }
 
-    private void moveToDirectorySharedWith(TriFunction<UserContext, List<UserContext>, Path, CompletableFuture<Snapshot>> shareFunction,
-                                      SharedWithCache.Access sharedWithAccess)
+    private void moveToDirectorySharedWith(TriFunction<UserContext, List<UserContext>, Path, Object> shareFunction,
+                                           Predicate<FileSharedWithState> isShared)
             throws Exception {
         UserContext u1 = PeergosNetworkUtils.ensureSignedUp(random(), "a", network.clear(), crypto);
 
@@ -964,9 +972,6 @@ public class MultiUserTests {
         FileWrapper theDir = u1.getByPath(dirPath).get().get();
         Path parentPath = PathUtil.get(u1.username);
         FileWrapper theParent = u1.getByPath(parentPath).get().get();
-        AbsoluteCapability cap = theDir.getPointer().capability;
-        Set<String> sharedWriteAccessWithBefore = u1.sharedWith(dirPath).join().get(sharedWithAccess);
-        Assert.assertTrue("directory shared", ! sharedWriteAccessWithBefore.isEmpty());
 
         //move directory
         Path destSubdirPath = PathUtil.get(u1.username, destinationSubdirName);
@@ -975,16 +980,14 @@ public class MultiUserTests {
         theDir.moveTo(destSubdir, theParent, dirPath, u1, () -> Futures.of(true)).join();
 
         //old copy sharedWith entries should be removed
-        Set<String> sharedWriteAccessWithOriginal = u1.sharedWith(dirPath).join().get(sharedWithAccess);
-        Assert.assertTrue("directory shared", sharedWriteAccessWithOriginal.isEmpty());
+        FileSharedWithState shared = u1.sharedWith(dirPath).join();
+        Assert.assertTrue("original directory not shared", ! isShared.test(shared));
 
         dirPath = PathUtil.get(u1.username, destinationSubdirName, subdirName);
-        theDir = u1.getByPath(dirPath).get().get();
-        cap = theDir.getPointer().capability;
 
         //new copy sharedWith entry should not be empty
-        Set<String> sharedWriteAccessWithNewCopy = u1.sharedWith(dirPath).join().get(sharedWithAccess);
-        Assert.assertTrue("directory shared", ! sharedWriteAccessWithNewCopy.isEmpty());
+        FileSharedWithState newShare = u1.sharedWith(dirPath).join();
+        Assert.assertTrue("new directory shared", isShared.test(newShare));
     }
 
     @Test
