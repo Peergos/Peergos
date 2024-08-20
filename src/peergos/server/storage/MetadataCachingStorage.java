@@ -103,11 +103,6 @@ public class MetadataCachingStorage extends DelegatingDeletableStorage {
         return target.get(owner, hash, bat);
     }
 
-    @Override
-    public CompletableFuture<Optional<byte[]>> getRaw(List<Multihash> peerIds, Cid hash, String auth, boolean doAuth) {
-        return target.getRaw(peerIds, hash, auth, doAuth);
-    }
-
     private void writeBlockMetadata(byte[] block, boolean isRaw) {
         Cid cid = hashToCid(block, isRaw, hasher).join();
         metadata.put(cid, null, block);

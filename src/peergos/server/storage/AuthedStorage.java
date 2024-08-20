@@ -62,12 +62,12 @@ public class AuthedStorage extends DelegatingDeletableStorage {
     }
 
     @Override
-    public CompletableFuture<Optional<CborObject>> get(List<Multihash> peerIds, Cid hash, Optional<BatWithId> bat, Cid ourId, Hasher h) {
+    public CompletableFuture<Optional<CborObject>> get(List<Multihash> peerIds, Cid hash, Optional<BatWithId> bat, Cid ourId, Hasher h, boolean  persistblock) {
         if (bat.isEmpty())
-            return get(peerIds, hash, "");
+            return get(peerIds, hash, "", persistblock);
         return bat.get().bat.generateAuth(hash, ourId, 300, S3Request.currentDatetime(), bat.get().id, h)
                 .thenApply(BlockAuth::encode)
-                .thenCompose(auth -> get(peerIds, hash, auth));
+                .thenCompose(auth -> get(peerIds, hash, auth, persistblock));
     }
 
     @Override
