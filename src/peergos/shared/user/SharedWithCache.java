@@ -225,8 +225,9 @@ public class SharedWithCache {
         return p.getName(p.getNameCount() - 1).toString();
     }
 
-    public CompletableFuture<Map<Path, SharedWithState>> getAllDescendantShares(Path start, Snapshot s) {
-        return base.getUpdated(base.version.mergeAndOverwriteWith(s), network)
+    public CompletableFuture<Map<Path, SharedWithState>> getAllDescendantShares(Path start, Snapshot in) {
+        return in.withWriter(base.owner(), base.writer(), network)
+                .thenCompose(s -> base.getUpdated(base.version.mergeAndOverwriteWith(s), network))
                 .thenCompose(freshBase -> freshBase.getDescendentByPath(toRelative(start.getParent()).toString(), crypto.hasher, network))
                 .thenCompose(opt -> {
                     if (opt.isEmpty())
@@ -349,6 +350,10 @@ public class SharedWithCache {
 
     public CompletableFuture<Snapshot> addSharedWith(Access access, Path p, Set<String> names, Snapshot in, Committer committer, NetworkAccess network) {
         return applyAndCommit(p, current -> current.add(access, getFilename(p), names), in, committer, network);
+    }
+
+    public CompletableFuture<Snapshot> addAllSharedWith(Map<Path, SharedWithState> access, Snapshot in, Committer committer, NetworkAccess network) {
+        return Futures.reduceAll(access.entrySet(), in, (s, e) -> applyAndCommit(e.getKey(), existing -> existing.addAll(e.getValue()), s, committer, network), (a,  b) -> b);
     }
 
     public CompletableFuture<Snapshot> clearSharedWith(Path p, Snapshot in, Committer committer, NetworkAccess network) {

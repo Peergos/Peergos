@@ -53,6 +53,10 @@ public class Path {
         return new Path(pathString + "/" + other);
     }
 
+    public Path relativize(Path other) {
+        return new Path(pathString.substring(other.pathString.length()));
+    }
+
     public Path resolve(Path other) {
         return resolve(other.pathString);
     }
