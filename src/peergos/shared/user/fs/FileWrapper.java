@@ -1765,7 +1765,7 @@ public class FileWrapper {
                                                             net.dhtClient);
 
                                                 }
-                                                return version.withWriter(owner(), writer(), net)
+                                                return version.withWriter(owner(), target.writer(), net)
                                                         .thenCompose(both -> copyTo(target, this.props.thumbnail, targetMirrorBatId, net, context.crypto, both, c))
                                                         .thenCompose(v2 -> version.withWriter(owner(), parent.writer(), net)
                                                                 .thenCompose(v3 -> parent.pointer.fileAccess

@@ -930,6 +930,84 @@ public class MultiUserTests {
     }
 
     @Test
+    public void moveFileToDifferentWriter()
+            throws Exception {
+        // Secret link
+        TriFunction<UserContext, List<UserContext>, Path, Object> linkSharingFunction =
+                (u1, u2List, filePath) ->
+                        u1.createSecretLink(filePath.toString(), false, Optional.empty(), Optional.empty(), "", false).join();
+
+        moveFileToDifferentWriter(linkSharingFunction, s -> ! s.links.isEmpty());
+
+        //read access
+        TriFunction<UserContext, List<UserContext>, Path, Object> readAccessSharingFunction =
+                (u1, u2List, filePath) ->
+                        u1.shareReadAccessWith(filePath, u2List.stream().map(u -> u.username).collect(Collectors.toSet()));
+
+        moveFileToDifferentWriter(readAccessSharingFunction, s -> ! s.readAccess.isEmpty());
+        //write access
+        TriFunction<UserContext, List<UserContext>, Path, Object> writeAccessSharingFunction =
+                (u1, u2List, filePath) ->
+                        u1.shareWriteAccessWith(filePath, u2List.stream().map(u -> u.username).collect(Collectors.toSet())).join();
+        moveFileToDifferentWriter(writeAccessSharingFunction, s -> ! s.writeAccess.isEmpty());
+    }
+
+    private void moveFileToDifferentWriter(TriFunction<UserContext, List<UserContext>, Path, Object> shareFunction,
+                                      Predicate<FileSharedWithState> isShared)
+            throws Exception {
+        UserContext u1 = PeergosNetworkUtils.ensureSignedUp(random(), "a", network.clear(), crypto);
+
+        List<String> shareePasswords = IntStream.range(0, 1)
+                .mapToObj(i -> PeergosNetworkUtils.generatePassword())
+                .collect(Collectors.toList());
+        List<UserContext> userContexts = getUserContexts(1, shareePasswords);
+        // make u1 friend all users
+        PeergosNetworkUtils.friendBetweenGroups(Arrays.asList(u1), userContexts);
+
+        // upload a file to u1's space
+        String filename = "somefile.txt";
+        byte[] data1 = "Hello Peergos friend!".getBytes();
+        AsyncReader file1Reader = new AsyncReader.ArrayBacked(data1);
+        String subdirName = "subdir";
+        String destinationSubdirName = "destdir";
+        u1.getUserRoot().get().mkdir(subdirName, u1.network, false, u1.mirrorBatId(), crypto).get();
+        u1.getUserRoot().get().mkdir(destinationSubdirName, u1.network, false, u1.mirrorBatId(), crypto).get();
+
+        // put new directory in a different writing space
+        u1.createSecretLink(PathUtil.get(u1.username, destinationSubdirName).toString(), true, Optional.empty(), Optional.empty(), "", false).join();
+
+        Path subdirPath = PathUtil.get(u1.username, subdirName);
+        FileWrapper subdir = u1.getByPath(subdirPath).get().get();
+        FileWrapper uploaded = subdir.uploadOrReplaceFile(filename, file1Reader, data1.length,
+                u1.network, u1.crypto, l -> {}).join();
+
+        Path filePath = PathUtil.get(u1.username, subdirName, filename);
+        shareFunction.apply(u1, userContexts, filePath);
+
+        FileWrapper theFile = u1.getByPath(filePath).get().get();
+        Path parentPath = PathUtil.get(u1.username, subdirName);
+        FileWrapper theParent = u1.getByPath(parentPath).get().get();
+        FileSharedWithState shared = u1.sharedWith(filePath).join();
+        Assert.assertTrue("file shared", isShared.test(shared));
+
+        //move file
+        Path destSubdirPath = PathUtil.get(u1.username, destinationSubdirName);
+        FileWrapper destSubdir = u1.getByPath(destSubdirPath).get().get();
+
+        theFile.moveTo(destSubdir, theParent, filePath, u1, () -> Futures.of(true)).join();
+
+        //old copy sharedWith entries should be removed
+        FileSharedWithState oldShared = u1.sharedWith(filePath).join();
+        Assert.assertTrue("file shared", !isShared.test(oldShared));
+
+        filePath = PathUtil.get(u1.username, destinationSubdirName, filename);
+
+        //new copy sharedWith entry should be empty
+        FileSharedWithState newShared = u1.sharedWith(filePath).join();
+        Assert.assertTrue("file shared", ! isShared.test(newShared));
+    }
+
+    @Test
     public void moveToDirectorySharedWith()
             throws Exception {
         // Secret link
