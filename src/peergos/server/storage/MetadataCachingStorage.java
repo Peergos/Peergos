@@ -111,8 +111,8 @@ public class MetadataCachingStorage extends DelegatingDeletableStorage {
     @Override
     public CompletableFuture<Optional<CborObject>> get(List<Multihash> peerIds, Cid hash, String auth, boolean persistBlock) {
         return target.get(peerIds, hash, auth, persistBlock).thenApply(res -> {
-            //if (persistBlock)
-            //    res.ifPresent(cbor -> writeBlockMetadata(cbor.toByteArray(), hash.isRaw()));
+            if (persistBlock)
+                res.ifPresent(cbor -> writeBlockMetadata(cbor.toByteArray(), hash.isRaw()));
             return res;
         });
     }
