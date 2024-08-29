@@ -37,6 +37,10 @@ Media
 ---------
 The slides of a talk introducing Peergos are [here](https://speakerdeck.com/ianopolous/peergos-architecture) 
 
+Deep dive at IPFS Camp 2024
+
+[![IPFS Camp 2024](https://img.youtube.com/vi/yDU4GHsEo34/0.jpg)](https://www.youtube.com/watch?v=yDU4GHsEo34)
+
 Deep dive at Devstaff Crete:
 
 [![Deep dive](https://img.youtube.com/vi/Po_fdZYcfXo/0.jpg)](https://www.youtube.com/watch?v=Po_fdZYcfXo)
