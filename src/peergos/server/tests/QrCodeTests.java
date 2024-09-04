@@ -24,6 +24,31 @@ public class QrCodeTests {
     private static final Crypto crypto = Main.initCrypto();
 
     @Test
+    public void testSecretLinkQRCode() throws Exception {
+        String originalText = "http://too.cool:8000/for/school.html";
+        SecretLinkQRCode link = SecretLinkQRCode.generate(originalText);
+        byte[] bytes = link.getQrCodeData();
+
+        File file = new File("secret-link-qr-code.png");
+        try(FileOutputStream fos = new FileOutputStream(file);
+            BufferedOutputStream bos = new BufferedOutputStream(fos)) {
+            bos.write(bytes);
+        }
+        BufferedImage bufferedImage = ImageIO.read(file);
+        int width = bufferedImage.getWidth();
+        int height = bufferedImage.getHeight();
+        int i=0;
+        int[] result = new int[width * height];
+        for (int row = 0; row < height; row++) {
+            for (int col = 0; col < width; col++) {
+                result[i++] = bufferedImage.getRGB(col, row);
+            }
+        }
+        String text = SecretLinkQRCode.decodeFromPixels(result, bufferedImage.getWidth(), bufferedImage.getHeight());
+        Assert.assertTrue("Round trip perfect scan", text.equals(originalText));
+    }
+
+    @Test
     public void invertable() throws Exception {
         String originalText = "Peergos is amazing! So many cool features!";
 

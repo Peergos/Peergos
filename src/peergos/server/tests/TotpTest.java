@@ -2,7 +2,7 @@ package peergos.server.tests;
 
 import com.eatthepath.otp.*;
 import org.junit.*;
-import peergos.shared.fingerprint.*;
+import peergos.shared.QRCodeEncoder;
 import peergos.shared.io.ipfs.bases.Base32;
 import peergos.shared.login.mfa.*;
 import peergos.shared.zxing.*;
@@ -39,7 +39,7 @@ public class TotpTest {
                 + "&issuer=" + issuer;
 
         BitMatrix result = writer.encode(originalText, BarcodeFormat.QR_CODE, 512, 512);
-        byte[] png = FingerPrint.encodeToPng(0, result.getWidth(), result.getHeight(), result);
+        byte[] png = QRCodeEncoder.encodeToPng(0, result.getWidth(), result.getHeight(), result);
         Files.write(Paths.get("totp-qr-code.png"), png);
         System.out.println("Try scanning QR code with an app...");
     }

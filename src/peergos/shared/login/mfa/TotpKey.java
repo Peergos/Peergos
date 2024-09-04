@@ -1,7 +1,7 @@
 package peergos.shared.login.mfa;
 
 import jsinterop.annotations.JsType;
-import peergos.shared.fingerprint.FingerPrint;
+import peergos.shared.QRCodeEncoder;
 import peergos.shared.io.ipfs.bases.Base32;
 import peergos.shared.zxing.BarcodeFormat;
 import peergos.shared.zxing.common.BitMatrix;
@@ -43,7 +43,7 @@ public class TotpKey {
                 + "&issuer=" + issuer;
         try {
             BitMatrix result = writer.encode(originalText, BarcodeFormat.QR_CODE, 512, 512);
-            byte[] png = FingerPrint.encodeToPng(0, result.getWidth(), result.getHeight(), result);
+            byte[] png = QRCodeEncoder.encodeToPng(0, result.getWidth(), result.getHeight(), result);
             String base64Data = Base64.getEncoder().encodeToString(png);
             return "data:image/png;base64," + base64Data;
         } catch(Exception e) {
