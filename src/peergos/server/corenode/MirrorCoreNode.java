@@ -323,7 +323,7 @@ public class MirrorCoreNode implements CoreNode {
                         .filter(h -> updatedTree.map(m -> !m.equals(h)).orElse(true))
                         .collect(Collectors.toList());
                 for (Multihash m : toAdd) {
-                    ipfs.get(pkiStorageProviders, (Cid) m, "").join();
+                    ipfs.get(pkiStorageProviders, (Cid) m, "", true).join();
                 }
             }
 
@@ -332,7 +332,7 @@ public class MirrorCoreNode implements CoreNode {
                         Optional<CborObject.CborMerkleLink> newVal = t.right;
                         if (newVal.isPresent()) {
                             transactions.addBlock(newVal.get().target, tid, pkiOwnerIdentity);
-                            ipfs.get(pkiStorageProviders, (Cid) newVal.get().target, "").join();
+                            ipfs.get(pkiStorageProviders, (Cid) newVal.get().target, "", true).join();
                         }
                     };
             IpfsCoreNode.applyToDiff(pkiStorageProviders, currentTree, updatedTree, 0, IpfsCoreNode::keyHash,
@@ -453,7 +453,7 @@ public class MirrorCoreNode implements CoreNode {
                                                                                          DeletableContentAddressedStorage ipfs,
                                                                                          Hasher hasher) {
         return DeletableContentAddressedStorage.getDirectOwnedKeys(owner, writer, mutable,
-                        (h, s) -> DeletableContentAddressedStorage.getWriterData(peerIds, h, s, ipfs), ipfs, hasher)
+                        (h, s) -> DeletableContentAddressedStorage.getWriterData(peerIds, h, s, false, ipfs), ipfs, hasher)
                 .thenCompose(directOwned -> {
                     Set<PublicKeyHash> newKeys = directOwned.stream().
                             filter(h -> ! alreadyDone.containsKey(h))
@@ -568,7 +568,7 @@ public class MirrorCoreNode implements CoreNode {
             // Make sure usage is updated
             List<Multihash> us = List.of(ourNodeId.bareMultihash());
             Set<PublicKeyHash> allUserKeys = DeletableContentAddressedStorage.getOwnedKeysRecursive(owner, owner, p2pMutable,
-                    (h, s) -> DeletableContentAddressedStorage.getWriterData(us, h,s, ipfs), ipfs, hasher).join();
+                    (h, s) -> DeletableContentAddressedStorage.getWriterData(us, h, s, true, ipfs), ipfs, hasher).join();
             SpaceCheckingKeyFilter.processCorenodeEvent(username, owner, allUserKeys, usageStore, ipfs, p2pMutable, hasher);
             return Futures.of(res);
         } else // Proxy call to their target storage server

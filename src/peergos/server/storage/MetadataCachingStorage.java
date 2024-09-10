@@ -75,6 +75,8 @@ public class MetadataCachingStorage extends DelegatingDeletableStorage {
     public CompletableFuture<List<Cid>> getLinks(Cid block) {
         if (block.isRaw())
             return Futures.of(Collections.emptyList());
+        if (block.isIdentity())
+            return Futures.of(CborObject.getLinks(block, block.getHash()));
         Optional<BlockMetadata> meta = metadata.get(block);
         if (meta.isPresent())
             return Futures.of(meta.get().links);
@@ -83,48 +85,79 @@ public class MetadataCachingStorage extends DelegatingDeletableStorage {
 
     @Override
     public CompletableFuture<BlockMetadata> getBlockMetadata(Cid block) {
+        if (block.isIdentity())
+            return Futures.of(BlockMetadataStore.extractMetadata(block, block.getHash()));
         Optional<BlockMetadata> meta = metadata.get(block);
         if (meta.isPresent())
             return Futures.of(meta.get());
-        return target.getBlockMetadata(block)
-                .thenApply(blockmeta -> {
-                    metadata.put(block, null, blockmeta);
-                    return blockmeta;
-                });
+        return target.getBlockMetadata(block);
     }
 
-    private void cacheBlockMetadata(byte[] block, boolean isRaw) {
+    @Override
+    public CompletableFuture<List<byte[]>> getChampLookup(PublicKeyHash owner, Cid root, byte[] champKey, Optional<BatWithId> bat, Optional<Cid> committedRoot) {
+        return target.getChampLookup(owner, root, champKey, bat,committedRoot);
+    }
+
+    @Override
+    public CompletableFuture<Optional<CborObject>> get(PublicKeyHash owner, Cid hash, Optional<BatWithId> bat) {
+        return target.get(owner, hash, bat);
+    }
+
+    private void writeBlockMetadata(byte[] block, boolean isRaw) {
         Cid cid = hashToCid(block, isRaw, hasher).join();
         metadata.put(cid, null, block);
     }
 
     @Override
-    public CompletableFuture<List<byte[]>> getChampLookup(PublicKeyHash owner, Cid root, byte[] champKey, Optional<BatWithId> bat, Optional<Cid> committedRoot) {
-        return target.getChampLookup(owner, root, champKey, bat,committedRoot).thenApply(blocks -> {
-            for (byte[] block : blocks) {
-                cacheBlockMetadata(block, false);
-            }
-            return blocks;
-        });
-    }
-
-    @Override
-    public CompletableFuture<Optional<CborObject>> get(PublicKeyHash owner, Cid hash, Optional<BatWithId> bat) {
-        return target.get(owner, hash, bat).thenApply(res -> {
-            res.ifPresent(cbor -> cacheBlockMetadata(cbor.toByteArray(), hash.isRaw()));
+    public CompletableFuture<Optional<CborObject>> get(List<Multihash> peerIds, Cid hash, String auth, boolean persistBlock) {
+        return target.get(peerIds, hash, auth, persistBlock).thenApply(res -> {
+            if (persistBlock)
+                res.ifPresent(cbor -> writeBlockMetadata(cbor.toByteArray(), hash.isRaw()));
             return res;
         });
     }
 
     @Override
-    public CompletableFuture<Optional<byte[]>> getRaw(List<Multihash> peerIds, Cid hash, String auth, boolean doAuth) {
-        return target.getRaw(peerIds, hash, auth, doAuth);
+    public CompletableFuture<Optional<CborObject>> get(List<Multihash> peerIds, Cid hash, Optional<BatWithId> bat, Cid ourId, Hasher h, boolean persistBlock) {
+        return target.get(peerIds, hash, bat, ourId, h, persistBlock).thenApply(res -> {
+            if (persistBlock)
+                res.ifPresent(cbor -> writeBlockMetadata(cbor.toByteArray(), hash.isRaw()));
+            return res;
+        });
     }
 
     @Override
-    public CompletableFuture<Optional<byte[]>> getRaw(PublicKeyHash owner, Cid hash, Optional<BatWithId> bat) {
-        return target.getRaw(owner, hash, bat).thenApply(bopt -> {
-            bopt.ifPresent(b -> cacheBlockMetadata(b, hash.isRaw()));
+    public CompletableFuture<Optional<byte[]>> getRaw(List<Multihash> peerIds, Cid hash, String auth, boolean doAuth, boolean persistBlock) {
+        return target.getRaw(peerIds, hash, auth, doAuth, persistBlock).thenApply(bopt -> {
+            if (persistBlock)
+                bopt.ifPresent(b -> writeBlockMetadata(b, hash.isRaw()));
+            return bopt;
+        });
+    }
+
+    @Override
+    public CompletableFuture<Optional<byte[]>> getRaw(List<Multihash> peerIds, Cid hash, Optional<BatWithId> bat, Cid ourId, Hasher h, boolean persistBlock) {
+        return target.getRaw(peerIds, hash, bat, ourId, h, persistBlock).thenApply(bopt -> {
+            if (persistBlock)
+                bopt.ifPresent(b -> writeBlockMetadata(b, hash.isRaw()));
+            return bopt;
+        });
+    }
+
+    @Override
+    public CompletableFuture<Optional<byte[]>> getRaw(List<Multihash> peerIds, Cid hash, Optional<BatWithId> bat, Cid ourId, Hasher h, boolean doAuth, boolean persistBlock) {
+        return target.getRaw(peerIds, hash, bat, ourId, h, doAuth, persistBlock).thenApply(bopt -> {
+            if (persistBlock)
+                bopt.ifPresent(b -> writeBlockMetadata(b, hash.isRaw()));
+            return bopt;
+        });
+    }
+
+    @Override
+    public CompletableFuture<Optional<byte[]>> getRaw(List<Multihash> peerIds, Cid hash, String auth, boolean persistBlock) {
+        return target.getRaw(peerIds, hash, auth, persistBlock).thenApply(bopt -> {
+            if (persistBlock)
+                bopt.ifPresent(b -> writeBlockMetadata(b, hash.isRaw()));
             return bopt;
         });
     }
