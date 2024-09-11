@@ -1871,6 +1871,24 @@ public class PeergosNetworkUtils {
         controllerA = msgA.sendMessage(controllerA, msg2).join();
     }
 
+    public static void deleteEmailApp(NetworkAccess network, Random random) {
+        CryptreeNode.setMaxChildLinkPerBlob(10);
+
+        String password = "notagoodone";
+        UserContext user = PeergosNetworkUtils.ensureSignedUp("a-" + generateUsername(random), password, network, crypto);
+        UserContext email = PeergosNetworkUtils.ensureSignedUp("email-"+ generateUsername(random), password, network, crypto);
+
+        App emailApp = App.init(user, "email").join();
+        EmailClient client = EmailClient.load(emailApp, crypto).join();
+        client.connectToBridge(user, email.username).join();
+
+        Path path = new File(user.username + "/.apps/email").toPath();
+        FileWrapper parentDir = user.getByPath(path.getParent().toString()).join().get();
+        FileWrapper appDir = user.getByPath(path.toString()).join().get();
+        FileWrapper parent = appDir.remove(parentDir, path, user).join();
+        Assert.assertTrue("App removal worked", parent != null);
+    }
+
     public static void email(NetworkAccess network, Random random) {
         CryptreeNode.setMaxChildLinkPerBlob(10);
 

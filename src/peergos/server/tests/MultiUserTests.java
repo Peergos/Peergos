@@ -239,6 +239,11 @@ public class MultiUserTests {
     }
 
     @Test
+    public void deleteEmailApp() {
+        PeergosNetworkUtils.deleteEmailApp(network, random);
+    }
+
+    @Test
     public void chatMultipleInvites() {
         PeergosNetworkUtils.chatMultipleInvites(network, random);
     }
