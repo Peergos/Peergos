@@ -570,6 +570,7 @@ public class MultiUserTests {
         FileWrapper subdir = u1.getByPath(subdirPath).get().get();
         FileWrapper uploaded = subdir.uploadOrReplaceFile(filename, file1Reader, data1.length,
                 u1.network, u1.crypto, l -> {}).get();
+        u1.getByPath(subdirPath).get().get().mkdir("another-dir",  u1.network,false, u1.mirrorBatId(), crypto).join();
 
         Path dirPath = PathUtil.get(u1.username, subdirName);
         u1.shareWriteAccessWith(dirPath, userContexts.stream().map(u -> u.username).collect(Collectors.toSet())).join();
@@ -600,7 +601,7 @@ public class MultiUserTests {
 
         Set<String> sharedWriteAccessWithBefore = u1.sharedWith(dirPath).join().get(SharedWithCache.Access.WRITE);
         Assert.assertTrue("file shared", ! sharedWriteAccessWithBefore.isEmpty());
-
+        System.out.println("Start DELETE");
         theDir.remove(parentFolder, dirPath, u1).get();
         Optional<FileWrapper> removedFile = u1.getByPath(dirPath).get();
         Assert.assertTrue("dir removed", removedFile.isEmpty());
