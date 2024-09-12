@@ -77,7 +77,9 @@ public class OwnedKeyChamp {
                                                TransactionId tid) {
         byte[] keyBytes = keyToBytes(key);
         return champ.get(keyBytes)
-                .thenCompose(existing -> champ.remove(owner, writer, keyBytes, existing, Optional.empty(), tid));
+                .thenCompose(existing -> existing.isPresent() ?
+                        champ.remove(owner, writer, keyBytes, existing, Optional.empty(), tid) :
+                        Futures.of(champ.getRoot()));
     }
 
     public CompletableFuture<Boolean> contains(PublicKeyHash ownedKey) {

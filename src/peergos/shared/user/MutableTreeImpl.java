@@ -53,7 +53,7 @@ public class MutableTreeImpl implements MutableTree {
                 ChampWrapper.create(owner, (Cid)base.tree.get(), Optional.empty(), hasher, dht, writeHasher, c -> (CborObject.CborMerkleLink)c) :
                 ChampWrapper.create(owner, writer, hasher, tid, dht, writeHasher, c -> (CborObject.CborMerkleLink)c)
         ).thenCompose(tree -> tree.put(owner, writer, mapKey, existing.map(CborObject.CborMerkleLink::new), new CborObject.CborMerkleLink(value), Optional.empty(), tid))
-                .thenApply(newRoot -> LOGGING ? log(newRoot, "TREE.put (" + ArrayOps.bytesToHex(mapKey)
+                .thenApply(newRoot -> LOGGING ? log(newRoot, "TREE.put " + writer.publicKeyHash + " :== (" + ArrayOps.bytesToHex(mapKey)
                         + ", " + value + ") => CAS(" + base.tree + ", " + newRoot + ")") : newRoot)
                 .thenApply(base::withChamp);
     }
@@ -80,8 +80,8 @@ public class MutableTreeImpl implements MutableTree {
             throw new IllegalStateException("Tree root not present!");
         return ChampWrapper.create(owner, (Cid)base.tree.get(), Optional.empty(), hasher, dht, writeHasher, c -> (CborObject.CborMerkleLink)c)
                 .thenCompose(tree -> tree.remove(owner, writer, mapKey, existing.map(CborObject.CborMerkleLink::new), Optional.empty(), tid))
-                .thenApply(pair -> LOGGING ? log(pair, "TREE.rm ("
-                        + ArrayOps.bytesToHex(mapKey) + "  => " + pair) : pair)
+                .thenApply(root -> LOGGING ? log(root, "TREE.rm " + writer.publicKeyHash + " :== ("
+                        + ArrayOps.bytesToHex(mapKey) + ", " + existing + ") CAS(" + base.tree.get() + ", " + root + ")") : root)
                 .thenApply(newTreeRoot -> base.withChamp(newTreeRoot));
     }
 }

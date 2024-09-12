@@ -1989,7 +1989,7 @@ public class FileWrapper {
                                             .thenCompose(deletedVersion -> {
                                                 return chunk.getNextChunkLocation(currentCap.rBaseKey, streamSecret,
                                                         currentCap.getMapKey(), currentCap.bat, hasher).thenCompose(nextChunkMapKeyAndBat ->
-                                                        deleteAllChunks(currentCap.withMapKey(nextChunkMapKeyAndBat.left, nextChunkMapKeyAndBat.right), signer, tid, hasher,
+                                                        deleteAllChunks(currentCap.withMapKey(nextChunkMapKeyAndBat.left, nextChunkMapKeyAndBat.right), ourSigner, tid, hasher,
                                                                 network, deletedVersion, committer));
                                             }))
                                     .thenCompose(updatedVersion -> {
@@ -1998,7 +1998,7 @@ public class FileWrapper {
                                         return chunk.getDirectChildrenCapabilities(currentCap, updatedVersion, network).thenCompose(childCaps ->
                                                 Futures.reduceAll(childCaps,
                                                         updatedVersion,
-                                                        (v, cap) -> deleteAllChunks((WritableAbsoluteCapability) cap.cap, signer,
+                                                        (v, cap) -> deleteAllChunks((WritableAbsoluteCapability) cap.cap, ourSigner,
                                                                 tid, hasher, network, v, committer),
                                                         (x, y) -> y));
                                     })
