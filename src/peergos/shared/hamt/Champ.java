@@ -518,7 +518,9 @@ public class Champ<V extends Cborable> implements Cborable {
                     }
                 }
             }
-            return CompletableFuture.completedFuture(new Pair<>(this, ourHash));
+            CompletableFuture<Pair<Champ<V>, Multihash>> err = new CompletableFuture<>();
+            err.completeExceptionally(new CasException(Optional.empty(), expected));
+            return err;
         } else if (nodeMap.get(bitpos)) { // node (not value)
             return getChild(owner, hash, depth, bitWidth, storage)
                     .thenCompose(child -> child.right.get().remove(owner, writer, key, hash, depth + 1, expected,
