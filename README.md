@@ -309,7 +309,7 @@ Follow the instructions for self hosting but add the following parameters (eithe
 
 Usage - troubleshooting
 -----
-* You can run with "-log-to-conosle true" to also show any logging on the console. 
+* You can run with "-log-to-console true" to also show any logging on the console. 
 * The very first run will sync the pki and this takes several minutes. Subsequent runs should start within seconds. 
 
 
