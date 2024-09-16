@@ -11,7 +11,26 @@ class ParsedCommand {
     ParsedCommand(Command cmd, String line, List<String> arguments) {
         this.cmd = cmd;
         this.line = line;
-        this.arguments = new ArrayList<>(arguments); // words without the cmd
+        this.arguments = new ArrayList<>(); // words without the cmd
+        boolean inEscape = false;
+        for (String arg : arguments) {
+            if (arg.startsWith("\"")) {
+                inEscape = true;
+                arg = arg.substring(1);
+                arguments.add(arg);
+                continue;
+            }
+            if (arg.endsWith("\"")) {
+                inEscape = false;
+                arg = arg.substring(0, arg.length() - 1);
+                arguments.set(arguments.size() - 1, arguments.get(arguments.size() - 1) + " " + arg);
+                continue;
+            }
+            if (inEscape)
+                arguments.set(arguments.size() - 1, arguments.get(arguments.size() - 1) + " " + arg);
+            else
+                arguments.add(arg);
+        }
     }
 
     public boolean hasArguments() {
