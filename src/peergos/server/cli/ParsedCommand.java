@@ -3,20 +3,22 @@ package peergos.server.cli;
 import java.util.ArrayList;
 import java.util.List;
 
-class ParsedCommand {
+public class ParsedCommand {
     public final Command cmd;
     public final String line;
     public final List<String> arguments;
 
-    ParsedCommand(Command cmd, String line, List<String> arguments) {
+    ParsedCommand(Command cmd, String line, List<String> args) {
         this.cmd = cmd;
         this.line = line;
         this.arguments = new ArrayList<>(); // words without the cmd
         boolean inEscape = false;
-        for (String arg : arguments) {
+        for (String arg : args) {
             if (arg.startsWith("\"")) {
                 inEscape = true;
                 arg = arg.substring(1);
+                if (arg.endsWith("\""))
+                    arg = arg.substring(0, arg.length() - 1);
                 arguments.add(arg);
                 continue;
             }
