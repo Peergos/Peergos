@@ -68,6 +68,9 @@ public class Main extends Builder {
     public static final Command.Arg ARG_BOOTSTRAP_NODES = new Command.Arg("ipfs-config-bootstrap-node-list",
             "Comma separated list of IPFS bootstrap nodes.", false, IpfsWrapper.DEFAULT_BOOTSTRAP_LIST);
 
+    public static final Command.Arg ARG_ANNOUNCE_ADDRESSES = new Command.Arg("ipfs-config-announce-addresses",
+            "Comma separated list of extra announce multi-addresses. e.g. a public NAT address with port forwarding: /ip4/$IP/tcp/4001", false);
+
     public static Command<IpfsWrapper> IPFS = new Command<>("ipfs",
             "Configure and start IPFS daemon",
             Main::startIpfs,
@@ -78,6 +81,7 @@ public class Main extends Builder {
                     new Command.Arg("ipfs-swarm-port", "IPFS Swarm port", false, "4001"),
                     ARG_IPFS_PROXY_TARGET,
                     ARG_BOOTSTRAP_NODES,
+                    ARG_ANNOUNCE_ADDRESSES,
                     new Command.Arg("collect-metrics", "Export aggregated metrics", false, "false"),
                     new Command.Arg("metrics.address", "Listen address for serving aggregated metrics", false, "localhost"),
                     new Command.Arg("ipfs.metrics.port", "Port for serving aggregated ipfs metrics", false, "8101"),
@@ -107,6 +111,7 @@ public class Main extends Builder {
                     new Command.Arg("ipfs-gateway-address", "IPFS Gateway address", false, "/ip4/127.0.0.1/tcp/8080"),
                     ARG_IPFS_PROXY_TARGET,
                     ARG_BOOTSTRAP_NODES,
+                    ARG_ANNOUNCE_ADDRESSES,
                     new Command.Arg("pki.node.swarm.port", "Swarm port of the pki node", true, "5001"),
                     new Command.Arg("domain", "Domain name to bind to", false, "localhost"),
                     new Command.Arg("public-domain", "The public domain name for this server (required if TLS is managed upstream)", false),

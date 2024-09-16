@@ -382,6 +382,11 @@ public class IpfsWrapper implements AutoCloseable {
                 config.addresses.getSwarmAddresses(),
                 config.bootstrap.getBootstrapAddresses(),
                 config.identity,
+                args.getOptionalArg("ipfs.announce.addresses")
+                        .map(addrs -> Arrays.stream(addrs.split(","))
+                                .map(io.ipfs.multiaddr.MultiAddress::new)
+                                .collect(Collectors.toList()))
+                        .orElse(Collections.emptyList()),
                 authoriser,
                 config.addresses.proxyTargetAddress.map(IpfsWrapper::proxyHandler),
                 Optional.of("/peergos/bitswap"),
