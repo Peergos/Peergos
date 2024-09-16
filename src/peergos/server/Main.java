@@ -127,6 +127,8 @@ public class Main extends Builder {
                     new Command.Arg("server-messages-sql-file", "The filename for the server messages datastore", true, "server-messages.sql"),
                     ARG_TRANSACTIONS_SQL_FILE,
                     ServerIdentity.ARG_SERVERIDS_SQL_FILE,
+                    new Command.Arg("enable-gc", "Enable the blockstore garbage collector", false, "true"),
+                    new Command.Arg("gc.period.millis", "Garbage collect frequency in millis (default 12h)", false, "43200000"),
                     new Command.Arg("webroot", "the path to the directory to serve as the web root", false),
                     new Command.Arg("default-quota", "default maximum storage per user", false, Long.toString(1024L * 1024 * 1024)),
                     new Command.Arg("admin-usernames", "A comma separated list of usernames who can approve local space requests", false),
