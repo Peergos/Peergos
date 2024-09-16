@@ -68,7 +68,7 @@ public class Main extends Builder {
     public static final Command.Arg ARG_BOOTSTRAP_NODES = new Command.Arg("ipfs-config-bootstrap-node-list",
             "Comma separated list of IPFS bootstrap nodes.", false, IpfsWrapper.DEFAULT_BOOTSTRAP_LIST);
 
-    public static final Command.Arg ARG_ANNOUNCE_ADDRESSES = new Command.Arg("ipfs-config-announce-addresses",
+    public static final Command.Arg ARG_ANNOUNCE_ADDRESSES = new Command.Arg("ipfs-announce-addresses",
             "Comma separated list of extra announce multi-addresses. e.g. a public NAT address with port forwarding: /ip4/$IP/tcp/4001", false);
 
     public static Command<IpfsWrapper> IPFS = new Command<>("ipfs",
