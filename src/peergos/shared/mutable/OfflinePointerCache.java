@@ -31,12 +31,23 @@ public class OfflinePointerCache implements MutablePointers {
     @Override
     public CompletableFuture<Optional<byte[]>> getPointer(PublicKeyHash owner, PublicKeyHash writer) {
         return Futures.asyncExceptionally(() -> {
-                    if (online.isOnline())
-                        return target.getPointer(owner, writer)
-                                .thenApply(res -> {
-                                    res.ifPresent(p -> cache.put(owner, writer, p));
-                                    return res;
+                    if (online.isOnline()) {
+                        CompletableFuture<Optional<byte[]>> res = new CompletableFuture<>();
+                        // race the cache with the server
+                        target.getPointer(owner, writer)
+                                .thenAccept(pointer -> {
+                                    pointer.ifPresent(p -> cache.put(owner, writer, p));
+                                    res.complete(pointer);
+                                }).exceptionally(t -> {
+                                    res.completeExceptionally(t);
+                                    return null;
                                 });
+                        cache.get(owner, writer).thenAccept(cached -> {
+                            if (cached.isPresent())
+                                res.complete(cached);
+                        });
+                        return res;
+                    }
                     online.updateAsync();
                     return cache.get(owner, writer);
                 },
