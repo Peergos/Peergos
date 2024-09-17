@@ -37,15 +37,23 @@ public class OfflineAccountStore implements Account {
                                                                                           Optional<MultiFactorAuthResponse>  mfa,
                                                                                           boolean cacheMfaLoginData) {
         return Futures.asyncExceptionally(() -> {
-                    if (online.isOnline())
-                        return target.getLoginData(username, authorisedReader, auth, mfa, cacheMfaLoginData)
-                                .thenApply(res -> {
-                                    if (res.isA() && (mfa.isEmpty() || cacheMfaLoginData))
-                                        local.setLoginData(new LoginData(username, res.a(), authorisedReader, Optional.empty()));
+                    if (online.isOnline()) {
+                        CompletableFuture<Either<UserStaticData, MultiFactorAuthRequest>> res = new CompletableFuture<>();
+                        target.getLoginData(username, authorisedReader, auth, mfa, cacheMfaLoginData)
+                                .thenAccept(login -> {
+                                    if (login.isA() && (mfa.isEmpty() || cacheMfaLoginData))
+                                        local.setLoginData(new LoginData(username, login.a(), authorisedReader, Optional.empty()));
                                     else // disable offline login if MFA is enabled
                                         local.removeLoginData(username);
-                                    return res;
+                                    res.complete(login);
+                                }).exceptionally(t -> {
+                                    res.completeExceptionally(t);
+                                    return null;
                                 });
+                        local.getEntryData(username, authorisedReader)
+                                .thenApply(cached -> res.complete(Either.a(cached)));
+                        return res;
+                    }
                     online.updateAsync();
                     return local.getEntryData(username, authorisedReader).thenApply(Either::a);
                 },
