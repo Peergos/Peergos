@@ -226,9 +226,13 @@ public class MimeTypes {
                 return "image/svg+xml";
             if (filename.endsWith(".json"))
                 return "application/json";
-            String prefix = new String(start).trim().toLowerCase();
-            if (prefix.contains("html>") || prefix.contains("<html"))
-                return "text/html";
+            try {
+                String prefix = new String(start).trim().toLowerCase();
+                if (prefix.contains("html>") || prefix.contains("<html"))
+                    return "text/html";
+            } catch (Exception e) {
+                // invalid utf8
+            }
             return "text/plain";
         }
         return "application/octet-stream";
