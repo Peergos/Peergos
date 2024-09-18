@@ -398,6 +398,19 @@ public class Main extends Builder {
             ).collect(Collectors.toList())
     );
 
+    public static final Command<FuseProcess> WEBDAV = new Command<>("webdav",
+            "Provide a webdav bridge to a Peergos user's filesystem",
+            Main::startFuse,
+            Stream.of(
+                    new Command.Arg("username", "Peergos username", true),
+                    new Command.Arg("password", "Peergos password", true),
+                    new Command.Arg("webdav.username", "Webdav username", true),
+                    new Command.Arg("webdav.password", "Webdav password", true),
+                    new Command.Arg("webdav.port", "The listen port for the webdav endpoint", false, "8090"),
+                    new Command.Arg("peergos-url", "Peergos service address", false, "https://peergos.net")
+            ).collect(Collectors.toList())
+    );
+
     public static final Command<InstanceAdmin.VersionInfo> VERSION = new Command<>("version",
             "Print the Peergos version",
             a -> {
@@ -899,6 +912,7 @@ public class Main extends Builder {
                     PEERGOS,
                     SHELL,
                     FUSE,
+                    WEBDAV,
                     QuotaCLI.QUOTA,
                     UsageCLI.USAGE,
                     ServerMessages.SERVER_MESSAGES,
