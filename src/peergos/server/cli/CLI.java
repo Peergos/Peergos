@@ -449,6 +449,8 @@ public class CLI implements Runnable {
 
     public String cd(ParsedCommand cmd) {
         String remotePathArg = cmd.hasArguments() ? cmd.firstArgument() : "";
+        if (! cmd.hasArguments()) // no args goes to home
+            cliContext.pwd = cliContext.home;
         Path remotePathToCdTo = resolvedRemotePath(remotePathArg).toAbsolutePath().normalize(); // normalize handles ".." etc.
 
         Stat stat = checkPath(remotePathToCdTo);
