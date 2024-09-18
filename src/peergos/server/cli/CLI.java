@@ -719,6 +719,7 @@ public class CLI implements Runnable {
                 .terminal(terminal)
                 .completer(buildCompleter())
                 .parser(parser)
+                .option(LineReader.Option.DISABLE_EVENT_EXPANSION, true)
 //                .variable(LineReader.SECONDARY_PROMPT_PATTERN, "%M%P > ")
                 .build();
         boolean color = true;
