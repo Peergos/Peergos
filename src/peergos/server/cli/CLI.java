@@ -36,7 +36,7 @@ public class CLI implements Runnable {
 
     private final CLIContext cliContext;
     private final FileSystem peergosFileSystem;
-    private final ListFilesCompleter remoteFilesCompleter, localFilesCompleter, remoteDirsCompleter;
+    private final ListFilesCompleter remoteFilesCompleter, localFilesCompleter, remoteDirsCompleter, localDirsCompleter;
     private final Completer allUsernamesCompleter, followersCompleter, pendingFollowersCompleter, processFollowRequestCompleter;
     private volatile boolean isFinished;
 
@@ -45,7 +45,8 @@ public class CLI implements Runnable {
         this.peergosFileSystem = new PeergosFileSystemImpl(cliContext.userContext);
         this.remoteFilesCompleter = new ListFilesCompleter(path -> this.remoteFilesLsFiles(path, false));
         this.remoteDirsCompleter = new ListFilesCompleter(path -> this.remoteFilesLsFiles(path, true));
-        this.localFilesCompleter = new ListFilesCompleter(this::localFilesLsFiles);
+        this.localFilesCompleter = new ListFilesCompleter(path -> this.localFilesLsFiles(path, false));
+        this.localDirsCompleter = new ListFilesCompleter(path -> this.localFilesLsFiles(path, true));
         this.allUsernamesCompleter = new SupplierCompleter(this::listAllUsernames);
         this.followersCompleter = new SupplierCompleter(this::listFollowers);
         this.pendingFollowersCompleter = new SupplierCompleter(this::listPendingFollowers);
@@ -73,7 +74,7 @@ public class CLI implements Runnable {
     }
 
     public Path resolveToPath(String arg) {
-        return resolveToPath(arg, Paths.get(""));
+        return resolveToPath(arg, cliContext.lpwd);
     }
 
     public static ParsedCommand fromLine(String line) {
@@ -142,6 +143,8 @@ public class CLI implements Runnable {
                     return shareReadAccess(parsedCommand);
                 case cd:
                     return cd(parsedCommand);
+                case lcd:
+                    return lcd(parsedCommand);
                 case pwd:
                     return pwd(parsedCommand);
                 case lpwd:
@@ -455,12 +458,22 @@ public class CLI implements Runnable {
         return "Current directory : " + remotePathToCdTo;
     }
 
+    public String lcd(ParsedCommand cmd) {
+        String localPathArg = cmd.hasArguments() ? cmd.firstArgument() : "";
+        Path localPathToCdTo = resolveToPath(localPathArg).toAbsolutePath().normalize(); // normalize handles ".." etc.
+
+        if (!localPathToCdTo.toFile().isDirectory())
+            return "Specified path '" + localPathToCdTo + "' is not a directory";
+        cliContext.lpwd = localPathToCdTo;
+        return "Current local directory : " + localPathToCdTo;
+    }
+
     public String pwd(ParsedCommand cmd) {
         return "Remote working directory: " + cliContext.pwd.toString();
     }
 
     public String lpwd(ParsedCommand cmd) {
-        return "Local working directory: " + System.getProperty("user.dir");
+        return "Local working directory: " + cliContext.lpwd.toString();
     }
 
 
@@ -481,20 +494,23 @@ public class CLI implements Runnable {
                 .append(" > ").toAnsi();
     }
 
-    private List<String> localFilesLsFiles(String pathArgument) {
+    private List<String> localFilesLsFiles(String pathArgument, boolean filterDirs) {
         try {
             Path path = resolveToPath(pathArgument).toAbsolutePath();
-            if (path.toFile().isFile())
+            if (path.toFile().isFile() && !filterDirs)
                 return Arrays.asList(path.toString());
-            if (path.toFile().isDirectory())
+            if (path.toFile().isDirectory() && filterDirs)
+                return Arrays.asList(path.toString());
+            if (path.toFile().isDirectory() && !filterDirs)
                 return Files.list(path)
                         .map(Path::toString)
                         .collect(Collectors.toList());
 
-            if (!path.getParent().toFile().isDirectory())
+            if (path.getParent().toFile().isDirectory())
                 return Files.list(path.getParent())
-                .map(Path::toString)
-                .collect(Collectors.toList());
+                        .filter(p -> !filterDirs || p.toFile().isDirectory())
+                        .map(Path::toString)
+                        .collect(Collectors.toList());
 
         } catch (IOException ioe) {
             ioe.printStackTrace();
@@ -564,6 +580,8 @@ public class CLI implements Runnable {
                 return remoteDirsCompleter;
             case LOCAL_FILE:
                 return localFilesCompleter;
+            case LOCAL_DIR:
+                return localDirsCompleter;
             case USERNAME:
                 return allUsernamesCompleter;
             case FOLLOWER:
