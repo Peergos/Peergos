@@ -8,13 +8,13 @@ public interface HttpPoster {
     CompletableFuture<byte[]> post(String url, byte[] payload, boolean unzip, int timeoutMillis);
 
     default CompletableFuture<byte[]> post(String url, byte[] payload, boolean unzip) {
-        return post(url, payload, unzip, 15_000);
+        return post(url, payload, unzip, 30_000);
     }
 
     CompletableFuture<byte[]> postUnzip(String url, byte[] payload, int timeoutMillis);
 
     default CompletableFuture<byte[]> postUnzip(String url, byte[] payload) {
-        return postUnzip(url, payload, 15_000);
+        return postUnzip(url, payload, 30_000);
     }
 
     default CompletableFuture<byte[]> postMultipart(String url, List<byte[]> files) {
