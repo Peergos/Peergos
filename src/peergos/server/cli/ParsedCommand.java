@@ -13,7 +13,8 @@ public class ParsedCommand {
         this.line = line;
         this.arguments = new ArrayList<>(); // words without the cmd
         boolean inEscape = false;
-        for (String arg : args) {
+        for (int i=0; i < args.size(); i++) {
+            String arg = args.get(i);
             if (arg.startsWith("\"")) {
                 inEscape = true;
                 arg = arg.substring(1);
@@ -28,6 +29,11 @@ public class ParsedCommand {
                 arguments.set(arguments.size() - 1, arguments.get(arguments.size() - 1) + " " + arg);
                 continue;
             }
+            while (arg.endsWith("\\") && i < args.size() - 1) {
+                arg = arg.substring(0, arg.length() - 1) + " " + args.get(i+1);
+                i++;
+            }
+
             if (inEscape)
                 arguments.set(arguments.size() - 1, arguments.get(arguments.size() - 1) + " " + arg);
             else
