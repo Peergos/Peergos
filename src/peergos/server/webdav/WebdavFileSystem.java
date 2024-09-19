@@ -58,10 +58,8 @@ public class WebdavFileSystem implements IWebdavStore {
     public WebdavFileSystem(String username, String password, String peergosUrl) {
         Crypto crypto = Main.initCrypto();
         try {
-
             NetworkAccess network = Builder.buildJavaNetworkAccess(new URL(peergosUrl), peergosUrl.startsWith("https")).join();
-            context = UserContext.signIn(username, password, m -> Futures.errored(new IllegalStateException("MFA login not implemented!")),
-                    network, crypto).join();
+            context = UserContext.signIn(username, password, Main::getMfaResponseCLI, network, crypto).join();
         } catch (Exception ex) {
             LOG.log(Level.WARNING, ex, () -> "Unable to connect to Peergos account");
             throw new IllegalStateException("Unable to connect to Peergos account: ", ex);
