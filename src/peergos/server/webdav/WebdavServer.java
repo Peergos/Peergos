@@ -32,7 +32,7 @@ public class WebdavServer {
         connector.setPort(port);
         server.setConnectors(new Connector[] {connector});
 
-        String webdavUser = args.getArg("webdav.user");
+        String webdavUser = args.getArg("webdav.username");
         String webdavPWD = args.getArg("webdav.password");
         String username = args.getArg("username");
         String password = args.getArg("password");
