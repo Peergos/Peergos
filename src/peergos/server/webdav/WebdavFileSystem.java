@@ -55,11 +55,11 @@ public class WebdavFileSystem implements IWebdavStore {
 
     private final UserContext context;
 
-    public WebdavFileSystem(String username, String password) {
+    public WebdavFileSystem(String username, String password, String peergosUrl) {
         Crypto crypto = Main.initCrypto();
         try {
-            int port = 8000;
-            NetworkAccess network = Builder.buildJavaNetworkAccess(new URL("https://test.peergos.net"), true).join();
+
+            NetworkAccess network = Builder.buildJavaNetworkAccess(new URL(peergosUrl), peergosUrl.startsWith("https")).join();
             context = UserContext.signIn(username, password, m -> Futures.errored(new IllegalStateException("MFA login not implemented!")),
                     network, crypto).join();
         } catch (Exception ex) {

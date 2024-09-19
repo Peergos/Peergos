@@ -66,7 +66,7 @@ public class WebdavServer {
         context.setContextPath("/");
         security.setHandler(context);
 
-        ServletHolder holderDef = new ServletHolder("default", new WebdavServlet(username, password));
+        ServletHolder holderDef = new ServletHolder("default", new WebdavServlet(username, password, args.getArg("peergos-url")));
         holderDef.setInitParameter("rootpath","");
         context.addServlet(holderDef,"/*");
 

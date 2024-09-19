@@ -33,8 +33,8 @@ public class WebdavServlet extends WebDavServletBean {
 
     private final IWebdavStore webdavStore;
 
-    public WebdavServlet(String username, String password) {
-        webdavStore = new WebdavFileSystem(username, password);
+    public WebdavServlet(String username, String password, String peergosUrl) {
+        webdavStore = new WebdavFileSystem(username, password, peergosUrl);
     }
 
     @Override
