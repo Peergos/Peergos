@@ -390,24 +390,26 @@ public class Main extends Builder {
     );
 
     public static final Command<FuseProcess> FUSE = new Command<>("fuse",
-            "Mount a Peergos user's filesystem natively",
+            "Mount a Peergos user's filesystem natively\n"+
+                    "Password can be set via an environment variable.",
             Main::startFuse,
             Stream.of(
                     new Command.Arg("username", "Peergos username", true),
-                    new Command.Arg("password", "Peergos password", true),
+                    new Command.Arg("PEERGOS_PASSWORD", "Peergos password", true),
                     new Command.Arg("peergos-url", "Peergos service address", false, "https://peergos.net"),
                     new Command.Arg("mountPoint", "The directory to mount the Peergos filesystem in", true, "peergos")
             ).collect(Collectors.toList())
     );
 
     public static final Command<Server> WEBDAV = new Command<>("webdav",
-            "Provide a webdav bridge to a Peergos user's filesystem",
+            "Provide a webdav bridge to a Peergos user's filesystem\n" +
+                    "Passwords can be set via environment variables.",
             WebdavServer::start,
             Stream.of(
                     new Command.Arg("username", "Peergos username", true),
-                    new Command.Arg("password", "Peergos password", true),
+                    new Command.Arg("PEERGOS_PASSWORD", "Peergos password", true),
                     new Command.Arg("webdav.username", "Webdav username", true),
-                    new Command.Arg("webdav.password", "Webdav password", true),
+                    new Command.Arg("PEERGOS_WEBDAV_PASSWORD", "Webdav password", true),
                     new Command.Arg("webdav.port", "The listen port for the webdav endpoint", false, "8090"),
                     new Command.Arg("peergos-url", "Peergos service address", false, "https://peergos.net")
             ).collect(Collectors.toList())
@@ -803,7 +805,7 @@ public class Main extends Builder {
 
     public static FuseProcess startFuse(Args a) {
         String username = a.getArg("username");
-        String password = a.getArg("password");
+        String password = a.getArg("PEERGOS_PASSWORD");
 
         try {
             Files.createTempDirectory("peergos").toString();

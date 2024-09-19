@@ -33,9 +33,9 @@ public class WebdavServer {
         server.setConnectors(new Connector[] {connector});
 
         String webdavUser = args.getArg("webdav.username");
-        String webdavPWD = args.getArg("webdav.password");
+        String webdavPWD = args.getArg("PEERGOS_WEBDAV_PASSWORD");
         String username = args.getArg("username");
-        String password = args.getArg("password");
+        String password = args.getArg("PEERGOS_PASSWORD");
 
         //info from:
         //https://stackoverflow.com/questions/44263651/hashloginservice-and-jetty9
