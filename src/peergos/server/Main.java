@@ -1,6 +1,7 @@
 package peergos.server;
 
 import com.webauthn4j.data.client.*;
+import org.eclipse.jetty.server.Server;
 import peergos.server.cli.CLI;
 import peergos.server.login.*;
 import peergos.server.messages.*;
@@ -11,6 +12,7 @@ import peergos.server.storage.auth.*;
 import peergos.shared.*;
 import peergos.server.corenode.*;
 import peergos.server.fuse.*;
+import peergos.server.webdav.*;
 import peergos.server.mutable.*;
 import peergos.server.storage.*;
 import peergos.server.util.*;
@@ -398,9 +400,9 @@ public class Main extends Builder {
             ).collect(Collectors.toList())
     );
 
-    public static final Command<FuseProcess> WEBDAV = new Command<>("webdav",
+    public static final Command<Server> WEBDAV = new Command<>("webdav",
             "Provide a webdav bridge to a Peergos user's filesystem",
-            Main::startFuse,
+            WebdavServer::start,
             Stream.of(
                     new Command.Arg("username", "Peergos username", true),
                     new Command.Arg("password", "Peergos password", true),

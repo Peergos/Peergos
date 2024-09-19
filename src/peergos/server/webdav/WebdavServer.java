@@ -19,12 +19,12 @@ import peergos.server.util.Args;
 import java.util.Collections;
 import java.util.logging.Logger;
 
-class WebDAVServer {
+public class WebdavServer {
 
     private static final String VERSION= "0.1";
     private static final Logger logger = Logging.LOG();
 
-    public void start(Args args) throws Exception {
+    public static Server start(Args args) {
         int port = args.getInt("webdav.port", 8090);
         logger.info( "Starting WEBDAV server version: " + VERSION + " on port: " + port);
         Server server = new Server();
@@ -70,7 +70,12 @@ class WebDAVServer {
         holderDef.setInitParameter("rootpath","");
         context.addServlet(holderDef,"/*");
 
-        server.start();
-        server.join();
+        try {
+            server.start();
+            server.join();
+            return server;
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
     }
 }
