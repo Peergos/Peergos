@@ -263,7 +263,7 @@ public class CLI implements Runnable {
 
         if (localPath.toFile().isDirectory()) {
             Path remotePath = cmd.hasSecondArgument() ? cliContext.pwd.resolve(Paths.get(cmd.secondArgument())) : cliContext.pwd;
-            boolean skipExisting = cmd.hasThirdArgument() && cmd.thirdArgument().equalsIgnoreCase("true");
+            boolean skipExisting = cmd.hasThirdArgument() && cmd.thirdArgument().equalsIgnoreCase("-skip-existing");
             AtomicLong fileCount = new AtomicLong(0);
             AtomicLong doneFiles = new AtomicLong(0);
             peergosFileSystem.writeSubtree(remotePath, parseLocalFolder(localPath.getFileName(), localPath, skipExisting, fileCount,

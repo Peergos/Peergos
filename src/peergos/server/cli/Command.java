@@ -9,7 +9,7 @@ public enum Command {
     exit("Disconnect."),
     get("Download a file.", "get remote-path <local path>", Argument.REMOTE_FILE, Argument.LOCAL_FILE),
     mkdir("Create a directory", "mkdir dir-name", Argument.REMOTE_DIR),
-    put("Upload a file or folder.", "put local-path <remote-path> <skip-existing=true/false>", Argument.LOCAL_FILE, Argument.REMOTE_FILE, Argument.SKIP_EXISTING),
+    put("Upload a file or folder.", "put local-path <remote-path> <-skip-existing>", Argument.LOCAL_FILE, Argument.REMOTE_FILE, Argument.SKIP_EXISTING),
     ls("List contents of a remote directory.", "ls <path>", Argument.REMOTE_FILE),
     rm("Remove a remote-file.", "rm remote-path", Argument.REMOTE_FILE),
     space("Show used remote space."),

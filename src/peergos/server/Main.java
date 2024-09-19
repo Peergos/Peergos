@@ -1,6 +1,7 @@
 package peergos.server;
 
 import com.webauthn4j.data.client.*;
+import org.eclipse.jetty.server.Server;
 import peergos.server.cli.CLI;
 import peergos.server.login.*;
 import peergos.server.messages.*;
@@ -11,6 +12,7 @@ import peergos.server.storage.auth.*;
 import peergos.shared.*;
 import peergos.server.corenode.*;
 import peergos.server.fuse.*;
+import peergos.server.webdav.*;
 import peergos.server.mutable.*;
 import peergos.server.storage.*;
 import peergos.server.util.*;
@@ -395,6 +397,19 @@ public class Main extends Builder {
                     new Command.Arg("password", "Peergos password", true),
                     new Command.Arg("peergos-url", "Peergos service address", false, "https://peergos.net"),
                     new Command.Arg("mountPoint", "The directory to mount the Peergos filesystem in", true, "peergos")
+            ).collect(Collectors.toList())
+    );
+
+    public static final Command<Server> WEBDAV = new Command<>("webdav",
+            "Provide a webdav bridge to a Peergos user's filesystem",
+            WebdavServer::start,
+            Stream.of(
+                    new Command.Arg("username", "Peergos username", true),
+                    new Command.Arg("password", "Peergos password", true),
+                    new Command.Arg("webdav.username", "Webdav username", true),
+                    new Command.Arg("webdav.password", "Webdav password", true),
+                    new Command.Arg("webdav.port", "The listen port for the webdav endpoint", false, "8090"),
+                    new Command.Arg("peergos-url", "Peergos service address", false, "https://peergos.net")
             ).collect(Collectors.toList())
     );
 
@@ -899,6 +914,7 @@ public class Main extends Builder {
                     PEERGOS,
                     SHELL,
                     FUSE,
+                    WEBDAV,
                     QuotaCLI.QUOTA,
                     UsageCLI.USAGE,
                     ServerMessages.SERVER_MESSAGES,
