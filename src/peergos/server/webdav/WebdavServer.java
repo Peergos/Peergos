@@ -72,6 +72,7 @@ public class WebdavServer {
 
         try {
             server.start();
+            System.out.println("Webdav bridge started and ready to use at localhost:" + port);
             server.join();
             return server;
         } catch (Exception e) {
