@@ -27,10 +27,20 @@ public class JavaScriptPoster implements HttpPoster {
     }
 
     @Override
+    public CompletableFuture<byte[]> post(String url, byte[] payload, boolean unzip) {
+        return post(url, payload, unzip, 30_000);
+    }
+
+    @Override
     public CompletableFuture<byte[]> postUnzip(String url, byte[] payload, int timeoutMillis) {
         return post(canonicalise(url), payload, true, timeoutMillis);
     }
 
+    @Override
+    public CompletableFuture<byte[]> postUnzip(String url, byte[] payload) {
+        return postUnzip(url, payload, 30_000);
+    }
+    
     @Override
     public CompletableFuture<byte[]> postMultipart(String url, List<byte[]> files, int timeoutMillis) {
         return http.postMultipart(canonicalise(url), files,  timeoutMillis);
