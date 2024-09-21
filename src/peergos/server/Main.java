@@ -443,7 +443,11 @@ public class Main extends Builder {
     public static final Command<Boolean> SHELL = new Command<>("shell",
             "An interactive command-line-interface to a Peergos server.",
             Main::startShell,
-            Collections.emptyList()
+            Stream.of(
+                    new Command.Arg("username", "Peergos username", false),
+                    new Command.Arg("PEERGOS_PASSWORD", "Peergos password", false),
+                    new Command.Arg("peergos-url", "Address of the Peergos server", false)
+            ).collect(Collectors.toList())
     );
 
     public static final Command<Boolean> MIGRATE = new Command<>("migrate",
@@ -858,7 +862,7 @@ public class Main extends Builder {
     }
 
     public static Boolean startShell(Args args) {
-        CLI.main(new String[]{});
+        CLI.buildAndRun(args);
         return true;
     }
 
