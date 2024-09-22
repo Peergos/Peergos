@@ -12,10 +12,12 @@ public final class CappedProgressConsumer implements ProgressConsumer<Long> {
         this.currentCount = 0;
     }
     public void accept(Long delta) {
-        int startValue = currentCount;
-        currentCount += delta.intValue();
-        currentCount = Math.min(currentCount, maxLength);
-        int diff = currentCount - startValue;
-        consumer.accept((long)diff);
+        if (delta > 0) {
+            int startValue = currentCount;
+            currentCount += delta.intValue();
+            currentCount = Math.min(currentCount, maxLength);
+            int diff = currentCount - startValue;
+            consumer.accept((long) diff);
+        }
     }
 }

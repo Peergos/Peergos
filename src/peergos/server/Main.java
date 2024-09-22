@@ -81,6 +81,7 @@ public class Main extends Builder {
                     ARG_IPFS_API_ADDRESS,
                     new Command.Arg("ipfs-gateway-address", "IPFS Gateway port", false, "/ip4/127.0.0.1/tcp/8080"),
                     new Command.Arg("ipfs-swarm-port", "IPFS Swarm port", false, "4001"),
+                    new Command.Arg("ipfs-swarm-addrs", "IPFS Swarm addresses comma separated (overrides ipfs-swarm-port if present) e.g. /ip4/0.0.0.0/tcp/4001", false),
                     ARG_IPFS_PROXY_TARGET,
                     ARG_BOOTSTRAP_NODES,
                     ARG_ANNOUNCE_ADDRESSES,

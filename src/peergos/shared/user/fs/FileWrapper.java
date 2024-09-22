@@ -781,6 +781,11 @@ public class FileWrapper {
             this.overwriteExisting = overwriteExisting;
             this.monitor = monitor;
         }
+
+        @Override
+        public String toString() {
+            return filename + " [" + length + "]";
+        }
     }
 
     public static class FolderUploadProperties {
