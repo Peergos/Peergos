@@ -20,10 +20,6 @@ public class ListFilesCompleter implements Completer {
 
     @Override
     public void complete(LineReader lineReader, ParsedLine parsedLine, List<Candidate> list) {
-        if (parsedLine.words().size() > 1)
-            throw new IllegalStateException();
-
-
         String remotePathPartialArg = parsedLine.word();
         List<String> remotePathChildren = lsSupplier.apply(remotePathPartialArg);
         remotePathChildren.stream()

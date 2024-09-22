@@ -3,6 +3,9 @@ package peergos.server.cli;
 import org.jline.builtins.*;
 import org.jline.reader.*;
 import org.jline.reader.impl.*;
+import org.jline.reader.impl.completer.AggregateCompleter;
+import org.jline.reader.impl.completer.ArgumentCompleter;
+import org.jline.reader.impl.completer.NullCompleter;
 import org.jline.reader.impl.completer.StringsCompleter;
 import org.jline.terminal.*;
 import org.jline.utils.*;
@@ -263,7 +266,7 @@ public class CLI implements Runnable {
 
         if (localPath.toFile().isDirectory()) {
             Path remotePath = cmd.hasSecondArgument() ? cliContext.pwd.resolve(Paths.get(cmd.secondArgument())) : cliContext.pwd;
-            boolean skipExisting = cmd.hasThirdArgument() && cmd.thirdArgument().equalsIgnoreCase("-skip-existing");
+            boolean skipExisting = cmd.flags.contains(Command.Flag.SKIP_EXISTING.flag);
             AtomicLong fileCount = new AtomicLong(0);
             AtomicLong doneFiles = new AtomicLong(0);
             peergosFileSystem.writeSubtree(remotePath, parseLocalFolder(localPath.getFileName(), localPath, skipExisting, fileCount,
@@ -597,29 +600,33 @@ public class CLI implements Runnable {
         }
     }
 
-    private Completers.TreeCompleter.Node buildCompletionNode(Command cmd) {
-        if (cmd.secondArg  != null) {
-            return node(cmd.name(),
-                        node(getCompleter(cmd.firstArg),
-                                node(getCompleter(cmd.secondArg))));
-
+    private Completer buildCompletionNode(Command cmd) {
+        if (cmd.secondArg != null) {
+            Completer arg1 = getCompleter(cmd.firstArg);
+            Completer arg2 = getCompleter(cmd.secondArg);
+            return new ArgumentCompleter(
+                    new StringsCompleter(cmd.name()),
+                    new Completers.OptionCompleter(List.of(arg1, arg2, NullCompleter.INSTANCE),
+                            cmd.flags.stream()
+                            .map(f -> new Completers.OptDesc(f.flag, f.flag))
+                            .collect(Collectors.toList()), 1)
+            );
         }
         else if (cmd.firstArg !=  null) {
-            return node(cmd.name(),
-                    node(getCompleter(cmd.firstArg)));
+            return new ArgumentCompleter(
+                    new StringsCompleter(cmd.name()), getCompleter(cmd.firstArg));
         }
         else
-            return node(cmd.name());
-
+            return new ArgumentCompleter(new StringsCompleter(cmd.name()));
     }
 
     public Completer buildCompleter() {
 
-        List<Completers.TreeCompleter.Node> nodes = Stream.of(Command.values())
+        List<Completer> cmds = Stream.of(Command.values())
                 .map(this::buildCompletionNode)
                 .collect(Collectors.toList());
 
-        return new Completers.TreeCompleter(nodes);
+        return new AggregateCompleter(cmds);
     }
 
     /**
@@ -628,7 +635,7 @@ public class CLI implements Runnable {
      * @return
      */
 
-    public static CLIContext buildContextFromCLI() {
+    public static CLIContext buildContextFromCLI(Args args) {
         Terminal terminal = buildTerminal();
 
         DefaultParser parser = new DefaultParser();
@@ -642,7 +649,9 @@ public class CLI implements Runnable {
                         "http://localhost:8000"))
                 .build();
 
-        String address = reader.readLine("Enter Server address \n > ").trim();
+        String address = args.hasArg("peergos-url") ?
+                args.getArg("peergos-url") :
+                reader.readLine("Enter Server address \n > ").trim();
         URL serverURL = null;
 
         final PrintWriter writer = terminal.writer();
@@ -651,11 +660,12 @@ public class CLI implements Runnable {
         } catch (MalformedURLException ex) {
             writer.println("Specified server " + address + " is not valid!");
             writer.flush();
-            return buildContextFromCLI();
+            System.exit(1);
         }
 
-        writer.println("Enter username");
-        String username = reader.readLine(PROMPT).trim();
+        String username = args.hasArg("username") ?
+                args.getArg("username") :
+                reader.readLine("Enter username" + PROMPT).trim();
 
         NetworkAccess network = Builder.buildJavaNetworkAccess(serverURL, ! serverURL.getHost().equals("localhost")).join();
         Consumer<String> progressConsumer =  msg -> {
@@ -679,13 +689,14 @@ public class CLI implements Runnable {
 
             UserContext userContext = UserContext.signUp(username, password, token, Optional.empty(), s -> {},
                     Optional.empty(), network, CRYPTO, progressConsumer).join();
-            return new CLIContext(userContext, serverURL.toString(), username);
+            return new CLIContext(terminal, userContext, serverURL.toString(), username);
         } else {
-            writer.println("Enter password for '" + username + "'");
-            String password = reader.readLine(PROMPT, PASSWORD_MASK);
+            String password = args.hasArg("PEERGOS_PASSWORD") ?
+                    args.getArg("PEERGOS_PASSWORD") :
+                    reader.readLine("Enter password for '" + username + "'" + PROMPT, PASSWORD_MASK);
             UserContext userContext = UserContext.signIn(username, password,
                     methods -> mfa(methods, writer, reader), false, network, CRYPTO, progressConsumer).join();
-            return new CLIContext(userContext, serverURL.toString(), username);
+            return new CLIContext(terminal, userContext, serverURL.toString(), username);
         }
     }
 
@@ -714,11 +725,9 @@ public class CLI implements Runnable {
 
     @Override
     public void run() {
-
-        Terminal terminal = buildTerminal();
         DefaultParser parser = new DefaultParser();
         LineReader reader = LineReaderBuilder.builder()
-                .terminal(terminal)
+                .terminal(cliContext.terminal)
                 .completer(buildCompleter())
                 .parser(parser)
                 .option(LineReader.Option.DISABLE_EVENT_EXPANSION, true)
@@ -748,27 +757,27 @@ public class CLI implements Runnable {
                     continue;
                 }
 
-                String response = handle(parsedCommand, terminal, reader);
+                String response = handle(parsedCommand, cliContext.terminal, reader);
 //                if (color) {
 //                    terminal.writer().println(
 //                            AttributedString.fromAnsi("\u001B[0m\"" + response + "\"")
 //                                    .toAnsi(terminal));
 //
 //                } else {
-                terminal.writer().println(response);
+                cliContext.terminal.writer().println(response);
 //                }
-                terminal.flush();
+                cliContext.terminal.flush();
             }
         }
     }
 
     private static Crypto CRYPTO;
 
-    public static void main(String[] args) {
+    public static void buildAndRun(Args args) {
         CRYPTO = Main.initCrypto();
         ThumbnailGenerator.setInstance(new JavaImageThumbnailer());
         Logging.LOG().setLevel(Level.WARNING);
-        CLIContext cliContext = buildContextFromCLI();
+        CLIContext cliContext = buildContextFromCLI(args);
         new CLI(cliContext).run();
     }
 }
