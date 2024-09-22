@@ -106,6 +106,7 @@ public class IpfsWrapper implements AutoCloseable {
          */
         public final List<MultiAddress> bootstrapNode;
         public final int swarmPort;
+        public final List<MultiAddress> swarmAddrs;
         public final String apiAddress, gatewayAddress, proxyTarget;
         public final boolean enableMetrics;
         public final Optional<String> metricsAddress;
@@ -119,6 +120,7 @@ public class IpfsWrapper implements AutoCloseable {
                                 String gatewayAddress,
                                 String proxyTarget,
                                 int swarmPort,
+                                List<MultiAddress> swarmAddrs,
                                 boolean enableMetrics,
                                 Optional<String> metricsAddress,
                                 Optional<Integer> metricsPort,
@@ -130,6 +132,7 @@ public class IpfsWrapper implements AutoCloseable {
             this.gatewayAddress = gatewayAddress;
             this.proxyTarget = proxyTarget;
             this.swarmPort = swarmPort;
+            this.swarmAddrs = swarmAddrs;
             this.enableMetrics = enableMetrics;
             this.metricsAddress = metricsAddress;
             this.metricsPort = metricsPort;
@@ -139,7 +142,7 @@ public class IpfsWrapper implements AutoCloseable {
         }
         public IpfsConfigParams withIdentity(Optional<IdentitySection> identity) {
             return new IpfsConfigParams(this.bootstrapNode, this.apiAddress, this.gatewayAddress, this.proxyTarget,
-                    this.swarmPort, this.enableMetrics, this.metricsAddress, this.metricsPort, this.s3ConfigParams, this.blockFilter,
+                    this.swarmPort, this.swarmAddrs, this.enableMetrics, this.metricsAddress, this.metricsPort, this.s3ConfigParams, this.blockFilter,
                     identity);
         }
     }
@@ -159,6 +162,9 @@ public class IpfsWrapper implements AutoCloseable {
                 parseMultiAddresses(DEFAULT_BOOTSTRAP_LIST);
 
         int swarmPort = args.getInt("ipfs-swarm-port", 4001);
+        List<MultiAddress> swarmAddrs = args.getOptionalArg("ipfs-swarm-addrs")
+                .map(as -> Arrays.stream(as.split(",")).map(MultiAddress::new).collect(Collectors.toList()))
+                .orElse(Collections.emptyList());
 
         String apiAddress = args.getArg("ipfs-api-address");
         String gatewayAddress = args.getArg("ipfs-gateway-address");
@@ -207,7 +213,7 @@ public class IpfsWrapper implements AutoCloseable {
             filter = new Filter(type, falsePositiveRate);
         }
         return new IpfsConfigParams(bootstrapNodes, apiAddress, gatewayAddress,
-                proxyTarget, swarmPort, enableMetrics, metricsAddress, metricsPort, s3Params, filter, peergosIdentity);
+                proxyTarget, swarmPort, swarmAddrs, enableMetrics, metricsAddress, metricsPort, s3Params, filter, peergosIdentity);
     }
 
     private static final String IPFS_DIR = "IPFS_PATH";
@@ -433,7 +439,12 @@ public class IpfsWrapper implements AutoCloseable {
         LOG().info("Initializing ipfs");
         IdentitySection identity = ipfsConfigParams.identity.get();
 
-        List<io.ipfs.multiaddr.MultiAddress> swarmAddresses = List.of(new io.ipfs.multiaddr.MultiAddress("/ip6/::/tcp/" + ipfsConfigParams.swarmPort));
+        List<io.ipfs.multiaddr.MultiAddress> swarmAddresses = ipfsConfigParams.swarmAddrs.isEmpty() ?
+                List.of(new io.ipfs.multiaddr.MultiAddress("/ip6/::/tcp/" + ipfsConfigParams.swarmPort)) :
+                ipfsConfigParams.swarmAddrs.stream()
+                        .map(x -> x.toString())
+                        .map(io.ipfs.multiaddr.MultiAddress::new)
+                        .collect(Collectors.toList());
         io.ipfs.multiaddr.MultiAddress apiAddress = new io.ipfs.multiaddr.MultiAddress(ipfsConfigParams.apiAddress);
         io.ipfs.multiaddr.MultiAddress gatewayAddress = new io.ipfs.multiaddr.MultiAddress(ipfsConfigParams.gatewayAddress);
         Optional<io.ipfs.multiaddr.MultiAddress> proxyTargetAddress = Optional.of(new io.ipfs.multiaddr.MultiAddress(ipfsConfigParams.proxyTarget));
