@@ -117,6 +117,8 @@ public class CLI implements Runnable {
             switch (parsedCommand.cmd) {
                 case ls:
                     return ls(parsedCommand);
+                case lls:
+                    return lls(parsedCommand);
                 case get:  // download
                     return get(parsedCommand, terminal.writer());
                 case put:  //upload
@@ -163,7 +165,6 @@ public class CLI implements Runnable {
 
     }
 
-
     public String ls(ParsedCommand cmd) {
 
         String pathArg = cmd.hasArguments() ? cmd.firstArgument() : "";
@@ -174,6 +175,23 @@ public class CLI implements Runnable {
             return peergosFileSystem.ls(path, false).stream()
                 .map(Path::toString)
                 .collect(Collectors.joining("\n"));
+
+        return path.toString();
+    }
+
+    public String lls(ParsedCommand cmd) {
+
+        String localPathArg = cmd.hasArguments() ? cmd.firstArgument() : "";
+        Path path = resolveToPath(localPathArg).toAbsolutePath().normalize();
+
+        try {
+            if (path.toFile().isDirectory())
+                return Files.list(path)
+                        .map(Path::toString)
+                        .collect(Collectors.joining("\n"));
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
 
         return path.toString();
     }

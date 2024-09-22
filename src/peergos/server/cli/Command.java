@@ -13,6 +13,7 @@ public enum Command {
     mkdir("Create a directory", "mkdir dir-name", Argument.REMOTE_DIR),
     put("Upload a file or folder.", "put <--skip-existing> local-path <remote-path> ", Set.of(Flag.SKIP_EXISTING), Argument.LOCAL_FILE, Argument.REMOTE_FILE),
     ls("List contents of a remote directory.", "ls <path>", Argument.REMOTE_FILE),
+    lls("List contents of a local directory.", "lls <path>", Argument.LOCAL_FILE),
     rm("Remove a remote-file.", "rm remote-path", Argument.REMOTE_FILE),
     space("Show used remote space."),
     get_follow_requests("Show the users that have sent you a follow request."),
