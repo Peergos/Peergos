@@ -21,6 +21,8 @@ public class Protocol {
         DNSADDR(56, LENGTH_PREFIXED_VAR_SIZE, "dnsaddr"),
         SCTP(132, 16, "sctp"),
         UDP(273, 16, "udp"),
+        WEBRTC_DIRECT(280, 0, "webrtc-direct"),
+        WEBRTC(281, 0, "webrtc"),
         UTP(301, 0, "utp"),
         UDT(302, 0, "udt"),
         UNIX(400, LENGTH_PREFIXED_VAR_SIZE, "unix"),
