@@ -578,10 +578,7 @@ public class Main extends Builder {
                 boolean useS3 = S3Config.useS3(a);
                 boolean listRawBlocks = useS3 && a.getBoolean("s3.versioned-bucket");
                 gc = new GarbageCollector(localStorage, rawPointers, usageStore, a.fromPeergosDir("", ""), (d, c) -> Futures.of(true), listRawBlocks);
-                Function<Stream<Map.Entry<PublicKeyHash, byte[]>>, CompletableFuture<Boolean>> snapshotSaver =
-                        useS3 ?
-                                ((S3BlockStorage) localStorage)::savePointerSnapshot : // TODO remove this which will fail with S3
-                                s -> Futures.of(true);
+                Function<Stream<Map.Entry<PublicKeyHash, byte[]>>, CompletableFuture<Boolean>> snapshotSaver = s -> Futures.of(true);
                 int gcInterval = 12 * 60 * 60 * 1000;
                 gc.start(a.getInt("gc.period.millis", gcInterval), snapshotSaver);
             }
