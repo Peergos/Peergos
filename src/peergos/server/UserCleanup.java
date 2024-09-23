@@ -80,7 +80,13 @@ public class UserCleanup {
         for (PublicKeyHash writer : writers) {
             Map<ByteArrayWrapper, CborObject.CborMerkleLink> allKeys = new HashMap<>();
             Set<ByteArrayWrapper> emptyKeys = new HashSet<>();
-            CommittedWriterData wd = WriterData.getWriterData(owner, writer, mutable, storage).join();
+            CommittedWriterData cwd = null;
+            try {
+                cwd = WriterData.getWriterData(owner, writer, mutable, storage).join();
+            } catch (Exception e) {
+                continue;
+            }
+            CommittedWriterData wd = cwd;
             ChampWrapper<CborObject.CborMerkleLink> champ = ChampWrapper.create(owner, (Cid) wd.props.get().tree.get(),
                     Optional.empty(), x -> Futures.of(x.data), storage, hasher, b -> (CborObject.CborMerkleLink) b).join();
             champ.applyToAllMappings(owner, p -> {
