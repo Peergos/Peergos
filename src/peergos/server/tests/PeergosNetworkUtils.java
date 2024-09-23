@@ -16,6 +16,7 @@ import peergos.shared.messaging.*;
 import peergos.shared.messaging.messages.*;
 import peergos.shared.mutable.*;
 import peergos.shared.social.*;
+import peergos.shared.storage.BufferedStorage;
 import peergos.shared.storage.auth.*;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
@@ -2162,6 +2163,8 @@ public class PeergosNetworkUtils {
         controllerB = msgB.mergeMessages(controllerB, a.username).join();
         concurrent.join();
 
+        if (network.dhtClient instanceof BufferedStorage)
+            ((BufferedStorage)network.dhtClient).clear();
         UserContext b3 = PeergosNetworkUtils.ensureSignedUp(b.username, password, network.clear(), crypto);
         Messenger msgB3 = new Messenger(b3);
         ChatController controllerB3 = msgB3.getChat(controllerB.chatUuid).join();
