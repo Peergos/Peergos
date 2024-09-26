@@ -159,7 +159,7 @@ public class QuotaCLI extends Builder {
                 String peergosUrl = a.getArg("peergos-url");
                 try {
                     URL api = new URL(peergosUrl);
-                    NetworkAccess network = Main.buildJavaNetworkAccess(api, !peergosUrl.startsWith("http://localhost")).join();
+                    NetworkAccess network = Main.buildJavaNetworkAccess(api, peergosUrl.startsWith("https")).join();
                     Cid us = network.dhtClient.id().join();
                     candidates.stream()
                             .filter(username -> network.coreNode.getHomeServer(username).join().map(h -> h.equals(us)).orElse(false))

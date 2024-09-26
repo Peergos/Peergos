@@ -685,7 +685,7 @@ public class CLI implements Runnable {
                 args.getArg("username") :
                 reader.readLine("Enter username" + PROMPT).trim();
 
-        NetworkAccess network = Builder.buildJavaNetworkAccess(serverURL, ! serverURL.getHost().equals("localhost")).join();
+        NetworkAccess network = Builder.buildJavaNetworkAccess(serverURL, address.startsWith("https")).join();
         Consumer<String> progressConsumer =  msg -> {
             writer.println(msg);
             writer.flush();
