@@ -466,7 +466,7 @@ public class Main extends Builder {
                     Crypto crypto = Main.initCrypto();
                     String peergosUrl = a.getArg("peergos-url");
                     URL api = new URL(peergosUrl);
-                    NetworkAccess network = Builder.buildJavaNetworkAccess(api, ! peergosUrl.startsWith("http://localhost")).join();
+                    NetworkAccess network = Builder.buildJavaNetworkAccess(api, peergosUrl.startsWith("https")).join();
                     LinkIdentity.link(a, network, crypto);
                     return true;
                 } catch (Exception e) {
@@ -490,7 +490,7 @@ public class Main extends Builder {
                     Main.initCrypto();
                     String peergosUrl = a.getArg("peergos-url");
                     URL api = new URL(peergosUrl);
-                    NetworkAccess network = Builder.buildJavaNetworkAccess(api, ! peergosUrl.startsWith("http://localhost")).join();
+                    NetworkAccess network = Builder.buildJavaNetworkAccess(api, peergosUrl.startsWith("https")).join();
                     LinkIdentity.verify(a, network);
                     return true;
                 } catch (Exception e) {
@@ -822,7 +822,7 @@ public class Main extends Builder {
         try {
             String peergosUrl = a.getArg("peergos-url");
             URL api = new URL(peergosUrl);
-            NetworkAccess network = buildJavaNetworkAccess(api, ! peergosUrl.startsWith("http://localhost")).join();
+            NetworkAccess network = buildJavaNetworkAccess(api, peergosUrl.startsWith("https")).join();
 
             Crypto crypto = initCrypto();
             UserContext userContext = UserContext.signIn(username, password, Main::getMfaResponseCLI, network, crypto).join();

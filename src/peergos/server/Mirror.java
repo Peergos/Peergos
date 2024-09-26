@@ -34,7 +34,7 @@ public class Mirror {
                     URL api = new URL(peergosUrl);
                     NetworkAccess network;
                     try {
-                        network = Main.buildJavaNetworkAccess(api, !peergosUrl.startsWith("http://localhost")).join();
+                        network = Main.buildJavaNetworkAccess(api, peergosUrl.startsWith("https")).join();
                     } catch (Exception e) {
                         System.err.println("Couldn't connect to peergos server at " + peergosUrl);
                         System.err.println("To use a different server supply location, e.g. -peergos-url https://peergos.net");
