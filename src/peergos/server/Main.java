@@ -411,6 +411,7 @@ public class Main extends Builder {
                     new Command.Arg("PEERGOS_PASSWORD", "Peergos password", true),
                     new Command.Arg("webdav.username", "Webdav username", true),
                     new Command.Arg("PEERGOS_WEBDAV_PASSWORD", "Webdav password", true),
+                    new Command.Arg("webdav.authorization.scheme", "The auth scheme used in the HTTP Authorization request header. Options are: basic or digest", false, "digest"),
                     new Command.Arg("webdav.port", "The listen port for the webdav endpoint", false, "8090"),
                     new Command.Arg("peergos-url", "Peergos service address", false, "https://peergos.net")
             ).collect(Collectors.toList())

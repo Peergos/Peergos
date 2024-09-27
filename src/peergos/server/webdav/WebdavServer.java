@@ -4,6 +4,7 @@ import org.eclipse.jetty.security.ConstraintMapping;
 import org.eclipse.jetty.security.ConstraintSecurityHandler;
 import org.eclipse.jetty.security.HashLoginService;
 import org.eclipse.jetty.security.UserStore;
+import org.eclipse.jetty.security.authentication.BasicAuthenticator;
 import org.eclipse.jetty.security.authentication.DigestAuthenticator;
 import org.eclipse.jetty.server.Connector;
 import org.eclipse.jetty.server.Server;
@@ -17,6 +18,7 @@ import peergos.server.webdav.modeshape.webdav.WebdavServlet;
 import peergos.server.util.Args;
 
 import java.util.Collections;
+import java.util.Optional;
 import java.util.logging.Logger;
 
 public class WebdavServer {
@@ -36,6 +38,7 @@ public class WebdavServer {
         String webdavPWD = args.getArg("PEERGOS_WEBDAV_PASSWORD");
         String username = args.getArg("username");
         String password = args.getArg("PEERGOS_PASSWORD");
+        Optional<String> authorization = args.getOptionalArg("webdav.authorization.scheme");
 
         //info from:
         //https://stackoverflow.com/questions/44263651/hashloginservice-and-jetty9
@@ -59,7 +62,15 @@ public class WebdavServer {
         mapping.setConstraint(constraint);
 
         security.setConstraintMappings(Collections.singletonList(mapping));
-        security.setAuthenticator(new DigestAuthenticator());
+        if (authorization.isEmpty() || authorization.get().toLowerCase().equals("digest")) {
+            logger.info( "Using DIGEST authorization");
+            security.setAuthenticator(new DigestAuthenticator());
+        } else if(authorization.get().toLowerCase().equals("basic")) {
+            logger.info( "Using BASIC authorization");
+            security.setAuthenticator(new BasicAuthenticator());
+        } else {
+            throw new RuntimeException("Unknown authorization scheme:" + authorization.get());
+        }
         security.setLoginService(loginService);
 
         ServletContextHandler context = new ServletContextHandler(ServletContextHandler.SESSIONS);
