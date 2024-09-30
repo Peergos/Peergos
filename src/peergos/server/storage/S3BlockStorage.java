@@ -694,7 +694,9 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                                              boolean isRaw,
                                              TransactionId tid) {
         List<ForkJoinTask<Cid>> puts = blocks.stream()
-                .map(b -> bulkPutPool.submit(() -> getWithBackoff(() -> putToBuffer(b, isRaw, tid, owner).join())))
+                .map(b -> bulkPutPool.submit(() -> getWithBackoff(() -> b.length > DirectS3BlockStore.MAX_SMALL_BLOCK_SIZE ?
+                        put(b, isRaw, tid, owner) : // This should only happen from p2p requests that can't use DirectS3Blockstore
+                        putToBuffer(b, isRaw, tid, owner).join())))
                 .collect(Collectors.toList());
         return Futures.of(puts.stream().map(f ->  f.join()).collect(Collectors.toList()));
     }
