@@ -166,8 +166,8 @@ public class StorageHandler implements HttpHandler {
                     }).exceptionally(Futures::logAndThrow).get();
                     break;
                 }
-                case BLOCK_PUT: {
-                    AggregatedMetrics.STORAGE_BLOCK_PUT.inc();
+                case BLOCK_PUT: { // TODO Remove this in a future release, which is only used by legacy clients
+                    AggregatedMetrics.STORAGE_BLOCK_PUT_BULK.inc();
                     PublicKeyHash ownerHash = PublicKeyHash.fromString(last.apply("owner"));
                     TransactionId tid = new TransactionId(last.apply("transaction"));
                     PublicKeyHash writerHash = PublicKeyHash.fromString(last.apply("writer"));
@@ -181,6 +181,73 @@ public class StorageHandler implements HttpHandler {
                             .findAny()
                             .get();
                     List<byte[]> data = MultipartReceiver.extractFiles(httpExchange.getRequestBody(), boundary);
+                    boolean isRaw = last.apply("format").equals("raw");
+
+                    // check writer is allowed to write to this server, and check their free space
+                    if (! keyFilter.apply(writerHash, data.stream().mapToInt(x -> x.length).sum()))
+                        throw new IllegalStateException("Key not allowed to write to this server: " + writerHash);
+
+                    // Get the actual key, unless this is the initial write of the signing key during sign up
+                    // In the initial put of a signing key during sign up the key signs itself (we still check the hash
+                    // against the core node)
+                    Supplier<PublicSigningKey> fromDht = () -> {
+                        try {
+                            return dht.getSigningKey(writerHash, writerHash).get().get();
+                        } catch (Exception e) {
+                            throw new RuntimeException(e);
+                        }
+                    };
+                    Supplier<PublicSigningKey> inBandOrDht = () -> {
+                        try {
+                            PublicSigningKey candidateKey = PublicSigningKey.fromByteArray(data.get(0));
+                            PublicKeyHash calculatedHash = ContentAddressedStorage.hashKey(candidateKey);
+                            if (calculatedHash.equals(writerHash)) {
+                                candidateKey.unsignMessage(signatures.get(0));
+                                return candidateKey;
+                            }
+                        } catch (Throwable e) {
+                            // If signature is not valid then the signing key has already been written, retrieve it
+                            // This happens for the boxing key during sign up for example
+                        }
+                        return fromDht.get();
+                    };
+                    PublicSigningKey writer = data.size() > 1 ? fromDht.get() : inBandOrDht.get();
+
+                    // verify signatures
+                    for (int i = 0; i < data.size(); i++) {
+                        byte[] signature = signatures.get(i);
+                        byte[] hash = hasher.sha256(data.get(i)).join();
+                        byte[] unsigned = writer.unsignMessage(signature).join();
+                        if (! Arrays.equals(unsigned, hash))
+                            throw new IllegalStateException("Invalid signature for block!");
+                    }
+
+                    List<Cid> hashes = (isRaw ?
+                            dht.putRaw(ownerHash, writerHash, signatures, data, tid, x -> {}) :
+                            dht.put(ownerHash, writerHash, signatures, data, tid)).get();
+                    List<Object> json = hashes.stream()
+                            .map(h -> wrapHash(h))
+                            .collect(Collectors.toList());
+                    // make stream of JSON objects
+                    String jsonStream = json.stream()
+                            .map(m -> JSONParser.toString(m))
+                            .reduce("", (a, b) -> a + b);
+                    replyJson(httpExchange, jsonStream, Optional.empty());
+                    break;
+                }
+                case BLOCK_PUT_BULK: {
+                    AggregatedMetrics.STORAGE_BLOCK_PUT_BULK.inc();
+                    PublicKeyHash ownerHash = PublicKeyHash.fromString(last.apply("owner"));
+                    TransactionId tid = new TransactionId(last.apply("transaction"));
+                    PublicKeyHash writerHash = PublicKeyHash.fromString(last.apply("writer"));
+                    List<byte[]> signatures = Arrays.stream(last.apply("signatures").split(","))
+                            .map(ArrayOps::hexToBytes)
+                            .collect(Collectors.toList());
+                    int size = Integer.parseInt(httpExchange.getRequestHeaders().get("Content-Length").get(0));
+                    if (size > 2*1024*1024)
+                        throw new IllegalStateException("HTTP PUT body too big!");
+
+                    List<byte[]> data = Blocks.fromCbor(CborObject.fromByteArray(Serialize.read(httpExchange.getRequestBody(), size))).blocks;
                     boolean isRaw = last.apply("format").equals("raw");
 
                     // check writer is allowed to write to this server, and check their free space

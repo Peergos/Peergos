@@ -159,11 +159,11 @@ public interface ContentAddressedStorageProxy {
                                                  List<byte[]> blocks,
                                                  String format,
                                                  TransactionId tid) {
-            return poster.postMultipart(getProxyUrlPrefix(targetServerId) + apiPrefix + "block/put?format=" + format
+            return poster.post(getProxyUrlPrefix(targetServerId) + apiPrefix + ContentAddressedStorage.HTTP.BLOCK_PUT_BULK + "?format=" + format
                     + "&owner=" + encode(owner.toString())
                     + "&transaction=" + encode(tid.toString())
                     + "&writer=" + encode(writer.toString())
-                    + "&signatures=" + signatures.stream().map(ArrayOps::bytesToHex).reduce("", (a, b) -> a + "," + b).substring(1), blocks)
+                    + "&signatures=" + signatures.stream().map(ArrayOps::bytesToHex).reduce("", (a, b) -> a + "," + b).substring(1), new Blocks(blocks).serialize(), false)
                     .thenApply(bytes -> JSONParser.parseStream(new String(bytes))
                             .stream()
                             .map(json -> getObjectHash(json))

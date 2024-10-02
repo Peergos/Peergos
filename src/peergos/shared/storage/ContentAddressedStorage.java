@@ -278,6 +278,7 @@ public interface ContentAddressedStorage {
         public static final String LINK_GET = "link/get";
         public static final String LINK_COUNTS = "link/counts";
         public static final String BLOCK_PUT = "block/put";
+        public static final String BLOCK_PUT_BULK = "block/put/bulk";
         public static final String BLOCK_GET = "block/get";
         public static final String BLOCK_RM = "block/rm";
         public static final String BLOCK_RM_BULK = "block/rm/bulk";
@@ -506,11 +507,12 @@ public interface ContentAddressedStorage {
                             + ", blocks must be smaller than 1MiB!");
             }
             int timeoutMillis = blocks.size() > 1 ? 30_000 : -1;
-            return poster.postMultipart(apiPrefix + BLOCK_PUT + "?format=" + format
+
+            return poster.post(apiPrefix + BLOCK_PUT_BULK + "?format=" + format
                     + "&owner=" + encode(owner.toString())
                     + "&transaction=" + encode(tid.toString())
                     + "&writer=" + encode(writer.toString())
-                    + "&signatures=" + signatures.stream().map(ArrayOps::bytesToHex).reduce("", (a, b) -> a + "," + b).substring(1), blocks, timeoutMillis)
+                    + "&signatures=" + signatures.stream().map(ArrayOps::bytesToHex).reduce("", (a, b) -> a + "," + b).substring(1), new Blocks(blocks).serialize(), false, timeoutMillis)
                     .thenApply(bytes -> JSONParser.parseStream(new String(bytes))
                             .stream()
                             .map(json -> getObjectHash(json))
