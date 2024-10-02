@@ -338,13 +338,13 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
             return getRaw(peerIds, hash, "", persistBlock);
         return bat.get().bat.generateAuth(hash, ourId, 300, S3Request.currentDatetime(), bat.get().id, h)
                 .thenApply(BlockAuth::encode)
-                .thenCompose(auth -> getRaw(peerIds, hash, Optional.empty(), auth, true, bat))
+                .thenCompose(auth -> getRaw(peerIds, hash, Optional.empty(), auth, true, bat, persistBlock))
                 .thenApply(p -> p.map(v -> v.left));
     }
 
     @Override
     public CompletableFuture<Optional<byte[]>> getRaw(List<Multihash> peerIds, Cid hash, String auth, boolean persistBlock) {
-        return getRaw(peerIds, hash, Optional.empty(), auth, true, Optional.empty())
+        return getRaw(peerIds, hash, Optional.empty(), auth, true, Optional.empty(), persistBlock)
                 .thenApply(p -> p.map(v -> v.left));
     }
 
@@ -362,7 +362,8 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                                                                      Optional<Pair<Integer, Integer>> range,
                                                                      String auth,
                                                                      boolean enforceAuth,
-                                                                     Optional<BatWithId> bat) {
+                                                                     Optional<BatWithId> bat,
+                                                                     boolean persistP2pBlock) {
         if (! hash.isRaw()) {
             Optional<byte[]> cached = cborCache.get(hash).join();
             if (cached.isPresent()) {
@@ -377,7 +378,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                     throw new IllegalStateException("Unauthorised!");
                 return Futures.of(Optional.of(new Pair<>(buffered.get(), null)));
         }
-        return getWithBackoff(() -> getRawWithoutBackoff(peerIds, hash, range, auth, enforceAuth, bat))
+        return getWithBackoff(() -> getRawWithoutBackoff(peerIds, hash, range, auth, enforceAuth, bat, persistP2pBlock))
                 .thenApply(res -> {
                     if (hash.isRaw())
                         return res;
@@ -392,7 +393,8 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                                                                                    Optional<Pair<Integer, Integer>> range,
                                                                                    String auth,
                                                                                    boolean enforceAuth,
-                                                                                   Optional<BatWithId> bat) {
+                                                                                   Optional<BatWithId> bat,
+                                                                                   boolean persistP2pBlock) {
         String path = folder + hashToKey(hash);
         PresignedUrl getUrl = S3Request.preSignGet(path, Optional.of(600), range,
                 S3AdminRequests.asAwsDate(ZonedDateTime.now()), host, region, accessKeyId, secretKey, useHttps, hasher).join();
@@ -426,10 +428,10 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
 
             nonLocalGets.inc();
             if (p2pGetId.equals(id))
-                return p2pFallback.getRaw(peerIds, hash, auth, false)
+                return p2pFallback.getRaw(peerIds, hash, auth, persistP2pBlock)
                         .thenApply(dopt -> dopt.map(b -> new Pair<>(b, null)));
             // recalculate auth when the fallback node has a different node id
-            return p2pFallback.getRaw(peerIds, hash, bat, p2pGetId, hasher, enforceAuth, false)
+            return p2pFallback.getRaw(peerIds, hash, bat, p2pGetId, hasher, enforceAuth, persistP2pBlock)
                     .thenApply(dopt -> dopt.map(b -> new Pair<>(b, null)));
         } finally {
             readTimer.observeDuration();
@@ -778,7 +780,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
             return Futures.of(cached.get());
         Optional<Pair<byte[], String>> data = getRaw(Collections.emptyList(), h, h.isRaw() ?
                 Optional.of(new Pair<>(0, Bat.MAX_RAW_BLOCK_PREFIX_SIZE - 1)) :
-                Optional.empty(), "", false, Optional.empty()).join();
+                Optional.empty(), "", false, Optional.empty(), false).join();
         if (data.isEmpty())
             throw new IllegalStateException("Block not present locally: " + h);
         byte[] bloc = data.get().left;
