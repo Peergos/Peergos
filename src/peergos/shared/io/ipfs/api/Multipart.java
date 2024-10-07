@@ -15,9 +15,9 @@ public class Multipart {
     private PrintWriter writer;
 
     public Multipart(String requestURL, String charset) throws IOException {
-        this(requestURL, charset, Collections.emptyMap());
+        this(requestURL, charset, Collections.emptyMap(), 0);
     }
-    public Multipart(String requestURL, String charset, Map<String, String> headers) throws IOException {
+    public Multipart(String requestURL, String charset, Map<String, String> headers, int readTimeoutMillis) throws IOException {
         this.charset = charset;
 
         boundary = createBoundary();
@@ -27,6 +27,8 @@ public class Multipart {
         httpConn.setUseCaches(false);
         httpConn.setDoOutput(true);
         httpConn.setDoInput(true);
+        if (readTimeoutMillis > 0)
+            httpConn.setReadTimeout(readTimeoutMillis);
         for (Map.Entry<String, String> e : headers.entrySet()) {
             httpConn.setRequestProperty(e.getKey(), e.getValue());
         }
