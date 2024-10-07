@@ -115,7 +115,7 @@ public class JavaPoster implements HttpPoster {
             Map<String, String> headers = new HashMap<>();
             if (basicAuth.isPresent())
                 headers.put("Authorization", basicAuth.get());
-            Multipart mPost = new Multipart(buildURL(url).toString(), "UTF-8", headers);
+            Multipart mPost = new Multipart(buildURL(url).toString(), "UTF-8", headers, timeoutMillis);
             int i = 0;
             for (byte[] file : files) {
                 String fieldName = "file" + i++;
@@ -129,7 +129,7 @@ public class JavaPoster implements HttpPoster {
 
     @Override
     public CompletableFuture<byte[]> postMultipart(String url, List<byte[]> files) {
-        return postMultipart(url, files, -1);
+        return postMultipart(url, files, 20_000);
     }
 
     @Override

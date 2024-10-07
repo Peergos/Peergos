@@ -304,6 +304,26 @@ public class MultiNodeNetworkTests {
     }
 
     @Test
+    public void largeP2pWrites() {
+        if (iNode1 == 0 || iNode2 == 0)
+            return; // Don't test to/from pki node
+        String username = generateUsername(random);
+        String password = randomString();
+        NetworkAccess node1 = getNode(iNode1);
+        NetworkAccess node2 = getNode(iNode2);
+        UserContext user = ensureSignedUp(username, password, node1, crypto);
+
+        UserContext viaProxy = ensureSignedUp(username, password, node2, crypto);
+
+        byte[] data = new byte[2 * 1024 * 1024];
+
+        for (int i=0; i < 100; i++) {
+            FileWrapper home = viaProxy.getUserRoot().join();
+            home.uploadFileJS(i + "", AsyncReader.build(data), 0, data.length, false, home.mirrorBatId(), node2, crypto, x -> {}, viaProxy.getTransactionService(), f -> Futures.of(true)).join();
+        }
+    }
+
+    @Test
     public void invalidMigrate() {
         if (iNode1 == 0 || iNode2 == 0)
             return; // Don't test migration to/from pki node
