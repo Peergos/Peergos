@@ -49,6 +49,8 @@ public class FileProperties implements Cborable {
             throw new IllegalStateException("File and directory names must be less than 256 characters.");
         if (isDirectory && streamSecret.isPresent())
             throw new IllegalStateException("Directories cannot have stream secrets!");
+        if (name.contains("/"))
+            throw new IllegalStateException("Invalid character in name!");
         this.name = name;
         this.isDirectory = isDirectory;
         this.isLink = isLink;
