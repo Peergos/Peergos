@@ -24,7 +24,9 @@ public class FileHandler extends StaticHandler
     @Override
     public Asset getAsset(String resourcePath) throws IOException {
         String stem = resourcePath.startsWith("/")  ?  resourcePath.substring(1) : resourcePath;
-        Path fullPath = root.resolve(stem);
+        Path fullPath = root.resolve(stem).normalize();
+        if (! fullPath.startsWith(root))
+            throw new IllegalStateException("Invalid descendant path!");
         byte[] bytes = readResource(new FileInputStream(fullPath.toFile()), isGzip());
         return new Asset(bytes);
     }
