@@ -73,6 +73,8 @@ public class Main extends Builder {
     public static final Command.Arg ARG_ANNOUNCE_ADDRESSES = new Command.Arg("ipfs-announce-addresses",
             "Comma separated list of extra announce multi-addresses. e.g. a public NAT address with port forwarding: /ip4/$IP/tcp/4001", false);
 
+    public static final Command.Arg LISTEN_HOST = new Command.Arg("listen-host", "The hostname/interface to listen on", true, "localhost");
+
     public static Command<IpfsWrapper> IPFS = new Command<>("ipfs",
             "Configure and start IPFS daemon",
             Main::startIpfs,
@@ -116,7 +118,7 @@ public class Main extends Builder {
                     ARG_BOOTSTRAP_NODES,
                     ARG_ANNOUNCE_ADDRESSES,
                     new Command.Arg("pki.node.swarm.port", "Swarm port of the pki node", true, "5001"),
-                    new Command.Arg("domain", "Domain name to bind to", false, "localhost"),
+                    LISTEN_HOST,
                     new Command.Arg("public-domain", "The public domain name for this server (required if TLS is managed upstream)", false),
                     ARG_USE_IPFS,
                     ARG_BAT_STORE,
@@ -307,7 +309,7 @@ public class Main extends Builder {
                 }
             },
             Arrays.asList(
-                    new Command.Arg("domain", "The hostname to listen on", true, "localhost"),
+                    new Command.Arg("listen-host", "The hostname/interface to listen on", true, "localhost"),
                     new Command.Arg("port", "The port for the local non tls server to listen on", true, "8000"),
                     new Command.Arg("useIPFS", "Whether to use IPFS or a local datastore", true, "false"),
                     new Command.Arg("legacy-raw-blocks-file", "The filename for the list of legacy raw blocks (or :memory: for ram based)", true, "legacyraw.sql"),
@@ -368,7 +370,7 @@ public class Main extends Builder {
             },
             Arrays.asList(
                     new Command.Arg("peergos.identity.hash", "The hostname to listen on", true),
-                    new Command.Arg("domain", "The hostname to listen on", true, "localhost"),
+                    LISTEN_HOST,
                     new Command.Arg("port", "The port for the local non tls server to listen on", true, "8000"),
                     new Command.Arg("useIPFS", "Whether to use IPFS or a local datastore", true, "false"),
                     new Command.Arg("legacy-raw-blocks-file", "The filename for the list of legacy raw blocks (or :memory: for ram based)", true, "legacyraw.sql"),
@@ -434,7 +436,7 @@ public class Main extends Builder {
                     new Command.Arg("port", "service port", false, "9000"),
                     new Command.Arg("peergos-url", "Address of the Peergos server to connect to", false, "http://localhost:8000"),
                     new Command.Arg("domain-suffix", "Domain suffix to accept", false, ".peergos.localhost:9000"),
-                    new Command.Arg("domain", "Domain name to bind to,", false, "localhost"),
+                    new Command.Arg("domain", "Domain name to bind to", false, "localhost"),
                     new Command.Arg("public-server", "Are we a public server? (allow http GETs to API)", false, "false"),
                     new Command.Arg("collect-metrics", "Export aggregated metrics", false, "false"),
                     new Command.Arg("metrics.address", "Listen address for serving aggregated metrics", false, "localhost"),
@@ -547,7 +549,7 @@ public class Main extends Builder {
             MultiAddress localP2PApi = new MultiAddress(a.getArg("proxy-target"));
 
             Multihash pkiServerNodeId = getPkiServerId(a);
-            String listeningHost = a.getArg("domain");
+            String listeningHost = a.getArg(LISTEN_HOST.name);
             int webPort = a.getInt("port");
             InetSocketAddress userAPIAddress = new InetSocketAddress(listeningHost, webPort);
             boolean localhostApi = userAPIAddress.getHostName().equals("localhost");
