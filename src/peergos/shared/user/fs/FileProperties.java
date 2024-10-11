@@ -21,7 +21,7 @@ import java.util.stream.*;
 public class FileProperties implements Cborable {
     public static final int MAX_FILE_NAME_SIZE = 255;
     public static final int MAX_PATH_SIZE = 4096;
-    public static final FileProperties EMPTY = new FileProperties("", true, false, "", 0, LocalDateTime.MIN, LocalDateTime.MIN, false, Optional.empty(), Optional.empty());
+    public static final FileProperties EMPTY = new FileProperties(".subsequent-dir-chunk", true, false, "", 0, LocalDateTime.MIN, LocalDateTime.MIN, false, Optional.empty(), Optional.empty());
 
     public final String name;
     public final boolean isDirectory;
