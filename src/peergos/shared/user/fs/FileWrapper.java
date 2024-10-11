@@ -66,9 +66,7 @@ public class FileWrapper {
         this.isWritable = pointer != null &&
                 pointer.capability instanceof WritableAbsoluteCapability ||
                 entryWriter.map(s -> s.publicKeyHash.equals(pointer.capability.writer)).orElse(false);
-        if (pointer == null)
-            props = new FileProperties("/", true, false, "", 0, LocalDateTime.MIN, LocalDateTime.MIN, false, Optional.empty(), Optional.empty());
-        else {
+        if (pointer != null) {
             SymmetricKey parentKey = this.getParentKey();
             FileProperties directProps = pointer.fileAccess.getProperties(parentKey);
             if (linkPointer.isPresent()) {
@@ -78,7 +76,8 @@ public class FileWrapper {
             } else {
                 this.props = directProps;
             }
-        }
+        } else
+            props = null;
         if (pointer != null && ! version.contains(pointer.capability.writer))
             throw new IllegalStateException("File version doesn't include its own writer!");
         if (isWritable() && !signingPair().publicKeyHash.equals(pointer.capability.writer))
@@ -162,7 +161,7 @@ public class FileWrapper {
     }
 
     public boolean isRoot() {
-        return props.name.equals("/");
+        return pointer == null;
     }
 
     public CompletableFuture<String> getPath(NetworkAccess network) {
@@ -2247,15 +2246,15 @@ public class FileWrapper {
 
     @JsMethod
     public String getName() {
-        return getFileProperties().name;
+        return Optional.ofNullable(getFileProperties()).map(p -> p.name).orElse("/");
     }
 
     public long getSize() {
-        return getFileProperties().size;
+        return Optional.ofNullable(getFileProperties()).map(p -> p.size).orElse(0L);
     }
 
     public String toString() {
-        return getFileProperties().name;
+        return getName();
     }
 
     public static FileWrapper createRoot(TrieNode root) {
