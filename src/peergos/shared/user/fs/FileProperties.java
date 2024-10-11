@@ -50,7 +50,9 @@ public class FileProperties implements Cborable {
         if (isDirectory && streamSecret.isPresent())
             throw new IllegalStateException("Directories cannot have stream secrets!");
         if (name.contains("/") && (! name.equals("/") || ! modified.equals(LocalDateTime.MIN)))
-            throw new IllegalStateException("Invalid character in name!");
+            throw new IllegalStateException("Invalid character in filename!");
+        if (name.equals(".") || name.equals("..") || name.isEmpty())
+            throw new IllegalStateException("Invalid filename: " + name);
         this.name = name;
         this.isDirectory = isDirectory;
         this.isLink = isLink;
