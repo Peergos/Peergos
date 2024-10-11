@@ -21,6 +21,7 @@ public final class UsernameValidator {
                     "irc", "matrix", "twitter", "facebook", "instagram", "linkedin", "wechat", "tiktok", "reddit",
                     "snapchat", "qq", "whatsapp", "signal", "telegram", "matrix", "briar", "ssb", "mastodon",
                     "apple", "google", "pinterest",
+                    "constructor",
                     "mls", "btc", "eth", "mnr", "zec", "friends", "followers", "username", "groups")
             .collect(Collectors.toSet());
 
