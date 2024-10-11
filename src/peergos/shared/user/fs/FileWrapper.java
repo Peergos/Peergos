@@ -2246,15 +2246,15 @@ public class FileWrapper {
 
     @JsMethod
     public String getName() {
-        return getFileProperties().name;
+        return Optional.ofNullable(getFileProperties()).map(p -> p.name).orElse("/");
     }
 
     public long getSize() {
-        return getFileProperties().size;
+        return Optional.ofNullable(getFileProperties()).map(p -> p.size).orElse(0L);
     }
 
     public String toString() {
-        return getFileProperties().name;
+        return getName();
     }
 
     public static FileWrapper createRoot(TrieNode root) {
