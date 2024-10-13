@@ -109,7 +109,18 @@ public class DirectorySync {
                     copyFileDiffAndTruncate(localDir.toPath().resolve(local.relPath).toFile(), local, remoteDir.toPath().resolve(local.relPath).toFile(), remote);
                     return List.of(local);
                 }
-            } else { // concurrent change, rename one
+            } else { // concurrent change/deletion
+                if (local == null && remote == null) // concurrent deletes
+                    return Collections.emptyList();
+                if (local == null) { // local delete, copy changed remote
+                    copyFileDiffAndTruncate(remoteDir.toPath().resolve(remote.relPath).toFile(), remote, localDir.toPath().resolve(remote.relPath).toFile(), local);
+                    return List.of(remote);
+                }
+                if (remote == null) { // remote delete, copy changed local
+                    copyFileDiffAndTruncate(localDir.toPath().resolve(local.relPath).toFile(), local, remoteDir.toPath().resolve(local.relPath).toFile(), remote);
+                    return List.of(local);
+                }
+                // concurrent change, rename one sync the other
                 FileState renamed = renameOnConflict(localDir.toPath().resolve(local.relPath).toFile(), local);
                 copyFileDiffAndTruncate(remoteDir.toPath().resolve(remote.relPath).toFile(), remote, localDir.toPath().resolve(remote.relPath).toFile(), local);
                 copyFileDiffAndTruncate(localDir.toPath().resolve(renamed.relPath).toFile(), local, remoteDir.toPath().resolve(renamed.relPath).toFile(), remote);
