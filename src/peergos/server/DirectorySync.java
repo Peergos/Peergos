@@ -129,13 +129,24 @@ public class DirectorySync {
             int start = name.lastIndexOf("[conflict-");
             int end = name.indexOf("]", start);
             int version = Integer.parseInt(name.substring(start + "[conflict-".length(), end));
-            newName = name.substring(0, start) + "[conflict-" + (version + 1) + "]" + name.substring(end + 1);
+            while (true) {
+                newName = name.substring(0, start) + "[conflict-" + (version + 1) + "]" + name.substring(end + 1);
+                if (! f.toPath().getParent().resolve(newName).toFile().exists())
+                    break;
+                version++;
+            }
         } else {
-            if (name.contains(".")) {
-                int dot = name.lastIndexOf(".");
-                newName = name.substring(0, dot) + "[conflict-0]" + name.substring(dot);
-            } else
-                newName = name + "[conflict-0]";
+            int version = 0;
+            while (true) {
+                if (name.contains(".")) {
+                    int dot = name.lastIndexOf(".");
+                    newName = name.substring(0, dot) + "[conflict-" + version + "]" + name.substring(dot);
+                } else
+                    newName = name + "[conflict-" + version + "]";
+                if (! f.toPath().getParent().resolve(newName).toFile().exists())
+                    break;
+                version++;
+            }
         }
         f.renameTo(f.toPath().getParent().resolve(newName).toFile());
         return new FileState(s.relPath.substring(0, s.relPath.length() - name.length()) + newName, s.modificationTime, s.size, s.hash);
