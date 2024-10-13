@@ -19,7 +19,7 @@ public class DirectorySync {
         TreeState syncedState = new TreeState();
         while (true) {
             syncedState = syncDirs(local, remote, syncedState);
-            Thread.sleep(30_000);
+//            Thread.sleep(30_000);
         }
     }
 
@@ -35,27 +35,37 @@ public class DirectorySync {
 
             FileState synced = syncedVersions.filesByPath.get(local.relPath);
             FileState remote = remoteState.filesByPath.get(local.relPath);
-            List<FileState> syncedResults = syncFile(localDir, remoteDir, synced, local, remote);
+            List<FileState> syncedResults = syncFile(localDir, remoteDir, synced, local, remote, localState, remoteState);
             syncedResults.forEach(finalSyncedState::add);
         }
         for (FileState remote : remoteState.filesByPath.values()) {
             if (! finalSyncedState.filesByPath.containsKey(remote.relPath)) {
 
                 FileState synced = syncedVersions.filesByPath.get(remote.relPath);
-                List<FileState> syncedResults = syncFile(localDir, remoteDir, synced, null, remote);
+                List<FileState> syncedResults = syncFile(localDir, remoteDir, synced, null, remote, localState, remoteState);
                 syncedResults.forEach(finalSyncedState::add);
             }
         }
         return finalSyncedState;
     }
 
-    public static List<FileState> syncFile(File localDir, File remoteDir, FileState synced, FileState local, FileState remote) throws IOException {
+    public static List<FileState> syncFile(File localDir, File remoteDir,
+                                           FileState synced, FileState local, FileState remote,
+                                           TreeState localTree, TreeState remoteTree) throws IOException {
         if (synced == null) {
-            if (local == null) { // remotely added
-                copyFileDiffAndTruncate(remoteDir.toPath().resolve(remote.relPath).toFile(), remote, localDir.toPath().resolve(remote.relPath).toFile(), null);
+            if (local == null) { // remotely added or renamed
+                List<FileState> byHash = localTree.byHash(remote.hash);
+                if (byHash.size() == 1) {// rename
+                    moveTo(localDir, byHash.get(0), remote);
+                } else
+                    copyFileDiffAndTruncate(remoteDir.toPath().resolve(remote.relPath).toFile(), remote, localDir.toPath().resolve(remote.relPath).toFile(), null);
                 return List.of(remote);
-            } else if (remote == null) { // locally added
-                copyFileDiffAndTruncate(localDir.toPath().resolve(local.relPath).toFile(), local, remoteDir.toPath().resolve(local.relPath).toFile(), null);
+            } else if (remote == null) { // locally added or renamed
+                List<FileState> byHash = remoteTree.byHash(local.hash);
+                if (byHash.size() == 1) {// rename
+                    moveTo(remoteDir, byHash.get(0), local);
+                } else
+                    copyFileDiffAndTruncate(localDir.toPath().resolve(local.relPath).toFile(), local, remoteDir.toPath().resolve(local.relPath).toFile(), null);
                 return List.of(local);
             } else {
                 // concurrent addition, rename 1 if contents are different
@@ -76,16 +86,24 @@ public class DirectorySync {
             }
         } else {
             if (synced.equals(local)) { // remote change only
-                if (remote == null) { // deletion
-                    deleteFile(localDir.toPath().resolve(local.relPath).toFile());
+                if (remote == null) { // deletion or rename
+                    List<FileState> byHash = remoteTree.byHash(local.hash);
+                    if (byHash.size() == 1) {// rename
+                        // we will do the local rename when we process the new remote entry
+                    } else
+                        deleteFile(localDir.toPath().resolve(local.relPath).toFile());
                     return Collections.emptyList();
                 } else {
                     copyFileDiffAndTruncate(remoteDir.toPath().resolve(remote.relPath).toFile(), remote, localDir.toPath().resolve(remote.relPath).toFile(), local);
                     return List.of(remote);
                 }
             } else if (synced.equals(remote)) { // local only change
-                if (local == null) { // deletion
-                    deleteFile(remoteDir.toPath().resolve(remote.relPath).toFile());
+                if (local == null) { // deletion or rename
+                    List<FileState> byHash = localTree.byHash(remote.hash);
+                    if (byHash.size() == 1) {// rename
+                        // we will do the local rename when we process the new remote entry
+                    } else
+                        deleteFile(remoteDir.toPath().resolve(remote.relPath).toFile());
                     return Collections.emptyList();
                 } else {
                     copyFileDiffAndTruncate(localDir.toPath().resolve(local.relPath).toFile(), local, remoteDir.toPath().resolve(local.relPath).toFile(), remote);
@@ -125,6 +143,13 @@ public class DirectorySync {
 
     public static void setModificationTime(File f, long modificationTime) {
         f.setLastModified(modificationTime);
+    }
+
+    public static void moveTo(File base, FileState source, FileState target) {
+        File newFile = base.toPath().resolve(target.relPath).toFile();
+        File originalFile = base.toPath().resolve(source.relPath).toFile();
+        newFile.getParentFile().mkdirs();
+        originalFile.renameTo(newFile);
     }
 
     public static void copyFileDiffAndTruncate(File source, FileState sourceState, File target, FileState targetState) throws IOException {
@@ -219,11 +244,16 @@ public class DirectorySync {
 
     static class TreeState {
         public final Map<String, FileState> filesByPath = new HashMap<>();
-        public final Map<Blake3state, FileState> fileByHash = new HashMap<>();
+        public final Map<Blake3state, List<FileState>> fileByHash = new HashMap<>();
 
         public void add(FileState fs) {
             filesByPath.put(fs.relPath, fs);
-            fileByHash.put(fs.hash, fs);
+            fileByHash.putIfAbsent(fs.hash, new ArrayList<>());
+            fileByHash.get(fs.hash).add(fs);
+        }
+
+        public List<FileState> byHash(Blake3state b3) {
+            return fileByHash.getOrDefault(b3, Collections.emptyList());
         }
     }
 
