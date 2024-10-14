@@ -1,15 +1,12 @@
-package peergos.server;
+package peergos.server.sync;
 
-import peergos.server.crypto.hash.Blake3;
 import peergos.shared.util.ArrayOps;
 import peergos.shared.util.Pair;
 
 import java.io.*;
-import java.nio.channels.FileChannel;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.*;
-import java.util.function.Consumer;
 
 public class DirectorySync {
 
@@ -254,137 +251,6 @@ public class DirectorySync {
 
         public List<FileState> byHash(Blake3state b3) {
             return fileByHash.getOrDefault(b3, Collections.emptyList());
-        }
-    }
-
-    interface SyncFilesystem {
-
-        boolean exists(Path p);
-
-        void mkdirs(Path p);
-
-        void delete(Path p);
-
-        void moveTo(Path src, Path target);
-
-        long getLastModified(Path p);
-
-        void setModificationTime(Path p, long t);
-
-        long size(Path p);
-
-        void truncate(Path p, long size) throws IOException;
-
-        void setBytes(Path p, long fileOffset, InputStream data, long size) throws IOException;
-
-        InputStream getBytes(Path p, long fileOffset) throws IOException;
-
-        Blake3state hashFile(Path p);
-
-        void applyToSubtree(Path start, Consumer<Path> file, Consumer<Path> dir);
-    }
-
-    static class LocalFileSystem implements SyncFilesystem {
-
-        @Override
-        public boolean exists(Path p) {
-            return p.toFile().exists();
-        }
-
-        @Override
-        public void mkdirs(Path p) {
-            File f = p.toFile();
-            if (f.exists() && f.isDirectory())
-                return;
-            if (! f.mkdirs())
-                throw new IllegalStateException("Couldn't create " + p);
-        }
-
-        @Override
-        public void delete(Path p) {
-            p.toFile().delete();
-        }
-
-        @Override
-        public void moveTo(Path src, Path target) {
-            target.getParent().toFile().mkdirs();
-            src.toFile().renameTo(target.toFile());
-        }
-
-        @Override
-        public long getLastModified(Path p) {
-            return p.toFile().lastModified();
-        }
-
-        @Override
-        public void setModificationTime(Path p, long modificationTime) {
-            p.toFile().setLastModified(modificationTime);
-        }
-
-        @Override
-        public long size(Path p) {
-            return p.toFile().length();
-        }
-
-        @Override
-        public void truncate(Path p, long size) throws IOException {
-            try (FileChannel channel = new FileOutputStream(p.toFile()).getChannel()) {
-                channel.truncate(size);
-            }
-        }
-
-        @Override
-        public void setBytes(Path p, long fileOffset, InputStream fin, long size) throws IOException {
-            try (FileOutputStream fout = new FileOutputStream(p.toFile());
-                 FileChannel channel = fout.getChannel()) {
-                channel.position(fileOffset);
-                byte[] buf = new byte[4096];
-                long done = 0;
-                while (done < size) {
-                    int read = fin.read(buf);
-                    fout.write(buf, 0, read);
-                    done += read;
-                }
-            }
-        }
-
-        @Override
-        public InputStream getBytes(Path p, long fileOffset) throws IOException {
-            FileInputStream fin = new FileInputStream(p.toFile());
-            fin.getChannel().position(fileOffset);
-            return fin;
-        }
-
-        @Override
-        public Blake3state hashFile(Path p) {
-            byte[] buf = new byte[4*1024];
-            long size = p.toFile().length();
-            Blake3 state = Blake3.initHash();
-
-            try {
-                FileInputStream fin = new FileInputStream(p.toFile());
-                for (long i = 0; i < size; ) {
-                    int read = fin.read(buf);
-                    state.update(buf, 0, read);
-                    i+= read;
-                }
-
-                byte[] hash = state.doFinalize(32);
-                return new Blake3state(hash);
-            } catch (IOException e) {
-                throw new RuntimeException(e);
-            }
-        }
-
-        @Override
-        public void applyToSubtree(Path start, Consumer<Path> file, Consumer<Path> dir) {
-            for (File f : start.toFile().listFiles()) {
-                if (f.isFile()) {
-                    file.accept(f.toPath());
-                } else if (f.isDirectory()) {
-                    applyToSubtree(start.resolve(f.getName()), file, dir);
-                }
-            }
         }
     }
 
