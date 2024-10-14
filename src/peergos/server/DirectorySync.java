@@ -4,83 +4,84 @@ import peergos.server.crypto.hash.Blake3;
 import peergos.shared.util.ArrayOps;
 import peergos.shared.util.Pair;
 
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
-import java.io.IOException;
+import java.io.*;
 import java.nio.channels.FileChannel;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.*;
+import java.util.function.Consumer;
 
 public class DirectorySync {
 
     public static void main(String[] args) throws Exception {
-        File local = new File("sync/local");
-        File remote = new File("sync/remote");
         TreeState syncedState = new TreeState();
+        LocalFileSystem local = new LocalFileSystem();
+        LocalFileSystem remote = new LocalFileSystem();
         while (true) {
-            syncedState = syncDirs(local, remote, syncedState);
+            syncedState = syncDirs(local, Paths.get("sync/local"), remote, Paths.get("sync/remote"), syncedState);
 //            Thread.sleep(30_000);
         }
     }
 
-    public static TreeState syncDirs(File localDir, File remoteDir, TreeState syncedVersions) throws IOException {
+    public static TreeState syncDirs(SyncFilesystem localFS, Path localDir, SyncFilesystem remoteFS, Path remoteDir, TreeState syncedVersions) throws IOException {
         TreeState localState = new TreeState();
-        buildDirState("", localDir, localState, syncedVersions);
+        buildDirState(localFS, localDir, localState, syncedVersions);
 
         TreeState remoteState = new TreeState();
-        buildDirState("", remoteDir, remoteState, syncedVersions);
+        buildDirState(remoteFS, remoteDir, remoteState, syncedVersions);
 
         TreeState finalSyncedState = new TreeState();
         for (FileState local : localState.filesByPath.values()) {
 
             FileState synced = syncedVersions.filesByPath.get(local.relPath);
             FileState remote = remoteState.filesByPath.get(local.relPath);
-            List<FileState> syncedResults = syncFile(localDir, remoteDir, synced, local, remote, localState, remoteState);
+            List<FileState> syncedResults = syncFile(localFS, localDir, remoteFS, remoteDir, synced, local, remote, localState, remoteState);
             syncedResults.forEach(finalSyncedState::add);
         }
         for (FileState remote : remoteState.filesByPath.values()) {
             if (! finalSyncedState.filesByPath.containsKey(remote.relPath)) {
 
                 FileState synced = syncedVersions.filesByPath.get(remote.relPath);
-                List<FileState> syncedResults = syncFile(localDir, remoteDir, synced, null, remote, localState, remoteState);
+                List<FileState> syncedResults = syncFile(localFS, localDir, remoteFS, remoteDir, synced, null, remote, localState, remoteState);
                 syncedResults.forEach(finalSyncedState::add);
             }
         }
         return finalSyncedState;
     }
 
-    public static List<FileState> syncFile(File localDir, File remoteDir,
+    public static List<FileState> syncFile(SyncFilesystem localFs, Path localDir,
+                                           SyncFilesystem remoteFs, Path remoteDir,
                                            FileState synced, FileState local, FileState remote,
                                            TreeState localTree, TreeState remoteTree) throws IOException {
         if (synced == null) {
             if (local == null) { // remotely added or renamed
                 List<FileState> byHash = localTree.byHash(remote.hash);
                 if (byHash.size() == 1) {// rename
-                    moveTo(localDir, byHash.get(0), remote);
+                    localFs.moveTo(localDir.resolve(byHash.get(0).relPath), localDir.resolve(remote.relPath));
                 } else
-                    copyFileDiffAndTruncate(remoteDir.toPath().resolve(remote.relPath).toFile(), remote, localDir.toPath().resolve(remote.relPath).toFile(), null);
+                    copyFileDiffAndTruncate(remoteFs, remoteDir.resolve(remote.relPath), remote, localFs, localDir.resolve(remote.relPath), null);
                 return List.of(remote);
             } else if (remote == null) { // locally added or renamed
                 List<FileState> byHash = remoteTree.byHash(local.hash);
                 if (byHash.size() == 1) {// rename
-                    moveTo(remoteDir, byHash.get(0), local);
+                    remoteFs.moveTo(remoteDir.resolve(byHash.get(0).relPath), remoteDir.resolve(Paths.get(local.relPath)));
                 } else
-                    copyFileDiffAndTruncate(localDir.toPath().resolve(local.relPath).toFile(), local, remoteDir.toPath().resolve(local.relPath).toFile(), null);
+                    copyFileDiffAndTruncate(localFs, localDir.resolve(local.relPath), local, remoteFs, remoteDir.resolve(local.relPath), null);
                 return List.of(local);
             } else {
                 // concurrent addition, rename 1 if contents are different
                 if (remote.hash.equals(local.hash)) {
                     if (local.modificationTime >= remote.modificationTime) {
-                        setModificationTime(remoteDir.toPath().resolve(local.relPath).toFile(), local.modificationTime);
+                        remoteFs.setModificationTime(remoteDir.resolve(local.relPath), local.modificationTime);
                         return List.of(local);
                     } else {
-                        setModificationTime(localDir.toPath().resolve(local.relPath).toFile(), remote.modificationTime);
+                        localFs.setModificationTime(localDir.resolve(local.relPath), remote.modificationTime);
                         return List.of(remote);
                     }
                 } else {
-                    FileState renamed = renameOnConflict(localDir.toPath().resolve(local.relPath).toFile(), local);
-                    copyFileDiffAndTruncate(remoteDir.toPath().resolve(remote.relPath).toFile(), remote, localDir.toPath().resolve(remote.relPath).toFile(), null);
-                    copyFileDiffAndTruncate(localDir.toPath().resolve(renamed.relPath).toFile(), renamed, remoteDir.toPath().resolve(renamed.relPath).toFile(), null);
+                    FileState renamed = renameOnConflict(localFs, localDir.resolve(local.relPath), local);
+                    copyFileDiffAndTruncate(remoteFs, remoteDir.resolve(remote.relPath), remote, localFs, localDir.resolve(remote.relPath), null);
+                    copyFileDiffAndTruncate(localFs, localDir.resolve(renamed.relPath), renamed, remoteFs, remoteDir.resolve(renamed.relPath), null);
                     return List.of(renamed, remote);
                 }
             }
@@ -91,10 +92,10 @@ public class DirectorySync {
                     if (byHash.size() == 1) {// rename
                         // we will do the local rename when we process the new remote entry
                     } else
-                        deleteFile(localDir.toPath().resolve(local.relPath).toFile());
+                        localFs.delete(localDir.resolve(local.relPath));
                     return Collections.emptyList();
                 } else {
-                    copyFileDiffAndTruncate(remoteDir.toPath().resolve(remote.relPath).toFile(), remote, localDir.toPath().resolve(remote.relPath).toFile(), local);
+                    copyFileDiffAndTruncate(remoteFs, remoteDir.resolve(remote.relPath), remote, localFs, localDir.resolve(remote.relPath), local);
                     return List.of(remote);
                 }
             } else if (synced.equals(remote)) { // local only change
@@ -103,38 +104,34 @@ public class DirectorySync {
                     if (byHash.size() == 1) {// rename
                         // we will do the local rename when we process the new remote entry
                     } else
-                        deleteFile(remoteDir.toPath().resolve(remote.relPath).toFile());
+                        remoteFs.delete(remoteDir.resolve(remote.relPath));
                     return Collections.emptyList();
                 } else {
-                    copyFileDiffAndTruncate(localDir.toPath().resolve(local.relPath).toFile(), local, remoteDir.toPath().resolve(local.relPath).toFile(), remote);
+                    copyFileDiffAndTruncate(localFs, localDir.resolve(local.relPath), local, remoteFs, remoteDir.resolve(local.relPath), remote);
                     return List.of(local);
                 }
             } else { // concurrent change/deletion
                 if (local == null && remote == null) // concurrent deletes
                     return Collections.emptyList();
                 if (local == null) { // local delete, copy changed remote
-                    copyFileDiffAndTruncate(remoteDir.toPath().resolve(remote.relPath).toFile(), remote, localDir.toPath().resolve(remote.relPath).toFile(), local);
+                    copyFileDiffAndTruncate(remoteFs, remoteDir.resolve(remote.relPath), remote, localFs, localDir.resolve(remote.relPath), local);
                     return List.of(remote);
                 }
                 if (remote == null) { // remote delete, copy changed local
-                    copyFileDiffAndTruncate(localDir.toPath().resolve(local.relPath).toFile(), local, remoteDir.toPath().resolve(local.relPath).toFile(), remote);
+                    copyFileDiffAndTruncate(localFs, localDir.resolve(local.relPath), local, remoteFs, remoteDir.resolve(local.relPath), remote);
                     return List.of(local);
                 }
                 // concurrent change, rename one sync the other
-                FileState renamed = renameOnConflict(localDir.toPath().resolve(local.relPath).toFile(), local);
-                copyFileDiffAndTruncate(remoteDir.toPath().resolve(remote.relPath).toFile(), remote, localDir.toPath().resolve(remote.relPath).toFile(), local);
-                copyFileDiffAndTruncate(localDir.toPath().resolve(renamed.relPath).toFile(), local, remoteDir.toPath().resolve(renamed.relPath).toFile(), remote);
+                FileState renamed = renameOnConflict(localFs, localDir.resolve(local.relPath), local);
+                copyFileDiffAndTruncate(remoteFs, remoteDir.resolve(remote.relPath), remote, localFs, localDir.resolve(remote.relPath), local);
+                copyFileDiffAndTruncate(localFs, localDir.resolve(renamed.relPath), local, remoteFs, remoteDir.resolve(renamed.relPath), remote);
                 return List.of(renamed, remote);
             }
         }
     }
 
-    public static void deleteFile(File f) {
-        f.delete();
-    }
-
-    public static FileState renameOnConflict(File f, FileState s) {
-        String name = f.getName();
+    public static FileState renameOnConflict(SyncFilesystem fs, Path f, FileState s) {
+        String name = f.getFileName().toString();
         String newName;
         if (name.contains("[conflict-")) {
             int start = name.lastIndexOf("[conflict-");
@@ -142,7 +139,7 @@ public class DirectorySync {
             int version = Integer.parseInt(name.substring(start + "[conflict-".length(), end));
             while (true) {
                 newName = name.substring(0, start) + "[conflict-" + (version + 1) + "]" + name.substring(end + 1);
-                if (! f.toPath().getParent().resolve(newName).toFile().exists())
+                if (! fs.exists(f.getParent().resolve(newName)))
                     break;
                 version++;
             }
@@ -154,54 +151,35 @@ public class DirectorySync {
                     newName = name.substring(0, dot) + "[conflict-" + version + "]" + name.substring(dot);
                 } else
                     newName = name + "[conflict-" + version + "]";
-                if (! f.toPath().getParent().resolve(newName).toFile().exists())
+                if (! fs.exists(f.getParent().resolve(newName)))
                     break;
                 version++;
             }
         }
-        f.renameTo(f.toPath().getParent().resolve(newName).toFile());
+        fs.moveTo(f, f.getParent().resolve(newName));
         return new FileState(s.relPath.substring(0, s.relPath.length() - name.length()) + newName, s.modificationTime, s.size, s.hash);
     }
 
-    public static void setModificationTime(File f, long modificationTime) {
-        f.setLastModified(modificationTime);
-    }
-
-    public static void moveTo(File base, FileState source, FileState target) {
-        File newFile = base.toPath().resolve(target.relPath).toFile();
-        File originalFile = base.toPath().resolve(source.relPath).toFile();
-        newFile.getParentFile().mkdirs();
-        originalFile.renameTo(newFile);
-    }
-
-    public static void copyFileDiffAndTruncate(File source, FileState sourceState, File target, FileState targetState) throws IOException {
-        target.getParentFile().mkdirs();
-        long priorSize = target.length();
-        long size = source.length();
+    public static void copyFileDiffAndTruncate(SyncFilesystem srcFs, Path source, FileState sourceState,
+                                               SyncFilesystem targetFs, Path target, FileState targetState) throws IOException {
+        targetFs.mkdirs(target.getParent());
+        long priorSize = targetFs.size(target);
+        long size = srcFs.size(source);
 
         List<Pair<Long, Long>> diffRanges = sourceState.diffRanges(targetState);
 
         byte[] buf = new byte[4096];
 
-        try (FileInputStream fin = new FileInputStream(source);
-             FileOutputStream fout = new FileOutputStream(target);
-             FileChannel channel = fout.getChannel()) {
-            for (Pair<Long, Long> range : diffRanges) {
-                long start = range.left;
-                long end = range.right;
-                fin.getChannel().position(start);
-                channel.position(start);
-                long done = 0;
-                while (done < end - start) {
-                    int read = fin.read(buf);
-                    fout.write(buf, 0, read);
-                    done += read;
-                }
-                if (priorSize > size)
-                    channel.truncate(size);
+        for (Pair<Long, Long> range : diffRanges) {
+            long start = range.left;
+            long end = range.right;
+            try (InputStream fin = srcFs.getBytes(source, start)) {
+                targetFs.setBytes(target, start, fin, end - start);
             }
+            if (priorSize > size)
+                targetFs.truncate(target, size);
         }
-        setModificationTime(target, source.lastModified());
+        targetFs.setModificationTime(target, srcFs.getLastModified(source));
     }
 
     static class Blake3state {
@@ -279,42 +257,149 @@ public class DirectorySync {
         }
     }
 
-    public static void buildDirState(String pathPrefix, File localDir, TreeState res, TreeState synced) {
-        for (File file : localDir.listFiles()) {
-            if (file.isFile()) {
-                String relPath = pathPrefix + file.getName();
-                FileState atSync = synced.filesByPath.get(relPath);
-                long modified = file.lastModified();
-                if (atSync != null && atSync.modificationTime == modified) {
-                    res.add(atSync);
-                } else {
-                    Blake3state b3 = hashFile(file);
-                    FileState fstat = new FileState(relPath, modified, file.length(), b3);
-                    res.add(fstat);
+    interface SyncFilesystem {
+
+        boolean exists(Path p);
+
+        void mkdirs(Path p);
+
+        void delete(Path p);
+
+        void moveTo(Path src, Path target);
+
+        long getLastModified(Path p);
+
+        void setModificationTime(Path p, long t);
+
+        long size(Path p);
+
+        void truncate(Path p, long size) throws IOException;
+
+        void setBytes(Path p, long fileOffset, InputStream data, long size) throws IOException;
+
+        InputStream getBytes(Path p, long fileOffset) throws IOException;
+
+        Blake3state hashFile(Path p);
+
+        void applyToSubtree(Path start, Consumer<Path> file, Consumer<Path> dir);
+    }
+
+    static class LocalFileSystem implements SyncFilesystem {
+
+        @Override
+        public boolean exists(Path p) {
+            return p.toFile().exists();
+        }
+
+        @Override
+        public void mkdirs(Path p) {
+            File f = p.toFile();
+            if (f.exists() && f.isDirectory())
+                return;
+            if (! f.mkdirs())
+                throw new IllegalStateException("Couldn't create " + p);
+        }
+
+        @Override
+        public void delete(Path p) {
+            p.toFile().delete();
+        }
+
+        @Override
+        public void moveTo(Path src, Path target) {
+            target.getParent().toFile().mkdirs();
+            src.toFile().renameTo(target.toFile());
+        }
+
+        @Override
+        public long getLastModified(Path p) {
+            return p.toFile().lastModified();
+        }
+
+        @Override
+        public void setModificationTime(Path p, long modificationTime) {
+            p.toFile().setLastModified(modificationTime);
+        }
+
+        @Override
+        public long size(Path p) {
+            return p.toFile().length();
+        }
+
+        @Override
+        public void truncate(Path p, long size) throws IOException {
+            try (FileChannel channel = new FileOutputStream(p.toFile()).getChannel()) {
+                channel.truncate(size);
+            }
+        }
+
+        @Override
+        public void setBytes(Path p, long fileOffset, InputStream fin, long size) throws IOException {
+            try (FileOutputStream fout = new FileOutputStream(p.toFile());
+                 FileChannel channel = fout.getChannel()) {
+                channel.position(fileOffset);
+                byte[] buf = new byte[4096];
+                long done = 0;
+                while (done < size) {
+                    int read = fin.read(buf);
+                    fout.write(buf, 0, read);
+                    done += read;
                 }
-            } else if (file.isDirectory()) {
-                buildDirState(pathPrefix + file.getName() + "/", file, res, synced);
+            }
+        }
+
+        @Override
+        public InputStream getBytes(Path p, long fileOffset) throws IOException {
+            FileInputStream fin = new FileInputStream(p.toFile());
+            fin.getChannel().position(fileOffset);
+            return fin;
+        }
+
+        @Override
+        public Blake3state hashFile(Path p) {
+            byte[] buf = new byte[4*1024];
+            long size = p.toFile().length();
+            Blake3 state = Blake3.initHash();
+
+            try {
+                FileInputStream fin = new FileInputStream(p.toFile());
+                for (long i = 0; i < size; ) {
+                    int read = fin.read(buf);
+                    state.update(buf, 0, read);
+                    i+= read;
+                }
+
+                byte[] hash = state.doFinalize(32);
+                return new Blake3state(hash);
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+        }
+
+        @Override
+        public void applyToSubtree(Path start, Consumer<Path> file, Consumer<Path> dir) {
+            for (File f : start.toFile().listFiles()) {
+                if (f.isFile()) {
+                    file.accept(f.toPath());
+                } else if (f.isDirectory()) {
+                    applyToSubtree(start.resolve(f.getName()), file, dir);
+                }
             }
         }
     }
 
-    public static Blake3state hashFile(File f) {
-        byte[] buf = new byte[4*1024];
-        long size = f.length();
-        Blake3 state = Blake3.initHash();
-
-        try {
-            FileInputStream fin = new FileInputStream(f);
-            for (long i = 0; i < size; ) {
-                int read = fin.read(buf);
-                state.update(buf, 0, read);
-                i+= read;
+    public static void buildDirState(SyncFilesystem fs, Path dir, TreeState res, TreeState synced) {
+        fs.applyToSubtree(dir, f -> {
+            String relPath = f.toString().substring(dir.toString().length() + 1);
+            FileState atSync = synced.filesByPath.get(relPath);
+            long modified = fs.getLastModified(f);
+            if (atSync != null && atSync.modificationTime == modified) {
+                res.add(atSync);
+            } else {
+                Blake3state b3 = fs.hashFile(f);
+                FileState fstat = new FileState(relPath, modified, fs.size(f), b3);
+                res.add(fstat);
             }
-
-            byte[] hash = state.doFinalize(32);
-            return new Blake3state(hash);
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
+        }, d -> {});
     }
 }
