@@ -1,5 +1,6 @@
 package peergos.server.sync;
 
+import peergos.shared.user.fs.AsyncReader;
 import peergos.shared.util.ArrayOps;
 import peergos.shared.util.Pair;
 
@@ -165,12 +166,10 @@ public class DirectorySync {
 
         List<Pair<Long, Long>> diffRanges = sourceState.diffRanges(targetState);
 
-        byte[] buf = new byte[4096];
-
         for (Pair<Long, Long> range : diffRanges) {
             long start = range.left;
             long end = range.right;
-            try (InputStream fin = srcFs.getBytes(source, start)) {
+            try (AsyncReader fin = srcFs.getBytes(source, start)) {
                 targetFs.setBytes(target, start, fin, end - start);
             }
             if (priorSize > size)

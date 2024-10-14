@@ -1,5 +1,7 @@
 package peergos.server.sync;
 
+import peergos.shared.user.fs.AsyncReader;
+
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Path;
@@ -23,9 +25,9 @@ interface SyncFilesystem {
 
     void truncate(Path p, long size) throws IOException;
 
-    void setBytes(Path p, long fileOffset, InputStream data, long size) throws IOException;
+    void setBytes(Path p, long fileOffset, AsyncReader data, long size) throws IOException;
 
-    InputStream getBytes(Path p, long fileOffset) throws IOException;
+    AsyncReader getBytes(Path p, long fileOffset) throws IOException;
 
     DirectorySync.Blake3state hashFile(Path p);
 
