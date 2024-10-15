@@ -38,12 +38,13 @@ class LocalFileSystem implements SyncFilesystem {
 
     @Override
     public long getLastModified(Path p) {
-        return p.toFile().lastModified();
+        long millis = p.toFile().lastModified();
+        return millis / 1000 * 1000;
     }
 
     @Override
     public void setModificationTime(Path p, long modificationTime) {
-        p.toFile().setLastModified(modificationTime);
+        p.toFile().setLastModified(modificationTime / 1000 * 1000);
     }
 
     @Override
@@ -53,8 +54,8 @@ class LocalFileSystem implements SyncFilesystem {
 
     @Override
     public void truncate(Path p, long size) throws IOException {
-        try (FileChannel channel = new FileOutputStream(p.toFile()).getChannel()) {
-            channel.truncate(size);
+        try (RandomAccessFile raf = new RandomAccessFile(p.toFile(), "rw")) {
+            raf.setLength(size);
         }
     }
 

@@ -78,15 +78,16 @@ public class DirectorySync {
             } else {
                 // concurrent addition, rename 1 if contents are different
                 if (remote.hash.equals(local.hash)) {
-                    if (local.modificationTime >= remote.modificationTime) {
+                    if (local.modificationTime > remote.modificationTime) {
                         LOG.info("Remote: Set mod time " + local.relPath);
                         remoteFs.setModificationTime(remoteDir.resolve(local.relPath), local.modificationTime);
                         return List.of(local);
-                    } else {
+                    } else if (remote.modificationTime > local.modificationTime) {
                         LOG.info("Local: Set mod time " + local.relPath);
                         localFs.setModificationTime(localDir.resolve(local.relPath), remote.modificationTime);
                         return List.of(remote);
                     }
+                    return List.of(local);
                 } else {
                     LOG.info("Remote: Concurrent file addition: " + local.relPath + " renaming local version");
                     FileState renamed = renameOnConflict(localFs, localDir.resolve(local.relPath), local);
@@ -201,8 +202,10 @@ public class DirectorySync {
             try (AsyncReader fin = srcFs.getBytes(source, start)) {
                 targetFs.setBytes(target, start, fin, end - start);
             }
-            if (priorSize > size)
+            if (priorSize > size) {
+                LOG.info("Truncating file " + sourceState.relPath + " from " + priorSize + " to " + size);
                 targetFs.truncate(target, size);
+            }
         }
         targetFs.setModificationTime(target, srcFs.getLastModified(source));
     }

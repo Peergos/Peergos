@@ -60,13 +60,13 @@ public class PeergosSyncFS implements SyncFilesystem {
     @Override
     public long getLastModified(Path p) {
         LocalDateTime modified = context.getByPath(p).join().get().getFileProperties().modified;
-        return modified.toInstant(ZoneOffset.UTC).toEpochMilli();
+        return modified.toInstant(ZoneOffset.UTC).toEpochMilli() / 1000 * 1000;
     }
 
     @Override
     public void setModificationTime(Path p, long t) {
         FileWrapper f = context.getByPath(p).join().get();
-        LocalDateTime newModified = LocalDateTime.ofInstant(Instant.ofEpochSecond(t / 1000, t % 1000), ZoneOffset.UTC);
+        LocalDateTime newModified = LocalDateTime.ofInstant(Instant.ofEpochSecond(t / 1000, 0), ZoneOffset.UTC);
         Optional<FileWrapper> parent = context.getByPath(p.getParent()).join();
         f.setProperties(f.getFileProperties().withModified(newModified), context.crypto.hasher, context.network, parent).join();
     }
