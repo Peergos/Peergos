@@ -33,7 +33,6 @@ public class DirectorySync {
     public static void main(String[] args) throws Exception {
         Crypto crypto = Main.initCrypto();
         ThumbnailGenerator.setInstance(new JavaImageThumbnailer());
-        RamTreeState syncedState = new RamTreeState();
         LocalFileSystem local = new LocalFileSystem();
         String username = "q";
         String password = "qq";
@@ -45,6 +44,8 @@ public class DirectorySync {
         NetworkAccess network = Builder.buildJavaNetworkAccess(serverURL, address.startsWith("https")).join();
         UserContext context = UserContext.signIn(username, password, mfar -> mfa(mfar), network, crypto).join();
         PeergosSyncFS remote = new PeergosSyncFS(context);
+        RamTreeState syncedState = new RamTreeState();
+
         while (true) {
             try {
                 syncedState = syncDirs(local, Paths.get("sync/local"), remote, Paths.get(username + "/sync"), syncedState);
@@ -100,20 +101,20 @@ public class DirectorySync {
             if (local == null) { // remotely added or renamed
                 List<FileState> byHash = localTree.byHash(remote.hash);
                 if (byHash.size() == 1) {// rename
-                    LOG.info("Local: Moving " + byHash.get(0).relPath + " ==> " + remote.relPath);
+                    LOG.info("Sync Local: Moving " + byHash.get(0).relPath + " ==> " + remote.relPath);
                     localFs.moveTo(localDir.resolve(byHash.get(0).relPath), localDir.resolve(remote.relPath));
                 } else {
-                    LOG.info("Local: Copying " + remote.relPath);
+                    LOG.info("Sync Local: Copying " + remote.relPath);
                     copyFileDiffAndTruncate(remoteFs, remoteDir.resolve(remote.relPath), remote, localFs, localDir.resolve(remote.relPath), null);
                 }
                 return List.of(remote);
             } else if (remote == null) { // locally added or renamed
                 List<FileState> byHash = remoteTree.byHash(local.hash);
                 if (byHash.size() == 1) {// rename
-                    LOG.info("Remote: Moving " + byHash.get(0).relPath + " ==> " + local.relPath);
+                    LOG.info("Sync Remote: Moving " + byHash.get(0).relPath + " ==> " + local.relPath);
                     remoteFs.moveTo(remoteDir.resolve(byHash.get(0).relPath), remoteDir.resolve(Paths.get(local.relPath)));
                 } else {
-                    LOG.info("Remote: Copying " + local.relPath);
+                    LOG.info("Sync Remote: Copying " + local.relPath);
                     copyFileDiffAndTruncate(localFs, localDir.resolve(local.relPath), local, remoteFs, remoteDir.resolve(local.relPath), null);
                 }
                 return List.of(local);
@@ -125,13 +126,13 @@ public class DirectorySync {
                         remoteFs.setModificationTime(remoteDir.resolve(local.relPath), local.modificationTime);
                         return List.of(local);
                     } else if (remote.modificationTime > local.modificationTime) {
-                        LOG.info("Local: Set mod time " + local.relPath);
+                        LOG.info("Sync Local: Set mod time " + local.relPath);
                         localFs.setModificationTime(localDir.resolve(local.relPath), remote.modificationTime);
                         return List.of(remote);
                     }
                     return List.of(local);
                 } else {
-                    LOG.info("Remote: Concurrent file addition: " + local.relPath + " renaming local version");
+                    LOG.info("Sync Remote: Concurrent file addition: " + local.relPath + " renaming local version");
                     FileState renamed = renameOnConflict(localFs, localDir.resolve(local.relPath), local);
                     copyFileDiffAndTruncate(remoteFs, remoteDir.resolve(remote.relPath), remote, localFs, localDir.resolve(remote.relPath), null);
                     copyFileDiffAndTruncate(localFs, localDir.resolve(renamed.relPath), renamed, remoteFs, remoteDir.resolve(renamed.relPath), null);
@@ -145,7 +146,7 @@ public class DirectorySync {
                     if (byHash.size() == 1) {// rename
                         // we will do the local rename when we process the new remote entry
                     } else {
-                        LOG.info("Local: delete " + local.relPath);
+                        LOG.info("Sync Local: delete " + local.relPath);
                         localFs.delete(localDir.resolve(local.relPath));
                     }
                     return Collections.emptyList();
@@ -153,7 +154,7 @@ public class DirectorySync {
                     // already synced
                     return List.of(local);
                 } else {
-                    LOG.info("Local: Copying changes to " + remote.relPath);
+                    LOG.info("Sync Local: Copying changes to " + remote.relPath);
                     copyFileDiffAndTruncate(remoteFs, remoteDir.resolve(remote.relPath), remote, localFs, localDir.resolve(remote.relPath), local);
                     return List.of(remote);
                 }
@@ -163,7 +164,7 @@ public class DirectorySync {
                     if (byHash.size() == 1) {// rename
                         // we will do the local rename when we process the new remote entry
                     } else {
-                        LOG.info("Remote: delete " + remote.relPath);
+                        LOG.info("Sync Remote: delete " + remote.relPath);
                         remoteFs.delete(remoteDir.resolve(remote.relPath));
                     }
                     return Collections.emptyList();
@@ -171,27 +172,27 @@ public class DirectorySync {
                     // already synced
                     return List.of(local);
                 } else {
-                    LOG.info("Remote: Copying changes to " + local.relPath);
+                    LOG.info("Sync Remote: Copying changes to " + local.relPath);
                     copyFileDiffAndTruncate(localFs, localDir.resolve(local.relPath), local, remoteFs, remoteDir.resolve(local.relPath), remote);
                     return List.of(local);
                 }
             } else { // concurrent change/deletion
                 if (local == null && remote == null) {// concurrent deletes
-                    LOG.info("Concurrent delete on " + synced.relPath);
+                    LOG.info("Sync Concurrent delete on " + synced.relPath);
                     return Collections.emptyList();
                 }
                 if (local == null) { // local delete, copy changed remote
-                    LOG.info("Local: deleted, copying changed remote " + remote.relPath);
+                    LOG.info("Sync Local: deleted, copying changed remote " + remote.relPath);
                     copyFileDiffAndTruncate(remoteFs, remoteDir.resolve(remote.relPath), remote, localFs, localDir.resolve(remote.relPath), local);
                     return List.of(remote);
                 }
                 if (remote == null) { // remote delete, copy changed local
-                    LOG.info("Remote: deleted, copying changed local " + local.relPath);
+                    LOG.info("Sync Remote: deleted, copying changed local " + local.relPath);
                     copyFileDiffAndTruncate(localFs, localDir.resolve(local.relPath), local, remoteFs, remoteDir.resolve(local.relPath), remote);
                     return List.of(local);
                 }
                 // concurrent change, rename one sync the other
-                LOG.info("Remote: Concurrent change: " + local.relPath + " renaming local version");
+                LOG.info("Sync Remote: Concurrent change: " + local.relPath + " renaming local version");
                 FileState renamed = renameOnConflict(localFs, localDir.resolve(local.relPath), local);
                 copyFileDiffAndTruncate(remoteFs, remoteDir.resolve(remote.relPath), remote, localFs, localDir.resolve(remote.relPath), local);
                 copyFileDiffAndTruncate(localFs, localDir.resolve(renamed.relPath), local, remoteFs, remoteDir.resolve(renamed.relPath), remote);
@@ -245,7 +246,7 @@ public class DirectorySync {
                 targetFs.setBytes(target, start, fin, end - start);
             }
             if (priorSize > size) {
-                LOG.info("Truncating file " + sourceState.relPath + " from " + priorSize + " to " + size);
+                LOG.info("Sync Truncating file " + sourceState.relPath + " from " + priorSize + " to " + size);
                 targetFs.truncate(target, size);
             }
         }

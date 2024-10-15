@@ -54,9 +54,13 @@ public class PeergosSyncFS implements SyncFilesystem {
     @Override
     public void moveTo(Path src, Path target) {
         FileWrapper from = context.getByPath(src).join().get();
-        FileWrapper newParent = context.getByPath(target.getParent()).join().get();
         FileWrapper parent = context.getByPath(src.getParent()).join().get();
-        from.moveTo(newParent, parent, src, context, () -> Futures.of(true));
+        if (target.getParent().equals(src.getParent())) { // rename
+            from.rename(target.getFileName().toString(), parent, src, context).join();
+        } else {
+            FileWrapper newParent = context.getByPath(target.getParent()).join().get();
+            from.moveTo(newParent, parent, src, context, () -> Futures.of(true));
+        }
     }
 
     @Override
