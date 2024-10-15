@@ -1,6 +1,7 @@
 package peergos.server.sync;
 
 import peergos.shared.user.fs.AsyncReader;
+import peergos.shared.user.fs.Blake3state;
 
 import java.io.IOException;
 import java.nio.file.Path;
@@ -19,6 +20,8 @@ interface SyncFilesystem {
     long getLastModified(Path p);
 
     void setModificationTime(Path p, long t);
+
+    void setHash(Path p, Blake3state hash);
 
     long size(Path p);
 

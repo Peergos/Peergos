@@ -1,13 +1,29 @@
 package peergos.server.sync;
 
+import peergos.server.Builder;
+import peergos.server.Main;
+import peergos.server.user.JavaImageThumbnailer;
 import peergos.server.util.Logging;
+import peergos.shared.Crypto;
+import peergos.shared.NetworkAccess;
+import peergos.shared.login.mfa.MultiFactorAuthMethod;
+import peergos.shared.login.mfa.MultiFactorAuthRequest;
+import peergos.shared.login.mfa.MultiFactorAuthResponse;
+import peergos.shared.user.UserContext;
 import peergos.shared.user.fs.AsyncReader;
+import peergos.shared.user.fs.Blake3state;
+import peergos.shared.user.fs.ThumbnailGenerator;
+import peergos.shared.util.Either;
+import peergos.shared.util.Futures;
 import peergos.shared.util.Pair;
 
 import java.io.*;
+import java.net.MalformedURLException;
+import java.net.URL;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -15,18 +31,39 @@ public class DirectorySync {
     private static final Logger LOG = Logging.LOG();
 
     public static void main(String[] args) throws Exception {
+        Crypto crypto = Main.initCrypto();
+        ThumbnailGenerator.setInstance(new JavaImageThumbnailer());
         RamTreeState syncedState = new RamTreeState();
         LocalFileSystem local = new LocalFileSystem();
-        LocalFileSystem remote = new LocalFileSystem();
+        String username = "q";
+        String password = "qq";
+//        Console console = System.console();
+//        String username = new String(console.readLine("Enter username:"));
+//        String password = new String(console.readLine("Enter password:"));
+        String address = "http://localhost:8000";
+        URL serverURL = new URL(address);
+        NetworkAccess network = Builder.buildJavaNetworkAccess(serverURL, address.startsWith("https")).join();
+        UserContext context = UserContext.signIn(username, password, mfar -> mfa(mfar), network, crypto).join();
+        PeergosSyncFS remote = new PeergosSyncFS(context);
         while (true) {
             try {
-                syncedState = syncDirs(local, Paths.get("sync/local"), remote, Paths.get("sync/remote"), syncedState);
+                syncedState = syncDirs(local, Paths.get("sync/local"), remote, Paths.get(username + "/sync"), syncedState);
 //            Thread.sleep(30_000);
             } catch (Exception e) {
                 LOG.log(Level.WARNING, e, e::getMessage);
                 Thread.sleep(30_000);
             }
         }
+    }
+
+    private static CompletableFuture<MultiFactorAuthResponse> mfa(MultiFactorAuthRequest req) {
+        Optional<MultiFactorAuthMethod> anyTotp = req.methods.stream().filter(m -> m.type == MultiFactorAuthMethod.Type.TOTP).findFirst();
+        if (anyTotp.isEmpty())
+            throw new IllegalStateException("No supported 2 factor auth method! " + req.methods);
+        MultiFactorAuthMethod totp = anyTotp.get();
+        Console console = System.console();
+        String code = new String(console.readLine("Enter TOTP code for login:"));
+        return Futures.of(new MultiFactorAuthResponse(totp.credentialId, Either.a(code)));
     }
 
     public static RamTreeState syncDirs(SyncFilesystem localFS, Path localDir, SyncFilesystem remoteFS, Path remoteDir, RamTreeState syncedVersions) throws IOException {
@@ -196,7 +233,7 @@ public class DirectorySync {
     public static void copyFileDiffAndTruncate(SyncFilesystem srcFs, Path source, FileState sourceState,
                                                SyncFilesystem targetFs, Path target, FileState targetState) throws IOException {
         targetFs.mkdirs(target.getParent());
-        long priorSize = targetFs.size(target);
+        long priorSize = targetFs.exists(target) ? targetFs.size(target) : 0;
         long size = srcFs.size(source);
 
         List<Pair<Long, Long>> diffRanges = sourceState.diffRanges(targetState);
@@ -213,6 +250,7 @@ public class DirectorySync {
             }
         }
         targetFs.setModificationTime(target, srcFs.getLastModified(source));
+        targetFs.setHash(target, sourceState.hash);
     }
 
     public static void buildDirState(SyncFilesystem fs, Path dir, RamTreeState res, RamTreeState synced) {

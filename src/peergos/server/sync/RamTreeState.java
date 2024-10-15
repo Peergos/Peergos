@@ -1,5 +1,7 @@
 package peergos.server.sync;
 
+import peergos.shared.user.fs.Blake3state;
+
 import java.util.*;
 
 class RamTreeState {

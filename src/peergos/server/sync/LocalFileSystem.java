@@ -3,6 +3,7 @@ package peergos.server.sync;
 import peergos.server.crypto.hash.Blake3;
 import peergos.server.simulation.FileAsyncReader;
 import peergos.shared.user.fs.AsyncReader;
+import peergos.shared.user.fs.Blake3state;
 
 import java.io.*;
 import java.nio.channels.FileChannel;
@@ -48,6 +49,9 @@ class LocalFileSystem implements SyncFilesystem {
     }
 
     @Override
+    public void setHash(Path p, Blake3state hash) {}
+
+    @Override
     public long size(Path p) {
         return p.toFile().length();
     }
@@ -61,14 +65,13 @@ class LocalFileSystem implements SyncFilesystem {
 
     @Override
     public void setBytes(Path p, long fileOffset, AsyncReader fin, long size) throws IOException {
-        try (FileOutputStream fout = new FileOutputStream(p.toFile());
-             FileChannel channel = fout.getChannel()) {
-            channel.position(fileOffset);
+        try (RandomAccessFile raf = new RandomAccessFile(p.toFile(), "rw")) {
+            raf.seek(fileOffset);
             byte[] buf = new byte[4096];
             long done = 0;
             while (done < size) {
                 int read = fin.readIntoArray(buf, 0, (int) Math.min(buf.length, size - done)).join();
-                fout.write(buf, 0, read);
+                raf.write(buf, 0, read);
                 done += read;
             }
         }

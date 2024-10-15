@@ -1012,7 +1012,7 @@ public class CryptreeNode implements Cborable {
         LocalDateTime timestamp = LocalDateTime.now();
         return CryptreeNode.createEmptyDir(MaybeMultihash.empty(), dirReadKey, dirWriteKey, Optional.empty(),
                 new FileProperties(name, true, false, "", 0, timestamp, timestamp, isSystemFolder,
-                        Optional.empty(), Optional.empty()), Optional.of(ourCap), SymmetricKey.random(), nextChunk, dirBat, mirrorBat, crypto.random, crypto.hasher)
+                        Optional.empty(), Optional.empty(), Optional.empty()), Optional.of(ourCap), SymmetricKey.random(), nextChunk, dirBat, mirrorBat, crypto.random, crypto.hasher)
                 .thenCompose(child -> {
 
                     SymmetricLink toChildWriteKey = SymmetricLink.fromPair(us.wBaseKey.get(), dirWriteKey);

@@ -4,6 +4,8 @@ import peergos.server.crypto.hash.Blake3;
 import peergos.shared.storage.auth.BatId;
 import peergos.shared.user.UserContext;
 import peergos.shared.user.fs.AsyncReader;
+import peergos.shared.user.fs.Blake3state;
+import peergos.shared.user.fs.FileProperties;
 import peergos.shared.user.fs.FileWrapper;
 import peergos.shared.util.Futures;
 
@@ -72,6 +74,13 @@ public class PeergosSyncFS implements SyncFilesystem {
     }
 
     @Override
+    public void setHash(Path p, Blake3state hash) {
+        FileWrapper f = context.getByPath(p).join().get();
+        Optional<FileWrapper> parent = context.getByPath(p.getParent()).join();
+        f.setProperties(f.getFileProperties().withHash(Optional.of(hash)), context.crypto.hasher, context.network, parent).join();
+    }
+
+    @Override
     public long size(Path p) {
         return context.getByPath(p).join().get().getFileProperties().size;
     }
@@ -84,9 +93,16 @@ public class PeergosSyncFS implements SyncFilesystem {
 
     @Override
     public void setBytes(Path p, long fileOffset, AsyncReader data, long size) throws IOException {
-        FileWrapper f = context.getByPath(p).join().get();
-        long end = fileOffset + size;
-        f.overwriteSectionJS(data, (int)(fileOffset >>> 32), (int)fileOffset, (int) (end >>> 32), (int)end, context.network, context.crypto, x -> {}).join();
+        Optional<FileWrapper> existing = context.getByPath(p).join();
+        if (existing.isEmpty() && fileOffset == 0) {
+            FileWrapper parent = context.getByPath(p.getParent()).join().get();
+            parent.uploadOrReplaceFile(p.getFileName().toString(), data, size, context.network, context.crypto, x -> {}).join();
+        } else {
+            FileWrapper f = existing.get();
+            long end = fileOffset + size;
+            f.overwriteSectionJS(data, (int) (fileOffset >>> 32), (int) fileOffset, (int) (end >>> 32), (int) end, context.network, context.crypto, x -> {
+            }).join();
+        }
     }
 
     @Override
@@ -97,10 +113,14 @@ public class PeergosSyncFS implements SyncFilesystem {
 
     @Override
     public Blake3state hashFile(Path p) {
+        FileWrapper f = context.getByPath(p).join().get();
+        FileProperties props = f.getFileProperties();
+        if (props.hash.isPresent())
+            return props.hash.get();
+
         byte[] buf = new byte[4 * 1024];
         Blake3 state = Blake3.initHash();
 
-        FileWrapper f = context.getByPath(p).join().get();
         long size = f.getSize();
         AsyncReader reader = f.getInputStream(context.network, context.crypto, x -> {}).join();
         for (long i = 0; i < size; ) {
@@ -110,7 +130,10 @@ public class PeergosSyncFS implements SyncFilesystem {
         }
 
         byte[] hash = state.doFinalize(32);
-        return new Blake3state(hash);
+        Blake3state res = new Blake3state(hash);
+        FileWrapper parent = context.getByPath(p.getParent()).join().get();
+        f.setProperties(props.withHash(Optional.of(res)), context.crypto.hasher, context.network, Optional.of(parent)).join();
+        return res;
     }
 
     @Override

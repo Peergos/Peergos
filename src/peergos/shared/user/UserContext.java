@@ -1238,7 +1238,7 @@ public class UserContext {
                                 LocalDateTime timestamp = LocalDateTime.now();
                                 return CryptreeNode.createEmptyDir(MaybeMultihash.empty(), rootRKey, rootWKey, Optional.of(writerPair),
                                                 new FileProperties(directoryName, true, false, "", 0, timestamp, timestamp,
-                                                        false, Optional.empty(), Optional.empty()),
+                                                        false, Optional.empty(), Optional.empty(), Optional.empty()),
                                                 Optional.empty(), SymmetricKey.random(), nextChunk, rootBat, mirrorBatId, crypto.random, crypto.hasher)
                                         .thenCompose(root -> {
                                             LOG.info("Uploading entry point directory");
