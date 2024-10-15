@@ -9,6 +9,7 @@ import java.io.*;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.*;
+import java.util.logging.Level;
 import java.util.logging.Logger;
 
 public class DirectorySync {
@@ -19,8 +20,13 @@ public class DirectorySync {
         LocalFileSystem local = new LocalFileSystem();
         LocalFileSystem remote = new LocalFileSystem();
         while (true) {
-            syncedState = syncDirs(local, Paths.get("sync/local"), remote, Paths.get("sync/remote"), syncedState);
+            try {
+                syncedState = syncDirs(local, Paths.get("sync/local"), remote, Paths.get("sync/remote"), syncedState);
 //            Thread.sleep(30_000);
+            } catch (Exception e) {
+                LOG.log(Level.WARNING, e, e::getMessage);
+                Thread.sleep(30_000);
+            }
         }
     }
 
