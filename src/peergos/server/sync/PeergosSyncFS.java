@@ -35,11 +35,11 @@ public class PeergosSyncFS implements SyncFilesystem {
     public void mkdirs(Path p) {
         int depth = p.getNameCount();
         Optional<BatId> mirrorBat = context.mirrorBatId();
-        for (int i=1; i < depth; i++) {
+        for (int i=1; i <= depth; i++) {
             Optional<FileWrapper> current = context.getByPath(p.subpath(0, i)).join();
             if (current.isEmpty()) {
                 FileWrapper parent = context.getByPath(p.subpath(0, i - 1)).join().get();
-                parent.mkdir(p.getName(i).toString(), context.network, false, mirrorBat, context.crypto).join();
+                parent.mkdir(p.getName(i - 1).toString(), context.network, false, mirrorBat, context.crypto).join();
             }
         }
     }
@@ -53,13 +53,19 @@ public class PeergosSyncFS implements SyncFilesystem {
 
     @Override
     public void moveTo(Path src, Path target) {
-        FileWrapper from = context.getByPath(src).join().get();
-        FileWrapper parent = context.getByPath(src.getParent()).join().get();
         if (target.getParent().equals(src.getParent())) { // rename
+            FileWrapper parent = context.getByPath(src.getParent()).join().get();
+            FileWrapper from = context.getByPath(src).join().get();
             from.rename(target.getFileName().toString(), parent, src, context).join();
         } else {
-            FileWrapper newParent = context.getByPath(target.getParent()).join().get();
-            from.moveTo(newParent, parent, src, context, () -> Futures.of(true));
+            Optional<FileWrapper> newParent = context.getByPath(target.getParent()).join();
+            if (newParent.isEmpty()) {
+                mkdirs(target.getParent());
+                newParent = context.getByPath(target.getParent()).join();
+            }
+            FileWrapper from = context.getByPath(src).join().get();
+            FileWrapper parent = context.getByPath(src.getParent()).join().get();
+            from.moveTo(newParent.get(), parent, src, context, () -> Futures.of(true));
         }
     }
 
