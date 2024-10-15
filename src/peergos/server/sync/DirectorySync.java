@@ -2,7 +2,6 @@ package peergos.server.sync;
 
 import peergos.server.util.Logging;
 import peergos.shared.user.fs.AsyncReader;
-import peergos.shared.util.ArrayOps;
 import peergos.shared.util.Pair;
 
 import java.io.*;
@@ -16,7 +15,7 @@ public class DirectorySync {
     private static final Logger LOG = Logging.LOG();
 
     public static void main(String[] args) throws Exception {
-        TreeState syncedState = new TreeState();
+        RamTreeState syncedState = new RamTreeState();
         LocalFileSystem local = new LocalFileSystem();
         LocalFileSystem remote = new LocalFileSystem();
         while (true) {
@@ -30,14 +29,14 @@ public class DirectorySync {
         }
     }
 
-    public static TreeState syncDirs(SyncFilesystem localFS, Path localDir, SyncFilesystem remoteFS, Path remoteDir, TreeState syncedVersions) throws IOException {
-        TreeState localState = new TreeState();
+    public static RamTreeState syncDirs(SyncFilesystem localFS, Path localDir, SyncFilesystem remoteFS, Path remoteDir, RamTreeState syncedVersions) throws IOException {
+        RamTreeState localState = new RamTreeState();
         buildDirState(localFS, localDir, localState, syncedVersions);
 
-        TreeState remoteState = new TreeState();
+        RamTreeState remoteState = new RamTreeState();
         buildDirState(remoteFS, remoteDir, remoteState, syncedVersions);
 
-        TreeState finalSyncedState = new TreeState();
+        RamTreeState finalSyncedState = new RamTreeState();
         for (FileState local : localState.filesByPath.values()) {
 
             FileState synced = syncedVersions.filesByPath.get(local.relPath);
@@ -59,7 +58,7 @@ public class DirectorySync {
     public static List<FileState> syncFile(SyncFilesystem localFs, Path localDir,
                                            SyncFilesystem remoteFs, Path remoteDir,
                                            FileState synced, FileState local, FileState remote,
-                                           TreeState localTree, TreeState remoteTree) throws IOException {
+                                           RamTreeState localTree, RamTreeState remoteTree) throws IOException {
         if (synced == null) {
             if (local == null) { // remotely added or renamed
                 List<FileState> byHash = localTree.byHash(remote.hash);
@@ -216,82 +215,7 @@ public class DirectorySync {
         targetFs.setModificationTime(target, srcFs.getLastModified(source));
     }
 
-    static class Blake3state {
-        public final byte[] hash;
-
-        public Blake3state(byte[] hash) {
-            this.hash = hash;
-        }
-
-        @Override
-        public String toString() {
-            return ArrayOps.bytesToHex(hash);
-        }
-
-        @Override
-        public boolean equals(Object o) {
-            if (this == o) return true;
-            if (o == null || getClass() != o.getClass()) return false;
-            Blake3state that = (Blake3state) o;
-            return Objects.deepEquals(hash, that.hash);
-        }
-
-        @Override
-        public int hashCode() {
-            return Arrays.hashCode(hash);
-        }
-    }
-
-    static class FileState {
-        public final String relPath;
-        public final long modificationTime;
-        public final long size;
-        public final Blake3state hash;
-
-        public FileState(String relPath, long modificationTime, long size, Blake3state hash) {
-            this.relPath = relPath;
-            this.modificationTime = modificationTime;
-            this.size = size;
-            this.hash = hash;
-        }
-
-        public List<Pair<Long, Long>> diffRanges(FileState other) {
-            if (other == null)
-                return List.of(new Pair<>(0L, size));
-            // TODO use bao tree to extract small diff ranges
-            return List.of(new Pair<>(0L, size));
-        }
-
-        @Override
-        public boolean equals(Object o) {
-            if (this == o) return true;
-            if (o == null || getClass() != o.getClass()) return false;
-            FileState fileState = (FileState) o;
-            return modificationTime == fileState.modificationTime && Objects.equals(relPath, fileState.relPath) && Objects.equals(hash, fileState.hash);
-        }
-
-        @Override
-        public int hashCode() {
-            return Objects.hash(relPath, modificationTime, hash);
-        }
-    }
-
-    static class TreeState {
-        public final Map<String, FileState> filesByPath = new HashMap<>();
-        public final Map<Blake3state, List<FileState>> fileByHash = new HashMap<>();
-
-        public void add(FileState fs) {
-            filesByPath.put(fs.relPath, fs);
-            fileByHash.putIfAbsent(fs.hash, new ArrayList<>());
-            fileByHash.get(fs.hash).add(fs);
-        }
-
-        public List<FileState> byHash(Blake3state b3) {
-            return fileByHash.getOrDefault(b3, Collections.emptyList());
-        }
-    }
-
-    public static void buildDirState(SyncFilesystem fs, Path dir, TreeState res, TreeState synced) {
+    public static void buildDirState(SyncFilesystem fs, Path dir, RamTreeState res, RamTreeState synced) {
         fs.applyToSubtree(dir, f -> {
             String relPath = f.toString().substring(dir.toString().length() + 1);
             FileState atSync = synced.filesByPath.get(relPath);

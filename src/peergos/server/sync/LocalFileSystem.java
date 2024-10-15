@@ -80,7 +80,7 @@ class LocalFileSystem implements SyncFilesystem {
     }
 
     @Override
-    public DirectorySync.Blake3state hashFile(Path p) {
+    public Blake3state hashFile(Path p) {
         byte[] buf = new byte[4 * 1024];
         long size = p.toFile().length();
         Blake3 state = Blake3.initHash();
@@ -94,7 +94,7 @@ class LocalFileSystem implements SyncFilesystem {
             }
 
             byte[] hash = state.doFinalize(32);
-            return new DirectorySync.Blake3state(hash);
+            return new Blake3state(hash);
         } catch (IOException e) {
             throw new RuntimeException(e);
         }

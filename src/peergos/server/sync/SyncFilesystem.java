@@ -3,7 +3,6 @@ package peergos.server.sync;
 import peergos.shared.user.fs.AsyncReader;
 
 import java.io.IOException;
-import java.io.InputStream;
 import java.nio.file.Path;
 import java.util.function.Consumer;
 
@@ -29,7 +28,7 @@ interface SyncFilesystem {
 
     AsyncReader getBytes(Path p, long fileOffset) throws IOException;
 
-    DirectorySync.Blake3state hashFile(Path p);
+    Blake3state hashFile(Path p);
 
     void applyToSubtree(Path start, Consumer<Path> file, Consumer<Path> dir);
 }
