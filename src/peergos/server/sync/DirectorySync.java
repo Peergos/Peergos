@@ -106,6 +106,9 @@ public class DirectorySync {
                         localFs.delete(localDir.resolve(local.relPath));
                     }
                     return Collections.emptyList();
+                } else if (remote.hash.equals(local.hash)) {
+                    // already synced
+                    return List.of(local);
                 } else {
                     LOG.info("Local: Copying changes to " + remote.relPath);
                     copyFileDiffAndTruncate(remoteFs, remoteDir.resolve(remote.relPath), remote, localFs, localDir.resolve(remote.relPath), local);
@@ -121,6 +124,9 @@ public class DirectorySync {
                         remoteFs.delete(remoteDir.resolve(remote.relPath));
                     }
                     return Collections.emptyList();
+                } else if (remote.hash.equals(local.hash)) {
+                    // already synced
+                    return List.of(local);
                 } else {
                     LOG.info("Remote: Copying changes to " + local.relPath);
                     copyFileDiffAndTruncate(localFs, localDir.resolve(local.relPath), local, remoteFs, remoteDir.resolve(local.relPath), remote);
