@@ -9,6 +9,7 @@ import peergos.shared.NetworkAccess;
 import peergos.shared.login.mfa.MultiFactorAuthMethod;
 import peergos.shared.login.mfa.MultiFactorAuthRequest;
 import peergos.shared.login.mfa.MultiFactorAuthResponse;
+import peergos.shared.user.TrieNodeImpl;
 import peergos.shared.user.UserContext;
 import peergos.shared.user.fs.AsyncReader;
 import peergos.shared.user.fs.Blake3state;
@@ -25,6 +26,7 @@ import java.nio.file.Paths;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.logging.Level;
+import java.util.logging.LogManager;
 import java.util.logging.Logger;
 
 public class DirectorySync {
@@ -33,6 +35,7 @@ public class DirectorySync {
     public static void main(String[] args) throws Exception {
         Crypto crypto = Main.initCrypto();
         ThumbnailGenerator.setInstance(new JavaImageThumbnailer());
+
         LocalFileSystem local = new LocalFileSystem();
         String username = "q";
         String password = "qq";
@@ -43,13 +46,15 @@ public class DirectorySync {
         URL serverURL = new URL(address);
         NetworkAccess network = Builder.buildJavaNetworkAccess(serverURL, address.startsWith("https")).join();
         UserContext context = UserContext.signIn(username, password, mfar -> mfa(mfar), network, crypto).join();
+        LogManager.getLogManager().getLogger(TrieNodeImpl.class.getName()).setLevel(Level.OFF);
+
         PeergosSyncFS remote = new PeergosSyncFS(context);
         RamTreeState syncedState = new RamTreeState();
 
         while (true) {
             try {
                 syncedState = syncDirs(local, Paths.get("sync/local"), remote, Paths.get(username + "/sync"), syncedState);
-//            Thread.sleep(30_000);
+                Thread.sleep(30_000);
             } catch (Exception e) {
                 LOG.log(Level.WARNING, e, e::getMessage);
                 Thread.sleep(30_000);
