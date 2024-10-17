@@ -23,7 +23,6 @@ import peergos.shared.util.Pair;
 import peergos.shared.util.PathUtil;
 
 import java.io.*;
-import java.net.MalformedURLException;
 import java.net.URL;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -50,7 +49,7 @@ public class DirectorySync {
 
             PeergosSyncFS remote = new PeergosSyncFS(context);
             LocalFileSystem local = new LocalFileSystem();
-            RamTreeState syncedState = new RamTreeState();
+            SyncState syncedState = new JdbcTreeState();
 
             while (true) {
                 try {
@@ -116,7 +115,7 @@ public class DirectorySync {
         return Futures.of(new MultiFactorAuthResponse(totp.credentialId, Either.a(code)));
     }
 
-    public static RamTreeState syncDirs(SyncFilesystem localFS, Path localDir, SyncFilesystem remoteFS, Path remoteDir, RamTreeState syncedVersions) throws IOException {
+    public static RamTreeState syncDirs(SyncFilesystem localFS, Path localDir, SyncFilesystem remoteFS, Path remoteDir, SyncState syncedVersions) throws IOException {
         RamTreeState localState = new RamTreeState();
         buildDirState(localFS, localDir, localState, syncedVersions);
 
@@ -126,7 +125,7 @@ public class DirectorySync {
         RamTreeState finalSyncedState = new RamTreeState();
         for (FileState local : localState.filesByPath.values()) {
 
-            FileState synced = syncedVersions.filesByPath.get(local.relPath);
+            FileState synced = syncedVersions.byPath(local.relPath);
             FileState remote = remoteState.filesByPath.get(local.relPath);
             List<FileState> syncedResults = syncFile(localFS, localDir, remoteFS, remoteDir, synced, local, remote, localState, remoteState);
             syncedResults.forEach(finalSyncedState::add);
@@ -134,7 +133,7 @@ public class DirectorySync {
         for (FileState remote : remoteState.filesByPath.values()) {
             if (! finalSyncedState.filesByPath.containsKey(remote.relPath)) {
 
-                FileState synced = syncedVersions.filesByPath.get(remote.relPath);
+                FileState synced = syncedVersions.byPath(remote.relPath);
                 List<FileState> syncedResults = syncFile(localFS, localDir, remoteFS, remoteDir, synced, null, remote, localState, remoteState);
                 syncedResults.forEach(finalSyncedState::add);
             }
@@ -303,10 +302,10 @@ public class DirectorySync {
         targetFs.setHash(target, sourceState.hash);
     }
 
-    public static void buildDirState(SyncFilesystem fs, Path dir, RamTreeState res, RamTreeState synced) {
+    public static void buildDirState(SyncFilesystem fs, Path dir, RamTreeState res, SyncState synced) {
         fs.applyToSubtree(dir, f -> {
             String relPath = f.toString().substring(dir.toString().length() + 1);
-            FileState atSync = synced.filesByPath.get(relPath);
+            FileState atSync = synced.byPath(relPath);
             long modified = fs.getLastModified(f);
             if (atSync != null && atSync.modificationTime == modified) {
                 res.add(atSync);
