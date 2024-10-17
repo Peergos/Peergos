@@ -2,6 +2,7 @@ package peergos.server.sync;
 
 import peergos.server.Builder;
 import peergos.server.Main;
+import peergos.server.storage.FileBlockCache;
 import peergos.server.user.JavaImageThumbnailer;
 import peergos.server.util.Args;
 import peergos.server.util.Logging;
@@ -14,6 +15,8 @@ import peergos.shared.login.mfa.MultiFactorAuthResponse;
 import peergos.shared.mutable.HttpMutablePointers;
 import peergos.shared.social.HttpSocialNetwork;
 import peergos.shared.storage.HttpSpaceUsage;
+import peergos.shared.storage.JSBlockCache;
+import peergos.shared.storage.UnauthedCachingStorage;
 import peergos.shared.user.LinkProperties;
 import peergos.shared.user.TrieNodeImpl;
 import peergos.shared.user.UserContext;
@@ -48,8 +51,10 @@ public class DirectorySync {
 
             String address = args.getArg("peergos-url");
             URL serverURL = new URL(address);
-            NetworkAccess network = Builder.buildJavaNetworkAccess(serverURL, address.startsWith("https")).join();
             Crypto crypto = Main.initCrypto();
+            long blockCacheSizeBytes = args.getLong("block-cache-size-bytes", 1024 * 1024 * 1024L);
+            NetworkAccess network = Builder.buildJavaNetworkAccess(serverURL, address.startsWith("https")).join()
+                    .withStorage(s -> new UnauthedCachingStorage(s, new FileBlockCache(args.fromPeergosDir("block-cache-dir", "block-cache"), blockCacheSizeBytes), crypto.hasher));
             ThumbnailGenerator.setInstance(new JavaImageThumbnailer());
             String link = args.getArg("link");
             UserContext context = UserContext.fromSecretLinkV2(link, () -> Futures.of(""), network, crypto).join();
