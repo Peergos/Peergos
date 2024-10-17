@@ -38,16 +38,20 @@ import java.util.logging.Logger;
 public class DirectorySync {
     private static final Logger LOG = Logging.LOG();
 
+    private static void disableLogSpam() {
+        // disable log spam
+        TrieNodeImpl.disableLog();
+        HttpMutablePointers.disableLog();
+        NetworkAccess.disableLog();
+        HTTPCoreNode.disableLog();
+        HttpSocialNetwork.disableLog();
+        HttpSpaceUsage.disableLog();
+        FileUploader.disableLog();
+    }
+
     public static boolean syncDir(Args args) {
         try {
-            // disable log spam
-            TrieNodeImpl.disableLog();
-            HttpMutablePointers.disableLog();
-            NetworkAccess.disableLog();
-            HTTPCoreNode.disableLog();
-            HttpSocialNetwork.disableLog();
-            HttpSpaceUsage.disableLog();
-            FileUploader.disableLog();
+            disableLogSpam();
 
             String address = args.getArg("peergos-url");
             URL serverURL = new URL(address);
@@ -69,7 +73,10 @@ public class DirectorySync {
                     Path localDir = PathUtil.get(args.getArg("local-dir"));
                     Path remoteDir = PathUtil.get(linkPath);
                     LOG.info("Syncing " + localDir + " to+from " + remoteDir);
+                    long t0 = System.currentTimeMillis();
                     syncedState = syncDirs(local, localDir, remote, remoteDir, syncedState);
+                    long t1 = System.currentTimeMillis();
+                    LOG.info("Dir sync took " + (t1-t0)/1000 + "s");
                     Thread.sleep(30_000);
                 } catch (Exception e) {
                     LOG.log(Level.WARNING, e, e::getMessage);
@@ -77,11 +84,13 @@ public class DirectorySync {
                 }
             }
         } catch (Exception e) {
+            LOG.log(Level.SEVERE, e, e::getMessage);
             throw new RuntimeException(e);
         }
     }
 
     public static boolean init(Args args) {
+        disableLogSpam();
         Console console = System.console();
         String username = new String(console.readLine("Enter username:"));
         String password = new String(console.readPassword("Enter password:"));
