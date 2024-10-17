@@ -70,7 +70,7 @@ public class DirectorySync {
 
             while (true) {
                 try {
-                    Path localDir = PathUtil.get(args.getArg("local-dir"));
+                    Path localDir = Paths.get(args.getArg("local-dir"));
                     Path remoteDir = PathUtil.get(linkPath);
                     LOG.info("Syncing " + localDir + " to+from " + remoteDir);
                     long t0 = System.currentTimeMillis();
