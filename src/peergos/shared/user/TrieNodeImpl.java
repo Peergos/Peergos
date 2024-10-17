@@ -8,12 +8,16 @@ import peergos.shared.util.Futures;
 
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
+import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
 
 @JsType
 public class TrieNodeImpl implements TrieNode {
-	private static final Logger LOG = Logger.getGlobal();
+	private static final Logger LOG = Logger.getLogger(TrieNodeImpl.class.getName());
+    public static void disableLog() {
+        LOG.setLevel(Level.OFF);
+    }
     private final Map<String, TrieNode> children;
     private final Optional<EntryPoint> value;
 
@@ -36,7 +40,7 @@ public class TrieNodeImpl implements TrieNode {
     @Override
     public CompletableFuture<Optional<FileWrapper>> getByPath(String path, Hasher hasher, NetworkAccess network) {
         FileProperties.ensureValidPath(path);
-        LOG.info("GetByPath: " + path);
+//        LOG.info("GetByPath: " + path);
         String finalPath = TrieNode.canonicalise(path);
         if (finalPath.length() == 0) {
             if (! value.isPresent()) { // find a valid child entry and traverse parent links

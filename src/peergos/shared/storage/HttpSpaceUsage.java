@@ -12,8 +12,11 @@ import java.util.concurrent.*;
 import java.util.logging.*;
 
 public class HttpSpaceUsage implements SpaceUsageProxy {
+	private static final Logger LOG = Logger.getLogger(HttpSpaceUsage.class.getName());
+    public static void disableLog() {
+        LOG.setLevel(Level.OFF);
+    }
     private static final String P2P_PROXY_PROTOCOL = "/http";
-	private static final Logger LOG = Logger.getGlobal();
 
     private final HttpPoster direct, p2p;
 

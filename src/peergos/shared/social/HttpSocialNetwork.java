@@ -12,8 +12,11 @@ import java.net.*;
 import java.util.concurrent.*;
 
 public class HttpSocialNetwork implements SocialNetworkProxy {
+	private static final Logger LOG = Logger.getLogger(HttpSocialNetwork.class.getName());
+    public static void disableLog() {
+        LOG.setLevel(Level.OFF);
+    }
     private static final String P2P_PROXY_PROTOCOL = "/http";
-	private static final Logger LOG = Logger.getGlobal();
 
     private final HttpPoster direct, p2p;
 

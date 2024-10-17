@@ -865,7 +865,7 @@ public class FileWrapper {
                             return calculateMimeType(f.fileData, f.length, f.filename).thenCompose(mimeType -> {
                                 FileProperties props = new FileProperties(f.filename,
                                         false, false, mimeType, f.length,
-                                        now, now, false, Optional.empty(), Optional.of(crypto.random.randomBytes(32)));
+                                        now, now, false, Optional.empty(), Optional.of(crypto.random.randomBytes(32)), Optional.empty());
                                 return Transaction.buildFileUploadTransaction(toParent.resolve(f.filename).toString(), f.length,
                                         props, props.streamSecret.get(), SymmetricKey.random(), SymmetricKey.random(),
                                         SymmetricKey.random(), parent.signingPair(), new Location(parent.owner(), parent.writer(),
@@ -1025,11 +1025,12 @@ public class FileWrapper {
                                                 Chunk updated = new Chunk(raw, dataKey, currentOriginal.location.getMapKey(), dataKey.createNonce());
                                                 LocatedChunk located = new LocatedChunk(currentOriginal.location, currentOriginal.bat, currentOriginal.existingHash, updated);
                                                 long currentSize = filesSize.get();
+                                                // remove blake3 hash from properties as we are changing the file (todo: update hash)
                                                 FileProperties newProps = new FileProperties(props.name, false,
                                                         props.isLink, props.mimeType,
                                                         endIndex > currentSize ? endIndex : currentSize,
                                                         LocalDateTime.now(), props.created, props.isHidden,
-                                                        props.thumbnail, props.streamSecret);
+                                                        props.thumbnail, props.streamSecret, Optional.empty());
 
                                                 Optional<BatId> mirrorBat = mirrorBatId();
                                                 CompletableFuture<Snapshot> chunkUploaded = FileUploader.uploadChunk(version, committer, us.signingPair(),
@@ -1270,7 +1271,7 @@ public class FileWrapper {
                                                                 Optional.of(crypto.random.randomBytes(32));
                                                         FileProperties fileProps = new FileProperties(filename,
                                                                 false, false, mimeType, endIndex,
-                                                                timestamp, timestamp, isHidden, existingThumbnail, actualStreamSecret);
+                                                                timestamp, timestamp, isHidden, existingThumbnail, actualStreamSecret, Optional.empty());
 
                                                         FileUploader chunks = new FileUploader(filename, resetReader,
                                                                 startIndex, endIndex, fileKey, dataKey, parentLocation, parentBat,
@@ -1360,7 +1361,7 @@ public class FileWrapper {
                             if (thumbData.isEmpty())
                                 return Futures.of(base);
                             FileProperties fileProps = new FileProperties(fileName, false, props.isLink, mimeType, fileSize,
-                                    updatedDateTime, createdDateTime, isHidden, thumbData, streamSecret);
+                                    updatedDateTime, createdDateTime, isHidden, thumbData, streamSecret, props.hash);
 
                             return fileOpt.get().updateProperties(base, committer, fileProps, network);
                         });
@@ -1643,7 +1644,7 @@ public class FileWrapper {
                     FileProperties newProps = new FileProperties(newFilename, isDir, isLink,
                             currentProps.mimeType, currentProps.size,
                             currentProps.modified, currentProps.created, currentProps.isHidden,
-                            currentProps.thumbnail, currentProps.streamSecret);
+                            currentProps.thumbnail, currentProps.streamSecret, currentProps.hash);
                     SigningPrivateKeyAndPublicHash signer = isLink ? parent.signingPair() : signingPair();
                     return userContext.network.synchronizer.applyComplexUpdate(owner(), signer,
                             (s, committer) -> nodeToUpdate.updateProperties(s, committer, us,

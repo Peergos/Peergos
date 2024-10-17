@@ -30,7 +30,10 @@ import java.util.stream.*;
  *  This class is unprivileged - doesn't have any private keys
  */
 public class NetworkAccess {
-    private static final Logger LOG = Logger.getGlobal();
+    private static final Logger LOG = Logger.getLogger(NetworkAccess.class.getName());
+    public static void disableLog() {
+        LOG.setLevel(Level.OFF);
+    }
 
     public final Hasher hasher;
     public final CoreNode coreNode;

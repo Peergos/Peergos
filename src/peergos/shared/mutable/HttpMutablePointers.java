@@ -12,8 +12,11 @@ import java.util.*;
 import java.util.concurrent.*;
 
 public class HttpMutablePointers implements MutablePointersProxy {
-	private static final Logger LOG = Logger.getGlobal();
-	private static final String P2P_PROXY_PROTOCOL = "/http";
+	private static final Logger LOG = Logger.getLogger(HttpMutablePointers.class.getName());
+    public static void disableLog() {
+        LOG.setLevel(Level.OFF);
+    }
+    private static final String P2P_PROXY_PROTOCOL = "/http";
 
     private static final boolean LOGGING = true;
     private final HttpPoster direct, p2p;
