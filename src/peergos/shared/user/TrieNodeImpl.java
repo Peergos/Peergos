@@ -8,12 +8,16 @@ import peergos.shared.util.Futures;
 
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
+import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
 
 @JsType
 public class TrieNodeImpl implements TrieNode {
 	private static final Logger LOG = Logger.getLogger(TrieNodeImpl.class.getName());
+    public static void disableLog() {
+        LOG.setLevel(Level.OFF);
+    }
     private final Map<String, TrieNode> children;
     private final Optional<EntryPoint> value;
 

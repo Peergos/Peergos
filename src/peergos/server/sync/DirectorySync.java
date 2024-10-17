@@ -7,16 +7,17 @@ import peergos.server.util.Args;
 import peergos.server.util.Logging;
 import peergos.shared.Crypto;
 import peergos.shared.NetworkAccess;
+import peergos.shared.corenode.HTTPCoreNode;
 import peergos.shared.login.mfa.MultiFactorAuthMethod;
 import peergos.shared.login.mfa.MultiFactorAuthRequest;
 import peergos.shared.login.mfa.MultiFactorAuthResponse;
+import peergos.shared.mutable.HttpMutablePointers;
+import peergos.shared.social.HttpSocialNetwork;
+import peergos.shared.storage.HttpSpaceUsage;
 import peergos.shared.user.LinkProperties;
 import peergos.shared.user.TrieNodeImpl;
 import peergos.shared.user.UserContext;
-import peergos.shared.user.fs.AsyncReader;
-import peergos.shared.user.fs.Blake3state;
-import peergos.shared.user.fs.FileWrapper;
-import peergos.shared.user.fs.ThumbnailGenerator;
+import peergos.shared.user.fs.*;
 import peergos.shared.util.Either;
 import peergos.shared.util.Futures;
 import peergos.shared.util.Pair;
@@ -29,7 +30,6 @@ import java.nio.file.Paths;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.logging.Level;
-import java.util.logging.LogManager;
 import java.util.logging.Logger;
 
 public class DirectorySync {
@@ -37,6 +37,15 @@ public class DirectorySync {
 
     public static boolean syncDir(Args args) {
         try {
+            // disable log spam
+            TrieNodeImpl.disableLog();
+            HttpMutablePointers.disableLog();
+            NetworkAccess.disableLog();
+            HTTPCoreNode.disableLog();
+            HttpSocialNetwork.disableLog();
+            HttpSpaceUsage.disableLog();
+            FileUploader.disableLog();
+
             String address = args.getArg("peergos-url");
             URL serverURL = new URL(address);
             NetworkAccess network = Builder.buildJavaNetworkAccess(serverURL, address.startsWith("https")).join();
@@ -45,7 +54,6 @@ public class DirectorySync {
             String link = args.getArg("link");
             UserContext context = UserContext.fromSecretLinkV2(link, () -> Futures.of(""), network, crypto).join();
             String linkPath = context.getEntryPath().join();
-            LogManager.getLogManager().getLogger(TrieNodeImpl.class.getName()).setLevel(Level.OFF);
 
             PeergosSyncFS remote = new PeergosSyncFS(context);
             LocalFileSystem local = new LocalFileSystem();

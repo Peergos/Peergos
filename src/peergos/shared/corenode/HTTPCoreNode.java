@@ -19,7 +19,10 @@ import java.util.concurrent.*;
 import java.util.stream.*;
 
 public class HTTPCoreNode implements CoreNode {
-	private static final Logger LOG = Logger.getGlobal();
+	private static final Logger LOG = Logger.getLogger(HTTPCoreNode.class.getName());
+    public static void disableLog() {
+        LOG.setLevel(Level.OFF);
+    }
 	private static final String P2P_PROXY_PROTOCOL = "/http";
 
     private final HttpPoster poster;
