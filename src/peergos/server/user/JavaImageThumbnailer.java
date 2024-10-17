@@ -7,6 +7,8 @@ import javax.imageio.*;
 import java.awt.*;
 import java.awt.image.*;
 import java.io.*;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.util.*;
 import java.util.logging.*;
 
@@ -28,7 +30,14 @@ public class JavaImageThumbnailer implements ThumbnailGenerator.Generator {
             ByteArrayOutputStream baos = new ByteArrayOutputStream();
             ImageIO.write(thumbnailImage, "JPG", baos);
             baos.close();
-            return Optional.of(new Thumbnail("image/jpeg", baos.toByteArray()));
+            if (baos.size() > 0)
+                return Optional.of(new Thumbnail("image/jpeg", baos.toByteArray()));
+
+            // try png
+            ByteArrayOutputStream png = new ByteArrayOutputStream();
+            ImageIO.write(thumbnailImage, "png", png);
+            png.close();
+            return Optional.of(new Thumbnail("image/png", png.toByteArray()));
         } catch (IOException ioe) {
             Logging.LOG().log(Level.WARNING, ioe.getMessage(), ioe);
         }
