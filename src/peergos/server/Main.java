@@ -9,6 +9,7 @@ import peergos.server.space.*;
 import peergos.server.sql.*;
 import peergos.server.storage.admin.*;
 import peergos.server.storage.auth.*;
+import peergos.server.sync.DirectorySync;
 import peergos.shared.*;
 import peergos.server.corenode.*;
 import peergos.server.fuse.*;
@@ -417,6 +418,34 @@ public class Main extends Builder {
                     new Command.Arg("webdav.port", "The listen port for the webdav endpoint", false, "8090"),
                     new Command.Arg("peergos-url", "Peergos service address", false, "https://peergos.net")
             ).collect(Collectors.toList())
+    );
+
+    public static final Command<Boolean> SYNC_DIR = new Command<>("dir",
+            "Sync a local folder to and from a Peergos folder",
+            DirectorySync::syncDir,
+            Stream.of(
+                    new Command.Arg("link", "Writable link (path only) to a Peergos directory", true),
+                    new Command.Arg("peergos-url", "Peergos service address", false, "https://peergos.net"),
+                    new Command.Arg("local-dir", "The directory to sync to and from Peergos", true)
+            ).collect(Collectors.toList())
+    );
+
+    public static final Command<Boolean> SYNC_INIT = new Command<>("init",
+            "Setup a peergos folder for syncing and get required arguments for 'sync dir' command",
+            DirectorySync::init,
+            Stream.of(
+                    new Command.Arg("peergos-url", "Peergos service address", false, "https://peergos.net")
+            ).collect(Collectors.toList())
+    );
+
+    public static final Command<Boolean> SYNC = new Command<>("sync",
+            "Sync a local folder to a Peergos folder",
+            args -> {
+                System.out.println("Run sync init first, then sync dir with the resulting arguments");
+                return null;
+            },
+            Collections.emptyList(),
+            Arrays.asList(SYNC_INIT, SYNC_DIR)
     );
 
     public static final Command<InstanceAdmin.VersionInfo> VERSION = new Command<>("version",
@@ -920,6 +949,7 @@ public class Main extends Builder {
             Arrays.asList(
                     PEERGOS,
                     SHELL,
+                    SYNC,
                     FUSE,
                     WEBDAV,
                     QuotaCLI.QUOTA,

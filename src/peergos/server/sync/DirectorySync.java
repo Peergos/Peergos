@@ -3,20 +3,24 @@ package peergos.server.sync;
 import peergos.server.Builder;
 import peergos.server.Main;
 import peergos.server.user.JavaImageThumbnailer;
+import peergos.server.util.Args;
 import peergos.server.util.Logging;
 import peergos.shared.Crypto;
 import peergos.shared.NetworkAccess;
 import peergos.shared.login.mfa.MultiFactorAuthMethod;
 import peergos.shared.login.mfa.MultiFactorAuthRequest;
 import peergos.shared.login.mfa.MultiFactorAuthResponse;
+import peergos.shared.user.LinkProperties;
 import peergos.shared.user.TrieNodeImpl;
 import peergos.shared.user.UserContext;
 import peergos.shared.user.fs.AsyncReader;
 import peergos.shared.user.fs.Blake3state;
+import peergos.shared.user.fs.FileWrapper;
 import peergos.shared.user.fs.ThumbnailGenerator;
 import peergos.shared.util.Either;
 import peergos.shared.util.Futures;
 import peergos.shared.util.Pair;
+import peergos.shared.util.PathUtil;
 
 import java.io.*;
 import java.net.MalformedURLException;
@@ -32,33 +36,73 @@ import java.util.logging.Logger;
 public class DirectorySync {
     private static final Logger LOG = Logging.LOG();
 
-    public static void main(String[] args) throws Exception {
-        Crypto crypto = Main.initCrypto();
-        ThumbnailGenerator.setInstance(new JavaImageThumbnailer());
+    public static boolean syncDir(Args args) {
+        try {
+            String address = args.getArg("peergos-url");
+            URL serverURL = new URL(address);
+            NetworkAccess network = Builder.buildJavaNetworkAccess(serverURL, address.startsWith("https")).join();
+            Crypto crypto = Main.initCrypto();
+            ThumbnailGenerator.setInstance(new JavaImageThumbnailer());
+            String link = args.getArg("link");
+            UserContext context = UserContext.fromSecretLinkV2(link, () -> Futures.of(""), network, crypto).join();
+            String linkPath = context.getEntryPath().join();
+            LogManager.getLogManager().getLogger(TrieNodeImpl.class.getName()).setLevel(Level.OFF);
 
-        LocalFileSystem local = new LocalFileSystem();
-        String username = "q";
-        String password = "qq";
-//        Console console = System.console();
-//        String username = new String(console.readLine("Enter username:"));
-//        String password = new String(console.readLine("Enter password:"));
-        String address = "http://localhost:8000";
-        URL serverURL = new URL(address);
-        NetworkAccess network = Builder.buildJavaNetworkAccess(serverURL, address.startsWith("https")).join();
-        UserContext context = UserContext.signIn(username, password, mfar -> mfa(mfar), network, crypto).join();
-        LogManager.getLogManager().getLogger(TrieNodeImpl.class.getName()).setLevel(Level.OFF);
+            PeergosSyncFS remote = new PeergosSyncFS(context);
+            LocalFileSystem local = new LocalFileSystem();
+            RamTreeState syncedState = new RamTreeState();
 
-        PeergosSyncFS remote = new PeergosSyncFS(context);
-        RamTreeState syncedState = new RamTreeState();
-
-        while (true) {
-            try {
-                syncedState = syncDirs(local, Paths.get("sync/local"), remote, Paths.get(username + "/sync"), syncedState);
-                Thread.sleep(30_000);
-            } catch (Exception e) {
-                LOG.log(Level.WARNING, e, e::getMessage);
-                Thread.sleep(30_000);
+            while (true) {
+                try {
+                    Path localDir = PathUtil.get(args.getArg("local-dir"));
+                    Path remoteDir = PathUtil.get(linkPath);
+                    LOG.info("Syncing " + localDir + " to+from " + remoteDir);
+                    syncedState = syncDirs(local, localDir, remote, remoteDir, syncedState);
+                    Thread.sleep(30_000);
+                } catch (Exception e) {
+                    LOG.log(Level.WARNING, e, e::getMessage);
+                    Thread.sleep(30_000);
+                }
             }
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    public static boolean init(Args args) {
+        Console console = System.console();
+        String username = new String(console.readLine("Enter username:"));
+        String password = new String(console.readPassword("Enter password:"));
+        String address = args.getArg("peergos-url");
+        try {
+            URL serverURL = new URL(address);
+            NetworkAccess network = Builder.buildJavaNetworkAccess(serverURL, address.startsWith("https")).join();
+            Crypto crypto = Main.initCrypto();
+            UserContext context = UserContext.signIn(username, password, mfar -> mfa(mfar), network, crypto).join();
+            String peergosPath = new String(console.readLine("Enter the peergos path you want to sync to (e.g. /demo/media/images):"));
+            Path toSync = PathUtil.get(peergosPath).normalize();
+            if (toSync.getNameCount() < 2)
+                throw new IllegalArgumentException("You cannot sync to your Peergos home directory, please make a sub-directory.");
+            Optional<FileWrapper> dir = context.getByPath(toSync).join();
+            if (dir.isEmpty())
+                throw new IllegalArgumentException("Directory "+toSync+" does not exist in Peergos!");
+            // ensure directory is in its own writing space
+            if (dir.get().owner().equals(context.signer.publicKeyHash)) {
+                // our file
+                context.shareWriteAccessWith(toSync, Collections.emptySet()).join();
+            } else {
+                // something we have write access to
+                if (! dir.get().isWritable())
+                    throw new IllegalArgumentException("You do not have write access to this directory!");
+            }
+            LinkProperties link = context.createSecretLink(toSync.toString(), true, Optional.empty(), Optional.empty(), "", false).join();
+
+            String cap = link.toLinkString(context.signer.publicKeyHash);
+
+            System.out.println("Run the sync dir command with the following args: -link " + cap + " -local-dir $LOCAL_DIR");
+            return true;
+        } catch (Exception e) {
+            throw new RuntimeException(e);
         }
     }
 
