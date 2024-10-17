@@ -21,9 +21,9 @@ public class JdbcTreeState implements SyncState {
     private final Supplier<Connection> conn;
     private final SqlSupplier cmds = new SqliteCommands();
 
-    public JdbcTreeState() {
+    public JdbcTreeState(String sqlFile) {
         try {
-            Connection memory = Sqlite.build("dir-sync-state.sql");
+            Connection memory = Sqlite.build(sqlFile);
             // We need a connection that ignores close
             Connection instance = new Sqlite.UncloseableConnection(memory);
             this.conn = () -> instance;

@@ -66,7 +66,7 @@ public class DirectorySync {
 
             PeergosSyncFS remote = new PeergosSyncFS(context);
             LocalFileSystem local = new LocalFileSystem();
-            SyncState syncedState = new JdbcTreeState();
+            SyncState syncedState = new JdbcTreeState(args.fromPeergosDir("sync-state-file", "dir-sync-state.sql").toString());
 
             while (true) {
                 try {
