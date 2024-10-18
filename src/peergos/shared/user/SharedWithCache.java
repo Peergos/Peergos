@@ -226,6 +226,8 @@ public class SharedWithCache {
     }
 
     public CompletableFuture<Map<Path, SharedWithState>> getAllDescendantShares(Path start, Snapshot in) {
+        if (base == null) // in a secret link
+            return Futures.of(Collections.emptyMap());
         return in.withWriter(base.owner(), base.writer(), network)
                 .thenCompose(s -> base.getUpdated(base.version.mergeAndOverwriteWith(s), network))
                 .thenCompose(freshBase -> freshBase.getDescendentByPath(toRelative(start.getParent()).toString(), crypto.hasher, network))
