@@ -19,13 +19,22 @@ public class JavaImageThumbnailer implements ThumbnailGenerator.Generator {
     public Optional<Thumbnail> generateThumbnail(byte[] imageBlob) {
         try {
             BufferedImage image = ImageIO.read(new ByteArrayInputStream(imageBlob));
+            int size = THUMBNAIL_SIZE;
+            int height = image.getHeight();
+            int width = image.getWidth();
+            boolean tall = height > width;
+            int canvasWidth = tall ? size : width*size/height;
+            int canvasHeight = tall ? height*size/width : size;
             BufferedImage thumbnailImage = new BufferedImage(THUMBNAIL_SIZE, THUMBNAIL_SIZE, image.getType());
             Graphics2D g = thumbnailImage.createGraphics();
             g.setComposite(AlphaComposite.Src);
             g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
             g.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
             g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-            g.drawImage(image, 0, 0, THUMBNAIL_SIZE, THUMBNAIL_SIZE, null);
+
+            int x = tall ? 0 : -(canvasWidth - THUMBNAIL_SIZE) / 2;
+            int y = tall ? -(canvasHeight - THUMBNAIL_SIZE) / 2 : 0;
+            g.drawImage(image, x, y, canvasWidth, canvasHeight, null);
             g.dispose();
 
             // try webp first
