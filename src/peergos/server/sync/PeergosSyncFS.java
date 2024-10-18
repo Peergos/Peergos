@@ -33,15 +33,12 @@ public class PeergosSyncFS implements SyncFilesystem {
 
     @Override
     public void mkdirs(Path p) {
-        int depth = p.getNameCount();
         Optional<BatId> mirrorBat = context.mirrorBatId();
-        for (int i=1; i <= depth; i++) {
-            Optional<FileWrapper> current = context.getByPath(p.subpath(0, i)).join();
-            if (current.isEmpty()) {
-                FileWrapper parent = context.getByPath(p.subpath(0, i - 1)).join().get();
-                parent.mkdir(p.getName(i - 1).toString(), context.network, false, mirrorBat, context.crypto).join();
-            }
-        }
+        if (exists(p))
+            return;
+        mkdirs(p.getParent());
+        FileWrapper parent = context.getByPath(p.getParent()).join().get();
+        parent.mkdir(p.getFileName().toString(), context.network, false, mirrorBat, context.crypto).join();
     }
 
     @Override
