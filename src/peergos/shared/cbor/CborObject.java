@@ -41,6 +41,8 @@ public interface CborObject extends Cborable {
     }
 
     static CborObject fromByteArray(byte[] cbor) {
+        if (cbor.length == 0)
+            throw new IllegalArgumentException("Empty cbor byte array!");
         return deserialize(new CborDecoder(new ByteArrayInputStream(cbor)), cbor.length);
     }
 
