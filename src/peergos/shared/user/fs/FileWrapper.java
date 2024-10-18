@@ -1233,6 +1233,7 @@ public class FileWrapper {
                                                                 updatedChild.getSize(), updatedChild.props.created, network, (WritableAbsoluteCapability)updatedChild.pointer.capability,
                                                                 updatedChild.getFileProperties().streamSecret));
                                                 };
+                                                boolean redoMimetypeAndThumbnail = startIndex < 24;
 
                                                 if (truncateExisting && endIndex < childProps.size) {
                                                     return child.truncate(current, committer, endIndex, network, crypto).thenCompose( updatedSnapshot ->
@@ -1245,6 +1246,13 @@ public class FileWrapper {
                                                 } else {
                                                     return updateExistingChild(current, committer, child, fileData,
                                                             startIndex, endIndex, network, crypto, monitor)
+                                                            .thenCompose(s -> redoMimetypeAndThumbnail ?
+                                                                    child.getUpdated(s, network)
+                                                                            .thenCompose(updatedChild -> updatedChild.getInputStream(s.get(updatedChild.writer()).props.get(), network, crypto, l -> {})
+                                                                                    .thenCompose(is -> updatedChild.recalculateThumbnail(s, committer, filename, is, isHidden,
+                                                                                            updatedChild.getSize(), updatedChild.props.created, network, (WritableAbsoluteCapability)updatedChild.pointer.capability,
+                                                                                            updatedChild.getFileProperties().streamSecret))) :
+                                                                    Futures.of(s))
                                                             .thenApply(s -> {
                                                                 monitor.accept(THUMBNAIL_PROGRESS_OFFSET);
                                                                 return new Pair<>(s, Optional.<NamedRelativeCapability>empty());
