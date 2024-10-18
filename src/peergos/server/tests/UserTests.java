@@ -1477,6 +1477,40 @@ public abstract class UserTests {
     }
 
     @Test
+    public void writableSecretLinkMoveTo() throws Exception {
+        String username = generateUsername();
+        String password = "test01";
+        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
+        FileWrapper userRoot = context.getUserRoot().get();
+
+        String filename = "mediumfile.bin";
+        byte[] data = new byte[128*1024];
+        random.nextBytes(data);
+        String dirName = "subdir";
+        userRoot.mkdir(dirName, context.network, false, userRoot.mirrorBatId(), context.crypto).get();
+        FileWrapper subdir = context.getByPath("/" + username + "/" + dirName).get().get();
+        String anotherDirName = "anotherDir";
+        subdir.mkdir(anotherDirName, context.network, false, userRoot.mirrorBatId(), context.crypto).get();
+        FileWrapper anotherDir = context.getByPath("/" + username + "/" + dirName + "/" + anotherDirName).get().get();
+        uploadFileSection(anotherDir, filename, new AsyncReader.ArrayBacked(data), 0, data.length, context.network,
+                context.crypto, l -> {}).get();
+
+        String path = "/" + username + "/" + dirName;
+        // move folder to new signing subspace
+        LinkProperties link = context.createSecretLink(path, true, Optional.empty(), Optional.empty(), "", false).join();
+
+        UserContext linkContext = UserContext.fromSecretLinkV2(link.toLinkString(context.signer.publicKeyHash), () -> Futures.of(""), network, crypto).get();
+        String entryPath = linkContext.getEntryPath().get();
+        Assert.assertTrue("public link to folder has correct entry path", entryPath.equals(path));
+
+        String filePath = "/" + username + "/" + dirName + "/" + anotherDirName + "/" + filename;
+        FileWrapper file = linkContext.getByPath(filePath).join().get();
+        FileWrapper target = linkContext.getByPath("/" + username + "/" + dirName).join().get();
+        FileWrapper parent = linkContext.getByPath("/" + username + "/" + dirName+ "/" + anotherDirName).join().get();
+        file.moveTo(target, parent, PathUtil.get(filePath), linkContext, () -> Futures.of(true)).join();
+    }
+
+    @Test
     public void recursiveDelete() {
         String username = generateUsername();
         String password = "test01";

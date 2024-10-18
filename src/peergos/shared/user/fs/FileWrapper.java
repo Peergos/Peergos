@@ -1748,7 +1748,7 @@ public class FileWrapper {
                                                 if (keepAccess && ! differentParentWriter) {
                                                     // just update parent and child pointers, no need to re-upload, rotate keys etc.
                                                     boolean differentWriter = ! target.writer().equals(writer());
-                                                    boolean ourFile = target.owner().equals(context.signer.publicKeyHash);
+                                                    boolean ourFile = context.signer != null && target.owner().equals(context.signer.publicKeyHash);
                                                     RelativeCapability newParentLink = new RelativeCapability(differentWriter ?
                                                             Optional.of(target.writer()) :
                                                             Optional.empty(),
