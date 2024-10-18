@@ -1,6 +1,7 @@
 package peergos.server.user;
 
 import peergos.server.util.Logging;
+import peergos.shared.cbor.CborObject;
 import peergos.shared.user.fs.*;
 
 import javax.imageio.*;
@@ -27,18 +28,26 @@ public class JavaImageThumbnailer implements ThumbnailGenerator.Generator {
             g.drawImage(image, 0, 0, THUMBNAIL_SIZE, THUMBNAIL_SIZE, null);
             g.dispose();
 
-            ByteArrayOutputStream baos = new ByteArrayOutputStream();
-            ImageIO.write(thumbnailImage, "JPG", baos);
-            baos.close();
-            if (baos.size() > 0)
-                return Optional.of(new Thumbnail("image/jpeg", baos.toByteArray()));
+            // try webp first
+            ByteArrayOutputStream webp = new ByteArrayOutputStream();
+            ImageIO.write(thumbnailImage, "webp", webp);
+            webp.close();
+            if (webp.size() > 0)
+                return Optional.of(new Thumbnail("image/webp", webp.toByteArray()));
+
+            // try jpeg
+            ByteArrayOutputStream jpg = new ByteArrayOutputStream();
+            ImageIO.write(thumbnailImage, "JPG", jpg);
+            jpg.close();
+            if (jpg.size() > 0)
+                return Optional.of(new Thumbnail("image/jpeg", jpg.toByteArray()));
 
             // try png
             ByteArrayOutputStream png = new ByteArrayOutputStream();
             ImageIO.write(thumbnailImage, "png", png);
             png.close();
             return Optional.of(new Thumbnail("image/png", png.toByteArray()));
-        } catch (IOException ioe) {
+        } catch (Exception ioe) {
             Logging.LOG().log(Level.WARNING, ioe.getMessage(), ioe);
         }
         return Optional.empty();
