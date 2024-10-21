@@ -51,8 +51,14 @@ public class PeergosSyncFS implements SyncFilesystem {
     @Override
     public void moveTo(Path src, Path target) {
         if (target.getParent().equals(src.getParent())) { // rename
-            FileWrapper parent = context.getByPath(src.getParent()).join().get();
-            FileWrapper from = context.getByPath(src).join().get();
+            Optional<FileWrapper> parentOpt = context.getByPath(src.getParent()).join();
+            if (parentOpt.isEmpty())
+                throw new IllegalStateException("Couldn't retrieve " + src.getParent());
+            FileWrapper parent = parentOpt.get();
+            Optional<FileWrapper> srcOpt = context.getByPath(src).join();
+            if (srcOpt.isEmpty())
+                throw new IllegalStateException("Couldn't retrieve " + src);
+            FileWrapper from = srcOpt.get();
             from.rename(target.getFileName().toString(), parent, src, context).join();
         } else {
             Optional<FileWrapper> newParent = context.getByPath(target.getParent()).join();
@@ -60,8 +66,14 @@ public class PeergosSyncFS implements SyncFilesystem {
                 mkdirs(target.getParent());
                 newParent = context.getByPath(target.getParent()).join();
             }
-            FileWrapper from = context.getByPath(src).join().get();
-            FileWrapper parent = context.getByPath(src.getParent()).join().get();
+            Optional<FileWrapper> srcOpt = context.getByPath(src).join();
+            if (srcOpt.isEmpty())
+                throw new IllegalStateException("Couldn't retrieve " + src);
+            FileWrapper from = srcOpt.get();
+            Optional<FileWrapper> parentOpt = context.getByPath(src.getParent()).join();
+            if (parentOpt.isEmpty())
+                throw new IllegalStateException("Couldn't retrieve " + src.getParent());
+            FileWrapper parent = parentOpt.get();
             from.moveTo(newParent.get(), parent, src, context, () -> Futures.of(true));
         }
     }
