@@ -186,6 +186,7 @@ public class CachingVerifyingStorage extends DelegatingStorage {
                                 .thenApply(Optional::of))
                         .orElseGet(() -> Futures.of(Optional.empty())))
                 .thenApply(rawOpt -> {
+                    rawOpt = rawOpt.filter(b -> b.length > 0);
                     if (rawOpt.isPresent()) {
                         byte[] value = rawOpt.get();
                         if (value.length > 0)

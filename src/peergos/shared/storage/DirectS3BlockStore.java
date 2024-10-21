@@ -291,6 +291,7 @@ public class DirectS3BlockStore implements ContentAddressedStorage {
             fallback.authReads(Arrays.asList(new MirrorCap(hash, bat)))
                     .thenCompose(preAuthedGet -> direct.get(preAuthedGet.get(0).base, preAuthedGet.get(0).fields))
                     .thenApply(Optional::of)
+                    .thenApply(opt -> opt.filter(b -> b.length > 0))
                     .thenAccept(res::complete)
                     .exceptionally(t -> {
                         fallback.getRaw(owner, hash, bat)
