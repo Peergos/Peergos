@@ -79,6 +79,7 @@ public class DirectorySync {
                     log("Dir sync took " + (t1-t0)/1000 + "s");
                     Thread.sleep(30_000);
                 } catch (Exception e) {
+                    e.printStackTrace();
                     LOG.log(Level.WARNING, e, e::getMessage);
                     Thread.sleep(30_000);
                 }
