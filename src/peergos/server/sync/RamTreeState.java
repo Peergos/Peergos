@@ -8,10 +8,23 @@ class RamTreeState implements SyncState {
     public final Map<String, FileState> filesByPath = new HashMap<>();
     public final Map<Blake3state, List<FileState>> fileByHash = new HashMap<>();
 
+    @Override
     public void add(FileState fs) {
         filesByPath.put(fs.relPath, fs);
         fileByHash.putIfAbsent(fs.hash, new ArrayList<>());
         fileByHash.get(fs.hash).add(fs);
+    }
+
+    @Override
+    public void remove(String path) {
+        FileState v = filesByPath.remove(path);
+        if (v != null) {
+            List<FileState> byHash = fileByHash.get(v.hash);
+            if (byHash.size() == 1)
+                fileByHash.remove(v.hash);
+            else
+                byHash.remove(v);
+        }
     }
 
     @Override

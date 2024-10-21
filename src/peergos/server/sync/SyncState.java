@@ -8,6 +8,8 @@ public interface SyncState {
 
     void add(FileState fs);
 
+    void remove(String path);
+
     FileState byPath(String path);
 
     List<FileState> byHash(Blake3state b3);
