@@ -589,6 +589,18 @@ public class UserContext {
         return username == null;
     }
 
+    public static CompletableFuture<UserContext> fromSecretLinksV2(List<String> linkStrings,
+                                                                   List<Supplier<CompletableFuture<String>>> userPasswords,
+                                                                   NetworkAccess network,
+                                                                   Crypto crypto) {
+        List<SecretLink> links = linkStrings.stream().map(SecretLink::fromLink).collect(Collectors.toList());
+        return Futures.combineAllInOrder(IntStream.range(0, links.size()).mapToObj(i -> network.getSecretLink(links.get(i))
+                        .thenCompose(retrieved -> (retrieved.hasUserPassword ? userPasswords.get(i).get() : Futures.of(""))
+                                .thenCompose(upass -> retrieved.decryptFromPassword(links.get(i).labelString(), links.get(i).linkPassword + upass, crypto)))
+        ).collect(Collectors.toList()))
+                .thenCompose(caps -> fromSecretLinks(caps, network, crypto));
+    }
+
     @JsMethod
     public static CompletableFuture<UserContext> fromSecretLinkV2(String linkString,
                                                                   Supplier<CompletableFuture<String>> userPassword,
@@ -635,6 +647,29 @@ public class UserContext {
                 });
     }
 
+    private static CompletableFuture<UserContext> fromSecretLinks(List<AbsoluteCapability> caps,
+                                                                  NetworkAccess network,
+                                                                  Crypto crypto) {
+        WriterData empty = new WriterData(caps.get(0).owner,
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty(),
+                Collections.emptyMap(),
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty());
+        CommittedWriterData userData = new CommittedWriterData(MaybeMultihash.empty(), empty, Optional.empty());
+        UserContext context = new UserContext(null, null, null, null, network,
+                crypto, userData, TrieNodeImpl.empty(), null, null,
+                new SharedWithCache(null, null, network, crypto), Optional.empty());
+        return buildTrieFromCaps(caps, context.entrie, network)
+                .thenApply(trieNode -> {
+                    context.entrie = trieNode;
+                    return context;
+                });
+    }
+
     private static CompletableFuture<TrieNode> buildTrieFromCap(AbsoluteCapability cap,
                                                                 TrieNode currentRoot,
                                                                 NetworkAccess network,
@@ -647,6 +682,23 @@ public class UserContext {
                     return currentRoot.put(r.getPath(), entry);
                 }));
     }
+
+    private static CompletableFuture<TrieNode> buildTrieFromCaps(List<AbsoluteCapability> caps,
+                                                                TrieNode currentRoot,
+                                                                NetworkAccess network) {
+        List<CompletableFuture<RetrievedEntryPoint>> retrieved = caps.stream()
+                .map(cap -> NetworkAccess.retrieveEntryPoint(new EntryPoint(cap, ""), network))
+                .collect(Collectors.toList());
+        return Futures.reduceAll(retrieved, currentRoot,
+                (c, f) -> f.thenCompose(r -> r.entry.isValid(r.getPath(), network)
+                        .thenApply(valid -> {
+                            if (! valid)
+                                throw new IllegalStateException("Invalid link!");
+                            return c.put(r.getPath(), r.entry);
+                        })),
+                (a, b) -> b);
+    }
+
     @JsMethod
     public String getLinkString(LinkProperties props) {
         return props.toLinkString(signer.publicKeyHash);

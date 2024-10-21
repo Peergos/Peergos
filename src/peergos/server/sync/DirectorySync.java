@@ -32,8 +32,11 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
+import java.util.function.Supplier;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 public class DirectorySync {
     private static final Logger LOG = Logging.LOG();
@@ -60,23 +63,32 @@ public class DirectorySync {
             NetworkAccess network = Builder.buildJavaNetworkAccess(serverURL, address.startsWith("https")).join()
                     .withStorage(s -> new UnauthedCachingStorage(s, new FileBlockCache(args.fromPeergosDir("block-cache-dir", "block-cache"), blockCacheSizeBytes), crypto.hasher));
             ThumbnailGenerator.setInstance(new JavaImageThumbnailer());
-            String link = args.getArg("link");
-            UserContext context = UserContext.fromSecretLinkV2(link, () -> Futures.of(""), network, crypto).join();
+            List<String> links = Arrays.asList(args.getArg("links").split(","));
+            Supplier<CompletableFuture<String>> linkUserPassword = () -> Futures.of("");
+            List<Supplier<CompletableFuture<String>>> linkPasswords = IntStream.range(0, links.size())
+                    .mapToObj(i -> linkUserPassword)
+                    .collect(Collectors.toList());
+            UserContext context = UserContext.fromSecretLinksV2(links, linkPasswords, network, crypto).join();
             String linkPath = context.getEntryPath().join();
 
             PeergosSyncFS remote = new PeergosSyncFS(context);
             LocalFileSystem local = new LocalFileSystem();
             SyncState syncedState = new JdbcTreeState(args.fromPeergosDir("sync-state-file", "dir-sync-state.sql").toString());
+            List<String> localDirs = Arrays.asList(args.getArg("local-dirs").split(","));
+            if (links.size() != localDirs.size())
+                throw new IllegalArgumentException("Mismatched number of local dirs and links");
 
             while (true) {
                 try {
-                    Path localDir = Paths.get(args.getArg("local-dir"));
-                    Path remoteDir = PathUtil.get(linkPath);
-                    log("Syncing " + localDir + " to+from " + remoteDir);
-                    long t0 = System.currentTimeMillis();
-                    syncedState = syncDirs(local, localDir, remote, remoteDir, syncedState);
-                    long t1 = System.currentTimeMillis();
-                    log("Dir sync took " + (t1-t0)/1000 + "s");
+                    for (int i=0; i < links.size(); i++) {
+                        Path localDir = Paths.get(localDirs.get(i));
+                        Path remoteDir = PathUtil.get(linkPath);
+                        log("Syncing " + localDir + " to+from " + remoteDir);
+                        long t0 = System.currentTimeMillis();
+                        syncedState = syncDirs(local, localDir, remote, remoteDir, syncedState);
+                        long t1 = System.currentTimeMillis();
+                        log("Dir sync took " + (t1 - t0) / 1000 + "s");
+                    }
                     Thread.sleep(30_000);
                 } catch (Exception e) {
                     e.printStackTrace();
@@ -121,7 +133,7 @@ public class DirectorySync {
 
             String cap = link.toLinkString(context.signer.publicKeyHash);
 
-            System.out.println("Run the sync dir command with the following args: -link " + cap + " -local-dir $LOCAL_DIR");
+            System.out.println("Run the sync dir command with the following args: -links " + cap + " -local-dirs $LOCAL_DIR");
             return true;
         } catch (Exception e) {
             throw new RuntimeException(e);

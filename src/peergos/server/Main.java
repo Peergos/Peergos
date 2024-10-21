@@ -424,9 +424,9 @@ public class Main extends Builder {
             "Sync a local folder to and from a Peergos folder",
             DirectorySync::syncDir,
             Stream.of(
-                    new Command.Arg("link", "Writable link (path only) to a Peergos directory", true),
+                    new Command.Arg("links", "Writable links (path only) to Peergos directories (comma separated)", true),
                     new Command.Arg("peergos-url", "Peergos service address", false, "https://peergos.net"),
-                    new Command.Arg("local-dir", "The directory to sync to and from Peergos", true)
+                    new Command.Arg("local-dirs", "The directories to sync to and from Peergos (comma separated)", true)
             ).collect(Collectors.toList())
     );
 
