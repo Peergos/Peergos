@@ -226,6 +226,8 @@ public class OpLog implements Cborable, Account, MutablePointers, ContentAddress
         public final Optional<ProgressConsumer<Long>> progressMonitor;
 
         public BlockWrite(PublicKeyHash writer, byte[] signature, byte[] block, boolean isRaw, Optional<ProgressConsumer<Long>> progressMonitor) {
+            if (block.length == 0)
+                throw new IllegalArgumentException("Empty byte array in block write!");
             this.writer = writer;
             this.signature = signature;
             this.block = block;
