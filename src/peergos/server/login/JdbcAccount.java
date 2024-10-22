@@ -31,6 +31,7 @@ public class JdbcAccount {
     private static final String GET = "SELECT * FROM login WHERE username = ? LIMIT 1;";
     private static final String CREATE_MFA = "INSERT INTO mfa (username, name, credid, type, enabled, created, value) VALUES(?, ?, ?, ?, ?, ?, ?);";
     private static final String UPDATE_MFA = "UPDATE mfa SET value=? WHERE username = ? AND credid = ?;";
+    private static final String GET_TYPE = "SELECT type FROM mfa WHERE username = ? AND credid = ?;";
     private static final String GET_AUTH = "SELECT value FROM mfa WHERE username = ? AND credid = ?;";
     private static final String CREATE_CHALLENGE = "INSERT INTO mfa_challenge (challenge, username) VALUES(?, ?);";
     private static final String UPDATE_CHALLENGE = "UPDATE mfa_challenge SET challenge=? WHERE username=?;";
@@ -125,6 +126,22 @@ public class JdbcAccount {
         }
     }
 
+    private MultiFactorAuthMethod.Type getType(String username, byte[] credentialId) {
+        try (Connection conn = getConnection();
+             PreparedStatement stmt = conn.prepareStatement(GET_TYPE)) {
+            stmt.setString(1, username);
+            stmt.setBytes(2, credentialId);
+            ResultSet resultSet = stmt.executeQuery();
+            if (resultSet.next()) {
+                return MultiFactorAuthMethod.Type.byValue(resultSet.getInt(1));
+            }
+            throw new IllegalStateException("Unknown credential id for user " + username);
+        } catch (Exception e) {
+            LOG.log(Level.WARNING, e.getMessage(), e);
+            throw new IllegalStateException(e);
+        }
+    }
+
     public CompletableFuture<Either<UserStaticData, MultiFactorAuthRequest>> getEntryData(String username,
                                                                                           PublicSigningKey authorisedReader,
                                                                                           Optional<MultiFactorAuthResponse> mfa) {
@@ -139,6 +156,9 @@ public class JdbcAccount {
         MultiFactorAuthResponse mfaAuth = mfa.get();
         byte[] credentialId = mfaAuth.credentialId;
         if (mfaAuth.response.isB()) {
+            MultiFactorAuthMethod.Type type = getType(username, credentialId);
+            if (type != MultiFactorAuthMethod.Type.WEBAUTHN)
+                throw new IllegalStateException("Not a webauthn credential!");
             Webauthn.Verifier verifier = Webauthn.Verifier.fromCbor(CborObject.fromByteArray(getMfa(username, credentialId)));
             byte[] challenge = getChallenge(username);
             byte[] authenticatorData = mfaAuth.response.b().authenticatorData;
