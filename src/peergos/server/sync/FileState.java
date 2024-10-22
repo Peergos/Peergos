@@ -38,4 +38,9 @@ class FileState {
     public int hashCode() {
         return Objects.hash(relPath, modificationTime, hash);
     }
+
+    @Override
+    public String toString() {
+        return relPath;
+    }
 }

@@ -161,9 +161,12 @@ public class DirectorySync {
 
         TreeSet<String> allPaths = new TreeSet<>(localState.filesByPath.keySet());
         allPaths.addAll(remoteState.filesByPath.keySet());
+        HashSet<String> doneFiles = new HashSet<>();
+
         for (String path : allPaths) {
-            syncFile(path, localFS, localDir, remoteFS, remoteDir, syncedVersions, localState, remoteState);
+            syncFile(path, localFS, localDir, remoteFS, remoteDir, syncedVersions, localState, remoteState, doneFiles);
         }
+
         // all files are in sync, now sync dirs
         HashSet<String> allDirs = new HashSet<>(remoteState.getDirs());
         allDirs.addAll(localState.getDirs());
@@ -204,7 +207,10 @@ public class DirectorySync {
     public static void syncFile(String relativePath,
                                 SyncFilesystem localFs, Path localDir,
                                 SyncFilesystem remoteFs, Path remoteDir,
-                                SyncState syncedVersions, RamTreeState localTree, RamTreeState remoteTree) throws IOException {
+                                SyncState syncedVersions, RamTreeState localTree, RamTreeState remoteTree,
+                                Set<String> doneFiles) throws IOException {
+        if (doneFiles.contains(relativePath))
+            return;
         FileState synced = syncedVersions.byPath(relativePath);
         FileState local = localTree.byPath(relativePath);
         FileState remote = remoteTree.byPath(relativePath);
@@ -219,6 +225,7 @@ public class DirectorySync {
                     log("Sync Local: Moving " + toMove.relPath + " ==> " + remote.relPath);
                     localFs.moveTo(localDir.resolve(toMove.relPath), localDir.resolve(remote.relPath));
                     syncedVersions.remove(toMove.relPath);
+                    doneFiles.add(toMove.relPath);
                 } else {
                     log("Sync Local: Copying " + remote.relPath);
                     copyFileDiffAndTruncate(remoteFs, remoteDir.resolve(remote.relPath), remote, localFs, localDir.resolve(remote.relPath), null);
@@ -234,6 +241,7 @@ public class DirectorySync {
                     log("Sync Remote: Moving " + toMove.relPath + " ==> " + local.relPath);
                     remoteFs.moveTo(remoteDir.resolve(toMove.relPath), remoteDir.resolve(Paths.get(local.relPath)));
                     syncedVersions.remove(toMove.relPath);
+                    doneFiles.add(toMove.relPath);
                 } else {
                     log("Sync Remote: Copying " + local.relPath);
                     copyFileDiffAndTruncate(localFs, localDir.resolve(local.relPath), local, remoteFs, remoteDir.resolve(local.relPath), null);

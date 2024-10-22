@@ -10,7 +10,7 @@ import java.nio.channels.FileChannel;
 import java.nio.file.Path;
 import java.util.function.Consumer;
 
-class LocalFileSystem implements SyncFilesystem {
+public class LocalFileSystem implements SyncFilesystem {
 
     @Override
     public boolean exists(Path p) {
