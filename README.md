@@ -342,25 +342,6 @@ Sub commands:
 	verify: Verify an identity link post from another service.
 ```
 
-FUSE (native folder mounting of Peergos)
---------
-You can mount your Peergos space with the following command
-```
->> java -Djava.library.path=native-lib -jar Peergos.jar fuse -peergos-url https://peergos.net -username $username -password $password
-```
-
-### MacOS FUSE prerequisites
-Install osxfuse with
-```
->> brew install --cask osxfuse
-```
-
-### Windows FUSE prerequisites
-Install winfsp with
-```
->> choco install winfsp
-```
-
 Mirror
 --------
 To mirror all of your data on another server first run the following command (on any instance):
@@ -411,6 +392,46 @@ demo@https://peergos.net > help
 Hint: The following command might be useful to do an initial upload for larger folders.
 ```shell
 put local_path remote_path 
+```
+
+SYNC
+-----
+There is a bi-directional sync client that will let you sync a native directory with a peergos directory (or several pairs of directories). To set this up first run:
+```
+>> java -jar Peergos.jar sync init -peergos-url https://peergos.net
+```
+And follow the prompts to enter your username, password and the peergos dir you want to sync with. This will output something like:
+>> Run the sync dir command with the following args: -links secret/z59vuwzfFDomTEuyeEw7rkofcd2vt5EnVffmAy5fnQe9V9MG36ZiBVY/3615659421#QUq6mf4gz8uk -local-dirs $LOCAL_DIR
+
+Then to run the sync client with:
+```
+>> java -jar Peergos.jar sync dir -peergos-url https://peergos.net -links secret/z59vuwzfFDomTEuyeEw7rkofcd2vt5EnVffmAy5fnQe9V9MG36ZiBVY/3615659421#QUq6mf4gz8uk -local-dirs /path/to/local/dir
+```
+
+FUSE (native folder mounting of Peergos)
+--------
+You can mount your Peergos space with the following command
+```
+>> java -Djava.library.path=native-lib -jar Peergos.jar fuse -peergos-url https://peergos.net -username $username -password $password
+```
+
+### MacOS FUSE prerequisites
+Install osxfuse with
+```
+>> brew install --cask osxfuse
+```
+
+### Windows FUSE prerequisites
+Install winfsp with
+```
+>> choco install winfsp
+```
+
+Webdav
+------
+You can run a local webdav bridge which allows you to access your Peergos files with any webdav compatible client. Run the following command (choose an arbitrary webdav username and password): 
+```
+>> java -Djava.library.path=native-lib -jar Peergos.jar webdav -peergos-url https://peergos.net -username $username -PEERGOS_PASSWORD $password -webdav.username $webdav-username -PEERGOS_WEBDAV_PASSWORD $webdav-password
 ```
 
 Development
