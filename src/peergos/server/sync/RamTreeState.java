@@ -7,12 +7,29 @@ import java.util.*;
 class RamTreeState implements SyncState {
     public final Map<String, FileState> filesByPath = new HashMap<>();
     public final Map<Blake3state, List<FileState>> fileByHash = new HashMap<>();
+    private final Set<String> dirs = new HashSet<>();
 
     @Override
     public void add(FileState fs) {
         filesByPath.put(fs.relPath, fs);
         fileByHash.putIfAbsent(fs.hash, new ArrayList<>());
         fileByHash.get(fs.hash).add(fs);
+    }
+
+    public void addDir(String path) {
+        dirs.add(path);
+    }
+
+    public void removeDir(String path) {
+        dirs.remove(path);
+    }
+
+    public boolean hasDir(String path) {
+        return dirs.contains(path);
+    }
+
+    public Set<String> getDirs() {
+        return dirs;
     }
 
     @Override

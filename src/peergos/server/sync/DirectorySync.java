@@ -164,6 +164,36 @@ public class DirectorySync {
         for (String path : allPaths) {
             syncFile(path, localFS, localDir, remoteFS, remoteDir, syncedVersions, localState, remoteState);
         }
+        // all files are in sync, now sync dirs
+        HashSet<String> allDirs = new HashSet<>(remoteState.getDirs());
+        allDirs.addAll(localState.getDirs());
+        allDirs.addAll(syncedVersions.getDirs());
+        for (String dirPath : allDirs) {
+            boolean hasLocal = localState.hasDir(dirPath);
+            boolean hasRemote = remoteState.hasDir(dirPath);
+            boolean hasSynced = syncedVersions.hasDir(dirPath);
+            if (hasLocal && hasRemote) {
+                syncedVersions.addDir(dirPath);
+            } else if (! hasLocal && ! hasRemote) {
+                syncedVersions.removeDir(dirPath);
+            } else if (hasLocal) {
+                if (hasSynced) { // delete
+                    log("Sync local: delete dir " + dirPath);
+                    localFS.delete(localDir.resolve(dirPath));
+                } else {
+                    log("Sync Remote: mkdir " + dirPath);
+                    remoteFS.mkdirs(remoteDir.resolve(dirPath));
+                }
+            } else {
+                if (hasSynced) { // delete
+                    log("Sync Remote: delete dir " + dirPath);
+                    remoteFS.delete(remoteDir.resolve(dirPath));
+                } else {
+                    log("Sync Local: mkdir " + dirPath);
+                    localFS.mkdirs(localDir.resolve(dirPath));
+                }
+            }
+        }
     }
 
     private static void log(String msg) {
@@ -367,6 +397,9 @@ public class DirectorySync {
                 FileState fstat = new FileState(relPath, modified, fs.size(f), b3);
                 res.add(fstat);
             }
-        }, d -> {});
+        }, d -> {
+            String relPath = d.toString().substring(dir.toString().length() + 1);
+            res.addDir(relPath);
+        });
     }
 }

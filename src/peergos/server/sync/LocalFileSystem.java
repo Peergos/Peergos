@@ -109,6 +109,7 @@ class LocalFileSystem implements SyncFilesystem {
             if (f.isFile()) {
                 file.accept(f.toPath());
             } else if (f.isDirectory()) {
+                dir.accept(start.resolve(f.getName()));
                 applyToSubtree(start.resolve(f.getName()), file, dir);
             }
         }

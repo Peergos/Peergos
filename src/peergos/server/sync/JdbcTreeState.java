@@ -10,15 +10,21 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.function.Supplier;
 
 public class JdbcTreeState implements SyncState {
     private static final String INSERT = "INSERT INTO syncstate (path, b3, modtime, size) VALUES(?, ?, ?, ?);";
+    private static final String INSERT_DIR_SUFFIX = "INTO syncdirs (path) VALUES(?);";
     private static final String UPDATE = "UPDATE syncstate SET b3=?, modtime=?, size=? WHERE path=?;";
     private static final String DELETE = "DELETE from syncstate WHERE path = ?;";
+    private static final String DELETE_DIR = "DELETE from syncdirs WHERE path = ?;";
     private static final String GET_BY_PATH = "SELECT path, b3, modtime, size FROM syncstate WHERE path = ?;";
     private static final String GET_BY_HASH = "SELECT path, b3, modtime, size FROM syncstate WHERE b3 = ?;";
+    private static final String GET_DIRS = "SELECT path FROM syncdirs;";
+    private static final String HAS_DIR = "SELECT path FROM syncdirs WHERE path=?;";
 
     private final Supplier<Connection> conn;
     private final SqlSupplier cmds = new SqliteCommands();
@@ -50,8 +56,58 @@ public class JdbcTreeState implements SyncState {
         try (Connection conn = getConnection()) {
             cmds.createTable("CREATE TABLE IF NOT EXISTS syncstate (path text primary key not null, b3 blob, modtime bigint not null, size bigint not null); " +
                     "CREATE INDEX IF NOT EXISTS sync_hash_index ON syncstate (b3);", conn);
+            cmds.createTable("CREATE TABLE IF NOT EXISTS syncdirs (path text primary key not null);", conn);
         } catch (Exception e) {
             throw new RuntimeException(e);
+        }
+    }
+
+    @Override
+    public void addDir(String relPath) {
+        try (Connection conn = getConnection();
+             PreparedStatement insert = conn.prepareStatement(cmds.insertOrIgnoreCommand("INSERT ", INSERT_DIR_SUFFIX))) {
+            insert.setString(1, relPath);
+            insert.executeUpdate();
+        } catch (SQLException sqe) {
+            throw new IllegalStateException(sqe);
+        }
+    }
+
+    @Override
+    public void removeDir(String path) {
+        try (Connection conn = getConnection();
+             PreparedStatement remove = conn.prepareStatement(DELETE_DIR)) {
+            remove.setString(1, path);
+            remove.executeUpdate();
+        } catch (SQLException sqe) {
+            throw new IllegalStateException(sqe);
+        }
+    }
+
+    @Override
+    public boolean hasDir(String path) {
+        try (Connection conn = getConnection();
+             PreparedStatement select = conn.prepareStatement(HAS_DIR)) {
+            select.setString(1, path);
+            ResultSet rs = select.executeQuery();
+            return (rs.next());
+        } catch (SQLException sqe) {
+            throw new IllegalStateException(sqe);
+        }
+    }
+
+    @Override
+    public Set<String> getDirs() {
+        try (Connection conn = getConnection();
+             PreparedStatement select = conn.prepareStatement(GET_DIRS)) {
+            ResultSet rs = select.executeQuery();
+            Set<String> res = new HashSet<>();
+            while (rs.next())
+                res.add(rs.getString(1));
+
+            return res;
+        } catch (SQLException sqe) {
+            throw new IllegalStateException(sqe);
         }
     }
 
