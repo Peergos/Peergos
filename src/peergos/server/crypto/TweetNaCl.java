@@ -105,6 +105,8 @@ public class TweetNaCl {
         return Arrays.copyOfRange(c, SECRETBOX_OVERHEAD_BYTES, c.length);
     }
 
+    private static final InvalidCipherTextException INVALID = new InvalidCipherTextException();
+
     public static byte[] secretbox_open(byte[] cipher, byte[] nonce, byte[] key) {
         byte[] c = new byte[SECRETBOX_OVERHEAD_BYTES + cipher.length];
         byte[] m = new byte[c.length];
@@ -113,14 +115,8 @@ public class TweetNaCl {
         boolean success = crypto_secretbox_open(m, c, c.length, nonce, key) == 0;
         boolean isValid = validCipher && success;
 
-        String exMsg = "Invalid encryption! ["+ cipher.length + "] = " +
-                ArrayOps.bytesToHex(Arrays.copyOfRange(cipher, 0, Math.min(cipher.length, 64))) + " ... " +
-                ArrayOps.bytesToHex(Arrays.copyOfRange(cipher, Math.max(0, cipher.length - 64), cipher.length));
-
-        InvalidCipherTextException ex =  new InvalidCipherTextException(exMsg);
-
         if (! isValid)
-            throw ex;
+            throw INVALID;
 
         return Arrays.copyOfRange(m, SECRETBOX_INTERNAL_OVERHEAD_BYTES, m.length);
     }
