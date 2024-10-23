@@ -98,10 +98,12 @@ public class FileBlockCache implements BlockCache {
                 if (! someParentFile.canWrite()) {
                     final boolean b = someParentFile.setWritable(true, false);
                     if (!b)
-                        throw new IllegalStateException("Could not make " + someParent.toString() + ", ancestor of " + parentDir.toString() + " writable");
+                        throw new IllegalStateException("Could not make " + someParent + ", ancestor of " + parentDir + " writable");
                 }
             }
-            Files.write(target, data, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.CREATE, StandardOpenOption.WRITE);
+            Path tmp = target.getParent().resolve(target.getFileName() + ".tmp");
+            Files.write(tmp, data, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.CREATE, StandardOpenOption.WRITE);
+            Files.move(tmp, target, StandardCopyOption.ATOMIC_MOVE);
             totalSize.addAndGet(data.length);
             if (lastSizeCheckTime < System.currentTimeMillis() - 600_000) {
                 lastSizeCheckTime = System.currentTimeMillis();
