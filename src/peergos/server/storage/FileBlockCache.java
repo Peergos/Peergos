@@ -85,6 +85,8 @@ public class FileBlockCache implements BlockCache {
         try {
             Path filePath = getFilePath(hash);
             Path target = root.resolve(filePath);
+            if (target.toFile().exists())
+                return Futures.of(true);
             Path parent = target.getParent();
             File parentDir = parent.toFile();
 
