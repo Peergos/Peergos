@@ -168,7 +168,8 @@ public class DirectorySync {
         }
 
         // all files are in sync, now sync dirs
-        HashSet<String> allDirs = new HashSet<>(remoteState.getDirs());
+        SortedSet<String> allDirs = new TreeSet<>();
+        allDirs.addAll(remoteState.getDirs());
         allDirs.addAll(localState.getDirs());
         allDirs.addAll(syncedVersions.getDirs());
         for (String dirPath : allDirs) {
