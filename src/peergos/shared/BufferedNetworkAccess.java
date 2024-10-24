@@ -177,10 +177,12 @@ public class BufferedNetworkAccess extends NetworkAccess {
                         .thenCompose(x -> blocks.closeTransaction(owner, tid))
                         .thenApply(x -> {
                             pointerBuffer.clear();
+                            blockBuffer.clear();
                             return commitWatcher.get();
                         })).thenApply(res::complete)
                 .exceptionally(t -> {
                     pointerBuffer.clear();
+                    blockBuffer.clear();
                     res.completeExceptionally(t);
                     return true;
                 });
