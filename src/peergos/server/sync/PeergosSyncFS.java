@@ -80,7 +80,10 @@ public class PeergosSyncFS implements SyncFilesystem {
 
     @Override
     public long getLastModified(Path p) {
-        LocalDateTime modified = context.getByPath(p).join().get().getFileProperties().modified;
+        Optional<FileWrapper> file = context.getByPath(p).join();
+        if (file.isEmpty())
+            throw new IllegalStateException("Couldn't retrieve file modification time for " + p);
+        LocalDateTime modified = file.get().getFileProperties().modified;
         return modified.toInstant(ZoneOffset.UTC).toEpochMilli() / 1000 * 1000;
     }
 
@@ -101,7 +104,10 @@ public class PeergosSyncFS implements SyncFilesystem {
 
     @Override
     public long size(Path p) {
-        return context.getByPath(p).join().get().getFileProperties().size;
+        Optional<FileWrapper> file = context.getByPath(p).join();
+        if (file.isEmpty())
+            throw new IllegalStateException("Couldn't retrieve file size for " + p);
+        return file.get().getFileProperties().size;
     }
 
     @Override
