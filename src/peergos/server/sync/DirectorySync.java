@@ -168,7 +168,8 @@ public class DirectorySync {
         }
 
         // all files are in sync, now sync dirs
-        SortedSet<String> allDirs = new TreeSet<>();
+        Comparator<String> longestFirst = (a, b) -> -a.compareTo(b);
+        SortedSet<String> allDirs = new TreeSet<>(longestFirst);
         allDirs.addAll(remoteState.getDirs());
         allDirs.addAll(localState.getDirs());
         allDirs.addAll(syncedVersions.getDirs());
