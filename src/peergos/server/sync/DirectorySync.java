@@ -50,6 +50,7 @@ public class DirectorySync {
         HttpSocialNetwork.disableLog();
         HttpSpaceUsage.disableLog();
         FileUploader.disableLog();
+        LazyInputStreamCombiner.disableLog();
     }
 
     public static boolean syncDir(Args args) {

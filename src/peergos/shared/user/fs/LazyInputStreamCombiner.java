@@ -10,9 +10,15 @@ import peergos.shared.util.*;
 import java.io.*;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import java.util.stream.*;
 
 public class LazyInputStreamCombiner implements AsyncReader {
+    private static final Logger LOG = Logger.getLogger(AsyncReader.class.getName());
+    public static void disableLog() {
+        LOG.setLevel(Level.OFF);
+    }
     private final WriterData version;
     private final NetworkAccess network;
     private final Crypto crypto;
@@ -102,7 +108,7 @@ public class LazyInputStreamCombiner implements AsyncReader {
         AbsoluteCapability nextChunkCap = bufferedChunks.get(lastBufferedChunkInSequence).right;
 
         long finalBufferedChunk = lastBufferedChunkInSequence;
-        System.out.println("Prefetching " + finalCount + " chunks, starting from chunk " + (lastBufferedChunkInSequence / Chunk.MAX_SIZE + 1));
+        LOG.info("Prefetching " + finalCount + " chunks, starting from chunk " + (lastBufferedChunkInSequence / Chunk.MAX_SIZE + 1));
         FileProperties.calculateSubsequentMapKeys(streamSecret.get(), nextChunkCap.getMapKey(), nextChunkCap.bat, finalCount - 1, crypto.hasher)
                 .thenAccept(mapKeys -> parallelChunksDownload(finalCount, finalBufferedChunk, mapKeys, nextChunkCap));
     }
@@ -118,7 +124,7 @@ public class LazyInputStreamCombiner implements AsyncReader {
             if (inProgress.containsKey(chunkOffset) || bufferedChunks.containsKey(chunkOffset))
                 continue;
 
-            System.out.println("Submitting chunk download " + (chunkOffset / Chunk.MAX_SIZE));
+            LOG.info("Submitting chunk download " + (chunkOffset / Chunk.MAX_SIZE));
             ForkJoinPool.commonPool().execute(() -> getChunk(nextChunkCap.withMapKey(mapKey.left, mapKey.right), chunkOffset, size));
         }
     }
@@ -132,7 +138,7 @@ public class LazyInputStreamCombiner implements AsyncReader {
             return pending;
         inProgress.put(chunkOffset, new CompletableFuture<>());
 
-        System.out.println("Downloading chunk " + (chunkOffset / Chunk.MAX_SIZE));
+        LOG.info("Downloading chunk " + (chunkOffset / Chunk.MAX_SIZE));
         return getSubsequentMetadata(cap, 0)
                 .thenCompose(access -> getChunk(access, cap.getMapKey(), cap.bat, len))
                 .thenApply(p -> {
@@ -141,7 +147,7 @@ public class LazyInputStreamCombiner implements AsyncReader {
                     CompletableFuture<Pair<byte[], AbsoluteCapability>> fut = inProgress.remove(chunkOffset);
                     if (fut != null)
                         fut.complete(res);
-                    System.out.println("Completed chunk " + (chunkOffset / Chunk.MAX_SIZE));
+                    LOG.info("Completed chunk " + (chunkOffset / Chunk.MAX_SIZE));
                     return res;
                 }).exceptionally(t -> {
                     CompletableFuture<Pair<byte[], AbsoluteCapability>> fut = inProgress.remove(chunkOffset);
