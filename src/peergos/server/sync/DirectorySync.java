@@ -153,6 +153,8 @@ public class DirectorySync {
     public static void syncDirs(SyncFilesystem localFS, Path localDir, SyncFilesystem remoteFS, Path remoteDir, SyncState syncedVersions) throws IOException {
         // first complete any failed in progress copy ops
         List<CopyOp> ops = syncedVersions.getInProgressCopies();
+        if (! ops.isEmpty())
+            log("Rerunning failed copy operations...");
         for (CopyOp op : ops) {
             applyCopyOp(op.isLocalTarget ? remoteFS : localFS, op.isLocalTarget ? localFS : remoteFS, op, syncedVersions);
         }
@@ -431,6 +433,7 @@ public class DirectorySync {
     }
 
     public static void applyCopyOp(SyncFilesystem srcFs, SyncFilesystem targetFs, CopyOp op, SyncState syncDb) throws IOException {
+        log("COPY from " + op.source + " to " + op.target + " range=[" + op.diffStart +", " + op.diffEnd+"]");
         targetFs.mkdirs(op.target.getParent());
         long priorSize = op.targetState != null ? op.targetState.size : 0;
         long size = op.sourceState.size;
@@ -442,7 +445,7 @@ public class DirectorySync {
             targetFs.setBytes(op.target, start, fin, end - start);
         }
         if (priorSize > size) {
-            LOG.info("Sync Truncating file " + op.sourceState.relPath + " from " + priorSize + " to " + size);
+            log("Sync Truncating file " + op.sourceState.relPath + " from " + priorSize + " to " + size);
             targetFs.truncate(op.target, size);
         }
 
