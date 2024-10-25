@@ -55,5 +55,7 @@ public class SyncTests {
         DirectorySync.syncDirs(localFs, base1, localFs, base2, syncedState);
         Assert.assertTrue(syncedState.byPath(filename) != null);
         Assert.assertTrue(syncedState.byPath("subdir/" + filename) == null);
+
+        Assert.assertTrue(syncedState.getInProgressCopies().isEmpty());
     }
 }

@@ -22,4 +22,10 @@ public interface SyncState {
     boolean hasDir(String path);
 
     Set<String> getDirs();
+
+    void startCopies(List<CopyOp> ops);
+
+    void finishCopies(List<CopyOp> ops);
+
+    List<CopyOp> getInProgressCopies();
 }

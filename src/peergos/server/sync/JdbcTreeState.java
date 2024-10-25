@@ -3,16 +3,17 @@ package peergos.server.sync;
 import peergos.server.sql.SqlSupplier;
 import peergos.server.sql.SqliteCommands;
 import peergos.server.util.Sqlite;
+import peergos.shared.cbor.CborObject;
+import peergos.shared.cbor.Cborable;
 import peergos.shared.user.fs.Blake3state;
+import peergos.shared.util.PathUtil;
 
+import java.nio.file.Paths;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
+import java.util.*;
 import java.util.function.Supplier;
 
 public class JdbcTreeState implements SyncState {
@@ -25,6 +26,9 @@ public class JdbcTreeState implements SyncState {
     private static final String GET_BY_HASH = "SELECT path, b3, modtime, size FROM syncstate WHERE b3 = ?;";
     private static final String GET_DIRS = "SELECT path FROM syncdirs;";
     private static final String HAS_DIR = "SELECT path FROM syncdirs WHERE path=?;";
+    private static final String INSERT_COPY_OP = "INSERT INTO copyops (islocal, source, target, start, end, sourcestate, targetstate) VALUES(?, ?, ?, ?, ?, ?, ?);";
+    private static final String REMOVE_COPY_OP = "DELETE FROM copyops WHERE source=? AND target=? AND start=? AND end=?";
+    private static final String LIST_COPY_OPS = "SELECT islocal, source, target, start, end, sourcestate, targetstate FROM copyops;";
 
     private final Supplier<Connection> conn;
     private final SqlSupplier cmds = new SqliteCommands();
@@ -57,6 +61,8 @@ public class JdbcTreeState implements SyncState {
             cmds.createTable("CREATE TABLE IF NOT EXISTS syncstate (path text primary key not null, b3 blob, modtime bigint not null, size bigint not null); " +
                     "CREATE INDEX IF NOT EXISTS sync_hash_index ON syncstate (b3);", conn);
             cmds.createTable("CREATE TABLE IF NOT EXISTS syncdirs (path text primary key not null);", conn);
+            cmds.createTable("CREATE TABLE IF NOT EXISTS copyops (islocal bool not null, source text not null, target text not null, " +
+                    "start "+cmds.sqlInteger()+" not null, end " + cmds.sqlInteger() + " not null, sourcestate blob, targetstate blob);", conn);
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
@@ -173,6 +179,61 @@ public class JdbcTreeState implements SyncState {
             List<FileState> res = new ArrayList<>();
             while (rs.next())
                 res.add(new FileState(rs.getString(1), rs.getLong(3), rs.getLong(4), new Blake3state(rs.getBytes(2))));
+
+            return res;
+        } catch (SQLException sqe) {
+            throw new IllegalStateException(sqe);
+        }
+    }
+
+    @Override
+    public void startCopies(List<CopyOp> ops) {
+        for (CopyOp op : ops) {
+            try (Connection conn = getConnection();
+                 PreparedStatement insert = conn.prepareStatement(INSERT_COPY_OP)) {
+                insert.setBoolean(1, op.isLocalTarget);
+                insert.setString(2, op.source.toString());
+                insert.setString(3, op.target.toString());
+                insert.setLong(4, op.diffStart);
+                insert.setLong(5, op.diffEnd);
+                insert.setBytes(6, Optional.ofNullable(op.sourceState).map(Cborable::serialize).orElse(null));
+                insert.setBytes(7, Optional.ofNullable(op.targetState).map(Cborable::serialize).orElse(null));
+                insert.executeUpdate();
+            } catch (SQLException sqe) {
+                throw new IllegalStateException(sqe);
+            }
+        }
+    }
+
+    @Override
+    public void finishCopies(List<CopyOp> ops) {
+        for (CopyOp op : ops) {
+            try (Connection conn = getConnection();
+                 PreparedStatement remove = conn.prepareStatement(REMOVE_COPY_OP)) {
+                remove.setString(1, op.source.toString());
+                remove.setString(2, op.target.toString());
+                remove.setLong(3, op.diffStart);
+                remove.setLong(4, op.diffEnd);
+                remove.executeUpdate();
+            } catch (SQLException sqe) {
+                throw new IllegalStateException(sqe);
+            }
+        }
+    }
+
+    @Override
+    public List<CopyOp> getInProgressCopies() {
+        try (Connection conn = getConnection();
+             PreparedStatement select = conn.prepareStatement(LIST_COPY_OPS)) {
+            ResultSet rs = select.executeQuery();
+            List<CopyOp> res = new ArrayList<>();
+            while (rs.next())
+                res.add(new CopyOp(rs.getBoolean(1), Paths.get(rs.getString(2)), Paths.get(rs.getString(3)),
+                        FileState.fromCbor(CborObject.fromByteArray(rs.getBytes(4))),
+                        FileState.fromCbor(CborObject.fromByteArray(rs.getBytes(5))),
+                        rs.getLong(6),
+                        rs.getLong(7)
+                ));
 
             return res;
         } catch (SQLException sqe) {

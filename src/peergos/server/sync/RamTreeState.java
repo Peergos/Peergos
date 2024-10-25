@@ -8,6 +8,7 @@ class RamTreeState implements SyncState {
     public final Map<String, FileState> filesByPath = new HashMap<>();
     public final Map<Blake3state, List<FileState>> fileByHash = new HashMap<>();
     private final Set<String> dirs = new HashSet<>();
+    private final List<CopyOp> inProgress = new ArrayList<>();
 
     @Override
     public void add(FileState fs) {
@@ -51,5 +52,20 @@ class RamTreeState implements SyncState {
 
     public List<FileState> byHash(Blake3state b3) {
         return fileByHash.getOrDefault(b3, Collections.emptyList());
+    }
+
+    @Override
+    public void startCopies(List<CopyOp> ops) {
+        inProgress.addAll(ops);
+    }
+
+    @Override
+    public void finishCopies(List<CopyOp> ops) {
+        inProgress.removeAll(ops);
+    }
+
+    @Override
+    public List<CopyOp> getInProgressCopies() {
+        return inProgress;
     }
 }
