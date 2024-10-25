@@ -229,10 +229,10 @@ public class JdbcTreeState implements SyncState {
             List<CopyOp> res = new ArrayList<>();
             while (rs.next())
                 res.add(new CopyOp(rs.getBoolean(1), Paths.get(rs.getString(2)), Paths.get(rs.getString(3)),
-                        FileState.fromCbor(CborObject.fromByteArray(rs.getBytes(4))),
-                        FileState.fromCbor(CborObject.fromByteArray(rs.getBytes(5))),
-                        rs.getLong(6),
-                        rs.getLong(7)
+                        Optional.ofNullable(rs.getBytes(6)).map(b -> FileState.fromCbor(CborObject.fromByteArray(b))).orElse(null),
+                        Optional.ofNullable(rs.getBytes(7)).map(b -> FileState.fromCbor(CborObject.fromByteArray(b))).orElse(null),
+                        rs.getLong(4),
+                        rs.getLong(5)
                 ));
 
             return res;

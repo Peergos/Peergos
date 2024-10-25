@@ -46,7 +46,7 @@ class FileState implements Cborable {
         String relPath = map.getString("r");
         long modTime = map.getLong("m");
         long size = map.getLong("s");
-        Blake3state hash = Blake3state.fromCbor(CborObject.fromByteArray(map.getByteArray("h")));
+        Blake3state hash = map.get("h", Blake3state::fromCbor);
         return new FileState(relPath, modTime, size, hash);
     }
 
