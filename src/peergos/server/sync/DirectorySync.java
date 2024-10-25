@@ -157,6 +157,7 @@ public class DirectorySync {
             log("Rerunning failed copy operations...");
         for (CopyOp op : ops) {
             applyCopyOp(op.isLocalTarget ? remoteFS : localFS, op.isLocalTarget ? localFS : remoteFS, op, syncedVersions);
+            syncedVersions.finishCopies(List.of(op));
         }
 
         RamTreeState localState = new RamTreeState();
