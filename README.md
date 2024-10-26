@@ -394,14 +394,16 @@ Hint: The following command might be useful to do an initial upload for larger f
 put local_path remote_path 
 ```
 
-SYNC
+Sync
 -----
 There is a bi-directional sync client that will let you sync a native directory with a peergos directory (or several pairs of directories). To set this up first run:
 ```
 >> java -jar Peergos.jar sync init -peergos-url https://peergos.net
 ```
 And follow the prompts to enter your username, password and the peergos dir you want to sync with. This will output something like:
+```
 >> Run the sync dir command with the following args: -links secret/z59vuwzfFDomTEuyeEw7rkofcd2vt5EnVffmAy5fnQe9V9MG36ZiBVY/3615659421#QUq6mf4gz8uk -local-dirs $LOCAL_DIR
+```
 
 Then to run the sync client with:
 ```
