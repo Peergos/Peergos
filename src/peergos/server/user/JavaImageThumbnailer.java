@@ -38,18 +38,24 @@ public class JavaImageThumbnailer implements ThumbnailGenerator.Generator {
             g.dispose();
 
             // try webp first
-            ByteArrayOutputStream webp = new ByteArrayOutputStream();
-            ImageIO.write(thumbnailImage, "webp", webp);
-            webp.close();
-            if (webp.size() > 0)
-                return Optional.of(new Thumbnail("image/webp", webp.toByteArray()));
+            try {
+                ByteArrayOutputStream webp = new ByteArrayOutputStream();
+                ImageIO.write(thumbnailImage, "webp", webp);
+                webp.close();
+                if (webp.size() > 0)
+                    return Optional.of(new Thumbnail("image/webp", webp.toByteArray()));
+            } catch (Exception e) {
+                // webp library doesn't support all OS+ARCH combos
+            }
 
             // try jpeg
-            ByteArrayOutputStream jpg = new ByteArrayOutputStream();
-            ImageIO.write(thumbnailImage, "JPG", jpg);
-            jpg.close();
-            if (jpg.size() > 0)
-                return Optional.of(new Thumbnail("image/jpeg", jpg.toByteArray()));
+            try {
+                ByteArrayOutputStream jpg = new ByteArrayOutputStream();
+                ImageIO.write(thumbnailImage, "JPG", jpg);
+                jpg.close();
+                if (jpg.size() > 0)
+                    return Optional.of(new Thumbnail("image/jpeg", jpg.toByteArray()));
+            } catch (Exception e) {}
 
             // try png
             ByteArrayOutputStream png = new ByteArrayOutputStream();
