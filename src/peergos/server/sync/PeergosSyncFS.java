@@ -124,6 +124,13 @@ public class PeergosSyncFS implements SyncFilesystem {
             parent.uploadOrReplaceFile(p.getFileName().toString(), data, size, context.network, context.crypto, x -> {}).join();
         } else {
             FileWrapper f = existing.get();
+            if (f.isDirty()) {
+                FileWrapper ff = f;
+                context.network.synchronizer.applyComplexUpdate(f.owner(), f.signingPair(), (v, c) -> ff.clean(v, c, context.network, context.crypto)
+                        .thenApply(r -> r.right)).join();
+                f = context.getByPath(p).join().get();
+            }
+
             long end = fileOffset + size;
             f.overwriteSectionJS(data, (int) (fileOffset >>> 32), (int) fileOffset, (int) (end >>> 32), (int) end, context.network, context.crypto, x -> {
             }).join();
