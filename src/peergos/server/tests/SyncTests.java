@@ -38,23 +38,24 @@ public class SyncTests {
         Files.move(base1.resolve(filename), subdir.resolve(filename));
         DirectorySync.syncDirs(localFs, base1, localFs, base2, syncedState);
         Assert.assertTrue(syncedState.byPath(filename) == null);
-        Assert.assertTrue(syncedState.byPath("subdir/" + filename) != null);
+        String fileRelPath = subdir.getFileName().resolve(filename).toString();
+        Assert.assertTrue(syncedState.byPath(fileRelPath) != null);
 
         // sync should be stable
         DirectorySync.syncDirs(localFs, base1, localFs, base2, syncedState);
         Assert.assertTrue(syncedState.byPath(filename) == null);
-        Assert.assertTrue(syncedState.byPath("subdir/" + filename) != null);
+        Assert.assertTrue(syncedState.byPath(fileRelPath) != null);
 
         // move the file back
         Files.move(subdir.resolve(filename), base1.resolve(filename));
         DirectorySync.syncDirs(localFs, base1, localFs, base2, syncedState);
         Assert.assertTrue(syncedState.byPath(filename) != null);
-        Assert.assertTrue(syncedState.byPath("subdir/" + filename) == null);
+        Assert.assertTrue(syncedState.byPath(fileRelPath) == null);
 
         // check stability
         DirectorySync.syncDirs(localFs, base1, localFs, base2, syncedState);
         Assert.assertTrue(syncedState.byPath(filename) != null);
-        Assert.assertTrue(syncedState.byPath("subdir/" + filename) == null);
+        Assert.assertTrue(syncedState.byPath(fileRelPath) == null);
 
         Assert.assertTrue(syncedState.getInProgressCopies().isEmpty());
     }
