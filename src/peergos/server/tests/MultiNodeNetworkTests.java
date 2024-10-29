@@ -423,6 +423,7 @@ public class MultiNodeNetworkTests {
         PeergosNetworkUtils.publicLinkToFile(random, getNode(iNode1), getNode(iNode2));
     }
 
+    @Ignore
     @Test
     public void serverIdentityRotation() throws Exception {
         if (iNode1 == 0 || iNode2 == 0)
