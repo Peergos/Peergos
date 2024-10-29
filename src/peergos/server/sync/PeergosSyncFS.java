@@ -132,8 +132,12 @@ public class PeergosSyncFS implements SyncFilesystem {
 
     @Override
     public AsyncReader getBytes(Path p, long fileOffset) throws IOException {
-        FileWrapper f = context.getByPath(p).join().get();
-        return f.getInputStream(context.network, context.crypto, x -> {}).join();
+        Optional<FileWrapper> file = context.getByPath(p).join();
+        if (file.isEmpty())
+            throw new IllegalStateException("Couldn't retrieve " + p);
+        FileWrapper f = file.get();
+        AsyncReader reader = f.getInputStream(context.network, context.crypto, x -> {}).join();
+        return reader.seek(fileOffset).join();
     }
 
     @Override

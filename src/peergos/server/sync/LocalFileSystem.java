@@ -1,16 +1,20 @@
 package peergos.server.sync;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import peergos.server.crypto.hash.Blake3;
 import peergos.server.simulation.FileAsyncReader;
 import peergos.shared.user.fs.AsyncReader;
 import peergos.shared.user.fs.Blake3state;
 
 import java.io.*;
-import java.nio.channels.FileChannel;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.function.Consumer;
 
 public class LocalFileSystem implements SyncFilesystem {
+
+    private static final Logger LOG = LoggerFactory.getLogger(LocalFileSystem.class);
 
     @Override
     public boolean exists(Path p) {
@@ -104,14 +108,18 @@ public class LocalFileSystem implements SyncFilesystem {
     }
 
     @Override
-    public void applyToSubtree(Path start, Consumer<Path> file, Consumer<Path> dir) {
-        for (File f : start.toFile().listFiles()) {
-            if (f.isFile()) {
-                file.accept(f.toPath());
-            } else if (f.isDirectory()) {
-                dir.accept(start.resolve(f.getName()));
-                applyToSubtree(start.resolve(f.getName()), file, dir);
+    public void applyToSubtree(Path start, Consumer<Path> file, Consumer<Path> dir) throws IOException {
+        Files.list(start).forEach(c -> {
+            if (Files.isRegularFile(c)) {
+                file.accept(c);
+            } else if (Files.isDirectory(c)) {
+                dir.accept(start.resolve(c.getFileName()));
+                try {
+                    applyToSubtree(start.resolve(c.getFileName()), file, dir);
+                } catch (IOException e) {
+                    throw new RuntimeException(e);
+                }
             }
-        }
+        });
     }
 }

@@ -33,5 +33,5 @@ interface SyncFilesystem {
 
     Blake3state hashFile(Path p);
 
-    void applyToSubtree(Path start, Consumer<Path> file, Consumer<Path> dir);
+    void applyToSubtree(Path start, Consumer<Path> file, Consumer<Path> dir) throws IOException;
 }
