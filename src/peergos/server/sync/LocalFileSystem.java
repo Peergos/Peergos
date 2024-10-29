@@ -92,8 +92,7 @@ public class LocalFileSystem implements SyncFilesystem {
         long size = p.toFile().length();
         Blake3 state = Blake3.initHash();
 
-        try {
-            FileInputStream fin = new FileInputStream(p.toFile());
+        try (FileInputStream fin = new FileInputStream(p.toFile())) {
             for (long i = 0; i < size; ) {
                 int read = fin.read(buf);
                 state.update(buf, 0, read);
