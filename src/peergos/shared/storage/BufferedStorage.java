@@ -34,7 +34,9 @@ public class BufferedStorage extends DelegatingStorage {
     }
 
     public boolean isEmpty() {
-        return storage.isEmpty();
+        synchronized (storage) {
+            return storage.isEmpty();
+        }
     }
 
     @Override
@@ -59,7 +61,7 @@ public class BufferedStorage extends DelegatingStorage {
                                                           byte[] champKey,
                                                           Optional<BatWithId> bat,
                                                           Optional<Cid> committedRoot) {
-        if (storage.isEmpty())
+        if (isEmpty())
             return target.getChampLookup(owner, root, champKey, bat, committedRoot);
         // If we are in a write transaction try to perform a local champ lookup from the buffer,
         // falling back to a direct champ get
@@ -85,14 +87,18 @@ public class BufferedStorage extends DelegatingStorage {
 
             @Override
             public CompletableFuture<Optional<byte[]>> get(Cid hash) {
-                return Futures.of(Optional.ofNullable(storage.get(hash))
-                        .map(b -> b.block)
-                        .or(() -> Optional.ofNullable(localCache.get(hash))));
+                synchronized (storage) {
+                    return Futures.of(Optional.ofNullable(storage.get(hash))
+                            .map(b -> b.block)
+                            .or(() -> Optional.ofNullable(localCache.get(hash))));
+                }
             }
 
             @Override
             public boolean hasBlock(Cid hash) {
-                return storage.containsKey(hash) || localCache.containsKey(hash);
+                synchronized (storage) {
+                    return storage.containsKey(hash) || localCache.containsKey(hash);
+                }
             }
 
             @Override
@@ -147,7 +153,9 @@ public class BufferedStorage extends DelegatingStorage {
     }
 
     private synchronized Cid put(Cid cid, OpLog.BlockWrite block) {
-        storage.put(cid, block);
+        synchronized (storage) {
+            storage.put(cid, block);
+        }
         return cid;
     }
 
@@ -162,15 +170,17 @@ public class BufferedStorage extends DelegatingStorage {
     }
 
     @Override
-    public synchronized CompletableFuture<Optional<byte[]>> getRaw(PublicKeyHash owner, Cid hash, Optional<BatWithId> bat) {
-        OpLog.BlockWrite local = storage.get(hash);
-        if (local != null)
-            return Futures.of(Optional.of(local.block));
+    public CompletableFuture<Optional<byte[]>> getRaw(PublicKeyHash owner, Cid hash, Optional<BatWithId> bat) {
+        synchronized (storage) {
+            OpLog.BlockWrite local = storage.get(hash);
+            if (local != null)
+                return Futures.of(Optional.of(local.block));
+        }
         return target.getRaw(owner, hash, bat);
     }
 
     @Override
-    public synchronized CompletableFuture<Optional<CborObject>> get(PublicKeyHash owner, Cid hash, Optional<BatWithId> bat) {
+    public CompletableFuture<Optional<CborObject>> get(PublicKeyHash owner, Cid hash, Optional<BatWithId> bat) {
         return getRaw(owner, hash, bat)
                 .thenApply(opt -> opt.map(CborObject::fromByteArray));
     }
@@ -187,33 +197,37 @@ public class BufferedStorage extends DelegatingStorage {
     }
 
     public CompletableFuture<Boolean> signBlocks(Map<PublicKeyHash, SigningPrivateKeyAndPublicHash> writers) {
-        return Futures.combineAll(storage.entrySet().stream()
-                        .map(e -> {
-                            OpLog.BlockWrite block = e.getValue();
-                            return (block.signature.length > 0 ?
-                                    Futures.of(block.signature) :
-                                    writers.get(block.writer).secret.signMessage(e.getKey().getHash()))
-                                    .thenApply(sig -> new Pair<>(e.getKey(), new OpLog.BlockWrite(block.writer,
-                                            sig,
-                                            block.block, block.isRaw, block.progressMonitor)));
-                        }).collect(Collectors.toList()))
-                .thenApply(pairs -> pairs.stream()
-                        .collect(Collectors.toMap(p -> p.left, p -> p.right)))
-                .thenAccept(all -> storage.putAll(all))
-                .thenApply(x -> true);
+        synchronized (storage) {
+            return Futures.combineAll(storage.entrySet().stream()
+                            .map(e -> {
+                                OpLog.BlockWrite block = e.getValue();
+                                return (block.signature.length > 0 ?
+                                        Futures.of(block.signature) :
+                                        writers.get(block.writer).secret.signMessage(e.getKey().getHash()))
+                                        .thenApply(sig -> new Pair<>(e.getKey(), new OpLog.BlockWrite(block.writer,
+                                                sig,
+                                                block.block, block.isRaw, block.progressMonitor)));
+                            }).collect(Collectors.toList()))
+                    .thenApply(pairs -> pairs.stream()
+                            .collect(Collectors.toMap(p -> p.left, p -> p.right)))
+                    .thenAccept(all -> storage.putAll(all))
+                    .thenApply(x -> true);
+        }
     }
 
-    public synchronized void gc(List<Cid> roots) {
-        List<Cid> all = new ArrayList<>(storage.keySet());
-        List<Boolean> reachable = new ArrayList<>();
-        for (int i=0; i < all.size(); i++)
-            reachable.add(false);
-        for (Cid root : roots) {
-            markReachable(root, reachable, all, storage);
-        }
-        for (int i=0; i < all.size(); i++) {
-            if (! reachable.get(i))
-                storage.remove(all.get(i));
+    public void gc(List<Cid> roots) {
+        synchronized (storage) {
+            List<Cid> all = new ArrayList<>(storage.keySet());
+            List<Boolean> reachable = new ArrayList<>();
+            for (int i = 0; i < all.size(); i++)
+                reachable.add(false);
+            for (Cid root : roots) {
+                markReachable(root, reachable, all, storage);
+            }
+            for (int i = 0; i < all.size(); i++) {
+                if (!reachable.get(i))
+                    storage.remove(all.get(i));
+            }
         }
     }
 
@@ -232,11 +246,13 @@ public class BufferedStorage extends DelegatingStorage {
         }
     }
 
-    public synchronized List<Pair<BufferedPointers.WriterUpdate, Optional<CommittedWriterData>>> getAllWriterData(List<BufferedPointers.WriterUpdate> updates) {
-        return updates.stream()
-                .map(u -> new Pair<>(u, u.currentHash.map(h -> new CommittedWriterData(u.currentHash,
-                        WriterData.fromCbor(CborObject.fromByteArray(storage.get(h).block)), u.currentSequence))))
-                .collect(Collectors.toList());
+    public List<Pair<BufferedPointers.WriterUpdate, Optional<CommittedWriterData>>> getAllWriterData(List<BufferedPointers.WriterUpdate> updates) {
+        synchronized (storage) {
+            return updates.stream()
+                    .map(u -> new Pair<>(u, u.currentHash.map(h -> new CommittedWriterData(u.currentHash,
+                            WriterData.fromCbor(CborObject.fromByteArray(storage.get(h).block)), u.currentSequence))))
+                    .collect(Collectors.toList());
+        }
     }
 
     /** Commit the blocks for a given writer
@@ -246,19 +262,21 @@ public class BufferedStorage extends DelegatingStorage {
      * @param tid
      * @return
      */
-    public synchronized CompletableFuture<Boolean> commit(PublicKeyHash owner,
+    public CompletableFuture<Boolean> commit(PublicKeyHash owner,
                                                           PublicKeyHash writer,
                                                           TransactionId tid) {
         // write blocks in batches of up to 50 all in 1 transaction
         List<OpLog.BlockWrite> forWriter = new ArrayList<>();
         Set<Cid> toRemove = new HashSet<>();
-        for (Map.Entry<Cid, OpLog.BlockWrite> e : storage.entrySet()) {
-            if (! Objects.equals(e.getValue().writer, writer))
-                continue;
-            forWriter.add(e.getValue());
-            toRemove.add(e.getKey());
+        synchronized (storage) {
+            for (Map.Entry<Cid, OpLog.BlockWrite> e : storage.entrySet()) {
+                if (!Objects.equals(e.getValue().writer, writer))
+                    continue;
+                forWriter.add(e.getValue());
+                toRemove.add(e.getKey());
+            }
+            toRemove.forEach(storage::remove);
         }
-        toRemove.forEach(storage::remove);
 
         int maxBlocksPerBatch = ContentAddressedStorage.MAX_BLOCK_AUTHS;
         List<List<OpLog.BlockWrite>> cborBatches = new ArrayList<>();
@@ -321,15 +339,19 @@ public class BufferedStorage extends DelegatingStorage {
         storage.clear();
     }
 
-    public synchronized int size() {
-        return storage.size();
+    public int size() {
+        synchronized (storage) {
+            return storage.size();
+        }
     }
 
     @Override
-    public synchronized CompletableFuture<Optional<Integer>> getSize(Multihash block) {
-        if (! storage.containsKey(block))
-            return target.getSize(block);
-        return CompletableFuture.completedFuture(Optional.of(storage.get(block).block.length));
+    public CompletableFuture<Optional<Integer>> getSize(Multihash block) {
+        synchronized (storage) {
+            if (!storage.containsKey(block))
+                return target.getSize(block);
+            return CompletableFuture.completedFuture(Optional.of(storage.get(block).block.length));
+        }
     }
 
     public CompletableFuture<Cid> hashToCid(byte[] input, boolean isRaw) {
@@ -337,6 +359,8 @@ public class BufferedStorage extends DelegatingStorage {
     }
 
     public int totalSize() {
-        return storage.values().stream().mapToInt(a -> a.block.length).sum();
+        synchronized (storage) {
+            return storage.values().stream().mapToInt(a -> a.block.length).sum();
+        }
     }
 }
