@@ -454,7 +454,7 @@ public class DirectorySync {
         targetFs.setHash(op.target, op.sourceState.hash);
     }
 
-    public static void buildDirState(SyncFilesystem fs, Path dir, RamTreeState res, SyncState synced) {
+    public static void buildDirState(SyncFilesystem fs, Path dir, RamTreeState res, SyncState synced) throws IOException {
         if (! fs.exists(dir))
             throw new IllegalStateException("Dir does not exist: " + dir);
         fs.applyToSubtree(dir, f -> {
