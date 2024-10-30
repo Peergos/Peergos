@@ -46,8 +46,9 @@ public class JavaImageThumbnailer implements ThumbnailGenerator.Generator {
                 webp.close();
                 if (webp.size() > 0)
                     return Optional.of(new Thumbnail("image/webp", webp.toByteArray()));
-            } catch (Exception e) {
+            } catch (Throwable t) {
                 // webp library doesn't support all OS+ARCH combos
+                t.printStackTrace();
             }
 
             // try jpeg
@@ -64,8 +65,9 @@ public class JavaImageThumbnailer implements ThumbnailGenerator.Generator {
             ImageIO.write(thumbnailImage, "png", png);
             png.close();
             return Optional.of(new Thumbnail("image/png", png.toByteArray()));
-        } catch (Exception ioe) {
-            Logging.LOG().log(Level.WARNING, ioe.getMessage(), ioe);
+        } catch (Throwable t) {
+            t.printStackTrace();
+            Logging.LOG().log(Level.WARNING, t.getMessage(), t);
         }
         return Optional.empty();
     }
