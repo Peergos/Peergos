@@ -569,7 +569,8 @@ public class NetworkAccess {
                                 return dhtClient.get(cap.owner, (Cid) btreeValue.get(), bat)
                                         .thenApply(value -> value.map(cbor -> CryptreeNode.fromCbor(cbor, cap.rBaseKey, btreeValue.get())))
                                         .thenApply(res -> {
-                                            cache.put(cacheKey, res);
+                                            if (res.isPresent())
+                                                cache.put(cacheKey, res);
                                             return res;
                                         });
                             }
