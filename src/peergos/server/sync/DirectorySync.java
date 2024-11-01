@@ -31,6 +31,8 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ForkJoinPool;
+import java.util.concurrent.ForkJoinTask;
 import java.util.function.Supplier;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -172,8 +174,29 @@ public class DirectorySync {
         allPaths.addAll(remoteState.filesByPath.keySet());
         HashSet<String> doneFiles = new HashSet<>();
 
-        for (String path : allPaths) {
-            syncFile(path, localFS, localDir, remoteFS, remoteDir, syncedVersions, localState, remoteState, doneFiles);
+        List<ForkJoinTask<?>> downloads = new ArrayList<>();
+
+        for (String relativePath : allPaths) {
+            if (doneFiles.contains(relativePath))
+                continue;
+            FileState synced = syncedVersions.byPath(relativePath);
+            FileState local = localState.byPath(relativePath);
+            FileState remote = remoteState.byPath(relativePath);
+            boolean isLocalCopy = synced == null && local == null;
+            if (isLocalCopy)
+                downloads.add(ForkJoinPool.commonPool().submit(() -> {
+                    try {
+                        syncFile(synced, local, remote, localFS, localDir, remoteFS, remoteDir, syncedVersions, localState, remoteState, doneFiles);
+                    } catch (IOException e) {
+                        throw new RuntimeException(e);
+                    }
+                }));
+            else
+                syncFile(synced, local, remote, localFS, localDir, remoteFS, remoteDir, syncedVersions, localState, remoteState, doneFiles);
+        }
+
+        for (ForkJoinTask<?> download : downloads) {
+            download.join();
         }
 
         // all files are in sync, now sync dirs
@@ -215,16 +238,12 @@ public class DirectorySync {
         LOG.info(msg);
     }
 
-    public static void syncFile(String relativePath,
+    public static void syncFile(FileState synced, FileState local, FileState remote,
                                 SyncFilesystem localFs, Path localDir,
                                 SyncFilesystem remoteFs, Path remoteDir,
                                 SyncState syncedVersions, RamTreeState localTree, RamTreeState remoteTree,
                                 Set<String> doneFiles) throws IOException {
-        if (doneFiles.contains(relativePath))
-            return;
-        FileState synced = syncedVersions.byPath(relativePath);
-        FileState local = localTree.byPath(relativePath);
-        FileState remote = remoteTree.byPath(relativePath);
+
         if (synced == null) {
             if (local == null) { // remotely added or renamed
                 List<FileState> byHash = localTree.byHash(remote.hash);
