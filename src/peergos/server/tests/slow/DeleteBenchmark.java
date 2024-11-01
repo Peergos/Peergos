@@ -67,7 +67,7 @@ public class DeleteBenchmark {
         random.nextBytes(data);
 
         List<FileWrapper.FileUploadProperties> files = names.stream()
-                .map(n -> new FileWrapper.FileUploadProperties(n, AsyncReader.build(data), 0, data.length, false, false, x -> {}))
+                .map(n -> new FileWrapper.FileUploadProperties(n, () -> AsyncReader.build(data), 0, data.length, false, false, x -> {}))
                 .collect(Collectors.toList());
         String dirName = "folder";
         userRoot.uploadSubtree(Stream.of(new FileWrapper.FolderUploadProperties(Arrays.asList(dirName), files)),
@@ -93,7 +93,7 @@ public class DeleteBenchmark {
         random.nextBytes(data);
 
         List<FileWrapper.FileUploadProperties> files = names.stream()
-                .map(n -> new FileWrapper.FileUploadProperties(n, AsyncReader.build(data), 0, data.length, false, false, x -> {}))
+                .map(n -> new FileWrapper.FileUploadProperties(n, () -> AsyncReader.build(data), 0, data.length, false, false, x -> {}))
                 .collect(Collectors.toList());
         String dirName = "folder";
         userRoot.uploadSubtree(Stream.of(new FileWrapper.FolderUploadProperties(Arrays.asList(dirName), files)),

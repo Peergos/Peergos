@@ -262,10 +262,14 @@ public class CLI implements Runnable {
                                                                         AtomicLong fileCount,
                                                                         ProgressCreator progressCreator) {
         try {
-            List<FileWrapper.FileUploadProperties> files = Files.list(localDir).filter(p -> p.toFile().isFile())
-                    .map(p -> new FileWrapper.FileUploadProperties(p.getFileName().toString(), reader(p.toFile()),
-                            (int) (p.toFile().length() >> 32), (int) p.toFile().length(), skipExisting, true,
-                            progressCreator.create(remoteRelativeDir, p.getFileName().toString(), Math.max(4096, p.toFile().length()))))
+            List<FileWrapper.FileUploadProperties> files = Files.list(localDir)
+                    .filter(p -> p.toFile().isFile())
+                    .map(p -> {
+                        long fileSize = p.toFile().length();
+                        return new FileWrapper.FileUploadProperties(p.getFileName().toString(), () -> reader(p.toFile()),
+                                (int) (fileSize >> 32), (int) fileSize, skipExisting, true,
+                                progressCreator.create(remoteRelativeDir, p.getFileName().toString(), Math.max(4096, fileSize)));
+                    })
                     .collect(Collectors.toList());
             fileCount.addAndGet(files.size());
             FileWrapper.FolderUploadProperties dir = new FileWrapper.FolderUploadProperties(convert(remoteRelativeDir), files);

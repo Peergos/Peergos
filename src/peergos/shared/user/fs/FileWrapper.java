@@ -576,7 +576,8 @@ public class FileWrapper {
                 }
         })).thenCompose(finished -> getUpdated(finished, network));
     }
-        @JsMethod
+
+    @JsMethod
     public CompletableFuture<FileWrapper> uploadFileJS(String filename,
                                                        AsyncReader fileData,
                                                        int lengthHi,
@@ -588,7 +589,7 @@ public class FileWrapper {
                                                        ProgressConsumer<Long> monitor,
                                                        TransactionService transactions,
                                                        Function<FileUploadTransaction, CompletableFuture<Boolean>> resumeFile) {
-        FileUploadProperties fileProps = new FileUploadProperties(filename, fileData, lengthHi, lengthLow, false, overwriteExisting, monitor);
+        FileUploadProperties fileProps = new FileUploadProperties(filename, () -> fileData, lengthHi, lengthLow, false, overwriteExisting, monitor);
         FolderUploadProperties currentFolder = new FolderUploadProperties(Collections.emptyList(), Collections.singletonList(fileProps));
         return uploadSubtree(Stream.of(currentFolder), mirrorBat, network, crypto, transactions, resumeFile, () -> true);
     }
@@ -759,7 +760,7 @@ public class FileWrapper {
 
     public static final class FileUploadProperties {
         public final String filename;
-        public final AsyncReader fileData;
+        public final Supplier<AsyncReader> fileData;
         public final long length;
         public final boolean skipExisting;
         public final boolean overwriteExisting;
@@ -767,7 +768,7 @@ public class FileWrapper {
 
         @JsConstructor
         public FileUploadProperties(String filename,
-                                    AsyncReader fileData,
+                                    Supplier<AsyncReader> fileData,
                                     int lengthHi,
                                     int lengthLow,
                                     boolean skipExisting,
@@ -847,13 +848,15 @@ public class FileWrapper {
                         (p, f) -> {
                             // don't bother with file upload transactions as single chunk uploads are atomic anyway
                             // (nothing to resume or cleanup later in case of failure)
+                            AsyncReader fileData = f.fileData.get();
                             if (f.length <= Chunk.MAX_SIZE || transactions == null) // small files or writable public links
-                                return parent.uploadFileSection(p.left, c, f.filename, f.fileData, Optional.empty(), false, 0, f.length,
+                                return parent.uploadFileSection(p.left, c, f.filename, fileData, Optional.empty(), false, 0, f.length,
                                                 Optional.empty(), Optional.empty(), Optional.empty(), f.skipExisting,
                                                 f.overwriteExisting, true, network.disableCommits(), crypto, f.monitor,
                                                 crypto.random.randomBytes(32), Optional.empty(), Optional.of(Bat.random(crypto.random)), mirrorBat)
                                         .thenApply(pair -> new Pair<>(pair.left, Stream.concat(p.right.stream(), pair.right.stream()).collect(Collectors.toList())))
                                         .thenCompose(r -> {
+                                            fileData.close();
                                             if (! network.isFull())
                                                 return Futures.of(r);
                                             return atomicallyClearTransactionsAndAddToParent(Collections.emptyList(), r.right, parent, transactions, r.left, c, commitWatcher, network, crypto);
@@ -862,7 +865,7 @@ public class FileWrapper {
                             network.enableCommits();
                             List<FileUploadTransaction> toClose = new ArrayList<>();
                             LocalDateTime now = LocalDateTime.now();
-                            return calculateMimeType(f.fileData, f.length, f.filename).thenCompose(mimeType -> {
+                            return calculateMimeType(fileData, f.length, f.filename).thenCompose(mimeType -> {
                                 FileProperties props = new FileProperties(f.filename,
                                         false, false, mimeType, f.length,
                                         now, now, false, Optional.empty(), Optional.of(crypto.random.randomBytes(32)), Optional.empty());
@@ -877,8 +880,8 @@ public class FileWrapper {
                                                             .thenCompose(resume -> {
                                                                 if (resume) {
                                                                     toClose.add(r.b());
-                                                                    return parent.resumeUpload(r.b(), f.fileData, f.monitor, p.left, c, network, crypto)
-                                                                            .thenCompose(res -> f.fileData.reset().thenCompose(resetAgain ->
+                                                                    return parent.resumeUpload(r.b(), fileData, f.monitor, p.left, c, network, crypto)
+                                                                            .thenCompose(res -> fileData.reset().thenCompose(resetAgain ->
                                                                                             parent.generateThumbnailAndUpdate(res.left, c, r.b().writeCap(), f.filename, resetAgain,
                                                                                                     network, false, r.b().props.mimeType,
                                                                                                     f.length, r.b().startTime(), r.b().startTime(), Optional.of(r.b().streamSecret()), f.monitor))
@@ -890,7 +893,7 @@ public class FileWrapper {
                                                                             if (r2.isB())
                                                                                 throw new IllegalStateException("Error uploading file - concurrent upload of same file?");
                                                                             toClose.add(txn);
-                                                                            return f.fileData.reset().thenCompose(reset -> parent.uploadFileSection(r2.a(), c, f.filename, reset, Optional.empty(),
+                                                                            return fileData.reset().thenCompose(reset -> parent.uploadFileSection(r2.a(), c, f.filename, reset, Optional.empty(),
                                                                                     false, 0, f.length, Optional.of(txn.baseKey), Optional.of(txn.dataKey), Optional.of(txn.writeKey),
                                                                                     f.skipExisting, f.overwriteExisting, true,
                                                                                     network, crypto, f.monitor, txn.firstMapKey(),
@@ -898,12 +901,16 @@ public class FileWrapper {
                                                                         });
                                                             }).thenApply(pair -> new Pair<>(pair.left, Stream.concat(p.right.stream(), pair.right.stream()).collect(Collectors.toList())));
                                                 toClose.add(txn);
-                                                return f.fileData.reset().thenCompose(reset -> parent.uploadFileSection(r.a(), c, f.filename, f.fileData, Optional.empty(), false,
+                                                return fileData.reset().thenCompose(reset -> parent.uploadFileSection(r.a(), c, f.filename, fileData, Optional.empty(), false,
                                                                 0, f.length, Optional.of(txn.baseKey), Optional.of(txn.dataKey), Optional.of(txn.writeKey),f.skipExisting, f.overwriteExisting, true,
                                                                 network, crypto, f.monitor, txn.firstMapKey(), Optional.of(txn.streamSecret()), txn.firstBat, mirrorBat))
                                                         .thenApply(pair -> new Pair<>(pair.left, Stream.concat(p.right.stream(), pair.right.stream()).collect(Collectors.toList())));
                                             })
-                            ).thenCompose(r -> atomicallyClearTransactionsAndAddToParent(toClose, r.right, parent, transactions, r.left, c, commitWatcher, network, crypto));
+                            ).thenCompose(r -> atomicallyClearTransactionsAndAddToParent(toClose, r.right, parent, transactions, r.left, c, commitWatcher, network, crypto))
+                                    .thenApply(res -> {
+                                        fileData.close();
+                                        return res;
+                                    });
                         },
                         (a, b) -> new Pair<>(b.left, Stream.concat(a.right.stream(), b.right.stream()).collect(Collectors.toList())))
                 .thenCompose(r -> atomicallyClearTransactionsAndAddToParent(Collections.emptyList(), r.right, parent, transactions, r.left, c, commitWatcher, network, crypto))

@@ -196,7 +196,7 @@ public class RamUserTests extends UserTests {
         FileWrapper txnDir = context.getByPath(Paths.get(username, UserContext.TRANSACTIONS_DIR_NAME)).join().get();
         TransactionService txns = new NonClosingTransactionService(network, crypto, txnDir);
         try {
-            FileWrapper.FileUploadProperties fileUpload = new FileWrapper.FileUploadProperties("somefile", thrower, 0, size, false, false, x -> {});
+            FileWrapper.FileUploadProperties fileUpload = new FileWrapper.FileUploadProperties("somefile", () -> thrower, 0, size, false, false, x -> {});
             FileWrapper.FolderUploadProperties dirUploads = new FileWrapper.FolderUploadProperties(Arrays.asList(username), Arrays.asList(fileUpload));
             userRoot.uploadSubtree(Stream.of(dirUploads), context.mirrorBatId(), network, crypto, txns, f -> Futures.of(false), () -> true).join();
         } catch (Exception e) {}
@@ -241,7 +241,7 @@ public class RamUserTests extends UserTests {
         FileWrapper txnDir = context.getByPath(Paths.get(username, UserContext.TRANSACTIONS_DIR_NAME)).join().get();
         TransactionService txns = new NonClosingTransactionService(network, crypto, txnDir);
         try {
-            FileWrapper.FileUploadProperties fileUpload = new FileWrapper.FileUploadProperties("somefile", thrower, 0, size, false, false, x -> {});
+            FileWrapper.FileUploadProperties fileUpload = new FileWrapper.FileUploadProperties("somefile", () -> thrower, 0, size, false, false, x -> {});
             FileWrapper.FolderUploadProperties dirUploads = new FileWrapper.FolderUploadProperties(Arrays.asList(subdir), Arrays.asList(fileUpload));
             userRoot.uploadSubtree(Stream.of(dirUploads), context.mirrorBatId(), network, crypto, txns, f -> Futures.of(false), () -> true).join();
         } catch (Exception e) {}
