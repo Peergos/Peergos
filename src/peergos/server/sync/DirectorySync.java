@@ -172,7 +172,7 @@ public class DirectorySync {
 
         TreeSet<String> allPaths = new TreeSet<>(localState.filesByPath.keySet());
         allPaths.addAll(remoteState.filesByPath.keySet());
-        HashSet<String> doneFiles = new HashSet<>();
+        Set<String> doneFiles = Collections.synchronizedSet(new HashSet<>());
 
         List<ForkJoinTask<?>> downloads = new ArrayList<>();
 
