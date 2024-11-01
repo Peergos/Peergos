@@ -263,7 +263,7 @@ public class CLI implements Runnable {
                                                                         ProgressCreator progressCreator) {
         try {
             List<FileWrapper.FileUploadProperties> files = Files.list(localDir).filter(p -> p.toFile().isFile())
-                    .map(p -> new FileWrapper.FileUploadProperties(p.getFileName().toString(), reader(p.toFile()),
+                    .map(p -> new FileWrapper.FileUploadProperties(p.getFileName().toString(), () -> reader(p.toFile()),
                             (int) (p.toFile().length() >> 32), (int) p.toFile().length(), skipExisting, true,
                             progressCreator.create(remoteRelativeDir, p.getFileName().toString(), Math.max(4096, p.toFile().length()))))
                     .collect(Collectors.toList());

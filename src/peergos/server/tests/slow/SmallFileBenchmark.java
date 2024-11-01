@@ -72,7 +72,7 @@ public class SmallFileBenchmark {
             progressReceived.add(num);
         };
         List<FileWrapper.FileUploadProperties> files = names.stream()
-                .map(n -> new FileWrapper.FileUploadProperties(n, AsyncReader.build(data), 0, data.length, false, false, progressCounter))
+                .map(n -> new FileWrapper.FileUploadProperties(n, () -> AsyncReader.build(data), 0, data.length, false, false, progressCounter))
                 .collect(Collectors.toList());
         userRoot.uploadSubtree(Stream.of(new FileWrapper.FolderUploadProperties(Collections.emptyList(), files)),
                 userRoot.mirrorBatId(), context.network, crypto, context.getTransactionService(), f -> Futures.of(false), () -> true).join();
