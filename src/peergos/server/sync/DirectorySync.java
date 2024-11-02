@@ -33,6 +33,8 @@ import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.ForkJoinTask;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Supplier;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -175,6 +177,7 @@ public class DirectorySync {
         Set<String> doneFiles = Collections.synchronizedSet(new HashSet<>());
 
         List<ForkJoinTask<?>> downloads = new ArrayList<>();
+        AtomicInteger maxDownloadConcurrency = new AtomicInteger(32);
 
         for (String relativePath : allPaths) {
             if (doneFiles.contains(relativePath))
@@ -183,15 +186,21 @@ public class DirectorySync {
             FileState local = localState.byPath(relativePath);
             FileState remote = remoteState.byPath(relativePath);
             boolean isLocalCopy = synced == null && local == null;
-            if (isLocalCopy)
+            if (isLocalCopy) {
+                while (maxDownloadConcurrency.get() == 0) {
+                    try {Thread.sleep(5_000); } catch (InterruptedException e) {}
+                }
+                maxDownloadConcurrency.decrementAndGet();
                 downloads.add(ForkJoinPool.commonPool().submit(() -> {
                     try {
                         syncFile(synced, local, remote, localFS, localDir, remoteFS, remoteDir, syncedVersions, localState, remoteState, doneFiles);
                     } catch (IOException e) {
                         throw new RuntimeException(e);
+                    } finally {
+                        maxDownloadConcurrency.incrementAndGet();
                     }
                 }));
-            else
+            } else
                 syncFile(synced, local, remote, localFS, localDir, remoteFS, remoteDir, syncedVersions, localState, remoteState, doneFiles);
         }
 
