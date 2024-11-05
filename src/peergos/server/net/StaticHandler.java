@@ -139,7 +139,7 @@ public abstract class StaticHandler implements HttpHandler
 
             if (isGzip && !isAppDevResource)
                 httpExchange.getResponseHeaders().set("Content-Encoding", "gzip");
-            if (path.endsWith(".js"))
+            if (path.endsWith(".js") || path.endsWith(".mjs"))
                 httpExchange.getResponseHeaders().set("Content-Type", "text/javascript");
             else if (path.endsWith(".html"))
                 httpExchange.getResponseHeaders().set("Content-Type", "text/html");
