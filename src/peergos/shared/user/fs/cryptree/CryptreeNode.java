@@ -1129,11 +1129,32 @@ public class CryptreeNode implements Cborable {
                     .filter(e -> ! locsToRemove.contains(e.capability.getLocation()))
                     .map(c -> new NamedRelativeCapability(new PathElement(c.getProperties().name), ourPointer.relativise(c.capability)))
                     .collect(Collectors.toList());
+            Set<Location> kidLocs = children.stream()
+                    .map(r -> r.capability.getLocation())
+                    .collect(Collectors.toSet());
+
+            List<AbsoluteCapability> remaining = childrenToRemove.stream()
+                    .filter(c -> ! kidLocs.contains(c.getLocation()))
+                    .collect(Collectors.toList());
 
             return IpfsTransaction.call(ourPointer.owner,
                     tid -> withChildren(ourPointer.rBaseKey, new ChildrenLinks(withRemoval), random, hasher)
                             .thenCompose(d -> d.commit(current, committer, ourPointer, entryWriter, network, tid)),
-                    network.dhtClient);
+                    network.dhtClient).thenCompose(s -> {
+                        if (remaining.isEmpty())
+                            return Futures.of(s);
+                        return getNextChunkLocation(ourPointer.rBaseKey, Optional.empty(), ourPointer.getMapKey(), ourPointer.bat, hasher)
+                                .thenCompose(nextLoc -> {
+                                    WritableAbsoluteCapability nextChunkCap = ourPointer.withMapKey(nextLoc.left, nextLoc.right);
+                                    return getNextChunk(s, nextChunkCap, network)
+                                            .thenCompose(next -> {
+                                                if (next.isEmpty())
+                                                    throw new IllegalStateException("No subsequent dir chunk");
+                                                RetrievedCapability rc = next.get();
+                                                return rc.fileAccess.removeChildren(s, committer, remaining, nextChunkCap, entryWriter, network, random, hasher);
+                                            });
+                                });
+            });
         });
     }
 

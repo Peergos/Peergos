@@ -529,8 +529,7 @@ public class MultiUserTests {
         Assert.assertTrue("file shared", ! sharedWriteAccessWithBefore.isEmpty());
 
         theFile.remove(parentFolder, filePath, u1).get();
-        Optional<FileWrapper> removedFile = u1.getByPath(filePath).get();
-        Assert.assertTrue("file removed", ! removedFile.isPresent());
+        Assert.assertTrue("file removed", u1.getByPath(filePath).join().isEmpty());
 
         Set<String> sharedWriteAccessWithAfter = u1.sharedWith(filePath).join().get(SharedWithCache.Access.WRITE);
         Assert.assertTrue("file shared", sharedWriteAccessWithAfter.isEmpty());
@@ -603,8 +602,7 @@ public class MultiUserTests {
         Assert.assertTrue("file shared", ! sharedWriteAccessWithBefore.isEmpty());
         System.out.println("Start DELETE");
         theDir.remove(parentFolder, dirPath, u1).get();
-        Optional<FileWrapper> removedFile = u1.getByPath(dirPath).get();
-        Assert.assertTrue("dir removed", removedFile.isEmpty());
+        Assert.assertTrue("dir removed", u1.getByPath(dirPath).join().isEmpty());
 
         Set<String> sharedWriteAccessWithAfter = u1.sharedWith(dirPath).join().get(SharedWithCache.Access.WRITE);
         Assert.assertTrue("dir unshared", sharedWriteAccessWithAfter.isEmpty());

@@ -1817,6 +1817,7 @@ public abstract class UserTests {
 
     @Test
     public void bulkDeleteTest() {
+        CryptreeNode.setMaxChildLinkPerBlob(10);
         String username = generateUsername();
         String password = "test01";
         UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network.clear(), crypto);
@@ -1846,7 +1847,7 @@ public abstract class UserTests {
         List<FileWrapper> toDelete = kids.stream()
                 .filter(f -> filenames.contains(f.getName()))
                 .collect(Collectors.toList());
-        FileWrapper.deleteChildren(userRoot, toDelete, PathUtil.get(username), context).join();
+        FileWrapper deleted = FileWrapper.deleteChildren(userRoot, toDelete, PathUtil.get(username), context).join();
 
         //re-create user-context
         UserContext context2 = PeergosNetworkUtils.ensureSignedUp(username, password, network.clear(), crypto);

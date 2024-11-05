@@ -44,6 +44,8 @@ public class PeergosSyncFS implements SyncFilesystem {
     @Override
     public void delete(Path p) {
         FileWrapper f = context.getByPath(p).join().get();
+        if (f.isDirectory() && f.hasChildren(context.network).join())
+            throw new IllegalStateException("Trying to delete non empty directory: " + p);
         FileWrapper parent = context.getByPath(p.getParent()).join().get();
         f.remove(parent, p, context).join();
     }

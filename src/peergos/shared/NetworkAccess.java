@@ -422,9 +422,13 @@ public class NetworkAccess {
                 .collect(Collectors.toList());
 
         return Futures.combineAll(all)
-                .thenApply(optSet -> optSet.stream()
-                        .flatMap(Optional::stream)
-                        .collect(Collectors.toList()));
+                .thenApply(optSet -> {
+                    if (optSet.stream().anyMatch(Optional::isEmpty))
+                        throw new IllegalStateException("Couldn't retrieve file");
+                    return optSet.stream()
+                            .map(Optional::get)
+                            .collect(Collectors.toList());
+                });
     }
 
     public CompletableFuture<Set<FileWrapper>> retrieveAll(List<EntryPoint> entries) {
