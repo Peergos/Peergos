@@ -1881,7 +1881,19 @@ public class FileWrapper {
         if (!isLegalName(fileName)) {
             return Futures.errored(new IllegalArgumentException("Illegal file/directory name: " + fileName));
         }
-        return this.hasChildWithName(version, fileName, hasher, network).thenApply(childExists -> childExists);
+        return this.hasChildWithName(version, fileName, hasher, network);
+    }
+
+    public CompletableFuture<Boolean> hasChildren(NetworkAccess network) {
+        return hasChildren(version, network);
+    }
+
+    public CompletableFuture<Boolean> hasChildren(Snapshot version,
+                                                  NetworkAccess network) {
+        if (capTrie.isPresent())
+            return Futures.of(capTrie.get().isEmpty());
+        return pointer.fileAccess.getAllChildrenCapabilities(version, pointer.capability, network.hasher, network)
+                .thenApply(caps -> !caps.isEmpty());
     }
 
     /**

@@ -32,6 +32,12 @@ public class LocalFileSystem implements SyncFilesystem {
 
     @Override
     public void delete(Path p) {
+        try {
+            if (Files.isDirectory(p) && Files.list(p).anyMatch(f -> true))
+                throw new IllegalStateException("Trying to delete non empty directory: " + p);
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
         p.toFile().delete();
     }
 
