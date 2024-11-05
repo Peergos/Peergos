@@ -426,7 +426,8 @@ public class Main extends Builder {
             Stream.of(
                     new Command.Arg("links", "Writable links (path only) to Peergos directories (comma separated)", true),
                     new Command.Arg("peergos-url", "Peergos service address", false, "https://peergos.net"),
-                    new Command.Arg("local-dirs", "The directories to sync to and from Peergos (comma separated)", true)
+                    new Command.Arg("local-dirs", "The directories to sync to and from Peergos (comma separated)", true),
+                    new Command.Arg("max-parallelism", "The maximum parallelism to download files with", false, "32")
             ).collect(Collectors.toList())
     );
 

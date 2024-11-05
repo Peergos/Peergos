@@ -74,6 +74,7 @@ public class DirectorySync {
                     .collect(Collectors.toList());
             UserContext context = UserContext.fromSecretLinksV2(links, linkPasswords, network, crypto).join();
             String linkPath = context.getEntryPath().join();
+            int maxDownloadParallelism = args.getInt("mac-parallelism", 32);
 
             PeergosSyncFS remote = new PeergosSyncFS(context);
             LocalFileSystem local = new LocalFileSystem();
@@ -89,7 +90,7 @@ public class DirectorySync {
                         Path remoteDir = PathUtil.get(linkPath);
                         log("Syncing " + localDir + " to+from " + remoteDir);
                         long t0 = System.currentTimeMillis();
-                        syncDirs(local, localDir, remote, remoteDir, syncedState);
+                        syncDirs(local, localDir, remote, remoteDir, syncedState, maxDownloadParallelism);
                         long t1 = System.currentTimeMillis();
                         log("Dir sync took " + (t1 - t0) / 1000 + "s");
                     }
@@ -154,7 +155,10 @@ public class DirectorySync {
         return Futures.of(new MultiFactorAuthResponse(totp.credentialId, Either.a(code)));
     }
 
-    public static void syncDirs(SyncFilesystem localFS, Path localDir, SyncFilesystem remoteFS, Path remoteDir, SyncState syncedVersions) throws IOException {
+    public static void syncDirs(SyncFilesystem localFS, Path localDir,
+                                SyncFilesystem remoteFS, Path remoteDir,
+                                SyncState syncedVersions,
+                                int maxParallelism) throws IOException {
         // first complete any failed in progress copy ops
         List<CopyOp> ops = syncedVersions.getInProgressCopies();
         if (! ops.isEmpty())
@@ -177,7 +181,7 @@ public class DirectorySync {
         Set<String> doneFiles = Collections.synchronizedSet(new HashSet<>());
 
         List<ForkJoinTask<?>> downloads = new ArrayList<>();
-        AtomicInteger maxDownloadConcurrency = new AtomicInteger(32);
+        AtomicInteger maxDownloadConcurrency = new AtomicInteger(maxParallelism);
 
         for (String relativePath : allPaths) {
             if (doneFiles.contains(relativePath))
