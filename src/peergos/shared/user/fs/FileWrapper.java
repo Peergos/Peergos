@@ -249,7 +249,7 @@ public class FileWrapper {
         setModified();
         return network.synchronizer.applyComplexUpdate(owner(), signingPair(),
                 (cwd, committer) -> pointer.fileAccess
-                .removeChildren(cwd, committer, Arrays.asList(child.getPointer().capability), writableFilePointer(), entryWriter, network, random, hasher))
+                .removeChildren(cwd, committer, Arrays.asList(child.isLink() ? child.linkPointer.get().capability : child.getPointer().capability), writableFilePointer(), entryWriter, network, random, hasher))
                 .thenCompose(newRoot -> getUpdated(newRoot, network));
     }
 
@@ -260,7 +260,7 @@ public class FileWrapper {
                                                    SafeRandom random,
                                                    Hasher hasher) {
         return pointer.fileAccess.removeChildren(version, committer,
-                Arrays.asList(child.getPointer().capability), writableFilePointer(), entryWriter, network, random, hasher);
+                Arrays.asList(child.isLink() ? child.linkPointer.get().capability : child.getPointer().capability), writableFilePointer(), entryWriter, network, random, hasher);
     }
 
     @JsMethod
@@ -1777,7 +1777,7 @@ public class FileWrapper {
                                                                             Arrays.asList(new NamedRelativeCapability(getName(), ourNewcap)),
                                                                             target.writableFilePointer(), target.signingPair(), targetMirrorBatId, net, context.crypto))
                                                                     .thenCompose(v3 -> parent.pointer.fileAccess
-                                                                            .removeChildren(v3, c, Arrays.asList(getPointer().capability), parent.writableFilePointer(),
+                                                                            .removeChildren(v3, c, Arrays.asList(isLink() ? linkPointer.get().capability : getPointer().capability), parent.writableFilePointer(),
                                                                                     parent.entryWriter, net, context.crypto.random, hasher))
                                                                     .thenCompose(v4 -> ! ourFile || shared.isEmpty() ? Futures.of(v4) : context.sharedWithCache.clearSharedWith(ourPath, v4, c, net))
                                                                     .thenCompose(v5 -> ! ourFile || shared.isEmpty() ? Futures.of(v5) : context.sharedWithCache.addAllSharedWith(shared.entrySet().stream()
@@ -1789,7 +1789,7 @@ public class FileWrapper {
                                                         .thenCompose(both -> copyTo(target, this.props.thumbnail, targetMirrorBatId, net, context.crypto, both, c))
                                                         .thenCompose(v2 -> version.withWriter(owner(), parent.writer(), net)
                                                                 .thenCompose(v3 -> parent.pointer.fileAccess
-                                                                        .removeChildren(v2, c, Arrays.asList(getPointer().capability), parent.writableFilePointer(),
+                                                                        .removeChildren(v2, c, isLink() ? Arrays.asList(linkPointer.get().capability) : Arrays.asList(getPointer().capability), parent.writableFilePointer(),
                                                                                 parent.entryWriter, net, context.crypto.random, hasher))
                                                                 .thenCompose(v4 -> IpfsTransaction.call(owner(),
                                                                                 tid -> FileWrapper.deleteAllChunks(
@@ -2081,7 +2081,7 @@ public class FileWrapper {
                 (version, c) -> version.withWriter(owner, parent.writer(), network)
                 .thenCompose(v2 -> parent.pointer.fileAccess
                         .removeChildren(v2, c, childrenToDelete.stream()
-                                        .map(f -> f.getPointer().capability)
+                                        .map(f -> f.isLink() ? f.linkPointer.get().capability : f.getPointer().capability)
                                         .collect(Collectors.toList()), parent.writableFilePointer(),
                                 parent.entryWriter, network, context.crypto.random, hasher))
                         .thenCompose(v3 -> Futures.reduceAll(childrenToDelete, v3,
@@ -2131,7 +2131,7 @@ public class FileWrapper {
                 (version, c) -> {
                     return (writableParent ? version.withWriter(owner(), parent.writer(), network)
                             .thenCompose(v2 -> parent.pointer.fileAccess
-                                    .removeChildren(v2, c, Arrays.asList(getPointer().capability), parent.writableFilePointer(),
+                                    .removeChildren(v2, c, Arrays.asList(isLink() ? linkPointer.get().capability : getPointer().capability), parent.writableFilePointer(),
                                             parent.entryWriter, network, userContext.crypto.random, hasher)) :
                             Futures.of(version))
                             .thenCompose(v -> IpfsTransaction.call(owner(),
