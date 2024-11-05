@@ -27,6 +27,8 @@ import peergos.shared.util.PathUtil;
 
 import java.io.*;
 import java.net.URL;
+import java.nio.file.FileSystem;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.*;
@@ -74,7 +76,8 @@ public class DirectorySync {
                     .collect(Collectors.toList());
             UserContext context = UserContext.fromSecretLinksV2(links, linkPasswords, network, crypto).join();
             String linkPath = context.getEntryPath().join();
-            int maxDownloadParallelism = args.getInt("mac-parallelism", 32);
+            int maxDownloadParallelism = args.getInt("max-parallelism", 32);
+            int minFreeSpacePercent = args.getInt("min-free-space-percent", 5);
 
             PeergosSyncFS remote = new PeergosSyncFS(context);
             LocalFileSystem local = new LocalFileSystem();
@@ -90,7 +93,7 @@ public class DirectorySync {
                         Path remoteDir = PathUtil.get(linkPath);
                         log("Syncing " + localDir + " to+from " + remoteDir);
                         long t0 = System.currentTimeMillis();
-                        syncDirs(local, localDir, remote, remoteDir, syncedState, maxDownloadParallelism);
+                        syncDirs(local, localDir, remote, remoteDir, syncedState, maxDownloadParallelism, minFreeSpacePercent);
                         long t1 = System.currentTimeMillis();
                         log("Dir sync took " + (t1 - t0) / 1000 + "s");
                     }
@@ -158,7 +161,8 @@ public class DirectorySync {
     public static void syncDirs(SyncFilesystem localFS, Path localDir,
                                 SyncFilesystem remoteFS, Path remoteDir,
                                 SyncState syncedVersions,
-                                int maxParallelism) throws IOException {
+                                int maxParallelism,
+                                int minPercentFreeSpace) throws IOException {
         // first complete any failed in progress copy ops
         List<CopyOp> ops = syncedVersions.getInProgressCopies();
         if (! ops.isEmpty())
@@ -197,7 +201,7 @@ public class DirectorySync {
                 maxDownloadConcurrency.decrementAndGet();
                 downloads.add(ForkJoinPool.commonPool().submit(() -> {
                     try {
-                        syncFile(synced, local, remote, localFS, localDir, remoteFS, remoteDir, syncedVersions, localState, remoteState, doneFiles);
+                        syncFile(synced, local, remote, localFS, localDir, remoteFS, remoteDir, syncedVersions, localState, remoteState, doneFiles, minPercentFreeSpace);
                     } catch (IOException e) {
                         throw new RuntimeException(e);
                     } finally {
@@ -205,7 +209,7 @@ public class DirectorySync {
                     }
                 }));
             } else
-                syncFile(synced, local, remote, localFS, localDir, remoteFS, remoteDir, syncedVersions, localState, remoteState, doneFiles);
+                syncFile(synced, local, remote, localFS, localDir, remoteFS, remoteDir, syncedVersions, localState, remoteState, doneFiles, minPercentFreeSpace);
         }
 
         for (ForkJoinTask<?> download : downloads) {
@@ -255,8 +259,9 @@ public class DirectorySync {
                                 SyncFilesystem localFs, Path localDir,
                                 SyncFilesystem remoteFs, Path remoteDir,
                                 SyncState syncedVersions, RamTreeState localTree, RamTreeState remoteTree,
-                                Set<String> doneFiles) throws IOException {
-
+                                Set<String> doneFiles, int minPercentFree) throws IOException {
+        long totalSpace = Files.getFileStore(localDir).getTotalSpace();
+        long freeSpace = Files.getFileStore(localDir).getUsableSpace();
         if (synced == null) {
             if (local == null) { // remotely added or renamed
                 List<FileState> byHash = localTree.byHash(remote.hash);
@@ -270,6 +275,8 @@ public class DirectorySync {
                     syncedVersions.remove(toMove.relPath);
                     doneFiles.add(toMove.relPath);
                 } else {
+                    if ((freeSpace - remote.size) * 100 / totalSpace < minPercentFree)
+                        throw new IllegalStateException("Not enough free space to sync and keep " + minPercentFree + "% free");
                     log("Sync Local: Copying " + remote.relPath);
                     List<Pair<Long, Long>> diffs = remote.diffRanges(null);
                     List<CopyOp> ops = diffs.stream()
@@ -314,6 +321,8 @@ public class DirectorySync {
                     }
                     syncedVersions.add(local);
                 } else {
+                    if ((freeSpace - remote.size) * 100 / totalSpace < minPercentFree)
+                        throw new IllegalStateException("Not enough free space to sync and keep " + minPercentFree + "% free. Conflict on " + local.relPath);
                     log("Sync Remote: Concurrent file addition: " + local.relPath + " renaming local version");
                     FileState renamed = renameOnConflict(localFs, localDir.resolve(local.relPath), local);
                     List<Pair<Long, Long>> diffs = remote.diffRanges(null);
@@ -348,6 +357,8 @@ public class DirectorySync {
                 } else if (remote.hash.equals(local.hash)) {
                     // already synced
                 } else {
+                    if (remote.size > local.size && (freeSpace + local.size - remote.size) * 100 / totalSpace < minPercentFree)
+                        throw new IllegalStateException("Not enough free space to sync and keep " + minPercentFree + "% free");
                     log("Sync Local: Copying changes to " + remote.relPath);
                     List<Pair<Long, Long>> diffs = remote.diffRanges(null);
                     List<CopyOp> ops = diffs.stream()
@@ -386,6 +397,8 @@ public class DirectorySync {
                     syncedVersions.remove(synced.relPath);
                 }
                 if (local == null) { // local delete, copy changed remote
+                    if ((freeSpace - remote.size) * 100 / totalSpace < minPercentFree)
+                        throw new IllegalStateException("Not enough free space to sync and keep " + minPercentFree + "% free");
                     log("Sync Local: deleted, copying changed remote " + remote.relPath);
                     List<Pair<Long, Long>> diffs = remote.diffRanges(null);
                     List<CopyOp> ops = diffs.stream()
@@ -404,6 +417,8 @@ public class DirectorySync {
                     syncedVersions.add(local);
                 }
                 // concurrent change, rename one sync the other
+                if ((freeSpace - remote.size) * 100 / totalSpace < minPercentFree)
+                    throw new IllegalStateException("Not enough free space to sync and keep " + minPercentFree + "% free");
                 log("Sync Remote: Concurrent change: " + local.relPath + " renaming local version");
                 FileState renamed = renameOnConflict(localFs, localDir.resolve(local.relPath), local);
                 List<Pair<Long, Long>> diffs = remote.diffRanges(null);
