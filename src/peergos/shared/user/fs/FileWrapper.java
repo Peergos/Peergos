@@ -360,17 +360,27 @@ public class FileWrapper {
     public CompletableFuture<Set<FileWrapper>> getChildren(Hasher hasher, NetworkAccess network) {
         if (capTrie.isPresent())
             return capTrie.get().getChildren("", hasher, network);
-        return getChildren(version, hasher, network);
+        return getChildren(version, hasher, network, true);
     }
 
-    public CompletableFuture<Set<FileWrapper>> getChildren(Snapshot version, Hasher hasher, NetworkAccess network) {
+    public CompletableFuture<Set<FileWrapper>> getChildren(Snapshot version, Hasher hasher, NetworkAccess network, boolean allowDanglingLinks) {
         if (capTrie.isPresent())
             return capTrie.get().getChildren("", hasher, version.merge(this.version), network);
         if (isReadable()) {
             Optional<SigningPrivateKeyAndPublicHash> childsEntryWriter = pointer.capability.wBaseKey
                     .map(wBase -> pointer.fileAccess.getSigner(pointer.capability.rBaseKey, wBase, entryWriter));
             return pointer.fileAccess.getAllChildrenCapabilities(version, pointer.capability, hasher, network)
-                    .thenCompose(childCaps -> getFiles(owner(), childCaps, childsEntryWriter, ownername, network, version));
+                    .thenCompose(childCaps -> getFiles(owner(), childCaps, childsEntryWriter, ownername, network, version)
+                            .thenApply(p -> {
+                                if (! allowDanglingLinks && ! p.right.isEmpty()) {
+                                    List<NamedAbsoluteCapability> dangling = p.right.stream()
+                                            .map(c -> childCaps.stream().filter(nc -> nc.cap.equals(c)).findFirst().get())
+                                            .collect(Collectors.toList());
+                                    throw new IllegalStateException("Couldn't retrieve children " +
+                                            dangling.stream().map(nc -> nc.name.name).collect(Collectors.toList()) + " in dir " + getName());
+                                }
+                                return p.left;
+                            }));
         }
         throw new IllegalStateException("Unreadable FileWrapper!");
     }
@@ -383,32 +393,27 @@ public class FileWrapper {
      * @param ownername
      * @param network
      * @param version
-     * @return the children, or the list of caps pointing to deleted files
+     * @return the children, and the list of caps pointing to deleted files
      */
-    private static CompletableFuture<Set<FileWrapper>> getFiles(PublicKeyHash owner,
-                                                                Set<NamedAbsoluteCapability> caps,
-                                                                Optional<SigningPrivateKeyAndPublicHash> entryWriter,
-                                                                String ownername,
-                                                                NetworkAccess network,
-                                                                Snapshot version) {
+    private static CompletableFuture<Pair<Set<FileWrapper>, List<AbsoluteCapability>>> getFiles(PublicKeyHash owner,
+                                                                                                Set<NamedAbsoluteCapability> caps,
+                                                                                                Optional<SigningPrivateKeyAndPublicHash> entryWriter,
+                                                                                                String ownername,
+                                                                                                NetworkAccess network,
+                                                                                                Snapshot version) {
         Set<PublicKeyHash> childWriters = caps.stream()
                 .map(c -> c.cap.writer)
                 .collect(Collectors.toSet());
         return version.withWriters(owner, childWriters, network)
                 .thenCompose(fullVersion -> network.retrieveAllMetadata(caps.stream().map(n -> n.cap).collect(Collectors.toList()), fullVersion)
-                        .thenApply(p -> {
-                            if (! p.right.isEmpty())
-                                System.out.println("Couldn't retrieve " + p.right.size() + " children listing dir.");
-                            return p.left;
-                        })
-                        .thenCompose(rcs -> Futures.combineAll(rcs.stream()
+                        .thenCompose(p -> Futures.combineAll(p.left.stream()
                                 .map(rc -> {
                                     FileProperties props = rc.getProperties();
                                     if (! props.isLink)
                                         return Futures.of(new FileWrapper(rc, Optional.empty(), entryWriter, ownername, fullVersion));
                                     return NetworkAccess.getFileFromLink(owner, rc, entryWriter, ownername, network, version);
                                 })
-                                .collect(Collectors.toSet()))));
+                                .collect(Collectors.toSet())).thenApply(set -> new Pair<>(set, p.right))));
     }
 
     @JsMethod
@@ -1863,7 +1868,7 @@ public class FileWrapper {
                         .withBaseKey(newBaseR)
                         .withBaseWriteKey(newBaseW);
                 return withVersion(this.version.mergeAndOverwriteWith(version))
-                        .getChildren(version, crypto.hasher, network).thenCompose(children ->
+                        .getChildren(version, crypto.hasher, network, false).thenCompose(children ->
                         target.mkdir(getName(), Optional.of(newBaseR), Optional.of(newBaseW), Optional.of(newMapKey),
                                 newBat, getFileProperties().isHidden, targetMirrorBat, network, crypto, version, committer)
                                 .thenCompose(versionWithDir ->
