@@ -442,6 +442,8 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
     public boolean hasBlock(Cid hash) {
         if (blockBuffer.hasBlock(hash))
             return true;
+        if (cborCache.hasBlock(hash))
+            return true;
         return getWithBackoff(() -> hasBlockWithoutBackoff(hash));
     }
 
@@ -597,6 +599,9 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         Optional<BlockMetadata> meta = blockMetadata.get((Cid) hash);
         if (meta.isPresent())
             return Futures.of(Optional.of(meta.get().size));
+        Optional<byte[]> buffered = blockBuffer.get((Cid) hash).join();
+        if (buffered.isPresent())
+            return Futures.of(Optional.of(buffered.get().length));
         return getWithBackoff(() -> getSizeWithoutRetry(hash));
     }
 
