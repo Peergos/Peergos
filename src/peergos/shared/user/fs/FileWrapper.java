@@ -372,12 +372,15 @@ public class FileWrapper {
             return pointer.fileAccess.getAllChildrenCapabilities(version, pointer.capability, hasher, network)
                     .thenCompose(childCaps -> getFiles(owner(), childCaps, childsEntryWriter, ownername, network, version)
                             .thenApply(p -> {
-                                if (! allowDanglingLinks && ! p.right.isEmpty()) {
+                                if (! p.right.isEmpty()) {
                                     List<NamedAbsoluteCapability> dangling = p.right.stream()
                                             .map(c -> childCaps.stream().filter(nc -> nc.cap.equals(c)).findFirst().get())
                                             .collect(Collectors.toList());
-                                    throw new IllegalStateException("Couldn't retrieve children " +
-                                            dangling.stream().map(nc -> nc.name.name).collect(Collectors.toList()) + " in dir " + getName());
+                                    List<String> names = dangling.stream().map(nc -> nc.name.name).collect(Collectors.toList());
+                                    if (! allowDanglingLinks) {
+                                        throw new IllegalStateException("Couldn't retrieve children " + names + " in dir " + getName());
+                                    }
+                                    LOG.info("Couldn't retrieve children " + names + " in dir " + getName());
                                 }
                                 return p.left;
                             }));
