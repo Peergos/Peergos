@@ -365,8 +365,9 @@ public class CryptreeNode implements Cborable {
                                                                          Snapshot version) {
         return getDirectChildrenCapabilities(us, version, network)
                 .thenCompose(c -> network.retrieveAllMetadata(c.stream()
-                        .map(n -> n.cap)
-                        .collect(Collectors.toList()), version)
+                                .map(n -> n.cap)
+                                .collect(Collectors.toList()), version)
+                        .thenApply(p -> p.left)
                         .thenApply(HashSet::new));
     }
 

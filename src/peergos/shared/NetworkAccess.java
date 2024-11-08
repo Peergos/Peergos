@@ -411,24 +411,34 @@ public class NetworkAccess {
 
     public CompletableFuture<Optional<RetrievedCapability>> retrieveMetadata(AbsoluteCapability cap, Snapshot version) {
         return retrieveAllMetadata(Collections.singletonList(cap), version)
-                .thenApply(res -> res.isEmpty() ? Optional.empty() : Optional.of(res.get(0)));
+                .thenApply(p -> p.left.isEmpty() ? Optional.empty() : Optional.of(p.left.get(0)));
     }
 
-    public CompletableFuture<List<RetrievedCapability>> retrieveAllMetadata(List<AbsoluteCapability> links, Snapshot current) {
-        List<CompletableFuture<Optional<RetrievedCapability>>> all = links.stream()
+    /**
+     *
+     * @param links
+     * @param current
+     * @return The retrieved capabilities and the list of absent ones
+     */
+    public CompletableFuture<Pair<List<RetrievedCapability>, List<AbsoluteCapability>>> retrieveAllMetadata(List<AbsoluteCapability> links, Snapshot current) {
+        List<CompletableFuture<Either<RetrievedCapability, AbsoluteCapability>>> all = links.stream()
                 .map(link -> current.withWriter(link.owner, link.writer, this)
                         .thenCompose(version -> getMetadata(version.get(link.writer).props.get(), link)
-                                .thenApply(copt -> copt.map(c -> new RetrievedCapability(link, c)))))
+                                .thenApply(copt -> copt.isPresent() ?
+                                        Either.<RetrievedCapability, AbsoluteCapability>a(new RetrievedCapability(link, copt.get())) :
+                                        Either.<RetrievedCapability, AbsoluteCapability>b(link))))
                 .collect(Collectors.toList());
 
         return Futures.combineAll(all)
-                .thenApply(optSet -> {
-                    if (optSet.stream().anyMatch(Optional::isEmpty))
-                        throw new IllegalStateException("Couldn't retrieve file");
-                    return optSet.stream()
-                            .map(Optional::get)
-                            .collect(Collectors.toList());
-                });
+                .thenApply(res -> new Pair<>(
+                        res.stream()
+                                .filter(Either::isA)
+                                .map(e -> e.a())
+                                .collect(Collectors.toList()),
+                        res.stream()
+                                .filter(Either::isB)
+                                .map(e -> e.b())
+                                .collect(Collectors.toList())));
     }
 
     public CompletableFuture<Set<FileWrapper>> retrieveAll(List<EntryPoint> entries) {
@@ -538,6 +548,7 @@ public class NetworkAccess {
                     Set<PublicKeyHash> childWriters = Collections.singleton(cap.writer);
                     return version.withWriters(owner, childWriters, network)
                             .thenCompose(fullVersion -> network.retrieveAllMetadata(Collections.singletonList(cap), fullVersion)
+                                    .thenApply(p -> p.left)
                                     .thenCompose(rcs -> {
                                         RetrievedCapability rc = rcs.get(0);
                                         FileProperties props = rc.getProperties();

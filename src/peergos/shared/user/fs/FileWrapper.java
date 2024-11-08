@@ -375,6 +375,16 @@ public class FileWrapper {
         throw new IllegalStateException("Unreadable FileWrapper!");
     }
 
+    /**
+     *
+     * @param owner
+     * @param caps
+     * @param entryWriter
+     * @param ownername
+     * @param network
+     * @param version
+     * @return the children, or the list of caps pointing to deleted files
+     */
     private static CompletableFuture<Set<FileWrapper>> getFiles(PublicKeyHash owner,
                                                                 Set<NamedAbsoluteCapability> caps,
                                                                 Optional<SigningPrivateKeyAndPublicHash> entryWriter,
@@ -386,6 +396,11 @@ public class FileWrapper {
                 .collect(Collectors.toSet());
         return version.withWriters(owner, childWriters, network)
                 .thenCompose(fullVersion -> network.retrieveAllMetadata(caps.stream().map(n -> n.cap).collect(Collectors.toList()), fullVersion)
+                        .thenApply(p -> {
+                            if (! p.right.isEmpty())
+                                System.out.println("Couldn't retrieve " + p.right.size() + " children listing dir.");
+                            return p.left;
+                        })
                         .thenCompose(rcs -> Futures.combineAll(rcs.stream()
                                 .map(rc -> {
                                     FileProperties props = rc.getProperties();
