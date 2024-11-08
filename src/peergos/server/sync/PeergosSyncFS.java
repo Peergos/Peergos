@@ -182,7 +182,7 @@ public class PeergosSyncFS implements SyncFilesystem {
     }
 
     private void applyToSubtree(Path basePath, FileWrapper base, Consumer<Path> onFile, Consumer<Path> onDir) {
-        Set<FileWrapper> children = base.getChildren(context.crypto.hasher, context.network).join();
+        Set<FileWrapper> children = base.getChildren(base.version, context.crypto.hasher, context.network, false).join();
         for (FileWrapper child : children) {
             Path childPath = basePath.resolve(child.getName());
             if (! child.isDirectory()) {
