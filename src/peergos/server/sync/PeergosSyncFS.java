@@ -169,9 +169,23 @@ public class PeergosSyncFS implements SyncFilesystem {
 
         byte[] hash = state.doFinalize(32);
         Blake3state res = new Blake3state(hash);
-        FileWrapper parent = context.getByPath(p.getParent()).join().get();
-        f.setProperties(props.withHash(Optional.of(res)), context.crypto.hasher, context.network, Optional.of(parent)).join();
+
+        System.out.println("REMOTE: updating hash for " + p);
+        recurseSetProperties(f, props.withHash(Optional.of(res)), 3);
         return res;
+    }
+
+    private void recurseSetProperties(FileWrapper f, FileProperties newProps, int remainingAttempts) {
+        try {
+            f.setSameNameProperties(newProps, context.network).join();
+        } catch (Exception e) {
+            String message = e.getMessage();
+            if (message != null && message.startsWith("CAS") && remainingAttempts > 1) {
+                recurseSetProperties(f, newProps, remainingAttempts - 1);
+                return;
+            }
+            throw new RuntimeException(e);
+        }
     }
 
     @Override

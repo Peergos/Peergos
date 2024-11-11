@@ -1735,6 +1735,19 @@ public class FileWrapper {
                 .thenApply(fa -> true);
     }
 
+    public CompletableFuture<Boolean> setSameNameProperties(FileProperties updatedProperties,
+                                                            NetworkAccess network) {
+        String name = getName();
+        setModified();
+        String newName = updatedProperties.name;
+        if (! newName.equals(name)) {
+            return Futures.errored(new IllegalArgumentException("Can't rename file here: " + newName));
+        }
+        return network.synchronizer.applyComplexUpdate(owner(), signingPair(),
+                        (s, c) -> pointer.fileAccess.updateProperties(s, c, writableFilePointer(), entryWriter, updatedProperties, network))
+                .thenApply(fa -> true);
+    }
+
     @JsMethod
     public AbsoluteCapability readOnlyPointer() {
         return pointer.capability.readOnly();
