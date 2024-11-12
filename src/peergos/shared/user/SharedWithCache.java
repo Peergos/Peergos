@@ -307,7 +307,7 @@ public class SharedWithCache {
                         return Futures.of(p.left.version);
                     byte[] raw = updated.serialize();
                     return source.overwriteFile(AsyncReader.build(raw), raw.length, network, crypto, x -> {}, source.version, committer);
-                });
+                }).thenApply(v -> in.mergeAndOverwriteWith(v));
     }
 
     public CompletableFuture<Snapshot> applyIfPresentAndCommit(Path toFile, Function<SharedWithState, SharedWithState> transform, Snapshot in, Committer committer, NetworkAccess network) {
@@ -325,7 +325,7 @@ public class SharedWithCache {
                         return Futures.of(p.left.version);
                     byte[] raw = modified.serialize();
                     return source.overwriteFile(AsyncReader.build(raw), raw.length, network, crypto, x -> {}, source.version, committer);
-                }));
+                })).thenApply(v -> in.mergeAndOverwriteWith(v));
     }
 
     public CompletableFuture<Snapshot> rename(Path initial, Path after, Snapshot in, Committer committer, NetworkAccess network) {

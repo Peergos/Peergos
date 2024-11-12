@@ -1146,13 +1146,14 @@ public class CryptreeNode implements Cborable {
                             return Futures.of(s);
                         return getNextChunkLocation(ourPointer.rBaseKey, Optional.empty(), ourPointer.getMapKey(), ourPointer.bat, hasher)
                                 .thenCompose(nextLoc -> {
+                                    SigningPrivateKeyAndPublicHash signer = getSigner(ourPointer.rBaseKey, ourPointer.wBaseKey.get(), entryWriter);
                                     WritableAbsoluteCapability nextChunkCap = ourPointer.withMapKey(nextLoc.left, nextLoc.right);
                                     return getNextChunk(s, nextChunkCap, network)
                                             .thenCompose(next -> {
                                                 if (next.isEmpty())
                                                     throw new IllegalStateException("No subsequent dir chunk");
                                                 RetrievedCapability rc = next.get();
-                                                return rc.fileAccess.removeChildren(s, committer, remaining, nextChunkCap, entryWriter, network, random, hasher);
+                                                return rc.fileAccess.removeChildren(s, committer, remaining, nextChunkCap, Optional.of(signer), network, random, hasher);
                                             });
                                 });
             });
