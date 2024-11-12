@@ -395,6 +395,7 @@ public class DirectorySync {
                 if (local == null && remote == null) {// concurrent deletes
                     log("Sync Concurrent delete on " + synced.relPath);
                     syncedVersions.remove(synced.relPath);
+                    return;
                 }
                 if (local == null) { // local delete, copy changed remote
                     if ((freeSpace - remote.size) * 100 / totalSpace < minPercentFree)
@@ -406,6 +407,7 @@ public class DirectorySync {
                             .collect(Collectors.toList());
                     copyFileDiffAndTruncate(remoteFs, localFs, ops, syncedVersions);
                     syncedVersions.add(remote);
+                    return;
                 }
                 if (remote == null) { // remote delete, copy changed local
                     log("Sync Remote: deleted, copying changed local " + local.relPath);
@@ -415,6 +417,7 @@ public class DirectorySync {
                             .collect(Collectors.toList());
                     copyFileDiffAndTruncate(localFs, remoteFs, ops, syncedVersions);
                     syncedVersions.add(local);
+                    return;
                 }
                 // concurrent change, rename one sync the other
                 if ((freeSpace - remote.size) * 100 / totalSpace < minPercentFree)
