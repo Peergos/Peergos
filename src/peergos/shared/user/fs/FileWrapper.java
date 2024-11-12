@@ -371,18 +371,29 @@ public class FileWrapper {
                     .map(wBase -> pointer.fileAccess.getSigner(pointer.capability.rBaseKey, wBase, entryWriter));
             return pointer.fileAccess.getAllChildrenCapabilities(version, pointer.capability, hasher, network)
                     .thenCompose(childCaps -> getFiles(owner(), childCaps, childsEntryWriter, ownername, network, version)
-                            .thenApply(p -> {
+                            .thenCompose(p -> {
                                 if (! p.right.isEmpty()) {
                                     List<NamedAbsoluteCapability> dangling = p.right.stream()
                                             .map(c -> childCaps.stream().filter(nc -> nc.cap.equals(c)).findFirst().get())
                                             .collect(Collectors.toList());
-                                    List<String> names = dangling.stream().map(nc -> nc.name.name).collect(Collectors.toList());
-                                    if (! allowDanglingLinks) {
-                                        throw new IllegalStateException("Couldn't retrieve children " + names + " in dir " + getName());
-                                    }
-                                    LOG.info("Couldn't retrieve children " + names + " in dir " + getName());
+                                    // try once more
+                                    return getFiles(owner(), new HashSet<>(dangling), childsEntryWriter, ownername, network, version)
+                                            .thenApply(retry -> {
+                                                if (! retry.right.isEmpty()) {
+                                                    List<NamedAbsoluteCapability> retryDangling = retry.right.stream()
+                                                            .map(c -> childCaps.stream().filter(nc -> nc.cap.equals(c)).findFirst().get())
+                                                            .collect(Collectors.toList());
+                                                    List<String> names = retryDangling.stream().map(nc -> nc.name.name).collect(Collectors.toList());
+                                                    if (! allowDanglingLinks) {
+                                                        throw new IllegalStateException("Couldn't retrieve children " + names + " in dir " + getName());
+                                                    }
+                                                    LOG.info("Couldn't retrieve children " + names + " in dir " + getName());
+                                                }
+                                                p.left.addAll(retry.left);
+                                                return p.left;
+                                            });
                                 }
-                                return p.left;
+                                return Futures.of(p.left);
                             }));
         }
         throw new IllegalStateException("Unreadable FileWrapper!");
