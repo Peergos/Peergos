@@ -119,11 +119,13 @@ public class CachingVerifyingStorage extends DelegatingStorage {
 
     @Override
     public CompletableFuture<Optional<CborObject>> get(PublicKeyHash owner, Cid key, Optional<BatWithId> bat) {
-        if (cache.containsKey(key))
-            return CompletableFuture.completedFuture(Optional.of(CborObject.fromByteArray(cache.get(key))));
+        byte[] cached = cache.get(key);
+        if (cached != null)
+            return CompletableFuture.completedFuture(Optional.of(CborObject.fromByteArray(cached)));
 
-        if (pending.containsKey(key))
-            return pending.get(key);
+        CompletableFuture<Optional<CborObject>> pend = pending.get(key);
+        if (pend != null)
+            return pend;
 
         CompletableFuture<Optional<CborObject>> pipe = new CompletableFuture<>();
         pending.put(key, pipe);
@@ -173,11 +175,13 @@ public class CachingVerifyingStorage extends DelegatingStorage {
 
     @Override
     public CompletableFuture<Optional<byte[]>> getRaw(PublicKeyHash owner, Cid key, Optional<BatWithId> bat) {
-        if (cache.containsKey(key))
-            return CompletableFuture.completedFuture(Optional.of(cache.get(key)));
+        byte[] cached = cache.get(key);
+        if (cached != null)
+            return CompletableFuture.completedFuture(Optional.of(cached));
 
-        if (pendingRaw.containsKey(key))
-            return pendingRaw.get(key);
+        CompletableFuture<Optional<byte[]>> pend = pendingRaw.get(key);
+        if (pend != null)
+            return pend;
 
         CompletableFuture<Optional<byte[]>> pipe = new CompletableFuture<>();
         pendingRaw.put(key, pipe);
