@@ -171,7 +171,7 @@ public class PeergosSyncFS implements SyncFilesystem {
         Blake3state res = new Blake3state(hash);
 
         System.out.println("REMOTE: updating hash for " + p);
-        recurseSetProperties(f, props.withHash(Optional.of(res)), 3);
+        recurseSetProperties(f, props.withHash(Optional.of(res)), 5);
         return res;
     }
 
