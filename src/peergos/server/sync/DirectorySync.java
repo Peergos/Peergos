@@ -35,6 +35,7 @@ import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.ForkJoinTask;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Supplier;
@@ -183,6 +184,50 @@ public class DirectorySync {
         TreeSet<String> allPaths = new TreeSet<>(localState.filesByPath.keySet());
         allPaths.addAll(remoteState.filesByPath.keySet());
         Set<String> doneFiles = Collections.synchronizedSet(new HashSet<>());
+
+        // upload new small files in a single bulk operation
+        Set<String> smallFiles = new HashSet<>();
+        for (String relativePath : allPaths) {
+            FileState synced = syncedVersions.byPath(relativePath);
+            FileState local = localState.byPath(relativePath);
+            FileState remote = remoteState.byPath(relativePath);
+            boolean isSmallRemoteCopy = synced == null && remote == null && local.size < Chunk.MAX_SIZE;
+            if (isSmallRemoteCopy)
+                smallFiles.add(relativePath);
+        }
+
+        if (! smallFiles.isEmpty()) {
+            log("Remote: bulk uploading " + smallFiles.size() + " small files");
+            Map<String, FileWrapper.FolderUploadProperties> folders = new HashMap<>();
+            for (String relPath : smallFiles) {
+                doneFiles.add(relPath);
+                String folderPath = relPath.contains("/") ? relPath.substring(0, relPath.lastIndexOf("/")) : "";
+                FileWrapper.FolderUploadProperties folder = folders.get(folderPath);
+                if (folder == null) {
+                    List<String> relativePath = folderPath.isEmpty() ? Collections.emptyList() : Arrays.asList(folderPath.split("/"));
+                    folder = new FileWrapper.FolderUploadProperties(relativePath, new ArrayList<>());
+                    folders.put(folderPath, folder);
+                }
+                String filename = relPath.substring(relPath.lastIndexOf("/") + 1);
+                FileState local = localState.byPath(relPath);
+                AtomicBoolean uploadStarted = new AtomicBoolean(false);
+                folder.files.add(new FileWrapper.FileUploadProperties(filename,
+                        () -> {
+                            try {
+                                return localFS.getBytes(localDir.resolve(relPath), 0);
+                            } catch (IOException e) {
+                                throw new RuntimeException(e);
+                            }
+                        },
+                        (int)(local.size >> 32), (int) local.size, false, true, x -> {
+                    if (! uploadStarted.get()) {
+                        log("REMOTE: Uploading " + relPath);
+                        uploadStarted.set(true);
+                    }
+                }));
+            }
+            remoteFS.uploadSubtree(remoteDir, folders.values().stream());
+        }
 
         List<ForkJoinTask<?>> downloads = new ArrayList<>();
         AtomicInteger maxDownloadConcurrency = new AtomicInteger(maxParallelism);

@@ -15,6 +15,7 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
 import java.util.function.Consumer;
+import java.util.stream.Stream;
 
 public class LocalFileSystem implements SyncFilesystem {
 
@@ -97,6 +98,11 @@ public class LocalFileSystem implements SyncFilesystem {
     @Override
     public AsyncReader getBytes(Path p, long fileOffset) throws IOException {
         return new FileAsyncReader(p.toFile());
+    }
+
+    @Override
+    public void uploadSubtree(Path baseDir, Stream<FileWrapper.FolderUploadProperties> directories) {
+        throw new IllegalStateException("Unimplemented!");
     }
 
     @Override

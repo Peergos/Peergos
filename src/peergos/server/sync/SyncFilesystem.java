@@ -10,6 +10,7 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
 import java.util.function.Consumer;
+import java.util.stream.Stream;
 
 interface SyncFilesystem {
 
@@ -36,6 +37,8 @@ interface SyncFilesystem {
     void setBytes(Path p, long fileOffset, AsyncReader data, long size) throws IOException;
 
     AsyncReader getBytes(Path p, long fileOffset) throws IOException;
+
+    void uploadSubtree(Path baseDir, Stream<FileWrapper.FolderUploadProperties> directories);
 
     Blake3state hashFile(Path p, Optional<FileWrapper> meta);
 

@@ -22,6 +22,7 @@ import java.util.Set;
 import java.util.function.Consumer;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 public class PeergosSyncFS implements SyncFilesystem {
     private static final Logger LOG = Logging.LOG();
@@ -160,6 +161,13 @@ public class PeergosSyncFS implements SyncFilesystem {
         FileWrapper f = file.get();
         AsyncReader reader = f.getInputStream(context.network, context.crypto, x -> {}).join();
         return reader.seek(fileOffset).join();
+    }
+
+    @Override
+    public void uploadSubtree(Path baseDir, Stream<FileWrapper.FolderUploadProperties> directories) {
+        FileWrapper base = context.getByPath(baseDir).join().get();
+        Optional<BatId> mirrorBat = base.mirrorBatId();
+        base.uploadSubtree(directories, mirrorBat, context.network, context.crypto, context.getTransactionService(), x -> Futures.of(false), () -> true).join();
     }
 
     @Override
