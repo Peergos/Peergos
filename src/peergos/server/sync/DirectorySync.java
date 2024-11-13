@@ -31,6 +31,9 @@ import java.nio.file.FileSystem;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ForkJoinPool;
@@ -230,7 +233,7 @@ public class DirectorySync {
                                 throw new RuntimeException(e);
                             }
                         },
-                        (int)(local.size >> 32), (int) local.size, false, true, x -> {
+                        (int)(local.size >> 32), (int) local.size, Optional.of(LocalDateTime.ofInstant(Instant.ofEpochSecond(local.modificationTime / 1000, 0), ZoneOffset.UTC)), Optional.of(local.hash), false, true, x -> {
                     if (! uploadStarted.get()) {
                         log("REMOTE: Uploading " + relPath);
                         uploadStarted.set(true);
@@ -238,6 +241,9 @@ public class DirectorySync {
                 }));
             }
             remoteFS.uploadSubtree(remoteDir, folders.values().stream());
+            for (String relPath : smallFiles) {
+                syncedVersions.add(localState.byPath(relPath));
+            }
         }
 
         // do deletes in bulk

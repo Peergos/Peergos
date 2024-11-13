@@ -665,7 +665,7 @@ public class FileWrapper {
                                                        ProgressConsumer<Long> monitor,
                                                        TransactionService transactions,
                                                        Function<FileUploadTransaction, CompletableFuture<Boolean>> resumeFile) {
-        FileUploadProperties fileProps = new FileUploadProperties(filename, () -> fileData, lengthHi, lengthLow, false, overwriteExisting, monitor);
+        FileUploadProperties fileProps = new FileUploadProperties(filename, () -> fileData, lengthHi, lengthLow, Optional.empty(), Optional.empty(), false, overwriteExisting, monitor);
         FolderUploadProperties currentFolder = new FolderUploadProperties(Collections.emptyList(), Collections.singletonList(fileProps));
         return uploadSubtree(Stream.of(currentFolder), mirrorBat, network, crypto, transactions, resumeFile, () -> true);
     }
@@ -838,6 +838,8 @@ public class FileWrapper {
         public final String filename;
         public final Supplier<AsyncReader> fileData;
         public final long length;
+        public final Optional<LocalDateTime> modifiedTime;
+        public final Optional<Blake3state> hash;
         public final boolean skipExisting;
         public final boolean overwriteExisting;
         public final ProgressConsumer<Long> monitor;
@@ -847,12 +849,16 @@ public class FileWrapper {
                                     Supplier<AsyncReader> fileData,
                                     int lengthHi,
                                     int lengthLow,
+                                    Optional<LocalDateTime> modifiedTime,
+                                    Optional<Blake3state> hash,
                                     boolean skipExisting,
                                     boolean overwriteExisting,
                                     ProgressConsumer<Long> monitor) {
             this.filename = filename;
             this.fileData = fileData;
             this.length = (((long)lengthHi) << 32) | (lengthLow & 0xFFFFFFFFL);
+            this.modifiedTime = modifiedTime;
+            this.hash = hash;
             this.skipExisting = skipExisting;
             this.overwriteExisting = overwriteExisting;
             this.monitor = monitor;
@@ -926,7 +932,7 @@ public class FileWrapper {
                             // (nothing to resume or cleanup later in case of failure)
                             AsyncReader fileData = f.fileData.get();
                             if (f.length <= Chunk.MAX_SIZE || transactions == null) // small files or writable public links
-                                return parent.uploadFileSection(p.left, c, f.filename, fileData, Optional.empty(), false, 0, f.length,
+                                return parent.uploadFileSection(p.left, c, f.filename, fileData, Optional.empty(), false, 0, f.length, f.hash, f.modifiedTime,
                                                 Optional.empty(), Optional.empty(), Optional.empty(), f.skipExisting,
                                                 f.overwriteExisting, true, network.disableCommits(), crypto, f.monitor,
                                                 crypto.random.randomBytes(32), Optional.empty(), Optional.of(Bat.random(crypto.random)), mirrorBat)
@@ -970,7 +976,7 @@ public class FileWrapper {
                                                                                 throw new IllegalStateException("Error uploading file - concurrent upload of same file?");
                                                                             toClose.add(txn);
                                                                             return fileData.reset().thenCompose(reset -> parent.uploadFileSection(r2.a(), c, f.filename, reset, Optional.empty(),
-                                                                                    false, 0, f.length, Optional.of(txn.baseKey), Optional.of(txn.dataKey), Optional.of(txn.writeKey),
+                                                                                    false, 0, f.length, f.hash, f.modifiedTime, Optional.of(txn.baseKey), Optional.of(txn.dataKey), Optional.of(txn.writeKey),
                                                                                     f.skipExisting, f.overwriteExisting, true,
                                                                                     network, crypto, f.monitor, txn.firstMapKey(),
                                                                                     Optional.of(txn.streamSecret()), txn.firstBat, mirrorBat));
@@ -978,7 +984,7 @@ public class FileWrapper {
                                                             }).thenApply(pair -> new Pair<>(pair.left, Stream.concat(p.right.stream(), pair.right.stream()).collect(Collectors.toList())));
                                                 toClose.add(txn);
                                                 return fileData.reset().thenCompose(reset -> parent.uploadFileSection(r.a(), c, f.filename, fileData, Optional.empty(), false,
-                                                                0, f.length, Optional.of(txn.baseKey), Optional.of(txn.dataKey), Optional.of(txn.writeKey),f.skipExisting, f.overwriteExisting, true,
+                                                                0, f.length, f.hash, f.modifiedTime, Optional.of(txn.baseKey), Optional.of(txn.dataKey), Optional.of(txn.writeKey),f.skipExisting, f.overwriteExisting, true,
                                                                 network, crypto, f.monitor, txn.firstMapKey(), Optional.of(txn.streamSecret()), txn.firstBat, mirrorBat))
                                                         .thenApply(pair -> new Pair<>(pair.left, Stream.concat(p.right.stream(), pair.right.stream()).collect(Collectors.toList())));
                                             })
@@ -1253,7 +1259,7 @@ public class FileWrapper {
                                                          Optional<byte[]> streamSecret,
                                                          Optional<Bat> firstBat,
                                                          Optional<BatId> requestedMirrorBat) {
-        return uploadFileSection(initialVersion, committer, filename, fileData, Optional.empty(), isHidden, startIndex, endIndex,
+        return uploadFileSection(initialVersion, committer, filename, fileData, Optional.empty(), isHidden, startIndex, endIndex, Optional.empty(), Optional.empty(),
                 baseKey, Optional.empty(), Optional.empty(), skipExisting, overwriteExisting, truncateExisting, network, crypto, monitor, firstChunkMapKey, streamSecret, firstBat, requestedMirrorBat)
                 .thenCompose(p -> getUpdated(p.left, network)
                         .thenCompose(latest -> p.right.isEmpty() ?
@@ -1270,6 +1276,8 @@ public class FileWrapper {
             boolean isHidden,
             long startIndex,
             long endIndex,
+            Optional<Blake3state> hash,
+            Optional<LocalDateTime> modificationTime,
             Optional<SymmetricKey> requestedBaseKey,
             Optional<SymmetricKey> requestedDataKey,
             Optional<SymmetricKey> requestedWriteKey,
@@ -1354,7 +1362,7 @@ public class FileWrapper {
                                             SymmetricKey dirParentKey = dirAccess.getParentKey(rootRKey);
                                             Location parentLocation = getLocation();
                                             Optional<Bat> parentBat = writableFilePointer().bat;
-                                            LocalDateTime timestamp = LocalDateTime.now();
+                                            LocalDateTime timestamp = modificationTime.orElseGet(LocalDateTime::now);
                                             return calculateMimeType(fileData, endIndex, filename).thenCompose(mimeType -> fileData.reset()
                                                     .thenCompose(resetReader -> {
                                                         Optional<byte[]> actualStreamSecret = streamSecret.isPresent() ?
@@ -1362,7 +1370,7 @@ public class FileWrapper {
                                                                 Optional.of(crypto.random.randomBytes(32));
                                                         FileProperties fileProps = new FileProperties(filename,
                                                                 false, false, mimeType, endIndex,
-                                                                timestamp, timestamp, isHidden, existingThumbnail, actualStreamSecret, Optional.empty());
+                                                                timestamp, timestamp, isHidden, existingThumbnail, actualStreamSecret, hash);
 
                                                         FileUploader chunks = new FileUploader(filename, resetReader,
                                                                 startIndex, endIndex, fileKey, dataKey, parentLocation, parentBat,
@@ -1966,7 +1974,8 @@ public class FileWrapper {
                 return version.withWriter(owner(), writer(), network).thenCompose(snapshot ->
                         getInputStream(snapshot.get(writer()).props.get(), network, crypto, x -> {})
                                 .thenCompose(stream -> target.uploadFileSection(snapshot, committer,
-                                                getName(), stream, existingThumbnail, false, 0, getSize(),
+                                                getName(), stream, existingThumbnail, false, 0, getSize(), getFileProperties().hash,
+                                                Optional.of(getFileProperties().modified),
                                                 Optional.empty(), Optional.empty(), Optional.empty(), false, false, false, network, crypto, x -> {},
                                                 crypto.random.randomBytes(32), Optional.empty(),
                                                 Optional.of(Bat.random(crypto.random)), targetMirrorBat)

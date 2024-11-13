@@ -1,4 +1,7 @@
 package peergos.server.crypto.hash;
+import java.io.FileInputStream;
+import java.io.IOException;
+import java.nio.file.Path;
 import java.util.*;
 import java.util.logging.*;
 
@@ -96,5 +99,24 @@ public class ScryptJava implements Hasher {
     public CompletableFuture<Multihash> hashFromStream(AsyncReader stream, long length) {
         return Hash.sha256(stream, length)
                 .thenApply(h -> new Multihash(Multihash.Type.sha2_256, h));
+    }
+
+    public static Blake3state hashFile(Path p) {
+        byte[] buf = new byte[4 * 1024];
+        long size = p.toFile().length();
+        Blake3 state = Blake3.initHash();
+
+        try (FileInputStream fin = new FileInputStream(p.toFile())) {
+            for (long i = 0; i < size; ) {
+                int read = fin.read(buf);
+                state.update(buf, 0, read);
+                i += read;
+            }
+
+            byte[] hash = state.doFinalize(32);
+            return new Blake3state(hash);
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
     }
 }

@@ -583,7 +583,7 @@ public abstract class UserTests {
                         e.getValue()
                                 .stream()
                                 .map(f -> new FileWrapper.FileUploadProperties(f.getKey().get(f.getKey().size() - 1),
-                                        () -> AsyncReader.build(f.getValue()), 0, f.getValue().length, false, false, x -> {}))
+                                        () -> AsyncReader.build(f.getValue()), 0, f.getValue().length, Optional.empty(), Optional.empty(), false, false, x -> {}))
                                 .collect(Collectors.toList())));
 
         int priorChildren = userRoot.getChildren(crypto.hasher, network).join().size();
@@ -617,7 +617,7 @@ public abstract class UserTests {
         TransactionService txns = new NonClosingTransactionService(network, crypto, txnDir);
         String subdir = "dir";
         try {
-            FileWrapper.FileUploadProperties fileUpload = new FileWrapper.FileUploadProperties(filename, () -> thrower, 0, size, false, false, x -> {
+            FileWrapper.FileUploadProperties fileUpload = new FileWrapper.FileUploadProperties(filename, () -> thrower, 0, size, Optional.empty(), Optional.empty(), false, false, x -> {
             });
             FileWrapper.FolderUploadProperties dirUploads = new FileWrapper.FolderUploadProperties(Arrays.asList(subdir), Arrays.asList(fileUpload));
             context.getUserRoot().join().uploadSubtree(Stream.of(dirUploads), context.mirrorBatId(), network, crypto, txns, f -> Futures.of(false), () -> true).join();
@@ -652,7 +652,7 @@ public abstract class UserTests {
             monitorVal[0] = val;
         };
         try {
-            FileWrapper.FileUploadProperties fileUpload = new FileWrapper.FileUploadProperties(filename, () -> reader, 0, size, false, false, monitor);
+            FileWrapper.FileUploadProperties fileUpload = new FileWrapper.FileUploadProperties(filename, () -> reader, 0, size, Optional.empty(), Optional.empty(), false, false, monitor);
             FileWrapper.FolderUploadProperties dirUploads = new FileWrapper.FolderUploadProperties(Arrays.asList(subdir), Arrays.asList(fileUpload));
             context.getUserRoot().join().uploadSubtree(Stream.of(dirUploads), context.mirrorBatId(), network, crypto, txns, f -> Futures.of(false), () -> true).join();
         } catch (Exception e) {
@@ -674,7 +674,7 @@ public abstract class UserTests {
             monitor2Val[0] = val;
         };
         try {
-            FileWrapper.FileUploadProperties fileUpload = new FileWrapper.FileUploadProperties(filename, () -> reader2, 0, size, false, true, monitor2);
+            FileWrapper.FileUploadProperties fileUpload = new FileWrapper.FileUploadProperties(filename, () -> reader2, 0, size, Optional.empty(), Optional.empty(), false, true, monitor2);
             FileWrapper.FolderUploadProperties dirUploads = new FileWrapper.FolderUploadProperties(Arrays.asList(subdir), Arrays.asList(fileUpload));
             context.getUserRoot().join().uploadSubtree(Stream.of(dirUploads), context.mirrorBatId(), network, crypto, txns2, f -> Futures.of(false), () -> true).join();
         } catch (Exception e) {

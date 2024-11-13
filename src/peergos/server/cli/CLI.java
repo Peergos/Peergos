@@ -11,6 +11,7 @@ import org.jline.terminal.*;
 import org.jline.utils.*;
 
 import peergos.server.*;
+import peergos.server.crypto.hash.ScryptJava;
 import peergos.server.simulation.*;
 import peergos.server.simulation.FileSystem;
 import peergos.server.user.*;
@@ -26,6 +27,9 @@ import peergos.shared.util.*;
 import java.io.*;
 import java.net.*;
 import java.nio.file.*;
+import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.*;
@@ -266,8 +270,9 @@ public class CLI implements Runnable {
                     .filter(p -> p.toFile().isFile())
                     .map(p -> {
                         long fileSize = p.toFile().length();
+                        LocalDateTime modified = LocalDateTime.ofInstant(Instant.ofEpochSecond(p.toFile().lastModified() / 1000, 0), ZoneOffset.UTC);
                         return new FileWrapper.FileUploadProperties(p.getFileName().toString(), () -> reader(p.toFile()),
-                                (int) (fileSize >> 32), (int) fileSize, skipExisting, true,
+                                (int) (fileSize >> 32), (int) fileSize, Optional.of(modified), Optional.of(ScryptJava.hashFile(p)), skipExisting, true,
                                 progressCreator.create(remoteRelativeDir, p.getFileName().toString(), Math.max(4096, fileSize)));
                     })
                     .collect(Collectors.toList());

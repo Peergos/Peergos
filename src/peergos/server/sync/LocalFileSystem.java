@@ -3,6 +3,7 @@ package peergos.server.sync;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import peergos.server.crypto.hash.Blake3;
+import peergos.server.crypto.hash.ScryptJava;
 import peergos.server.simulation.FileAsyncReader;
 import peergos.shared.user.fs.AsyncReader;
 import peergos.shared.user.fs.Blake3state;
@@ -113,22 +114,7 @@ public class LocalFileSystem implements SyncFilesystem {
 
     @Override
     public Blake3state hashFile(Path p, Optional<FileWrapper> meta) {
-        byte[] buf = new byte[4 * 1024];
-        long size = p.toFile().length();
-        Blake3 state = Blake3.initHash();
-
-        try (FileInputStream fin = new FileInputStream(p.toFile())) {
-            for (long i = 0; i < size; ) {
-                int read = fin.read(buf);
-                state.update(buf, 0, read);
-                i += read;
-            }
-
-            byte[] hash = state.doFinalize(32);
-            return new Blake3state(hash);
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
+        return ScryptJava.hashFile(p);
     }
 
     @Override
