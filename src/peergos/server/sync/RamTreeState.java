@@ -11,30 +11,30 @@ class RamTreeState implements SyncState {
     private final List<CopyOp> inProgress = new ArrayList<>();
 
     @Override
-    public void add(FileState fs) {
+    public synchronized void add(FileState fs) {
         filesByPath.put(fs.relPath, fs);
         fileByHash.putIfAbsent(fs.hash, new ArrayList<>());
         fileByHash.get(fs.hash).add(fs);
     }
 
-    public void addDir(String path) {
+    public synchronized void addDir(String path) {
         dirs.add(path);
     }
 
-    public void removeDir(String path) {
+    public synchronized void removeDir(String path) {
         dirs.remove(path);
     }
 
-    public boolean hasDir(String path) {
+    public synchronized boolean hasDir(String path) {
         return dirs.contains(path);
     }
 
-    public Set<String> getDirs() {
+    public synchronized Set<String> getDirs() {
         return dirs;
     }
 
     @Override
-    public void remove(String path) {
+    public synchronized void remove(String path) {
         FileState v = filesByPath.remove(path);
         if (v != null) {
             List<FileState> byHash = fileByHash.get(v.hash);
@@ -46,7 +46,7 @@ class RamTreeState implements SyncState {
     }
 
     @Override
-    public FileState byPath(String path) {
+    public synchronized FileState byPath(String path) {
         return filesByPath.get(path);
     }
 
@@ -55,17 +55,17 @@ class RamTreeState implements SyncState {
     }
 
     @Override
-    public void startCopies(List<CopyOp> ops) {
+    public synchronized void startCopies(List<CopyOp> ops) {
         inProgress.addAll(ops);
     }
 
     @Override
-    public void finishCopies(List<CopyOp> ops) {
+    public synchronized void finishCopies(List<CopyOp> ops) {
         inProgress.removeAll(ops);
     }
 
     @Override
-    public List<CopyOp> getInProgressCopies() {
+    public synchronized List<CopyOp> getInProgressCopies() {
         return inProgress;
     }
 }

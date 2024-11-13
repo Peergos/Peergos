@@ -15,19 +15,19 @@ public class CryptreeCache {
         this.cache = new LRUCache<>(cacheSize);
     }
 
-    public boolean containsKey(Pair<Multihash, ByteArrayWrapper> cacheKey) {
+    public synchronized boolean containsKey(Pair<Multihash, ByteArrayWrapper> cacheKey) {
         return cache.containsKey(cacheKey);
     }
 
-    public Optional<CryptreeNode> get(Pair<Multihash, ByteArrayWrapper> cacheKey) {
+    public synchronized Optional<CryptreeNode> get(Pair<Multihash, ByteArrayWrapper> cacheKey) {
         return cache.get(cacheKey);
     }
 
-    public void put(Pair<Multihash, ByteArrayWrapper> cacheKey, Optional<CryptreeNode> val) {
+    public synchronized void put(Pair<Multihash, ByteArrayWrapper> cacheKey, Optional<CryptreeNode> val) {
         cache.put(cacheKey, val);
     }
 
-    public void update(Optional<Multihash> priorRoot, Pair<Multihash, ByteArrayWrapper> cacheKey, Optional<CryptreeNode> val) {
+    public synchronized void update(Optional<Multihash> priorRoot, Pair<Multihash, ByteArrayWrapper> cacheKey, Optional<CryptreeNode> val) {
         // update other mappings in cache from same root and different map key as they have not changed
         if (priorRoot.isPresent()) {
             new HashMap<>(cache).entrySet().stream()

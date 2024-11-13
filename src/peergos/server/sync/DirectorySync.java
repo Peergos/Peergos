@@ -196,7 +196,7 @@ public class DirectorySync {
             boolean isLocalCopy = synced == null && local == null;
             if (isLocalCopy) {
                 while (maxDownloadConcurrency.get() == 0) {
-                    try {Thread.sleep(5_000); } catch (InterruptedException e) {}
+                    try {Thread.sleep(100); } catch (InterruptedException e) {}
                 }
                 maxDownloadConcurrency.decrementAndGet();
                 downloads.add(ForkJoinPool.commonPool().submit(() -> {
