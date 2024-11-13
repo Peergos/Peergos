@@ -3,9 +3,11 @@ package peergos.server.sync;
 import peergos.shared.user.fs.AsyncReader;
 import peergos.shared.user.fs.Blake3state;
 import peergos.shared.user.fs.FileWrapper;
+import peergos.shared.util.Pair;
 
 import java.io.IOException;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Optional;
 import java.util.function.Consumer;
 
@@ -24,6 +26,8 @@ interface SyncFilesystem {
     void setModificationTime(Path p, long t);
 
     void setHash(Path p, Blake3state hash);
+
+    void setHashes(List<Pair<FileWrapper, Blake3state>> toUpdate);
 
     long size(Path p);
 

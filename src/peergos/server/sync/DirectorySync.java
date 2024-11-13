@@ -507,13 +507,23 @@ public class DirectorySync {
     public static void buildDirState(SyncFilesystem fs, Path dir, RamTreeState res, SyncState synced) throws IOException {
         if (! fs.exists(dir))
             throw new IllegalStateException("Dir does not exist: " + dir);
+        List<Pair<FileWrapper, Blake3state>> toUpdate = new ArrayList<>();
         fs.applyToSubtree(dir, props -> {
             String relPath = props.path.toString().substring(dir.toString().length() + 1);
             FileState atSync = synced.byPath(relPath);
             if (atSync != null && atSync.modificationTime == props.modifiedTime) {
                 res.add(atSync);
             } else {
-                Blake3state b3 = fs.hashFile(props.path, props.meta);
+                Blake3state b3;
+                if (props.meta.isPresent() && props.meta.get().getFileProperties().hash.isPresent()) {
+                    b3 = props.meta.get().getFileProperties().hash.get();
+                } else {
+                    b3 = fs.hashFile(props.path, props.meta);
+                    if (props.meta.isPresent()) {
+                        // collect new hashes to set in bulk later
+                        toUpdate.add(new Pair<>(props.meta.get(), b3));
+                    }
+                }
                 FileState fstat = new FileState(relPath, props.modifiedTime, props.size, b3);
                 res.add(fstat);
             }
@@ -521,5 +531,9 @@ public class DirectorySync {
             String relPath = d.toString().substring(dir.toString().length() + 1);
             res.addDir(relPath);
         });
+        if (! toUpdate.isEmpty()) {
+            log("REMOTE: Updating " + toUpdate.size() + " hashes");
+            fs.setHashes(toUpdate);
+        }
     }
 }

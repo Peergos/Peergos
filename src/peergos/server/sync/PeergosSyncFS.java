@@ -9,16 +9,19 @@ import peergos.shared.user.fs.Blake3state;
 import peergos.shared.user.fs.FileProperties;
 import peergos.shared.user.fs.FileWrapper;
 import peergos.shared.util.Futures;
+import peergos.shared.util.Pair;
 
 import java.io.IOException;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
+import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Consumer;
 import java.util.logging.Logger;
+import java.util.stream.Collectors;
 
 public class PeergosSyncFS implements SyncFilesystem {
     private static final Logger LOG = Logging.LOG();
@@ -108,6 +111,13 @@ public class PeergosSyncFS implements SyncFilesystem {
     }
 
     @Override
+    public void setHashes(List<Pair<FileWrapper, Blake3state>> toUpdate) {
+        FileWrapper.bulkSetSameNameProperties(toUpdate.stream()
+                .map(p -> new Pair<>(p.left, p.left.getFileProperties().withHash(Optional.of(p.right))))
+                .collect(Collectors.toList()), context.network).join();
+    }
+
+    @Override
     public long size(Path p) {
         Optional<FileWrapper> file = context.getByPath(p).join();
         if (file.isEmpty())
@@ -171,27 +181,7 @@ public class PeergosSyncFS implements SyncFilesystem {
         }
 
         byte[] hash = state.doFinalize(32);
-        Blake3state res = new Blake3state(hash);
-
-        String msg = "REMOTE: updating hash for " + p;
-        System.out.println(msg);
-        LOG.info(msg);
-
-        recurseSetProperties(f, props.withHash(Optional.of(res)), 5);
-        return res;
-    }
-
-    private void recurseSetProperties(FileWrapper f, FileProperties newProps, int remainingAttempts) {
-        try {
-            f.setSameNameProperties(newProps, context.network).join();
-        } catch (Exception e) {
-            String message = e.getMessage();
-            if (message != null && message.startsWith("CAS") && remainingAttempts > 1) {
-                recurseSetProperties(f, newProps, remainingAttempts - 1);
-                return;
-            }
-            throw new RuntimeException(e);
-        }
+        return new Blake3state(hash);
     }
 
     @Override

@@ -7,10 +7,12 @@ import peergos.server.simulation.FileAsyncReader;
 import peergos.shared.user.fs.AsyncReader;
 import peergos.shared.user.fs.Blake3state;
 import peergos.shared.user.fs.FileWrapper;
+import peergos.shared.util.Pair;
 
 import java.io.*;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Optional;
 import java.util.function.Consumer;
 
@@ -62,6 +64,9 @@ public class LocalFileSystem implements SyncFilesystem {
 
     @Override
     public void setHash(Path p, Blake3state hash) {}
+
+    @Override
+    public void setHashes(List<Pair<FileWrapper, Blake3state>> toUpdate) {}
 
     @Override
     public long size(Path p) {

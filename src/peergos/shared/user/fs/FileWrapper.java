@@ -1759,6 +1759,18 @@ public class FileWrapper {
                 .thenApply(fa -> true);
     }
 
+    public static CompletableFuture<Boolean> bulkSetSameNameProperties(List<Pair<FileWrapper, FileProperties>> updates,
+                                                                       NetworkAccess network) {
+        PublicKeyHash owner = updates.get(0).left.owner();
+        SigningPrivateKeyAndPublicHash signer = updates.get(0).left.signingPair();
+        return network.synchronizer.applyComplexUpdate(owner, signer,
+                        (s, c) -> Futures.reduceAll(updates, s,
+                                (v, p) -> v.withWriter(owner, p.left.writer(), network)
+                                        .thenCompose(v2 -> p.left.pointer.fileAccess.updateProperties(v2, c, p.left.writableFilePointer(), p.left.entryWriter, p.right, network)),
+                                (a, b) -> a.mergeAndOverwriteWith(b)))
+                .thenApply(fa -> true);
+    }
+
     @JsMethod
     public AbsoluteCapability readOnlyPointer() {
         return pointer.capability.readOnly();
