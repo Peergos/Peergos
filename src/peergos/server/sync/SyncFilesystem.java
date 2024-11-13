@@ -5,6 +5,7 @@ import peergos.shared.user.fs.Blake3state;
 
 import java.io.IOException;
 import java.nio.file.Path;
+import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
 interface SyncFilesystem {
@@ -33,5 +34,5 @@ interface SyncFilesystem {
 
     Blake3state hashFile(Path p);
 
-    void applyToSubtree(Path start, Consumer<Path> file, Consumer<Path> dir) throws IOException;
+    void applyToSubtree(Path start, BiConsumer<Path, Long> file, Consumer<Path> dir) throws IOException;
 }

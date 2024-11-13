@@ -16,6 +16,7 @@ import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
 public class PeergosSyncFS implements SyncFilesystem {
@@ -189,18 +190,18 @@ public class PeergosSyncFS implements SyncFilesystem {
     }
 
     @Override
-    public void applyToSubtree(Path start, Consumer<Path> onFile, Consumer<Path> onDir) {
+    public void applyToSubtree(Path start, BiConsumer<Path, Long> onFile, Consumer<Path> onDir) {
         FileWrapper base = context.getByPath(start).join().get();
         applyToSubtree(start, base, onFile, onDir);
 
     }
 
-    private void applyToSubtree(Path basePath, FileWrapper base, Consumer<Path> onFile, Consumer<Path> onDir) {
+    private void applyToSubtree(Path basePath, FileWrapper base, BiConsumer<Path, Long> onFile, Consumer<Path> onDir) {
         Set<FileWrapper> children = base.getChildren(base.version, context.crypto.hasher, context.network, false).join();
         for (FileWrapper child : children) {
             Path childPath = basePath.resolve(child.getName());
             if (! child.isDirectory()) {
-                onFile.accept(childPath);
+                onFile.accept(childPath, child.getFileProperties().modified.toInstant(ZoneOffset.UTC).toEpochMilli() / 1000 * 1000);
             } else {
                 onDir.accept(childPath);
                 applyToSubtree(childPath, child, onFile, onDir);

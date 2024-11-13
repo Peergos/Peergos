@@ -507,10 +507,9 @@ public class DirectorySync {
     public static void buildDirState(SyncFilesystem fs, Path dir, RamTreeState res, SyncState synced) throws IOException {
         if (! fs.exists(dir))
             throw new IllegalStateException("Dir does not exist: " + dir);
-        fs.applyToSubtree(dir, f -> {
+        fs.applyToSubtree(dir, (f, modified) -> {
             String relPath = f.toString().substring(dir.toString().length() + 1);
             FileState atSync = synced.byPath(relPath);
-            long modified = fs.getLastModified(f);
             if (atSync != null && atSync.modificationTime == modified) {
                 res.add(atSync);
             } else {

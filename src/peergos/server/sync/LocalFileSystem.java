@@ -10,6 +10,7 @@ import peergos.shared.user.fs.Blake3state;
 import java.io.*;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
 public class LocalFileSystem implements SyncFilesystem {
@@ -113,10 +114,10 @@ public class LocalFileSystem implements SyncFilesystem {
     }
 
     @Override
-    public void applyToSubtree(Path start, Consumer<Path> file, Consumer<Path> dir) throws IOException {
+    public void applyToSubtree(Path start, BiConsumer<Path, Long> file, Consumer<Path> dir) throws IOException {
         Files.list(start).forEach(c -> {
             if (Files.isRegularFile(c)) {
-                file.accept(c);
+                file.accept(c, c.toFile().lastModified()/ 1000 * 1000);
             } else if (Files.isDirectory(c)) {
                 dir.accept(start.resolve(c.getFileName()));
                 try {
