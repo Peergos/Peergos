@@ -399,6 +399,48 @@ public class FileWrapper {
         throw new IllegalStateException("Unreadable FileWrapper!");
     }
 
+    public CompletableFuture<Set<FileWrapper>> getChildren(Set<String> names, Hasher hasher, NetworkAccess network, boolean allowDanglingLinks) {
+        if (capTrie.isPresent())
+            return capTrie.get().getChildren("", hasher, network)
+                    .thenApply(kids -> kids.stream()
+                            .filter(f -> names.contains(f.getName()))
+                            .collect(Collectors.toSet()));
+
+        if (isReadable()) {
+            Optional<SigningPrivateKeyAndPublicHash> childsEntryWriter = pointer.capability.wBaseKey
+                    .map(wBase -> pointer.fileAccess.getSigner(pointer.capability.rBaseKey, wBase, entryWriter));
+            return pointer.fileAccess.getAllChildrenCapabilities(version, pointer.capability, hasher, network)
+                    .thenCompose(childCaps -> getFiles(owner(), childCaps.stream()
+                            .filter(c -> names.contains(c.name.name))
+                            .collect(Collectors.toSet()), childsEntryWriter, ownername, network, version)
+                            .thenCompose(p -> {
+                                if (! p.right.isEmpty()) {
+                                    List<NamedAbsoluteCapability> dangling = p.right.stream()
+                                            .map(c -> childCaps.stream().filter(nc -> nc.cap.equals(c)).findFirst().get())
+                                            .collect(Collectors.toList());
+                                    // try once more
+                                    return getFiles(owner(), new HashSet<>(dangling), childsEntryWriter, ownername, network, version)
+                                            .thenApply(retry -> {
+                                                if (! retry.right.isEmpty()) {
+                                                    List<NamedAbsoluteCapability> retryDangling = retry.right.stream()
+                                                            .map(c -> childCaps.stream().filter(nc -> nc.cap.equals(c)).findFirst().get())
+                                                            .collect(Collectors.toList());
+                                                    List<String> failednames = retryDangling.stream().map(nc -> nc.name.name).collect(Collectors.toList());
+                                                    if (! allowDanglingLinks) {
+                                                        throw new IllegalStateException("Couldn't retrieve children " + failednames + " in dir " + getName());
+                                                    }
+                                                    LOG.info("Couldn't retrieve children " + failednames + " in dir " + getName());
+                                                }
+                                                p.left.addAll(retry.left);
+                                                return p.left;
+                                            });
+                                }
+                                return Futures.of(p.left);
+                            }));
+        }
+        throw new IllegalStateException("Unreadable FileWrapper!");
+    }
+
     /**
      *
      * @param owner

@@ -187,6 +187,7 @@ public class DirectorySync {
 
         // upload new small files in a single bulk operation
         Set<String> smallFiles = new HashSet<>();
+        Set<String> deletes = new HashSet<>();
         for (String relativePath : allPaths) {
             FileState synced = syncedVersions.byPath(relativePath);
             FileState local = localState.byPath(relativePath);
@@ -194,6 +195,16 @@ public class DirectorySync {
             boolean isSmallRemoteCopy = synced == null && remote == null && local.size < Chunk.MAX_SIZE;
             if (isSmallRemoteCopy)
                 smallFiles.add(relativePath);
+
+            boolean isLocalDelete = local == null && Objects.equals(remote, synced);
+            if (isLocalDelete && remote != null) {
+                List<FileState> byHash = localState.byHash(remote.hash);
+                Optional<FileState> remoteAtHashedPath = byHash.size() == 1 ?
+                        Optional.ofNullable(remoteState.byPath(byHash.get(0).relPath)) :
+                        Optional.empty();
+                if (byHash.size() != 1 || ! remoteAtHashedPath.isEmpty())
+                    deletes.add(relativePath);
+            }
         }
 
         if (! smallFiles.isEmpty()) {
@@ -227,6 +238,31 @@ public class DirectorySync {
                 }));
             }
             remoteFS.uploadSubtree(remoteDir, folders.values().stream());
+        }
+
+        // do deletes in bulk
+        if (! deletes.isEmpty()) {
+            Map<String, Set<String>> byFolder = new HashMap<>();
+            for (String relPath : deletes) {
+                doneFiles.add(relPath);
+                String folderPath = relPath.contains("/") ? relPath.substring(0, relPath.lastIndexOf("/")) : "";
+                Set<String> folder = byFolder.get(folderPath);
+                if (folder == null) {
+                    folder = new HashSet<>();
+                    byFolder.put(folderPath, folder);
+                }
+                String filename = relPath.substring(relPath.lastIndexOf("/") + 1);
+                folder.add(filename);
+            }
+            byFolder.forEach((dir, files) -> {
+                log("REMOTE: bulk deleting " + files.size() + " from " + dir);
+                remoteFS.bulkDelete(remoteDir.resolve(dir), files);
+                for (String file : files) {
+                    String path = dir + (dir.isEmpty() ? "" : "/") + file;
+                    log("REMOTE: deleted " + path);
+                    syncedVersions.remove(path);
+                }
+            });
         }
 
         List<ForkJoinTask<?>> downloads = new ArrayList<>();

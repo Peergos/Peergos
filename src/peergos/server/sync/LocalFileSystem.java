@@ -14,6 +14,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.function.Consumer;
 import java.util.stream.Stream;
 
@@ -44,6 +45,11 @@ public class LocalFileSystem implements SyncFilesystem {
             throw new RuntimeException(e);
         }
         p.toFile().delete();
+    }
+
+    @Override
+    public void bulkDelete(Path dir, Set<String> children) {
+        throw new IllegalStateException("Unimplemented");
     }
 
     @Override

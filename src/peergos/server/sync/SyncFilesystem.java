@@ -9,6 +9,7 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.function.Consumer;
 import java.util.stream.Stream;
 
@@ -19,6 +20,8 @@ interface SyncFilesystem {
     void mkdirs(Path p);
 
     void delete(Path p);
+
+    void bulkDelete(Path dir, Set<String> children);
 
     void moveTo(Path src, Path target);
 
