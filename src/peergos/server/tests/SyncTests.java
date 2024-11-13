@@ -24,7 +24,7 @@ public class SyncTests {
 
         DirectorySync.syncDirs(localFs, base1, localFs, base2, syncedState, 32, 5);
 
-        byte[] data = new byte[1024 * 1024];
+        byte[] data = new byte[6 * 1024 * 1024];
         new Random(42).nextBytes(data);
         String filename = "file.bin";
         Files.write(base1.resolve(filename), data, StandardOpenOption.CREATE);
