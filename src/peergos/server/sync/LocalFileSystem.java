@@ -6,11 +6,12 @@ import peergos.server.crypto.hash.Blake3;
 import peergos.server.simulation.FileAsyncReader;
 import peergos.shared.user.fs.AsyncReader;
 import peergos.shared.user.fs.Blake3state;
+import peergos.shared.user.fs.FileWrapper;
 
 import java.io.*;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.function.BiConsumer;
+import java.util.Optional;
 import java.util.function.Consumer;
 
 public class LocalFileSystem implements SyncFilesystem {
@@ -94,7 +95,7 @@ public class LocalFileSystem implements SyncFilesystem {
     }
 
     @Override
-    public Blake3state hashFile(Path p) {
+    public Blake3state hashFile(Path p, Optional<FileWrapper> meta) {
         byte[] buf = new byte[4 * 1024];
         long size = p.toFile().length();
         Blake3 state = Blake3.initHash();
@@ -114,10 +115,10 @@ public class LocalFileSystem implements SyncFilesystem {
     }
 
     @Override
-    public void applyToSubtree(Path start, BiConsumer<Path, Long> file, Consumer<Path> dir) throws IOException {
+    public void applyToSubtree(Path start, Consumer<FileProps> file, Consumer<Path> dir) throws IOException {
         Files.list(start).forEach(c -> {
             if (Files.isRegularFile(c)) {
-                file.accept(c, c.toFile().lastModified()/ 1000 * 1000);
+                file.accept(new FileProps(c, c.toFile().lastModified()/ 1000 * 1000, c.toFile().length(), Optional.empty()));
             } else if (Files.isDirectory(c)) {
                 dir.accept(start.resolve(c.getFileName()));
                 try {

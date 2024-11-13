@@ -507,14 +507,14 @@ public class DirectorySync {
     public static void buildDirState(SyncFilesystem fs, Path dir, RamTreeState res, SyncState synced) throws IOException {
         if (! fs.exists(dir))
             throw new IllegalStateException("Dir does not exist: " + dir);
-        fs.applyToSubtree(dir, (f, modified) -> {
-            String relPath = f.toString().substring(dir.toString().length() + 1);
+        fs.applyToSubtree(dir, props -> {
+            String relPath = props.path.toString().substring(dir.toString().length() + 1);
             FileState atSync = synced.byPath(relPath);
-            if (atSync != null && atSync.modificationTime == modified) {
+            if (atSync != null && atSync.modificationTime == props.modifiedTime) {
                 res.add(atSync);
             } else {
-                Blake3state b3 = fs.hashFile(f);
-                FileState fstat = new FileState(relPath, modified, fs.size(f), b3);
+                Blake3state b3 = fs.hashFile(props.path, props.meta);
+                FileState fstat = new FileState(relPath, props.modifiedTime, props.size, b3);
                 res.add(fstat);
             }
         }, d -> {

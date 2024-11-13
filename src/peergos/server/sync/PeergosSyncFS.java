@@ -1,6 +1,7 @@
 package peergos.server.sync;
 
 import peergos.server.crypto.hash.Blake3;
+import peergos.server.util.Logging;
 import peergos.shared.storage.auth.BatId;
 import peergos.shared.user.UserContext;
 import peergos.shared.user.fs.AsyncReader;
@@ -16,10 +17,11 @@ import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.Optional;
 import java.util.Set;
-import java.util.function.BiConsumer;
 import java.util.function.Consumer;
+import java.util.logging.Logger;
 
 public class PeergosSyncFS implements SyncFilesystem {
+    private static final Logger LOG = Logging.LOG();
 
     private final UserContext context;
 
@@ -151,8 +153,8 @@ public class PeergosSyncFS implements SyncFilesystem {
     }
 
     @Override
-    public Blake3state hashFile(Path p) {
-        FileWrapper f = context.getByPath(p).join().get();
+    public Blake3state hashFile(Path p, Optional<FileWrapper> meta) {
+        FileWrapper f = meta.orElseGet(() -> context.getByPath(p).join().get());
         FileProperties props = f.getFileProperties();
         if (props.hash.isPresent())
             return props.hash.get();
@@ -171,7 +173,10 @@ public class PeergosSyncFS implements SyncFilesystem {
         byte[] hash = state.doFinalize(32);
         Blake3state res = new Blake3state(hash);
 
-        System.out.println("REMOTE: updating hash for " + p);
+        String msg = "REMOTE: updating hash for " + p;
+        System.out.println(msg);
+        LOG.info(msg);
+
         recurseSetProperties(f, props.withHash(Optional.of(res)), 5);
         return res;
     }
@@ -190,18 +195,20 @@ public class PeergosSyncFS implements SyncFilesystem {
     }
 
     @Override
-    public void applyToSubtree(Path start, BiConsumer<Path, Long> onFile, Consumer<Path> onDir) {
+    public void applyToSubtree(Path start, Consumer<FileProps> onFile, Consumer<Path> onDir) {
         FileWrapper base = context.getByPath(start).join().get();
         applyToSubtree(start, base, onFile, onDir);
 
     }
 
-    private void applyToSubtree(Path basePath, FileWrapper base, BiConsumer<Path, Long> onFile, Consumer<Path> onDir) {
+    private void applyToSubtree(Path basePath, FileWrapper base, Consumer<FileProps> onFile, Consumer<Path> onDir) {
         Set<FileWrapper> children = base.getChildren(base.version, context.crypto.hasher, context.network, false).join();
         for (FileWrapper child : children) {
             Path childPath = basePath.resolve(child.getName());
             if (! child.isDirectory()) {
-                onFile.accept(childPath, child.getFileProperties().modified.toInstant(ZoneOffset.UTC).toEpochMilli() / 1000 * 1000);
+                onFile.accept(new FileProps(childPath,
+                        child.getFileProperties().modified.toInstant(ZoneOffset.UTC).toEpochMilli() / 1000 * 1000,
+                        child.getSize(), Optional.of(child)));
             } else {
                 onDir.accept(childPath);
                 applyToSubtree(childPath, child, onFile, onDir);

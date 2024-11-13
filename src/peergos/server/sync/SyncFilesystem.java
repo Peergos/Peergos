@@ -2,10 +2,11 @@ package peergos.server.sync;
 
 import peergos.shared.user.fs.AsyncReader;
 import peergos.shared.user.fs.Blake3state;
+import peergos.shared.user.fs.FileWrapper;
 
 import java.io.IOException;
 import java.nio.file.Path;
-import java.util.function.BiConsumer;
+import java.util.Optional;
 import java.util.function.Consumer;
 
 interface SyncFilesystem {
@@ -32,7 +33,21 @@ interface SyncFilesystem {
 
     AsyncReader getBytes(Path p, long fileOffset) throws IOException;
 
-    Blake3state hashFile(Path p);
+    Blake3state hashFile(Path p, Optional<FileWrapper> meta);
 
-    void applyToSubtree(Path start, BiConsumer<Path, Long> file, Consumer<Path> dir) throws IOException;
+    void applyToSubtree(Path start, Consumer<FileProps> file, Consumer<Path> dir) throws IOException;
+
+    class FileProps {
+        public final Path path;
+        public final long modifiedTime;
+        public final long size;
+        public final Optional<FileWrapper> meta;
+
+        public FileProps(Path path, long modifiedTime, long size, Optional<FileWrapper> meta) {
+            this.path = path;
+            this.modifiedTime = modifiedTime;
+            this.size = size;
+            this.meta = meta;
+        }
+    }
 }
