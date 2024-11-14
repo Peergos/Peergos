@@ -1968,7 +1968,7 @@ public class FileWrapper {
                                                     return Futures.reduceAll(children, versionWithDir,
                                                             (s, child) -> newTarget.getUpdated(s, network)
                                                                     .thenCompose(updated ->
-                                                                            child.copyTo(updated, existingThumbnail, targetMirrorBat, network, crypto, s, committer)),
+                                                                            child.copyTo(updated, child.getFileProperties().thumbnail, targetMirrorBat, network, crypto, s, committer)),
                                                             (a, b) -> a.merge(b));
                                                 })));
             } else {
