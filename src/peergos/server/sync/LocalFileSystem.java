@@ -33,7 +33,7 @@ public class LocalFileSystem implements SyncFilesystem {
         File f = p.toFile();
         if (f.exists() && f.isDirectory())
             return;
-        if (!f.mkdirs())
+        if (!f.mkdirs() && ! f.exists())
             throw new IllegalStateException("Couldn't create " + p);
     }
 
