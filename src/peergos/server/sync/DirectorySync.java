@@ -89,7 +89,7 @@ public class DirectorySync {
             List<String> localDirs = Arrays.asList(args.getArg("local-dirs").split(","));
             if (links.size() != localDirs.size())
                 throw new IllegalArgumentException("Mismatched number of local dirs and links");
-
+            boolean oneRun = args.getBoolean("run-once", false);
             while (true) {
                 try {
                     for (int i=0; i < links.size(); i++) {
@@ -101,6 +101,8 @@ public class DirectorySync {
                         long t1 = System.currentTimeMillis();
                         log("Dir sync took " + (t1 - t0) / 1000 + "s");
                     }
+                    if (oneRun)
+                        break;
                     Thread.sleep(30_000);
                 } catch (Exception e) {
                     e.printStackTrace();
@@ -112,6 +114,7 @@ public class DirectorySync {
             LOG.log(Level.SEVERE, e, e::getMessage);
             throw new RuntimeException(e);
         }
+        return true;
     }
 
     public static boolean init(Args args) {
