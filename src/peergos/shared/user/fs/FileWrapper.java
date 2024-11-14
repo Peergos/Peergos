@@ -389,8 +389,9 @@ public class FileWrapper {
                                                     }
                                                     LOG.info("Couldn't retrieve children " + names + " in dir " + getName());
                                                 }
-                                                p.left.addAll(retry.left);
-                                                return p.left;
+                                                HashSet<FileWrapper> res = new HashSet<>(p.left);
+                                                res.addAll(retry.left);
+                                                return res;
                                             });
                                 }
                                 return Futures.of(p.left);
