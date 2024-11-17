@@ -56,6 +56,10 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
             .name("s3_block_heads")
             .help("Number of block heads to S3")
             .register();
+    private static final Counter blockSize = Counter.build()
+            .name("s3_block_size_heads")
+            .help("Number of block size head requests to S3")
+            .register();
     private static final Counter blockGets = Counter.build()
             .name("s3_block_gets")
             .help("Number of block gets to S3")
@@ -238,8 +242,6 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
             throw new IllegalStateException("Too many reads to auth!");
         List<PresignedUrl> res = new ArrayList<>();
 
-        if (! blocks.stream().allMatch(c -> hasBlock(c.hash)))
-            return Futures.errored(new IllegalStateException("Blocks not present locally"));
         if (! blocks.stream().allMatch(c -> c.hash.isRaw()))
             return Futures.errored(new IllegalStateException("Can only auth read for raw blocks, not cbor!"));
 
@@ -442,7 +444,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
     public boolean hasBlock(Cid hash) {
         if (blockBuffer.hasBlock(hash))
             return true;
-        if (cborCache.hasBlock(hash))
+        if (! hash.isRaw() && cborCache.hasBlock(hash))
             return true;
         return getWithBackoff(() -> hasBlockWithoutBackoff(hash));
     }
@@ -619,6 +621,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                     S3AdminRequests.asAwsDate(ZonedDateTime.now()), host, region, accessKeyId, secretKey, useHttps, hasher).join();
             Map<String, List<String>> headRes = HttpUtil.head(headUrl);
             blockHeads.inc();
+            blockSize.inc();
             long size = Long.parseLong(headRes.get("Content-Length").get(0));
             return Futures.of(Optional.of((int)size));
         } catch (FileNotFoundException f) {
