@@ -9,7 +9,7 @@ import java.util.*;
 import java.util.stream.Collectors;
 import java.util.stream.LongStream;
 
-class FileState implements Cborable {
+public class FileState implements Cborable {
     public final String relPath;
     public final long modificationTime;
     public final long size;
