@@ -126,9 +126,10 @@ public class HashTree implements Cborable {
         List<ChunkHashList> level = new ArrayList<>();
 
         for (int i=0; i < chunkHashes.size(); i += 1024) {
-            byte[] chunkHashesBytes = new byte[Math.min(1024, chunkHashes.size() - i) * 32];
-            for (int c=0; c < 1024; c++)
-                System.arraycopy(chunkHashes.get(i), 0, chunkHashesBytes, i * 32, 32);
+            int nChunks = Math.min(1024, chunkHashes.size() - i);
+            byte[] chunkHashesBytes = new byte[nChunks * 32];
+            for (int c=0; c < nChunks; c++)
+                System.arraycopy(chunkHashes.get(i + c), 0, chunkHashesBytes, c * 32, 32);
             ChunkHashList level1Section = new ChunkHashList(chunkHashesBytes);
             level.add(level1Section);
         }
