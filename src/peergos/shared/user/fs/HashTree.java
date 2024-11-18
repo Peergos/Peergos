@@ -1,5 +1,6 @@
 package peergos.shared.user.fs;
 
+import jsinterop.annotations.JsMethod;
 import peergos.shared.cbor.CborObject;
 import peergos.shared.cbor.Cborable;
 import peergos.shared.crypto.hash.Hasher;
@@ -8,6 +9,7 @@ import peergos.shared.util.Futures;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
+import java.util.stream.LongStream;
 
 public class HashTree implements Cborable {
 
@@ -56,6 +58,31 @@ public class HashTree implements Cborable {
         List<ChunkHashList> level2 = branches.stream().flatMap(b -> b.level2.stream()).collect(Collectors.toList());
         List<ChunkHashList> level3 = branches.stream().flatMap(b -> b.level3.stream()).collect(Collectors.toList());
         return new HashTree(branches.get(0).rootHash, level1, level2, level3);
+    }
+
+    private static CompletableFuture<byte[]> readChunk(AsyncReader f, byte[] buf, int offset, int remaining) {
+        if (remaining == 0)
+            return Futures.of(buf);
+        return f.readIntoArray(buf, offset, remaining)
+                .thenCompose(read -> read == remaining ?
+                        Futures.of(buf) :
+                        readChunk(f, buf, offset + read, remaining - read));
+    }
+
+    @JsMethod
+    public static CompletableFuture<HashTree> build(AsyncReader f, int sizeHi, int sizeLow, Hasher hasher) {
+        long size = ((long)sizeHi) << 32 | (sizeLow & 0xFFFFFFFFL);
+        long nChunks = size == 0 ? 1 : (size + Chunk.MAX_SIZE - 1) / Chunk.MAX_SIZE;
+        byte[] chunk = new byte[(int) Math.min(Chunk.MAX_SIZE, size)];
+        return Futures.combineAllInOrder(LongStream.range(0, nChunks)
+                        .mapToObj(i -> {
+                            boolean lastOfMultiChunk = i == nChunks - 1 && nChunks > 1;
+                            int remaining = lastOfMultiChunk ? (int) (size % Chunk.MAX_SIZE) : chunk.length;
+                            return readChunk(f, lastOfMultiChunk ? new byte[remaining] : chunk, 0, remaining)
+                                    .thenCompose(data -> hasher.sha256(data));
+                        })
+                        .collect(Collectors.toList()))
+                .thenCompose(level1 -> build(level1, hasher));
     }
 
     public static CompletableFuture<HashTree> build(List<byte[]> chunkHashes,
