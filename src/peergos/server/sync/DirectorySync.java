@@ -27,7 +27,6 @@ import peergos.shared.util.PathUtil;
 
 import java.io.*;
 import java.net.URL;
-import java.nio.file.FileSystem;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -40,7 +39,6 @@ import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.ForkJoinTask;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Supplier;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -84,8 +82,8 @@ public class DirectorySync {
             int minFreeSpacePercent = args.getInt("min-free-space-percent", 5);
 
             PeergosSyncFS remote = new PeergosSyncFS(context);
-            LocalFileSystem local = new LocalFileSystem();
-            SyncState syncedState = new JdbcTreeState(args.fromPeergosDir("sync-state-file", "dir-sync-state.sql").toString());
+            LocalFileSystem local = new LocalFileSystem(crypto.hasher);
+            SyncState syncedState = new JdbcTreeState(args.fromPeergosDir("sync-state-file", "dir-sync-state-v2.sql").toString());
             List<String> localDirs = Arrays.asList(args.getArg("local-dirs").split(","));
             if (links.size() != localDirs.size())
                 throw new IllegalArgumentException("Mismatched number of local dirs and links");
@@ -204,7 +202,7 @@ public class DirectorySync {
 
             boolean isLocalDelete = local == null && Objects.equals(remote, synced);
             if (isLocalDelete && remote != null) {
-                List<FileState> byHash = localState.byHash(remote.hash);
+                List<FileState> byHash = localState.byHash(remote.hashTree.rootHash);
                 Optional<FileState> remoteAtHashedPath = byHash.size() == 1 ?
                         Optional.ofNullable(remoteState.byPath(byHash.get(0).relPath)) :
                         Optional.empty();
@@ -227,7 +225,10 @@ public class DirectorySync {
                 }
                 String filename = relPath.substring(relPath.lastIndexOf("/") + 1);
                 FileState local = localState.byPath(relPath);
+                if (relPath.contains("/"))
+                    remoteState.addDir(relPath.substring(0, relPath.length() - filename.length() - 1));
                 AtomicBoolean uploadStarted = new AtomicBoolean(false);
+                LocalDateTime modificationTime = LocalDateTime.ofInstant(Instant.ofEpochSecond(local.modificationTime / 1000, 0), ZoneOffset.UTC);
                 folder.files.add(new FileWrapper.FileUploadProperties(filename,
                         () -> {
                             try {
@@ -236,7 +237,7 @@ public class DirectorySync {
                                 throw new RuntimeException(e);
                             }
                         },
-                        (int)(local.size >> 32), (int) local.size, Optional.of(LocalDateTime.ofInstant(Instant.ofEpochSecond(local.modificationTime / 1000, 0), ZoneOffset.UTC)), Optional.of(local.hash), false, true, x -> {
+                        (int)(local.size >> 32), (int) local.size, Optional.of(modificationTime), Optional.of(local.hashTree), false, true, x -> {
                     if (! uploadStarted.get()) {
                         log("REMOTE: Uploading " + relPath);
                         uploadStarted.set(true);
@@ -264,7 +265,7 @@ public class DirectorySync {
                 folder.add(filename);
             }
             byFolder.forEach((dir, files) -> {
-                log("REMOTE: bulk deleting " + files.size() + " from " + dir);
+                log("REMOTE: bulk deleting " + files.size() + " from " + remoteDir.resolve(dir));
                 remoteFS.bulkDelete(remoteDir.resolve(dir), files);
                 for (String file : files) {
                     String path = dir + (dir.isEmpty() ? "" : "/") + file;
@@ -354,7 +355,7 @@ public class DirectorySync {
         long freeSpace = Files.getFileStore(localDir).getUsableSpace();
         if (synced == null) {
             if (local == null) { // remotely added or renamed
-                List<FileState> byHash = localTree.byHash(remote.hash);
+                List<FileState> byHash = localTree.byHash(remote.hashTree.rootHash);
                 Optional<FileState> remoteAtHashedPath = byHash.size() == 1 ?
                         Optional.ofNullable(remoteTree.byPath(byHash.get(0).relPath)) :
                         Optional.empty();
@@ -376,7 +377,7 @@ public class DirectorySync {
                 }
                 syncedVersions.add(remote);
             } else if (remote == null) { // locally added or renamed
-                List<FileState> byHash = remoteTree.byHash(local.hash);
+                List<FileState> byHash = remoteTree.byHash(local.hashTree.rootHash);
                 Optional<FileState> localAtHashedPath = byHash.size() == 1 ?
                         Optional.ofNullable(localTree.byPath(byHash.get(0).relPath)) :
                         Optional.empty();
@@ -397,7 +398,7 @@ public class DirectorySync {
                 syncedVersions.add(local);
             } else {
                 // concurrent addition, rename 1 if contents are different
-                if (remote.hash.equals(local.hash)) {
+                if (remote.hashTree.rootHash.equals(local.hashTree.rootHash)) {
                     if (local.modificationTime > remote.modificationTime) {
                         log("Remote: Set mod time " + local.relPath);
                         remoteFs.setModificationTime(remoteDir.resolve(local.relPath), local.modificationTime);
@@ -433,7 +434,7 @@ public class DirectorySync {
         } else {
             if (synced.equals(local)) { // remote change only
                 if (remote == null) { // deletion or rename
-                    List<FileState> byHash = remoteTree.byHash(local.hash);
+                    List<FileState> byHash = remoteTree.byHash(local.hashTree.rootHash);
                     Optional<FileState> localAtHashedPath = byHash.size() == 1 ?
                             Optional.ofNullable(localTree.byPath(byHash.get(0).relPath)) :
                             Optional.empty();
@@ -444,13 +445,13 @@ public class DirectorySync {
                         localFs.delete(localDir.resolve(local.relPath));
                         syncedVersions.remove(local.relPath);
                     }
-                } else if (remote.hash.equals(local.hash)) {
+                } else if (remote.hashTree.rootHash.equals(local.hashTree.rootHash)) {
                     // already synced
                 } else {
                     if (remote.size > local.size && (freeSpace + local.size - remote.size) * 100 / totalSpace < minPercentFree)
                         throw new IllegalStateException("Not enough free space to sync and keep " + minPercentFree + "% free");
                     log("Sync Local: Copying changes to " + remote.relPath);
-                    List<Pair<Long, Long>> diffs = remote.diffRanges(null);
+                    List<Pair<Long, Long>> diffs = remote.diffRanges(local);
                     List<CopyOp> ops = diffs.stream()
                             .map(d -> new CopyOp(true, remoteDir.resolve(remote.relPath), localDir.resolve(remote.relPath), remote, null, d.left, d.right))
                             .collect(Collectors.toList());
@@ -459,7 +460,7 @@ public class DirectorySync {
                 }
             } else if (synced.equals(remote)) { // local only change
                 if (local == null) { // deletion or rename
-                    List<FileState> byHash = localTree.byHash(remote.hash);
+                    List<FileState> byHash = localTree.byHash(remote.hashTree.rootHash);
                     Optional<FileState> remoteAtHashedPath = byHash.size() == 1 ?
                             Optional.ofNullable(remoteTree.byPath(byHash.get(0).relPath)) :
                             Optional.empty();
@@ -470,11 +471,11 @@ public class DirectorySync {
                         remoteFs.delete(remoteDir.resolve(remote.relPath));
                         syncedVersions.remove(remote.relPath);
                     }
-                } else if (remote.hash.equals(local.hash)) {
+                } else if (remote.hashTree.rootHash.equals(local.hashTree.rootHash)) {
                     // already synced
                 } else {
                     log("Sync Remote: Copying changes to " + local.relPath);
-                    List<Pair<Long, Long>> diffs = local.diffRanges(null);
+                    List<Pair<Long, Long>> diffs = local.diffRanges(remote);
                     List<CopyOp> ops = diffs.stream()
                             .map(d -> new CopyOp(false, localDir.resolve(local.relPath), remoteDir.resolve(local.relPath), local, null, d.left, d.right))
                             .collect(Collectors.toList());
@@ -558,7 +559,7 @@ public class DirectorySync {
             }
         }
         fs.moveTo(f, f.getParent().resolve(newName));
-        return new FileState(s.relPath.substring(0, s.relPath.length() - name.length()) + newName, s.modificationTime, s.size, s.hash);
+        return new FileState(s.relPath.substring(0, s.relPath.length() - name.length()) + newName, s.modificationTime, s.size, s.hashTree);
     }
 
     public static void copyFileDiffAndTruncate(SyncFilesystem srcFs, SyncFilesystem targetFs, List<CopyOp> ops, SyncState syncDb) throws IOException {
@@ -591,30 +592,28 @@ public class DirectorySync {
         }
 
         targetFs.setModificationTime(op.target, lastModified);
-        targetFs.setHash(op.target, op.sourceState.hash);
+        targetFs.setHash(op.target, op.sourceState.hashTree, size);
     }
 
     public static void buildDirState(SyncFilesystem fs, Path dir, RamTreeState res, SyncState synced) throws IOException {
         if (! fs.exists(dir))
             throw new IllegalStateException("Dir does not exist: " + dir);
-        List<Pair<FileWrapper, Blake3state>> toUpdate = new ArrayList<>();
+        List<Pair<FileWrapper, HashTree>> toUpdate = new ArrayList<>();
         fs.applyToSubtree(dir, props -> {
             String relPath = props.path.toString().substring(dir.toString().length() + 1);
             FileState atSync = synced.byPath(relPath);
             if (atSync != null && atSync.modificationTime == props.modifiedTime) {
                 res.add(atSync);
             } else {
-                Blake3state b3;
-                if (props.meta.isPresent() && props.meta.get().getFileProperties().hash.isPresent()) {
-                    b3 = props.meta.get().getFileProperties().hash.get();
-                } else {
-                    b3 = fs.hashFile(props.path, props.meta);
-                    if (props.meta.isPresent()) {
+                HashTree hashTree = fs.hashFile(props.path, props.meta, relPath, synced);
+                if (props.meta.isPresent()) {
+                    Optional<HashBranch> remoteHash = props.meta.get().getFileProperties().treeHash;
+                    if (! remoteHash.isPresent()) {
                         // collect new hashes to set in bulk later
-                        toUpdate.add(new Pair<>(props.meta.get(), b3));
+                        toUpdate.add(new Pair<>(props.meta.get(), hashTree));
                     }
                 }
-                FileState fstat = new FileState(relPath, props.modifiedTime, props.size, b3);
+                FileState fstat = new FileState(relPath, props.modifiedTime, props.size, hashTree);
                 res.add(fstat);
             }
         }, d -> {

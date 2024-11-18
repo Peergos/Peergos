@@ -101,21 +101,32 @@ public class ScryptJava implements Hasher {
                 .thenApply(h -> new Multihash(Multihash.Type.sha2_256, h));
     }
 
-    public static Blake3state hashFile(Path p) {
+    public static HashTree hashFile(Path p, Hasher hasher) {
         byte[] buf = new byte[4 * 1024];
         long size = p.toFile().length();
-        Blake3 state = Blake3.initHash();
+        int chunkOffset = 0;
+        List<byte[]> chunkHashes = new ArrayList<>();
 
         try (FileInputStream fin = new FileInputStream(p.toFile())) {
+            MessageDigest chunkHash = MessageDigest.getInstance("SHA-256");
             for (long i = 0; i < size; ) {
                 int read = fin.read(buf);
-                state.update(buf, 0, read);
+                chunkOffset += read;
+                if (chunkOffset >= Chunk.MAX_SIZE) {
+                    int thisChunk = read - chunkOffset + Chunk.MAX_SIZE;
+                    chunkHash.update(buf, 0, thisChunk);
+                    chunkHashes.add(chunkHash.digest());
+                    chunkHash = MessageDigest.getInstance("SHA-256");
+                    chunkOffset = 0;
+                } else
+                    chunkHash.update(buf, 0, read);
                 i += read;
             }
+            if (size == 0 || size % Chunk.MAX_SIZE != 0)
+                chunkHashes.add(chunkHash.digest());
 
-            byte[] hash = state.doFinalize(32);
-            return new Blake3state(hash);
-        } catch (IOException e) {
+            return HashTree.build(chunkHashes, hasher).join();
+        } catch (IOException | NoSuchAlgorithmException e) {
             throw new RuntimeException(e);
         }
     }

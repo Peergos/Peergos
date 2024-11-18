@@ -686,7 +686,7 @@ public class FileWrapper {
                     monitor.accept(startChunkIndex * Chunk.MAX_SIZE);
                     FileUploader uploader = new FileUploader(txn.targetFilename(), data, startChunkIndex*Chunk.MAX_SIZE,
                             txn.size(), txn.baseKey, txn.dataKey, getLocation(), getPointer().capability.bat, getParentKey(),
-                            monitor, props, txn.getFirstLocation().getMapKey(), txn.firstBat);
+                            monitor, props, Optional.empty(), txn.getFirstLocation().getMapKey(), txn.firstBat);
                     return uploader.uploadFrom(s, c, network, startChunkIndex.intValue(), txn.getFirstLocation().owner,
                             signingPair(), mirrorBatId(), crypto.random, crypto.hasher);
                 }).thenApply(v -> new Pair<>(v, Optional.of(new NamedRelativeCapability(txn.targetFilename(), fromParent))));
@@ -840,7 +840,7 @@ public class FileWrapper {
         public final Supplier<AsyncReader> fileData;
         public final long length;
         public final Optional<LocalDateTime> modifiedTime;
-        public final Optional<Blake3state> hash;
+        public final Optional<HashTree> hash;
         public final boolean skipExisting;
         public final boolean overwriteExisting;
         public final ProgressConsumer<Long> monitor;
@@ -851,7 +851,7 @@ public class FileWrapper {
                                     int lengthHi,
                                     int lengthLow,
                                     Optional<LocalDateTime> modifiedTime,
-                                    Optional<Blake3state> hash,
+                                    Optional<HashTree> hash,
                                     boolean skipExisting,
                                     boolean overwriteExisting,
                                     ProgressConsumer<Long> monitor) {
@@ -1277,7 +1277,7 @@ public class FileWrapper {
             boolean isHidden,
             long startIndex,
             long endIndex,
-            Optional<Blake3state> hash,
+            Optional<HashTree> hash,
             Optional<LocalDateTime> modificationTime,
             Optional<SymmetricKey> requestedBaseKey,
             Optional<SymmetricKey> requestedDataKey,
@@ -1371,11 +1371,11 @@ public class FileWrapper {
                                                                 Optional.of(crypto.random.randomBytes(32));
                                                         FileProperties fileProps = new FileProperties(filename,
                                                                 false, false, mimeType, endIndex,
-                                                                timestamp, timestamp, isHidden, existingThumbnail, actualStreamSecret, hash);
+                                                                timestamp, timestamp, isHidden, existingThumbnail, actualStreamSecret, hash.map(t -> t.branch(0)));
 
                                                         FileUploader chunks = new FileUploader(filename, resetReader,
                                                                 startIndex, endIndex, fileKey, dataKey, parentLocation, parentBat,
-                                                                dirParentKey, monitor, fileProps, firstChunkMapKey, firstBat);
+                                                                dirParentKey, monitor, fileProps, hash, firstChunkMapKey, firstBat);
 
                                                         SigningPrivateKeyAndPublicHash signer = signingPair();
                                                         WritableAbsoluteCapability fileWriteCap = new
@@ -1461,7 +1461,7 @@ public class FileWrapper {
                             if (thumbData.isEmpty())
                                 return Futures.of(base);
                             FileProperties fileProps = new FileProperties(fileName, false, props.isLink, mimeType, fileSize,
-                                    updatedDateTime, createdDateTime, isHidden, thumbData, streamSecret, props.hash);
+                                    updatedDateTime, createdDateTime, isHidden, thumbData, streamSecret, props.treeHash);
 
                             return fileOpt.get().updateProperties(base, committer, fileProps, network);
                         });
@@ -1744,7 +1744,7 @@ public class FileWrapper {
                     FileProperties newProps = new FileProperties(newFilename, isDir, isLink,
                             currentProps.mimeType, currentProps.size,
                             currentProps.modified, currentProps.created, currentProps.isHidden,
-                            currentProps.thumbnail, currentProps.streamSecret, currentProps.hash);
+                            currentProps.thumbnail, currentProps.streamSecret, currentProps.treeHash);
                     SigningPrivateKeyAndPublicHash signer = isLink ? parent.signingPair() : signingPair();
                     return userContext.network.synchronizer.applyComplexUpdate(owner(), signer,
                             (s, committer) -> nodeToUpdate.updateProperties(s, committer, us,
@@ -1810,14 +1810,46 @@ public class FileWrapper {
                 .thenApply(fa -> true);
     }
 
-    public static CompletableFuture<Boolean> bulkSetSameNameProperties(List<Pair<FileWrapper, FileProperties>> updates,
+    public static class PropsUpdate {
+        public final WritableAbsoluteCapability cap;
+        public final CryptreeNode meta;
+        public final Optional<SigningPrivateKeyAndPublicHash> entryWriter;
+        public final FileProperties newProps;
+
+        public PropsUpdate(WritableAbsoluteCapability cap, CryptreeNode meta, Optional<SigningPrivateKeyAndPublicHash> entryWriter, FileProperties newProps) {
+            this.cap = cap;
+            this.meta = meta;
+            this.entryWriter = entryWriter;
+            this.newProps = newProps;
+        }
+    }
+
+    public CompletableFuture<List<PropsUpdate>> getHashUpdates(HashTree hash, NetworkAccess network, Hasher hasher) {
+        WritableAbsoluteCapability cap = writableFilePointer();
+        long fileSize = getSize();
+        long nBranches = fileSize == 0 ? 1 : (fileSize + 1024 * Chunk.MAX_SIZE - 1) / (1024 * Chunk.MAX_SIZE);
+        byte[] streamSecret = getFileProperties().streamSecret.get();
+        return Futures.combineAllInOrder(LongStream.range(0, nBranches)
+                .mapToObj(b -> FileProperties.calculateMapKey(streamSecret, cap.getMapKey(), cap.bat, b * 1024 * Chunk.MAX_SIZE, hasher)
+                        .thenCompose(loc -> {
+                            WritableAbsoluteCapability chunkCap = cap.withMapKey(loc.left, loc.right);
+                            long chunkIndex = b * 1024;
+                            return network.getMetadata(version.get(writer()).props.get(), chunkCap)
+                                    .thenApply(meta -> new PropsUpdate(chunkCap, meta.get(), entryWriter, meta.get().getProperties(chunkCap.rBaseKey)
+                                            .withHash(Optional.of(hash.branch(chunkIndex)))));
+                        }))
+                .collect(Collectors.toList()));
+    }
+
+    public static CompletableFuture<Boolean> bulkSetSameNameProperties(List<PropsUpdate> updates,
                                                                        NetworkAccess network) {
-        PublicKeyHash owner = updates.get(0).left.owner();
-        SigningPrivateKeyAndPublicHash signer = updates.get(0).left.signingPair();
+        PropsUpdate first = updates.get(0);
+        PublicKeyHash owner = first.cap.owner;
+        SigningPrivateKeyAndPublicHash signer = first.meta.getSigner(first.cap.rBaseKey, first.cap.wBaseKey.get(), first.entryWriter);
         return network.synchronizer.applyComplexUpdate(owner, signer,
                         (s, c) -> Futures.reduceAll(updates, s,
-                                (v, p) -> v.withWriter(owner, p.left.writer(), network)
-                                        .thenCompose(v2 -> p.left.pointer.fileAccess.updateProperties(v2, c, p.left.writableFilePointer(), p.left.entryWriter, p.right, network)),
+                                (v, p) -> v.withWriter(owner, p.cap.writer, network)
+                                        .thenCompose(v2 -> p.meta.updateProperties(v2, c, p.cap, p.entryWriter, p.newProps, network)),
                                 (a, b) -> a.mergeAndOverwriteWith(b)))
                 .thenApply(fa -> true);
     }
@@ -1933,6 +1965,30 @@ public class FileWrapper {
                 .thenApply(newAccess -> true);
     }
 
+    public CompletableFuture<Optional<HashTree>> getHash(NetworkAccess network, Hasher hasher) {
+        long size = getSize();
+        Optional<HashBranch> hash = getFileProperties().treeHash;
+        if (hash.isEmpty())
+            return Futures.of(Optional.empty());
+        if (size < 1024 * Chunk.MAX_SIZE)
+            return Futures.of(hash.map(t -> new HashTree(t.rootHash, t
+                    .level1.stream().collect(Collectors.toList()),
+                    t.level2.stream().collect(Collectors.toList()),
+                    t.level3.stream().collect(Collectors.toList()))));
+        long nBranches = (size + 1024 * Chunk.MAX_SIZE - 1) / (1024 * Chunk.MAX_SIZE);
+        return Futures.combineAllInOrder(LongStream.range(0, nBranches).mapToObj(b -> {
+            WritableAbsoluteCapability cap = writableFilePointer();
+            return FileProperties.calculateMapKey(getFileProperties().streamSecret.get(),
+                    cap.getMapKey(), cap.bat, b * 1024 * Chunk.MAX_SIZE, hasher).thenCompose(loc -> {
+                WritableAbsoluteCapability chunkCap = cap.withMapKey(loc.left, loc.right);
+                return network.getMetadata(version.get(writer()).props.get(), chunkCap)
+                        .thenApply(meta -> meta.get().getProperties(chunkCap.rBaseKey).treeHash.get());
+            });
+        }).collect(Collectors.toList()))
+                .thenApply(HashTree::fromBranches)
+                .thenApply(Optional::of);
+    }
+
     private CompletableFuture<Snapshot> copyTo(FileWrapper target,
                                               Optional<Thumbnail> existingThumbnail,
                                               Optional<BatId> targetMirrorBat,
@@ -1974,12 +2030,12 @@ public class FileWrapper {
             } else {
                 return version.withWriter(owner(), writer(), network).thenCompose(snapshot ->
                         getInputStream(snapshot.get(writer()).props.get(), network, crypto, x -> {})
-                                .thenCompose(stream -> target.uploadFileSection(snapshot, committer,
-                                                getName(), stream, existingThumbnail, false, 0, getSize(), getFileProperties().hash,
+                                .thenCompose(stream -> getHash(network, crypto.hasher).thenCompose(hashTree -> target.uploadFileSection(snapshot, committer,
+                                                getName(), stream, existingThumbnail, false, 0, getSize(), hashTree,
                                                 Optional.of(getFileProperties().modified),
                                                 Optional.empty(), Optional.empty(), Optional.empty(), false, false, false, network, crypto, x -> {},
                                                 crypto.random.randomBytes(32), Optional.empty(),
-                                                Optional.of(Bat.random(crypto.random)), targetMirrorBat)
+                                                Optional.of(Bat.random(crypto.random)), targetMirrorBat))
                                         .thenCompose(p -> p.right.isEmpty() ?
                                                 Futures.of(p.left) :
                                                 target.addChildPointer(p.left, committer, p.right.get(), network, crypto))));

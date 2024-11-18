@@ -2,6 +2,7 @@ package peergos.server.tests;
 
 import org.junit.Assert;
 import org.junit.Test;
+import peergos.server.Main;
 import peergos.server.sync.DirectorySync;
 import peergos.server.sync.JdbcTreeState;
 import peergos.server.sync.LocalFileSystem;
@@ -19,7 +20,7 @@ public class SyncTests {
         Path base1 = Files.createTempDirectory("peergos-sync");
         Path base2 = Files.createTempDirectory("peergos-sync");
 
-        LocalFileSystem localFs = new LocalFileSystem();
+        LocalFileSystem localFs = new LocalFileSystem(Main.initCrypto().hasher);
         SyncState syncedState = new JdbcTreeState(":memory:");
 
         DirectorySync.syncDirs(localFs, base1, localFs, base2, syncedState, 32, 5);

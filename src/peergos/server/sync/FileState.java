@@ -2,32 +2,54 @@ package peergos.server.sync;
 
 import peergos.shared.cbor.CborObject;
 import peergos.shared.cbor.Cborable;
-import peergos.shared.user.fs.Blake3state;
+import peergos.shared.user.fs.*;
 import peergos.shared.util.Pair;
 
-import java.util.List;
-import java.util.Objects;
-import java.util.SortedMap;
-import java.util.TreeMap;
+import java.util.*;
+import java.util.stream.Collectors;
+import java.util.stream.LongStream;
 
 class FileState implements Cborable {
     public final String relPath;
     public final long modificationTime;
     public final long size;
-    public final Blake3state hash;
+    public final HashTree hashTree;
 
-    public FileState(String relPath, long modificationTime, long size, Blake3state hash) {
+    public FileState(String relPath, long modificationTime, long size, HashTree hashTree) {
         this.relPath = relPath;
         this.modificationTime = modificationTime;
         this.size = size;
-        this.hash = hash;
+        this.hashTree = hashTree;
     }
 
     public List<Pair<Long, Long>> diffRanges(FileState other) {
         if (other == null)
             return List.of(new Pair<>(0L, size));
-        // TODO use bao tree to extract small diff ranges
-        return List.of(new Pair<>(0L, size));
+        if (hashTree.rootHash.equals(other.hashTree.rootHash))
+            return Collections.emptyList();
+
+        List<ChunkHashList> a = hashTree.level1;
+        List<ChunkHashList> b = other.hashTree.level1;
+        List<Long> diffChunks = new ArrayList<>();
+        for (int i=0; i < a.size(); i++) {
+            ChunkHashList aList = a.get(i);
+            ChunkHashList bList = b.get(i);
+            if (bList == null) {
+                diffChunks.addAll(LongStream.range(0, aList.nChunks())
+                        .mapToObj(x -> x)
+                        .collect(Collectors.toList()));
+            } else {
+                for (int j=0; j < aList.nChunks(); j++){
+                    if (! aList.equalAt(j, bList))
+                        diffChunks.add(i * 1024L + j);
+                }
+                for (int j= aList.nChunks(); j < bList.nChunks(); j++)
+                    diffChunks.add(i * 1024L + j);
+            }
+        }
+        return diffChunks.stream()
+                .map(c -> new Pair<>(c * Chunk.MAX_SIZE, Math.min((c + 1) * Chunk.MAX_SIZE, size)))
+                .collect(Collectors.toList());
     }
 
     @Override
@@ -36,7 +58,7 @@ class FileState implements Cborable {
         state.put("r", new CborObject.CborString(relPath));
         state.put("m", new CborObject.CborLong(modificationTime));
         state.put("s", new CborObject.CborLong(size));
-        state.put("h", hash.toCbor());
+        state.put("h", hashTree.toCbor());
 
         return CborObject.CborMap.build(state);
     }
@@ -46,7 +68,7 @@ class FileState implements Cborable {
         String relPath = map.getString("r");
         long modTime = map.getLong("m");
         long size = map.getLong("s");
-        Blake3state hash = map.get("h", Blake3state::fromCbor);
+        HashTree hash = map.get("h", HashTree::fromCbor);
         return new FileState(relPath, modTime, size, hash);
     }
 
@@ -55,12 +77,12 @@ class FileState implements Cborable {
         if (this == o) return true;
         if (o == null || getClass() != o.getClass()) return false;
         FileState fileState = (FileState) o;
-        return modificationTime == fileState.modificationTime && Objects.equals(relPath, fileState.relPath) && Objects.equals(hash, fileState.hash);
+        return modificationTime == fileState.modificationTime && size == fileState.size && Objects.equals(relPath, fileState.relPath) && Objects.equals(hashTree.rootHash, fileState.hashTree.rootHash);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(relPath, modificationTime, hash);
+        return Objects.hash(relPath, modificationTime, size, hashTree.rootHash);
     }
 
     @Override

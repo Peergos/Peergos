@@ -1,8 +1,6 @@
 package peergos.server.sync;
 
-import peergos.shared.user.fs.AsyncReader;
-import peergos.shared.user.fs.Blake3state;
-import peergos.shared.user.fs.FileWrapper;
+import peergos.shared.user.fs.*;
 import peergos.shared.util.Pair;
 
 import java.io.IOException;
@@ -29,9 +27,9 @@ interface SyncFilesystem {
 
     void setModificationTime(Path p, long t);
 
-    void setHash(Path p, Blake3state hash);
+    void setHash(Path p, HashTree hashTree, long fileSize);
 
-    void setHashes(List<Pair<FileWrapper, Blake3state>> toUpdate);
+    void setHashes(List<Pair<FileWrapper, HashTree>> toUpdate);
 
     long size(Path p);
 
@@ -43,7 +41,7 @@ interface SyncFilesystem {
 
     void uploadSubtree(Path baseDir, Stream<FileWrapper.FolderUploadProperties> directories);
 
-    Blake3state hashFile(Path p, Optional<FileWrapper> meta);
+    HashTree hashFile(Path p, Optional<FileWrapper> meta, String relativePath, SyncState syncedState);
 
     void applyToSubtree(Path start, Consumer<FileProps> file, Consumer<Path> dir) throws IOException;
 
