@@ -138,10 +138,11 @@ public class JdbcTreeState implements SyncState {
         if (existing != null) {
             try (Connection conn = getConnection();
                  PreparedStatement update = conn.prepareStatement(UPDATE)) {
-                update.setBytes(1, fs.hashTree.serialize());
-                update.setLong(2, fs.modificationTime);
-                update.setLong(3, fs.size);
-                update.setString(4, fs.relPath);
+                update.setBytes(1, fs.hashTree.rootHash.serialize());
+                update.setBytes(2, fs.hashTree.serialize());
+                update.setLong(3, fs.modificationTime);
+                update.setLong(4, fs.size);
+                update.setString(5, fs.relPath);
                 update.executeUpdate();
             } catch (SQLException sqe) {
                 throw new IllegalStateException(sqe);
@@ -150,7 +151,7 @@ public class JdbcTreeState implements SyncState {
             try (Connection conn = getConnection();
                  PreparedStatement insert = conn.prepareStatement(INSERT)) {
                 insert.setString(1, fs.relPath);
-                insert.setBytes(2, fs.hashTree.serialize());
+                insert.setBytes(2, fs.hashTree.rootHash.serialize());
                 insert.setLong(3, fs.modificationTime);
                 insert.setLong(4, fs.size);
                 insert.setBytes(5, fs.hashTree.serialize());
