@@ -272,7 +272,7 @@ public class CLI implements Runnable {
                         long fileSize = p.toFile().length();
                         LocalDateTime modified = LocalDateTime.ofInstant(Instant.ofEpochSecond(p.toFile().lastModified() / 1000, 0), ZoneOffset.UTC);
                         return new FileWrapper.FileUploadProperties(p.getFileName().toString(), () -> reader(p.toFile()),
-                                (int) (fileSize >> 32), (int) fileSize, Optional.of(modified), Optional.of(ScryptJava.hashFile(p)), skipExisting, true,
+                                (int) (fileSize >> 32), (int) fileSize, Optional.of(modified), Optional.of(ScryptJava.hashFile(p, cliContext.userContext.crypto.hasher)), skipExisting, true,
                                 progressCreator.create(remoteRelativeDir, p.getFileName().toString(), Math.max(4096, fileSize)));
                     })
                     .collect(Collectors.toList());

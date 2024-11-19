@@ -2,12 +2,10 @@ package peergos.server.sync;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import peergos.server.crypto.hash.Blake3;
 import peergos.server.crypto.hash.ScryptJava;
 import peergos.server.simulation.FileAsyncReader;
-import peergos.shared.user.fs.AsyncReader;
-import peergos.shared.user.fs.Blake3state;
-import peergos.shared.user.fs.FileWrapper;
+import peergos.shared.crypto.hash.Hasher;
+import peergos.shared.user.fs.*;
 import peergos.shared.util.Pair;
 
 import java.io.*;
@@ -22,6 +20,11 @@ import java.util.stream.Stream;
 public class LocalFileSystem implements SyncFilesystem {
 
     private static final Logger LOG = LoggerFactory.getLogger(LocalFileSystem.class);
+    private final Hasher hasher;
+
+    public LocalFileSystem(Hasher hasher) {
+        this.hasher = hasher;
+    }
 
     @Override
     public boolean exists(Path p) {
@@ -71,10 +74,10 @@ public class LocalFileSystem implements SyncFilesystem {
     }
 
     @Override
-    public void setHash(Path p, Blake3state hash) {}
+    public void setHash(Path p, HashTree hashTree, long fileSize) {}
 
     @Override
-    public void setHashes(List<Pair<FileWrapper, Blake3state>> toUpdate) {}
+    public void setHashes(List<Pair<FileWrapper, HashTree>> toUpdate) {}
 
     @Override
     public long size(Path p) {
@@ -113,8 +116,8 @@ public class LocalFileSystem implements SyncFilesystem {
     }
 
     @Override
-    public Blake3state hashFile(Path p, Optional<FileWrapper> meta) {
-        return ScryptJava.hashFile(p);
+    public HashTree hashFile(Path p, Optional<FileWrapper> meta, String relPath, SyncState syncedVersions) {
+        return ScryptJava.hashFile(p, hasher);
     }
 
     @Override

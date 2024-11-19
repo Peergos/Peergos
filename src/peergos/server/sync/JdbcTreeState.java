@@ -5,8 +5,8 @@ import peergos.server.sql.SqliteCommands;
 import peergos.server.util.Sqlite;
 import peergos.shared.cbor.CborObject;
 import peergos.shared.cbor.Cborable;
-import peergos.shared.user.fs.Blake3state;
-import peergos.shared.util.PathUtil;
+import peergos.shared.user.fs.HashTree;
+import peergos.shared.user.fs.RootHash;
 
 import java.nio.file.Paths;
 import java.sql.Connection;
@@ -17,13 +17,13 @@ import java.util.*;
 import java.util.function.Supplier;
 
 public class JdbcTreeState implements SyncState {
-    private static final String INSERT = "INSERT INTO syncstate (path, b3, modtime, size) VALUES(?, ?, ?, ?);";
+    private static final String INSERT = "INSERT INTO syncstate (path, roothash, modtime, size, hashtree) VALUES(?, ?, ?, ?, ?);";
     private static final String INSERT_DIR_SUFFIX = "INTO syncdirs (path) VALUES(?);";
-    private static final String UPDATE = "UPDATE syncstate SET b3=?, modtime=?, size=? WHERE path=?;";
+    private static final String UPDATE = "UPDATE syncstate SET roothash=?, hashtree=?, modtime=?, size=? WHERE path=?;";
     private static final String DELETE = "DELETE from syncstate WHERE path = ?;";
     private static final String DELETE_DIR = "DELETE from syncdirs WHERE path = ?;";
-    private static final String GET_BY_PATH = "SELECT path, b3, modtime, size FROM syncstate WHERE path = ?;";
-    private static final String GET_BY_HASH = "SELECT path, b3, modtime, size FROM syncstate WHERE b3 = ?;";
+    private static final String GET_BY_PATH = "SELECT path, modtime, size, hashtree FROM syncstate WHERE path = ?;";
+    private static final String GET_BY_HASH = "SELECT path, modtime, size, hashtree FROM syncstate WHERE roothash = ?;";
     private static final String GET_DIRS = "SELECT path FROM syncdirs;";
     private static final String HAS_DIR = "SELECT path FROM syncdirs WHERE path=?;";
     private static final String INSERT_COPY_OP = "INSERT INTO copyops (islocal, source, target, start, end, sourcestate, targetstate) VALUES(?, ?, ?, ?, ?, ?, ?);";
@@ -58,8 +58,8 @@ public class JdbcTreeState implements SyncState {
 
     private synchronized void init() {
         try (Connection conn = getConnection()) {
-            cmds.createTable("CREATE TABLE IF NOT EXISTS syncstate (path text primary key not null, b3 blob, modtime bigint not null, size bigint not null); " +
-                    "CREATE INDEX IF NOT EXISTS sync_hash_index ON syncstate (b3);", conn);
+            cmds.createTable("CREATE TABLE IF NOT EXISTS syncstate (path text primary key not null, roothash blob, modtime bigint not null, size bigint not null, hashtree blob); " +
+                    "CREATE INDEX IF NOT EXISTS sync_hash_index ON syncstate (roothash);", conn);
             cmds.createTable("CREATE TABLE IF NOT EXISTS syncdirs (path text primary key not null);", conn);
             cmds.createTable("CREATE TABLE IF NOT EXISTS copyops (islocal bool not null, source text not null, target text not null, " +
                     "start "+cmds.sqlInteger()+" not null, end " + cmds.sqlInteger() + " not null, sourcestate blob, targetstate blob);", conn);
@@ -124,7 +124,7 @@ public class JdbcTreeState implements SyncState {
             select.setString(1, path);
             ResultSet rs = select.executeQuery();
             if (rs.next())
-                return new FileState(rs.getString(1), rs.getLong(3), rs.getLong(4), new Blake3state(rs.getBytes(2)));
+                return new FileState(rs.getString(1), rs.getLong(2), rs.getLong(3), HashTree.fromCbor(CborObject.fromByteArray(rs.getBytes(4))));
 
             return null;
         } catch (SQLException sqe) {
@@ -138,10 +138,11 @@ public class JdbcTreeState implements SyncState {
         if (existing != null) {
             try (Connection conn = getConnection();
                  PreparedStatement update = conn.prepareStatement(UPDATE)) {
-                update.setBytes(1, fs.hash.hash);
-                update.setLong(2, fs.modificationTime);
-                update.setLong(3, fs.size);
-                update.setString(4, fs.relPath);
+                update.setBytes(1, fs.hashTree.rootHash.serialize());
+                update.setBytes(2, fs.hashTree.serialize());
+                update.setLong(3, fs.modificationTime);
+                update.setLong(4, fs.size);
+                update.setString(5, fs.relPath);
                 update.executeUpdate();
             } catch (SQLException sqe) {
                 throw new IllegalStateException(sqe);
@@ -150,9 +151,10 @@ public class JdbcTreeState implements SyncState {
             try (Connection conn = getConnection();
                  PreparedStatement insert = conn.prepareStatement(INSERT)) {
                 insert.setString(1, fs.relPath);
-                insert.setBytes(2, fs.hash.hash);
+                insert.setBytes(2, fs.hashTree.rootHash.serialize());
                 insert.setLong(3, fs.modificationTime);
                 insert.setLong(4, fs.size);
+                insert.setBytes(5, fs.hashTree.serialize());
                 insert.executeUpdate();
             } catch (SQLException sqe) {
                 throw new IllegalStateException(sqe);
@@ -171,14 +173,14 @@ public class JdbcTreeState implements SyncState {
     }
 
     @Override
-    public List<FileState> byHash(Blake3state b3) {
+    public List<FileState> byHash(RootHash hash) {
         try (Connection conn = getConnection();
              PreparedStatement select = conn.prepareStatement(GET_BY_HASH)) {
-            select.setBytes(1, b3.serialize());
+            select.setBytes(1, hash.serialize());
             ResultSet rs = select.executeQuery();
             List<FileState> res = new ArrayList<>();
             while (rs.next())
-                res.add(new FileState(rs.getString(1), rs.getLong(3), rs.getLong(4), new Blake3state(rs.getBytes(2))));
+                res.add(new FileState(rs.getString(1), rs.getLong(2), rs.getLong(3), HashTree.fromCbor(CborObject.fromByteArray(rs.getBytes(4)))));
 
             return res;
         } catch (SQLException sqe) {

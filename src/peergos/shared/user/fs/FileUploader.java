@@ -27,6 +27,7 @@ public class FileUploader implements AutoCloseable {
     private final String name;
     private final long offset, length;
     private final FileProperties props;
+    private final Optional<HashTree> hash;
     private final SymmetricKey baseKey;
     private final SymmetricKey dataKey;
     private final long nchunks;
@@ -47,10 +48,12 @@ public class FileUploader implements AutoCloseable {
                         SymmetricKey parentparentKey,
                         ProgressConsumer<Long> monitor,
                         FileProperties fileProperties,
+                        Optional<HashTree> hash,
                         byte[] firstLocation,
                         Optional<Bat> firstBat) {
         long length = (lengthLow & 0xFFFFFFFFL) + ((lengthHi & 0xFFFFFFFFL) << 32);
         this.props = fileProperties;
+        this.hash = hash;
         if (baseKey == null) baseKey = SymmetricKey.random();
 
         long offset = (offsetLow & 0xFFFFFFFFL) + ((offsetHi & 0xFFFFFFFFL) << 32);
@@ -74,9 +77,9 @@ public class FileUploader implements AutoCloseable {
     public FileUploader(String name, AsyncReader fileData, long offset, long length,
                         SymmetricKey baseKey, SymmetricKey dataKey, Location parentLocation, Optional<Bat> parentBat,
                         SymmetricKey parentparentKey, ProgressConsumer<Long> monitor, FileProperties fileProperties,
-                        byte[] firstLocation, Optional<Bat> firstBat) {
+                        Optional<HashTree> hash, byte[] firstLocation, Optional<Bat> firstBat) {
         this(name, fileData, (int)(offset >> 32), (int) offset, (int) (length >> 32), (int) length,
-                baseKey, dataKey, parentLocation, parentBat, parentparentKey, monitor, fileProperties, firstLocation, firstBat);
+                baseKey, dataKey, parentLocation, parentBat, parentparentKey, monitor, fileProperties, hash, firstLocation, firstBat);
     }
 
     private static class AsyncUploadQueue {
@@ -201,8 +204,10 @@ public class FileUploader implements AutoCloseable {
                                         throw new IllegalStateException("Trying to write a chunk to the wrong signing key space!");
                                     RelativeCapability nextChunk = RelativeCapability.buildSubsequentChunk(nextChunkLocation.getMapKey(), nextChunkBat, baseKey);
                                     return CryptreeNode.createFile(chunk.existingHash, chunk.location.writer, baseKey,
-                                            chunk.chunk.key(), props, chunk.chunk.data(), parentLocation, parentBat, parentparentKey, nextChunk,
-                                            chunk.bat, mirrorBat, random, hasher, isJS)
+                                                    chunk.chunk.key(), chunkIndex % 1024 == 0 ?
+                                                            props.withHash(hash.map(t -> t.branch(chunkIndex))) :
+                                                            props, chunk.chunk.data(), parentLocation, parentBat, parentparentKey, nextChunk,
+                                                    chunk.bat, mirrorBat, random, hasher, isJS)
                                             .thenApply(p -> new ChunkUpload(chunk, p.left, p.right));
                                 });
                     });

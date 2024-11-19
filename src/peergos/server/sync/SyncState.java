@@ -1,6 +1,6 @@
 package peergos.server.sync;
 
-import peergos.shared.user.fs.Blake3state;
+import peergos.shared.user.fs.RootHash;
 
 import java.util.List;
 import java.util.Set;
@@ -13,7 +13,7 @@ public interface SyncState {
 
     FileState byPath(String path);
 
-    List<FileState> byHash(Blake3state b3);
+    List<FileState> byHash(RootHash b3);
 
     void addDir(String path);
 
