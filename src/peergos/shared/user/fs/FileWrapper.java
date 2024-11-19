@@ -1364,7 +1364,8 @@ public class FileWrapper {
                                             Location parentLocation = getLocation();
                                             Optional<Bat> parentBat = writableFilePointer().bat;
                                             LocalDateTime timestamp = modificationTime.orElseGet(LocalDateTime::now);
-                                            return calculateMimeType(fileData, endIndex, filename).thenCompose(mimeType -> fileData.reset()
+                                            return fileData.reset()
+                                                    .thenCompose(reset -> calculateMimeType(reset, endIndex, filename)).thenCompose(mimeType -> fileData.reset()
                                                     .thenCompose(resetReader -> {
                                                         Optional<byte[]> actualStreamSecret = streamSecret.isPresent() ?
                                                                 streamSecret :
