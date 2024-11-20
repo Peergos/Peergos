@@ -10,6 +10,7 @@ import peergos.server.sql.*;
 import peergos.server.storage.admin.*;
 import peergos.server.storage.auth.*;
 import peergos.server.sync.DirectorySync;
+import peergos.server.user.JavaImageThumbnailer;
 import peergos.shared.*;
 import peergos.server.corenode.*;
 import peergos.server.fuse.*;
@@ -858,6 +859,7 @@ public class Main extends Builder {
             NetworkAccess network = buildJavaNetworkAccess(api, peergosUrl.startsWith("https")).join();
 
             Crypto crypto = initCrypto();
+            ThumbnailGenerator.setInstance(new JavaImageThumbnailer());
             UserContext userContext = UserContext.signIn(username, password, Main::getMfaResponseCLI, network, crypto).join();
             PeergosFS peergosFS = new PeergosFS(userContext);
             FuseProcess fuseProcess = new FuseProcess(peergosFS, path);

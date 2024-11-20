@@ -1459,7 +1459,7 @@ public class FileWrapper {
             if (replaceExistingThumbnail || fileOpt.get().props.thumbnail.isEmpty()) {
                 return generateThumbnail(network, fileData, (int) Math.min(fileSize, Integer.MAX_VALUE), fileName, mimeType)
                         .thenCompose(thumbData -> {
-                            if (thumbData.isEmpty())
+                            if (thumbData.isEmpty() && mimeType.equals(fileOpt.get().getFileProperties().mimeType))
                                 return Futures.of(base);
                             FileProperties fileProps = new FileProperties(fileName, false, props.isLink, mimeType, fileSize,
                                     updatedDateTime, createdDateTime, isHidden, thumbData, streamSecret, props.treeHash);
