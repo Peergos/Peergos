@@ -163,14 +163,6 @@ public class DoPut extends AbstractMethod {
                     doUserAgentWorkaround(resp);
 
                     // setting resourceContent
-                    /*
-                    logger.fine("-- Setting resource content at " + path);
-                    System.out.println("******** header=" + req.getHeader("Content-Range"));
-                    Iterator<String> it = req.getHeaderNames().asIterator();
-                    while( it.hasNext()) {
-                        String header = it.next();
-                        System.out.println("HEADER " + header + "val=" + req.getHeader(header));
-                    }*/
                     Optional<String> header = Optional.ofNullable(req.getHeader("Content-Range")).map(t -> t.trim());
                     long start=0, end=0, length=Optional.ofNullable(req.getHeader("X-Expected-Entity-Length"))
                             .map(Long::parseLong)

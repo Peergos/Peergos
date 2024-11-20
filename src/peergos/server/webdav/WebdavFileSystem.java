@@ -143,7 +143,6 @@ public class WebdavFileSystem implements IWebdavStore {
                                     String characterEncoding ) throws WebdavException {
 
         LOG.fine("PeergosFileSystem.setResourceContent(" + uri + ")");
-        System.out.println("PeergosFileSystem.setResourceContent(" + uri + ") length=" + readerPair.right);
         Path path = new File(uri).toPath();
         if (path.getFileName().toString().startsWith("._") || path.getFileName().toString().equals(".DS_Store")) { // MacOS rubbish!
             return 0;
@@ -153,12 +152,9 @@ public class WebdavFileSystem implements IWebdavStore {
             throw new WebdavException("cannot find parent of file: " + uri);
         }
         try {
-            System.out.println("setResourceContent calling upload");
             parentFolder.get().uploadOrReplaceFile(path.getFileName().toString(), readerPair.left, readerPair.right, context.network, context.crypto, l -> {}).join();
-            System.out.println("setResourceContent upload complete");
             return readerPair.right;
         } catch (Exception e) {
-            e.printStackTrace();
             LOG.warning("PeergosFileSystem.setResourceContent(" + uri + ") failed");
             throw new WebdavException(e);
         }

@@ -32,7 +32,6 @@ public class WebdavServer {
         int port = args.getInt("webdav.port", 8090);
         logger.info( "Starting WEBDAV server version: " + VERSION + " on port: " + port);
         ThumbnailGenerator.setInstance(new JavaImageThumbnailer());
-
         Server server = new Server();
         ServerConnector connector = new ServerConnector(server);
         connector.setPort(port);

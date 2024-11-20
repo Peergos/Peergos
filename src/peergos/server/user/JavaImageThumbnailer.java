@@ -19,9 +19,8 @@ public class JavaImageThumbnailer implements ThumbnailGenerator.Generator {
     public Optional<Thumbnail> generateThumbnail(byte[] imageBlob) {
         try {
             BufferedImage image = ImageIO.read(new ByteArrayInputStream(imageBlob));
-            if (image == null) { // e.g. svg files
+            if (image == null) // e.g. svg files
                 return Optional.empty();
-            }
             int size = THUMBNAIL_SIZE;
             int height = image.getHeight();
             int width = image.getWidth();
