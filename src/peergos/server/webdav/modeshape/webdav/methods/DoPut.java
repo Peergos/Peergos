@@ -15,6 +15,8 @@
  */
 package peergos.server.webdav.modeshape.webdav.methods;
 
+import org.peergos.util.Pair;
+import peergos.server.simulation.InputStreamAsyncReader;
 import peergos.server.webdav.modeshape.webdav.ITransaction;
 import peergos.server.webdav.modeshape.webdav.IWebdavStore;
 import peergos.server.webdav.modeshape.webdav.StoredObject;
@@ -160,7 +162,7 @@ public class DoPut extends AbstractMethod {
 
                     // setting resourceContent
                     logger.fine("-- Setting resource content at " + path);
-                    long resourceLength = store.setResourceContent(transaction, path, req.getInputStream(), null, null);
+                    long resourceLength = store.setResourceContent(transaction, path, new Pair<>(new InputStreamAsyncReader(req.getInputStream()), -1L), null, null);
 
                     so = store.getStoredObject(transaction, path);
                     if (so == null) {

@@ -17,7 +17,10 @@
 
 package peergos.server.webdav.modeshape.webdav;
 
+import org.peergos.util.Pair;
+import peergos.server.simulation.InputStreamAsyncReader;
 import peergos.server.webdav.modeshape.webdav.exceptions.WebdavException;
+import peergos.shared.user.fs.AsyncReader;
 
 import java.io.InputStream;
 import java.security.Principal;
@@ -101,8 +104,8 @@ public interface IWebdavStore {
      * @return input stream you can read the content of the resource from
      * @throws WebdavException if something goes wrong on the store level
      */
-    InputStream getResourceContent( ITransaction transaction,
-                                    String resourceUri );
+    Pair<AsyncReader, Long> getResourceContent(ITransaction transaction,
+                                               String resourceUri );
 
     /**
      * Sets / stores the content of the resource specified by <code>resourceUri</code>.
@@ -117,7 +120,7 @@ public interface IWebdavStore {
      */
     long setResourceContent( ITransaction transaction,
                              String resourceUri,
-                             InputStream content,
+                             Pair<AsyncReader, Long> readerPair,
                              String contentType,
                              String characterEncoding );
 
