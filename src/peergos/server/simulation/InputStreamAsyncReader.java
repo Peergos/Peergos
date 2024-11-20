@@ -22,7 +22,21 @@ public class InputStreamAsyncReader implements AsyncReader {
     @Override
     public CompletableFuture<Integer> readIntoArray(byte[] res, int offset, int length) {
         try {
-            return Futures.of(is.read(res, offset, length));
+            System.out.println("IASR read " + length);
+            int read = is.read(res, offset, length);
+            if (read < 0)
+                throw new EOFException();
+            offset += read;
+            length -= read;
+            while (read >= 0 && length > 0) {
+                read = is.read(res, offset, length);
+                if (read > 0) {
+                    offset += read;
+                    length -= read;
+                } else
+                    throw new EOFException();
+            }
+            return Futures.of(length);
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
@@ -31,6 +45,7 @@ public class InputStreamAsyncReader implements AsyncReader {
     @Override
     public CompletableFuture<AsyncReader> reset() {
         try {
+            System.out.println("IASR reset");
             is.reset();
             return Futures.of(this);
         } catch (IOException e) {
@@ -41,6 +56,7 @@ public class InputStreamAsyncReader implements AsyncReader {
     @Override
     public void close() {
         try {
+            System.out.println("IASR close");
             is.close();
         } catch (IOException e) {
             throw new RuntimeException(e);

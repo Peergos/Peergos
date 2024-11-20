@@ -143,6 +143,7 @@ public class WebdavFileSystem implements IWebdavStore {
                                     String characterEncoding ) throws WebdavException {
 
         LOG.fine("PeergosFileSystem.setResourceContent(" + uri + ")");
+        System.out.println("PeergosFileSystem.setResourceContent(" + uri + ") length=" + readerPair.right);
         Path path = new File(uri).toPath();
         if (path.getFileName().toString().startsWith("._") || path.getFileName().toString().equals(".DS_Store")) { // MacOS rubbish!
             return 0;
@@ -151,20 +152,13 @@ public class WebdavFileSystem implements IWebdavStore {
         if (parentFolder.isEmpty() || parentFolder.get().getFileProperties().isHidden) {
             throw new WebdavException("cannot find parent of file: " + uri);
         }
-        long length = readerPair.right.longValue();
-        if (length == -1) {
-            byte[] buffer = new byte[1];
-            int len;
-            while ((len = readerPair.left.readIntoArray(buffer, 0, 1).join()) > -1 ) {
-                length += len;
-            }
-            readerPair.left.reset();
-        }
-        System.out.println("WRONG LENGTH=" + length);
         try {
-            parentFolder.get().uploadOrReplaceFile(path.getFileName().toString(), readerPair.left, length, context.network, context.crypto, l -> {}).join();
-            return length;
+            System.out.println("setResourceContent calling upload");
+            parentFolder.get().uploadOrReplaceFile(path.getFileName().toString(), readerPair.left, readerPair.right, context.network, context.crypto, l -> {}).join();
+            System.out.println("setResourceContent upload complete");
+            return readerPair.right;
         } catch (Exception e) {
+            e.printStackTrace();
             LOG.warning("PeergosFileSystem.setResourceContent(" + uri + ") failed");
             throw new WebdavException(e);
         }

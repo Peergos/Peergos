@@ -64,9 +64,11 @@ public class DoGet extends DoHead {
             Pair<AsyncReader, Long> reader = store.getResourceContent(transaction, path);
             AsyncReader in = reader.left;
             try {
-                int read = -1;
                 byte[] copyBuffer = new byte[BUF_SIZE];
-                while ((read = in.readIntoArray(copyBuffer, 0, copyBuffer.length).join()) != -1) {
+                long remaining = reader.right;
+                while (remaining > 0 ) {
+                    int read = in.readIntoArray(copyBuffer, 0, (int)Math.min(remaining, copyBuffer.length)).join();
+                    remaining -= read;
                     out.write(copyBuffer, 0, read);
                 }
             } finally {
