@@ -15,6 +15,8 @@
  */
 package peergos.server.webdav;
 
+import org.peergos.util.Pair;
+import peergos.server.simulation.InputStreamAsyncReader;
 import peergos.server.util.Logging;
 import peergos.server.webdav.modeshape.webdav.ITransaction;
 import peergos.server.webdav.modeshape.webdav.IWebdavStore;
@@ -136,7 +138,7 @@ public class WebdavFileSystem implements IWebdavStore {
     @Override
     public long setResourceContent( ITransaction transaction,
                                     String uri,
-                                    InputStream is,
+                                    Pair<AsyncReader, Long> readerPair,
                                     String contentType,
                                     String characterEncoding ) throws WebdavException {
 
@@ -150,9 +152,8 @@ public class WebdavFileSystem implements IWebdavStore {
             throw new WebdavException("cannot find parent of file: " + uri);
         }
         try {
-            byte[] contents = Serialize.readFully(is);
-            parentFolder.get().uploadOrReplaceFile(path.getFileName().toString(), new AsyncReader.ArrayBacked(contents), contents.length, context.network, context.crypto, l -> {}).join();
-            return contents.length;
+            parentFolder.get().uploadOrReplaceFile(path.getFileName().toString(), readerPair.left, readerPair.right, context.network, context.crypto, l -> {}).join();
+            return readerPair.right;
         } catch (Exception e) {
             LOG.warning("PeergosFileSystem.setResourceContent(" + uri + ") failed");
             throw new WebdavException(e);
@@ -196,8 +197,8 @@ public class WebdavFileSystem implements IWebdavStore {
     }
 
     @Override
-    public InputStream getResourceContent( ITransaction transaction,
-                                           String uri ) throws WebdavException {
+    public Pair<AsyncReader, Long> getResourceContent(ITransaction transaction,
+                                                      String uri ) throws WebdavException {
         LOG.fine("PeergosFileSystem.getResourceContent(" + uri + ")");
         Path path = new File(uri).toPath();
         Optional<FileWrapper> fw = context.getByPath(path.toString()).join();
@@ -205,9 +206,8 @@ public class WebdavFileSystem implements IWebdavStore {
             throw new WebdavException("cannot find file: " + uri);
         }
         try {
-            byte[] data = Serialize.readFully(fw.get().getInputStream(context.network, context.crypto,
-                    fw.get().getSize(), l-> {}).join(), fw.get().getSize()).join();
-            return new ByteArrayInputStream(data);
+            return new Pair<>(fw.get().getInputStream(context.network, context.crypto,
+                    fw.get().getSize(), l-> {}).join(), fw.get().getSize());
         } catch (Exception e) {
             LOG.warning("PeergosFileSystem.getResourceContent(" + uri + ") failed");
             throw new WebdavException(e);

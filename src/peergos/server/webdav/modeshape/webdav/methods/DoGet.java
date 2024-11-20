@@ -15,11 +15,14 @@
  */
 package peergos.server.webdav.modeshape.webdav.methods;
 
+import org.peergos.util.Pair;
 import peergos.server.webdav.modeshape.webdav.*;
 import peergos.server.webdav.modeshape.webdav.locking.ResourceLocks;
 
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import peergos.shared.user.fs.AsyncReader;
+
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -58,12 +61,14 @@ public class DoGet extends DoHead {
                 return;
             }
             OutputStream out = resp.getOutputStream();
-            InputStream in = store.getResourceContent(transaction, path);
+            Pair<AsyncReader, Long> reader = store.getResourceContent(transaction, path);
+            AsyncReader in = reader.left;
             try {
-                int read = -1;
                 byte[] copyBuffer = new byte[BUF_SIZE];
-
-                while ((read = in.read(copyBuffer, 0, copyBuffer.length)) != -1) {
+                long remaining = reader.right;
+                while (remaining > 0 ) {
+                    int read = in.readIntoArray(copyBuffer, 0, (int)Math.min(remaining, copyBuffer.length)).join();
+                    remaining -= read;
                     out.write(copyBuffer, 0, read);
                 }
             } finally {

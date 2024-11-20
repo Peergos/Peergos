@@ -15,6 +15,8 @@
  */
 package peergos.server.webdav.modeshape.webdav.methods;
 
+import org.peergos.util.Pair;
+import peergos.server.simulation.InputStreamAsyncReader;
 import peergos.server.webdav.modeshape.webdav.ITransaction;
 import peergos.server.webdav.modeshape.webdav.IWebdavStore;
 import peergos.server.webdav.modeshape.webdav.StoredObject;
@@ -29,6 +31,8 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.util.Hashtable;
+import java.util.Iterator;
+import java.util.Optional;
 import java.util.logging.Level;
 
 public class DoPut extends AbstractMethod {
@@ -159,8 +163,26 @@ public class DoPut extends AbstractMethod {
                     doUserAgentWorkaround(resp);
 
                     // setting resourceContent
-                    logger.fine("-- Setting resource content at " + path);
-                    long resourceLength = store.setResourceContent(transaction, path, req.getInputStream(), null, null);
+                    Optional<String> header = Optional.ofNullable(req.getHeader("Content-Range")).map(t -> t.trim());
+                    long start=0, end=0, length=Optional.ofNullable(req.getHeader("X-Expected-Entity-Length"))
+                            .map(Long::parseLong)
+                            .orElse(0L);
+                    if (header.isPresent() && ! header.get().contains("-")) {
+                        start = Long.parseLong(header.get().substring("bytes".length()));
+                    } else if (header.isPresent()){
+                        String[] split = header.get().split("-");
+                        start = Long.parseLong(split[0].substring("bytes".length()));
+                        if (split[1].contains("/")) {
+                            int slash = split[1].indexOf("/");
+                            end = Long.parseLong(split[1].substring(0, slash));
+                            length = Long.parseLong(split[1].substring(slash));
+                        } else {
+                            end = Long.parseLong(split[1]);
+                            length = end-start;
+                        }
+                    }
+                    System.out.println("start, end, length = " + start + "," + end + "," + length);
+                    long resourceLength = store.setResourceContent(transaction, path, new Pair<>(new InputStreamAsyncReader(req.getInputStream()), length), null, null);
 
                     so = store.getStoredObject(transaction, path);
                     if (so == null) {
