@@ -121,12 +121,13 @@ public class LocalFileSystem implements SyncFilesystem {
     }
 
     @Override
-    public void applyToSubtree(Path start, Consumer<FileProps> file, Consumer<Path> dir) throws IOException {
+    public void applyToSubtree(Path start, Consumer<FileProps> file, Consumer<FileProps> dir) throws IOException {
         Files.list(start).forEach(c -> {
+            FileProps props = new FileProps(start.resolve(c.getFileName()), c.toFile().lastModified() / 1000 * 1000, c.toFile().length(), Optional.empty());
             if (Files.isRegularFile(c)) {
-                file.accept(new FileProps(c, c.toFile().lastModified()/ 1000 * 1000, c.toFile().length(), Optional.empty()));
+                file.accept(props);
             } else if (Files.isDirectory(c)) {
-                dir.accept(start.resolve(c.getFileName()));
+                dir.accept(props);
                 try {
                     applyToSubtree(start.resolve(c.getFileName()), file, dir);
                 } catch (IOException e) {
