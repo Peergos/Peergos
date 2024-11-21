@@ -193,7 +193,7 @@ public class DirectorySync {
                         (v, w) -> v.withWriter(owner, w, network),
                         (a, b) -> a.mergeAndOverwriteWith(b)).join();
         SyncState remoteState = remoteVersion.equals(syncedVersion) && ! remoteVersion.versions.isEmpty() ? syncedVersions : new RamTreeState();
-        if (! remoteVersion.equals(syncedVersion) && ! syncedVersion.versions.isEmpty())
+        if (! remoteVersion.equals(syncedVersion) || remoteVersion.versions.isEmpty())
             buildDirState(remoteFS, remoteDir, remoteState, syncedVersions);
         log("Found " + remoteState.filesCount() + " remote files");
 
