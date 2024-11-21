@@ -236,22 +236,23 @@ public class PeergosSyncFS implements SyncFilesystem {
     }
 
     @Override
-    public void applyToSubtree(Path start, Consumer<FileProps> onFile, Consumer<Path> onDir) {
+    public void applyToSubtree(Path start, Consumer<FileProps> onFile, Consumer<FileProps> onDir) {
         FileWrapper base = context.getByPath(start).join().get();
         applyToSubtree(start, base, onFile, onDir);
 
     }
 
-    private void applyToSubtree(Path basePath, FileWrapper base, Consumer<FileProps> onFile, Consumer<Path> onDir) {
+    private void applyToSubtree(Path basePath, FileWrapper base, Consumer<FileProps> onFile, Consumer<FileProps> onDir) {
         Set<FileWrapper> children = base.getChildren(base.version, context.crypto.hasher, context.network, false).join();
         for (FileWrapper child : children) {
             Path childPath = basePath.resolve(child.getName());
+            FileProps childProps = new FileProps(childPath,
+                    child.getFileProperties().modified.toInstant(ZoneOffset.UTC).toEpochMilli() / 1000 * 1000,
+                    child.getSize(), Optional.of(child));
             if (! child.isDirectory()) {
-                onFile.accept(new FileProps(childPath,
-                        child.getFileProperties().modified.toInstant(ZoneOffset.UTC).toEpochMilli() / 1000 * 1000,
-                        child.getSize(), Optional.of(child)));
+                onFile.accept(childProps);
             } else {
-                onDir.accept(childPath);
+                onDir.accept(childProps);
                 applyToSubtree(childPath, child, onFile, onDir);
             }
         }

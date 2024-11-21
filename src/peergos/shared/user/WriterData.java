@@ -399,7 +399,7 @@ public class WriterData implements Cborable {
         return CborObject.CborMap.build(result);
     }
 
-    public static WriterData fromCbor(CborObject cbor) {
+    public static WriterData fromCbor(Cborable cbor) {
         if (! ( cbor instanceof CborObject.CborMap))
             throw new IllegalStateException("Cbor for WriterData should be a map! " + cbor);
 

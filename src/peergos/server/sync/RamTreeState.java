@@ -1,5 +1,6 @@
 package peergos.server.sync;
 
+import peergos.shared.user.Snapshot;
 import peergos.shared.user.fs.RootHash;
 
 import java.util.*;
@@ -9,6 +10,27 @@ class RamTreeState implements SyncState {
     public final Map<RootHash, List<FileState>> fileByHash = new HashMap<>();
     private final Set<String> dirs = new HashSet<>();
     private final List<CopyOp> inProgress = new ArrayList<>();
+    private final Map<String, Snapshot> versions = new HashMap<>();
+
+    @Override
+    public long filesCount() {
+        return filesByPath.size();
+    }
+
+    @Override
+    public Set<String> allFilePaths() {
+        return filesByPath.keySet();
+    }
+
+    @Override
+    public synchronized void setSnapshot(String basePath, Snapshot s) {
+        versions.put(basePath, s);
+    }
+
+    @Override
+    public synchronized Snapshot getSnapshot(String basePath) {
+        return versions.getOrDefault(basePath, new Snapshot(new HashMap<>()));
+    }
 
     @Override
     public synchronized void add(FileState fs) {

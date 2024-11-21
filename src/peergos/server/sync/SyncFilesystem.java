@@ -43,7 +43,7 @@ interface SyncFilesystem {
 
     HashTree hashFile(Path p, Optional<FileWrapper> meta, String relativePath, SyncState syncedState);
 
-    void applyToSubtree(Path start, Consumer<FileProps> file, Consumer<Path> dir) throws IOException;
+    void applyToSubtree(Path start, Consumer<FileProps> file, Consumer<FileProps> dir) throws IOException;
 
     class FileProps {
         public final Path path;

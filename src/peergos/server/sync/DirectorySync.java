@@ -9,6 +9,7 @@ import peergos.server.util.Logging;
 import peergos.shared.Crypto;
 import peergos.shared.NetworkAccess;
 import peergos.shared.corenode.HTTPCoreNode;
+import peergos.shared.crypto.hash.PublicKeyHash;
 import peergos.shared.login.mfa.MultiFactorAuthMethod;
 import peergos.shared.login.mfa.MultiFactorAuthRequest;
 import peergos.shared.login.mfa.MultiFactorAuthResponse;
@@ -17,6 +18,7 @@ import peergos.shared.social.HttpSocialNetwork;
 import peergos.shared.storage.HttpSpaceUsage;
 import peergos.shared.storage.UnauthedCachingStorage;
 import peergos.shared.user.LinkProperties;
+import peergos.shared.user.Snapshot;
 import peergos.shared.user.TrieNodeImpl;
 import peergos.shared.user.UserContext;
 import peergos.shared.user.fs.*;
@@ -95,7 +97,9 @@ public class DirectorySync {
                         Path remoteDir = PathUtil.get(linkPath);
                         log("Syncing " + localDir + " to+from " + remoteDir);
                         long t0 = System.currentTimeMillis();
-                        syncDirs(local, localDir, remote, remoteDir, syncedState, maxDownloadParallelism, minFreeSpacePercent);
+                        String username = remoteDir.getName(0).toString();
+                        PublicKeyHash owner = network.coreNode.getPublicKeyHash(username).join().get();
+                        syncDirs(local, localDir, remote, remoteDir, owner, network, syncedState, maxDownloadParallelism, minFreeSpacePercent);
                         long t1 = System.currentTimeMillis();
                         log("Dir sync took " + (t1 - t0) / 1000 + "s");
                     }
@@ -164,7 +168,7 @@ public class DirectorySync {
     }
 
     public static void syncDirs(SyncFilesystem localFS, Path localDir,
-                                SyncFilesystem remoteFS, Path remoteDir,
+                                SyncFilesystem remoteFS, Path remoteDir, PublicKeyHash owner, NetworkAccess network,
                                 SyncState syncedVersions,
                                 int maxParallelism,
                                 int minPercentFreeSpace) throws IOException {
@@ -181,12 +185,20 @@ public class DirectorySync {
         buildDirState(localFS, localDir, localState, syncedVersions);
         log("Found " + localState.filesByPath.size() + " local files");
 
-        RamTreeState remoteState = new RamTreeState();
-        buildDirState(remoteFS, remoteDir, remoteState, syncedVersions);
-        log("Found " + remoteState.filesByPath.size() + " remote files");
+        Snapshot syncedVersion = syncedVersions.getSnapshot(remoteDir.toString());
+        Snapshot remoteVersion = network == null ?
+                new Snapshot(new HashMap<>()) :
+                Futures.reduceAll(syncedVersion.versions.keySet(),
+                        new Snapshot(new HashMap<>()),
+                        (v, w) -> v.withWriter(owner, w, network),
+                        (a, b) -> a.mergeAndOverwriteWith(b)).join();
+        SyncState remoteState = remoteVersion.equals(syncedVersion) && ! remoteVersion.versions.isEmpty() ? syncedVersions : new RamTreeState();
+        if (! remoteVersion.equals(syncedVersion) || remoteVersion.versions.isEmpty())
+            buildDirState(remoteFS, remoteDir, remoteState, syncedVersions);
+        log("Found " + remoteState.filesCount() + " remote files");
 
         TreeSet<String> allPaths = new TreeSet<>(localState.filesByPath.keySet());
-        allPaths.addAll(remoteState.filesByPath.keySet());
+        allPaths.addAll(remoteState.allFilePaths());
         Set<String> doneFiles = Collections.synchronizedSet(new HashSet<>());
 
         // upload new small files in a single bulk operation
@@ -339,6 +351,8 @@ public class DirectorySync {
                 }
             }
         }
+
+        syncedVersions.setSnapshot(remoteDir.toString(), remoteVersion);
     }
 
     private static void log(String msg) {
@@ -349,7 +363,7 @@ public class DirectorySync {
     public static void syncFile(FileState synced, FileState local, FileState remote,
                                 SyncFilesystem localFs, Path localDir,
                                 SyncFilesystem remoteFs, Path remoteDir,
-                                SyncState syncedVersions, RamTreeState localTree, RamTreeState remoteTree,
+                                SyncState syncedVersions, RamTreeState localTree, SyncState remoteTree,
                                 Set<String> doneFiles, int minPercentFree) throws IOException {
         long totalSpace = Files.getFileStore(localDir).getTotalSpace();
         long freeSpace = Files.getFileStore(localDir).getUsableSpace();
@@ -595,9 +609,26 @@ public class DirectorySync {
         targetFs.setHash(op.target, op.sourceState.hashTree, size);
     }
 
-    public static void buildDirState(SyncFilesystem fs, Path dir, RamTreeState res, SyncState synced) throws IOException {
+    private static class SnapshotTracker {
+        private Snapshot s;
+
+        public SnapshotTracker(Snapshot s) {
+            this.s = s;
+        }
+
+        public synchronized void update(Snapshot s2) {
+            s = s.mergeAndOverwriteWith(s2);
+        }
+
+        public synchronized Snapshot get() {
+            return s;
+        }
+    }
+
+    public static Snapshot buildDirState(SyncFilesystem fs, Path dir, SyncState res, SyncState synced) throws IOException {
         if (! fs.exists(dir))
             throw new IllegalStateException("Dir does not exist: " + dir);
+        SnapshotTracker version = new SnapshotTracker(new Snapshot(new HashMap<>()));
         List<Pair<FileWrapper, HashTree>> toUpdate = new ArrayList<>();
         fs.applyToSubtree(dir, props -> {
             String relPath = props.path.toString().substring(dir.toString().length() + 1);
@@ -607,6 +638,7 @@ public class DirectorySync {
             } else {
                 HashTree hashTree = fs.hashFile(props.path, props.meta, relPath, synced);
                 if (props.meta.isPresent()) {
+                    version.update(props.meta.get().version);
                     Optional<HashBranch> remoteHash = props.meta.get().getFileProperties().treeHash;
                     if (! remoteHash.isPresent()) {
                         // collect new hashes to set in bulk later
@@ -616,13 +648,15 @@ public class DirectorySync {
                 FileState fstat = new FileState(relPath, props.modifiedTime, props.size, hashTree);
                 res.add(fstat);
             }
-        }, d -> {
-            String relPath = d.toString().substring(dir.toString().length() + 1);
+        }, p -> {
+            String relPath = p.path.toString().substring(dir.toString().length() + 1);
+            p.meta.ifPresent(d -> version.update(d.version));
             res.addDir(relPath);
         });
         if (! toUpdate.isEmpty()) {
             log("REMOTE: Updating " + toUpdate.size() + " hashes");
             fs.setHashes(toUpdate);
         }
+        return version.get();
     }
 }

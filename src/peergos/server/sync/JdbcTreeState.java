@@ -5,6 +5,7 @@ import peergos.server.sql.SqliteCommands;
 import peergos.server.util.Sqlite;
 import peergos.shared.cbor.CborObject;
 import peergos.shared.cbor.Cborable;
+import peergos.shared.user.Snapshot;
 import peergos.shared.user.fs.HashTree;
 import peergos.shared.user.fs.RootHash;
 
@@ -17,12 +18,17 @@ import java.util.*;
 import java.util.function.Supplier;
 
 public class JdbcTreeState implements SyncState {
+    private static final String INSERT_SNAPSHOT = "INSERT INTO snapshots (path, snapshot) VALUES(?, ?);";
+    private static final String UPDATE_SNAPSHOT = "UPDATE snapshots SET snapshot=? WHERE path=?;";
     private static final String INSERT = "INSERT INTO syncstate (path, roothash, modtime, size, hashtree) VALUES(?, ?, ?, ?, ?);";
     private static final String INSERT_DIR_SUFFIX = "INTO syncdirs (path) VALUES(?);";
     private static final String UPDATE = "UPDATE syncstate SET roothash=?, hashtree=?, modtime=?, size=? WHERE path=?;";
     private static final String DELETE = "DELETE from syncstate WHERE path = ?;";
     private static final String DELETE_DIR = "DELETE from syncdirs WHERE path = ?;";
     private static final String GET_BY_PATH = "SELECT path, modtime, size, hashtree FROM syncstate WHERE path = ?;";
+    private static final String GET_SNAPSHOT = "SELECT snapshot FROM snapshots WHERE path = ?;";
+    private static final String COUNT_FILES = "SELECT COUNT(*) FROM syncstate;";
+    private static final String ALL_FILE_PATHS = "SELECT path FROM syncstate;";
     private static final String GET_BY_HASH = "SELECT path, modtime, size, hashtree FROM syncstate WHERE roothash = ?;";
     private static final String GET_DIRS = "SELECT path FROM syncdirs;";
     private static final String HAS_DIR = "SELECT path FROM syncdirs WHERE path=?;";
@@ -61,10 +67,75 @@ public class JdbcTreeState implements SyncState {
             cmds.createTable("CREATE TABLE IF NOT EXISTS syncstate (path text primary key not null, roothash blob, modtime bigint not null, size bigint not null, hashtree blob); " +
                     "CREATE INDEX IF NOT EXISTS sync_hash_index ON syncstate (roothash);", conn);
             cmds.createTable("CREATE TABLE IF NOT EXISTS syncdirs (path text primary key not null);", conn);
+            cmds.createTable("CREATE TABLE IF NOT EXISTS snapshots (path text primary key not null, snapshot blob);", conn);
             cmds.createTable("CREATE TABLE IF NOT EXISTS copyops (islocal bool not null, source text not null, target text not null, " +
                     "start "+cmds.sqlInteger()+" not null, end " + cmds.sqlInteger() + " not null, sourcestate blob, targetstate blob);", conn);
         } catch (Exception e) {
             throw new RuntimeException(e);
+        }
+    }
+
+    @Override
+    public long filesCount() {
+        try (Connection conn = getConnection();
+             PreparedStatement select = conn.prepareStatement(COUNT_FILES)) {
+            ResultSet rs = select.executeQuery();
+            rs.next();
+            return rs.getLong(1);
+        } catch (SQLException sqe) {
+            throw new IllegalStateException(sqe);
+        }
+    }
+
+    @Override
+    public Set<String> allFilePaths() {
+        try (Connection conn = getConnection();
+             PreparedStatement select = conn.prepareStatement(ALL_FILE_PATHS)) {
+            ResultSet rs = select.executeQuery();
+            Set<String> res = new HashSet<>();
+            while (rs.next())
+                res.add(rs.getString(1));
+            return res;
+        } catch (SQLException sqe) {
+            throw new IllegalStateException(sqe);
+        }
+    }
+
+    @Override
+    public void setSnapshot(String basePath, Snapshot s) {
+        if (s.versions.isEmpty())
+            return;
+        Snapshot existing = getSnapshot(basePath);
+        if (existing != null && ! existing.versions.isEmpty()) {
+            try (Connection conn = getConnection();
+                 PreparedStatement update = conn.prepareStatement(UPDATE_SNAPSHOT)) {
+                update.setBytes(1, s.serialize());
+                update.setString(2, basePath);
+                update.executeUpdate();
+            } catch (SQLException sqe) {
+                throw new IllegalStateException(sqe);
+            }
+        } else
+            try (Connection conn = getConnection();
+                 PreparedStatement insert = conn.prepareStatement(INSERT_SNAPSHOT)) {
+                insert.setString(1, basePath);
+                insert.setBytes(2, s.serialize());
+                insert.executeUpdate();
+            } catch (SQLException sqe) {
+                throw new IllegalStateException(sqe);
+            }
+    }
+
+    @Override
+    public Snapshot getSnapshot(String basePath) {
+        try (Connection conn = getConnection();
+             PreparedStatement select = conn.prepareStatement(GET_SNAPSHOT)) {
+            ResultSet rs = select.executeQuery();
+            if (rs.next())
+                return Snapshot.fromCbor(CborObject.fromByteArray(rs.getBytes(1)));
+            return new Snapshot(new HashMap<>());
+        } catch (SQLException sqe) {
+            throw new IllegalStateException(sqe);
         }
     }
 

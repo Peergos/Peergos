@@ -1,11 +1,16 @@
 package peergos.server.sync;
 
+import peergos.shared.user.Snapshot;
 import peergos.shared.user.fs.RootHash;
 
 import java.util.List;
 import java.util.Set;
 
 public interface SyncState {
+
+    long filesCount();
+
+    Set<String> allFilePaths();
 
     void add(FileState fs);
 
@@ -28,4 +33,8 @@ public interface SyncState {
     void finishCopies(List<CopyOp> ops);
 
     List<CopyOp> getInProgressCopies();
+
+    void setSnapshot(String basePath, Snapshot s);
+
+    Snapshot getSnapshot(String basePath);
 }

@@ -1,17 +1,21 @@
 package peergos.shared.user;
 
 import peergos.shared.*;
+import peergos.shared.cbor.CborObject;
+import peergos.shared.cbor.Cborable;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.util.*;
 
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /** This class represents a snapshot of a group of signing subspaces.
  *
  */
-public class Snapshot {
+public class Snapshot implements Cborable {
 
     public final Map<PublicKeyHash, CommittedWriterData> versions;
 
@@ -74,6 +78,27 @@ public class Snapshot {
     public CompletableFuture<Snapshot> withWriters(PublicKeyHash owner, Set<PublicKeyHash> writers, NetworkAccess network) {
         return Futures.reduceAll(writers, this,
                 (s, writer) -> s.withWriter(owner, writer, network), (a, b) -> b);
+    }
+
+    @Override
+    public CborObject toCbor() {
+        return new CborObject.CborList(versions.entrySet()
+                .stream()
+                .sorted((a, b) -> a.getKey().target.compareTo(b.getKey()))
+                .flatMap(e -> Stream.of(e.getKey().toCbor(), e.getValue().toCbor()))
+                .collect(Collectors.toList()));
+    }
+
+    public static Snapshot fromCbor(Cborable cbor) {
+        if (! (cbor instanceof CborObject.CborList))
+            throw new IllegalStateException("Invalid cbor for Snapshot!");
+        CborObject.CborList list = (CborObject.CborList) cbor;
+        if (list.value.size() % 2 != 0)
+            throw new IllegalStateException("Invalid cbor list length for Snapshot!");
+        HashMap<PublicKeyHash, CommittedWriterData> res = new HashMap<>();
+        for (int i=0; i < list.value.size()/2; i ++)
+            res.put(list.get(i, PublicKeyHash::fromCbor), list.get(i + 1, CommittedWriterData::fromCbor));
+        return new Snapshot(res);
     }
 
     @Override
