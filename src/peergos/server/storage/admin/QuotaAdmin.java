@@ -52,8 +52,9 @@ public interface QuotaAdmin extends QuotaControl {
         byte[] raw = ownerOpt.get().unsignMessage(signedRequest).join();
         CborObject cbor = CborObject.fromByteArray(raw);
         QuotaControl.SpaceRequest req = QuotaControl.SpaceRequest.fromCbor(cbor);
-        if (req.utcMillis < System.currentTimeMillis() - 30_000)
-            throw new IllegalStateException("Stale auth time in space request!");
+        long now = System.currentTimeMillis();
+        if (req.utcMillis < now - 30_000)
+            throw new IllegalStateException("Stale auth time in space request! " + req.utcMillis + " !< " + now + " - 30000");
         return req;
     }
 }
