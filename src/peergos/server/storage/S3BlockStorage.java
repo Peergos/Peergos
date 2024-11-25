@@ -345,6 +345,16 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
     }
 
     @Override
+    public CompletableFuture<Optional<byte[]>> getRaw(List<Multihash> peerIds,
+                                               Cid hash,
+                                               String auth,
+                                               boolean doAuth,
+                                               boolean persistBlock) {
+        return getRaw(peerIds, hash, Optional.empty(), auth, doAuth, Optional.empty(), persistBlock)
+                .thenApply(p -> p.map(v -> v.left));
+    }
+
+    @Override
     public CompletableFuture<Optional<byte[]>> getRaw(List<Multihash> peerIds, Cid hash, String auth, boolean persistBlock) {
         return getRaw(peerIds, hash, Optional.empty(), auth, true, Optional.empty(), persistBlock)
                 .thenApply(p -> p.map(v -> v.left));
@@ -1023,7 +1033,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         Supplier<Connection> usageDb = Main.getDBConnector(a, "space-usage-sql-file");
         UsageStore usageStore = new JdbcUsageStore(usageDb, sqlCommands);
         if (a.hasArg("integrity-check")) {
-            GarbageCollector.checkIntegrity(s3, meta, rawPointers, usageStore);
+            GarbageCollector.checkIntegrity(s3, meta, rawPointers, usageStore, a.getBoolean("fix-metadata", false));
             return;
         }
         System.out.println("Performing GC on S3 block store...");

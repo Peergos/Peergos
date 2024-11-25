@@ -97,7 +97,8 @@ public class GarbageCollector {
     public static void checkIntegrity(DeletableContentAddressedStorage storage,
                                       BlockMetadataStore metadata,
                                       JdbcIpnsAndSocial pointers,
-                                      UsageStore usage) {
+                                      UsageStore usage,
+                                      boolean fixMetadata) {
         Map<PublicKeyHash, byte[]> allPointers = pointers.getAllEntries();
 
         List<Pair<Multihash, String>> usageRoots = usage.getAllTargets();
@@ -111,14 +112,14 @@ public class GarbageCollector {
             if (updated.isPresent() && !done.contains(updated.get())) {
                 done.add(updated.get());
                 try {
-                    traverseDag(updated.get(), metadata, done);
+                    traverseDag(updated.get(), metadata, done, fixMetadata, storage);
                 } catch (Exception e) {
                     try {
                         String username = usage.getUsage(writerHash).owner;
                         String msg = "Error marking reachable for user: " + username + ", writer " + writerHash + " " + e.getMessage();
                         System.err.println(msg);
                     } catch (Exception f) {
-                        System.err.println("Error processing writer: " + e.getMessage() + " " + f.getMessage());
+//                        System.err.println("Error processing writer: " + e.getMessage() + " " + f.getMessage());
                     }
                 }
             }
@@ -128,7 +129,7 @@ public class GarbageCollector {
         for (Pair<Multihash, String> usageRoot : usageRoots) {
             if (! done.contains(usageRoot.left)) {
                 try {
-                traverseDag(usageRoot.left, metadata, done);
+                    traverseDag(usageRoot.left, metadata, done, fixMetadata, storage);
                 } catch (Exception e) {
                     String username = usageRoot.right;;
                     String msg = "Error marking reachable for user: " + username + ", from usage root " + usageRoot.left;
@@ -141,15 +142,24 @@ public class GarbageCollector {
 
     private static void traverseDag(Multihash cid,
                                     BlockMetadataStore metadata,
-                                    Set<Multihash> done) {
+                                    Set<Multihash> done,
+                                    boolean fixMetadata,
+                                    DeletableContentAddressedStorage storage) {
         if (cid.isIdentity())
             return;
         Optional<BlockMetadata> meta = metadata.get((Cid) cid);
+        if (meta.isEmpty() && fixMetadata) {
+            // retrieving the block should add it to the metadata store
+            Optional<byte[]> block = storage.getRaw(Collections.emptyList(), (Cid) cid, "", false, true).join();
+            meta = metadata.get((Cid) cid);
+            if (meta.isPresent())
+                System.out.println("Fixed block metadata for " + cid);
+        }
         if (meta.isEmpty())
             throw new IllegalStateException("Absent block! " + cid + ", key: " + DirectS3BlockStore.hashToKey(cid));
         for (Cid link : meta.get().links) {
             done.add(link);
-            traverseDag(link, metadata, done);
+            traverseDag(link, metadata, done, fixMetadata, storage);
         }
     }
 
