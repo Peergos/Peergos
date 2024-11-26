@@ -45,6 +45,15 @@ public class RamUsageStore implements UsageStore {
     }
 
     @Override
+    public Set<PublicKeyHash> getAllWriters(String owner) {
+        return state.currentView.entrySet()
+                .stream()
+                .filter(e -> e.getValue().owner.equals(owner))
+                .map(e -> e.getKey())
+                .collect(Collectors.toSet());
+    }
+
+    @Override
     public Set<PublicKeyHash> getAllWriters(PublicKeyHash owner) {
         Set<PublicKeyHash> res = new HashSet<>();
         getAllWriters(owner, res);

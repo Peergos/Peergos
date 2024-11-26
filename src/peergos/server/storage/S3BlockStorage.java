@@ -438,6 +438,11 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
             }
             failedBlockGets.inc();
 
+            if (peerIds.stream().allMatch(p -> ids.contains(p))) {
+                // This is the owner's home server, we should have the block!
+                throw new IllegalStateException("Missing block " + hash);
+            }
+
             nonLocalGets.inc();
             if (p2pGetId.equals(id))
                 return p2pFallback.getRaw(peerIds, hash, auth, persistP2pBlock)
@@ -1033,7 +1038,10 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         Supplier<Connection> usageDb = Main.getDBConnector(a, "space-usage-sql-file");
         UsageStore usageStore = new JdbcUsageStore(usageDb, sqlCommands);
         if (a.hasArg("integrity-check")) {
-            GarbageCollector.checkIntegrity(s3, meta, rawPointers, usageStore, a.getBoolean("fix-metadata", false));
+            if (a.hasArg("username"))
+                GarbageCollector.checkUserIntegrity(a.getArg("username"), s3, meta, rawPointers, usageStore, a.getBoolean("fix-metadata", false));
+            else
+                GarbageCollector.checkIntegrity(s3, meta, rawPointers, usageStore, a.getBoolean("fix-metadata", false));
             return;
         }
         System.out.println("Performing GC on S3 block store...");

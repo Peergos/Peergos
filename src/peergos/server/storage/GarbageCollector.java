@@ -140,6 +140,35 @@ public class GarbageCollector {
         System.out.println("Finished checking block DAG integrity");
     }
 
+    public static void checkUserIntegrity(String username,
+                                          DeletableContentAddressedStorage storage,
+                                          BlockMetadataStore metadata,
+                                          JdbcIpnsAndSocial pointers,
+                                          UsageStore usage,
+                                          boolean fixMetadata) {
+        Set<PublicKeyHash> writers = usage.getAllWriters(username);
+        Set<Multihash> done = new HashSet<>();
+        System.out.println("Checking integrity for user " + username);
+        Map<PublicKeyHash, byte[]> userPointers = writers.stream()
+                .collect(Collectors.toMap(w -> w, w -> pointers.getPointer(w).join().get()));
+        userPointers.forEach((writerHash, signedRawCas) -> {
+            PublicSigningKey writer = getWithBackoff(() -> storage.getSigningKey(null, writerHash).join().get());
+            byte[] bothHashes = writer.unsignMessage(signedRawCas).join();
+            PointerUpdate cas = PointerUpdate.fromCbor(CborObject.fromByteArray(bothHashes));
+            MaybeMultihash updated = cas.updated;
+            if (updated.isPresent() && !done.contains(updated.get())) {
+                done.add(updated.get());
+                try {
+                    traverseDag(updated.get(), metadata, done, fixMetadata, storage);
+                } catch (Exception e) {
+                    String msg = "Error marking reachable for user: " + username + ", writer " + writerHash + " " + e.getMessage();
+                    System.err.println(msg);
+                }
+            }
+        });
+        System.out.println("Finished checking block DAG integrity");
+    }
+
     private static void traverseDag(Multihash cid,
                                     BlockMetadataStore metadata,
                                     Set<Multihash> done,

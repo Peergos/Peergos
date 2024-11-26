@@ -26,10 +26,16 @@ public class JdbcUsageStoreTests {
         PublicKeyHash writer = new PublicKeyHash(Cid.buildCidV1(Cid.Codec.DagCbor, Multihash.Type.id, crypto.random.randomBytes(36)));
         store.addWriter(username, writer);
         store.updateWriterUsage(owner, MaybeMultihash.empty(), Collections.emptySet(), Set.of(writer), 0);
+        store.updateWriterUsage(owner, MaybeMultihash.empty(), Collections.emptySet(), Set.of(owner), 0);
 
         Set<PublicKeyHash> allWriters = store.getAllWriters(owner);
         Assert.assertTrue(allWriters.size() == 2);
         Assert.assertTrue(allWriters.contains(writer));
+
+        Set<PublicKeyHash> byName = store.getAllWriters(username);
+        Assert.assertTrue(byName.size() == 2);
+        Assert.assertTrue(byName.contains(owner));
+        Assert.assertTrue(byName.contains(writer));
 
         int usageDelta = 1_000_000_000;
         store.confirmUsage(username, owner, usageDelta, false);
