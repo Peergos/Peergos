@@ -1125,13 +1125,13 @@ public class CryptreeNode implements Cborable {
         Set<Location> locsToRemove = childrenToRemove.stream()
                 .map(r -> r.getLocation())
                 .collect(Collectors.toSet());
-        return getDirectChildren(network, ourPointer, current).thenCompose(children -> {
-            List<NamedRelativeCapability> withRemoval = children.stream()
-                    .filter(e -> ! locsToRemove.contains(e.capability.getLocation()))
-                    .map(c -> new NamedRelativeCapability(new PathElement(c.getProperties().name), ourPointer.relativise(c.capability)))
+        return getDirectChildrenCapabilities(ourPointer, current, network).thenCompose(childCaps -> {
+            List<NamedRelativeCapability> withRemoval = childCaps.stream()
+                    .filter(e -> ! locsToRemove.contains(e.cap.getLocation()))
+                    .map(c -> new NamedRelativeCapability(new PathElement(c.name.name), ourPointer.relativise(c.cap)))
                     .collect(Collectors.toList());
-            Set<Location> kidLocs = children.stream()
-                    .map(r -> r.capability.getLocation())
+            Set<Location> kidLocs = childCaps.stream()
+                    .map(r -> r.cap.getLocation())
                     .collect(Collectors.toSet());
 
             List<AbsoluteCapability> remaining = childrenToRemove.stream()

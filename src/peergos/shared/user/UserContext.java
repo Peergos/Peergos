@@ -2438,8 +2438,7 @@ public class UserContext {
                                                       NetworkAccess network,
                                                       Crypto crypto) {
         return time(() -> getFriendsEntryPoints(homeDir), "Get friend's entry points")
-                .thenCompose(friendEntries -> homeDir.getChild(CapabilityStore.CAPABILITY_CACHE_DIR, crypto.hasher, network)
-                        .thenCompose(copt -> {
+                .thenCompose(friendEntries -> {
                             List<EntryPoint> friendsOnly = friendEntries.stream()
                                     .filter(e -> includeUser.test(e.ownerName))
                                     .collect(Collectors.toList());
@@ -2453,7 +2452,7 @@ public class UserContext {
                                     (t, e) -> e.thenApply(fromUser -> fromUser.map(userEntrie -> t.putNode(userEntrie.ownerName, userEntrie))
                                             .orElse(t)).exceptionally(ex -> t),
                                     (a, b) -> a);
-                        })).thenCompose(root -> getFriendsGroupCaps(homeDir, homeDir.version, network)
+                        }).thenCompose(root -> getFriendsGroupCaps(homeDir, homeDir.version, network)
                         .thenApply(groups -> { // now add the groups from each friend
                             Set<String> friendNames = root.getChildNames()
                                     .stream()
