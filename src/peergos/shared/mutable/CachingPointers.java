@@ -8,9 +8,6 @@ import peergos.shared.util.*;
 import java.util.*;
 import java.util.concurrent.*;
 
-/*
- * A CoreNode that caches previous metadata blob reads for a certain time
- */
 public class CachingPointers implements MutablePointers {
 
     private final MutablePointers target;

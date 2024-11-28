@@ -114,6 +114,8 @@ public class FileWrapper {
 
     @JsMethod
     public CompletableFuture<FileWrapper> getLatest(NetworkAccess network) {
+        if (isRoot())
+            return Futures.of(this);
         return network.synchronizer.getValue(owner(), writer())
                 .thenCompose(latest -> getUpdated(latest, network));
 
@@ -140,12 +142,7 @@ public class FileWrapper {
     }
 
     public PublicKeyHash owner() {
-        try {
-            return pointer.capability.owner;
-        } catch (Exception e)  {
-            System.out.println();
-            throw e;
-        }
+        return pointer.capability.owner;
     }
 
     public PublicKeyHash writer() {
@@ -1115,7 +1112,7 @@ public class FileWrapper {
                                                 Chunk updated = new Chunk(raw, dataKey, currentOriginal.location.getMapKey(), dataKey.createNonce());
                                                 LocatedChunk located = new LocatedChunk(currentOriginal.location, currentOriginal.bat, currentOriginal.existingHash, updated);
                                                 long currentSize = filesSize.get();
-                                                // remove blake3 hash from properties as we are changing the file (todo: update hash)
+                                                // remove hash from properties as we are changing the file (todo: update hash)
                                                 FileProperties newProps = new FileProperties(props.name, false,
                                                         props.isLink, props.mimeType,
                                                         endIndex > currentSize ? endIndex : currentSize,
