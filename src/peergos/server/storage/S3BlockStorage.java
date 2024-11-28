@@ -40,10 +40,22 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
     private static final List<String> RETRY_S3_CODES = List.of("RequestError","RequestTimeout","Throttling"
             ,"ThrottlingException","RequestLimitExceeded","RequestThrottled","InternalError","ExpiredToken","ExpiredTokenException","SlowDown");
     
-    private static final Histogram readTimerLog = Histogram.build()
+    private static final Histogram CborReadTimerLog = Histogram.build()
             .labelNames("filesize")
-            .name("block_read_seconds")
-            .help("Time to read a block from immutable storage")
+            .name("cbor_block_read_seconds")
+            .help("Time to read a cbor block from immutable storage")
+            .exponentialBuckets(0.01, 2, 16)
+            .register();
+    private static final Histogram RawReadTimerLog = Histogram.build()
+            .labelNames("filesize")
+            .name("raw_block_read_seconds")
+            .help("Time to read a raw block from immutable storage")
+            .exponentialBuckets(0.01, 2, 16)
+            .register();
+    private static final Histogram HeadTimerLog = Histogram.build()
+            .labelNames("filesize")
+            .name("block_head_seconds")
+            .help("Time to get a blocks size from immutable storage")
             .exponentialBuckets(0.01, 2, 16)
             .register();
     private static final Histogram writeTimerLog = Histogram.build()
@@ -410,7 +422,9 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         String path = folder + hashToKey(hash);
         PresignedUrl getUrl = S3Request.preSignGet(path, Optional.of(600), range,
                 S3AdminRequests.asAwsDate(ZonedDateTime.now()), host, region, accessKeyId, secretKey, useHttps, hasher).join();
-        Histogram.Timer readTimer = readTimerLog.labels("read").startTimer();
+        Histogram.Timer readTimer = hash.isRaw() ?
+                RawReadTimerLog.labels("read").startTimer() :
+                CborReadTimerLog.labels("read").startTimer();
         try {
             Pair<byte[], String> blockAndVersion = HttpUtil.getWithVersion(getUrl);
             blockGets.inc();
@@ -630,7 +644,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
     private CompletableFuture<Optional<Integer>> getSizeWithoutRetry(Multihash hash) {
         if (hash.isIdentity()) // Identity hashes are not actually stored explicitly
             return Futures.of(Optional.of(0));
-        Histogram.Timer readTimer = readTimerLog.labels("size").startTimer();
+        Histogram.Timer readTimer = HeadTimerLog.labels("size").startTimer();
         try {
             PresignedUrl headUrl = S3Request.preSignHead(folder + hashToKey(hash), Optional.of(60),
                     S3AdminRequests.asAwsDate(ZonedDateTime.now()), host, region, accessKeyId, secretKey, useHttps, hasher).join();
