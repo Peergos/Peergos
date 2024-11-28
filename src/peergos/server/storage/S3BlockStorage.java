@@ -479,6 +479,9 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
             return true;
         if (! hash.isRaw() && cborCache.hasBlock(hash))
             return true;
+        Optional<BlockMetadata> meta = blockMetadata.get(hash);
+        if (meta.isPresent())
+            return true;
         return getWithBackoff(() -> hasBlockWithoutBackoff(hash));
     }
 
