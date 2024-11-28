@@ -171,7 +171,9 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                 Optional<byte[]> block = blockBuffer.get(c).join();
                 if (block.isPresent()) {
                     put(c, block.get());
-                    blockBuffer.delete(c);
+                    Optional<BlockMetadata> meta = blockMetadata.get(c);
+                    if (meta.isPresent())
+                        blockBuffer.delete(c);
                 }
                 return true;
             }));
@@ -216,7 +218,9 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                         Optional<byte[]> block = blockBuffer.get(h).join();
                         if (block.isPresent()) {
                             put(h, block.get());
-                            blockBuffer.delete(h);
+                            Optional<BlockMetadata> meta = blockMetadata.get(h);
+                            if (meta.isPresent())
+                                blockBuffer.delete(h);
                         }
                         return true;
                     }));
