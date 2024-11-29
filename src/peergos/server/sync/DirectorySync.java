@@ -41,6 +41,7 @@ import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.ForkJoinTask;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Supplier;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -630,6 +631,7 @@ public class DirectorySync {
             throw new IllegalStateException("Dir does not exist: " + dir);
         SnapshotTracker version = new SnapshotTracker(new Snapshot(new HashMap<>()));
         List<Pair<FileWrapper, HashTree>> toUpdate = new ArrayList<>();
+        AtomicLong downloadedSize = new AtomicLong(0);
         fs.applyToSubtree(dir, props -> {
             String relPath = props.path.toString().substring(dir.toString().length() + 1);
             FileState atSync = synced.byPath(relPath);
@@ -643,6 +645,15 @@ public class DirectorySync {
                     if (! remoteHash.isPresent()) {
                         // collect new hashes to set in bulk later
                         toUpdate.add(new Pair<>(props.meta.get(), hashTree));
+                        downloadedSize.addAndGet(props.size);
+                        if (downloadedSize.get() > 100*1024*1024L) {
+                            // set hashes inline if we've downloaded a lot of data to avoid cache thrashing if there is
+                            // an exception. This way we continue to make progress.
+                            log("REMOTE: Updating " + toUpdate.size() + " hashes");
+                            fs.setHashes(toUpdate);
+                            toUpdate.clear();
+                            downloadedSize.set(0);
+                        }
                     }
                 }
                 FileState fstat = new FileState(relPath, props.modifiedTime, props.size, hashTree);
