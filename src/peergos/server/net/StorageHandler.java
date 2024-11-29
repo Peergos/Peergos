@@ -59,6 +59,7 @@ public class StorageHandler implements HttpHandler {
     public void handle(HttpExchange httpExchange) {
         long t1 = System.currentTimeMillis();
         String path = httpExchange.getRequestURI().getPath();
+        Optional<PublicKeyHash> ownerHash = Optional.empty();
         try {
             if (! HttpUtil.allowedQuery(httpExchange, isPublicServer)) {
                 httpExchange.sendResponseHeaders(405, 0);
@@ -72,6 +73,9 @@ public class StorageHandler implements HttpHandler {
             Map<String, List<String>> params = HttpUtil.parseQuery(httpExchange.getRequestURI().getQuery());
             List<String> args = params.get("arg");
             Function<String, String> last = key -> params.get(key).get(params.get(key).size() - 1);
+            ownerHash = params.containsKey("owner") ?
+                    Optional.of(PublicKeyHash.fromString(last.apply("owner"))) :
+                    Optional.empty();
 
             switch (path) {
                 case BLOCKSTORE_PROPERTIES: {
@@ -81,7 +85,6 @@ public class StorageHandler implements HttpHandler {
                     break;
                 }
                 case AUTH_WRITES: {
-                    PublicKeyHash ownerHash = PublicKeyHash.fromString(last.apply("owner"));
                     TransactionId tid = new TransactionId(last.apply("transaction"));
                     PublicKeyHash writerHash = PublicKeyHash.fromString(last.apply("writer"));
                     byte[] reqBody = Serialize.readFully(httpExchange.getRequestBody());
@@ -91,7 +94,7 @@ public class StorageHandler implements HttpHandler {
                             .map(x -> x.intValue())
                             .collect(Collectors.toList());
                     boolean isRaw = Boolean.parseBoolean(last.apply("raw"));
-                    dht.authWrites(ownerHash, writerHash, signatures, blockSizes, req.batIds, isRaw, tid).thenAccept(res -> {
+                    dht.authWrites(ownerHash.get(), writerHash, signatures, blockSizes, req.batIds, isRaw, tid).thenAccept(res -> {
                         replyBytes(httpExchange, new CborObject.CborList(res).serialize(), Optional.empty());
                     }).exceptionally(Futures::logAndThrow).get();
                     break;
@@ -106,17 +109,15 @@ public class StorageHandler implements HttpHandler {
                 }
                 case TRANSACTION_START: {
                     AggregatedMetrics.STORAGE_TRANSACTION_START.inc();
-                    PublicKeyHash ownerHash = PublicKeyHash.fromString(last.apply("owner"));
-                    dht.startTransaction(ownerHash).thenAccept(tid -> {
+                    dht.startTransaction(ownerHash.get()).thenAccept(tid -> {
                         replyJson(httpExchange, tid.toString(), Optional.empty());
                     }).exceptionally(Futures::logAndThrow).get();
                     break;
                 }
                 case TRANSACTION_CLOSE: {
                     AggregatedMetrics.STORAGE_TRANSACTION_CLOSE.inc();
-                    PublicKeyHash ownerHash = PublicKeyHash.fromString(last.apply("owner"));
                     TransactionId tid = new TransactionId(args.get(0));
-                    dht.closeTransaction(ownerHash, tid).thenAccept(b -> {
+                    dht.closeTransaction(ownerHash.get(), tid).thenAccept(b -> {
                         replyJson(httpExchange, JSONParser.toString(b ? 1 : 0), Optional.empty());
                     }).exceptionally(Futures::logAndThrow).get();
                     break;
@@ -124,14 +125,13 @@ public class StorageHandler implements HttpHandler {
                 case CHAMP_GET: {
                     AggregatedMetrics.STORAGE_CHAMP_GET.inc();
                     Histogram.Timer timer = AggregatedMetrics.STORAGE_CHAMP_GET_DURATION.labels("duration").startTimer();
-                    PublicKeyHash ownerHash = PublicKeyHash.fromString(last.apply("owner"));
                     Cid root = Cid.decode(args.get(0));
                     byte[] champKey = ArrayOps.hexToBytes(args.get(1));
                     Optional<BatWithId> bat = params.containsKey("bat") ?
                             Optional.of(BatWithId.decode(last.apply("bat"))) :
                             Optional.empty();
                     try {
-                        dht.getChampLookup(ownerHash, root, champKey, bat, Optional.empty()).thenAccept(blocks -> {
+                        dht.getChampLookup(ownerHash.get(), root, champKey, bat, Optional.empty()).thenAccept(blocks -> {
                             replyBytes(httpExchange, new CborObject.CborList(blocks.stream()
                                     .map(CborObject.CborByteArray::new).collect(Collectors.toList())).serialize(), Optional.of(root));
                         }).exceptionally(Futures::logAndThrow).get();
@@ -143,9 +143,8 @@ public class StorageHandler implements HttpHandler {
                 case LINK_GET: {
                     AggregatedMetrics.STORAGE_LINK_GET.inc();
                     Histogram.Timer timer = AggregatedMetrics.STORAGE_LINK_GET_DURATION.labels("duration").startTimer();
-                    PublicKeyHash ownerHash = PublicKeyHash.fromString(last.apply("owner"));
                     long label = Long.parseLong(last.apply("label"));
-                    SecretLink lookup = new SecretLink(ownerHash, label, "");
+                    SecretLink lookup = new SecretLink(ownerHash.get(), label, "");
                     try {
                         dht.getSecretLink(lookup).thenAccept(link -> {
                             replyBytes(httpExchange, link.serialize(), Optional.empty());
@@ -168,7 +167,6 @@ public class StorageHandler implements HttpHandler {
                 }
                 case BLOCK_PUT: {
                     AggregatedMetrics.STORAGE_BLOCK_PUT.inc();
-                    PublicKeyHash ownerHash = PublicKeyHash.fromString(last.apply("owner"));
                     TransactionId tid = new TransactionId(last.apply("transaction"));
                     PublicKeyHash writerHash = PublicKeyHash.fromString(last.apply("writer"));
                     List<byte[]> signatures = Arrays.stream(last.apply("signatures").split(","))
@@ -223,8 +221,8 @@ public class StorageHandler implements HttpHandler {
                     }
 
                     List<Cid> hashes = (isRaw ?
-                            dht.putRaw(ownerHash, writerHash, signatures, data, tid, x -> {}) :
-                            dht.put(ownerHash, writerHash, signatures, data, tid)).get();
+                            dht.putRaw(ownerHash.get(), writerHash, signatures, data, tid, x -> {}) :
+                            dht.put(ownerHash.get(), writerHash, signatures, data, tid)).get();
                     List<Object> json = hashes.stream()
                             .map(h -> wrapHash(h))
                             .collect(Collectors.toList());
@@ -237,14 +235,13 @@ public class StorageHandler implements HttpHandler {
                 }
                 case BLOCK_GET:{
                     AggregatedMetrics.STORAGE_BLOCK_GET.inc();
-                    PublicKeyHash ownerHash = PublicKeyHash.fromString(last.apply("owner"));
                     Cid hash = Cid.decode(args.get(0));
                     Optional<BatWithId> bat = params.containsKey("bat") ?
                             Optional.of(BatWithId.decode(last.apply("bat"))) :
                             Optional.empty();
                     Optional<byte[]> block = hash.codec == Cid.Codec.Raw ?
-                            dht.getRaw(ownerHash, hash, bat).join() :
-                            dht.get(ownerHash, hash, bat).thenApply(opt -> opt.map(CborObject::toByteArray)).join();
+                            dht.getRaw(ownerHash.get(), hash, bat).join() :
+                            dht.get(ownerHash.get(), hash, bat).thenApply(opt -> opt.map(CborObject::toByteArray)).join();
                     replyBytes(httpExchange,
                             block.orElse(new byte[0]), block.map(x -> hash));
                     break;
@@ -304,7 +301,7 @@ public class StorageHandler implements HttpHandler {
             httpExchange.close();
             long t2 = System.currentTimeMillis();
             if (LOGGING)
-                LOG.info("DHT Handler handled " + path + " query in: " + (t2 - t1) + " mS");
+                LOG.info("DHT Handler handled " + path + " query in: " + (t2 - t1) + " mS " + ownerHash.map(PublicKeyHash::toString).orElse(""));
         }
     }
 
