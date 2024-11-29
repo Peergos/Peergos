@@ -278,6 +278,7 @@ Follow the instructions for self hosting but add the following parameters (eithe
 -s3.region.endpoint $ENDPOINT (e.g. us-east-1.linodeobjects.com)
 -s3.secretKey #SECRET_KEY
 ```
+N.B. Minio seems to have some issues, so with Minio use: -authed-s3-reads false -direct-s3-writes false
 
 You will also need to set the cors.xml for the bucket to the following:
 ```
