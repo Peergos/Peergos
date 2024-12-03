@@ -70,7 +70,7 @@ public class DirectorySync {
             String address = args.getArg("peergos-url");
             URL serverURL = new URL(address);
             Crypto crypto = Main.initCrypto();
-            String cacheSize = args.getArg("block-cache-size-bytes", "1g");
+            String cacheSize = args.getArg("block-cache-size-bytes");
             long blockCacheSizeBytes = cacheSize.endsWith("g") ?
                     Long.parseLong(cacheSize.substring(0, cacheSize.length() - 1)) * 1024L*1024*1024 :
                     Long.parseLong(cacheSize);
