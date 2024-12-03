@@ -70,7 +70,10 @@ public class DirectorySync {
             String address = args.getArg("peergos-url");
             URL serverURL = new URL(address);
             Crypto crypto = Main.initCrypto();
-            long blockCacheSizeBytes = args.getLong("block-cache-size-bytes", 1024 * 1024 * 1024L);
+            String cacheSize = args.getArg("block-cache-size-bytes", "1g");
+            long blockCacheSizeBytes = cacheSize.endsWith("g") ?
+                    Long.parseLong(cacheSize.substring(0, cacheSize.length() - 1)) * 1024L*1024*1024 :
+                    Long.parseLong(cacheSize);
             NetworkAccess network = Builder.buildJavaNetworkAccess(serverURL, address.startsWith("https")).join()
                     .withStorage(s -> new UnauthedCachingStorage(s, new FileBlockCache(args.fromPeergosDir("block-cache-dir", "block-cache"), blockCacheSizeBytes), crypto.hasher));
             ThumbnailGenerator.setInstance(new JavaImageThumbnailer());
