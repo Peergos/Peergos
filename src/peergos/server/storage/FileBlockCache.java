@@ -101,7 +101,7 @@ public class FileBlockCache implements BlockCache {
                         throw new IllegalStateException("Could not make " + someParent + ", ancestor of " + parentDir + " writable");
                 }
             }
-            Path tmp = target.getParent().resolve(target.getFileName() + ".tmp");
+            Path tmp = target.getParent().resolve(target.getFileName() + "-" + System.currentTimeMillis() + ".tmp");
             Files.write(tmp, data, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.CREATE, StandardOpenOption.WRITE);
             Files.move(tmp, target, StandardCopyOption.ATOMIC_MOVE);
             totalSize.addAndGet(data.length);
