@@ -170,7 +170,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
             bulkPutPool.submit(() -> getWithBackoff(() -> {
                 Optional<byte[]> block = blockBuffer.get(c).join();
                 if (block.isPresent()) {
-                    put(c, block.get());
+                    getWithBackoff(() -> put(c, block.get()));
                     Optional<BlockMetadata> meta = blockMetadata.get(c);
                     if (meta.isPresent())
                         blockBuffer.delete(c);
@@ -215,14 +215,25 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                         continue;
                     }
                     bulkPutPool.submit(() -> getWithBackoff(() -> {
-                        Optional<byte[]> block = blockBuffer.get(h).join();
-                        if (block.isPresent()) {
-                            put(h, block.get());
-                            Optional<BlockMetadata> meta = blockMetadata.get(h);
-                            if (meta.isPresent())
-                                blockBuffer.delete(h);
+                        try {
+                            Optional<byte[]> block = blockBuffer.get(h).join();
+                            if (block.isPresent()) {
+                                getWithBackoff(() -> put(h, block.get()));
+                                Optional<BlockMetadata> meta = blockMetadata.get(h);
+                                if (meta.isPresent())
+                                    blockBuffer.delete(h);
+                                else {
+                                    LOG.info("Error flushing block " + h);
+                                    blocksToFlush.add(h);
+                                }
+                            } else
+                                blocksToFlush.add(h);
+                            return true;
+                        } catch (Exception e) {
+                            LOG.info("Error flushing block " + h + " " + e.getMessage());
+                            blocksToFlush.add(h);
+                            throw new RuntimeException(e);
                         }
-                        return true;
                     }));
                     blocksToFlush.poll();
                 } catch (Exception e) {
