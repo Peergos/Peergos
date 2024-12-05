@@ -602,15 +602,12 @@ public class DirectorySync {
         long start = op.diffStart;
         long end = op.diffEnd;
         try (AsyncReader fin = srcFs.getBytes(op.source, start)) {
-            targetFs.setBytes(op.target, start, fin, end - start);
+            targetFs.setBytes(op.target, start, fin, end - start, Optional.of(op.sourceState.hashTree), Optional.of(LocalDateTime.ofInstant(Instant.ofEpochSecond(lastModified / 1000, 0), ZoneOffset.UTC)));
         }
         if (priorSize > size) {
             log("Sync Truncating file " + op.sourceState.relPath + " from " + priorSize + " to " + size);
             targetFs.truncate(op.target, size);
         }
-
-        targetFs.setModificationTime(op.target, lastModified);
-        targetFs.setHash(op.target, op.sourceState.hashTree, size);
     }
 
     private static class SnapshotTracker {

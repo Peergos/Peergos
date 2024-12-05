@@ -5,6 +5,7 @@ import peergos.shared.util.Pair;
 
 import java.io.IOException;
 import java.nio.file.Path;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -35,7 +36,7 @@ interface SyncFilesystem {
 
     void truncate(Path p, long size) throws IOException;
 
-    void setBytes(Path p, long fileOffset, AsyncReader data, long size) throws IOException;
+    void setBytes(Path p, long fileOffset, AsyncReader data, long size, Optional<HashTree> hash, Optional<LocalDateTime> modificationTime) throws IOException;
 
     AsyncReader getBytes(Path p, long fileOffset) throws IOException;
 

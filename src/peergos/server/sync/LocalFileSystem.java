@@ -11,6 +11,8 @@ import peergos.shared.util.Pair;
 import java.io.*;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -92,7 +94,7 @@ public class LocalFileSystem implements SyncFilesystem {
     }
 
     @Override
-    public void setBytes(Path p, long fileOffset, AsyncReader fin, long size) throws IOException {
+    public void setBytes(Path p, long fileOffset, AsyncReader fin, long size, Optional<HashTree> hash, Optional<LocalDateTime> modificationTime) throws IOException {
         try (RandomAccessFile raf = new RandomAccessFile(p.toFile(), "rw")) {
             raf.seek(fileOffset);
             byte[] buf = new byte[4096];
@@ -102,6 +104,8 @@ public class LocalFileSystem implements SyncFilesystem {
                 raf.write(buf, 0, read);
                 done += read;
             }
+            if (modificationTime.isPresent())
+                p.toFile().setLastModified(modificationTime.get().toInstant(ZoneOffset.UTC).toEpochMilli() / 1000 * 1000);
         }
     }
 

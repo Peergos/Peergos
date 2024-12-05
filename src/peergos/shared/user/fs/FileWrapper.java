@@ -720,6 +720,27 @@ public class FileWrapper {
                 crypto.random.randomBytes(32), Optional.of(Bat.random(crypto.random)), mirrorBatId());
     }
 
+    public CompletableFuture<FileWrapper> uploadFileWithHash(String filename,
+                                                             AsyncReader fileData,
+                                                             long length,
+                                                             Optional<HashTree> hash,
+                                                             Optional<LocalDateTime> modificationTime,
+                                                             NetworkAccess network,
+                                                             Crypto crypto,
+                                                             ProgressConsumer<Long> monitor) {
+        if (! isWritable())
+            throw new IllegalStateException("Folder not writable!");
+        return network.synchronizer.applyComplexUpdate(owner(), signingPair(), (current, committer) ->
+                        uploadFileSection(current, committer, filename, fileData, Optional.empty(), false, 0, length, hash,
+                                modificationTime, Optional.empty(), Optional.empty(), Optional.empty(), false, false, false,
+                                network, crypto, monitor, crypto.random.randomBytes(32), Optional.empty(), Optional.of(Bat.random(crypto.random)), mirrorBatId())
+                                .thenCompose(p -> getUpdated(p.left, network)
+                                        .thenCompose(latest -> p.right.isEmpty() ?
+                                                Futures.of(p.left) :
+                                                latest.addChildPointer(p.left, committer, p.right.get(), network, crypto))))
+                .thenCompose(finalBase -> getUpdated(finalBase, network));
+    }
+
     public CompletableFuture<FileWrapper> uploadOrReplaceFile(String filename,
                                                               AsyncReader fileData,
                                                               long length,
