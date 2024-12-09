@@ -1132,7 +1132,7 @@ public class FileWrapper {
 
                                             return fileData.readIntoArray(raw, internalStart, internalEnd - internalStart)
                                                     .thenCompose(read -> updateTreeHash ?
-                                                            treeHasher.setChunk((int)(inputStartIndex / Chunk.MAX_SIZE), raw, crypto.hasher).thenApply(x -> read) :
+                                                            treeHasher.setChunk((int)(startIndex / Chunk.MAX_SIZE), raw, crypto.hasher).thenApply(x -> read) :
                                                             Futures.of(read))
                                                     .thenCompose(read -> {
 
@@ -1159,27 +1159,17 @@ public class FileWrapper {
                                                         filesSize.set(updatedLength);
 
                                                         if (updatedLength > Chunk.MAX_SIZE) {
-                                                            // update file size and treehash (if complete overwrite) in FileProperties of first chunk
-                                                            return (updateTreeHash ?
-                                                                    treeHasher.complete(crypto.hasher).thenApply(Optional::of) :
-                                                                    Futures.of(Optional.<HashTree>empty()))
-                                                                    .thenCompose(treeHash -> network.getFile(updatedBase, ourCap, entryWriter, ownername)
-                                                                            .thenCompose(updatedUs -> {
-                                                                                FileProperties correctedSize = updatedUs.get()
-                                                                                        .getPointer().fileAccess.getProperties(ourCap.rBaseKey)
-                                                                                        .withSize(endIndex)
-                                                                                        .withHash(treeHash.map(t -> t.branch(0)));
-                                                                                return updatedUs.get()
-                                                                                        .getPointer().fileAccess.updateProperties(updatedBase,
-                                                                                                committer, ourCap, entryWriter, correctedSize, network);
-                                                                            }).thenCompose(updatedBase2 -> {
-                                                                                if (! updateTreeHash || endIndex < 1024 * Chunk.MAX_SIZE)
-                                                                                    return Futures.of(updatedBase2);
-                                                                                return network.getFile(updatedBase, ourCap, entryWriter, ownername)
-                                                                                        .thenCompose(updatedUs -> updatedUs.get()
-                                                                                                .getHashUpdates(treeHash.get(), network, crypto.hasher))
-                                                                                        .thenCompose(hashUpdates -> FileWrapper.bulkSetSameNameProperties(updatedBase2, committer, owner(), hashUpdates, network));
-                                                                            }));
+                                                            // update file size and remove treehash in FileProperties of first chunk
+                                                            return network.getFile(updatedBase, ourCap, entryWriter, ownername)
+                                                                    .thenCompose(updatedUs -> {
+                                                                        FileProperties correctedSize = updatedUs.get()
+                                                                                .getPointer().fileAccess.getProperties(ourCap.rBaseKey)
+                                                                                .withSize(endIndex)
+                                                                                .withHash(Optional.empty());
+                                                                        return updatedUs.get()
+                                                                                .getPointer().fileAccess.updateProperties(updatedBase,
+                                                                                        committer, ourCap, entryWriter, correctedSize, network);
+                                                                    });
                                                         }
                                                     }
                                                     return CompletableFuture.completedFuture(updatedBase);
@@ -1189,7 +1179,18 @@ public class FileWrapper {
                                     });
                         };
 
-                        return Futures.reduceAll(startIndexes, base, composer, (a, b) -> b);
+                        return Futures.reduceAll(startIndexes, base, composer, (a, b) -> b)
+                                .thenCompose(preHashVersion -> {
+                                    if (! updateTreeHash)
+                                        return Futures.of(preHashVersion);
+                                    // update hash branches every 5 GiB
+                                    return treeHasher.complete(crypto.hasher)
+                                            .thenCompose(treeHash -> network.getFile(preHashVersion, ourCap, entryWriter, ownername)
+                                                    .thenCompose(updatedUs -> updatedUs.get()
+                                                            .getHashUpdates(treeHash, network, crypto.hasher))
+                                                    .thenCompose(hashUpdates -> FileWrapper.bulkSetSameNameProperties(preHashVersion, committer, owner(), hashUpdates, network))
+                                            );
+                                });
                     });
                 });
     }

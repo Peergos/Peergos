@@ -26,6 +26,9 @@ public class HashTreeBuilder {
     }
 
     public CompletableFuture<HashTree> complete(Hasher h) {
+        for (int i=0; i < chunkHashes.length; i++)
+            if (chunkHashes[i] == null)
+                throw new IllegalStateException("Incomplete tree hash state!");
         return HashTree.build(Arrays.asList(chunkHashes), h);
     }
 }
