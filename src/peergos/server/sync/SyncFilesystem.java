@@ -2,6 +2,7 @@ package peergos.server.sync;
 
 import peergos.shared.user.fs.*;
 import peergos.shared.util.Pair;
+import peergos.shared.util.Triple;
 
 import java.io.IOException;
 import java.nio.file.Path;
@@ -30,7 +31,7 @@ interface SyncFilesystem {
 
     void setHash(Path p, HashTree hashTree, long fileSize);
 
-    void setHashes(List<Pair<FileWrapper, HashTree>> toUpdate);
+    void setHashes(List<Triple<String, FileWrapper, HashTree>> toUpdate);
 
     long size(Path p);
 

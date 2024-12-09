@@ -22,10 +22,7 @@ import peergos.shared.user.Snapshot;
 import peergos.shared.user.TrieNodeImpl;
 import peergos.shared.user.UserContext;
 import peergos.shared.user.fs.*;
-import peergos.shared.util.Either;
-import peergos.shared.util.Futures;
-import peergos.shared.util.Pair;
-import peergos.shared.util.PathUtil;
+import peergos.shared.util.*;
 
 import java.io.*;
 import java.net.URL;
@@ -630,7 +627,7 @@ public class DirectorySync {
         if (! fs.exists(dir))
             throw new IllegalStateException("Dir does not exist: " + dir);
         SnapshotTracker version = new SnapshotTracker(new Snapshot(new HashMap<>()));
-        List<Pair<FileWrapper, HashTree>> toUpdate = new ArrayList<>();
+        List<Triple<String, FileWrapper, HashTree>> toUpdate = new ArrayList<>();
         AtomicLong downloadedSize = new AtomicLong(0);
         fs.applyToSubtree(dir, props -> {
             String relPath = props.path.toString().substring(dir.toString().length() + 1);
@@ -644,12 +641,12 @@ public class DirectorySync {
                     Optional<HashBranch> remoteHash = props.meta.get().getFileProperties().treeHash;
                     if (! remoteHash.isPresent()) {
                         // collect new hashes to set in bulk later
-                        toUpdate.add(new Pair<>(props.meta.get(), hashTree));
+                        toUpdate.add(new Triple<>(relPath, props.meta.get(), hashTree));
                         downloadedSize.addAndGet(props.size);
                         if (downloadedSize.get() > 100*1024*1024L) {
                             // set hashes inline if we've downloaded a lot of data to avoid cache thrashing if there is
                             // an exception. This way we continue to make progress.
-                            log("REMOTE: Updating " + toUpdate.size() + " hashes");
+                            log("REMOTE: Updating " + toUpdate.size() + " hashes: " + toUpdate.stream().limit(10).map(p -> p.left).collect(Collectors.toList()));
                             fs.setHashes(toUpdate);
                             toUpdate.clear();
                             downloadedSize.set(0);
@@ -665,7 +662,7 @@ public class DirectorySync {
             res.addDir(relPath);
         });
         if (! toUpdate.isEmpty()) {
-            log("REMOTE: Updating " + toUpdate.size() + " hashes");
+            log("REMOTE: Updating " + toUpdate.size() + " hashes: " + toUpdate.stream().limit(10).map(p -> p.left).collect(Collectors.toList()));
             fs.setHashes(toUpdate);
         }
         return version.get();

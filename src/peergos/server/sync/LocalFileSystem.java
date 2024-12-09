@@ -7,6 +7,7 @@ import peergos.server.simulation.FileAsyncReader;
 import peergos.shared.crypto.hash.Hasher;
 import peergos.shared.user.fs.*;
 import peergos.shared.util.Pair;
+import peergos.shared.util.Triple;
 
 import java.io.*;
 import java.nio.file.Files;
@@ -79,7 +80,7 @@ public class LocalFileSystem implements SyncFilesystem {
     public void setHash(Path p, HashTree hashTree, long fileSize) {}
 
     @Override
-    public void setHashes(List<Pair<FileWrapper, HashTree>> toUpdate) {}
+    public void setHashes(List<Triple<String, FileWrapper, HashTree>> toUpdate) {}
 
     @Override
     public long size(Path p) {

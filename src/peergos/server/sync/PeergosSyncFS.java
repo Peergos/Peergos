@@ -8,6 +8,7 @@ import peergos.shared.user.fs.*;
 import peergos.shared.user.fs.cryptree.CryptreeNode;
 import peergos.shared.util.Futures;
 import peergos.shared.util.Pair;
+import peergos.shared.util.Triple;
 
 import java.io.IOException;
 import java.nio.file.Path;
@@ -135,9 +136,9 @@ public class PeergosSyncFS implements SyncFilesystem {
     }
 
     @Override
-    public void setHashes(List<Pair<FileWrapper, HashTree>> toUpdate) {
+    public void setHashes(List<Triple<String, FileWrapper, HashTree>> toUpdate) {
         List<FileWrapper.PropsUpdate> hashUpdates = toUpdate.stream()
-                .flatMap(p -> p.left.getHashUpdates(p.right, context.network, context.crypto.hasher).join().stream())
+                .flatMap(p -> p.middle.getHashUpdates(p.right, context.network, context.crypto.hasher).join().stream())
                 .collect(Collectors.toList());
         FileWrapper.bulkSetSameNameProperties(hashUpdates, context.network).join();
     }
