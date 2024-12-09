@@ -1131,7 +1131,9 @@ public class FileWrapper {
                                                     Optional.empty();
 
                                             return fileData.readIntoArray(raw, internalStart, internalEnd - internalStart)
-                                                    .thenCompose(read -> treeHasher.setChunk((int)(inputStartIndex / Chunk.MAX_SIZE), raw, crypto.hasher).thenApply(x -> read))
+                                                    .thenCompose(read -> updateTreeHash ?
+                                                            treeHasher.setChunk((int)(inputStartIndex / Chunk.MAX_SIZE), raw, crypto.hasher).thenApply(x -> read) :
+                                                            Futures.of(read))
                                                     .thenCompose(read -> {
 
                                                 Chunk updated = new Chunk(raw, dataKey, currentOriginal.location.getMapKey(), dataKey.createNonce());
