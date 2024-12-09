@@ -1846,7 +1846,7 @@ public class FileWrapper {
     public CompletableFuture<List<PropsUpdate>> getHashUpdates(HashTree hash, NetworkAccess network, Hasher hasher) {
         WritableAbsoluteCapability cap = writableFilePointer();
         long fileSize = getSize();
-        long nBranches = fileSize == 0 ? 1 : (fileSize + 1024 * Chunk.MAX_SIZE - 1) / (1024 * Chunk.MAX_SIZE);
+        long nBranches = fileSize == 0 ? 1 : (fileSize + 1024L * Chunk.MAX_SIZE - 1) / (1024L * Chunk.MAX_SIZE);
         byte[] streamSecret = getFileProperties().streamSecret.get();
         return Futures.combineAllInOrder(LongStream.range(0, nBranches)
                 .mapToObj(b -> FileProperties.calculateMapKey(streamSecret, cap.getMapKey(), cap.bat, b * 1024 * Chunk.MAX_SIZE, hasher)
