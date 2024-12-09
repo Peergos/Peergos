@@ -151,7 +151,7 @@ public class DirectorySync {
 
             String cap = link.toLinkString(context.signer.publicKeyHash);
 
-            System.out.println("Run the sync dir command with the following args: -links " + cap + " -local-dirs $LOCAL_DIR");
+            System.out.println("Run the sync dir command on all devices you want to sync using the following args: -links " + cap + " -local-dirs $LOCAL_DIR");
             return true;
         } catch (Exception e) {
             throw new RuntimeException(e);

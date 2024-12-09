@@ -429,7 +429,8 @@ public class Main extends Builder {
                     new Command.Arg("peergos-url", "Peergos service address", false, "https://peergos.net"),
                     new Command.Arg("local-dirs", "The directories to sync to and from Peergos (comma separated)", true),
                     new Command.Arg("max-parallelism", "The maximum parallelism to download files with", false, "32"),
-                    new Command.Arg("block-cache-size-bytes", "The size of the local block cache, e.g. 5g", false, "1g")
+                    new Command.Arg("block-cache-size-bytes", "The size of the local block cache, e.g. 5g", false, "1g"),
+                    new Command.Arg("run-once", "Only sync the directory once", false)
             ).collect(Collectors.toList())
     );
 
