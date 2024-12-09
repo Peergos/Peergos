@@ -1137,7 +1137,7 @@ public class FileWrapper {
                                                 Chunk updated = new Chunk(raw, dataKey, currentOriginal.location.getMapKey(), dataKey.createNonce());
                                                 LocatedChunk located = new LocatedChunk(currentOriginal.location, currentOriginal.bat, currentOriginal.existingHash, updated);
                                                 long currentSize = filesSize.get();
-                                                // remove hash from properties as we are changing the file (todo: update subsequent hash branches for files > 5 GiB)
+                                                // remove hash from properties as we are changing the file
                                                 FileProperties newProps = new FileProperties(props.name, false,
                                                         props.isLink, props.mimeType,
                                                         endIndex > currentSize ? endIndex : currentSize,
