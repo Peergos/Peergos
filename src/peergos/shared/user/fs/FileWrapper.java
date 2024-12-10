@@ -1067,6 +1067,8 @@ public class FileWrapper {
         Location parentLocation = getPointer().getParentCap().getLocation(owner(), writer());
         Optional<Bat> parentBat = getPointer().getParentCap().bat;
         WritableAbsoluteCapability ourCap = writableFilePointer();
+        boolean updateTreeHash = inputStartIndex == 0 && endIndex >= props.size;
+        HashTreeBuilder treeHasher = updateTreeHash ? new HashTreeBuilder(endIndex) : null;
         return current.withWriter(owner(), writer(), network)
                 .thenCompose(base -> {
                     FileWrapper us = this;
@@ -1128,12 +1130,16 @@ public class FileWrapper {
                                                     us.pointer.fileAccess.getWriterLink(us.pointer.capability.rBaseKey) :
                                                     Optional.empty();
 
-                                            return fileData.readIntoArray(raw, internalStart, internalEnd - internalStart).thenCompose(read -> {
+                                            return fileData.readIntoArray(raw, internalStart, internalEnd - internalStart)
+                                                    .thenCompose(read -> updateTreeHash ?
+                                                            treeHasher.setChunk((int)(startIndex / Chunk.MAX_SIZE), raw, crypto.hasher).thenApply(x -> read) :
+                                                            Futures.of(read))
+                                                    .thenCompose(read -> {
 
                                                 Chunk updated = new Chunk(raw, dataKey, currentOriginal.location.getMapKey(), dataKey.createNonce());
                                                 LocatedChunk located = new LocatedChunk(currentOriginal.location, currentOriginal.bat, currentOriginal.existingHash, updated);
                                                 long currentSize = filesSize.get();
-                                                // remove hash from properties as we are changing the file (todo: update hash)
+                                                // remove hash from properties as we are changing the file
                                                 FileProperties newProps = new FileProperties(props.name, false,
                                                         props.isLink, props.mimeType,
                                                         endIndex > currentSize ? endIndex : currentSize,
@@ -1153,12 +1159,13 @@ public class FileWrapper {
                                                         filesSize.set(updatedLength);
 
                                                         if (updatedLength > Chunk.MAX_SIZE) {
-                                                            // update file size in FileProperties of first chunk
+                                                            // update file size and remove treehash in FileProperties of first chunk
                                                             return network.getFile(updatedBase, ourCap, entryWriter, ownername)
                                                                     .thenCompose(updatedUs -> {
                                                                         FileProperties correctedSize = updatedUs.get()
                                                                                 .getPointer().fileAccess.getProperties(ourCap.rBaseKey)
-                                                                                .withSize(endIndex);
+                                                                                .withSize(endIndex)
+                                                                                .withHash(Optional.empty());
                                                                         return updatedUs.get()
                                                                                 .getPointer().fileAccess.updateProperties(updatedBase,
                                                                                         committer, ourCap, entryWriter, correctedSize, network);
@@ -1172,7 +1179,19 @@ public class FileWrapper {
                                     });
                         };
 
-                        return Futures.reduceAll(startIndexes, base, composer, (a, b) -> b);
+                        return Futures.reduceAll(startIndexes, base, composer, (a, b) -> b)
+                                .thenCompose(preHashVersion -> {
+                                    if (! updateTreeHash)
+                                        return Futures.of(preHashVersion);
+                                    // update hash branches every 5 GiB
+                                    return (endIndex == 0 ? treeHasher.setChunk(0, new byte[0], crypto.hasher) : Futures.of(true))
+                                            .thenCompose(x -> treeHasher.complete(crypto.hasher))
+                                            .thenCompose(treeHash -> network.getFile(preHashVersion, ourCap, entryWriter, ownername)
+                                                    .thenCompose(updatedUs -> updatedUs.get()
+                                                            .getHashUpdates(treeHash, network, crypto.hasher))
+                                                    .thenCompose(hashUpdates -> FileWrapper.bulkSetSameNameProperties(preHashVersion, committer, owner(), hashUpdates, network))
+                                            );
+                                });
                     });
                 });
     }
@@ -1860,16 +1879,24 @@ public class FileWrapper {
                 .collect(Collectors.toList()));
     }
 
+    public static CompletableFuture<Snapshot> bulkSetSameNameProperties(Snapshot s,
+                                                                        Committer c,
+                                                                        PublicKeyHash owner,
+                                                                        List<PropsUpdate> updates,
+                                                                        NetworkAccess network) {
+        return Futures.reduceAll(updates, s,
+                (v, p) -> v.withWriter(owner, p.cap.writer, network)
+                        .thenCompose(v2 -> p.meta.updateProperties(v2, c, p.cap, p.entryWriter, p.newProps, network)),
+                (a, b) -> a.mergeAndOverwriteWith(b));
+    }
+
     public static CompletableFuture<Boolean> bulkSetSameNameProperties(List<PropsUpdate> updates,
                                                                        NetworkAccess network) {
         PropsUpdate first = updates.get(0);
         PublicKeyHash owner = first.cap.owner;
         SigningPrivateKeyAndPublicHash signer = first.meta.getSigner(first.cap.rBaseKey, first.cap.wBaseKey.get(), first.entryWriter);
         return network.synchronizer.applyComplexUpdate(owner, signer,
-                        (s, c) -> Futures.reduceAll(updates, s,
-                                (v, p) -> v.withWriter(owner, p.cap.writer, network)
-                                        .thenCompose(v2 -> p.meta.updateProperties(v2, c, p.cap, p.entryWriter, p.newProps, network)),
-                                (a, b) -> a.mergeAndOverwriteWith(b)))
+                        (s, c) -> bulkSetSameNameProperties(s, c, owner, updates, network))
                 .thenApply(fa -> true);
     }
 
