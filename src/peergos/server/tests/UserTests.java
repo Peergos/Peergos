@@ -8,6 +8,7 @@ import peergos.server.crypto.hash.*;
 import peergos.server.crypto.random.*;
 import peergos.server.crypto.symmetric.*;
 import peergos.server.messages.*;
+import peergos.server.sync.DirectorySync;
 import peergos.server.tests.util.*;
 import peergos.server.user.*;
 import peergos.server.util.*;
@@ -314,6 +315,31 @@ public abstract class UserTests {
             if (!Exceptions.getRootCause(e).getMessage().contains("User already exists"))
                 Assert.fail("Incorrect error message");
         }
+    }
+
+    @Test
+    public void deleteWritableFolderWithSecretLinkToDescendant() {
+        String username = generateUsername();
+        String password = "password";
+        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
+        context.getUserRoot().join().mkdir("sync", network, false, context.mirrorBatId(), crypto).join();
+
+        LinkProperties syncLink = DirectorySync.init(context, username + "/sync");
+        // create a secret link to a subdir of sync, then delete sync dir
+        Path syncPath = PathUtil.get(username, "sync");
+        context.getByPath(syncPath).join().get()
+                .mkdir("subdir", network, false, context.mirrorBatId(), crypto).join();
+        context.createSecretLink(syncPath.resolve("subdir").toString(), false, Optional.empty(), Optional.empty(), "", false).join();
+
+        FileWrapper syncDir = context.getByPath(syncPath).join().get();
+        FileWrapper deleted = syncDir.remove(context.getUserRoot().join(), syncPath, context).join();
+
+        Map<Path, SharedWithState> sharedWith = context.sharedWithCache.getAllDescendantShares(syncPath, deleted.version).join();
+        Assert.assertTrue(sharedWith.isEmpty());
+
+        // now try to init sync dir again
+        context.getUserRoot().join().mkdir("sync", network, false, context.mirrorBatId(), crypto).join();
+        DirectorySync.init(context, username + "/sync");
     }
 
     @Test
