@@ -1184,7 +1184,8 @@ public class FileWrapper {
                                     if (! updateTreeHash)
                                         return Futures.of(preHashVersion);
                                     // update hash branches every 5 GiB
-                                    return treeHasher.complete(crypto.hasher)
+                                    return (endIndex == 0 ? treeHasher.setChunk(0, new byte[0], crypto.hasher) : Futures.of(true))
+                                            .thenCompose(x -> treeHasher.complete(crypto.hasher))
                                             .thenCompose(treeHash -> network.getFile(preHashVersion, ourCap, entryWriter, ownername)
                                                     .thenCompose(updatedUs -> updatedUs.get()
                                                             .getHashUpdates(treeHash, network, crypto.hasher))
