@@ -29,8 +29,8 @@ import peergos.shared.NetworkAccess;
 import peergos.shared.user.UserContext;
 import peergos.shared.user.fs.AsyncReader;
 import peergos.shared.user.fs.FileWrapper;
-import peergos.shared.util.Futures;
-import peergos.shared.util.Serialize;
+import peergos.shared.user.fs.HashTree;
+import peergos.shared.user.fs.HashTreeBuilder;
 
 import java.io.*;
 import java.net.URL;
@@ -128,7 +128,11 @@ public class WebdavFileSystem implements IWebdavStore {
         }
         byte[] contents = new byte[0];
         try {
-            parentFolder.get().uploadOrReplaceFile(path.getFileName().toString(), new AsyncReader.ArrayBacked(contents), contents.length, context.network, context.crypto, l -> {}).join();
+            HashTreeBuilder hash = new HashTreeBuilder(0);
+            hash.setChunk(0, contents, context.crypto.hasher).join();
+            HashTree h = hash.complete(context.crypto.hasher).join();
+            parentFolder.get().uploadFileWithHash(path.getFileName().toString(), new AsyncReader.ArrayBacked(contents),
+                    contents.length, Optional.of(h), Optional.empty(), context.network, context.crypto, l -> {}).join();
         } catch (Exception e) {
             LOG.warning("PeergosFileSystem.createResource(" + uri + ") failed");
             throw new WebdavException(e);
