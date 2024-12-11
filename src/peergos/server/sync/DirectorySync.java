@@ -131,7 +131,7 @@ public class DirectorySync {
             NetworkAccess network = Builder.buildJavaNetworkAccess(serverURL, address.startsWith("https")).join();
             Crypto crypto = Main.initCrypto();
             UserContext context = UserContext.signIn(username, password, mfar -> mfa(mfar), network, crypto).join();
-            String peergosPath = new String(console.readLine("Enter the peergos path you want to sync to (e.g. /demo/media/images):"));
+            String peergosPath = new String(console.readLine("Enter the peergos path you want to sync to (e.g. /$username/media/images):"));
             init(context, peergosPath);
             return true;
         } catch (Exception e) {
