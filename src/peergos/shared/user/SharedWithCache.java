@@ -328,6 +328,22 @@ public class SharedWithCache {
                 })).thenApply(v -> in.mergeAndOverwriteWith(v));
     }
 
+    public CompletableFuture<Snapshot> deleteDirIfPresent(Path toDir, Snapshot in, Committer c, NetworkAccess network) {
+        return in.withWriter(base.owner(), base.writer(), network)
+                .thenCompose(v -> base.getUpdated(v, network))
+                .thenCompose(updated -> updated.getDescendentByPath(toDir.getParent().toString(), in, crypto.hasher, network))
+                .thenCompose(popt -> {
+                    if (popt.isEmpty())
+                        return Futures.of(in);
+                    return popt.get().getChild(getFilename(toDir), crypto.hasher, network)
+                            .thenCompose(copt -> {
+                                if (copt.isEmpty())
+                                    return Futures.of(in);
+                                return popt.get().removeChild(in, c, copt.get(), network, crypto.random, crypto.hasher);
+                            });
+                });
+    }
+
     public CompletableFuture<Snapshot> rename(Path initial, Path after, Snapshot in, Committer committer, NetworkAccess network) {
         if (! initial.getParent().equals(after.getParent()))
             throw new IllegalStateException("Not a valid rename!");
@@ -358,8 +374,9 @@ public class SharedWithCache {
         return Futures.reduceAll(access.entrySet(), in, (s, e) -> applyAndCommit(e.getKey(), existing -> existing.addAll(e.getValue()), s, committer, network), (a,  b) -> b);
     }
 
-    public CompletableFuture<Snapshot> clearSharedWith(Path p, Snapshot in, Committer committer, NetworkAccess network) {
-        return applyIfPresentAndCommit(p, current -> current.clear(getFilename(p)), in, committer, network);
+    public CompletableFuture<Snapshot> clearSharedWith(Path p, Snapshot in, Committer c, NetworkAccess network) {
+        return applyIfPresentAndCommit(p, current -> current.clear(getFilename(p)), in, c, network)
+                .thenCompose(v -> deleteDirIfPresent(p, v, c, network));
     }
 
     public CompletableFuture<Snapshot> removeSharedWith(Access access, Path p, Set<String> names, Snapshot in, Committer committer, NetworkAccess network) {
