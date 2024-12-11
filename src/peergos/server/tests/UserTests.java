@@ -360,6 +360,32 @@ public abstract class UserTests {
     }
 
     @Test
+    public void webdavHashesSet() {
+        String username = generateUsername();
+        String password = "password";
+        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
+        byte[] contents = new byte[0];
+        HashTreeBuilder hash = new HashTreeBuilder(0);
+        hash.setChunk(0, contents, context.crypto.hasher).join();
+        HashTree h = hash.complete(context.crypto.hasher).join();
+        String filename = "afile.bin";
+        context.getUserRoot().join()
+                .uploadFileWithHash(filename, AsyncReader.build(contents), 0, Optional.of(h), Optional.empty(), network, crypto, x -> {}).join();
+        FileWrapper emptyFile = context.getByPath(Paths.get(username, filename)).join().get();
+        HashBranch expected = emptyFile.getFileProperties().treeHash.get();
+        HashBranch empty = h.branch(0);
+        Assert.assertEquals(expected, empty);
+
+        byte[] data = new byte[1024];
+        context.getUserRoot().join().uploadOrReplaceFile(filename, AsyncReader.build(data), data.length, context.network, context.crypto, l -> {}).join();
+        FileWrapper updatedFile = context.getByPath(Paths.get(username, filename)).join().get();
+        HashBranch nonEmpty = updatedFile.getFileProperties().treeHash.get();
+        Assert.assertNotEquals(nonEmpty, empty);
+
+        Assert.assertTrue(updatedFile.getFileProperties().modified.isAfter(emptyFile.getFileProperties().modified));
+    }
+
+    @Test
     public void changePassword() throws Exception {
         String username = generateUsername();
         String password = "password";

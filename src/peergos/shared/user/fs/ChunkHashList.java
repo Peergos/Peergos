@@ -42,4 +42,17 @@ public class ChunkHashList implements Cborable {
         CborObject.CborMap m = (CborObject.CborMap) cbor;
         return new ChunkHashList(m.getByteArray("h"));
     }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+        ChunkHashList that = (ChunkHashList) o;
+        return Objects.deepEquals(chunkHashes, that.chunkHashes);
+    }
+
+    @Override
+    public int hashCode() {
+        return Arrays.hashCode(chunkHashes);
+    }
 }

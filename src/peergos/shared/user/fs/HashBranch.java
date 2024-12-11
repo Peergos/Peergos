@@ -47,4 +47,16 @@ public class HashBranch implements Cborable {
         return new HashBranch(hash, level1, level2, level3);
     }
 
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+        HashBranch that = (HashBranch) o;
+        return Objects.equals(rootHash, that.rootHash) && Objects.equals(level1, that.level1) && Objects.equals(level2, that.level2) && Objects.equals(level3, that.level3);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(rootHash, level1, level2, level3);
+    }
 }
