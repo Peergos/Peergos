@@ -179,16 +179,22 @@ public class WebdavFileSystem implements IWebdavStore {
         if (sourceFile.isEmpty() || sourceFile.get().getFileProperties().isHidden) {
             throw new WebdavException("cannot find source file: " + sourcePath);
         }
-        Optional<FileWrapper> parent = getByPath(path);
+        Optional<FileWrapper> parent = getByPath(path.getParent());
         if (parent.isEmpty() || parent.get().getFileProperties().isHidden) {
             throw new WebdavException("cannot find source parent: " + sourcePath);
         }
-        Optional<FileWrapper> target = getByPath(path);
-        if (target.isEmpty() || target.get().getFileProperties().isHidden) {
+        Path targetPath = PathUtil.get(destPath);
+        Path targetParentPath = targetPath.getParent();
+        Optional<FileWrapper> targetParent = getByPath(targetParentPath);
+        if (targetParent.isEmpty() || targetParent.get().getFileProperties().isHidden) {
             throw new WebdavException("cannot find target dir: " + destPath);
         }
         try {
-            sourceFile.get().moveTo(target.get(), parent.get(), PathUtil.get(sourcePath), context, () -> Futures.of(true)).join();
+            if (targetParentPath.toString().equals(path.getParent().toString())) { // rename
+                sourceFile.get().rename(targetPath.getFileName().toString(), targetParent.get(), path, context).join();
+            } else {
+                sourceFile.get().moveTo(targetParent.get(), parent.get(), PathUtil.get(sourcePath), context, () -> Futures.of(true)).join();
+            }
         } catch (Exception e) {
             LOG.warning("PeergosFileSystem.setResourceContent(" + sourcePath + ") failed");
             throw new WebdavException(e);
