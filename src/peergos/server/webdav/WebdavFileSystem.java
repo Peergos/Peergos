@@ -171,7 +171,7 @@ public class WebdavFileSystem implements IWebdavStore {
                               String destPath) throws WebdavException {
 
         LOG.fine("PeergosFileSystem.moveResource(" + sourcePath + ")");
-        Path path = new File(sourcePath).toPath();
+        Path path = PathUtil.get(sourcePath);
         if (path.getFileName().toString().startsWith("._") || path.getFileName().toString().equals(".DS_Store")) { // MacOS rubbish!
             return;
         }
