@@ -320,7 +320,7 @@ public class DoCopy extends AbstractMethod {
      * @return destinationPath
      * @throws IOException if an error occurs while sending response
      */
-    protected String parseDestinationHeader( HttpServletRequest req,
+    protected static String parseDestinationHeader( HttpServletRequest req,
                                            HttpServletResponse resp ) throws IOException {
         String destinationPath = req.getHeader("Destination");
 
@@ -390,7 +390,7 @@ public class DoCopy extends AbstractMethod {
      * @param path Path to be normalized
      * @return normalized path
      */
-    protected String normalize( String path ) {
+    protected static String normalize( String path ) {
 
         if (path == null) {
             return null;

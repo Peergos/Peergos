@@ -70,11 +70,7 @@ public class DoMove extends AbstractMethod {
                 return;
             }
 
-            String destinationPath = req.getHeader("Destination");
-            if (destinationPath == null) {
-                resp.sendError(WebdavStatus.SC_BAD_REQUEST);
-                return;
-            }
+            String destinationPath = DoCopy.parseDestinationHeader(req, resp);
 
             if (sourcePath.equals(destinationPath)) {
                 resp.sendError(WebdavStatus.SC_FORBIDDEN);
