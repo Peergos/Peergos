@@ -1,4 +1,5 @@
 package peergos.server.tests;
+import java.net.URLDecoder;
 import java.time.*;
 import java.util.concurrent.atomic.*;
 import java.util.logging.*;
@@ -340,16 +341,16 @@ public abstract class UserTests {
         try {
             // test that the secret link itself has been removed
             EncryptedCapability ecap = network.dhtClient.getSecretLink(syncLink.toLink(context.signer.publicKeyHash)).join();
-        } catch (IllegalStateException e) {
-            if (! e.getMessage().contains("No secret link"))
+        } catch (Exception e) {
+            if (!URLDecoder.decode(e.getMessage()).contains("No secret link"))
                 throw new RuntimeException("Failed");
         }
 
         try {
             // test that the secret link itself has been removed
             EncryptedCapability ecap = network.dhtClient.getSecretLink(subdirLink.toLink(context.signer.publicKeyHash)).join();
-        } catch (IllegalStateException e) {
-            if (! e.getMessage().contains("No secret link"))
+        } catch (Exception e) {
+            if (! URLDecoder.decode(e.getMessage()).contains("No secret link"))
                 throw new RuntimeException("Failed");
         }
 
