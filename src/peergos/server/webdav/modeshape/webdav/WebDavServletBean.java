@@ -88,7 +88,7 @@ public class WebDavServletBean extends HttpServlet {
         DoCopy doCopy = (DoCopy)register("COPY", new DoCopy(store, resLocks, doDelete, READ_ONLY));
         register("LOCK", new DoLock(store, resLocks, READ_ONLY));
         register("UNLOCK", new DoUnlock(store, resLocks, READ_ONLY));
-        register("MOVE", new DoMove(resLocks, doDelete, doCopy, READ_ONLY));
+        register("MOVE", new DoMove(resLocks, store, doDelete, READ_ONLY));
         register("MKCOL", new DoMkcol(store, resLocks, READ_ONLY));
         register("OPTIONS", new DoOptions(store, resLocks));
         register("PUT", new DoPut(store, resLocks, READ_ONLY, lazyFolderCreationOnPut));

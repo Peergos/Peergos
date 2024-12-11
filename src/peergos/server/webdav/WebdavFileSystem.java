@@ -16,7 +16,6 @@
 package peergos.server.webdav;
 
 import org.peergos.util.Pair;
-import peergos.server.simulation.InputStreamAsyncReader;
 import peergos.server.util.Logging;
 import peergos.server.webdav.modeshape.webdav.ITransaction;
 import peergos.server.webdav.modeshape.webdav.IWebdavStore;
@@ -31,6 +30,8 @@ import peergos.shared.user.fs.AsyncReader;
 import peergos.shared.user.fs.FileWrapper;
 import peergos.shared.user.fs.HashTree;
 import peergos.shared.user.fs.HashTreeBuilder;
+import peergos.shared.util.PathUtil;
+import peergos.shared.util.Futures;
 
 import java.io.*;
 import java.net.URL;
@@ -160,6 +161,36 @@ public class WebdavFileSystem implements IWebdavStore {
             return readerPair.right;
         } catch (Exception e) {
             LOG.warning("PeergosFileSystem.setResourceContent(" + uri + ") failed");
+            throw new WebdavException(e);
+        }
+    }
+
+    @Override
+    public void moveResource( ITransaction transaction,
+                              String sourcePath,
+                              String destPath) throws WebdavException {
+
+        LOG.fine("PeergosFileSystem.moveResource(" + sourcePath + ")");
+        Path path = new File(sourcePath).toPath();
+        if (path.getFileName().toString().startsWith("._") || path.getFileName().toString().equals(".DS_Store")) { // MacOS rubbish!
+            return;
+        }
+        Optional<FileWrapper> sourceFile = getByPath(path);
+        if (sourceFile.isEmpty() || sourceFile.get().getFileProperties().isHidden) {
+            throw new WebdavException("cannot find source file: " + sourcePath);
+        }
+        Optional<FileWrapper> parent = getByPath(path);
+        if (parent.isEmpty() || parent.get().getFileProperties().isHidden) {
+            throw new WebdavException("cannot find source parent: " + sourcePath);
+        }
+        Optional<FileWrapper> target = getByPath(path);
+        if (target.isEmpty() || target.get().getFileProperties().isHidden) {
+            throw new WebdavException("cannot find target dir: " + destPath);
+        }
+        try {
+            sourceFile.get().moveTo(target.get(), parent.get(), PathUtil.get(sourcePath), context, () -> Futures.of(true)).join();
+        } catch (Exception e) {
+            LOG.warning("PeergosFileSystem.setResourceContent(" + sourcePath + ") failed");
             throw new WebdavException(e);
         }
     }

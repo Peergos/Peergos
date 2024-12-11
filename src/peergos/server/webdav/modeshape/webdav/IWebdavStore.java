@@ -125,6 +125,17 @@ public interface IWebdavStore {
                              String characterEncoding );
 
     /**
+     *
+     * @param transaction indicates that the method is within the scope of a WebDAV transaction
+     * @param sourcePath URI of the resource where the source content is
+     * @param destPath URI of the resource where the content will be moved to
+     * @throws WebdavException
+     */
+    void moveResource( ITransaction transaction,
+                       String sourcePath,
+                       String destPath) throws WebdavException;
+
+    /**
      * Gets the names of the children of the folder specified by <code>folderUri</code>.
      * 
      * @param transaction indicates that the method is within the scope of a WebDAV transaction
