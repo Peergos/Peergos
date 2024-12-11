@@ -329,13 +329,29 @@ public abstract class UserTests {
         Path syncPath = PathUtil.get(username, "sync");
         context.getByPath(syncPath).join().get()
                 .mkdir("subdir", network, false, context.mirrorBatId(), crypto).join();
-        context.createSecretLink(syncPath.resolve("subdir").toString(), false, Optional.empty(), Optional.empty(), "", false).join();
+        LinkProperties subdirLink = context.createSecretLink(syncPath.resolve("subdir").toString(), false, Optional.empty(), Optional.empty(), "", false).join();
 
         FileWrapper syncDir = context.getByPath(syncPath).join().get();
         FileWrapper deleted = syncDir.remove(context.getUserRoot().join(), syncPath, context).join();
 
         Map<Path, SharedWithState> sharedWith = context.sharedWithCache.getAllDescendantShares(syncPath, deleted.version).join();
         Assert.assertTrue(sharedWith.isEmpty());
+
+        try {
+            // test that the secret link itself has been removed
+            EncryptedCapability ecap = network.dhtClient.getSecretLink(syncLink.toLink(context.signer.publicKeyHash)).join();
+        } catch (IllegalStateException e) {
+            if (! e.getMessage().contains("No secret link"))
+                throw new RuntimeException("Failed");
+        }
+
+        try {
+            // test that the secret link itself has been removed
+            EncryptedCapability ecap = network.dhtClient.getSecretLink(subdirLink.toLink(context.signer.publicKeyHash)).join();
+        } catch (IllegalStateException e) {
+            if (! e.getMessage().contains("No secret link"))
+                throw new RuntimeException("Failed");
+        }
 
         // now try to init sync dir again
         context.getUserRoot().join().mkdir("sync", network, false, context.mirrorBatId(), crypto).join();

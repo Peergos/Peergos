@@ -770,11 +770,16 @@ public class UserContext {
     @JsMethod
     public CompletableFuture<Snapshot> deleteSecretLink(long label, Path toFile, boolean isWritable) {
         PublicKeyHash id = signer.publicKeyHash;
-        return writeSynchronizer.applyComplexUpdate(id, signer,
-                        (v, c) -> IpfsTransaction.call(id,
-                                tid -> v.get(id).props.get().removeLink(signer, label, mirrorBat, tid, network.dhtClient, network.hasher)
-                                        .thenCompose(wd -> c.commit(id, signer, wd, v.get(id), tid))
-                                        .thenCompose(s -> sharedWithCache.removeSecretLink(toFile, label, s, c, network)), network.dhtClient));
+        return writeSynchronizer.applyComplexUpdate(id, signer, (v, c) -> deleteSecretLink(label, toFile, v, c)
+                .thenCompose(s -> sharedWithCache.removeSecretLink(toFile, label, s, c, network)));
+    }
+
+    public CompletableFuture<Snapshot> deleteSecretLink(long label, Path toFile, Snapshot in, Committer c) {
+        PublicKeyHash id = signer.publicKeyHash;
+        return in.withWriter(id, id, network).thenCompose(v -> IpfsTransaction.call(id,
+                tid -> v.get(id).props.get().removeLink(signer, label, mirrorBat, tid, network.dhtClient, network.hasher)
+                        .thenCompose(wd -> c.commit(id, signer, wd, v.get(id), tid))
+                        .thenApply(res -> v.mergeAndOverwriteWith(res)), network.dhtClient));
     }
 
     public static CompletableFuture<AbsoluteCapability> getPublicCapability(Path originalPath, NetworkAccess network) {

@@ -2326,13 +2326,13 @@ public class FileWrapper {
 
     /**
      * @param parent
-     * @param userContext
+     * @param context
      * @return updated parent
      */
     @JsMethod
-    public CompletableFuture<FileWrapper> remove(FileWrapper parent, Path ourPath, UserContext userContext) {
-        NetworkAccess network = userContext.network;
-        Hasher hasher = userContext.crypto.hasher;
+    public CompletableFuture<FileWrapper> remove(FileWrapper parent, Path ourPath, UserContext context) {
+        NetworkAccess network = context.network;
+        Hasher hasher = context.crypto.hasher;
         ensureUnmodified();
         if (! pointer.capability.isWritable())
             return Futures.errored(new IllegalStateException("Cannot delete file without write access to it"));
@@ -2341,22 +2341,30 @@ public class FileWrapper {
         parent.setModified();
         network.disableCommits();
         return network.synchronizer.applyComplexUpdate(owner(), signingPair(),
-                (version, c) -> {
-                    return (writableParent ? version.withWriter(owner(), parent.writer(), network)
-                            .thenCompose(v2 -> parent.pointer.fileAccess
-                                    .removeChildren(v2, c, Arrays.asList(isLink() ? linkPointer.get().capability : getPointer().capability), parent.writableFilePointer(),
-                                            parent.entryWriter, network, userContext.crypto.random, hasher)) :
-                            Futures.of(version))
+                (v0, c) -> {
+                    return (context.isSecretLink() ?
+                            Futures.of(v0) :
+                            context.sharedWithCache.getAllDescendantShares(ourPath, v0)
+                                    .thenCompose(shares -> Futures.reduceAll(shares.entrySet().stream()
+                                                    .flatMap(swe -> swe.getValue().links().entrySet().stream()
+                                                            .flatMap(e -> e.getValue().stream().map(p -> new Pair<>(swe.getKey().resolve(e.getKey()), p)))), v0,
+                                            (v, linkp) -> context.deleteSecretLink(linkp.right.label, linkp.left, v, c),
+                                            (a, b) -> a.mergeAndOverwriteWith(b))))
+                            .thenCompose(v1 -> (writableParent ? v1.withWriter(owner(), parent.writer(), network)
+                                    .thenCompose(v2 -> parent.pointer.fileAccess
+                                            .removeChildren(v2, c, Arrays.asList(isLink() ? linkPointer.get().capability : getPointer().capability), parent.writableFilePointer(),
+                                                    parent.entryWriter, network, context.crypto.random, hasher)) :
+                                    Futures.of(v1)))
                             .thenCompose(v -> IpfsTransaction.call(owner(),
-                                    tid -> FileWrapper.deleteAllChunks(
-                                            isLink() ?
-                                                    (WritableAbsoluteCapability) getLinkPointer().capability :
-                                                    writableFilePointer(),
-                                            writableParent ?
-                                                    parent.signingPair() :
-                                                    signingPair(), tid, hasher, network, v, c), network.dhtClient)
-                                    .thenCompose(s -> userContext.isSecretLink() ? Futures.of(s) :
-                    userContext.sharedWithCache.clearSharedWith(ourPath, s, c, network)));
+                                            tid -> FileWrapper.deleteAllChunks(
+                                                    isLink() ?
+                                                            (WritableAbsoluteCapability) getLinkPointer().capability :
+                                                            writableFilePointer(),
+                                                    writableParent ?
+                                                            parent.signingPair() :
+                                                            signingPair(), tid, hasher, network, v, c), network.dhtClient)
+                                    .thenCompose(s -> context.isSecretLink() ? Futures.of(s) :
+                                            context.sharedWithCache.clearSharedWith(ourPath, s, c, network)));
                 })
                 .thenCompose(s -> parent.getUpdated(s, network));
     }
