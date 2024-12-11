@@ -132,6 +132,15 @@ public class DirectorySync {
             Crypto crypto = Main.initCrypto();
             UserContext context = UserContext.signIn(username, password, mfar -> mfa(mfar), network, crypto).join();
             String peergosPath = new String(console.readLine("Enter the peergos path you want to sync to (e.g. /demo/media/images):"));
+            init(context, peergosPath);
+            return true;
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    public static LinkProperties init(UserContext context, String peergosPath) {
+        try {
             Path toSync = PathUtil.get(peergosPath).normalize();
             if (toSync.getNameCount() < 2)
                 throw new IllegalArgumentException("You cannot sync to your Peergos home directory, please make a sub-directory.");
@@ -152,7 +161,7 @@ public class DirectorySync {
             String cap = link.toLinkString(context.signer.publicKeyHash);
 
             System.out.println("Run the sync dir command on all devices you want to sync using the following args: -links " + cap + " -local-dirs $LOCAL_DIR");
-            return true;
+            return link;
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
