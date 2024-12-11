@@ -65,14 +65,14 @@ public class DoMove extends AbstractMethod {
                 return;
             }
 
-            String destinationPath = req.getHeader("Destination");
-            if (destinationPath == null) {
-                resp.sendError(WebdavStatus.SC_BAD_REQUEST);
+            if (!isUnlocked(transaction, req, resourceLocks, PathUtil.get(sourcePath).getParent().toString())) {
+                resp.setStatus(WebdavStatus.SC_LOCKED);
                 return;
             }
 
-            if (!isUnlocked(transaction, req, resourceLocks, destinationPath)) {
-                resp.setStatus(WebdavStatus.SC_LOCKED);
+            String destinationPath = req.getHeader("Destination");
+            if (destinationPath == null) {
+                resp.sendError(WebdavStatus.SC_BAD_REQUEST);
                 return;
             }
 
@@ -96,6 +96,11 @@ public class DoMove extends AbstractMethod {
 
             if (resourceLocks.lock(transaction, sourcePath, tempLockOwner, false, 0, TEMP_TIMEOUT, TEMPORARY)) {
                 try {
+                    if (!resourceLocks.lock(transaction, destinationPath, tempLockOwner, false, 0, TEMP_TIMEOUT, TEMPORARY)) {
+                        logger.finest("Resource lock failed.");
+                        resp.sendError(WebdavStatus.SC_INTERNAL_SERVER_ERROR);
+                        return;
+                    }
                     StoredObject sourceSo = store.getStoredObject(transaction, sourcePath);
                     // Retrieve the resources
                     if (sourceSo == null) {
@@ -115,7 +120,6 @@ public class DoMove extends AbstractMethod {
                     StoredObject destinationSo = store.getStoredObject(transaction, destinationPath);
 
                     if (overwrite) {
-
                         // Delete destination resource, if it exists
                         if (destinationSo != null) {
                             doDelete.deleteResource(transaction, destinationPath, errorList, req, resp);
@@ -129,8 +133,8 @@ public class DoMove extends AbstractMethod {
                             return;
                         }
                         resp.setStatus(WebdavStatus.SC_CREATED);
-
                     }
+
                     store.moveResource(transaction, sourcePath, destinationPath);
 
                 } catch (AccessDeniedException e) {
@@ -141,6 +145,7 @@ public class DoMove extends AbstractMethod {
                     resp.sendError(WebdavStatus.SC_INTERNAL_SERVER_ERROR);
                 } finally {
                     resourceLocks.unlockTemporaryLockedObjects(transaction, sourcePath, tempLockOwner);
+                    resourceLocks.unlockTemporaryLockedObjects(transaction, destinationPath, tempLockOwner);
                 }
             } else {
                 errorList.put(req.getHeader("Destination"), WebdavStatus.SC_LOCKED);
