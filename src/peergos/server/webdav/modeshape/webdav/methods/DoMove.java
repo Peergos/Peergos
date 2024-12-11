@@ -16,6 +16,7 @@
 package peergos.server.webdav.modeshape.webdav.methods;
 
 import peergos.server.webdav.modeshape.webdav.ITransaction;
+import peergos.server.webdav.modeshape.webdav.IWebdavStore;
 import peergos.server.webdav.modeshape.webdav.WebdavStatus;
 import peergos.server.webdav.modeshape.webdav.exceptions.AccessDeniedException;
 import peergos.server.webdav.modeshape.webdav.exceptions.LockFailedException;
@@ -31,17 +32,14 @@ import java.util.Hashtable;
 public class DoMove extends AbstractMethod {
 
     private final ResourceLocks resourceLocks;
-    private final DoDelete doDelete;
-    private final DoCopy doCopy;
+    private final IWebdavStore store;
     private final boolean readOnly;
 
     public DoMove( ResourceLocks resourceLocks,
-                   DoDelete doDelete,
-                   DoCopy doCopy,
+                   IWebdavStore store,
                    boolean readOnly ) {
         this.resourceLocks = resourceLocks;
-        this.doDelete = doDelete;
-        this.doCopy = doCopy;
+        this.store = store;
         this.readOnly = readOnly;
     }
 
@@ -76,15 +74,7 @@ public class DoMove extends AbstractMethod {
 
             if (resourceLocks.lock(transaction, sourcePath, tempLockOwner, false, 0, TEMP_TIMEOUT, TEMPORARY)) {
                 try {
-
-                    if (doCopy.copyResource(transaction, req, resp)) {
-
-                        errorList = new Hashtable<String, Integer>();
-                        doDelete.deleteResource(transaction, sourcePath, errorList, req, resp);
-                        if (!errorList.isEmpty()) {
-                            sendReport(req, resp, errorList);
-                        }
-                    }
+                    store.moveResource(transaction, sourcePath, destinationPath);
 
                 } catch (AccessDeniedException e) {
                     resp.sendError(WebdavStatus.SC_FORBIDDEN);
