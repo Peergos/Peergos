@@ -181,6 +181,11 @@ public class DoPut extends AbstractMethod {
                             length = end-start;
                         }
                     }
+                    Optional<String> lengthHeader = Optional.ofNullable(req.getHeader("Content-Length")).map(t -> t.trim());
+                    if (end == 0 && lengthHeader.isPresent()) {
+                        end = Long.parseLong(lengthHeader.get());
+                        length = end;
+                    }
                     System.out.println("start, end, length = " + start + "," + end + "," + length);
                     long resourceLength = store.setResourceContent(transaction, path, new Pair<>(new InputStreamAsyncReader(req.getInputStream()), length), null, null);
 
