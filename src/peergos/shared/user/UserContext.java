@@ -675,12 +675,19 @@ public class UserContext {
                                                                 NetworkAccess network,
                                                                 Crypto crypto) {
         EntryPoint entry = new EntryPoint(cap, "");
-        return NetworkAccess.retrieveEntryPoint(entry, network)
-                .thenCompose(r -> entry.isValid(r.getPath(), network).thenApply(valid -> {
-                    if (! valid)
-                        throw new IllegalStateException("Invalid link!");
-                    return currentRoot.put(r.getPath(), entry);
-                }));
+        return Futures.asyncExceptionally(
+                () -> NetworkAccess.retrieveEntryPoint(entry, network)
+                        .thenCompose(r -> entry.isValid(r.getPath(), network).thenApply(valid -> {
+                            if (! valid)
+                                throw new IllegalStateException("Invalid link!");
+                            return currentRoot.put(r.getPath(), entry);
+                        })),
+                t -> NetworkAccess.retrieveEntryPoint(entry, network)
+                        .thenCompose(r -> entry.isValid(r.getPath(), network).thenApply(valid -> {
+                            if (! valid)
+                                throw new IllegalStateException("Invalid link!");
+                            return currentRoot.put(r.getPath(), entry);
+                        })));
     }
 
     private static CompletableFuture<TrieNode> buildTrieFromCaps(List<AbsoluteCapability> caps,
