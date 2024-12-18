@@ -9,6 +9,7 @@ import peergos.shared.util.*;
 import java.io.*;
 import java.nio.file.*;
 import java.nio.file.attribute.*;
+import java.security.SecureRandom;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.*;
@@ -24,6 +25,7 @@ public class FileBlockCache implements BlockCache {
     private final long maxSizeBytes;
     private long lastSizeCheckTime = 0;
     private AtomicLong totalSize = new AtomicLong(0);
+    private final SecureRandom rnd = new SecureRandom();
 
     public FileBlockCache(Path root, long maxSizeBytes) {
         this.root = root;
@@ -101,7 +103,7 @@ public class FileBlockCache implements BlockCache {
                         throw new IllegalStateException("Could not make " + someParent + ", ancestor of " + parentDir + " writable");
                 }
             }
-            Path tmp = target.getParent().resolve(target.getFileName() + "-" + System.currentTimeMillis() + ".tmp");
+            Path tmp = target.getParent().resolve(target.getFileName() + "-" + rnd.nextInt(Integer.MAX_VALUE) + ".tmp");
             Files.write(tmp, data, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.CREATE, StandardOpenOption.WRITE);
             Files.move(tmp, target, StandardCopyOption.ATOMIC_MOVE);
             totalSize.addAndGet(data.length);
