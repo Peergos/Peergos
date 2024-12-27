@@ -22,10 +22,11 @@ import java.util.function.*;
 import java.util.logging.*;
 import java.util.stream.*;
 
-public class JdbcAccount {
+public class JdbcAccount implements LoginCache {
     private static final Logger LOG = Logging.LOG();
 
     private static final String CREATE = "INSERT INTO login (username, entry, reader) VALUES(?, ?, ?)";
+    private static final String REMOVE = "DELETE FROM login WHERE username=?;";
     private static final String UPDATE = "UPDATE login SET entry=?, reader=? WHERE username = ?";
     private static final String GET_LOGIN = "SELECT * FROM login WHERE username = ? AND reader = ? LIMIT 1;";
     private static final String GET = "SELECT * FROM login WHERE username = ? LIMIT 1;";
@@ -124,6 +125,19 @@ public class JdbcAccount {
                 return CompletableFuture.completedFuture(false);
             }
         }
+    }
+
+    @Override
+    public CompletableFuture<Boolean> removeLoginData(String username) {
+        try (Connection conn = getConnection();
+                 PreparedStatement stmt = conn.prepareStatement(REMOVE)) {
+                stmt.setString(1, username);
+                stmt.executeUpdate();
+                return CompletableFuture.completedFuture(true);
+            } catch (SQLException sqe) {
+                LOG.log(Level.WARNING, sqe.getMessage(), sqe);
+                return CompletableFuture.completedFuture(false);
+            }
     }
 
     private MultiFactorAuthMethod.Type getType(String username, byte[] credentialId) {
