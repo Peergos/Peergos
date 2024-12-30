@@ -124,6 +124,7 @@ public class Main extends Builder {
                     new Command.Arg("public-domain", "The public domain name for this server (required if TLS is managed upstream)", false),
                     ARG_USE_IPFS,
                     ARG_BAT_STORE,
+                    new Command.Arg("allow-external-secret-links", "Allow external secret links to be served from this server", false),
                     new Command.Arg("mutable-pointers-file", "The filename for the mutable pointers datastore", true, "mutable.sql"),
                     new Command.Arg("social-sql-file", "The filename for the follow requests datastore", true, "social.sql"),
                     new Command.Arg("space-requests-sql-file", "The filename for the space requests datastore", true, "space-requests.sql"),
@@ -602,9 +603,8 @@ public class Main extends Builder {
             MutablePointers localPointers = UserRepository.build(localStorageForLinks, rawPointers);
             MutablePointersProxy proxingMutable = new HttpMutablePointers(p2pHttpProxy, pkiServerNodeId);
             LinkRetrievalCounter linkCounts = new JdbcLinkRetrievalcounter(getDBConnector(a, "link-counts-sql-file", dbConnectionPool), sqlCommands);
-            DeletableContentAddressedStorage localStorage = new SecretLinkStorage(localStorageForLinks, localPointers, linkCounts, batStore, hasher);
 
-            List<Cid> nodeIds = localStorage.ids().get();
+            List<Cid> nodeIds = localStorageForLinks.ids().get();
 
             Supplier<Connection> usageDb = getDBConnector(a, "space-usage-sql-file", dbConnectionPool);
             UsageStore usageStore = new JdbcUsageStore(usageDb, sqlCommands);
@@ -613,7 +613,7 @@ public class Main extends Builder {
             if (enableGC) {
                 boolean useS3 = S3Config.useS3(a);
                 boolean listRawBlocks = useS3 && a.getBoolean("s3.versioned-bucket");
-                gc = new GarbageCollector(localStorage, rawPointers, usageStore, a.fromPeergosDir("", ""), (d, c) -> Futures.of(true), listRawBlocks);
+                gc = new GarbageCollector(localStorageForLinks, rawPointers, usageStore, a.fromPeergosDir("", ""), (d, c) -> Futures.of(true), listRawBlocks);
                 Function<Stream<Map.Entry<PublicKeyHash, byte[]>>, CompletableFuture<Boolean>> snapshotSaver = s -> Futures.of(true);
                 int gcInterval = 12 * 60 * 60 * 1000;
                 gc.start(a.getInt("gc.period.millis", gcInterval), snapshotSaver);
@@ -627,12 +627,12 @@ public class Main extends Builder {
             Origin origin = new Origin(publicHostname.map(host -> "https://" + host).orElse("http://localhost:" + webPort));
             String rpId = publicHostname.orElse("localhost");
             JdbcAccount rawAccount = new JdbcAccount(getDBConnector(a, "account-sql-file", dbConnectionPool), sqlCommands, origin, rpId);
-            Account account = new AccountWithStorage(localStorage, localPointers, rawAccount);
+            Account account = new AccountWithStorage(localStorageForLinks, localPointers, rawAccount);
             AccountProxy accountProxy = new HttpAccount(p2pHttpProxy, pkiServerNodeId);
 
-            CoreNode core = buildCorenode(a, localStorage, transactions, rawPointers, localPointers, proxingMutable,
+            CoreNode core = buildCorenode(a, localStorageForLinks, transactions, rawPointers, localPointers, proxingMutable,
                     rawSocial, usageStore, rawAccount, batStore, account, linkCounts, crypto);
-            localStorage.setPki(core);
+
             if (a.hasArg("mirror.username")) // mirror pki before starting user mirror
                 core.initialize();
             else
@@ -641,11 +641,14 @@ public class Main extends Builder {
             boolean isPki = nodeIds.stream()
                     .map(Cid::bareMultihash)
                     .anyMatch(c -> c.equals(pkiServerNodeId.bareMultihash()));
-            QuotaAdmin userQuotas = buildSpaceQuotas(a, localStorage, core,
+            QuotaAdmin userQuotas = buildSpaceQuotas(a, localStorageForLinks, core,
                     getDBConnector(a, "space-requests-sql-file", dbConnectionPool),
                     getDBConnector(a, "quotas-sql-file", dbConnectionPool), isPki, localhostApi);
             CoreNode signupFilter = new SignUpFilter(core, userQuotas, nodeIds.get(nodeIds.size() - 1), httpSpaceUsage, hasher,
                     a.getInt("max-daily-paid-signups", isPaidInstance(a) ? 10 : 0), isPki);
+            boolean allowNonLocalLinks = a.getBoolean("allow-external-secret-links", "localhost".equals(listeningHost));
+            DeletableContentAddressedStorage localStorage = new SecretLinkStorage(localStorageForLinks, localPointers, linkCounts, allowNonLocalLinks, userQuotas, batStore, hasher);
+            localStorage.setPki(core);
 
             if (a.getBoolean("update-usage", true))
                 SpaceCheckingKeyFilter.update(usageStore, userQuotas, core, localPointers, localStorage, hasher);
