@@ -207,7 +207,7 @@ public class WebdavFileSystem implements IWebdavStore {
         LOG.fine("PeergosFileSystem.getChildrenNames(" + uri + ")");
         Path path = new File(uri).toPath();
         Optional<FileWrapper> folder = getByPath(path);
-        if (folder.isEmpty() || !folder.get().isDirectory() || folder.get().getFileProperties().isHidden) {
+        if (folder.isEmpty() || !folder.get().isDirectory() || Optional.ofNullable(folder.get().getFileProperties()).map(p -> p.isHidden).orElse(false)) {
             return new String[0];
         }
         Set<FileWrapper> children = folder.get().getChildren(context.crypto.hasher, context.network).join();
