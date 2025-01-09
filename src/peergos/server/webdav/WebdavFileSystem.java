@@ -207,7 +207,7 @@ public class WebdavFileSystem implements IWebdavStore {
         LOG.fine("PeergosFileSystem.getChildrenNames(" + uri + ")");
         Path path = new File(uri).toPath();
         Optional<FileWrapper> folder = getByPath(path);
-        if (folder.isEmpty() || !folder.get().isDirectory() || folder.get().getFileProperties().isHidden) {
+        if (folder.isEmpty() || !folder.get().isDirectory() || Optional.ofNullable(folder.get().getFileProperties()).map(p -> p.isHidden).orElse(false)) {
             return new String[0];
         }
         Set<FileWrapper> children = folder.get().getChildren(context.crypto.hasher, context.network).join();
@@ -272,7 +272,13 @@ public class WebdavFileSystem implements IWebdavStore {
         StoredObject so = null;
         Path path = new File(uri).toPath();
         Optional<FileWrapper> fwOpt = context.getByPath(path.toString()).join();
-        if (fwOpt.isPresent() && !fwOpt.get().getFileProperties().isHidden) {
+        if (fwOpt.isPresent() && fwOpt.get().isRoot()) {
+            so = new StoredObject();
+            so.setFolder(true);
+            so.setLastModified(new Date(0));
+            so.setCreationDate(new Date(0));
+            so.setResourceLength(0);
+        } else if (fwOpt.isPresent() && !fwOpt.get().getFileProperties().isHidden) {
             so = new StoredObject();
             FileWrapper fw = fwOpt.get();
             so.setFolder(fw.isDirectory());
