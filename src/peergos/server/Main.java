@@ -469,7 +469,7 @@ public class Main extends Builder {
                     new Command.Arg("port", "service port", false, "9000"),
                     new Command.Arg("peergos-url", "Address of the Peergos server to connect to", false, "http://localhost:8000"),
                     new Command.Arg("domain-suffix", "Domain suffix to accept", false, ".peergos.localhost:9000"),
-                    new Command.Arg("domain", "Domain name to bind to", false, "localhost"),
+                    new Command.Arg("listen-host", "Domain name to bind to", false, "localhost"),
                     new Command.Arg("public-server", "Are we a public server? (allow http GETs to API)", false, "false"),
                     new Command.Arg("collect-metrics", "Export aggregated metrics", false, "false"),
                     new Command.Arg("metrics.address", "Listen address for serving aggregated metrics", false, "localhost"),
@@ -827,10 +827,9 @@ public class Main extends Builder {
                     ! peergosUrl.startsWith("http://localhost"), Optional.empty()).join();
             PublicGateway gateway = new PublicGateway(domainSuffix, crypto, network);
 
-            String domain = a.getArg("domain");
+            String domain = a.getArg("listen-host");
             int webPort = a.getInt("port");
-            InetSocketAddress userAPIAddress = new InetSocketAddress(domain, webPort);
-            InetSocketAddress localAddress = new InetSocketAddress("localhost", userAPIAddress.getPort());
+            InetSocketAddress localAddress = new InetSocketAddress(domain, webPort);
             boolean isPublicServer = a.getBoolean("public-server", false);
             int maxConnectionQueue = a.getInt("max-connection-queue", 500);
             int handlerThreads = a.getInt("handler-threads", 50);
