@@ -171,7 +171,7 @@ public class RamUserTests extends UserTests {
         Args a = Args.parse(new String[]{
                 "-peergos-url", "http://localhost:" + args.getInt("port"),
                 "-port", "9002",
-                "-domain", "localhost",
+                "-listen-host", "localhost",
                 "-domain-suffix", ".peergos.localhost:9002"
         });
         PublicGateway publicGateway = Main.startGateway(a);
