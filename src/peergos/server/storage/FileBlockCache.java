@@ -138,8 +138,14 @@ public class FileBlockCache implements BlockCache {
     public void delete(Multihash h) {
         Path path = getFilePath((Cid)h);
         File file = root.resolve(path).toFile();
-        if (file.exists())
+        if (file.exists()) {
             file.delete();
+            Path parent = root.resolve(path).getParent();
+            File[] files = parent.toFile().listFiles();
+            if (files != null && files.length == 0) {
+                parent.toFile().delete();
+            }
+        }
     }
 
     public Optional<Long> getLastAccessTimeMillis(Cid h) {
@@ -162,17 +168,28 @@ public class FileBlockCache implements BlockCache {
         FileContentAddressedStorage.getFilesRecursive(root, processor);
     }
 
-    private void ensureWithinSizeLimit(long maxSize) {
+    private static class CidTime{
+        public final Cid h;
+        public final long time;
+
+        public CidTime(Cid h, long time) {
+            this.h = h;
+            this.time = time;
+        }
+    }
+
+    public void ensureWithinSizeLimit(long maxSize) {
         if (totalSize.get() <= maxSize)
             return;
         Logging.LOG().info("Starting FileBlockCache reduction");
         AtomicLong toDelete = new AtomicLong(totalSize.get() - (maxSize*9/10));
-        SortedMap<Long, Cid> byAccessTime = new TreeMap<>();
-        applyToAll(c -> getLastAccessTimeMillis(c).map(t -> byAccessTime.put(t, c)));
-        for (Map.Entry<Long, Cid> e : byAccessTime.entrySet()) {
+        List<CidTime> byAccessTime = new ArrayList<>(1_000_000);
+        applyToAll(c -> getLastAccessTimeMillis(c).map(t -> byAccessTime.add(new CidTime(c, t))));
+        Collections.sort(byAccessTime, Comparator.comparingLong(a -> a.time));
+        for (CidTime e : byAccessTime) {
             if (toDelete.get() <= 0)
                 break;
-            Cid c = e.getValue();
+            Cid c = e.h;
             Optional<Integer> sizeOpt = getSize(c).join();
             if (sizeOpt.isEmpty())
                 continue;
