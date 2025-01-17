@@ -12,6 +12,7 @@ import peergos.shared.util.*;
 import java.io.*;
 import java.nio.file.*;
 import java.util.*;
+import java.util.concurrent.TimeUnit;
 import java.util.logging.*;
 
 public class GatewayHandler implements HttpHandler {
@@ -219,7 +220,7 @@ public class GatewayHandler implements HttpHandler {
         byte[] buf = buffer.get();
         int read;
         long offset = 0;
-        while ((read = reader.readIntoArray(buf, 0, (int) Math.min(size - offset, buf.length)).join()) >= 0) {
+        while ((read = reader.readIntoArray(buf, 0, (int) Math.min(size - offset, buf.length)).orTimeout(15, TimeUnit.SECONDS).join()) >= 0) {
             resp.write(buf, 0, read);
             offset += read;
         }
