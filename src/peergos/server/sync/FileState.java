@@ -3,6 +3,7 @@ package peergos.server.sync;
 import peergos.shared.cbor.CborObject;
 import peergos.shared.cbor.Cborable;
 import peergos.shared.user.fs.*;
+import peergos.shared.util.ArrayOps;
 import peergos.shared.util.Pair;
 
 import java.util.*;
@@ -20,6 +21,10 @@ public class FileState implements Cborable {
         this.modificationTime = modificationTime;
         this.size = size;
         this.hashTree = hashTree;
+    }
+
+    public String prettyPrint() {
+        return "[" + relPath + ", size: " + size + ", modTime: " + modificationTime + ", hash: " + ArrayOps.bytesToHex(hashTree.rootHash.hash)+"]";
     }
 
     public List<Pair<Long, Long>> diffRanges(FileState other) {

@@ -518,7 +518,7 @@ public class DirectorySync {
                 if (local == null) { // local delete, copy changed remote
                     if ((freeSpace - remote.size) * 100 / totalSpace < minPercentFree)
                         throw new IllegalStateException("Not enough free space to sync and keep " + minPercentFree + "% free");
-                    log("Sync Local: deleted, copying changed remote " + remote.relPath);
+                    log("Sync Local: deleted, copying changed remote " + remote.relPath + ", Synced: " + synced.prettyPrint() + ", remote: " + remote.prettyPrint());
                     List<Pair<Long, Long>> diffs = remote.diffRanges(null);
                     List<CopyOp> ops = diffs.stream()
                             .map(d -> new CopyOp(true, remoteDir.resolve(remote.relPath), localDir.resolve(remote.relPath), remote, null, d.left, d.right))
