@@ -80,7 +80,9 @@ public class DirectorySync {
                     .mapToObj(i -> linkUserPassword)
                     .collect(Collectors.toList());
             UserContext context = UserContext.fromSecretLinksV2(links, linkPasswords, network, crypto).join();
-            String linkPath = context.getEntryPath().join();
+            List<String> linkPaths = links.stream()
+                    .map(link -> UserContext.fromSecretLinksV2(Arrays.asList(), Arrays.asList(linkUserPassword), network, crypto).join().getEntryPath().join())
+                    .collect(Collectors.toList());
             int maxDownloadParallelism = args.getInt("max-parallelism", 32);
             int minFreeSpacePercent = args.getInt("min-free-space-percent", 5);
 
@@ -93,9 +95,10 @@ public class DirectorySync {
             boolean oneRun = args.getBoolean("run-once", false);
             while (true) {
                 try {
+                    log("Syncing " + links.size() + "pairs of directories");
                     for (int i=0; i < links.size(); i++) {
                         Path localDir = Paths.get(localDirs.get(i));
-                        Path remoteDir = PathUtil.get(linkPath);
+                        Path remoteDir = PathUtil.get(linkPaths.get(i));
                         log("Syncing " + localDir + " to+from " + remoteDir);
                         long t0 = System.currentTimeMillis();
                         String username = remoteDir.getName(0).toString();
