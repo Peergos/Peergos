@@ -139,7 +139,9 @@ public class FileBlockCache implements BlockCache {
         Path path = getFilePath((Cid)h);
         File file = root.resolve(path).toFile();
         if (file.exists()) {
+            long size = file.length();
             file.delete();
+            totalSize.addAndGet(-size);
             Path parent = root.resolve(path).getParent();
             File[] files = parent.toFile().listFiles();
             if (files != null && files.length == 0) {
@@ -198,7 +200,6 @@ public class FileBlockCache implements BlockCache {
                 continue;
             long size = sizeOpt.get();
             delete(c);
-            totalSize.addAndGet(-size);
             toDelete.addAndGet(-size);
         }
         cleaning.set(false);
