@@ -185,7 +185,7 @@ public class FileBlockCache implements BlockCache {
     public void ensureWithinSizeLimit(long maxSize) {
         if (totalSize.get() <= maxSize || cleaning.get())
             return;
-        if (! cleaning.compareAndExchange(false, true))
+        if (! cleaning.compareAndSet(false, true))
             return;
         Logging.LOG().info("Starting FileBlockCache reduction from " + totalSize.get());
         AtomicLong toDelete = new AtomicLong(totalSize.get() - (maxSize/2));
