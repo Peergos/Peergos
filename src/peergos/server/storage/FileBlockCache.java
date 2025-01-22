@@ -107,7 +107,7 @@ public class FileBlockCache implements BlockCache {
             Files.write(tmp, data, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.CREATE, StandardOpenOption.WRITE);
             Files.move(tmp, target, StandardCopyOption.ATOMIC_MOVE);
             totalSize.addAndGet(data.length);
-            if (lastSizeCheckTime < System.currentTimeMillis() - 600_000) {
+            if (lastSizeCheckTime < System.currentTimeMillis() - 30_000) {
                 lastSizeCheckTime = System.currentTimeMillis();
                 ForkJoinPool.commonPool().submit(() -> ensureWithinSizeLimit(maxSizeBytes));
             }
@@ -177,12 +177,15 @@ public class FileBlockCache implements BlockCache {
             this.time = time;
         }
     }
+    private AtomicBoolean cleaning = new AtomicBoolean(false);
 
     public void ensureWithinSizeLimit(long maxSize) {
-        if (totalSize.get() <= maxSize)
+        if (totalSize.get() <= maxSize || cleaning.get())
+            return;
+        if (! cleaning.compareAndExchange(false, true))
             return;
         Logging.LOG().info("Starting FileBlockCache reduction");
-        AtomicLong toDelete = new AtomicLong(totalSize.get() - (maxSize*9/10));
+        AtomicLong toDelete = new AtomicLong(totalSize.get() - (maxSize/2));
         List<CidTime> byAccessTime = new ArrayList<>(1_000_000);
         applyToAll(c -> getLastAccessTimeMillis(c).map(t -> byAccessTime.add(new CidTime(c, t))));
         Collections.sort(byAccessTime, Comparator.comparingLong(a -> a.time));
@@ -195,7 +198,9 @@ public class FileBlockCache implements BlockCache {
                 continue;
             long size = sizeOpt.get();
             delete(c);
+            totalSize.addAndGet(-size);
             toDelete.addAndGet(-size);
         }
+        cleaning.set(false);
     }
 }
