@@ -81,7 +81,7 @@ public class DirectorySync {
                     .collect(Collectors.toList());
             UserContext context = UserContext.fromSecretLinksV2(links, linkPasswords, network, crypto).join();
             List<String> linkPaths = links.stream()
-                    .map(link -> UserContext.fromSecretLinksV2(Arrays.asList(), Arrays.asList(linkUserPassword), network, crypto).join().getEntryPath().join())
+                    .map(link -> UserContext.fromSecretLinksV2(Arrays.asList(link), Arrays.asList(linkUserPassword), network, crypto).join().getEntryPath().join())
                     .collect(Collectors.toList());
             int maxDownloadParallelism = args.getInt("max-parallelism", 32);
             int minFreeSpacePercent = args.getInt("min-free-space-percent", 5);
