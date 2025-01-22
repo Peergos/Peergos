@@ -540,21 +540,26 @@ public class DirectorySync {
                 // concurrent change, rename one sync the other
                 if ((freeSpace - remote.size) * 100 / totalSpace < minPercentFree)
                     throw new IllegalStateException("Not enough free space to sync and keep " + minPercentFree + "% free");
-                log("Sync Remote: Concurrent change: " + local.relPath + " renaming local version");
-                FileState renamed = renameOnConflict(localFs, localDir.resolve(local.relPath), local);
-                List<Pair<Long, Long>> diffs = remote.diffRanges(null);
-                List<CopyOp> ops = diffs.stream()
-                        .map(d -> new CopyOp(true, remoteDir.resolve(remote.relPath), localDir.resolve(remote.relPath), remote, null, d.left, d.right))
-                        .collect(Collectors.toList());
-                copyFileDiffAndTruncate(remoteFs, localFs, ops, syncedVersions);
-                syncedVersions.add(remote);
+                // if local and remote are the same, update sync and return
+                if (local.equals(remote)) {
+                    syncedVersions.add(local);
+                } else {
+                    log("Sync Remote: Concurrent change: " + local.relPath + " renaming local version");
+                    FileState renamed = renameOnConflict(localFs, localDir.resolve(local.relPath), local);
+                    List<Pair<Long, Long>> diffs = remote.diffRanges(null);
+                    List<CopyOp> ops = diffs.stream()
+                            .map(d -> new CopyOp(true, remoteDir.resolve(remote.relPath), localDir.resolve(remote.relPath), remote, null, d.left, d.right))
+                            .collect(Collectors.toList());
+                    copyFileDiffAndTruncate(remoteFs, localFs, ops, syncedVersions);
+                    syncedVersions.add(remote);
 
-                List<Pair<Long, Long>> diffs2 = local.diffRanges(null);
-                List<CopyOp> ops2 = diffs2.stream()
-                        .map(d -> new CopyOp(false, localDir.resolve(renamed.relPath), remoteDir.resolve(renamed.relPath), local, null, d.left, d.right))
-                        .collect(Collectors.toList());
-                copyFileDiffAndTruncate(localFs, remoteFs, ops2, syncedVersions);
-                syncedVersions.add(renamed);
+                    List<Pair<Long, Long>> diffs2 = local.diffRanges(null);
+                    List<CopyOp> ops2 = diffs2.stream()
+                            .map(d -> new CopyOp(false, localDir.resolve(renamed.relPath), remoteDir.resolve(renamed.relPath), local, null, d.left, d.right))
+                            .collect(Collectors.toList());
+                    copyFileDiffAndTruncate(localFs, remoteFs, ops2, syncedVersions);
+                    syncedVersions.add(renamed);
+                }
             }
         }
     }
