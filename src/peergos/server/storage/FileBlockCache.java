@@ -191,6 +191,7 @@ public class FileBlockCache implements BlockCache {
         List<CidTime> byAccessTime = new ArrayList<>(1_000_000);
         applyToAll(c -> getLastAccessTimeMillis(c).map(t -> byAccessTime.add(new CidTime(c, t))));
         Collections.sort(byAccessTime, Comparator.comparingLong(a -> a.time));
+        Logging.LOG().info("Reclaiming " + toDelete.get() + " bytes from FileBlockCache");
         for (CidTime e : byAccessTime) {
             if (toDelete.get() <= 0)
                 break;
