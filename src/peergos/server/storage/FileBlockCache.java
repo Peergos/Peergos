@@ -39,6 +39,7 @@ public class FileBlockCache implements BlockCache {
         if (!rootDir.isDirectory())
             throw new IllegalStateException("File store path must be a directory! " + root);
         applyToAll(c -> getSize(c).join().map(s -> totalSize.addAndGet(s)));
+        ForkJoinPool.commonPool().submit(() -> ensureWithinSizeLimit(maxSizeBytes));
     }
 
     private Path getFilePath(Cid h) {
@@ -186,7 +187,7 @@ public class FileBlockCache implements BlockCache {
             return;
         if (! cleaning.compareAndExchange(false, true))
             return;
-        Logging.LOG().info("Starting FileBlockCache reduction");
+        Logging.LOG().info("Starting FileBlockCache reduction from " + totalSize.get());
         AtomicLong toDelete = new AtomicLong(totalSize.get() - (maxSize/2));
         List<CidTime> byAccessTime = new ArrayList<>(1_000_000);
         applyToAll(c -> getLastAccessTimeMillis(c).map(t -> byAccessTime.add(new CidTime(c, t))));

@@ -95,7 +95,7 @@ public class DirectorySync {
             boolean oneRun = args.getBoolean("run-once", false);
             while (true) {
                 try {
-                    log("Syncing " + links.size() + "pairs of directories");
+                    log("Syncing " + links.size() + " pairs of directories: " + IntStream.range(0, links.size()).mapToObj(i -> Arrays.asList(localDirs.get(i), linkPaths.get(i))).collect(Collectors.toList()));
                     for (int i=0; i < links.size(); i++) {
                         Path localDir = Paths.get(localDirs.get(i));
                         Path remoteDir = PathUtil.get(linkPaths.get(i));
