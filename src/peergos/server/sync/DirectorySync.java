@@ -590,8 +590,10 @@ public class DirectorySync {
                 version++;
             }
         }
-        fs.moveTo(f, f.getParent().resolve(newName));
-        return new FileState(s.relPath.substring(0, s.relPath.length() - name.length()) + newName, s.modificationTime, s.size, s.hashTree);
+        Path newFile = f.getParent().resolve(newName);
+        fs.moveTo(f, newFile);
+        long newModified = fs.getLastModified(newFile);
+        return new FileState(s.relPath.substring(0, s.relPath.length() - name.length()) + newName, newModified, s.size, s.hashTree);
     }
 
     public static void copyFileDiffAndTruncate(SyncFilesystem srcFs, SyncFilesystem targetFs, List<CopyOp> ops, SyncState syncDb) throws IOException {
