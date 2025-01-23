@@ -452,7 +452,7 @@ public class DirectorySync {
 
                     List<Pair<Long, Long>> diffs2 = local.diffRanges(null);
                     List<CopyOp> ops2 = diffs2.stream()
-                            .map(d -> new CopyOp(false, localDir.resolve(renamed.relPath), remoteDir.resolve(renamed.relPath), local, null, d.left, d.right))
+                            .map(d -> new CopyOp(false, localDir.resolve(renamed.relPath), remoteDir.resolve(renamed.relPath), renamed, null, d.left, d.right))
                             .collect(Collectors.toList());
                     copyFileDiffAndTruncate(localFs, remoteFs, ops2, syncedVersions);
                     syncedVersions.add(renamed);
@@ -555,7 +555,7 @@ public class DirectorySync {
 
                     List<Pair<Long, Long>> diffs2 = local.diffRanges(null);
                     List<CopyOp> ops2 = diffs2.stream()
-                            .map(d -> new CopyOp(false, localDir.resolve(renamed.relPath), remoteDir.resolve(renamed.relPath), local, null, d.left, d.right))
+                            .map(d -> new CopyOp(false, localDir.resolve(renamed.relPath), remoteDir.resolve(renamed.relPath), renamed, null, d.left, d.right))
                             .collect(Collectors.toList());
                     copyFileDiffAndTruncate(localFs, remoteFs, ops2, syncedVersions);
                     syncedVersions.add(renamed);
