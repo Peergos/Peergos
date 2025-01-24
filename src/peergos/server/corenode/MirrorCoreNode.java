@@ -296,14 +296,17 @@ public class MirrorCoreNode implements CoreNode {
      */
     private synchronized boolean update() {
         try {
+            Logging.LOG().info("Starting pki update");
             Pair<CorenodeRoots, byte[]> remoteState = getPkiState();
             CorenodeRoots remote = remoteState.left;
             CorenodeState current = state;
             if (remote.pkiOwnerIdentity.equals(current.roots.pkiOwnerIdentity) &&
                     remote.pkiOwnerTarget.equals(current.roots.pkiOwnerTarget) &&
                     remote.pkiKey.equals(current.roots.pkiKey) &&
-                    remote.pkiKeyTarget.equals(current.roots.pkiKeyTarget))
+                    remote.pkiKeyTarget.equals(current.roots.pkiKeyTarget)) {
+                Logging.LOG().info("pki up-to-date");
                 return false;
+            }
 
             Logging.LOG().info("Updating pki mirror state... Please wait. This could take a minute or two");
             CorenodeState updated = CorenodeState.buildEmpty(pkiOwnerIdentity, remote.pkiKey, remote.pkiOwnerTarget, remote.pkiKeyTarget);
