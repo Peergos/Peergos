@@ -456,7 +456,7 @@ public class IpfsWrapper implements AutoCloseable {
         Map<String, Object> blockChildMap = new LinkedHashMap<>();
         if (ipfsConfigParams.s3ConfigParams.isPresent()) {
             S3ConfigParams s3Params = ipfsConfigParams.s3ConfigParams.get();
-            blockChildMap.put("region", s3Params.s3RegionEndpoint);
+            blockChildMap.put("region", s3Params.s3Region);
             blockChildMap.put("bucket", s3Params.s3Bucket);
             blockChildMap.put("rootDirectory", s3Params.s3Path);
             blockChildMap.put("regionEndpoint", s3Params.s3RegionEndpoint);
