@@ -784,9 +784,12 @@ public class UserContext {
     public CompletableFuture<Snapshot> deleteSecretLink(long label, Path toFile, Snapshot in, Committer c) {
         PublicKeyHash id = signer.publicKeyHash;
         return in.withWriter(id, id, network).thenCompose(v -> IpfsTransaction.call(id,
-                tid -> v.get(id).props.get().removeLink(signer, label, mirrorBat, tid, network.dhtClient, network.hasher)
-                        .thenCompose(wd -> c.commit(id, signer, wd, v.get(id), tid))
-                        .thenApply(res -> v.mergeAndOverwriteWith(res)), network.dhtClient));
+                tid -> {
+                    WriterData intial = v.get(id).props.get();
+                    return intial.removeLink(signer, label, mirrorBat, tid, network.dhtClient, network.hasher)
+                            .thenCompose(wd -> wd.equals(intial) ? Futures.of(v) : c.commit(id, signer, wd, v.get(id), tid))
+                            .thenApply(res -> v.mergeAndOverwriteWith(res));
+                }, network.dhtClient));
     }
 
     public static CompletableFuture<AbsoluteCapability> getPublicCapability(Path originalPath, NetworkAccess network) {
