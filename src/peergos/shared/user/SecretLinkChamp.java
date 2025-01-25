@@ -83,7 +83,9 @@ public class SecretLinkChamp {
                                                TransactionId tid) {
         return keyToBytes(label)
                 .thenCompose(key -> champ.get(key)
-                        .thenCompose(existing -> champ.remove(owner, writer, key, existing, mirrorBat, tid)));
+                        .thenCompose(existing -> existing.isPresent() ?
+                                champ.remove(owner, writer, key, existing, mirrorBat, tid) :
+                                Futures.of(champ.getRoot())));
     }
 
     public CompletableFuture<Boolean> contains(long label) {
