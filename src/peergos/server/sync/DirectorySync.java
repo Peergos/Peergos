@@ -91,7 +91,7 @@ public class DirectorySync {
             LocalFileSystem local = new LocalFileSystem(crypto.hasher);
             List<String> localDirs = Arrays.asList(args.getArg("local-dirs").split(","));
             List<SyncState> syncedStates = IntStream.range(0, linkPaths.size())
-                    .mapToObj(i -> new JdbcTreeState(args.getPeergosDirChild("dir-sync-state-v3-" + ArrayOps.bytesToHex(Hash.sha256(linkPaths.get(i) + "///" + localDirs.get(i))) + ".db").toString()))
+                    .mapToObj(i -> new JdbcTreeState(args.getPeergosDirChild("dir-sync-state-v3-" + ArrayOps.bytesToHex(Hash.sha256(linkPaths.get(i) + "///" + localDirs.get(i))) + ".sqlite").toString()))
                     .collect(Collectors.toList());
             if (links.size() != localDirs.size())
                 throw new IllegalArgumentException("Mismatched number of local dirs and links");
