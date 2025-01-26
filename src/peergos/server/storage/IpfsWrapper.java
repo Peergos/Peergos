@@ -319,9 +319,17 @@ public class IpfsWrapper implements AutoCloseable {
             while (running) {
                 try {
                     List<PeerId> all = ids.getIdentities();
+                    Map<PeerId, byte[]> presignedRecords = new LinkedHashMap<>();
                     for (PeerId id : all) {
                         byte[] signedIpnsRecord = ids.getRecord(id);
-                        embeddedIpfs.publishPresignedRecord(io.ipfs.multihash.Multihash.deserialize(id.getBytes()), signedIpnsRecord).join();
+                        presignedRecords.put(id, signedIpnsRecord);
+                    }
+                    if (!presignedRecords.isEmpty()) {
+                        LOG.info("Publishing " + presignedRecords.size() + " pre-signed ipns records for server identity changes");
+                        presignedRecords.forEach((id, rec) -> {
+                            LOG.info("Publishing ipns record for " + id);
+                            embeddedIpfs.publishPresignedRecord(io.ipfs.multihash.Multihash.deserialize(id.getBytes()), rec).join();
+                        });
                     }
                 } catch (Exception e) {
                     LOG.log(Level.SEVERE, e, e::getMessage);
