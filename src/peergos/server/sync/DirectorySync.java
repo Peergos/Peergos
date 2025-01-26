@@ -9,6 +9,7 @@ import peergos.server.util.Logging;
 import peergos.shared.Crypto;
 import peergos.shared.NetworkAccess;
 import peergos.shared.corenode.HTTPCoreNode;
+import peergos.shared.crypto.hash.Hash;
 import peergos.shared.crypto.hash.PublicKeyHash;
 import peergos.shared.login.mfa.MultiFactorAuthMethod;
 import peergos.shared.login.mfa.MultiFactorAuthRequest;
@@ -88,8 +89,10 @@ public class DirectorySync {
 
             PeergosSyncFS remote = new PeergosSyncFS(context);
             LocalFileSystem local = new LocalFileSystem(crypto.hasher);
-            SyncState syncedState = new JdbcTreeState(args.fromPeergosDir("sync-state-file", "dir-sync-state-v2.sql").toString());
             List<String> localDirs = Arrays.asList(args.getArg("local-dirs").split(","));
+            List<SyncState> syncedStates = IntStream.range(0, linkPaths.size())
+                    .mapToObj(i -> new JdbcTreeState(args.getPeergosDirChild("dir-sync-state-v3-" + ArrayOps.bytesToHex(Hash.sha256(linkPaths.get(i) + "///" + localDirs.get(i))) + ".db").toString()))
+                    .collect(Collectors.toList());
             if (links.size() != localDirs.size())
                 throw new IllegalArgumentException("Mismatched number of local dirs and links");
             boolean oneRun = args.getBoolean("run-once", false);
@@ -99,6 +102,7 @@ public class DirectorySync {
                     for (int i=0; i < links.size(); i++) {
                         Path localDir = Paths.get(localDirs.get(i));
                         Path remoteDir = PathUtil.get(linkPaths.get(i));
+                        SyncState syncedState = syncedStates.get(i);
                         log("Syncing " + localDir + " to+from " + remoteDir);
                         long t0 = System.currentTimeMillis();
                         String username = remoteDir.getName(0).toString();
