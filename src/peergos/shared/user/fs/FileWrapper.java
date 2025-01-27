@@ -1499,7 +1499,7 @@ public class FileWrapper {
                             if (thumbData.isEmpty() && mimeType.equals(fileOpt.get().getFileProperties().mimeType))
                                 return Futures.of(base);
                             FileProperties fileProps = new FileProperties(fileName, false, props.isLink, mimeType, fileSize,
-                                    updatedDateTime, createdDateTime, isHidden, thumbData, streamSecret, props.treeHash);
+                                    updatedDateTime, createdDateTime, isHidden, thumbData, streamSecret, fileOpt.get().props.treeHash);
 
                             return fileOpt.get().updateProperties(base, committer, fileProps, network);
                         });
