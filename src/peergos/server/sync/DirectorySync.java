@@ -511,6 +511,7 @@ public class DirectorySync {
                             .map(d -> new CopyOp(false, localDir.resolve(local.relPath), remoteDir.resolve(local.relPath), local, null, d.left, d.right))
                             .collect(Collectors.toList());
                     copyFileDiffAndTruncate(localFs, remoteFs, ops, syncedVersions);
+                    remoteFs.setHash(localDir.resolve(local.relPath), local.hashTree, local.size);
                     syncedVersions.add(local);
                 }
             } else { // concurrent change/deletion
