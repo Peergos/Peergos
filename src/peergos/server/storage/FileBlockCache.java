@@ -38,7 +38,11 @@ public class FileBlockCache implements BlockCache {
         }
         if (!rootDir.isDirectory())
             throw new IllegalStateException("File store path must be a directory! " + root);
+        LOG.info("Listing file block cache...");
+        long t0 = System.currentTimeMillis();
         applyToAll(c -> getSize(c).join().map(s -> totalSize.addAndGet(s)));
+        long t1 = System.currentTimeMillis();
+        LOG.info("Finished listing file block cache in " + (t1-t0)/1000 + "s");
         ForkJoinPool.commonPool().submit(() -> ensureWithinSizeLimit(maxSizeBytes));
     }
 
