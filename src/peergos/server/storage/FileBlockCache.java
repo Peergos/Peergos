@@ -1,6 +1,7 @@
 package peergos.server.storage;
 
 import peergos.server.util.Logging;
+import peergos.server.util.Threads;
 import peergos.shared.io.ipfs.Cid;
 import peergos.shared.io.ipfs.Multihash;
 import peergos.shared.storage.*;
@@ -25,6 +26,7 @@ public class FileBlockCache implements BlockCache {
     private final long maxSizeBytes;
     private long lastSizeCheckTime = 0;
     private AtomicLong totalSize = new AtomicLong(0);
+    private AtomicBoolean needToCommitSize = new AtomicBoolean(true);
     private final SecureRandom rnd = new SecureRandom();
 
     public FileBlockCache(Path root, long maxSizeBytes) {
@@ -38,12 +40,45 @@ public class FileBlockCache implements BlockCache {
         }
         if (!rootDir.isDirectory())
             throw new IllegalStateException("File store path must be a directory! " + root);
-        LOG.info("Listing file block cache...");
-        long t0 = System.currentTimeMillis();
-        applyToAll((p,a) -> totalSize.addAndGet(a.size()));
-        long t1 = System.currentTimeMillis();
-        LOG.info("Finished listing file block cache in " + (t1-t0)/1000 + "s, total size " + totalSize.get()/1024/1024 + " MiB");
+
+        File sizeFile = root.resolve("size.bin").toFile();
+        if (sizeFile.exists()) {
+            try {
+                DataInputStream din = new DataInputStream(new FileInputStream(sizeFile));
+                long size = din.readLong();
+                din.close();
+                totalSize.set(size);
+                LOG.info("Loaded file block cache size from disk: " + totalSize.get() / 1024 / 1024 + " MiB");
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+        } else {
+            LOG.info("Listing file block cache...");
+            long t0 = System.currentTimeMillis();
+            applyToAll((p, a) -> totalSize.addAndGet(a.size()));
+            long t1 = System.currentTimeMillis();
+            LOG.info("Finished listing file block cache in " + (t1 - t0) / 1000 + "s, total size " + totalSize.get() / 1024 / 1024 + " MiB");
+        }
         ForkJoinPool.commonPool().submit(() -> ensureWithinSizeLimit(maxSizeBytes));
+        new Thread(this::sizeCommitter, "FileBlockCache size").start();
+    }
+
+    private void sizeCommitter() {
+        while (true) {
+            if (needToCommitSize.get()) {
+                try {
+                    File sizeFile = root.resolve("size.bin").toFile();
+                    DataOutputStream dout = new DataOutputStream(new FileOutputStream(sizeFile));
+                    dout.writeLong(totalSize.get());
+                    dout.flush();
+                    dout.close();
+                    needToCommitSize.set(false);
+                } catch (Exception e) {
+                    LOG.log(Level.WARNING, e, () -> e.getMessage());
+                }
+            }
+            Threads.sleep(30_000);
+        }
     }
 
     private Path getFilePath(Cid h) {
@@ -116,6 +151,7 @@ public class FileBlockCache implements BlockCache {
                 lastSizeCheckTime = System.currentTimeMillis();
                 ForkJoinPool.commonPool().submit(() -> ensureWithinSizeLimit(maxSizeBytes));
             }
+            needToCommitSize.set(true);
             return Futures.of(true);
         } catch (IOException e) {
             throw new RuntimeException(e.getMessage(), e);
@@ -185,7 +221,7 @@ public class FileBlockCache implements BlockCache {
 
                 @Override
                 public FileVisitResult visitFile(Path path, BasicFileAttributes attr) throws IOException {
-                    if (path.getFileName().endsWith(".data")) {
+                    if (path.getFileName().toString().endsWith(".data")) {
                         processor.accept(path, attr);
                     }
                     return FileVisitResult.CONTINUE;
@@ -226,15 +262,21 @@ public class FileBlockCache implements BlockCache {
         Logging.LOG().info("Starting FileBlockCache reduction from " + totalSize.get());
         AtomicLong toDelete = new AtomicLong(totalSize.get() - (maxSize/2));
         List<BlockFile> byAccessTime = new ArrayList<>(1_000_000);
-        applyToAll((p, a) -> byAccessTime.add(new BlockFile(p, a.lastAccessTime().toMillis(), a.size())));
+        AtomicLong newTotalSize = new AtomicLong(0);
+        applyToAll((p, a) -> {
+            byAccessTime.add(new BlockFile(p, a.lastAccessTime().toMillis(), a.size()));
+            newTotalSize.addAndGet(a.size());
+        });
         Collections.sort(byAccessTime, Comparator.comparingLong(a -> a.time));
         Logging.LOG().info("Reclaiming " + toDelete.get() + " bytes from FileBlockCache");
         for (BlockFile e : byAccessTime) {
             if (toDelete.get() <= 0)
                 break;
             delete(e.p.toFile());
+            newTotalSize.addAndGet(-e.size);
             toDelete.addAndGet(-e.size);
         }
+        totalSize.set(newTotalSize.get());
         cleaning.set(false);
     }
 }
