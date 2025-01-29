@@ -40,7 +40,7 @@ public class FileBlockCache implements BlockCache {
             throw new IllegalStateException("File store path must be a directory! " + root);
         LOG.info("Listing file block cache...");
         long t0 = System.currentTimeMillis();
-        applyToAll(c -> getSize(c).join().map(s -> totalSize.addAndGet(s)));
+        applyToAll((p,a) -> totalSize.addAndGet(a.size()));
         long t1 = System.currentTimeMillis();
         LOG.info("Finished listing file block cache in " + (t1-t0)/1000 + "s");
         ForkJoinPool.commonPool().submit(() -> ensureWithinSizeLimit(maxSizeBytes));
@@ -136,18 +136,22 @@ public class FileBlockCache implements BlockCache {
 
     @Override
     public CompletableFuture<Boolean> clear() {
-        applyToAll(c -> delete(c));
+        applyToAll((p, a) -> delete(p.toFile()));
         return Futures.of(true);
     }
 
     public void delete(Multihash h) {
         Path path = getFilePath((Cid)h);
         File file = root.resolve(path).toFile();
+        delete(file);
+    }
+
+    private void delete(File file) {
         if (file.exists()) {
             long size = file.length();
             file.delete();
             totalSize.addAndGet(-size);
-            Path parent = root.resolve(path).getParent();
+            Path parent = file.toPath().getParent();
             File[] files = parent.toFile().listFiles();
             if (files != null && files.length == 0) {
                 parent.toFile().delete();
@@ -171,17 +175,45 @@ public class FileBlockCache implements BlockCache {
         }
     }
 
-    public void applyToAll(Consumer<Cid> processor) {
-        FileContentAddressedStorage.getFilesRecursive(root, processor);
+    public void applyToAll(BiConsumer<Path, BasicFileAttributes> processor) {
+        try {
+            Files.walkFileTree(root, new FileVisitor<Path>() {
+                @Override
+                public FileVisitResult preVisitDirectory(Path path, BasicFileAttributes attr) throws IOException {
+                    return FileVisitResult.CONTINUE;
+                }
+
+                @Override
+                public FileVisitResult visitFile(Path path, BasicFileAttributes attr) throws IOException {
+                    if (path.getFileName().endsWith(".data")) {
+                        processor.accept(path, attr);
+                    }
+                    return FileVisitResult.CONTINUE;
+                }
+
+                @Override
+                public FileVisitResult visitFileFailed(Path path, IOException e) throws IOException {
+                    return FileVisitResult.CONTINUE;
+                }
+
+                @Override
+                public FileVisitResult postVisitDirectory(Path path, IOException e) throws IOException {
+                    return FileVisitResult.CONTINUE;
+                }
+            });
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
     }
 
-    private static class CidTime{
-        public final Cid h;
-        public final long time;
+    private static class BlockFile {
+        public final Path p;
+        public final long time, size;
 
-        public CidTime(Cid h, long time) {
-            this.h = h;
+        public BlockFile(Path p, long time, long size) {
+            this.p = p;
             this.time = time;
+            this.size = size;
         }
     }
     private AtomicBoolean cleaning = new AtomicBoolean(false);
@@ -193,20 +225,15 @@ public class FileBlockCache implements BlockCache {
             return;
         Logging.LOG().info("Starting FileBlockCache reduction from " + totalSize.get());
         AtomicLong toDelete = new AtomicLong(totalSize.get() - (maxSize/2));
-        List<CidTime> byAccessTime = new ArrayList<>(1_000_000);
-        applyToAll(c -> getLastAccessTimeMillis(c).map(t -> byAccessTime.add(new CidTime(c, t))));
+        List<BlockFile> byAccessTime = new ArrayList<>(1_000_000);
+        applyToAll((p, a) -> byAccessTime.add(new BlockFile(p, a.lastAccessTime().toMillis(), a.size())));
         Collections.sort(byAccessTime, Comparator.comparingLong(a -> a.time));
         Logging.LOG().info("Reclaiming " + toDelete.get() + " bytes from FileBlockCache");
-        for (CidTime e : byAccessTime) {
+        for (BlockFile e : byAccessTime) {
             if (toDelete.get() <= 0)
                 break;
-            Cid c = e.h;
-            Optional<Integer> sizeOpt = getSize(c).join();
-            if (sizeOpt.isEmpty())
-                continue;
-            long size = sizeOpt.get();
-            delete(c);
-            toDelete.addAndGet(-size);
+            delete(e.p.toFile());
+            toDelete.addAndGet(-e.size);
         }
         cleaning.set(false);
     }
