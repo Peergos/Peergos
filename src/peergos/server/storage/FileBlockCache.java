@@ -42,7 +42,7 @@ public class FileBlockCache implements BlockCache {
         long t0 = System.currentTimeMillis();
         applyToAll((p,a) -> totalSize.addAndGet(a.size()));
         long t1 = System.currentTimeMillis();
-        LOG.info("Finished listing file block cache in " + (t1-t0)/1000 + "s");
+        LOG.info("Finished listing file block cache in " + (t1-t0)/1000 + "s, total size " + totalSize.get()/1024/1024 + " MiB");
         ForkJoinPool.commonPool().submit(() -> ensureWithinSizeLimit(maxSizeBytes));
     }
 
