@@ -11,6 +11,7 @@ import peergos.shared.*;
 import peergos.shared.cbor.*;
 import peergos.shared.io.ipfs.*;
 import peergos.shared.resolution.*;
+import peergos.shared.storage.IpnsEntry;
 import peergos.shared.user.*;
 import peergos.shared.util.*;
 
@@ -84,7 +85,7 @@ public class ServerIdentity extends Builder {
         ResolutionRecord ipnsValue = new ResolutionRecord(host,
                 moved, Optional.empty(), sequence);
         byte[] value = ipnsValue.serialize();
-        return IPNS.createSignedRecord(value, expiry, sequence, ttlNanos, peerPrivate);
+        return IPNS.createSignedRecord(value, expiry, sequence, ttlNanos, Optional.of(IpnsEntry.RESOLUTION_RECORD_IPNS_SUFFIX), Optional.of(org.peergos.cbor.CborObject.fromByteArray(value)), peerPrivate);
     }
 
     public static PrivKey generateNextIdentity(String password, PeerId current, Crypto crypto) {

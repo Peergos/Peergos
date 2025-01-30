@@ -10,6 +10,7 @@ import java.util.*;
 import java.util.concurrent.*;
 
 public class IpnsEntry {
+    public static final String RESOLUTION_RECORD_IPNS_SUFFIX = "peergos_rr";
     public final byte[] signature, data;
 
     public IpnsEntry(byte[] signature, byte[] data) {
@@ -30,7 +31,9 @@ public class IpnsEntry {
         if (! (cbor instanceof CborObject.CborMap))
             throw new IllegalStateException("Invalid cbor for IpnsEntry!");
         CborObject.CborMap map = (CborObject.CborMap) cbor;
-        ResolutionRecord result = ResolutionRecord.fromCbor(CborObject.fromByteArray(map.getByteArray("Value")));
+        String RRKey = "_" + RESOLUTION_RECORD_IPNS_SUFFIX;
+        // support legacy records that put the RR in the value, this can be removed in the future
+        ResolutionRecord result = ResolutionRecord.fromCbor(map.containsKey(RRKey) ? map.get(RRKey) : CborObject.fromByteArray(map.getByteArray("Value")));
         // hard code legacy RSA rotations to avoid an RSA implementation in client
         if (signer.equals(Multihash.fromBase58("QmPqn9a1tJLpMtaCz1DSQNMAfsv6qXEx6XU2eLMTc2DVV4")) &&
                 result.moved && result.host.isPresent() &&
