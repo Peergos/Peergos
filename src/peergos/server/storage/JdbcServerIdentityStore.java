@@ -7,7 +7,6 @@ import peergos.server.sql.*;
 import peergos.server.util.Logging;
 import peergos.shared.*;
 import peergos.shared.cbor.*;
-import peergos.shared.io.ipfs.*;
 import peergos.shared.resolution.*;
 import peergos.shared.storage.*;
 
@@ -16,6 +15,8 @@ import java.sql.Connection;
 import java.util.*;
 import java.util.function.*;
 import java.util.logging.*;
+
+import static peergos.shared.storage.IpnsEntry.RESOLUTION_RECORD_IPNS_SUFFIX;
 
 public class JdbcServerIdentityStore implements ServerIdentityStore {
 	private static final Logger LOG = Logging.LOG();
@@ -137,7 +138,8 @@ public class JdbcServerIdentityStore implements ServerIdentityStore {
         if (! (cbor instanceof CborObject.CborMap))
             throw new IllegalStateException("Invalid cbor for IpnsEntry!");
         CborObject.CborMap map = (CborObject.CborMap) cbor;
-        return ResolutionRecord.fromCbor(CborObject.fromByteArray(map.getByteArray("Value")));
+        String RRKey = "_" + RESOLUTION_RECORD_IPNS_SUFFIX;
+        return ResolutionRecord.fromCbor(map.containsKey(RRKey) ? map.get(RRKey) : CborObject.fromByteArray(map.getByteArray("Value")));
     }
 
     @Override
