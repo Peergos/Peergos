@@ -2,6 +2,7 @@ package peergos.server.storage;
 
 import com.sun.net.httpserver.HttpServer;
 import io.ipfs.cid.Cid;
+import io.ipfs.multihash.Multihash;
 import io.libp2p.core.PeerId;
 import io.libp2p.core.crypto.*;
 import org.peergos.*;
@@ -10,6 +11,8 @@ import org.peergos.config.Filter;
 import org.peergos.net.*;
 import org.peergos.protocol.dht.DatabaseRecordStore;
 import org.peergos.protocol.http.HttpProtocol;
+import org.peergos.protocol.ipns.IPNS;
+import org.peergos.protocol.ipns.IpnsMapping;
 import org.peergos.util.JSONParser;
 import peergos.server.*;
 import peergos.server.AggregatedMetrics;
@@ -21,6 +24,7 @@ import peergos.server.storage.auth.BlockRequestAuthoriser;
 import peergos.shared.*;
 import peergos.shared.crypto.hash.Hasher;
 import peergos.shared.io.ipfs.*;
+import peergos.shared.resolution.ResolutionRecord;
 import peergos.shared.storage.*;
 import peergos.shared.storage.auth.*;
 import peergos.shared.util.*;
@@ -30,6 +34,7 @@ import java.net.*;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.Connection;
+import java.time.LocalDateTime;
 import java.util.*;
 import java.util.function.Supplier;
 import java.util.logging.*;
@@ -324,11 +329,27 @@ public class IpfsWrapper implements AutoCloseable {
                         byte[] signedIpnsRecord = ids.getRecord(id);
                         presignedRecords.put(id, signedIpnsRecord);
                     }
-                    if (!presignedRecords.isEmpty()) {
+                    if (! presignedRecords.isEmpty()) {
                         LOG.info("Publishing " + presignedRecords.size() + " pre-signed ipns records for server identity changes");
                         presignedRecords.forEach((id, rec) -> {
                             LOG.info("Publishing ipns record for " + id);
-                            embeddedIpfs.publishPresignedRecord(io.ipfs.multihash.Multihash.deserialize(id.getBytes()), rec).join();
+                            // renew record if it expires within 6 months
+                            Multihash key = Multihash.deserialize(id.getBytes());
+                            byte[] ipnsKey = IPNS.getKey(key);
+                            IpnsMapping currentMapping = IPNS.parseAndValidateIpnsEntry(ipnsKey, rec).get();
+                            if (currentMapping.value.expiry.isBefore(LocalDateTime.now().plusMonths(6))) {
+                                LOG.info("Updating ipns record for " + id);
+                                IpnsEntry entry = new IpnsEntry(currentMapping.getSignature(), currentMapping.getData());
+                                ResolutionRecord currentRR = entry.getValue();
+                                long newSequence = currentRR.sequence + 1;
+                                byte[] privPb = ids.getPrivateKey(id);
+                                PrivKey priv = KeyKt.unmarshalPrivateKey(privPb);
+                                byte[] newRecord = ServerIdentity.generateSignedIpnsRecord(priv, currentRR.host, currentRR.moved, newSequence);
+                                IPNS.parseAndValidateIpnsEntry(ipnsKey, newRecord).get();
+                                ids.setRecord(id, newRecord);
+                                rec = newRecord;
+                            }
+                            embeddedIpfs.publishPresignedRecord(key, rec).join();
                         });
                     }
                 } catch (Exception e) {

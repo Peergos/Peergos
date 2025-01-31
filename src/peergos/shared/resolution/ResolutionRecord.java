@@ -21,7 +21,7 @@ public class ResolutionRecord implements Cborable {
     public final Optional<Multihash> host; // For peer ids this can only be set, not removed or modified.
     public final boolean moved; // For peer ids this can only be updated from false to true
     public final Optional<byte[]> mutablePointer;
-    public final long sequence; // monotonic, matches that in pointer if present
+    public final long sequence; // monotonic
 
     public ResolutionRecord(Optional<Multihash> host,
                             boolean moved,
