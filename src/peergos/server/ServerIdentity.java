@@ -89,9 +89,8 @@ public class ServerIdentity extends Builder {
         ResolutionRecord ipnsValue = new ResolutionRecord(host,
                 moved, Optional.empty(), sequence);
         byte[] rr = ipnsValue.serialize();
-        Cid staticValue = new Cid(1, Cid.Codec.Raw, Multihash.Type.id, new byte[0]);
-        byte[] value = staticValue.toBytes();
-        return IPNS.createSignedRecord(value, expiry, sequence, ttlNanos, Optional.of(IpnsEntry.RESOLUTION_RECORD_IPNS_SUFFIX), Optional.of(org.peergos.cbor.CborObject.fromByteArray(rr)), peerPrivate);
+        return IPNS.createSignedRecord("bafkqaaa".getBytes(StandardCharsets.UTF_8), expiry, sequence, ttlNanos,
+                Optional.of(IpnsEntry.RESOLUTION_RECORD_IPNS_SUFFIX), Optional.of(org.peergos.cbor.CborObject.fromByteArray(rr)), peerPrivate);
     }
 
     public static PrivKey generateNextIdentity(String password, PeerId current, Crypto crypto) {
