@@ -155,6 +155,7 @@ public class ServerIdentity extends Builder {
 
                 idstore.setRecord(current, generateSignedIpnsRecord(currentPrivate, Optional.of(Multihash.decode(nextPeerId.getBytes())), true, res.sequence + 1));
                 idstore.addIdentity(nextPeerId, generateSignedIpnsRecord(nextPriv, Optional.empty(), false, 1));
+                idstore.setPrivateKey(nextPriv);
                 System.out.println("Successfully rotated server identity from " + current + " to " + nextPeerId);
                 if (!useIPFS) {
                     System.out.println("You are running a multi-server instance, copy the new identity to the ipfs server start script: \n" +
