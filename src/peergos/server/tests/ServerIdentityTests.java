@@ -10,9 +10,9 @@ import peergos.server.sql.*;
 import peergos.server.storage.*;
 import peergos.server.util.*;
 import peergos.shared.*;
-import peergos.shared.cbor.*;
 import peergos.shared.io.ipfs.*;
 import peergos.shared.resolution.*;
+import peergos.shared.storage.IpnsEntry;
 import peergos.shared.util.*;
 
 import java.nio.charset.*;
@@ -48,7 +48,8 @@ public class ServerIdentityTests {
         Optional<IpnsMapping> prevIpnsMapping = IPNS.parseAndValidateIpnsEntry(
                 ArrayOps.concat("/ipns/".getBytes(StandardCharsets.UTF_8), current.getBytes()),
                 prevRecord);
-        ResolutionRecord prevRes = ResolutionRecord.fromCbor(CborObject.fromByteArray(prevIpnsMapping.get().value.value));
+        IpnsEntry ipnsData = new IpnsEntry(prevIpnsMapping.get().getSignature(), prevIpnsMapping.get().getData());
+        ResolutionRecord prevRes = ipnsData.getValue();
         Assert.assertEquals(prevRes.moved, true);
         Assert.assertEquals(prevRes.host, Optional.of(Multihash.fromBase58(nextPeerId.toBase58())));
     }

@@ -1,9 +1,11 @@
 package peergos.server;
 
+import com.google.protobuf.InvalidProtocolBufferException;
 import io.libp2p.core.*;
 import io.libp2p.core.crypto.*;
 import io.libp2p.crypto.keys.*;
 import org.peergos.protocol.ipns.*;
+import org.peergos.protocol.ipns.pb.Ipns;
 import peergos.server.sql.*;
 import peergos.server.storage.*;
 import peergos.server.util.*;
@@ -11,9 +13,11 @@ import peergos.shared.*;
 import peergos.shared.cbor.*;
 import peergos.shared.io.ipfs.*;
 import peergos.shared.resolution.*;
+import peergos.shared.storage.IpnsEntry;
 import peergos.shared.user.*;
 import peergos.shared.util.*;
 
+import java.nio.ByteBuffer;
 import java.nio.charset.*;
 import java.time.*;
 import java.util.*;
@@ -42,7 +46,8 @@ public class ServerIdentity extends Builder {
                         currentRecord);
                 if (ipnsMapping.isEmpty())
                     throw new IllegalStateException("Invalid record!");
-                ResolutionRecord res = ResolutionRecord.fromCbor(CborObject.fromByteArray(ipnsMapping.get().value.value));
+                IpnsEntry entry = new IpnsEntry(ipnsMapping.get().getSignature(), ipnsMapping.get().getData());
+                ResolutionRecord res = entry.getValue();
                 boolean hasNextId = res.host.isPresent();
                 if (hasNextId) {
                     System.out.println("This server has already generated a next identity");
@@ -83,8 +88,10 @@ public class ServerIdentity extends Builder {
         long ttlNanos = years * 365L * 24 * 3600 * 1000_000_000;
         ResolutionRecord ipnsValue = new ResolutionRecord(host,
                 moved, Optional.empty(), sequence);
-        byte[] value = ipnsValue.serialize();
-        return IPNS.createSignedRecord(value, expiry, sequence, ttlNanos, peerPrivate);
+        byte[] rr = ipnsValue.serialize();
+        Cid staticValue = new Cid(1, Cid.Codec.Raw, Multihash.Type.id, new byte[0]);
+        byte[] value = staticValue.toBytes();
+        return IPNS.createSignedRecord(value, expiry, sequence, ttlNanos, Optional.of(IpnsEntry.RESOLUTION_RECORD_IPNS_SUFFIX), Optional.of(org.peergos.cbor.CborObject.fromByteArray(rr)), peerPrivate);
     }
 
     public static PrivKey generateNextIdentity(String password, PeerId current, Crypto crypto) {
@@ -123,8 +130,9 @@ public class ServerIdentity extends Builder {
                         currentRecord);
                 if (ipnsMapping.isEmpty())
                     throw new IllegalStateException("Invalid record!");
-                ResolutionRecord res = ResolutionRecord.fromCbor(CborObject.fromByteArray(ipnsMapping.get().value.value));
+                IpnsEntry ipnsEntry = new IpnsEntry(ipnsMapping.get().getSignature(), ipnsMapping.get().getData());
                 Crypto crypto = Main.initCrypto();
+                ResolutionRecord res = ipnsEntry.getValue(Multihash.decode(ipnsMapping.get().publisher.toBytes()), crypto).join();
                 PrivKey nextPriv;
                 if (res.host.isPresent()) {
                     // require password to regenerate next identity
