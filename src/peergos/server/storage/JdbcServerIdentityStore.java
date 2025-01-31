@@ -133,15 +133,6 @@ public class JdbcServerIdentityStore implements ServerIdentityStore {
         }
     }
 
-    public ResolutionRecord getValue(IpnsEntry entry) {
-        CborObject cbor = CborObject.fromByteArray(entry.data);
-        if (! (cbor instanceof CborObject.CborMap))
-            throw new IllegalStateException("Invalid cbor for IpnsEntry!");
-        CborObject.CborMap map = (CborObject.CborMap) cbor;
-        String RRKey = "_" + RESOLUTION_RECORD_IPNS_SUFFIX;
-        return ResolutionRecord.fromCbor(map.containsKey(RRKey) ? map.get(RRKey) : CborObject.fromByteArray(map.getByteArray("Value")));
-    }
-
     @Override
     public void setRecord(PeerId peerId, byte[] newRecord) {
         byte[] currentRaw = getRecord(peerId);
@@ -150,8 +141,8 @@ public class JdbcServerIdentityStore implements ServerIdentityStore {
             Ipns.IpnsEntry newEntry = Ipns.IpnsEntry.parseFrom(newRecord);
             IpnsEntry existing = new IpnsEntry(currentEntry.getSignatureV2().toByteArray(), currentEntry.getData().toByteArray());
             IpnsEntry updated = new IpnsEntry(newEntry.getSignatureV2().toByteArray(), newEntry.getData().toByteArray());
-            ResolutionRecord existingValue = getValue(existing);
-            ResolutionRecord updatedValue = getValue(updated);
+            ResolutionRecord existingValue = existing.getValue();
+            ResolutionRecord updatedValue = updated.getValue();
 
             if (updatedValue.sequence != newEntry.getSequence())
                 throw new IllegalStateException("Non matching sequence!");

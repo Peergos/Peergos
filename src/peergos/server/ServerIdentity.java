@@ -46,7 +46,8 @@ public class ServerIdentity extends Builder {
                         currentRecord);
                 if (ipnsMapping.isEmpty())
                     throw new IllegalStateException("Invalid record!");
-                ResolutionRecord res = ResolutionRecord.fromCbor(CborObject.fromByteArray(ipnsMapping.get().value.value));
+                IpnsEntry entry = new IpnsEntry(ipnsMapping.get().getSignature(), ipnsMapping.get().getData());
+                ResolutionRecord res = entry.getValue();
                 boolean hasNextId = res.host.isPresent();
                 if (hasNextId) {
                     System.out.println("This server has already generated a next identity");
@@ -129,13 +130,7 @@ public class ServerIdentity extends Builder {
                         currentRecord);
                 if (ipnsMapping.isEmpty())
                     throw new IllegalStateException("Invalid record!");
-                Ipns.IpnsEntry entry;
-                try {
-                    entry = Ipns.IpnsEntry.parseFrom(ByteBuffer.wrap(ipnsMapping.get().value.raw));
-                } catch (InvalidProtocolBufferException e) {
-                    throw new RuntimeException(e);
-                }
-                IpnsEntry ipnsEntry = new IpnsEntry(entry.getSignatureV2().toByteArray(), entry.getData().toByteArray());
+                IpnsEntry ipnsEntry = new IpnsEntry(ipnsMapping.get().getSignature(), ipnsMapping.get().getData());
                 Crypto crypto = Main.initCrypto();
                 ResolutionRecord res = ipnsEntry.getValue(Multihash.decode(ipnsMapping.get().publisher.toBytes()), crypto).join();
                 PrivKey nextPriv;

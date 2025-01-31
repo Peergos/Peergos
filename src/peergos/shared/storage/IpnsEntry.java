@@ -27,13 +27,7 @@ public class IpnsEntry {
     }
 
     public CompletableFuture<ResolutionRecord> getValue(Multihash signer, peergos.shared.Crypto crypto) {
-        CborObject cbor = CborObject.fromByteArray(data);
-        if (! (cbor instanceof CborObject.CborMap))
-            throw new IllegalStateException("Invalid cbor for IpnsEntry!");
-        CborObject.CborMap map = (CborObject.CborMap) cbor;
-        String RRKey = "_" + RESOLUTION_RECORD_IPNS_SUFFIX;
-        // support legacy records that put the RR in the value, this can be removed in the future
-        ResolutionRecord result = ResolutionRecord.fromCbor(map.containsKey(RRKey) ? map.get(RRKey) : CborObject.fromByteArray(map.getByteArray("Value")));
+        ResolutionRecord result = getValue();
         // hard code legacy RSA rotations to avoid an RSA implementation in client
         if (signer.equals(Multihash.fromBase58("QmPqn9a1tJLpMtaCz1DSQNMAfsv6qXEx6XU2eLMTc2DVV4")) &&
                 result.moved && result.host.isPresent() &&
@@ -44,6 +38,16 @@ public class IpnsEntry {
                 result.host.get().equals(Multihash.fromBase58("12D3KooWFv6ZcoUKyaDBB7nR5SQg6HpmEbDXad48WyFSyEk7xrSR")))
             return Futures.of(result);
         return verifySignature(signer, crypto).thenApply(x -> result);
+    }
+
+    public ResolutionRecord getValue() {
+        CborObject cbor = CborObject.fromByteArray(data);
+        if (! (cbor instanceof CborObject.CborMap))
+            throw new IllegalStateException("Invalid cbor for IpnsEntry!");
+        CborObject.CborMap map = (CborObject.CborMap) cbor;
+        String RRKey = "_" + RESOLUTION_RECORD_IPNS_SUFFIX;
+        // support legacy records that put the RR in the value, this can be removed in the future
+        return ResolutionRecord.fromCbor(map.containsKey(RRKey) ? map.get(RRKey) : CborObject.fromByteArray(map.getByteArray("Value")));
     }
 
     public long getIpnsSequence() {
