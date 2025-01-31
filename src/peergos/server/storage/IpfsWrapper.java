@@ -343,11 +343,12 @@ public class IpfsWrapper implements AutoCloseable {
                                 ResolutionRecord currentRR = entry.getValue();
                                 long newSequence = currentRR.sequence + 1;
                                 byte[] privPb = ids.getPrivateKey(id);
-                                PrivKey priv = KeyKt.unmarshalPrivateKey(privPb);
+                                PrivKey priv;
                                 // handle current peer key being supplied on command line
-                                if (priv == null && id.equals(embeddedIpfs.node.getPeerId())) {
+                                if (privPb == null && id.equals(embeddedIpfs.node.getPeerId())) {
                                     priv = embeddedIpfs.node.getPrivKey();
-                                }
+                                } else
+                                    priv = KeyKt.unmarshalPrivateKey(privPb);
                                 byte[] newRecord = ServerIdentity.generateSignedIpnsRecord(priv, currentRR.host, currentRR.moved, newSequence);
                                 IPNS.parseAndValidateIpnsEntry(ipnsKey, newRecord).get();
                                 ids.setRecord(id, newRecord);
