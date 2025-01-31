@@ -89,7 +89,7 @@ public class ServerIdentity extends Builder {
         ResolutionRecord ipnsValue = new ResolutionRecord(host,
                 moved, Optional.empty(), sequence);
         byte[] rr = ipnsValue.serialize();
-        return IPNS.createSignedRecord("bafkqaaa".getBytes(StandardCharsets.UTF_8), expiry, sequence, ttlNanos,
+        return IPNS.createSignedRecord("/ipfs/bafkqaaa".getBytes(StandardCharsets.UTF_8), expiry, sequence, ttlNanos,
                 Optional.of(IpnsEntry.RESOLUTION_RECORD_IPNS_SUFFIX), Optional.of(org.peergos.cbor.CborObject.fromByteArray(rr)), peerPrivate);
     }
 
