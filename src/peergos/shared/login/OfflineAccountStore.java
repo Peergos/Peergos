@@ -47,7 +47,8 @@ public class OfflineAccountStore implements Account {
                                         local.removeLoginData(username);
                                     res.complete(login);
                                 }).exceptionally(t -> {
-                                    res.completeExceptionally(t);
+                                    if (! res.isDone())
+                                        res.completeExceptionally(t);
                                     return null;
                                 });
                         local.getEntryData(username, authorisedReader)
