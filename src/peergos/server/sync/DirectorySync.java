@@ -462,7 +462,7 @@ public class DirectorySync {
                     syncedVersions.add(renamed);
                 }
             }
-        } else {
+        } else { // synced != null
             if (synced.equals(local)) { // remote change only
                 if (remote == null) { // deletion or rename
                     List<FileState> byHash = remoteTree.byHash(local.hashTree.rootHash);
@@ -547,6 +547,16 @@ public class DirectorySync {
                     throw new IllegalStateException("Not enough free space to sync and keep " + minPercentFree + "% free");
                 // if local and remote are the same, update sync and return
                 if (local.equals(remote)) {
+                    syncedVersions.add(local);
+                } else if (synced.hashTree.rootHash.equals(remote.hashTree.rootHash)) {
+                    // synced content is same as remote, so just a local change
+                    log("Sync Remote: Copying changes to " + local.relPath);
+                    List<Pair<Long, Long>> diffs = local.diffRanges(remote);
+                    List<CopyOp> ops = diffs.stream()
+                            .map(d -> new CopyOp(false, localDir.resolve(local.relPath), remoteDir.resolve(local.relPath), local, remote, d.left, d.right))
+                            .collect(Collectors.toList());
+                    copyFileDiffAndTruncate(localFs, remoteFs, ops, syncedVersions);
+                    remoteFs.setHash(remoteDir.resolve(local.relPath), local.hashTree, local.size);
                     syncedVersions.add(local);
                 } else {
                     log("Sync Remote: Concurrent change: " + local.relPath + " renaming local version");
