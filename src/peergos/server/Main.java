@@ -27,6 +27,7 @@ import peergos.shared.crypto.password.*;
 import peergos.shared.io.ipfs.Cid;
 import peergos.shared.io.ipfs.MultiAddress;
 import peergos.shared.io.ipfs.Multihash;
+import peergos.shared.login.OfflineAccountStore;
 import peergos.shared.login.mfa.*;
 import peergos.shared.mutable.*;
 import peergos.shared.social.*;
@@ -37,12 +38,14 @@ import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
 import peergos.shared.util.*;
 
+import java.awt.*;
 import java.io.*;
 import java.net.*;
 import java.nio.file.*;
 import java.sql.*;
 import java.time.*;
 import java.util.*;
+import java.util.List;
 import java.util.concurrent.*;
 import java.util.function.*;
 import java.util.logging.*;
@@ -555,6 +558,59 @@ public class Main extends Builder {
             )
     );
 
+    public static final Command<Void> PROXY = new Command<>("proxy",
+            "Run a local proxy to a peergos server. \n" +
+                    "This allows you to get the security and caching benefits of localhost, " +
+                    "without running a daemon which exposes your IP address. ",
+            a -> {
+                try {
+                    Crypto crypto = JavaCrypto.init();
+                    NetworkAccess net = Builder.buildJavaNetworkAccess(new URL(a.getArg("peergos-url", "https://peergos.net")), true).join();
+                    FileBlockCache blockCache = new FileBlockCache(a.getPeergosDir().resolve(Paths.get("blocks", "cache")),
+                            10*1024*1024*1024L);
+                    ContentAddressedStorage locallyCachedStorage = new UnauthedCachingStorage(net.dhtClient, blockCache, crypto.hasher);
+                    DirectOnlyStorage withoutS3 = new DirectOnlyStorage(locallyCachedStorage);
+
+                    Supplier<Connection> dbConnector = Builder.getDBConnector(a, "mutable-pointers-cache");
+                    JdbcIpnsAndSocial rawPointers = Builder.buildRawPointers(a, dbConnector);
+                    OnlineState online = new OnlineState(() -> Futures.of(true));
+                    OfflinePointerCache pointerCache = new OfflinePointerCache(net.mutable, new JdbcPointerCache(rawPointers, locallyCachedStorage), online);
+
+                    SqlSupplier commands = Builder.getSqlCommands(a);
+                    OfflineCorenode offlineCorenode = new OfflineCorenode(net.coreNode, new JdbcPkiCache(Builder.getDBConnector(a, "pki-cache-sql-file", dbConnector), commands), online);
+
+                    Origin origin = new Origin("http://localhost:8000");
+                    JdbcAccount localAccount = new JdbcAccount(Builder.getDBConnector(a, "account-cache-sql-file", dbConnector), commands, origin, "localhost");
+                    OfflineAccountStore offlineAccounts = new OfflineAccountStore(net.account, localAccount, online);
+
+                    OfflineBatCache offlineBats = new OfflineBatCache(net.batCave, new JdbcBatCave(Builder.getDBConnector(a, "bat-cache-sql-file", dbConnector), commands));
+
+                    UserService server = new UserService(withoutS3, offlineBats, crypto, offlineCorenode, offlineAccounts,
+                            net.social, pointerCache, net.instanceAdmin, net.spaceUsage, net.serverMessager, null);
+
+                    InetSocketAddress localAPIAddress = new InetSocketAddress("localhost", a.getInt("port", 8000));
+                    List<String> appSubdomains = Arrays.asList("markup-viewer,email,calendar,todo-board,code-editor,pdf".split(","));
+                    Cid nodeId = net.dhtClient.id().join();
+                    int connectionBacklog = 50;
+                    int handlerPoolSize = 4;
+                    server.initAndStart(localAPIAddress, Arrays.asList(nodeId), Optional.empty(), Optional.empty(),
+                            Collections.emptyList(), Collections.emptyList(), appSubdomains, true,
+                            Optional.empty(), Optional.empty(), Optional.empty(), true, false,
+                            connectionBacklog, handlerPoolSize);
+                    return null;
+                } catch (IOException e) {
+                    throw new IllegalStateException(e);
+                }
+            },
+            Arrays.asList(
+                    new Command.Arg("mutable-pointers-cache", "The filename for the mutable pointers cache", true, "pointer-cache.sqlite"),
+                    new Command.Arg("account-cache-sql-file", "The filename for the account cache", true, "account-cache.sqlite"),
+                    new Command.Arg("pki-cache-sql-file", "The filename for the pki cache", true, "pki-cache.sqlite"),
+                    new Command.Arg("bat-cache-sql-file", "The filename for the bat cache", true, "bat-cache.sqlite")
+            ),
+            Collections.emptyList()
+    );
+
     public static ServerProcesses startPeergos(Args a) {
         try {
             Crypto crypto = initCrypto();
@@ -947,6 +1003,16 @@ public class Main extends Builder {
                     VERSION.main(args);
                 } else
                     System.out.println("Run with -help to show options");
+
+                // By default we run a proxy instance and open it in the browser
+                PROXY.main(args);
+                if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.BROWSE)) {
+                    try {
+                        Desktop.getDesktop().browse(new URI("http://localhost:" + args.getInt("port", 8000)));
+                    } catch (URISyntaxException | IOException e) {
+                        throw new RuntimeException(e);
+                    }
+                }
                 return null;
             },
             Collections.emptyList(),
@@ -965,6 +1031,7 @@ public class Main extends Builder {
                     MIGRATE,
                     VERSION,
                     IDENTITY,
+                    PROXY,
                     PKI,
                     PKI_INIT,
                     IPFS
