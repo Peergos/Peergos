@@ -617,6 +617,8 @@ public class Main extends Builder {
                 }
             },
             Arrays.asList(
+                    new Command.Arg("peergos-url", "Address of the Peergos server", false, "https://peergos.net"),
+                    new Command.Arg("port", "Localhost server port", false, "8000"),
                     new Command.Arg("mutable-pointers-cache", "The filename for the mutable pointers cache", true, "pointer-cache.sqlite"),
                     new Command.Arg("account-cache-sql-file", "The filename for the account cache", true, "account-cache.sqlite"),
                     new Command.Arg("pki-cache-sql-file", "The filename for the pki cache", true, "pki-cache.sqlite"),
