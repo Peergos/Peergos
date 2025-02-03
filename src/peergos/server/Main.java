@@ -3,6 +3,7 @@ package peergos.server;
 import com.webauthn4j.data.client.*;
 import org.eclipse.jetty.server.Server;
 import peergos.server.cli.CLI;
+import peergos.server.crypto.hash.ScryptJava;
 import peergos.server.login.*;
 import peergos.server.messages.*;
 import peergos.server.space.*;
@@ -1004,16 +1005,28 @@ public class Main extends Builder {
                 } else
                     System.out.println("Run with -help to show options");
 
-                // By default we run a proxy instance and open it in the browser
-                PROXY.main(args);
-                if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.BROWSE)) {
+                try {
+                    // By default we run a proxy instance and open it in the browser
+                    // Check if proxy is already running
+                    URI api = new URI("http://localhost:" + args.getInt("port", 8000));
+                    JavaPoster poster = new JavaPoster(api.toURL(), false, Optional.empty());
+                    ScryptJava hasher = new ScryptJava();
+                    ContentAddressedStorage localDht = NetworkAccess.buildLocalDht(poster, true, hasher);
+                    boolean alreadyRunning = false;
                     try {
-                        Desktop.getDesktop().browse(new URI("http://localhost:" + args.getInt("port", 8000)));
-                    } catch (URISyntaxException | IOException e) {
-                        throw new RuntimeException(e);
+                        localDht.id().join();
+                        alreadyRunning = true;
+                    } catch (Exception e){}
+
+                    if (! alreadyRunning)
+                        PROXY.main(args);
+                    if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.BROWSE)) {
+                        Desktop.getDesktop().browse(api);
                     }
+                    return null;
+                } catch (URISyntaxException | IOException e) {
+                    throw new RuntimeException(e);
                 }
-                return null;
             },
             Collections.emptyList(),
             Arrays.asList(
