@@ -566,35 +566,48 @@ public class Main extends Builder {
             a -> {
                 try {
                     Crypto crypto = JavaCrypto.init();
-                    NetworkAccess net = Builder.buildJavaNetworkAccess(new URL(a.getArg("peergos-url", "https://peergos.net")), true).join();
+                    URL target = new URL(a.getArg("peergos-url", "https://peergos.net"));
+                    JavaPoster poster = new JavaPoster(target, true, Optional.empty());
+                    ScryptJava hasher = new ScryptJava();
+                    ContentAddressedStorage localDht = NetworkAccess.buildLocalDht(poster, true, hasher);
+                    CoreNode core = NetworkAccess.buildDirectCorenode(poster);
+                    ContentAddressedStorage s3 = NetworkAccess.buildDirectS3Blockstore(localDht, core, poster, true, hasher).join();
+                    MutablePointersProxy httpMutable = new HttpMutablePointers(poster, poster);
+                    Account account = new HttpAccount(poster, poster);
+
+                    SocialNetworkProxy httpSocial = new HttpSocialNetwork(poster, poster);
+                    SpaceUsageProxy httpUsage = new HttpSpaceUsage(poster, poster);
+                    ServerMessager serverMessager = new ServerMessager.HTTP(poster);
+                    BatCave batCave = new HttpBatCave(poster, poster);
+                    HttpInstanceAdmin admin = new HttpInstanceAdmin(poster);
+
                     FileBlockCache blockCache = new FileBlockCache(a.getPeergosDir().resolve(Paths.get("blocks", "cache")),
                             10*1024*1024*1024L);
-                    ContentAddressedStorage locallyCachedStorage = new UnauthedCachingStorage(net.dhtClient, blockCache, crypto.hasher);
+                    ContentAddressedStorage locallyCachedStorage = new UnauthedCachingStorage(s3, blockCache, crypto.hasher);
                     DirectOnlyStorage withoutS3 = new DirectOnlyStorage(locallyCachedStorage);
 
                     Supplier<Connection> dbConnector = Builder.getDBConnector(a, "mutable-pointers-cache");
                     JdbcIpnsAndSocial rawPointers = Builder.buildRawPointers(a, dbConnector);
                     OnlineState online = new OnlineState(() -> Futures.of(true));
-                    OfflinePointerCache pointerCache = new OfflinePointerCache(net.mutable, new JdbcPointerCache(rawPointers, locallyCachedStorage), online);
+                    OfflinePointerCache pointerCache = new OfflinePointerCache(httpMutable, new JdbcPointerCache(rawPointers, locallyCachedStorage), online);
 
                     SqlSupplier commands = Builder.getSqlCommands(a);
-                    OfflineCorenode offlineCorenode = new OfflineCorenode(net.coreNode, new JdbcPkiCache(Builder.getDBConnector(a, "pki-cache-sql-file", dbConnector), commands), online);
+                    OfflineCorenode offlineCorenode = new OfflineCorenode(core, new JdbcPkiCache(Builder.getDBConnector(a, "pki-cache-sql-file", dbConnector), commands), online);
 
                     Origin origin = new Origin("http://localhost:8000");
                     JdbcAccount localAccount = new JdbcAccount(Builder.getDBConnector(a, "account-cache-sql-file", dbConnector), commands, origin, "localhost");
-                    OfflineAccountStore offlineAccounts = new OfflineAccountStore(net.account, localAccount, online);
+                    OfflineAccountStore offlineAccounts = new OfflineAccountStore(account, localAccount, online);
 
-                    OfflineBatCache offlineBats = new OfflineBatCache(net.batCave, new JdbcBatCave(Builder.getDBConnector(a, "bat-cache-sql-file", dbConnector), commands));
+                    OfflineBatCache offlineBats = new OfflineBatCache(batCave, new JdbcBatCave(Builder.getDBConnector(a, "bat-cache-sql-file", dbConnector), commands));
 
                     UserService server = new UserService(withoutS3, offlineBats, crypto, offlineCorenode, offlineAccounts,
-                            net.social, pointerCache, net.instanceAdmin, net.spaceUsage, net.serverMessager, null);
+                            httpSocial, pointerCache, admin, httpUsage, serverMessager, null);
 
                     InetSocketAddress localAPIAddress = new InetSocketAddress("localhost", a.getInt("port", 8000));
                     List<String> appSubdomains = Arrays.asList("markup-viewer,calendar,code-editor,pdf".split(","));
-                    Cid nodeId = net.dhtClient.id().join();
                     int connectionBacklog = 50;
                     int handlerPoolSize = 4;
-                    server.initAndStart(localAPIAddress, Arrays.asList(nodeId), Optional.empty(), Optional.empty(),
+                    server.initAndStart(localAPIAddress, Arrays.asList(), Optional.empty(), Optional.empty(),
                             Collections.emptyList(), Collections.emptyList(), appSubdomains, true,
                             Optional.empty(), Optional.empty(), Optional.empty(), true, false,
                             connectionBacklog, handlerPoolSize);
