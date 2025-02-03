@@ -33,7 +33,8 @@ public class OnlineState {
     }
 
     public boolean isOfflineException(Throwable t) {
-        if (t.toString().contains("ConnectException")) {
+        String err = t.toString();
+        if (err.contains("ConnectException") || err.contains("UnknownHostException")) {
             testedState.set(false);
             return true;
         }
