@@ -1012,6 +1012,20 @@ public class Main extends Builder {
         }
     }
 
+    public static boolean portTaken(int port) {
+        Socket s = null;
+        try {
+            s = new Socket("localhost", port);
+            return false;
+        } catch (Exception e) {
+            return true;
+        } finally {
+            if(s != null)
+                try {s.close();}
+                catch(Exception e){}
+        }
+    }
+
     public static final Command<Void> MAIN = new Command<>("Main",
             "Run a Peergos command",
             args -> {
@@ -1023,15 +1037,23 @@ public class Main extends Builder {
                 try {
                     // By default we run a proxy instance and open it in the browser
                     // Check if proxy is already running
-                    URI api = new URI("http://localhost:" + args.getInt("port", 8000));
+                    int port = args.getInt("port", 8000);
+                    URI api = new URI("http://localhost:" + port);
                     JavaPoster poster = new JavaPoster(api.toURL(), false, Optional.empty());
                     ScryptJava hasher = new ScryptJava();
                     ContentAddressedStorage localDht = NetworkAccess.buildLocalDht(poster, true, hasher);
                     boolean alreadyRunning = false;
                     try {
-                        localDht.id().join();
+                        localDht.ids().join();
                         alreadyRunning = true;
                     } catch (Exception e){}
+
+                    // try another port if something is already listening on 8000
+                    if (! alreadyRunning && portTaken(port)) {
+                        port = new Random().nextInt(8000) + 1025;
+                        args = args.with("port", port + "");
+                        api = new URI("http://localhost:" + port);
+                    }
 
                     if (! alreadyRunning)
                         PROXY.main(args);
