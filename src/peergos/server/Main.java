@@ -618,7 +618,7 @@ public class Main extends Builder {
             },
             Arrays.asList(
                     new Command.Arg("peergos-url", "Address of the Peergos server", false, "https://peergos.net"),
-                    new Command.Arg("port", "Localhost server port", false, "8000"),
+                    new Command.Arg("port", "Localhost server port", false, "7777"),
                     new Command.Arg("mutable-pointers-cache", "The filename for the mutable pointers cache", true, "pointer-cache.sqlite"),
                     new Command.Arg("account-cache-sql-file", "The filename for the account cache", true, "account-cache.sqlite"),
                     new Command.Arg("pki-cache-sql-file", "The filename for the pki cache", true, "pki-cache.sqlite"),
@@ -1037,7 +1037,7 @@ public class Main extends Builder {
                 try {
                     // By default we run a proxy instance and open it in the browser
                     // Check if proxy is already running
-                    int port = args.getInt("port", 8000);
+                    int port = args.getInt("port", 7777);
                     URI api = new URI("http://localhost:" + port);
                     JavaPoster poster = new JavaPoster(api.toURL(), false, Optional.empty());
                     ScryptJava hasher = new ScryptJava();
