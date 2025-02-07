@@ -594,7 +594,8 @@ public class Main extends Builder {
                     SqlSupplier commands = Builder.getSqlCommands(a);
                     OfflineCorenode offlineCorenode = new OfflineCorenode(core, new JdbcPkiCache(Builder.getDBConnector(a, "pki-cache-sql-file", dbConnector), commands), online);
 
-                    Origin origin = new Origin("http://localhost:8000");
+                    int port = a.getInt("port");
+                    Origin origin = new Origin("http://localhost:" + port);
                     JdbcAccount localAccount = new JdbcAccount(Builder.getDBConnector(a, "account-cache-sql-file", dbConnector), commands, origin, "localhost");
                     OfflineAccountStore offlineAccounts = new OfflineAccountStore(account, localAccount, online);
 
@@ -603,7 +604,7 @@ public class Main extends Builder {
                     UserService server = new UserService(withoutS3, offlineBats, crypto, offlineCorenode, offlineAccounts,
                             httpSocial, pointerCache, admin, httpUsage, serverMessager, null);
 
-                    InetSocketAddress localAPIAddress = new InetSocketAddress("localhost", a.getInt("port"));
+                    InetSocketAddress localAPIAddress = new InetSocketAddress("localhost", port);
                     List<String> appSubdomains = Arrays.asList("markup-viewer,calendar,code-editor,pdf".split(","));
                     int connectionBacklog = 50;
                     int handlerPoolSize = 4;
