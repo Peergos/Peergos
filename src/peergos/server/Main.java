@@ -603,7 +603,7 @@ public class Main extends Builder {
                     UserService server = new UserService(withoutS3, offlineBats, crypto, offlineCorenode, offlineAccounts,
                             httpSocial, pointerCache, admin, httpUsage, serverMessager, null);
 
-                    InetSocketAddress localAPIAddress = new InetSocketAddress("localhost", a.getInt("port", 8000));
+                    InetSocketAddress localAPIAddress = new InetSocketAddress("localhost", a.getInt("port"));
                     List<String> appSubdomains = Arrays.asList("markup-viewer,calendar,code-editor,pdf".split(","));
                     int connectionBacklog = 50;
                     int handlerPoolSize = 4;
@@ -618,7 +618,7 @@ public class Main extends Builder {
             },
             Arrays.asList(
                     new Command.Arg("peergos-url", "Address of the Peergos server", false, "https://peergos.net"),
-                    new Command.Arg("port", "Localhost server port", false, "7777"),
+                    new Command.Arg("port", "Localhost server port", true, "7777"),
                     new Command.Arg("mutable-pointers-cache", "The filename for the mutable pointers cache", true, "pointer-cache.sqlite"),
                     new Command.Arg("account-cache-sql-file", "The filename for the account cache", true, "account-cache.sqlite"),
                     new Command.Arg("pki-cache-sql-file", "The filename for the pki cache", true, "pki-cache.sqlite"),
