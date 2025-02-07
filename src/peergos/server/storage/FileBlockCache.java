@@ -60,7 +60,9 @@ public class FileBlockCache implements BlockCache {
             LOG.info("Finished listing file block cache in " + (t1 - t0) / 1000 + "s, total size " + totalSize.get() / 1024 / 1024 + " MiB");
         }
         ForkJoinPool.commonPool().submit(() -> ensureWithinSizeLimit(maxSizeBytes));
-        new Thread(this::sizeCommitter, "FileBlockCache size").start();
+        Thread sizeCommitter = new Thread(this::sizeCommitter, "FileBlockCache size");
+        sizeCommitter.setDaemon(true);
+        sizeCommitter.start();
     }
 
     private void sizeCommitter() {
