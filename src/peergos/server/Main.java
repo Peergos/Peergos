@@ -400,7 +400,7 @@ public class Main extends Builder {
 
     public static final Command<FuseProcess> FUSE = new Command<>("fuse",
             "Mount a Peergos user's filesystem natively\n"+
-                    "Password can be set via an environment variable.",
+                    "            Password can be set via an environment variable.",
             Main::startFuse,
             Stream.of(
                     new Command.Arg("username", "Peergos username", true),
@@ -412,7 +412,7 @@ public class Main extends Builder {
 
     public static final Command<Server> WEBDAV = new Command<>("webdav",
             "Provide a webdav bridge to a Peergos user's filesystem\n" +
-                    "Passwords can be set via environment variables.",
+                    "            Passwords can be set via environment variables.",
             WebdavServer::start,
             Stream.of(
                     new Command.Arg("username", "Peergos username", true),
@@ -561,8 +561,8 @@ public class Main extends Builder {
 
     public static final Command<Void> PROXY = new Command<>("proxy",
             "Run a local proxy to a peergos server. \n" +
-                    "This allows you to get the security and caching benefits of localhost, " +
-                    "without running a daemon which exposes your IP address. ",
+                    "            This allows you to get the security and caching benefits of localhost, \n" +
+                    "            without running a daemon which exposes your IP address. ",
             a -> {
                 try {
                     Crypto crypto = JavaCrypto.init();
