@@ -1012,20 +1012,6 @@ public class Main extends Builder {
         }
     }
 
-    public static boolean portTaken(int port) {
-        Socket s = null;
-        try {
-            s = new Socket("localhost", port);
-            return false;
-        } catch (Exception e) {
-            return true;
-        } finally {
-            if(s != null)
-                try {s.close();}
-                catch(Exception e){}
-        }
-    }
-
     public static final Command<Void> MAIN = new Command<>("Main",
             "Run a Peergos command",
             args -> {
@@ -1048,15 +1034,20 @@ public class Main extends Builder {
                         alreadyRunning = true;
                     } catch (Exception e){}
 
-                    // try another port if something is already listening on 8000
-                    if (! alreadyRunning && portTaken(port)) {
-                        port = new Random().nextInt(8000) + 1025;
-                        args = args.with("port", port + "");
-                        api = new URI("http://localhost:" + port);
+                    if (! alreadyRunning) {
+                        try {
+                            PROXY.main(args);
+                        } catch (IllegalStateException e) {
+                            if (e.getCause() instanceof BindException) {
+                                // try another port if something is already listening on 7777
+                                port = 7007;
+                                args = args.with("port", port + "");
+                                api = new URI("http://localhost:" + port);
+                                PROXY.main(args);
+                            } else
+                                throw e;
+                        }
                     }
-
-                    if (! alreadyRunning)
-                        PROXY.main(args);
                     if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.BROWSE)) {
                         Desktop.getDesktop().browse(api);
                     }
