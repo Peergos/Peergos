@@ -712,6 +712,11 @@ public class UserContext {
     }
 
     @JsMethod
+    public CompletableFuture<String> getLinkHost() {
+        return network.dhtClient.domain(signer.publicKeyHash);
+    }
+
+    @JsMethod
     public CompletableFuture<LinkProperties> createSecretLink(String filePath,
                                                               boolean isWritable,
                                                               Optional<LocalDateTime> expiry,
