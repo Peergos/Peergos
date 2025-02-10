@@ -78,7 +78,19 @@ public class FuseTests {
         return new String(Serialize.readFully(p.getInputStream())).trim();
     }
 
-    @Test public void createFileTest() throws IOException  {
+    @Test
+    public void globalRoot() throws IOException  {
+        if (isWindows() || isMacos())
+            return;
+        Path root = home;
+        assertTrue(root.toFile().length() >= 0);
+        assertTrue(root.toFile().lastModified() >= 0);
+        File[] listing = root.toFile().listFiles();
+        assertNotNull(listing);
+    }
+
+    @Test
+    public void createFileTest() throws IOException  {
         if (isWindows() || isMacos())
             return;
         Path resolve = home.resolve(UUID.randomUUID().toString());
