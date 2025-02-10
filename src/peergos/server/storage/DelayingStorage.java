@@ -39,8 +39,8 @@ public class DelayingStorage implements ContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<String> domain(PublicKeyHash owner) {
-        return source.domain(owner);
+    public CompletableFuture<String> linkHost(PublicKeyHash owner) {
+        return source.linkHost(owner);
     }
 
     @Override

@@ -46,7 +46,7 @@ public class TransactionalIpfs extends DelegatingDeletableStorage {
     }
 
     @Override
-    public CompletableFuture<String> domain(PublicKeyHash owner) {
+    public CompletableFuture<String> linkHost(PublicKeyHash owner) {
         return Futures.of(domain);
     }
 

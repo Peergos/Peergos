@@ -67,7 +67,7 @@ public class FileContentAddressedStorage implements DeletableContentAddressedSto
     }
 
     @Override
-    public CompletableFuture<String> domain(PublicKeyHash owner) {
+    public CompletableFuture<String> linkHost(PublicKeyHash owner) {
         return Futures.of("localhost:8000");
     }
 

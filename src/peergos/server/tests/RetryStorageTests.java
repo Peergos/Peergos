@@ -53,7 +53,7 @@ public class RetryStorageTests {
         }
 
         @Override
-        public CompletableFuture<String> domain(PublicKeyHash owner) {
+        public CompletableFuture<String> linkHost(PublicKeyHash owner) {
             return Futures.of("localhost");
         }
 

@@ -713,7 +713,7 @@ public class UserContext {
 
     @JsMethod
     public CompletableFuture<String> getLinkHost() {
-        return network.dhtClient.domain(signer.publicKeyHash);
+        return network.dhtClient.linkHost(signer.publicKeyHash);
     }
 
     @JsMethod

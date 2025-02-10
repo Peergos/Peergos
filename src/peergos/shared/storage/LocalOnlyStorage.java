@@ -45,7 +45,7 @@ public class LocalOnlyStorage implements ContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<String> domain(PublicKeyHash owner) {
+    public CompletableFuture<String> linkHost(PublicKeyHash owner) {
         throw new IllegalStateException("Unimplemented!");
     }
 

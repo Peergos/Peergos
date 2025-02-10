@@ -98,8 +98,8 @@ public class DelegatingDeletableStorage implements DeletableContentAddressedStor
     }
 
     @Override
-    public CompletableFuture<String> domain(PublicKeyHash owner) {
-        return target.domain(owner);
+    public CompletableFuture<String> linkHost(PublicKeyHash owner) {
+        return target.linkHost(owner);
     }
 
     @Override

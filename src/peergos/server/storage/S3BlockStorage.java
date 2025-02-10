@@ -267,7 +267,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<String> domain(PublicKeyHash owner) {
+    public CompletableFuture<String> linkHost(PublicKeyHash owner) {
         return Futures.of(domain);
     }
 
