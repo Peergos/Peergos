@@ -98,6 +98,11 @@ public class DelegatingDeletableStorage implements DeletableContentAddressedStor
     }
 
     @Override
+    public CompletableFuture<String> domain(PublicKeyHash owner) {
+        return target.domain(owner);
+    }
+
+    @Override
     public void clearBlockCache() {
         target.clearBlockCache();
     }

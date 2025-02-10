@@ -96,6 +96,11 @@ public class RetryStorage implements ContentAddressedStorage {
     }
 
     @Override
+    public CompletableFuture<String> domain(PublicKeyHash owner) {
+        return runWithRetry(() -> target.domain(owner));
+    }
+
+    @Override
     public CompletableFuture<TransactionId> startTransaction(PublicKeyHash owner) {
         return runWithRetry(() -> target.startTransaction(owner));
     }

@@ -33,6 +33,8 @@ public interface ContentAddressedStorage {
         return Futures.of(BlockStoreProperties.empty());
     }
 
+    CompletableFuture<String> domain(PublicKeyHash owner);
+
     /**
      *  Clear any block caches
      */
@@ -269,6 +271,7 @@ public interface ContentAddressedStorage {
         public static final String apiPrefix = "api/v0/";
         public static final String ID = "id";
         public static final String IDS = "ids";
+        public static final String DOMAIN = "domain";
         public static final String BLOCKSTORE_PROPERTIES = "blockstore/props";
         public static final String AUTH_READS = "blockstore/auth-reads";
         public static final String AUTH_WRITES = "blockstore/auth";
@@ -339,6 +342,14 @@ public interface ContentAddressedStorage {
                             .stream()
                             .map(Cid::decodePeerId)
                             .collect(Collectors.toList()));
+        }
+
+        @Override
+        public CompletableFuture<String> domain(PublicKeyHash owner) {
+            if (! isPeergosServer)
+                return Futures.of("localhost");
+            return poster.get(apiPrefix + DOMAIN + "?owner=" + encode(owner.toString()))
+                    .thenApply(raw -> new String(raw));
         }
 
         @Override
@@ -609,6 +620,15 @@ public interface ContentAddressedStorage {
         @Override
         public CompletableFuture<BlockStoreProperties> blockStoreProperties() {
             return local.blockStoreProperties();
+        }
+
+        @Override
+        public CompletableFuture<String> domain(PublicKeyHash owner) {
+            return Proxy.redirectCall(core,
+                    ourNodeIds,
+                    owner,
+                    () -> local.domain(owner),
+                    target -> p2p.domain(target, owner));
         }
 
         @Override

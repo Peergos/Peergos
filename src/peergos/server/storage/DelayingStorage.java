@@ -39,6 +39,11 @@ public class DelayingStorage implements ContentAddressedStorage {
     }
 
     @Override
+    public CompletableFuture<String> domain(PublicKeyHash owner) {
+        return source.domain(owner);
+    }
+
+    @Override
     public CompletableFuture<TransactionId> startTransaction(PublicKeyHash owner) {
         sleep(writeDelay);
         return source.startTransaction(owner);

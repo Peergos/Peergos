@@ -1,4 +1,5 @@
 package peergos.server.net;
+import java.nio.charset.StandardCharsets;
 import java.time.*;
 import java.util.function.Supplier;
 import java.util.logging.*;
@@ -81,6 +82,12 @@ public class StorageHandler implements HttpHandler {
                 case BLOCKSTORE_PROPERTIES: {
                     dht.blockStoreProperties().thenAccept(p -> {
                         replyBytes(httpExchange, p.serialize(), Optional.empty());
+                    }).exceptionally(Futures::logAndThrow).get();
+                    break;
+                }
+                case DOMAIN: {
+                    dht.domain(ownerHash.get()).thenAccept(p -> {
+                        replyJson(httpExchange, p, Optional.empty());
                     }).exceptionally(Futures::logAndThrow).get();
                     break;
                 }

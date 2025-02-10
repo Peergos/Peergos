@@ -21,6 +21,7 @@ public class TransactionalIpfs extends DelegatingDeletableStorage {
     private final TransactionStore transactions;
     private final BlockRequestAuthoriser authoriser;
     private final Cid id;
+    private final String domain;
     private final Hasher hasher;
     private CoreNode pki;
 
@@ -28,18 +29,25 @@ public class TransactionalIpfs extends DelegatingDeletableStorage {
                              TransactionStore transactions,
                              BlockRequestAuthoriser authoriser,
                              Cid id,
+                             String domain,
                              Hasher hasher) {
         super(target);
         this.target = target;
         this.transactions = transactions;
         this.authoriser = authoriser;
         this.id = id;
+        this.domain = domain;
         this.hasher = hasher;
     }
 
     @Override
     public CompletableFuture<Cid> id() {
         return Futures.of(id);
+    }
+
+    @Override
+    public CompletableFuture<String> domain(PublicKeyHash owner) {
+        return Futures.of(domain);
     }
 
     @Override

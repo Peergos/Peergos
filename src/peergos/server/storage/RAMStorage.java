@@ -49,6 +49,11 @@ public class RAMStorage implements DeletableContentAddressedStorage {
     }
 
     @Override
+    public CompletableFuture<String> domain(PublicKeyHash owner) {
+        return Futures.of("localhost");
+    }
+
+    @Override
     public CompletableFuture<TransactionId> startTransaction(PublicKeyHash owner) {
         TransactionId tid = new TransactionId(Long.toString(System.currentTimeMillis()));
         openTransactions.put(tid, new ArrayList<>());

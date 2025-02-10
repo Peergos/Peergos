@@ -20,6 +20,8 @@ import java.util.stream.*;
 
 public interface ContentAddressedStorageProxy {
 
+    CompletableFuture<String> domain(Multihash targetServerId, PublicKeyHash owner);
+
     CompletableFuture<TransactionId> startTransaction(Multihash targetServerId, PublicKeyHash owner);
 
     CompletableFuture<Boolean> closeTransaction(Multihash targetServerId, PublicKeyHash owner, TransactionId tid);
@@ -73,6 +75,14 @@ public interface ContentAddressedStorageProxy {
 
         private static String getProxyUrlPrefix(Multihash targetId) {
             return "/p2p/" + targetId.toString() + P2P_PROXY_PROTOCOL + "/";
+        }
+
+        @Override
+        public CompletableFuture<String> domain(Multihash targetServerId,
+                                                PublicKeyHash owner) {
+            return poster.get(getProxyUrlPrefix(targetServerId) + apiPrefix
+                            + "domain" + "?owner=" + encode(owner.toString()))
+                    .thenApply(raw -> new String(raw));
         }
 
         @Override

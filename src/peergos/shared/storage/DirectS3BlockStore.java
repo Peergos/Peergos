@@ -56,6 +56,11 @@ public class DirectS3BlockStore implements ContentAddressedStorage {
     }
 
     @Override
+    public CompletableFuture<String> domain(PublicKeyHash owner) {
+        throw new IllegalStateException("TODO");
+    }
+
+    @Override
     public ContentAddressedStorage directToOrigin() {
         return fallback;
     }
