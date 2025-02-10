@@ -119,7 +119,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
     private final boolean useHttps;
     private final String accessKeyId, secretKey;
     private final BlockStoreProperties props;
-    private final String domain;
+    private final String linkHost;
     private final TransactionStore transactions;
     private final BlockRequestAuthoriser authoriser;
     private final BlockMetadataStore blockMetadata;
@@ -135,7 +135,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
     public S3BlockStorage(S3Config config,
                           List<Cid> ids,
                           BlockStoreProperties props,
-                          String domain,
+                          String linkHost,
                           TransactionStore transactions,
                           BlockRequestAuthoriser authoriser,
                           BlockMetadataStore blockMetadata,
@@ -158,7 +158,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         LOG.info("Using S3 Block Storage at " + config.regionEndpoint + ", bucket " + config.bucket
                 + ", path: " + config.path + ", p2p-get peerid: " + p2pGetId);
         this.props = props;
-        this.domain = domain;
+        this.linkHost = linkHost;
         this.transactions = transactions;
         this.authoriser = authoriser;
         this.blockMetadata = blockMetadata;
@@ -268,7 +268,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
 
     @Override
     public CompletableFuture<String> linkHost(PublicKeyHash owner) {
-        return Futures.of(domain);
+        return Futures.of(linkHost);
     }
 
     @Override

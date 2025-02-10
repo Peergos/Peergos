@@ -628,7 +628,7 @@ public interface ContentAddressedStorage {
                     ourNodeIds,
                     owner,
                     () -> local.linkHost(owner),
-                    target -> p2p.domain(target, owner));
+                    target -> p2p.linkHost(target, owner));
         }
 
         @Override

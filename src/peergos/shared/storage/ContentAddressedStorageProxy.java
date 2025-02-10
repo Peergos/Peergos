@@ -1,7 +1,6 @@
 package peergos.shared.storage;
 
 import peergos.shared.cbor.*;
-import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.Cid;
 import peergos.shared.io.ipfs.Multihash;
@@ -20,7 +19,7 @@ import java.util.stream.*;
 
 public interface ContentAddressedStorageProxy {
 
-    CompletableFuture<String> domain(Multihash targetServerId, PublicKeyHash owner);
+    CompletableFuture<String> linkHost(Multihash targetServerId, PublicKeyHash owner);
 
     CompletableFuture<TransactionId> startTransaction(Multihash targetServerId, PublicKeyHash owner);
 
@@ -78,10 +77,10 @@ public interface ContentAddressedStorageProxy {
         }
 
         @Override
-        public CompletableFuture<String> domain(Multihash targetServerId,
-                                                PublicKeyHash owner) {
+        public CompletableFuture<String> linkHost(Multihash targetServerId,
+                                                  PublicKeyHash owner) {
             return poster.get(getProxyUrlPrefix(targetServerId) + apiPrefix
-                            + "domain" + "?owner=" + encode(owner.toString()))
+                            + ContentAddressedStorage.HTTP.LINK_HOST + "?owner=" + encode(owner.toString()))
                     .thenApply(raw -> new String(raw));
         }
 

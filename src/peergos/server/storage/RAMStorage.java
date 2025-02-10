@@ -50,7 +50,7 @@ public class RAMStorage implements DeletableContentAddressedStorage {
 
     @Override
     public CompletableFuture<String> linkHost(PublicKeyHash owner) {
-        return Futures.of("localhost");
+        return Futures.of("localhost:8000");
     }
 
     @Override
