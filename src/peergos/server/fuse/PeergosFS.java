@@ -68,9 +68,9 @@ public class PeergosFS extends FuseStubFS implements AutoCloseable {
                     FileStat.S_IFDIR | 0755 : FileStat.S_IFREG | 0644;
 
             fileStat.st_mode.set(mode);
-            fileStat.st_size.set(fileProperties.size);
+            fileStat.st_size.set(peergosStat.treeNode.getSize());
 
-            Instant instant = fileProperties.modified.toInstant(ZonedDateTime.now().getOffset());
+            Instant instant = Optional.ofNullable(fileProperties).map(p -> p.modified.toInstant(ZonedDateTime.now().getOffset())).orElse(Instant.EPOCH);
             long epochSecond = instant.getEpochSecond();
             long nanoSeconds = instant.getNano();
 
