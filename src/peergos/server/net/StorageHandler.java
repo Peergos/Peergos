@@ -84,6 +84,12 @@ public class StorageHandler implements HttpHandler {
                     }).exceptionally(Futures::logAndThrow).get();
                     break;
                 }
+                case LINK_HOST: {
+                    dht.linkHost(ownerHash.get()).thenAccept(p -> {
+                        replyJson(httpExchange, p, Optional.empty());
+                    }).exceptionally(Futures::logAndThrow).get();
+                    break;
+                }
                 case AUTH_WRITES: {
                     TransactionId tid = new TransactionId(last.apply("transaction"));
                     PublicKeyHash writerHash = PublicKeyHash.fromString(last.apply("writer"));

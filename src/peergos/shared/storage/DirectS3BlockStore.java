@@ -56,6 +56,11 @@ public class DirectS3BlockStore implements ContentAddressedStorage {
     }
 
     @Override
+    public CompletableFuture<String> linkHost(PublicKeyHash owner) {
+        return fallback.linkHost(owner);
+    }
+
+    @Override
     public ContentAddressedStorage directToOrigin() {
         return fallback;
     }

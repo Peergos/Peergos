@@ -98,6 +98,11 @@ public class DelegatingDeletableStorage implements DeletableContentAddressedStor
     }
 
     @Override
+    public CompletableFuture<String> linkHost(PublicKeyHash owner) {
+        return target.linkHost(owner);
+    }
+
+    @Override
     public void clearBlockCache() {
         target.clearBlockCache();
     }

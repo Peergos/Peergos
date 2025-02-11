@@ -20,14 +20,17 @@ public class AuthedStorage extends DelegatingDeletableStorage {
     private final BlockRequestAuthoriser authoriser;
     private final Hasher h;
     private final Cid ourNodeId;
+    private final String linkHost;
     private CoreNode pki;
 
     public AuthedStorage(DeletableContentAddressedStorage target,
                          BlockRequestAuthoriser authoriser,
+                         String linkHost,
                          Hasher h) {
         super(target);
         this.target = target;
         this.ourNodeId = target.id().join();
+        this.linkHost = linkHost;
         this.authoriser = authoriser;
         this.h = h;
     }
@@ -35,6 +38,11 @@ public class AuthedStorage extends DelegatingDeletableStorage {
     @Override
     public CompletableFuture<Cid> id() {
         return Futures.of(ourNodeId);
+    }
+
+    @Override
+    public CompletableFuture<String> linkHost(PublicKeyHash owner) {
+        return Futures.of(linkHost);
     }
 
     @Override

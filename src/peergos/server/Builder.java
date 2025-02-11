@@ -219,26 +219,27 @@ public class Builder {
         DeletableContentAddressedStorage.HTTP http = new DeletableContentAddressedStorage.HTTP(ipfsApi, false, hasher);
         List<PeerId> ourIds = ids.getIdentities();
         MultiIdStorage ipfs = new MultiIdStorage(http, ourIds);
+        String linkHost = a.getOptionalArg("public-domain").orElseGet(() -> "localhost:" + a.getInt("port"));
         if (useIPFS) {
             if (useS3) {
                 // IPFS is already running separately, we can still use an S3BlockStorage
                 S3Config config = S3Config.build(a, Optional.empty());
                 BlockStoreProperties props = buildS3Properties(a);
-                TransactionalIpfs p2pBlockRetriever = new TransactionalIpfs(ipfs, transactions, authoriser, ipfs.id().join(), hasher);
+                TransactionalIpfs p2pBlockRetriever = new TransactionalIpfs(ipfs, transactions, authoriser, ipfs.id().join(), linkHost, hasher);
 
                 FileBlockCache cborCache = new FileBlockCache(a.fromPeergosDir("block-cache-dir", "block-cache"), 1024 * 1024 * 1024L);
                 FileBlockBuffer blockBuffer = new FileBlockBuffer(a.fromPeergosDir("s3-block-buffer-dir", "block-buffer"));
-                S3BlockStorage s3 = new S3BlockStorage(config, ipfs.ids().join(), props, transactions, authoriser,
+                S3BlockStorage s3 = new S3BlockStorage(config, ipfs.ids().join(), props, linkHost, transactions, authoriser,
                         meta, cborCache, blockBuffer, hasher, p2pBlockRetriever, ipfs);
                 s3.updateMetadataStoreIfEmpty();
                 return new LocalIpnsStorage(s3, ids);
             } else if (enableGC) {
-                TransactionalIpfs txns = new TransactionalIpfs(ipfs, transactions, authoriser, ipfs.id().join(), hasher);
+                TransactionalIpfs txns = new TransactionalIpfs(ipfs, transactions, authoriser, ipfs.id().join(), linkHost, hasher);
                 MetadataCachingStorage metabs = new MetadataCachingStorage(txns, meta, hasher);
                 metabs.updateMetadataStoreIfEmpty();
                 return new LocalIpnsStorage(metabs, ids);
             } else {
-                AuthedStorage target = new AuthedStorage(ipfs, authoriser, hasher);
+                AuthedStorage target = new AuthedStorage(ipfs, authoriser, linkHost, hasher);
                 MetadataCachingStorage metabs = new MetadataCachingStorage(target, meta, hasher);
                 metabs.updateMetadataStoreIfEmpty();
                 return new LocalIpnsStorage(metabs, ids);
@@ -248,7 +249,7 @@ public class Builder {
             if (useS3) {
                 if (enableGC)
                     throw new IllegalStateException("GC should be run separately when using S3!");
-                TransactionalIpfs p2pBlockRetriever = new TransactionalIpfs(http, transactions, authoriser, http.id().join(), hasher);
+                TransactionalIpfs p2pBlockRetriever = new TransactionalIpfs(http, transactions, authoriser, http.id().join(), linkHost, hasher);
                 S3Config config = S3Config.build(a, Optional.empty());
                 BlockStoreProperties props = buildS3Properties(a);
 
@@ -257,7 +258,7 @@ public class Builder {
 
                 FileBlockCache cborCache = new FileBlockCache(a.fromPeergosDir("block-cache-dir", "block-cache"), 10 * 1024 * 1024 * 1024L);
                 FileBlockBuffer blockBuffer = new FileBlockBuffer(a.fromPeergosDir("s3-block-buffer-dir", "block-buffer"));
-                S3BlockStorage s3 = new S3BlockStorage(config, ipfs.ids().join(), props, transactions, authoriser,
+                S3BlockStorage s3 = new S3BlockStorage(config, ipfs.ids().join(), props, linkHost, transactions, authoriser,
                         meta, cborCache, blockBuffer, hasher, p2pBlockRetriever, bloomTarget);
                 s3.updateMetadataStoreIfEmpty();
                 return new LocalIpnsStorage(s3, ids);

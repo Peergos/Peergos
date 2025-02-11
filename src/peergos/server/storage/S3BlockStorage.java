@@ -119,6 +119,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
     private final boolean useHttps;
     private final String accessKeyId, secretKey;
     private final BlockStoreProperties props;
+    private final String linkHost;
     private final TransactionStore transactions;
     private final BlockRequestAuthoriser authoriser;
     private final BlockMetadataStore blockMetadata;
@@ -134,6 +135,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
     public S3BlockStorage(S3Config config,
                           List<Cid> ids,
                           BlockStoreProperties props,
+                          String linkHost,
                           TransactionStore transactions,
                           BlockRequestAuthoriser authoriser,
                           BlockMetadataStore blockMetadata,
@@ -156,6 +158,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         LOG.info("Using S3 Block Storage at " + config.regionEndpoint + ", bucket " + config.bucket
                 + ", path: " + config.path + ", p2p-get peerid: " + p2pGetId);
         this.props = props;
+        this.linkHost = linkHost;
         this.transactions = transactions;
         this.authoriser = authoriser;
         this.blockMetadata = blockMetadata;
@@ -261,6 +264,11 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
     @Override
     public CompletableFuture<BlockStoreProperties> blockStoreProperties() {
         return Futures.of(props);
+    }
+
+    @Override
+    public CompletableFuture<String> linkHost(PublicKeyHash owner) {
+        return Futures.of(linkHost);
     }
 
     @Override
@@ -1064,7 +1072,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         BlockRequestAuthoriser authoriser = (c, b, s, auth) -> Futures.of(true);
         BlockMetadataStore meta = Builder.buildBlockMetadata(a);
         S3BlockStorage s3 = new S3BlockStorage(config, List.of(Cid.decode(a.getArg("ipfs.id"))),
-                BlockStoreProperties.empty(), transactions, authoriser, meta,
+                BlockStoreProperties.empty(), "localhost:8000", transactions, authoriser, meta,
                 new RamBlockCache(1024, 100), new FileBlockBuffer(a.fromPeergosDir("s3-block-buffer-dir", "block-buffer")), hasher, new RAMStorage(hasher), new RAMStorage(hasher));
         JdbcIpnsAndSocial rawPointers = new JdbcIpnsAndSocial(database, sqlCommands);
         Supplier<Connection> usageDb = Main.getDBConnector(a, "space-usage-sql-file");

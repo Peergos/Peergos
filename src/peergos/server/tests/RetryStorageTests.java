@@ -11,6 +11,7 @@ import peergos.shared.io.ipfs.Multihash;
 import peergos.shared.storage.*;
 import peergos.shared.storage.auth.*;
 import peergos.shared.user.fs.*;
+import peergos.shared.util.Futures;
 import peergos.shared.util.ProgressConsumer;
 
 import java.time.*;
@@ -49,6 +50,11 @@ public class RetryStorageTests {
                 counter=1;
                 return CompletableFuture.completedFuture(List.of(new Cid(1, Cid.Codec.LibP2pKey, Multihash.Type.sha2_256, new byte[32])));
             }
+        }
+
+        @Override
+        public CompletableFuture<String> linkHost(PublicKeyHash owner) {
+            return Futures.of("localhost");
         }
 
         @Override

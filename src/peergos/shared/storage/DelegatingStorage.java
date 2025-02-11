@@ -26,6 +26,11 @@ public abstract class DelegatingStorage implements ContentAddressedStorage {
     }
 
     @Override
+    public CompletableFuture<String> linkHost(PublicKeyHash owner) {
+        return target.linkHost(owner);
+    }
+
+    @Override
     public void clearBlockCache() {
         target.clearBlockCache();
     }

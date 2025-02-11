@@ -38,6 +38,11 @@ public class NonWriteThroughStorage implements ContentAddressedStorage {
     }
 
     @Override
+    public CompletableFuture<String> linkHost(PublicKeyHash owner) {
+        return source.linkHost(owner);
+    }
+
+    @Override
     public CompletableFuture<TransactionId> startTransaction(PublicKeyHash owner) {
         return modifications.startTransaction(owner);
     }
