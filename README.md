@@ -85,9 +85,16 @@ or a
 
 [larger or one off donation](https://donorbox.org/peergos). 
 
-Audit
+Audits
 -----
-Cure53 conducted an audit of Peergos in June 2019. The final report is [here](https://cure53.de/pentest-report_peergos.pdf).
+### 2024
+https://peergos.org/posts/security-audit-2024
+
+### 2019
+https://peergos.org/posts/security-audit
+
+### All audit reports
+https://github.com/Peergos/Peergos/tree/master/audits
 
 Chat room
 ---------
