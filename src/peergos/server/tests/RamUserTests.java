@@ -269,6 +269,27 @@ public class RamUserTests extends UserTests {
         Assert.assertTrue(usageAfterCleanup < usageAfterDelete);
     }
 
+    @Test
+    public void moveToDescendant() throws Exception {
+        String username = generateUsername();
+        String password = "terriblepassword";
+        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
+        FileWrapper userRoot = context.getUserRoot().join();
+        String parentName = "parent";
+        userRoot.mkdir(parentName, network, false, context.mirrorBatId(), crypto).join();
+        Path parentPath = Paths.get(username, parentName);
+        FileWrapper parent = context.getByPath(parentPath).join().get();
+        String childName = "child";
+        parent.mkdir(childName, network, false, context.mirrorBatId(), crypto).join();
+        parent = context.getByPath(parentPath).join().get();
+        FileWrapper child = context.getByPath(parentPath.resolve(childName)).join().get();
+        try {
+            parent.moveTo(child, parent, parentPath, context, () -> Futures.of(true)).join();
+            throw new RuntimeException("Should fail before here");
+        } catch (CompletionException e) {}
+        context.getByPath(parentPath.resolve(childName)).join().get();
+    }
+
     private static byte[] get(URL target) throws IOException {
         HttpURLConnection conn = (HttpURLConnection) target.openConnection();
         conn.setRequestMethod("GET");
