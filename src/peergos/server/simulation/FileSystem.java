@@ -5,6 +5,7 @@ import peergos.shared.user.fs.*;
 import peergos.shared.user.fs.transaction.*;
 import peergos.shared.util.*;
 
+import java.io.FileNotFoundException;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Random;
@@ -28,6 +29,8 @@ public interface FileSystem {
     String user();
 
     byte[] read(Path path, BiConsumer<Long, Long> progressConsumer);
+
+    AsyncReader reader(Path path) throws FileNotFoundException;
 
     default byte[] read(Path path) {
         return read(path, (a,b) -> {});

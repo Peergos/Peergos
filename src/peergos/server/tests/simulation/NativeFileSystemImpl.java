@@ -1,6 +1,7 @@
 package peergos.server.tests.simulation;
 
 import peergos.server.simulation.AccessControl;
+import peergos.server.simulation.FileAsyncReader;
 import peergos.server.simulation.FileSystem;
 import peergos.server.simulation.Stat;
 import peergos.shared.user.fs.*;
@@ -8,6 +9,7 @@ import peergos.shared.user.fs.transaction.*;
 import peergos.shared.util.*;
 
 import java.io.File;
+import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -76,6 +78,11 @@ public class NativeFileSystemImpl implements FileSystem {
         } catch (IOException ioe) {
             throw new IllegalStateException(ioe);
         }
+    }
+
+    @Override
+    public AsyncReader reader(Path path) throws FileNotFoundException {
+        return new FileAsyncReader(path.toFile());
     }
 
     @Override
