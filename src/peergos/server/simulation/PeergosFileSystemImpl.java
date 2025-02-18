@@ -6,6 +6,7 @@ import peergos.shared.user.fs.*;
 import peergos.shared.user.fs.transaction.*;
 import peergos.shared.util.*;
 
+import java.io.FileNotFoundException;
 import java.nio.file.Path;
 import java.util.*;
 import java.util.concurrent.*;
@@ -46,6 +47,12 @@ public class PeergosFileSystemImpl implements FileSystem {
         ProgressConsumer<Long> monitor = (readBytes) -> progressConsumer.accept(readBytes, size);
         AsyncReader in = wrapper.getInputStream(userContext.network, userContext.crypto, size, 1, monitor).join();
         return Serialize.readFully(in, size).join();
+    }
+
+    @Override
+    public AsyncReader reader(Path path) throws FileNotFoundException {
+        FileWrapper file = getPath(path);
+        return file.getInputStream(userContext.network, userContext.crypto, x -> {}).join();
     }
 
     @Override

@@ -18,8 +18,12 @@ import peergos.server.user.*;
 import peergos.server.util.*;
 import peergos.shared.*;
 import peergos.shared.cbor.*;
+import peergos.shared.corenode.HTTPCoreNode;
 import peergos.shared.login.mfa.*;
+import peergos.shared.mutable.HttpMutablePointers;
 import peergos.shared.social.FollowRequestWithCipherText;
+import peergos.shared.social.HttpSocialNetwork;
+import peergos.shared.storage.HttpSpaceUsage;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
 import peergos.shared.util.*;
@@ -40,6 +44,18 @@ import java.util.stream.*;
 import static org.jline.builtins.Completers.TreeCompleter.node;
 
 public class CLI implements Runnable {
+
+    private static void disableLogSpam() {
+        // disable log spam
+        TrieNodeImpl.disableLog();
+        HttpMutablePointers.disableLog();
+        NetworkAccess.disableLog();
+        HTTPCoreNode.disableLog();
+        HttpSocialNetwork.disableLog();
+        HttpSpaceUsage.disableLog();
+        FileUploader.disableLog();
+        LazyInputStreamCombiner.disableLog();
+    }
 
     private final CLIContext cliContext;
     private final FileSystem peergosFileSystem;
@@ -217,9 +233,6 @@ public class CLI implements Runnable {
         Path remotePath = resolvedRemotePath(cmd.firstArgument()).toAbsolutePath().normalize();
 
         Stat stat = checkPath(remotePath);
-        // TODO
-        if (stat.fileProperties().isDirectory)
-            throw new IllegalStateException("Directory is not supported");
 
         String localPathArg = cmd.hasSecondArgument() ? cmd.secondArgument() : "";
         Path localPath = resolveToPath(localPathArg).toAbsolutePath();
@@ -229,16 +242,59 @@ public class CLI implements Runnable {
         else if (!localPath.toFile().getParentFile().isDirectory())
             throw new IllegalStateException("Specified local path '" + localPath.getParent() + "' is not a directory or does not exist.");
 
-        ProgressBar pb = new ProgressBar(new AtomicLong(0), new AtomicLong(1), remotePath.getParent(), remotePath.getFileName().toString());
-        BiConsumer<Long, Long> progressConsumer = (bytes, size) -> pb.update(writerForProgress, bytes, size);
+        if (stat.fileProperties().isDirectory) {
+            copyDir(remotePath, localPath.getParent(), writerForProgress);
+            return "Downloaded " + remotePath + " to " + localPath;
+        } else {
+            ProgressBar pb = new ProgressBar(new AtomicLong(0), new AtomicLong(1), remotePath.getParent(), remotePath.getFileName().toString());
+            BiConsumer<Long, Long> progressConsumer = (bytes, size) -> pb.update(writerForProgress, bytes, size);
 
-        byte[] data = peergosFileSystem.read(remotePath, progressConsumer);
-        writerForProgress.println();
-        writerForProgress.flush();
+            AsyncReader reader = peergosFileSystem.reader(remotePath);
+            byte[] buf = new byte[Chunk.MAX_SIZE];
+            FileOutputStream fout = new FileOutputStream(localPath.toFile());
+            long fileSize = stat.fileProperties().size;
+            for (long offset = 0; offset < fileSize;) {
+                int read = reader.readIntoArray(buf, 0, Math.min(buf.length, (int) (fileSize - offset))).join();
+                fout.write(buf, 0, read);
+                offset += read;
+                progressConsumer.accept(offset, fileSize);
+            }
+            writerForProgress.println();
+            writerForProgress.flush();
+            return "Downloaded " + remotePath + " to " + localPath;
+        }
+    }
 
-        Files.write(localPath, data);
+    private void copyDir(Path remote, Path local, PrintWriter writerForProgress) throws IOException {
+        String dirName = remote.getFileName().toString();
+        Path localDir = local.resolve(dirName);
+        if (! localDir.toFile().exists())
+            localDir.toFile().mkdirs();
+        if (! localDir.toFile().isDirectory())
+            throw new IllegalStateException(localDir + " already exists and is a file not a directory!");
+        List<Path> remoteChildren = peergosFileSystem.ls(remote);
+        for (Path remoteChild : remoteChildren) {
+            Stat stat = peergosFileSystem.stat(remoteChild);
+            if (stat.fileProperties().isDirectory) {
+                copyDir(remoteChild, localDir, writerForProgress);
+            } else {
+                ProgressBar pb = new ProgressBar(new AtomicLong(0), new AtomicLong(1), remoteChild.getParent(), remoteChild.getFileName().toString());
+                BiConsumer<Long, Long> progressConsumer = (bytes, size) -> pb.update(writerForProgress, bytes, size);
 
-        return "Downloaded " + remotePath + " to " + localPath;
+                AsyncReader reader = peergosFileSystem.reader(remoteChild);
+                byte[] buf = new byte[Chunk.MAX_SIZE];
+                FileOutputStream fout = new FileOutputStream(localDir.resolve(remoteChild.getFileName()).toFile());
+                long fileSize = stat.fileProperties().size;
+                for (long offset = 0; offset < fileSize;) {
+                    int read = reader.readIntoArray(buf, 0, Math.min(buf.length, (int) (fileSize - offset))).join();
+                    fout.write(buf, 0, read);
+                    offset += read;
+                    progressConsumer.accept(offset, fileSize);
+                }
+                writerForProgress.println();
+                writerForProgress.flush();
+            }
+        }
     }
 
     private List<String> convert(Path p) {
@@ -802,6 +858,7 @@ public class CLI implements Runnable {
 
     public static void buildAndRun(Args args) {
         CRYPTO = Main.initCrypto();
+        disableLogSpam();
         ThumbnailGenerator.setInstance(new JavaImageThumbnailer());
         Logging.LOG().setLevel(Level.WARNING);
         CLIContext cliContext = buildContextFromCLI(args);
