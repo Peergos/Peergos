@@ -694,7 +694,7 @@ public class CLI implements Runnable {
                 args.getArg("username") :
                 reader.readLine("Enter username" + PROMPT).trim();
 
-        NetworkAccess network = Builder.buildJavaNetworkAccess(serverURL, address.startsWith("https")).join();
+        NetworkAccess network = Builder.buildJavaNetworkAccess(serverURL, address.startsWith("https"), Optional.of("Peergos-" + UserService.CURRENT_VERSION + "-shell")).join();
         Consumer<String> progressConsumer =  msg -> {
             writer.println(msg);
             writer.flush();

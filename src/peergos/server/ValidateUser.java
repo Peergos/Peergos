@@ -21,7 +21,7 @@ public class ValidateUser {
 
     public static void main(String[] args) throws Exception {
         Crypto crypto = Main.initCrypto();
-        NetworkAccess network = Builder.buildJavaNetworkAccess(new URL("https://peergos.net"), true).get();
+        NetworkAccess network = Builder.buildJavaNetworkAccess(new URL("https://peergos.net"), true, Optional.empty()).get();
         String username = args[0];
         Optional<PublicKeyHash> identity = network.coreNode.getPublicKeyHash(username).join();
         Set<PublicKeyHash> ownedKeys = DeletableContentAddressedStorage.getOwnedKeysRecursive(username, network.coreNode, network.mutable,

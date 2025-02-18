@@ -2,6 +2,7 @@ package peergos.server.sync;
 
 import peergos.server.Builder;
 import peergos.server.Main;
+import peergos.server.UserService;
 import peergos.server.storage.FileBlockCache;
 import peergos.server.user.JavaImageThumbnailer;
 import peergos.server.util.Args;
@@ -72,7 +73,7 @@ public class DirectorySync {
             long blockCacheSizeBytes = cacheSize.endsWith("g") ?
                     Long.parseLong(cacheSize.substring(0, cacheSize.length() - 1)) * 1024L*1024*1024 :
                     Long.parseLong(cacheSize);
-            NetworkAccess network = Builder.buildJavaNetworkAccess(serverURL, address.startsWith("https")).join()
+            NetworkAccess network = Builder.buildJavaNetworkAccess(serverURL, address.startsWith("https"), Optional.of("Peergos-" + UserService.CURRENT_VERSION + "-sync")).join()
                     .withStorage(s -> new UnauthedCachingStorage(s, new FileBlockCache(args.fromPeergosDir("block-cache-dir", "block-cache"), blockCacheSizeBytes), crypto.hasher));
             ThumbnailGenerator.setInstance(new JavaImageThumbnailer());
             List<String> links = Arrays.asList(args.getArg("links").split(","));
@@ -135,7 +136,7 @@ public class DirectorySync {
         String address = args.getArg("peergos-url");
         try {
             URL serverURL = new URL(address);
-            NetworkAccess network = Builder.buildJavaNetworkAccess(serverURL, address.startsWith("https")).join();
+            NetworkAccess network = Builder.buildJavaNetworkAccess(serverURL, address.startsWith("https"), Optional.of("Peergos-" + UserService.CURRENT_VERSION + "-sync")).join();
             Crypto crypto = Main.initCrypto();
             UserContext context = UserContext.signIn(username, password, mfar -> mfa(mfar), network, crypto).join();
             String peergosPath = new String(console.readLine("Enter the peergos path you want to sync to (e.g. /$username/media/images):"));

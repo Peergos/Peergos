@@ -6,6 +6,7 @@ import peergos.shared.user.fs.*;
 
 import java.io.*;
 import java.net.*;
+import java.util.Optional;
 
 /**
  * Make a file or directory in Peergos public
@@ -14,7 +15,7 @@ public class Publisher {
 
     public static void main(String[] args) throws Exception {
         Crypto crypto = Main.initCrypto();
-        NetworkAccess network = Builder.buildJavaNetworkAccess(new URL("https://peergos.net"), true).get();
+        NetworkAccess network = Builder.buildJavaNetworkAccess(new URL("https://peergos.net"), true, Optional.empty()).get();
         String username = args[0];
         String pathToMakePublic = args[1];
         Console console = System.console();

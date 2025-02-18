@@ -16,6 +16,7 @@
 package peergos.server.webdav;
 
 import org.peergos.util.Pair;
+import peergos.server.UserService;
 import peergos.server.util.Logging;
 import peergos.server.webdav.modeshape.webdav.ITransaction;
 import peergos.server.webdav.modeshape.webdav.IWebdavStore;
@@ -61,7 +62,7 @@ public class WebdavFileSystem implements IWebdavStore {
     public WebdavFileSystem(String username, String password, String peergosUrl) {
         Crypto crypto = Main.initCrypto();
         try {
-            NetworkAccess network = Builder.buildJavaNetworkAccess(new URL(peergosUrl), peergosUrl.startsWith("https")).join();
+            NetworkAccess network = Builder.buildJavaNetworkAccess(new URL(peergosUrl), peergosUrl.startsWith("https"), Optional.of("Peergos-" + UserService.CURRENT_VERSION + "-webdav")).join();
             context = UserContext.signIn(username, password, Main::getMfaResponseCLI, network, crypto).join();
         } catch (Exception ex) {
             LOG.log(Level.WARNING, ex, () -> "Unable to connect to Peergos account");

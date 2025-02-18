@@ -6,12 +6,13 @@ import peergos.shared.user.*;
 import java.io.*;
 import java.net.*;
 import java.time.*;
+import java.util.Optional;
 
 public class RenewUsernameClaim {
 
     public static void main(String[] args) throws Exception {
         Crypto crypto = Main.initCrypto();
-        NetworkAccess network = Builder.buildJavaNetworkAccess(new URL("https://peergos.net"), true).get();
+        NetworkAccess network = Builder.buildJavaNetworkAccess(new URL("https://peergos.net"), true, Optional.empty()).get();
         String username = args[0];
         Console console = System.console();
         String password = new String(console.readPassword("Enter password for " + username + ":"));

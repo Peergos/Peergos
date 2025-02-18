@@ -400,21 +400,24 @@ public class Builder {
     }
 
     public static CompletableFuture<NetworkAccess> buildJavaNetworkAccess(URL target,
-                                                                          boolean isPublicServer) {
-        return buildJavaNetworkAccess(target, isPublicServer, Optional.empty());
+                                                                          boolean isPublicServer,
+                                                                          Optional<String> userAgent) {
+        return buildJavaNetworkAccess(target, isPublicServer, Optional.empty(), userAgent);
     }
 
     public static CompletableFuture<NetworkAccess> buildJavaNetworkAccess(URL target,
                                                                           boolean isPublicServer,
-                                                                          Optional<String> basicAuth) {
-        return buildNonCachingJavaNetworkAccess(target, isPublicServer, 7_000, basicAuth);
+                                                                          Optional<String> basicAuth,
+                                                                          Optional<String> userAgent) {
+        return buildNonCachingJavaNetworkAccess(target, isPublicServer, 7_000, basicAuth, userAgent);
     }
 
     public static CompletableFuture<NetworkAccess> buildNonCachingJavaNetworkAccess(URL target,
                                                                                     boolean isPublicServer,
                                                                                     int mutableCacheTime,
-                                                                                    Optional<String> basicAuth) {
-        JavaPoster poster = new JavaPoster(target, isPublicServer, basicAuth);
+                                                                                    Optional<String> basicAuth,
+                                                                                    Optional<String> userAgent) {
+        JavaPoster poster = new JavaPoster(target, isPublicServer, basicAuth, userAgent);
         ScryptJava hasher = new ScryptJava();
         ContentAddressedStorage localDht = NetworkAccess.buildLocalDht(poster, true, hasher);
         return NetworkAccess.buildViaPeergosInstance(poster, poster, localDht, mutableCacheTime, hasher, false);
@@ -422,7 +425,7 @@ public class Builder {
 
     public static CompletableFuture<NetworkAccess> buildLocalJavaNetworkAccess(int targetPort) {
         try {
-            return buildJavaNetworkAccess(new URL("http://localhost:" + targetPort + "/"), false, Optional.empty());
+            return buildJavaNetworkAccess(new URL("http://localhost:" + targetPort + "/"), false, Optional.empty(), Optional.empty());
         } catch (MalformedURLException e) {
             throw new RuntimeException(e);
         }

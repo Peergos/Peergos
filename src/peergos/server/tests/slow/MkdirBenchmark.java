@@ -31,7 +31,7 @@ public class MkdirBenchmark {
     private static NetworkAccess buildHttpNetworkAccess(boolean useIpfs, Random r) throws Exception {
         Args args = UserTests.buildArgs().with("useIPFS", "" + useIpfs);
         Main.PKI_INIT.main(args);
-        return Builder.buildJavaNetworkAccess(new URL("http://localhost:" + args.getInt("port")), false).get();
+        return Builder.buildJavaNetworkAccess(new URL("http://localhost:" + args.getInt("port")), false, Optional.empty()).get();
     }
 
     @Parameterized.Parameters()
