@@ -18,18 +18,20 @@ public class JavaPoster implements HttpPoster {
     private final boolean useGet;
     private final Optional<String> basicAuth;
     private final HttpClient client;
+    private final Optional<String> userAgent;
 
-    public JavaPoster(URL dht, boolean isPublicServer, Optional<String> basicAuth) {
+    public JavaPoster(URL dht, boolean isPublicServer, Optional<String> basicAuth, Optional<String> userAgent) {
         this.dht = dht;
         this.useGet = isPublicServer;
         this.basicAuth = basicAuth;
+        this.userAgent = userAgent;
         client = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofMillis(1_000))
                 .build();
     }
 
     public JavaPoster(URL dht, boolean isPublicServer) {
-        this(dht, isPublicServer, Optional.empty());
+        this(dht, isPublicServer, Optional.empty(), Optional.empty());
     }
 
     public URL buildURL(String method) throws IOException {
@@ -57,6 +59,7 @@ public class JavaPoster implements HttpPoster {
         {
             URI uri = URI.create(buildURL(url).toString());
             HttpRequest.Builder requestBuilder = HttpRequest.newBuilder().uri(uri);
+            userAgent.ifPresent(agent -> requestBuilder.setHeader("User-Agent", agent));
             if (payload.length == 0) {
                 requestBuilder.POST(HttpRequest.BodyPublishers.noBody());
             } else {
@@ -115,6 +118,7 @@ public class JavaPoster implements HttpPoster {
             Map<String, String> headers = new HashMap<>();
             if (basicAuth.isPresent())
                 headers.put("Authorization", basicAuth.get());
+            userAgent.ifPresent(agent -> headers.put("User-Agent", agent));
             Multipart mPost = new Multipart(buildURL(url).toString(), "UTF-8", headers, timeoutMillis);
             int i = 0;
             for (byte[] file : files) {
@@ -198,6 +202,8 @@ public class JavaPoster implements HttpPoster {
                 }
                 if (basicAuth.isPresent())
                     conn.setRequestProperty("Authorization", basicAuth.get());
+                HttpURLConnection connFinal = conn;
+                userAgent.ifPresent(agent -> connFinal.setRequestProperty("User-Agent", agent));
 
                 String contentEncoding = conn.getContentEncoding();
                 boolean isGzipped = "gzip".equals(contentEncoding);

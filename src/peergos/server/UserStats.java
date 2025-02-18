@@ -21,7 +21,7 @@ public class UserStats {
 
     public static void main(String[] args) throws Exception {
         Crypto crypto = Main.initCrypto();
-        NetworkAccess network = Builder.buildJavaNetworkAccess(new URL("https://peergos.net"), true).get();
+        NetworkAccess network = Builder.buildJavaNetworkAccess(new URL("https://peergos.net"), true, Optional.empty()).get();
         List<String> usernames = network.coreNode.getUsernames("").get();
         ForkJoinPool pool = new ForkJoinPool(20);
         List<String> errors = Collections.synchronizedList(new ArrayList<>());

@@ -29,7 +29,7 @@ public class WriterTest {
     private static final boolean isPublicServer = false;
 
     public WriterTest() throws Exception{
-        network = Builder.buildJavaNetworkAccess(new URL(url), isPublicServer).get();
+        network = Builder.buildJavaNetworkAccess(new URL(url), isPublicServer, Optional.empty()).get();
         emailBridgeContext = PeergosNetworkUtils.ensureSignedUp(emailBridgeUsername, emailBridgePassword, network, crypto);
     }
 

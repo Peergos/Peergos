@@ -31,7 +31,7 @@ public class QuotaTests {
     private static Random random = new Random(RANDOM_SEED);
 
     public QuotaTests(Args args) throws Exception {
-        this.network = Builder.buildJavaNetworkAccess(new URL("http://localhost:" + args.getInt("port")), false).get();
+        this.network = Builder.buildJavaNetworkAccess(new URL("http://localhost:" + args.getInt("port")), false, Optional.empty()).get();
     }
 
     @Parameterized.Parameters()

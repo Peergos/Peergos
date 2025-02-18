@@ -221,7 +221,7 @@ public class Main extends Builder {
             Optional<String> basicAuth = args.getOptionalArg("basic-auth")
                     .map(a -> "Basic " + Base64.getEncoder().encodeToString(a.getBytes()));
             NetworkAccess network = Builder.buildJavaNetworkAccess(new URL("http://localhost:" + webPort),
-                    false, basicAuth).get();
+                    false, basicAuth, Optional.empty()).get();
             String pkiFilePassword = args.getArg("pki.keyfile.password");
             SecretSigningKey pkiSecret =
                     SecretSigningKey.fromCbor(CborObject.fromByteArray(PasswordProtected.decryptWithPassword(
@@ -506,7 +506,7 @@ public class Main extends Builder {
                     Crypto crypto = Main.initCrypto();
                     String peergosUrl = a.getArg("peergos-url");
                     URL api = new URL(peergosUrl);
-                    NetworkAccess network = Builder.buildJavaNetworkAccess(api, peergosUrl.startsWith("https")).join();
+                    NetworkAccess network = Builder.buildJavaNetworkAccess(api, peergosUrl.startsWith("https"), Optional.empty()).join();
                     LinkIdentity.link(a, network, crypto);
                     return true;
                 } catch (Exception e) {
@@ -530,7 +530,7 @@ public class Main extends Builder {
                     Main.initCrypto();
                     String peergosUrl = a.getArg("peergos-url");
                     URL api = new URL(peergosUrl);
-                    NetworkAccess network = Builder.buildJavaNetworkAccess(api, peergosUrl.startsWith("https")).join();
+                    NetworkAccess network = Builder.buildJavaNetworkAccess(api, peergosUrl.startsWith("https"), Optional.empty()).join();
                     LinkIdentity.verify(a, network);
                     return true;
                 } catch (Exception e) {
@@ -567,7 +567,7 @@ public class Main extends Builder {
                 try {
                     Crypto crypto = JavaCrypto.init();
                     URL target = new URL(a.getArg("peergos-url", "https://peergos.net"));
-                    JavaPoster poster = new JavaPoster(target, true, Optional.empty());
+                    JavaPoster poster = new JavaPoster(target, true, Optional.empty(), Optional.of("Peergos-" + UserService.CURRENT_VERSION + "-proxy"));
                     ScryptJava hasher = new ScryptJava();
                     ContentAddressedStorage localDht = NetworkAccess.buildLocalDht(poster, true, hasher);
                     CoreNode core = NetworkAccess.buildDirectCorenode(poster);
@@ -897,7 +897,7 @@ public class Main extends Builder {
         try {
             URL api = new URL(peergosUrl);
             NetworkAccess network = Builder.buildJavaNetworkAccess(api,
-                    ! peergosUrl.startsWith("http://localhost"), Optional.empty()).join();
+                    ! peergosUrl.startsWith("http://localhost"), Optional.empty(), Optional.of("Peergos-" + UserService.CURRENT_VERSION + "-gateway")).join();
             PublicGateway gateway = new PublicGateway(domainSuffix, crypto, network);
 
             String domain = a.getArg("listen-host");
@@ -930,7 +930,7 @@ public class Main extends Builder {
         try {
             String peergosUrl = a.getArg("peergos-url");
             URL api = new URL(peergosUrl);
-            NetworkAccess network = buildJavaNetworkAccess(api, peergosUrl.startsWith("https")).join();
+            NetworkAccess network = buildJavaNetworkAccess(api, peergosUrl.startsWith("https"), Optional.of("Peergos-" + UserService.CURRENT_VERSION + "-fuse")).join();
 
             Crypto crypto = initCrypto();
             ThumbnailGenerator.setInstance(new JavaImageThumbnailer());
@@ -983,7 +983,7 @@ public class Main extends Builder {
         String peergosUrl = a.getArg("peergos-url");
         try {
             URL api = new URL(peergosUrl);
-            NetworkAccess network = buildJavaNetworkAccess(api, ! peergosUrl.startsWith("http://localhost")).join();
+            NetworkAccess network = buildJavaNetworkAccess(api, ! peergosUrl.startsWith("http://localhost"), Optional.of("Peergos-" + UserService.CURRENT_VERSION + "-migrate")).join();
             Console console = System.console();
             String username = console.readLine("Enter username to migrate to this server: ");
             String password = new String(console.readPassword("Enter password for " + username + ": "));
@@ -1026,7 +1026,7 @@ public class Main extends Builder {
                     // Check if proxy is already running
                     int port = args.getInt("port", 7777);
                     URI api = new URI("http://localhost:" + port);
-                    JavaPoster poster = new JavaPoster(api.toURL(), false, Optional.empty());
+                    JavaPoster poster = new JavaPoster(api.toURL(), false, Optional.empty(), Optional.empty());
                     ScryptJava hasher = new ScryptJava();
                     ContentAddressedStorage localDht = NetworkAccess.buildLocalDht(poster, true, hasher);
                     boolean alreadyRunning = false;

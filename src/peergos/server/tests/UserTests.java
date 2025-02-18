@@ -26,6 +26,7 @@ import peergos.shared.crypto.symmetric.*;
 import peergos.server.*;
 import peergos.shared.io.ipfs.Cid;
 import peergos.shared.io.ipfs.Multihash;
+import peergos.shared.io.ipfs.bases.Charsets;
 import peergos.shared.login.mfa.*;
 import peergos.shared.mutable.*;
 import peergos.shared.storage.*;
@@ -342,7 +343,7 @@ public abstract class UserTests {
             // test that the secret link itself has been removed
             EncryptedCapability ecap = network.dhtClient.getSecretLink(syncLink.toLink(context.signer.publicKeyHash)).join();
         } catch (Exception e) {
-            if (!URLDecoder.decode(e.getMessage()).contains("No secret link"))
+            if (!URLDecoder.decode(e.getMessage(), Charsets.UTF_8).contains("No secret link"))
                 throw new RuntimeException("Failed");
         }
 
@@ -350,7 +351,7 @@ public abstract class UserTests {
             // test that the secret link itself has been removed
             EncryptedCapability ecap = network.dhtClient.getSecretLink(subdirLink.toLink(context.signer.publicKeyHash)).join();
         } catch (Exception e) {
-            if (! URLDecoder.decode(e.getMessage()).contains("No secret link"))
+            if (! URLDecoder.decode(e.getMessage(), Charsets.UTF_8).contains("No secret link"))
                 throw new RuntimeException("Failed");
         }
 
