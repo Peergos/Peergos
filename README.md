@@ -170,7 +170,7 @@ Use this method to login to a peergos account on another instance without any re
 
 1. Download a release from https://peergos.net/public/peergos/releases
 
-2. Install Java - You will need Java >= 17 installed. 
+2. Install Java - You will need Java >= 21 installed. 
 
 3. Run Peergos with:
 
