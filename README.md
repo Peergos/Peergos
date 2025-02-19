@@ -125,7 +125,7 @@ Architecture
  - 6: Sharing - Secure cryptographic sharing of files with friends.
 
 2.0 Language
- - The IPFS layer is coded in Java - we have a minimal ipfs replacement - [Nabu](https://github.com/peergos/nabu)
+ - The IPFS layer is coded in Java - we have a minimal ipfs implementation - [Nabu](https://github.com/peergos/nabu)
  - The Peergos server is coded to run on JVM to get portability and speed, predominantly Java
  - The web interface is mostly coded in Java and cross compiled to Javascript, with the exception of the Tweetnacl and scrypt libraries, and a small amount of GUI code in JS for Vue.js. 
  - Apps are written in HTML5
@@ -137,8 +137,8 @@ Architecture
 4.0 Trust
  - New versions of the software will be delivered through Peergos itself. (Able to be turned off by the user if desired)
  - A user who trusts a public Peergos server (and the SSL Certificate authority chain) can use the web interface over TLS
- - A less trusting user can run a Peergos server on their own machine and use the web interface over localhost
- - A more paranoid user can run a Peergos server on their own machine and use the CLI or the fuse binding
+ - A less trusting user can run a Peergos server/rpoxy on their own machine and use the web interface over localhost
+ - A more paranoid user can run a Peergos server on their own machine and use the CLI or the fuse/webdav binding
  - Servers are trustless - your data and metadata cannot be exposed even if your server is compromised (assuming your client is not compromised)
  - IPFS itself is not trusted and all data stored or retrieved from it is self-certifying. 
  - The data store (which may not be ipfs directly, but S3 compatible service for example) is also not trusted
@@ -170,12 +170,16 @@ Use this method to login to a peergos account on another instance without any re
 
 1. Download a release from https://peergos.net/public/peergos/releases
 
-2. Install Java - You will need Java >= 21 installed. 
+2. If you download the jar, install Java - You will need Java >= 21 installed. 
 
 3. Run Peergos with:
 
 ```
 java -jar Peergos.jar daemon
+```
+or for the native packages:
+```
+peergos daemon
 ```
 All the peergos data will be stored in ~/.peergos by default, which can be overridden with the environment var or arg - PEERGOS_PATH. 
 
@@ -189,7 +193,7 @@ Use this method to run a new home-server (which is best with a publicly routable
 
 1. Download a release from https://peergos.net/public/peergos/releases
 
-2. Install Java - You will need Java >= 17 installed. 
+2. Install Java - You will need Java >= 21 installed. 
 
 3. Run Peergos with:
 ```
