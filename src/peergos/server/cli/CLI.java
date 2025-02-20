@@ -243,7 +243,8 @@ public class CLI implements Runnable {
             throw new IllegalStateException("Specified local path '" + localPath.getParent() + "' is not a directory or does not exist.");
 
         if (stat.fileProperties().isDirectory) {
-            copyDir(remotePath, localPath.getParent(), writerForProgress);
+            boolean skipExisting = cmd.flags.contains(Command.Flag.SKIP_EXISTING.flag);
+            copyDir(remotePath, localPath.getParent(), skipExisting, writerForProgress);
             return "Downloaded " + remotePath + " to " + localPath;
         } else {
             ProgressBar pb = new ProgressBar(new AtomicLong(0), new AtomicLong(1), remotePath.getParent(), remotePath.getFileName().toString());
@@ -265,7 +266,7 @@ public class CLI implements Runnable {
         }
     }
 
-    private void copyDir(Path remote, Path local, PrintWriter writerForProgress) throws IOException {
+    private void copyDir(Path remote, Path local, boolean skipExisting, PrintWriter writerForProgress) throws IOException {
         String dirName = remote.getFileName().toString();
         Path localDir = local.resolve(dirName);
         if (! localDir.toFile().exists())
@@ -276,15 +277,20 @@ public class CLI implements Runnable {
         for (Path remoteChild : remoteChildren) {
             Stat stat = peergosFileSystem.stat(remoteChild);
             if (stat.fileProperties().isDirectory) {
-                copyDir(remoteChild, localDir, writerForProgress);
+                copyDir(remoteChild, localDir, skipExisting, writerForProgress);
             } else {
                 ProgressBar pb = new ProgressBar(new AtomicLong(0), new AtomicLong(1), remoteChild.getParent(), remoteChild.getFileName().toString());
                 BiConsumer<Long, Long> progressConsumer = (bytes, size) -> pb.update(writerForProgress, bytes, size);
 
+                File localFile = localDir.resolve(remoteChild.getFileName()).toFile();
+                if (localFile.exists() && skipExisting) {
+                    writerForProgress.println("Skipping " + localFile);
+                    continue;
+                }
+                FileOutputStream fout = new FileOutputStream(localFile);
+                long fileSize = stat.fileProperties().size;
                 AsyncReader reader = peergosFileSystem.reader(remoteChild);
                 byte[] buf = new byte[Chunk.MAX_SIZE];
-                FileOutputStream fout = new FileOutputStream(localDir.resolve(remoteChild.getFileName()).toFile());
-                long fileSize = stat.fileProperties().size;
                 for (long offset = 0; offset < fileSize;) {
                     int read = reader.readIntoArray(buf, 0, Math.min(buf.length, (int) (fileSize - offset))).join();
                     fout.write(buf, 0, read);
