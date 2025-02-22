@@ -226,7 +226,7 @@ If you are also using a reverse proxy like nginx to terminate TLS you will need 
 
 And the TLS certificate will also need to cover the wildcard subdomain for the applications (like the PDF viewer, text editor, calendar, and custom 3rd party apps) to work. For example, it should have A records that cover $YOUR_DOMAIN and *.$YOUR_DOMAIN
 
-If you are using a reverse proxy like nginx to terminate TLS here is a good example of the nginx config file (replace $YOUR_DOMAIN_NAME):
+If you are using a reverse proxy like nginx to terminate TLS here is a good example of the nginx config file (replace $YOUR_DOMAIN_NAME) (On SELinux enabled Linux distributions you need to make sure to allow nginx to access port 8000 tcp_socket.):
 ```
 # Peergos server config
 
