@@ -261,7 +261,7 @@ server {
         client_max_body_size 2M;
 
         location / {
-                proxy_pass http://localhost:8000;
+                proxy_pass http://127.0.0.1:8000;
                 proxy_set_header X-Real-IP $remote_addr;
                 proxy_set_header Host $http_host;
                 allow all;
