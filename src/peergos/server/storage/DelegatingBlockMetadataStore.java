@@ -3,6 +3,7 @@ package peergos.server.storage;
 import io.ipfs.cid.Cid;
 import org.peergos.blockstore.metadatadb.BlockMetadata;
 import org.peergos.blockstore.metadatadb.BlockMetadataStore;
+import peergos.shared.io.ipfs.Multihash;
 
 import java.util.*;
 import java.util.function.*;
@@ -36,6 +37,9 @@ public class DelegatingBlockMetadataStore implements BlockMetadataStore {
 
     @Override
     public void remove(Cid block) {
+        peergos.shared.io.ipfs.Cid.Codec codec = peergos.shared.io.ipfs.Cid.Codec.valueOf(block.codec.name());
+        Multihash.Type type = Multihash.Type.valueOf(block.getType().name());
+        store.remove(new peergos.shared.io.ipfs.Cid(block.version, codec, type, block.getHash()));
     }
 
     @Override
