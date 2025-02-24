@@ -1,5 +1,6 @@
 package peergos.server.storage;
 
+import peergos.server.storage.admin.QuotaAdmin;
 import peergos.shared.corenode.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.*;
@@ -24,14 +25,24 @@ public class SecretLinkStorage extends DelegatingDeletableStorage {
     private final Hasher hasher;
     private final LinkRetrievalCounter counter;
     private final BatCave batstore;
+    private final boolean allowNonLocalLinks;
+    private final QuotaAdmin quota;
     private CoreNode pki;
 
-    public SecretLinkStorage(DeletableContentAddressedStorage target, MutablePointers pointers, LinkRetrievalCounter counter, BatCave batStore, Hasher hasher) {
+    public SecretLinkStorage(DeletableContentAddressedStorage target,
+                             MutablePointers pointers,
+                             LinkRetrievalCounter counter,
+                             boolean allowNonLocalLinks,
+                             QuotaAdmin quota,
+                             BatCave batStore,
+                             Hasher hasher) {
         super(target);
         this.target = target;
         this.pointers = pointers;
         this.hasher = hasher;
         this.counter = counter;
+        this.allowNonLocalLinks = allowNonLocalLinks;
+        this.quota = quota;
         this.batstore = batStore;
     }
 
@@ -44,10 +55,14 @@ public class SecretLinkStorage extends DelegatingDeletableStorage {
     @Override
     public CompletableFuture<EncryptedCapability> getSecretLink(SecretLink link) {
         PublicKeyHash owner = link.owner;
+        String username = pki.getUsername(owner).join();
+        boolean isLocal = quota.getQuota(username) > 0;
+        if (! isLocal && !allowNonLocalLinks)
+            throw new IllegalStateException("Please use the link owner's server");
+
         WriterData wd = WriterData.getWriterData(owner, owner, pointers, target).join().props.get();
         if (wd.secretLinks.isEmpty())
             throw new IllegalStateException("No secret link published!");
-        String username = pki.getUsername(owner).join();
         Optional<BatWithId> mirrorBat = batstore.getUserBats(username, new byte[0]).join().stream().findFirst();
         SecretLinkChamp champ = SecretLinkChamp.build(owner, (Cid) wd.secretLinks.get(), mirrorBat, this, hasher).join();
         Optional<SecretLinkTarget> res = champ.get(owner, link.label).join();
