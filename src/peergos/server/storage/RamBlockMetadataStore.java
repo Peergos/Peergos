@@ -30,6 +30,11 @@ public class RamBlockMetadataStore implements BlockMetadataStore {
     }
 
     @Override
+    public void applyToAll(Consumer<Cid> action) {
+        store.keySet().stream().forEach(action);
+    }
+
+    @Override
     public Stream<BlockVersion> list() {
         return store.keySet().stream().map(c -> new BlockVersion(c, null, true));
     }

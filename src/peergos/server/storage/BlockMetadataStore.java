@@ -18,6 +18,8 @@ public interface BlockMetadataStore {
 
     long size();
 
+    void applyToAll(Consumer<Cid> consumer);
+
     Stream<BlockVersion> list();
 
     void listCbor(Consumer<List<BlockVersion>> res);

@@ -134,6 +134,20 @@ public class JdbcBlockMetadataStore implements BlockMetadataStore {
     }
 
     @Override
+    public void applyToAll(Consumer<Cid> action) {
+        try (Connection conn = getConnection();
+             PreparedStatement stmt = conn.prepareStatement(LIST)) {
+            ResultSet rs = stmt.executeQuery();
+            while (rs.next()) {
+                action.accept(Cid.cast(rs.getBytes("cid")));
+            }
+        } catch (SQLException sqe) {
+            LOG.log(Level.WARNING, sqe.getMessage(), sqe);
+            throw new RuntimeException(sqe);
+        }
+    }
+
+    @Override
     public Stream<BlockVersion> list() {
         try (Connection conn = getConnection();
              PreparedStatement stmt = conn.prepareStatement(LIST)) {

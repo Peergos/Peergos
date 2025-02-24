@@ -39,6 +39,12 @@ public class DelegatingBlockMetadataStore implements BlockMetadataStore {
     }
 
     @Override
+    public boolean applyToAll(Consumer<Cid> action) {
+        store.applyToAll(c -> action.accept(Cid.cast(c.toBytes())));
+        return true;
+    }
+
+    @Override
     public Stream<Cid> list() {
         return store.list().filter(bv -> bv.isLatest).map(bv2 -> io.ipfs.cid.Cid.cast(bv2.cid.toBytes()));
     }
