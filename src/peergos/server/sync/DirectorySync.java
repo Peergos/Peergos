@@ -195,7 +195,11 @@ public class DirectorySync {
         if (! ops.isEmpty())
             log("Rerunning failed copy operations...");
         for (CopyOp op : ops) {
-            applyCopyOp(op.isLocalTarget ? remoteFS : localFS, op.isLocalTarget ? localFS : remoteFS, op, syncedVersions);
+            try {
+                applyCopyOp(op.isLocalTarget ? remoteFS : localFS, op.isLocalTarget ? localFS : remoteFS, op, syncedVersions);
+            } catch (FileNotFoundException e) {
+                // A local file has been added and removed concurrently with us trying to copy it, ignore the copy op now
+            }
             syncedVersions.finishCopies(List.of(op));
         }
 
