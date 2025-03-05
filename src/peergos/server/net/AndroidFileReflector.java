@@ -101,7 +101,7 @@ public class AndroidFileReflector implements HttpHandler {
 
                 OutputStream resp = httpExchange.getResponseBody();
                 ZipOutputStream zout = new ZipOutputStream(resp);
-                httpExchange.sendResponseHeaders(200, -1);
+                httpExchange.sendResponseHeaders(200, 0);
                 for (FileWrapper file : files) {
                     writeDirToZip(file, zout, network, Paths.get(file.getName()));
                 }
