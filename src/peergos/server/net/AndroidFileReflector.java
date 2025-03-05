@@ -16,11 +16,17 @@ import peergos.shared.user.fs.Chunk;
 import peergos.shared.user.fs.FileWrapper;
 import peergos.shared.util.Constants;
 
+import java.io.IOException;
 import java.io.OutputStream;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
 
 public class AndroidFileReflector implements HttpHandler {
 	private static final Logger LOG = Logging.LOG();
@@ -56,12 +62,11 @@ public class AndroidFileReflector implements HttpHandler {
             String rest = path.substring(Constants.ANDROID_FILE_REFLECTOR.length());
             String action = rest.split("/")[0];
             if (action.equals("file")) {
-                String link = rest.substring("file".length() + 1);
+                String link = rest.substring(action.length() + 1);
 
                 AbsoluteCapability cap = AbsoluteCapability.fromLink(link);
                 NetworkAccess network = NetworkAccess.buildPublicNetworkAccess(crypto.hasher, core, mutable, dht).join();
                 Optional<FileWrapper> file = network.retrieveAll(List.of(new EntryPoint(cap, ""))).join().stream().findFirst();
-                System.out.println("Android reflector got file in " + (System.currentTimeMillis() - t1) + "ms");
                 if (file.isEmpty()) {
                     httpExchange.sendResponseHeaders(404, 0);
                     httpExchange.close();
@@ -70,7 +75,6 @@ public class AndroidFileReflector implements HttpHandler {
                 long fileSize = file.get().getSize();
 //                AsyncReader reader = file.get().getBufferedInputStream(network, crypto, (int)(fileSize >> 32), (int)fileSize, 10, x -> {}).join();
                 AsyncReader reader = file.get().getInputStream(network, crypto, fileSize, x -> {}).join();
-                System.out.println("Android reflector got reader");
                 OutputStream resp = httpExchange.getResponseBody();
                 httpExchange.sendResponseHeaders(200, fileSize);
                 byte[] buf = new byte[5 * 1024 * 1024];
@@ -81,6 +85,25 @@ public class AndroidFileReflector implements HttpHandler {
                     resp.flush();
                     System.out.println("Android reflector wrote " + read);
                 }
+                httpExchange.close();
+            } else if (action.equals("zip")) {
+                String link = rest.substring(action.length() + 1);
+
+                AbsoluteCapability cap = AbsoluteCapability.fromLink(link);
+                NetworkAccess network = NetworkAccess.buildPublicNetworkAccess(crypto.hasher, core, mutable, dht).join();
+                Optional<FileWrapper> file = network.retrieveAll(List.of(new EntryPoint(cap, ""))).join().stream().findFirst();
+                if (file.isEmpty()) {
+                    httpExchange.sendResponseHeaders(404, 0);
+                    httpExchange.close();
+                    return;
+                }
+
+                OutputStream resp = httpExchange.getResponseBody();
+                ZipOutputStream zout = new ZipOutputStream(resp);
+                httpExchange.sendResponseHeaders(200, -1);
+                writeDirToZip(file.get(), zout, network, Paths.get(file.get().getName()));
+                zout.finish();
+                zout.flush();
                 httpExchange.close();
             } else {
                 LOG.info("Unknown reflector handler: " +httpExchange.getRequestURI());
@@ -97,5 +120,36 @@ public class AndroidFileReflector implements HttpHandler {
             if (LOGGING)
                 LOG.info("File reflector Handler returned file in: " + (t2 - t1) + " mS");
         }
+    }
+
+    private void writeDirToZip(FileWrapper dir, ZipOutputStream zout, NetworkAccess network, Path ourZipPath) throws IOException {
+        if (!dir.isDirectory()) {
+            writeFileToZip(dir, ourZipPath, zout, network);
+            return;
+        }
+        Set<FileWrapper> children = dir.getChildren(crypto.hasher, network).join();
+        for (FileWrapper child : children) {
+            Path childZipPath = ourZipPath.resolve(child.getName());
+            if (child.isDirectory()) {
+                writeDirToZip(child, zout, network, childZipPath);
+            } else {
+                writeFileToZip(child, childZipPath, zout, network);
+            }
+        }
+    }
+
+    private void writeFileToZip(FileWrapper f, Path ourZipPath, ZipOutputStream zout, NetworkAccess network) throws IOException {
+        byte[] buf = new byte[(int)Math.min(f.getSize(), 5 * 1024 * 1024)];
+        long fileSize = f.getSize();
+        AsyncReader reader = f.getInputStream(network, crypto, x -> {}).join();
+        zout.putNextEntry(new ZipEntry(ourZipPath.toString()));
+        for (long offset = 0; offset < fileSize; ) {
+            int read = reader.readIntoArray(buf, 0, (int) Math.min(Chunk.MAX_SIZE, fileSize - offset)).join();
+            offset += read;
+            zout.write(buf, 0, read);
+            zout.flush();
+            System.out.println("Android zip reflector wrote " + read);
+        }
+        zout.closeEntry();
     }
 }
