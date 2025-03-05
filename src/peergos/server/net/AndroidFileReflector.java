@@ -20,11 +20,13 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.stream.Collectors;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
@@ -87,12 +89,11 @@ public class AndroidFileReflector implements HttpHandler {
                 }
                 httpExchange.close();
             } else if (action.equals("zip")) {
-                String link = rest.substring(action.length() + 1);
-
-                AbsoluteCapability cap = AbsoluteCapability.fromLink(link);
+                List<String> links = Arrays.asList(rest.substring(action.length() + 1).split("\\$"));
+                List<AbsoluteCapability> caps = links.stream().map(AbsoluteCapability::fromLink).collect(Collectors.toList());
                 NetworkAccess network = NetworkAccess.buildPublicNetworkAccess(crypto.hasher, core, mutable, dht).join();
-                Optional<FileWrapper> file = network.retrieveAll(List.of(new EntryPoint(cap, ""))).join().stream().findFirst();
-                if (file.isEmpty()) {
+                Set<FileWrapper> files = network.retrieveAll(caps.stream().map(cap -> new EntryPoint(cap, "")).collect(Collectors.toList())).join();
+                if (files.isEmpty()) {
                     httpExchange.sendResponseHeaders(404, 0);
                     httpExchange.close();
                     return;
@@ -101,7 +102,9 @@ public class AndroidFileReflector implements HttpHandler {
                 OutputStream resp = httpExchange.getResponseBody();
                 ZipOutputStream zout = new ZipOutputStream(resp);
                 httpExchange.sendResponseHeaders(200, -1);
-                writeDirToZip(file.get(), zout, network, Paths.get(file.get().getName()));
+                for (FileWrapper file : files) {
+                    writeDirToZip(file, zout, network, Paths.get(file.getName()));
+                }
                 zout.finish();
                 zout.flush();
                 httpExchange.close();
@@ -139,9 +142,10 @@ public class AndroidFileReflector implements HttpHandler {
     }
 
     private void writeFileToZip(FileWrapper f, Path ourZipPath, ZipOutputStream zout, NetworkAccess network) throws IOException {
-        byte[] buf = new byte[(int)Math.min(f.getSize(), 5 * 1024 * 1024)];
         long fileSize = f.getSize();
+        byte[] buf = new byte[(int)Math.min(fileSize, 5 * 1024 * 1024)];
         AsyncReader reader = f.getInputStream(network, crypto, x -> {}).join();
+        System.out.println("ZIP: adding " + ourZipPath);
         zout.putNextEntry(new ZipEntry(ourZipPath.toString()));
         for (long offset = 0; offset < fileSize; ) {
             int read = reader.readIntoArray(buf, 0, (int) Math.min(Chunk.MAX_SIZE, fileSize - offset)).join();
