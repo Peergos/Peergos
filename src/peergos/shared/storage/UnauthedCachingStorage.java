@@ -179,18 +179,21 @@ public class UnauthedCachingStorage extends DelegatingStorage {
                                                                        Hasher h,
                                                                        ProgressConsumer<Long> monitor,
                                                                        double spaceIncreaseFactor) {
-        return Futures.combineAllInOrder(IntStream.range(0, hashes.size()).mapToObj(i -> cache.get(hashes.get(i))).collect(Collectors.toList()))
+        return Futures.combineAllInOrder(IntStream.range(0, hashes.size())
+                        .mapToObj(i -> hashes.get(i))
+                        .map(c -> c.isIdentity() ? Futures.of(Optional.of(c.getHash())) : cache.get(c))
+                        .collect(Collectors.toList()))
                 .thenCompose(cached -> {
-                    List<Pair<Cid, BatWithId>> toGet = IntStream.range(0, hashes.size())
+                    List<Pair<Cid, Optional<BatWithId>>> toGet = IntStream.range(0, hashes.size())
                             .filter(i -> cached.get(i).isEmpty())
-                            .mapToObj(i -> new Pair<>(hashes.get(i), bats.get(i)))
+                            .mapToObj(i -> new Pair<>(hashes.get(i), i < bats.size() ? Optional.of(bats.get(i)) : Optional.<BatWithId>empty()))
                             .collect(Collectors.toList());
                     if (toGet.isEmpty())
                         return Futures.of(IntStream.range(0, hashes.size())
                                 .mapToObj(i -> new FragmentWithHash(new Fragment(cached.get(i).get()), Optional.of(hashes.get(i))))
                                 .collect(Collectors.toList()));
                     List<Cid> cidsToGet = toGet.stream().map(p -> p.left).collect(Collectors.toList());
-                    List<BatWithId> remainingBats = toGet.stream().map(p -> p.right).collect(Collectors.toList());
+                    List<BatWithId> remainingBats = toGet.stream().flatMap(p -> p.right.stream()).collect(Collectors.toList());
                     return target.downloadFragments(owner, cidsToGet, remainingBats, h, monitor, spaceIncreaseFactor)
                             .thenApply(retrieved -> {
                                 retrieved.forEach(f -> cache.put(f.hash.get(), f.fragment.data));
