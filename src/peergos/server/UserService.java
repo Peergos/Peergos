@@ -262,6 +262,11 @@ public class UserService {
         addHandler(localhostServer, tlsServer, "/" + Constants.PUBLIC_FILES_URL,
                 new PublicFileHandler(crypto.hasher, coreNode, mutable, storage),
                 basicAuth, local, host, nodeIds, false);
+        if (! isPublicServer && publicHostname.isEmpty()) {
+            addHandler(localhostServer, null, "/" + Constants.ANDROID_FILE_REFLECTOR,
+                    new AndroidFileReflector(crypto, coreNode, mutable, storage),
+                    basicAuth, local, host, nodeIds, false);
+        }
         addHandler(localhostServer, tlsServer, UI_URL, handler, basicAuth, local, host, nodeIds, true);
 
         localhostServer.setExecutor(Threads.newPool(handlerPoolSize, "api-handler-"));

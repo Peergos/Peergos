@@ -17,23 +17,41 @@ public class JniTweetNacl {
         return new JniTweetNacl();
     }
 
+    private static String canonicaliseArchitecture(String arch) {
+        if (arch.startsWith("arm64"))
+            return "aarch64";
+        if (arch.startsWith("arm"))
+            return "arm";
+        if (arch.startsWith("x86_64"))
+            return "amd64";
+        return arch;
+    }
+
     static {
         String absoluteLibPath = "";
-        try {
-            new File("native-lib").mkdirs();
-            Path libPath = PathUtil.get("native-lib", "libtweetnacl.so");
-            if (! libPath.toFile().exists()) {
-                byte[] data = Serialize.readFully(JniTweetNacl.class.getResourceAsStream("/" + libPath.toString()));
-                Files.write(libPath, data, StandardOpenOption.CREATE);
-            }
-            absoluteLibPath = libPath.toFile().getAbsolutePath();
+        boolean isLinux = "linux".equalsIgnoreCase(System.getProperty("os.name"));
+        boolean isAndroid = "The Android Project".equals(System.getProperty("java.vm.vendor"));
+        if (isAndroid) {
             System.loadLibrary("tweetnacl");
-        } catch (Throwable t) {
-            if ("linux".equalsIgnoreCase(System.getProperty("os.name"))) {
-                System.err.println("Couldn't load native crypto library at " + absoluteLibPath + ", using pure Java version...");
-                System.err.println("To use the native linux-x86-64 crypto implementation use option -Djava.library.path=native-lib");
+        } else {
+            String arch = canonicaliseArchitecture(System.getProperty("os.arch"));
+            try {
+                new File("native-lib").mkdirs();
+                Path writeLibPath = PathUtil.get("native-lib", "libtweetnacl.so");
+                if (! writeLibPath.toFile().exists()) {
+                    Path libPath = PathUtil.get("native-lib", "linux", arch, "libtweetnacl.so");
+                    byte[] data = Serialize.readFully(JniTweetNacl.class.getResourceAsStream("/" + libPath));
+                    Files.write(writeLibPath, data, StandardOpenOption.CREATE);
+                }
+                absoluteLibPath = writeLibPath.toFile().getAbsolutePath();
+                System.loadLibrary("tweetnacl");
+            } catch (Throwable t) {
+                if (isLinux) {
+                    System.err.println("Couldn't load native crypto library at " + absoluteLibPath + ", using pure Java version...");
+                    System.err.println("To use the native Linux crypto implementation use option -Djava.library.path=native-lib");
+                }
+                throw new RuntimeException(t);
             }
-            throw new RuntimeException(t);
         }
     }
 

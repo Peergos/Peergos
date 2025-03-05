@@ -11,6 +11,7 @@ public class Constants {
     public static final String SOCIAL_URL = PEERGOS_API_PREFIX + "social/";
     public static final String SPACE_USAGE_URL = PEERGOS_API_PREFIX + "storage/";
     public static final String SERVER_MESSAGE_URL = PEERGOS_API_PREFIX + "server-message/";
+    public static final String ANDROID_FILE_REFLECTOR = PEERGOS_API_PREFIX + "reflector/";
 
     public static final String PUBLIC_FILES_URL = "public/";
 }
