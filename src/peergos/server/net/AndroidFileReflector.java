@@ -49,7 +49,6 @@ public class AndroidFileReflector implements HttpHandler {
 
     @Override
     public void handle(HttpExchange httpExchange) {
-        System.out.println("Reflector req: " + httpExchange.getRequestMethod() + ", headers: " + httpExchange.getRequestHeaders().entrySet());
         long t1 = System.currentTimeMillis();
         String path = httpExchange.getRequestURI().getPath();
         try {
@@ -85,7 +84,6 @@ public class AndroidFileReflector implements HttpHandler {
                     offset += read;
                     resp.write(buf, 0, read);
                     resp.flush();
-                    System.out.println("Android reflector wrote " + read);
                 }
                 httpExchange.close();
             } else if (action.equals("zip")) {
@@ -145,14 +143,12 @@ public class AndroidFileReflector implements HttpHandler {
         long fileSize = f.getSize();
         byte[] buf = new byte[(int)Math.min(fileSize, 5 * 1024 * 1024)];
         AsyncReader reader = f.getInputStream(network, crypto, x -> {}).join();
-        System.out.println("ZIP: adding " + ourZipPath);
         zout.putNextEntry(new ZipEntry(ourZipPath.toString()));
         for (long offset = 0; offset < fileSize; ) {
             int read = reader.readIntoArray(buf, 0, (int) Math.min(Chunk.MAX_SIZE, fileSize - offset)).join();
             offset += read;
             zout.write(buf, 0, read);
             zout.flush();
-            System.out.println("Android zip reflector wrote " + read);
         }
         zout.closeEntry();
     }
