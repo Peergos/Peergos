@@ -14,10 +14,10 @@ public class PathUtil {
             in = in.substring(0, in.length() - 1);
         String[] split = in.split("/");
         if (split.length == 0 && rest.length == 0)
-            return Path.of("");
+            return Paths.get("");
         if (split.length == 1 && rest.length == 0)
-            return Path.of(split[0]);
-        Path result = Path.of(split[0], Arrays.copyOfRange(split, 1, split.length));
+            return Paths.get(split[0]);
+        Path result = Paths.get(split[0], Arrays.copyOfRange(split, 1, split.length));
         if (rest.length == 0)
             return result;
         return result.resolve(get(rest[0], Arrays.copyOfRange(rest, 1, rest.length)));
