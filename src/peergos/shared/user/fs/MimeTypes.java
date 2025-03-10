@@ -109,7 +109,8 @@ public class MimeTypes {
                     || equalArrays(start, 8, ISOM)
                     || equalArrays(start, 8, DASH)
                     || equalArrays(start, 8, MP42)
-                    || equalArrays(start, 8, MP41))
+                    || equalArrays(start, 8, MP41)
+                    || equalArrays(start, 16, ISOM))
                 return "video/mp4";
             if (equalArrays(start, 8, M4V))
                 return "video/m4v";
