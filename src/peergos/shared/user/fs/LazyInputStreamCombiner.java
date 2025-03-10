@@ -290,7 +290,7 @@ public class LazyInputStreamCombiner implements AsyncReader {
         }
         long globalOffset = globalIndex + index;
 
-        prefetch(5);
+        prefetch(Math.min(5, nBufferedChunks));
 
         if (available >= length) // we are done
             return CompletableFuture.completedFuture(length);

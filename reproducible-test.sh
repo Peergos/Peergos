@@ -1,5 +1,6 @@
 #!/bin/bash
 
+ant dist
 hash1=`sha256sum Peergos.jar`
 ant dist
 hash2=`sha256sum Peergos.jar`

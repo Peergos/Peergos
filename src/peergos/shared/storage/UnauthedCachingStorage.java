@@ -8,6 +8,8 @@ import peergos.shared.io.ipfs.Cid;
 import peergos.shared.io.ipfs.Multihash;
 import peergos.shared.storage.auth.*;
 import peergos.shared.user.*;
+import peergos.shared.user.fs.Fragment;
+import peergos.shared.user.fs.FragmentWithHash;
 import peergos.shared.util.*;
 
 import java.util.*;
@@ -167,6 +169,42 @@ public class UnauthedCachingStorage extends DelegatingStorage {
                         cache.put(res.get(i), block);
                     }
                     return res;
+                });
+    }
+
+    @Override
+    public CompletableFuture<List<FragmentWithHash>> downloadFragments(PublicKeyHash owner,
+                                                                       List<Cid> hashes,
+                                                                       List<BatWithId> bats,
+                                                                       Hasher h,
+                                                                       ProgressConsumer<Long> monitor,
+                                                                       double spaceIncreaseFactor) {
+        return Futures.combineAllInOrder(IntStream.range(0, hashes.size())
+                        .mapToObj(i -> hashes.get(i))
+                        .map(c -> c.isIdentity() ? Futures.of(Optional.of(c.getHash())) : cache.get(c))
+                        .collect(Collectors.toList()))
+                .thenCompose(cached -> {
+                    List<Pair<Cid, Optional<BatWithId>>> toGet = IntStream.range(0, hashes.size())
+                            .filter(i -> cached.get(i).isEmpty())
+                            .mapToObj(i -> new Pair<>(hashes.get(i), i < bats.size() ? Optional.of(bats.get(i)) : Optional.<BatWithId>empty()))
+                            .collect(Collectors.toList());
+                    if (toGet.isEmpty())
+                        return Futures.of(IntStream.range(0, hashes.size())
+                                .mapToObj(i -> new FragmentWithHash(new Fragment(cached.get(i).get()), Optional.of(hashes.get(i))))
+                                .collect(Collectors.toList()));
+                    List<Cid> cidsToGet = toGet.stream().map(p -> p.left).collect(Collectors.toList());
+                    List<BatWithId> remainingBats = toGet.stream().flatMap(p -> p.right.stream()).collect(Collectors.toList());
+                    return target.downloadFragments(owner, cidsToGet, remainingBats, h, monitor, spaceIncreaseFactor)
+                            .thenApply(retrieved -> {
+                                retrieved.forEach(f -> cache.put(f.hash.get(), f.fragment.data));
+                                return IntStream.range(0, hashes.size())
+                                        .mapToObj(i -> new FragmentWithHash(cached.get(i).map(Fragment::new)
+                                                .orElse(retrieved.stream()
+                                                        .filter(f -> f.hash.get().equals(hashes.get(i)))
+                                                        .findFirst()
+                                                        .get().fragment), Optional.of(hashes.get(i))))
+                                        .collect(Collectors.toList());
+                            });
                 });
     }
 }
