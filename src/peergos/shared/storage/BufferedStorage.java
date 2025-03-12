@@ -155,6 +155,7 @@ public class BufferedStorage extends DelegatingStorage {
     private synchronized Cid put(Cid cid, OpLog.BlockWrite block) {
         synchronized (storage) {
             storage.put(cid, block);
+            block.progressMonitor.ifPresent(m -> m.accept((long)block.block.length));
         }
         return cid;
     }
