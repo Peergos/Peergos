@@ -169,6 +169,21 @@ public class SharedWithCache {
                 .thenCompose(fopt -> fopt.map(f -> parseCacheFile(f, network, crypto)).orElse(Futures.of(SharedWithState.empty())));
     }
 
+    public CompletableFuture<Boolean> processShared(BiConsumer<String, SharedWithState> processor, String username, Snapshot in) {
+        return base.getUpdated(base.version.mergeAndOverwriteWith(in), network)
+                .thenCompose(updated -> updated.getChild(username, crypto.hasher, network)
+                        .thenCompose(home -> processShared(processor, home.get(), PathUtil.get(""))));
+    }
+
+    private CompletableFuture<Boolean> processShared(BiConsumer<String, SharedWithState> processor, FileWrapper currentDir, Path current) {
+        return currentDir.getChildren(crypto.hasher, network)
+                .thenCompose(children -> {
+                    Optional<FileWrapper> sharedInDir = children.stream().filter(c -> c.getName().equals(DIR_CACHE_FILENAME)).findFirst();
+                    sharedInDir.ifPresent(swf -> parseCacheFile(swf, network, crypto).thenAccept(sw -> processor.accept(current.toString(), sw)));
+                    return Futures.combineAll(children.stream().filter(c -> c.isDirectory()).map(d -> processShared(processor, d, current.resolve(d.getName()))).collect(Collectors.toList()));
+                }).thenApply(x -> true);
+    }
+
     private static CompletableFuture<Optional<Pair<FileWrapper, SharedWithState>>> retrieveWithFile(FileWrapper base,
                                                                                                     Path dir,
                                                                                                     NetworkAccess network,

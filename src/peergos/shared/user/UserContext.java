@@ -2010,6 +2010,11 @@ public class UserContext {
     }
 
     @JsMethod
+    public CompletableFuture<Boolean> processShared(BiConsumer<String, SharedWithState> processor) {
+        return getUserRoot().thenCompose(home -> sharedWithCache.processShared(processor, username, home.version));
+    }
+
+    @JsMethod
     public CompletableFuture<Snapshot> shareReadAccessWithFriends(Path path) {
         return getSocialState()
                 .thenApply(s -> s.getFriendsGroupUid())
