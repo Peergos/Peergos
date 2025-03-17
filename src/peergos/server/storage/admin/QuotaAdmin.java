@@ -1,6 +1,7 @@
 package peergos.server.storage.admin;
 
 import peergos.shared.cbor.*;
+import peergos.shared.corenode.CoreNode;
 import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.crypto.random.*;
@@ -27,6 +28,8 @@ public interface QuotaAdmin extends QuotaControl {
     boolean addToken(String token);
 
     boolean consumeToken(String username, String token);
+
+    default void setPki(CoreNode core) {}
 
     default String generateToken(SafeRandom rnd) {
         String token = ArrayOps.bytesToHex(rnd.randomBytes(32));

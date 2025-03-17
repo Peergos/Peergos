@@ -703,25 +703,28 @@ public class Main extends Builder {
             Account account = new AccountWithStorage(localStorageForLinks, localPointers, rawAccount);
             AccountProxy accountProxy = new HttpAccount(p2pHttpProxy, pkiServerNodeId);
 
-            CoreNode core = buildCorenode(a, localStorageForLinks, transactions, rawPointers, localPointers, proxingMutable,
+            boolean isPki = nodeIds.stream()
+                    .map(Cid::bareMultihash)
+                    .anyMatch(c -> c.equals(pkiServerNodeId.bareMultihash()));
+            QuotaAdmin userQuotas = buildSpaceQuotas(a, localStorageForLinks,
+                    getDBConnector(a, "space-requests-sql-file", dbConnectionPool),
+                    getDBConnector(a, "quotas-sql-file", dbConnectionPool), isPki, localhostApi);
+
+            boolean allowNonLocalLinks = a.getBoolean("allow-external-secret-links", "localhost".equals(listeningHost));
+            DeletableContentAddressedStorage localStorage = new SecretLinkStorage(localStorageForLinks, localPointers, linkCounts, allowNonLocalLinks, userQuotas, batStore, hasher);
+
+            CoreNode core = buildCorenode(a, localStorage, transactions, rawPointers, localPointers, proxingMutable,
                     rawSocial, usageStore, rawAccount, batStore, account, linkCounts, crypto);
+            localStorage.setPki(core);
+            userQuotas.setPki(core);
 
             if (a.hasArg("mirror.username")) // mirror pki before starting user mirror
                 core.initialize();
             else
                 new Thread(core::initialize).start();
 
-            boolean isPki = nodeIds.stream()
-                    .map(Cid::bareMultihash)
-                    .anyMatch(c -> c.equals(pkiServerNodeId.bareMultihash()));
-            QuotaAdmin userQuotas = buildSpaceQuotas(a, localStorageForLinks, core,
-                    getDBConnector(a, "space-requests-sql-file", dbConnectionPool),
-                    getDBConnector(a, "quotas-sql-file", dbConnectionPool), isPki, localhostApi);
             CoreNode signupFilter = new SignUpFilter(core, userQuotas, nodeIds.get(nodeIds.size() - 1), httpSpaceUsage, hasher,
                     a.getInt("max-daily-paid-signups", isPaidInstance(a) ? 10 : 0), isPki);
-            boolean allowNonLocalLinks = a.getBoolean("allow-external-secret-links", "localhost".equals(listeningHost));
-            DeletableContentAddressedStorage localStorage = new SecretLinkStorage(localStorageForLinks, localPointers, linkCounts, allowNonLocalLinks, userQuotas, batStore, hasher);
-            localStorage.setPki(core);
 
             if (a.getBoolean("update-usage", true))
                 SpaceCheckingKeyFilter.update(usageStore, userQuotas, core, localPointers, localStorage, hasher);
