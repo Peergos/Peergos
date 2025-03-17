@@ -298,7 +298,6 @@ public class Builder {
 
     public static QuotaAdmin buildSpaceQuotas(Args a,
                                               DeletableContentAddressedStorage localDht,
-                                              CoreNode core,
                                               Supplier<Connection> spaceDb,
                                               Supplier<Connection> quotasDb,
                                               boolean isPki,
@@ -319,7 +318,7 @@ public class Builder {
         if (! localhostApi && maxUsers > 0)
             Logging.LOG().warning("Anyone can signup to this instance because we are listening on non-localhost addresses and max-users > 0. Using signup tokens is more secure.");
         Logging.LOG().info("Using default user space quota of " + defaultQuota);
-        return new UserQuotas(quotas, defaultQuota, maxUsers, spaceRequests, localDht, core, isPki);
+        return new UserQuotas(quotas, defaultQuota, maxUsers, spaceRequests, localDht, isPki);
     }
 
     public static QuotaAdmin buildPaidQuotas(Args a) {

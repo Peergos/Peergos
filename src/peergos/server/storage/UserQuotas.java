@@ -28,7 +28,7 @@ public class UserQuotas implements QuotaAdmin {
     private final JdbcQuotas quotas;
     private final JdbcSpaceRequests spaceRequests;
     private final ContentAddressedStorage dht;
-    private final CoreNode core;
+    private CoreNode core;
     private final boolean isPki;
 
     public UserQuotas(JdbcQuotas quotas,
@@ -36,15 +36,18 @@ public class UserQuotas implements QuotaAdmin {
                       long maxUsers,
                       JdbcSpaceRequests spaceRequests,
                       ContentAddressedStorage dht,
-                      CoreNode core,
                       boolean isPki) {
         this.quotas = quotas;
         this.defaultQuota = defaultQuota;
         this.maxUsers = maxUsers;
         this.spaceRequests = spaceRequests;
         this.dht = dht;
-        this.core = core;
         this.isPki = isPki;
+    }
+
+    @Override
+    public void setPki(CoreNode core) {
+        this.core = core;
     }
 
     @Override

@@ -120,9 +120,11 @@ public class ServerMessages extends Builder {
                     cmds, new com.webauthn4j.data.client.Origin("http://localhost:8000"), "localhost");
             CoreNode core = buildCorenode(a, localStorage, transactions, rawPointers, localPointers, proxingMutable,
                     rawSocial, usageStore, account, null, new AccountWithStorage(localStorage, localPointers, account), null, crypto);
-            return buildSpaceQuotas(a, localStorage, core,
+            QuotaAdmin quotas = buildSpaceQuotas(a, localStorage,
                     getDBConnector(a, "space-requests-sql-file", dbConnectionPool),
                     getDBConnector(a, "quotas-sql-file", dbConnectionPool), false, true);
+            quotas.setPki(core);
+            return quotas;
         } catch (SQLException e) {
             throw new RuntimeException(e);
         }
