@@ -73,9 +73,31 @@ public class AuthedStorage extends DelegatingDeletableStorage {
     public CompletableFuture<Optional<CborObject>> get(List<Multihash> peerIds, Cid hash, Optional<BatWithId> bat, Cid ourId, Hasher h, boolean  persistblock) {
         if (bat.isEmpty())
             return get(peerIds, hash, "", persistblock);
-        return bat.get().bat.generateAuth(hash, ourId, 300, S3Request.currentDatetime(), bat.get().id, h)
+        return Futures.asyncExceptionally(() -> bat.get().bat.generateAuth(hash, ourId, 300, S3Request.currentDatetime(), bat.get().id, h)
                 .thenApply(BlockAuth::encode)
-                .thenCompose(auth -> get(peerIds, hash, auth, persistblock));
+                .thenCompose(auth -> get(peerIds, hash, auth, persistblock)),
+                t -> {
+                    if (t.getMessage().startsWith("Unauthorised")) {
+                        if (! bat.get().id().isInline() && hasBlock(hash)) {
+                            // we are dealing with a mirror bat that we likely don't have locally, we can check the hash to verify it
+                            return getRaw(peerIds, hash, bat, ourId, h, false, false)
+                                    .thenCompose(rawOpt -> {
+                                        if (rawOpt.isEmpty())
+                                            return Futures.errored(t);
+                                        return BatId.sha256(bat.get().bat, h).thenCompose(hashedBat -> {
+                                            List<BatId> blockBats = hash.isRaw() ?
+                                                    Bat.getRawBlockBats(rawOpt.get()) :
+                                                    Bat.getCborBlockBats(rawOpt.get());
+                                            boolean correctMirrorBat = blockBats.stream().anyMatch(b -> b.equals(hashedBat));
+                                            if (correctMirrorBat)
+                                                return Futures.of(Optional.of(CborObject.fromByteArray(rawOpt.get())));
+                                            return Futures.errored(t);
+                                        });
+                                    });
+                        }
+                    }
+                    return Futures.errored(t);
+                });
     }
 
     @Override
