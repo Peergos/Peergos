@@ -86,9 +86,11 @@ public class TransactionalIpfs extends DelegatingDeletableStorage {
     public CompletableFuture<Optional<CborObject>> get(List<Multihash> peerIds, Cid hash, Optional<BatWithId> bat, Cid ourId, Hasher h, boolean persistBlock) {
         if (bat.isEmpty())
             return get(peerIds, hash, "", persistBlock);
-        return bat.get().bat.generateAuth(hash, ourId, 300, S3Request.currentDatetime(), bat.get().id, h)
-                .thenApply(BlockAuth::encode)
-                .thenCompose(auth -> get(peerIds, hash, auth, persistBlock));
+        return Futures.asyncExceptionally(() -> bat.get().bat.generateAuth(hash, ourId, 300, S3Request.currentDatetime(), bat.get().id, h)
+                        .thenApply(BlockAuth::encode)
+                        .thenCompose(auth -> get(peerIds, hash, auth, persistBlock)),
+                t -> AuthedStorage.getWithAbsentMirrorBat(t, peerIds, hash, bat, ourId, h, this)
+        );
     }
 
     @Override
