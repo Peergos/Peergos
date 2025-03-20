@@ -276,6 +276,18 @@ server {
 
 ```
 
+Usage - self hosting (with docker)
+-----
+Get a docker image with:
+```bash
+docker pull ghcr.io/peergos/web-ui:master
+```
+
+Run the peergos image with:
+```bash
+docker run --volume $(PEERGOS_PATH):/opt/peergos/data peergos:dev daemon -domain 0.0.0.0 -public-domain localhost:8000 -log-to-console true
+```
+
 Usage - self hosting (with S3 compatible blockstore)
 -----
 Follow the instructions for self hosting but add the following parameters (either on the command line, or in the .peergos/config file after first run):
