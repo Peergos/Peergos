@@ -129,6 +129,7 @@ public class Main extends Builder {
                     ARG_USE_IPFS,
                     ARG_BAT_STORE,
                     new Command.Arg("allow-external-secret-links", "Allow external secret links to be served from this server", false),
+                    new Command.Arg("allow-external-login", "Allow users from other servers to login through this server", false),
                     new Command.Arg("mutable-pointers-file", "The filename for the mutable pointers datastore", true, "mutable.sql"),
                     new Command.Arg("social-sql-file", "The filename for the follow requests datastore", true, "social.sql"),
                     new Command.Arg("space-requests-sql-file", "The filename for the space requests datastore", true, "space-requests.sql"),
@@ -761,7 +762,8 @@ public class Main extends Builder {
 
             Account p2pAccount = new ProxyingAccount(nodeIds, core, account, accountProxy);
             boolean isPublicServer = a.getBoolean("public-server", false);
-            LocalOnlyAccount verifyingAccount = new LocalOnlyAccount(new VerifyingAccount(p2pAccount, core, localStorage), userQuotas, a.getBoolean("allow-external-login", ! isPublicServer));
+            boolean allowExternalLogin = a.getBoolean("allow-external-login", !isPublicServer);
+            LocalOnlyAccount verifyingAccount = new LocalOnlyAccount(new VerifyingAccount(p2pAccount, core, localStorage), userQuotas, allowExternalLogin);
             ContentAddressedStorage cachingStorage = new AuthedCachingStorage(p2pDht, blockAuth, hasher, blockCacheSize, maxCachedBlockSize);
             ContentAddressedStorage incomingP2PStorage = new GetBlockingStorage(cachingStorage);
 
