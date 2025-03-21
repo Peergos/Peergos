@@ -41,7 +41,8 @@ public class S3UserTests extends UserTests {
                 .with("direct-s3-writes", "true")
                 .with("authed-s3-reads", "true")
                 .with("s3.accessKey", "test")
-                .with("s3.secretKey", "testdslocal");
+                .with("s3.secretKey", "testdslocal")
+                .with("allow-external-login", "true");
     }
 
     private static final List<Args> argsToCleanUp = new ArrayList<>();

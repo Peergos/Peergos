@@ -38,14 +38,21 @@ public class LocalOnlyAccount implements Account {
         return target.setLoginData(login, auth);
     }
 
+    private boolean hasQuota(String username) {
+        try {
+            return quotas.getQuota(username) > 0;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
     @Override
     public CompletableFuture<Either<UserStaticData, MultiFactorAuthRequest>> getLoginData(String username,
                                                                                           PublicSigningKey authorisedReader,
                                                                                           byte[] auth,
                                                                                           Optional<MultiFactorAuthResponse>  mfa,
                                                                                           boolean cacheMfaLoginData) {
-        boolean isLocal = quotas.getQuota(username) > 0;
-        if (! isLocal && ! allowExternalLogin)
+        if (! allowExternalLogin && hasQuota(username))
             throw new IllegalStateException("Please login on your home server");
         return target.getLoginData(username, authorisedReader, auth, mfa, cacheMfaLoginData).thenApply(res -> {
             TimeLimited.isAllowedTime(auth, 24*3600, authorisedReader);
