@@ -760,7 +760,8 @@ public class Main extends Builder {
             ProxyingSpaceUsage p2pSpaceUsage = new ProxyingSpaceUsage(nodeIds, corePropagator, spaceChecker, httpSpaceUsage);
 
             Account p2pAccount = new ProxyingAccount(nodeIds, core, account, accountProxy);
-            VerifyingAccount verifyingAccount = new VerifyingAccount(p2pAccount, core, localStorage);
+            boolean isPublicServer = a.getBoolean("public-server", false);
+            LocalOnlyAccount verifyingAccount = new LocalOnlyAccount(new VerifyingAccount(p2pAccount, core, localStorage), userQuotas, a.getBoolean("allow-external-login", ! isPublicServer));
             ContentAddressedStorage cachingStorage = new AuthedCachingStorage(p2pDht, blockAuth, hasher, blockCacheSize, maxCachedBlockSize);
             ContentAddressedStorage incomingP2PStorage = new GetBlockingStorage(cachingStorage);
 
@@ -784,7 +785,6 @@ public class Main extends Builder {
                     tlsHostname.map(host -> new UserService.TlsProperties(host, a.getArg("tls.keyfile.password")));
             int maxConnectionQueue = a.getInt("max-connection-queue", 500);
             int handlerThreads = a.getInt("handler-threads", 50);
-            boolean isPublicServer = a.getBoolean("public-server", false);
             Optional<String> basicAuth = a.getOptionalArg("basic-auth");
             List<String> blockstoreDomains = S3Config.getBlockstoreDomains(a);
             Optional<String> paymentDomain = a.getOptionalArg("payment-domain");
