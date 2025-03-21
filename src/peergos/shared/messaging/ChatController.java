@@ -140,6 +140,11 @@ public class ChatController {
     }
 
     @JsMethod
+    public boolean hasGroupProperty(String key) {
+        return state.groupState.containsKey(key);
+    }
+
+    @JsMethod
     public String getTitle() {
         return state.getTitle();
     }

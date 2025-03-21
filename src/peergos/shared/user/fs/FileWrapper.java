@@ -2551,7 +2551,7 @@ public class FileWrapper {
     private CompletableFuture<Optional<Thumbnail>> generateThumbnail(NetworkAccess network, AsyncReader fileData, int fileSize, String filename, String mimeType) {
         CompletableFuture<Optional<Thumbnail>> fut = new CompletableFuture<>();
         if (fileSize > MimeTypes.HEADER_BYTES_TO_IDENTIFY_MIME_TYPE) {
-            if (mimeType.startsWith("image")) {
+            if (mimeType.startsWith("image") && !mimeType.equals("image/svg+xml")) {
                 if (network.isJavascript()) {
                     thumbnail.generateThumbnail(fileData, fileSize, filename).thenAccept(base64Str -> {
                         fut.complete(convertFromBase64(base64Str));
