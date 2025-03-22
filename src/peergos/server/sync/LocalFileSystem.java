@@ -105,8 +105,11 @@ public class LocalFileSystem implements SyncFilesystem {
                 raf.write(buf, 0, read);
                 done += read;
             }
-            if (modificationTime.isPresent())
-                p.toFile().setLastModified(modificationTime.get().toInstant(ZoneOffset.UTC).toEpochMilli() / 1000 * 1000);
+            if (modificationTime.isPresent()) {
+                long time = modificationTime.get().toInstant(ZoneOffset.UTC).toEpochMilli() / 1000 * 1000;
+                if (time >= 0)
+                    p.toFile().setLastModified(time);
+            }
         }
     }
 
