@@ -52,7 +52,7 @@ public class LocalOnlyAccount implements Account {
                                                                                           byte[] auth,
                                                                                           Optional<MultiFactorAuthResponse>  mfa,
                                                                                           boolean cacheMfaLoginData) {
-        if (! allowExternalLogin && hasQuota(username))
+        if (! allowExternalLogin && ! hasQuota(username))
             throw new IllegalStateException("Please login on your home server");
         return target.getLoginData(username, authorisedReader, auth, mfa, cacheMfaLoginData).thenApply(res -> {
             TimeLimited.isAllowedTime(auth, 24*3600, authorisedReader);
