@@ -369,7 +369,7 @@ Sub commands:
 Mirror
 --------
 To mirror all of your data on another server first run the following command (on any instance):
-> java -jar Peergos.jar mirror init -username $username
+> java -jar Peergos.jar mirror init -username $username -peergos-url https://YOUR_PEERGOS_SERVER_DOMAIN
 
 It will ask for your password and then print three parameters you need to supply to the mirror daemon.
 
