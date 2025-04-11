@@ -157,7 +157,7 @@ public class GatewayHandler implements HttpHandler {
             httpExchange.close();
             long t2 = System.currentTimeMillis();
             if (LOGGING)
-                LOG.info("Public file Handler returned " + path + " query in: " + (t2 - t1) + " mS");
+                LOG.info("Public file Handler returned " + domainSuffix + "/" + path + " query in: " + (t2 - t1) + " mS");
         }
     }
 
