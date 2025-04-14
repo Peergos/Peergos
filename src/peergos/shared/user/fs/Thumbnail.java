@@ -9,7 +9,7 @@ public class Thumbnail {
     @JsConstructor
     public Thumbnail(String mimeType, byte[] data) {
         if (data.length > 100*1024)
-            throw new IllegalStateException("Image thumbnails must be < 100 KiB!");
+            throw new IllegalStateException("Image thumbnails must be < 100 KiB! Mimetype: " + mimeType);
         this.mimeType = mimeType;
         this.data = data;
     }
