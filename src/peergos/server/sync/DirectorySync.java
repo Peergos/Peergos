@@ -28,6 +28,7 @@ import peergos.shared.util.*;
 
 import java.io.*;
 import java.net.URL;
+import java.nio.file.FileSystem;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -668,7 +669,7 @@ public class DirectorySync {
         SnapshotTracker version = new SnapshotTracker(new Snapshot(new HashMap<>()));
         List<Triple<String, FileWrapper, HashTree>> toUpdate = new ArrayList<>();
         AtomicLong downloadedSize = new AtomicLong(0);
-        boolean hasBackSlashes = dir.toString().contains("\\");
+        boolean hasBackSlashes = ! dir.getFileSystem().getSeparator().equals("/");
         fs.applyToSubtree(dir, props -> {
             String relPath = dir.relativize(props.path).toString();
             if (hasBackSlashes)
