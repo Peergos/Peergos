@@ -668,8 +668,11 @@ public class DirectorySync {
         SnapshotTracker version = new SnapshotTracker(new Snapshot(new HashMap<>()));
         List<Triple<String, FileWrapper, HashTree>> toUpdate = new ArrayList<>();
         AtomicLong downloadedSize = new AtomicLong(0);
+        boolean hasBackSlashes = dir.toString().contains("\\");
         fs.applyToSubtree(dir, props -> {
-            String relPath = props.path.toString().substring(dir.toString().length() + 1);
+            String relPath = dir.relativize(props.path).toString();
+            if (hasBackSlashes)
+                relPath = relPath.replaceAll("\\\\", "/");
             FileState atSync = synced.byPath(relPath);
             if (atSync != null && atSync.modificationTime == props.modifiedTime) {
                 res.add(atSync);
