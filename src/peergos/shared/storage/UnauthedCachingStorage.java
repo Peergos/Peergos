@@ -92,7 +92,14 @@ public class UnauthedCachingStorage extends DelegatingStorage {
                                                             Optional<Cid> committedRoot,
                                                             Hasher hasher) {
         CachingStorage cache = new CachingStorage(new LocalOnlyStorage(this.cache,
-                () -> Futures.of(Collections.emptyList()), hasher),
+                () -> (committedRoot.isPresent() && caps.size() <= 1 ?
+                        get(owner, committedRoot.get(), Optional.empty())
+                                .thenApply(ropt -> ropt.map(WriterData::fromCbor).flatMap(wd ->  wd.tree))
+                                .thenCompose(champRoot -> target.getChampLookup(owner, (Cid) champRoot.get(), caps, Optional.empty())) :
+                        caps.size() <= 1 ?
+                                target.getChampLookup(owner, root, caps, Optional.empty()) :
+                                Futures.of(Collections.<byte[]>emptyList()))
+                        .thenApply(blocks -> cacheBlocks(blocks, hasher)), hasher),
                 100, 1024*1024);
 
         return ChampWrapper.create(owner, root, Optional.empty(), x -> Futures.of(x.data), cache, hasher, c -> (CborObject.CborMerkleLink) c)
