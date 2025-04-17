@@ -11,6 +11,7 @@ import peergos.shared.hamt.*;
 import peergos.shared.io.ipfs.Cid;
 import peergos.shared.io.ipfs.Multihash;
 import peergos.shared.io.ipfs.api.*;
+import peergos.shared.io.ipfs.bases.Multibase;
 import peergos.shared.storage.auth.*;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
@@ -28,6 +29,7 @@ public interface ContentAddressedStorage {
     boolean DEBUG_GC = false;
     int MAX_BLOCK_SIZE  = Fragment.MAX_LENGTH_WITH_BAT_PREFIX;
     int MAX_BLOCK_AUTHS = 50;
+    int MAX_CHAMP_GETS = 20;
 
     default CompletableFuture<BlockStoreProperties> blockStoreProperties() {
         return Futures.of(BlockStoreProperties.empty());
@@ -46,7 +48,7 @@ public interface ContentAddressedStorage {
      */
     ContentAddressedStorage directToOrigin();
 
-    default CompletableFuture<List<PresignedUrl>> authReads(List<MirrorCap> blocks) {
+    default CompletableFuture<List<PresignedUrl>> authReads(List<BlockMirrorCap> blocks) {
         return Futures.errored(new IllegalStateException("Unimplemented call!"));
     }
 
@@ -169,25 +171,24 @@ public interface ContentAddressedStorage {
 
     CompletableFuture<List<byte[]>> getChampLookup(PublicKeyHash owner,
                                                    Cid root,
-                                                   byte[] champKey,
-                                                   Optional<BatWithId> bat,
+                                                   List<ChunkMirrorCap> caps,
                                                    Optional<Cid> committedRoot);
 
     default CompletableFuture<List<byte[]>> getChampLookup(PublicKeyHash owner,
                                                            Cid root,
-                                                           byte[] champKey,
-                                                           Optional<BatWithId> bat,
+                                                           List<ChunkMirrorCap> caps,
                                                            Optional<Cid> committedRoot,
                                                            Hasher hasher) {
         CachingStorage cache = new CachingStorage(this, 100, 1024 * 1024);
-        return ChampWrapper.create(owner, (Cid)root, Optional.empty(), x -> Futures.of(x.data), cache, hasher, c -> (CborObject.CborMerkleLink) c)
-                .thenCompose(tree -> tree.get(champKey))
-                .thenApply(c -> c.map(x -> x.target).map(MaybeMultihash::of).orElse(MaybeMultihash.empty()))
-                .thenApply(btreeValue -> {
-                    if (btreeValue.isPresent())
-                        return cache.get(owner, (Cid) btreeValue.get(), bat);
-                    return Optional.empty();
-                }).thenApply(x -> new ArrayList<>(cache.getCached()));
+        return Futures.combineAll(caps.stream().map(cap -> ChampWrapper.create(owner, (Cid)root, Optional.empty(), x -> Futures.of(x.data), cache, hasher, c -> (CborObject.CborMerkleLink) c)
+                        .thenCompose(tree -> tree.get(cap.mapKey))
+                        .thenApply(c -> c.map(x -> x.target).map(MaybeMultihash::of).orElse(MaybeMultihash.empty()))
+                        .thenApply(btreeValue -> {
+                            if (btreeValue.isPresent())
+                                return cache.get(owner, (Cid) btreeValue.get(), cap.bat);
+                            return Optional.empty();
+                        })).collect(Collectors.toList()))
+                .thenApply(x -> new ArrayList<>(cache.getCached()));
     }
 
     /**
@@ -278,6 +279,7 @@ public interface ContentAddressedStorage {
         public static final String TRANSACTION_START = "transaction/start";
         public static final String TRANSACTION_CLOSE = "transaction/close";
         public static final String CHAMP_GET = "champ/get";
+        public static final String CHAMP_GET_BULK = "champ/get/bulk";
         public static final String LINK_GET = "link/get";
         public static final String LINK_COUNTS = "link/counts";
         public static final String BLOCK_PUT = "block/put";
@@ -361,7 +363,7 @@ public interface ContentAddressedStorage {
         }
 
         @Override
-        public CompletableFuture<List<PresignedUrl>> authReads(List<MirrorCap> blocks) {
+        public CompletableFuture<List<PresignedUrl>> authReads(List<BlockMirrorCap> blocks) {
             if (! isPeergosServer)
                 return Futures.errored(new IllegalStateException("Cannot auth reads when not talking to a Peergos server!"));
             return poster.postUnzip(apiPrefix + AUTH_READS, new CborObject.CborList(blocks).serialize())
@@ -412,14 +414,16 @@ public interface ContentAddressedStorage {
         }
 
         @Override
-        public CompletableFuture<List<byte[]>> getChampLookup(PublicKeyHash owner, Cid root, byte[] champKey, Optional<BatWithId> bat, Optional<Cid> committedRoot) {
+        public CompletableFuture<List<byte[]>> getChampLookup(PublicKeyHash owner, Cid root, List<ChunkMirrorCap> caps, Optional<Cid> committedRoot) {
             if (! isPeergosServer) {
-                return getChampLookup(owner, root, champKey, bat, committedRoot, hasher);
+                return getChampLookup(owner, root, caps, committedRoot, hasher);
             }
-            return poster.get(apiPrefix + CHAMP_GET + "?arg=" + root.toString()
-                    + "&arg=" + ArrayOps.bytesToHex(champKey)
-                    + "&owner=" + encode(owner.toString())
-                    + bat.map(b -> "&bat=" + b.encode()).orElse(""))
+            CborObject.CborList capsCbor = new CborObject.CborList(caps.stream()
+                    .map(ChunkMirrorCap::toCbor)
+                    .collect(Collectors.toList()));
+            return poster.get(apiPrefix + CHAMP_GET_BULK + "?arg=" + root.toString()
+                            + "&owner=" + encode(owner.toString())
+                            + "&caps=" + Multibase.encode(Multibase.Base.Base58BTC, capsCbor.serialize()))
                     .thenApply(CborObject::fromByteArray)
                     .thenApply(c -> (CborObject.CborList)c)
                     .thenApply(res -> res.map(c -> ((CborObject.CborByteArray)c).value));
@@ -632,7 +636,7 @@ public interface ContentAddressedStorage {
         }
 
         @Override
-        public CompletableFuture<List<PresignedUrl>> authReads(List<MirrorCap> blocks) {
+        public CompletableFuture<List<PresignedUrl>> authReads(List<BlockMirrorCap> blocks) {
             return local.authReads(blocks);
         }
 
@@ -666,12 +670,12 @@ public interface ContentAddressedStorage {
         }
 
         @Override
-        public CompletableFuture<List<byte[]>> getChampLookup(PublicKeyHash owner, Cid root, byte[] champKey, Optional<BatWithId> bat, Optional<Cid> committedRoot) {
+        public CompletableFuture<List<byte[]>> getChampLookup(PublicKeyHash owner, Cid root, List<ChunkMirrorCap> caps, Optional<Cid> committedRoot) {
             return Proxy.redirectCall(core,
                     ourNodeIds,
                     owner,
-                    () -> local.getChampLookup(owner, root, champKey, bat, committedRoot),
-                    target -> p2p.getChampLookup(target, owner, root, champKey, bat));
+                    () -> local.getChampLookup(owner, root, caps, committedRoot),
+                    target -> p2p.getChampLookup(target, owner, root, caps));
         }
 
         @Override

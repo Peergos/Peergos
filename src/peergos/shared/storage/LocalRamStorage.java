@@ -1,42 +1,53 @@
 package peergos.shared.storage;
 
-import peergos.shared.cbor.*;
-import peergos.shared.crypto.hash.*;
+import peergos.shared.cbor.CborObject;
+import peergos.shared.crypto.hash.Hasher;
+import peergos.shared.crypto.hash.PublicKeyHash;
 import peergos.shared.io.ipfs.Cid;
 import peergos.shared.io.ipfs.Multihash;
-import peergos.shared.storage.auth.*;
-import peergos.shared.user.fs.*;
-import peergos.shared.util.*;
+import peergos.shared.storage.auth.BatId;
+import peergos.shared.storage.auth.BatWithId;
+import peergos.shared.user.fs.EncryptedCapability;
+import peergos.shared.user.fs.FragmentWithHash;
+import peergos.shared.user.fs.SecretLink;
+import peergos.shared.util.EfficientHashMap;
+import peergos.shared.util.Futures;
+import peergos.shared.util.Pair;
+import peergos.shared.util.ProgressConsumer;
 
-import java.time.*;
-import java.util.*;
-import java.util.concurrent.*;
-import java.util.function.*;
-import java.util.stream.*;
+import java.time.LocalDateTime;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
+import java.util.function.Supplier;
+import java.util.stream.Collectors;
 
-public class LocalOnlyStorage implements ContentAddressedStorage {
-    private final BlockCache cache;
-    private final Supplier<CompletableFuture<List<byte[]>>> bulkFetcher;
+public class LocalRamStorage implements ContentAddressedStorage {
     private final Hasher h;
+    private Map<Cid, byte[]> blocks;
 
-    public LocalOnlyStorage(BlockCache cache, Supplier<CompletableFuture<List<byte[]>>> bulkFetcher, Hasher h) {
-        this.cache = cache;
-        this.bulkFetcher = bulkFetcher;
+    private LocalRamStorage(Hasher h, EfficientHashMap<Cid, byte[]> blocks) {
         this.h = h;
+        this.blocks = blocks;
+    }
+
+    public static CompletableFuture<LocalRamStorage> build(Hasher h, List<byte[]> cborBlocks) {
+        EfficientHashMap<Cid, byte[]> blocks = new EfficientHashMap<>();
+        return Futures.combineAllInOrder(cborBlocks.stream().map(b -> h.sha256(b)
+                        .thenApply(hash -> new Cid(1, Cid.Codec.DagCbor, Multihash.Type.sha2_256, hash))
+                        .thenApply(cid -> new Pair<>(cid, b)))
+                .collect(Collectors.toList()))
+                .thenApply(mappings -> {
+                    mappings.forEach(m -> blocks.put(m.left, m.right));
+                    return new LocalRamStorage(h, blocks);
+                });
     }
 
     @Override
     public CompletableFuture<Optional<byte[]>> getRaw(PublicKeyHash owner, Cid hash, Optional<BatWithId> bat) {
-        return cache.get(hash)
-                .thenCompose(opt -> {
-                    if (opt.isPresent())
-                        return Futures.of(opt);
-                    return bulkFetcher.get()
-                            .thenCompose(blocks -> Futures.combineAll(blocks.stream().map(data ->
-                                            h.sha256(data).thenApply(hashb -> cache.put(new Cid(1, Cid.Codec.DagCbor, Multihash.Type.sha2_256, hashb), data)))
-                                    .collect(Collectors.toList())))
-                            .thenCompose(x ->  cache.get(hash));
-                });
+        return Futures.of(Optional.ofNullable(blocks.get(hash)));
     }
 
     @Override
@@ -56,17 +67,17 @@ public class LocalOnlyStorage implements ContentAddressedStorage {
 
     @Override
     public void clearBlockCache() {
-        cache.clear();
+        throw new IllegalStateException("Unimplemented!");
     }
 
     @Override
     public CompletableFuture<Cid> id() {
-        return Futures.of(new Cid(1, Cid.Codec.LibP2pKey, Multihash.Type.sha2_256, new byte[32]));
+        throw new IllegalStateException("Unimplemented!");
     }
 
     @Override
     public CompletableFuture<List<Cid>> ids() {
-        return Futures.of(Arrays.asList(new Cid(1, Cid.Codec.LibP2pKey, Multihash.Type.sha2_256, new byte[32])));
+        throw new IllegalStateException("Unimplemented!");
     }
 
     @Override
@@ -101,7 +112,7 @@ public class LocalOnlyStorage implements ContentAddressedStorage {
 
     @Override
     public CompletableFuture<List<byte[]>> getChampLookup(PublicKeyHash owner, Cid root, List<ChunkMirrorCap> caps, Optional<Cid> committedRoot) {
-        throw new IllegalStateException("Unimplemented!");
+        return getChampLookup(owner, root, caps, committedRoot, h);
     }
 
     @Override

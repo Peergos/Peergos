@@ -5,6 +5,7 @@ import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.Cid;
 import peergos.shared.io.ipfs.Multihash;
 import peergos.shared.io.ipfs.api.*;
+import peergos.shared.io.ipfs.bases.Multibase;
 import peergos.shared.storage.auth.*;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
@@ -25,7 +26,7 @@ public interface ContentAddressedStorageProxy {
 
     CompletableFuture<Boolean> closeTransaction(Multihash targetServerId, PublicKeyHash owner, TransactionId tid);
 
-    CompletableFuture<List<byte[]>> getChampLookup(Multihash targetServerId, PublicKeyHash owner, Multihash root, byte[] champKey, Optional<BatWithId> bat);
+    CompletableFuture<List<byte[]>> getChampLookup(Multihash targetServerId, PublicKeyHash owner, Multihash root, List<ChunkMirrorCap> caps);
 
     CompletableFuture<EncryptedCapability> getSecretLink(Multihash targetServerId, SecretLink link);
 
@@ -105,13 +106,14 @@ public interface ContentAddressedStorageProxy {
         public CompletableFuture<List<byte[]>> getChampLookup(Multihash targetServerId,
                                                               PublicKeyHash owner,
                                                               Multihash root,
-                                                              byte[] champKey,
-                                                              Optional<BatWithId> bat) {
+                                                              List<ChunkMirrorCap> caps) {
+            CborObject.CborList capsCbor = new CborObject.CborList(caps.stream()
+                    .map(ChunkMirrorCap::toCbor)
+                    .collect(Collectors.toList()));
             return poster.get(getProxyUrlPrefix(targetServerId) + apiPrefix
-                    + "champ/get?arg=" + root.toString()
-                    + "&arg=" + ArrayOps.bytesToHex(champKey)
-                    + "&owner=" + encode(owner.toString())
-                    + bat.map(b -> "&bat=" + b.encode()).orElse(""))
+                            + "champ/get?arg=" + root.toString()
+                            + "&owner=" + encode(owner.toString())
+                            + "&caps=" + Multibase.encode(Multibase.Base.Base58BTC, capsCbor.serialize()))
                     .thenApply(CborObject::fromByteArray)
                     .thenApply(c -> (CborObject.CborList)c)
                     .thenApply(res -> res.map(c -> ((CborObject.CborByteArray)c).value));

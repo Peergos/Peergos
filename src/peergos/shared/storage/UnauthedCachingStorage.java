@@ -78,49 +78,57 @@ public class UnauthedCachingStorage extends DelegatingStorage {
     @Override
     public CompletableFuture<List<byte[]>> getChampLookup(PublicKeyHash owner,
                                                           Cid root,
-                                                          byte[] champKey,
-                                                          Optional<BatWithId> bat,
+                                                          List<ChunkMirrorCap> caps,
                                                           Optional<Cid> committedRoot) {
         return Futures.asyncExceptionally(
-                () -> localChampLookup(owner, root, champKey, bat, committedRoot, hasher),
-                t -> target.getChampLookup(owner, root, champKey, bat,  committedRoot)
+                () -> localChampLookup(owner, root, caps, committedRoot, hasher),
+                t -> target.getChampLookup(owner, root, caps,  committedRoot)
                         .thenApply(blocks -> cacheBlocks(blocks, hasher)));
     }
 
     public CompletableFuture<List<byte[]>> localChampLookup(PublicKeyHash owner,
                                                             Cid root,
-                                                            byte[] champKey,
-                                                            Optional<BatWithId> bat,
+                                                            List<ChunkMirrorCap> caps,
                                                             Optional<Cid> committedRoot,
                                                             Hasher hasher) {
         CachingStorage cache = new CachingStorage(new LocalOnlyStorage(this.cache,
-                () -> (committedRoot.isPresent() ?
-                        get(owner, committedRoot.get(), Optional.empty())
-                                .thenApply(ropt -> ropt.map(WriterData::fromCbor).flatMap(wd ->  wd.tree))
-                                .thenCompose(champRoot -> target.getChampLookup(owner, (Cid) champRoot.get(), champKey, bat, Optional.empty())) :
-                        target.getChampLookup(owner, root, champKey, bat, Optional.empty()))
-                        .thenApply(blocks -> cacheBlocks(blocks, hasher)), hasher),
+                () -> Futures.of(Collections.emptyList()), hasher),
                 100, 1024*1024);
+
         return ChampWrapper.create(owner, root, Optional.empty(), x -> Futures.of(x.data), cache, hasher, c -> (CborObject.CborMerkleLink) c)
-                .thenCompose(tree -> tree.get(champKey))
-                .thenApply(c -> c.map(x -> x.target).map(MaybeMultihash::of).orElse(MaybeMultihash.empty()))
-                .thenApply(btreeValue -> {
-                    if (btreeValue.isPresent())
-                        return cache.get(owner, (Cid) btreeValue.get(), bat);
-                    return Optional.empty();
-                }).thenApply(x -> new ArrayList<>(cache.getCached()));
+                .thenCompose(tree -> Futures.combineAll(caps.stream()
+                        .map(cap -> tree.get(cap.mapKey)
+                                .thenApply(c -> c.map(x -> x.target)
+                                        .map(MaybeMultihash::of).orElse(MaybeMultihash.empty()))
+                                .thenCompose(btreeValue -> {
+                                    if (btreeValue.isPresent())
+                                        return cache.get(owner, (Cid) btreeValue.get(), cap.bat)
+                                                .thenApply(x -> Optional.<ChunkMirrorCap>empty());
+                                    return Futures.of(Optional.of(cap));
+                                })).collect(Collectors.toList())))
+                .thenCompose(missing -> target.getChampLookup(owner, root,
+                        missing.stream()
+                                .flatMap(Optional::stream)
+                                .collect(Collectors.toList()), Optional.empty()))
+                .thenApply(remote -> {
+                    Collection<byte[]> cached = cache.getCached();
+                    ArrayList<byte[]> res = new ArrayList<>(cached.size() + remote.size());
+                    res.addAll(cached);
+                    res.addAll(remote);
+                    return res;
+                });
     }
 
     @Override
-    public CompletableFuture<List<byte[]>> getChampLookup(PublicKeyHash owner, Cid root,
-                                                          byte[] champKey,
-                                                          Optional<BatWithId> bat,
+    public CompletableFuture<List<byte[]>> getChampLookup(PublicKeyHash owner,
+                                                          Cid root,
+                                                          List<ChunkMirrorCap> caps,
                                                           Optional<Cid> committedRoot,
                                                           Hasher hasher) {
         System.out.println("UnauthedCachingStorage::getChampLookup " + root);
         return Futures.asyncExceptionally(
-                () -> target.getChampLookup(owner, root, champKey, bat, committedRoot, hasher),
-                        t -> super.getChampLookup(owner, root, champKey, bat, committedRoot, hasher)
+                () -> target.getChampLookup(owner, root, caps, committedRoot, hasher),
+                        t -> super.getChampLookup(owner, root, caps, committedRoot, hasher)
         ).thenApply(blocks -> cacheBlocks(blocks, hasher));
     }
 
