@@ -40,6 +40,11 @@ public class LocalOnlyStorage implements ContentAddressedStorage {
     }
 
     @Override
+    public CompletableFuture<Optional<CborObject>> get(PublicKeyHash owner, Cid hash, Optional<BatWithId> bat) {
+        return getRaw(owner, hash, bat).thenApply(opt -> opt.map(CborObject::fromByteArray));
+    }
+
+    @Override
     public CompletableFuture<BlockStoreProperties> blockStoreProperties() {
         return Futures.of(BlockStoreProperties.empty());
     }
@@ -82,11 +87,6 @@ public class LocalOnlyStorage implements ContentAddressedStorage {
     @Override
     public CompletableFuture<List<Cid>> put(PublicKeyHash owner, PublicKeyHash writer, List<byte[]> signedHashes, List<byte[]> blocks, TransactionId tid) {
         throw new IllegalStateException("Unimplemented!");
-    }
-
-    @Override
-    public CompletableFuture<Optional<CborObject>> get(PublicKeyHash owner, Cid hash, Optional<BatWithId> bat) {
-        return getRaw(owner, hash, bat).thenApply(opt -> opt.map(CborObject::fromByteArray));
     }
 
     @Override

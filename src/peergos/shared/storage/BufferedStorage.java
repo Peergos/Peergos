@@ -65,7 +65,7 @@ public class BufferedStorage extends DelegatingStorage {
         // If we are in a write transaction try to perform a local champ lookup from the buffer,
         // falling back to a direct champ get
         //TODO collect all missing lookups into a single remote bulk get
-        return Futures.combineAll(caps.stream().map(cap -> Futures.asyncExceptionally(
+        return Futures.combineAllInOrder(caps.stream().map(cap -> Futures.asyncExceptionally(
                 () -> getChampLookup(owner, root, cap.mapKey, cap.bat, committedRoot, hasher),
                 t -> target.getChampLookup(owner, root, Arrays.asList(cap), committedRoot)
         )).collect(Collectors.toList()))

@@ -414,6 +414,10 @@ public class NetworkAccess {
                 .thenApply(p -> p.left.isEmpty() ? Optional.empty() : Optional.of(p.left.get(0)));
     }
 
+    public CompletableFuture<Optional<Cid>> getLastCommittedRoot(PublicKeyHash writer, WriterData base) {
+        return Futures.of(Optional.empty());
+    }
+
     /**
      *
      * @param links
@@ -443,11 +447,12 @@ public class NetworkAccess {
                                 int groupSize = ContentAddressedStorage.MAX_CHAMP_GETS;
                                 for (int i = 0; i < caps.size(); i += groupSize)
                                     grouped.add(caps.subList(i, Math.min(i + groupSize, caps.size())));
-                                return Futures.combineAllInOrder(grouped.stream().map(group ->
+                                return getLastCommittedRoot(writer, v.get(writer).props.get())
+                                        .thenCompose(committedRoot -> Futures.combineAllInOrder(grouped.stream().map(group ->
                                         Futures.asyncExceptionally(
-                                                () -> dhtClient.getChampLookup(owner, (Cid) v.get(writer).props.get().tree.get(), group, Optional.empty()),
-                                                t -> dhtClient.getChampLookup(owner, (Cid) v.get(writer).props.get().tree.get(), group, Optional.empty(), hasher)
-                                        )).collect(Collectors.toList()))
+                                                () -> dhtClient.getChampLookup(owner, (Cid) v.get(writer).props.get().tree.get(), group, committedRoot),
+                                                t -> dhtClient.getChampLookup(owner, (Cid) v.get(writer).props.get().tree.get(), group, committedRoot, hasher)
+                                        )).collect(Collectors.toList())))
                                         .thenApply(all -> all.stream().flatMap(List::stream).collect(Collectors.toList()));
                             }).thenCompose(blocks -> LocalRamStorage.build(hasher, blocks))
                             .thenCompose(fromBlocks -> {

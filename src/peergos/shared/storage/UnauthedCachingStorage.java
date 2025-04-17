@@ -80,27 +80,10 @@ public class UnauthedCachingStorage extends DelegatingStorage {
                                                           Cid root,
                                                           List<ChunkMirrorCap> caps,
                                                           Optional<Cid> committedRoot) {
-        return Futures.asyncExceptionally(
-                () -> localChampLookup(owner, root, caps, committedRoot, hasher),
-                t -> target.getChampLookup(owner, root, caps,  committedRoot)
-                        .thenApply(blocks -> cacheBlocks(blocks, hasher)));
-    }
-
-    public CompletableFuture<List<byte[]>> localChampLookup(PublicKeyHash owner,
-                                                            Cid root,
-                                                            List<ChunkMirrorCap> caps,
-                                                            Optional<Cid> committedRoot,
-                                                            Hasher hasher) {
+        // Do local champ gets using cache, then do a single bulk call for those absent
         CachingStorage cache = new CachingStorage(new LocalOnlyStorage(this.cache,
-                () -> (committedRoot.isPresent() && caps.size() <= 1 ?
-                        get(owner, committedRoot.get(), Optional.empty())
-                                .thenApply(ropt -> ropt.map(WriterData::fromCbor).flatMap(wd ->  wd.tree))
-                                .thenCompose(champRoot -> target.getChampLookup(owner, (Cid) champRoot.get(), caps, Optional.empty())) :
-                        caps.size() <= 1 ?
-                                target.getChampLookup(owner, root, caps, Optional.empty()) :
-                                Futures.of(Collections.<byte[]>emptyList()))
-                        .thenApply(blocks -> cacheBlocks(blocks, hasher)), hasher),
-                100, 1024*1024);
+                () -> Futures.errored(new IllegalStateException("Absent block")), hasher),
+                100 * (1 + caps.size()), 1024*1024);
 
         return ChampWrapper.create(owner, root, Optional.empty(), x -> Futures.of(x.data), cache, hasher, c -> (CborObject.CborMerkleLink) c)
                 .thenCompose(tree -> Futures.combineAll(caps.stream()
@@ -112,11 +95,17 @@ public class UnauthedCachingStorage extends DelegatingStorage {
                                         return cache.get(owner, (Cid) btreeValue.get(), cap.bat)
                                                 .thenApply(x -> Optional.<ChunkMirrorCap>empty());
                                     return Futures.of(Optional.of(cap));
-                                })).collect(Collectors.toList())))
-                .thenCompose(missing -> target.getChampLookup(owner, root,
-                        missing.stream()
+                                }).exceptionally(t -> Optional.of(cap)))
+                        .collect(Collectors.toList())))
+                .thenApply(missing -> missing.stream()
                                 .flatMap(Optional::stream)
-                                .collect(Collectors.toList()), Optional.empty()))
+                                .collect(Collectors.toList()))
+                .thenCompose(missing -> committedRoot.isPresent() ?
+                        get(owner, committedRoot.get(), Optional.empty())
+                                .thenApply(ropt -> ropt.map(WriterData::fromCbor).flatMap(wd ->  wd.tree))
+                                .thenCompose(champRoot -> target.getChampLookup(owner, (Cid) champRoot.get(), missing, Optional.empty())) :
+                        target.getChampLookup(owner, root, missing, Optional.empty()))
+                .thenApply(blocks -> cacheBlocks(blocks, hasher))
                 .thenApply(remote -> {
                     Collection<byte[]> cached = cache.getCached();
                     ArrayList<byte[]> res = new ArrayList<>(cached.size() + remote.size());
