@@ -111,7 +111,7 @@ public interface ContentAddressedStorageProxy {
                     .map(ChunkMirrorCap::toCbor)
                     .collect(Collectors.toList()));
             return poster.get(getProxyUrlPrefix(targetServerId) + apiPrefix
-                            + "champ/get?arg=" + root.toString()
+                            + ContentAddressedStorage.HTTP.CHAMP_GET_BULK + "?arg=" + root.toString()
                             + "&owner=" + encode(owner.toString())
                             + "&caps=" + Multibase.encode(Multibase.Base.Base58BTC, capsCbor.serialize()))
                     .thenApply(CborObject::fromByteArray)
