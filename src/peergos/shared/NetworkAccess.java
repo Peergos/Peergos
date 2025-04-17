@@ -427,6 +427,18 @@ public class NetworkAccess {
     public CompletableFuture<Pair<List<RetrievedCapability>, List<AbsoluteCapability>>> retrieveAllMetadata(
             List<AbsoluteCapability> links,
             Snapshot current) {
+        Map<PublicKeyHash, List<AbsoluteCapability>> grouped = links.stream().collect(Collectors.groupingBy(link -> link.writer));
+        return Futures.combineAllInOrder(grouped.values().stream()
+                .map(byWriter -> retrieveAllMetadataSingleWriter(byWriter, current))
+                .collect(Collectors.toList()))
+                .thenApply(res -> new Pair<>(
+                        res.stream().flatMap(p -> p.left.stream()).collect(Collectors.toList()),
+                        res.stream().flatMap(p -> p.right.stream()).collect(Collectors.toList())));
+    }
+
+    public CompletableFuture<Pair<List<RetrievedCapability>, List<AbsoluteCapability>>> retrieveAllMetadataSingleWriter(
+            List<AbsoluteCapability> links,
+            Snapshot current) {
         if (links.isEmpty())
             return Futures.of(new Pair<>(Collections.emptyList(), Collections.emptyList()));
         PublicKeyHash owner = links.get(0).owner;
