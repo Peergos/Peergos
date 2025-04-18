@@ -444,48 +444,65 @@ public class NetworkAccess {
         PublicKeyHash owner = links.get(0).owner;
         // All links should have same owner and writer
         PublicKeyHash writer = links.get(0).writer;
-        return Futures.combineAllInOrder(links.stream()
-                        .filter(link -> link.writer.equals(writer))
-                        .map(link -> link.bat.map(b -> b.calculateId(hasher)
-                                        .thenApply(id -> Optional.of(new BatWithId(b, id.id))))
-                                .orElse(Futures.of(Optional.empty()))
-                                .thenApply(bid -> new ChunkMirrorCap(link.getMapKey(), bid))).collect(Collectors.toList()))
-                .thenCompose(caps -> {
-                    if (caps.size() != links.size())
-                        throw new IllegalStateException("All caps must have same writer in bulk champ get!");
-                    return current.withWriter(owner, writer, this)
-                            .thenCompose(v -> {
+        return current.withWriter(owner, writer, this)
+                .thenCompose(v -> {
+                    List<RetrievedCapability> fromCache = new ArrayList<>();
+                    List<AbsoluteCapability> remaining = new ArrayList<>();
+                    for (AbsoluteCapability link : links) {
+                        Pair<Multihash, ByteArrayWrapper> cacheKey = new Pair<>(v.get(writer).props.get().tree.get(), new ByteArrayWrapper(link.getMapKey()));
+                        Optional<CryptreeNode> cached = cache.get(cacheKey);
+                        if (cached != null && cached.isPresent())
+                            fromCache.add(new RetrievedCapability(link, cached.get()));
+                        else
+                            remaining.add(link);
+                    }
+
+                    if (remaining.isEmpty())
+                        return Futures.of(new Pair<>(fromCache, Collections.emptyList()));
+
+                    return Futures.combineAllInOrder(remaining.stream()
+                                    .filter(link -> link.writer.equals(writer))
+                                    .map(link -> link.bat.map(b -> b.calculateId(hasher)
+                                                    .thenApply(id -> Optional.of(new BatWithId(b, id.id))))
+                                            .orElse(Futures.of(Optional.empty()))
+                                            .thenApply(bid -> new ChunkMirrorCap(link.getMapKey(), bid))).collect(Collectors.toList()))
+                            .thenCompose(caps -> {
+                                if (caps.size() != remaining.size())
+                                    throw new IllegalStateException("All caps must have same writer in bulk champ get!");
+
                                 List<List<ChunkMirrorCap>> grouped = new ArrayList<>();
                                 int groupSize = ContentAddressedStorage.MAX_CHAMP_GETS;
                                 for (int i = 0; i < caps.size(); i += groupSize)
                                     grouped.add(caps.subList(i, Math.min(i + groupSize, caps.size())));
                                 return getLastCommittedRoot(writer, v.get(writer).props.get())
                                         .thenCompose(committedRoot -> Futures.combineAllInOrder(grouped.stream().map(group ->
-                                        Futures.asyncExceptionally(
-                                                () -> dhtClient.getChampLookup(owner, (Cid) v.get(writer).props.get().tree.get(), group, committedRoot),
-                                                t -> dhtClient.getChampLookup(owner, (Cid) v.get(writer).props.get().tree.get(), group, committedRoot, hasher)
-                                        )).collect(Collectors.toList())))
-                                        .thenApply(all -> all.stream().flatMap(List::stream).collect(Collectors.toList()));
-                            }).thenCompose(blocks -> LocalRamStorage.build(hasher, blocks))
-                            .thenCompose(fromBlocks -> {
-                                List<CompletableFuture<Either<RetrievedCapability, AbsoluteCapability>>> all = links.stream()
-                                        .map(link -> current.withWriter(link.owner, link.writer, this)
-                                                .thenCompose(version -> getMetadata(version.get(link.writer).props.get(), link, Optional.empty(), fromBlocks, hasher, cache)
-                                                        .thenApply(copt -> copt.isPresent() ?
-                                                                Either.<RetrievedCapability, AbsoluteCapability>a(new RetrievedCapability(link, copt.get())) :
-                                                                Either.<RetrievedCapability, AbsoluteCapability>b(link))))
-                                        .collect(Collectors.toList());
+                                                Futures.asyncExceptionally(
+                                                        () -> dhtClient.getChampLookup(owner, (Cid) v.get(writer).props.get().tree.get(), group, committedRoot),
+                                                        t -> dhtClient.getChampLookup(owner, (Cid) v.get(writer).props.get().tree.get(), group, committedRoot, hasher)
+                                                )).collect(Collectors.toList())))
+                                        .thenApply(all -> all.stream().flatMap(List::stream).collect(Collectors.toList()))
+                                        .thenCompose(blocks -> LocalRamStorage.build(hasher, blocks))
+                                        .thenCompose(fromBlocks -> {
+                                            List<CompletableFuture<Either<RetrievedCapability, AbsoluteCapability>>> all = remaining.stream()
+                                                    .map(link -> current.withWriter(link.owner, link.writer, this)
+                                                            .thenCompose(version -> getMetadata(version.get(link.writer).props.get(), link, Optional.empty(), fromBlocks, hasher, cache)
+                                                                    .thenApply(copt -> copt.isPresent() ?
+                                                                            Either.<RetrievedCapability, AbsoluteCapability>a(new RetrievedCapability(link, copt.get())) :
+                                                                            Either.<RetrievedCapability, AbsoluteCapability>b(link))))
+                                                    .collect(Collectors.toList());
 
-                                return Futures.combineAll(all)
-                                        .thenApply(res -> new Pair<>(
-                                                res.stream()
-                                                        .filter(Either::isA)
-                                                        .map(e -> e.a())
-                                                        .collect(Collectors.toList()),
-                                                res.stream()
-                                                        .filter(Either::isB)
-                                                        .map(e -> e.b())
-                                                        .collect(Collectors.toList())));
+                                            return Futures.combineAll(all)
+                                                    .thenApply(res -> new Pair<>(
+                                                            Stream.concat(res.stream()
+                                                                                    .filter(Either::isA)
+                                                                                    .map(e -> e.a()),
+                                                                            fromCache.stream())
+                                                                    .collect(Collectors.toList()),
+                                                            res.stream()
+                                                                    .filter(Either::isB)
+                                                                    .map(e -> e.b())
+                                                                    .collect(Collectors.toList())));
+                                        });
                             });
                 });
     }
