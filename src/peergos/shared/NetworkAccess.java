@@ -429,8 +429,8 @@ public class NetworkAccess {
             Snapshot current) {
         Map<PublicKeyHash, List<AbsoluteCapability>> grouped = links.stream().collect(Collectors.groupingBy(link -> link.writer));
         return Futures.combineAllInOrder(grouped.values().stream()
-                .map(byWriter -> retrieveAllMetadataSingleWriter(byWriter, current))
-                .collect(Collectors.toList()))
+                        .map(byWriter -> retrieveAllMetadataSingleWriter(byWriter, current))
+                        .collect(Collectors.toList()))
                 .thenApply(res -> new Pair<>(
                         res.stream().flatMap(p -> p.left.stream()).collect(Collectors.toList()),
                         res.stream().flatMap(p -> p.right.stream()).collect(Collectors.toList())));
@@ -614,6 +614,9 @@ public class NetworkAccess {
                     Set<PublicKeyHash> childWriters = Collections.singleton(cap.writer);
                     return version.withWriters(owner, childWriters, network)
                             .thenCompose(fullVersion -> network.retrieveAllMetadata(Collections.singletonList(cap), fullVersion)
+                                    .thenCompose(p -> p.left.isEmpty() ? // try again once
+                                            network.retrieveAllMetadata(Collections.singletonList(cap), fullVersion) :
+                                            Futures.of(p))
                                     .thenApply(p -> p.left)
                                     .thenCompose(rcs -> {
                                         RetrievedCapability rc = rcs.get(0);
