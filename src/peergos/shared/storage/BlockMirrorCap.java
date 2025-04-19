@@ -6,12 +6,12 @@ import peergos.shared.storage.auth.*;
 
 import java.util.*;
 
-public class MirrorCap implements Cborable {
+public class BlockMirrorCap implements Cborable {
 
     public final Cid hash;
     public final Optional<BatWithId> bat;
 
-    public MirrorCap(Cid hash, Optional<BatWithId> bat) {
+    public BlockMirrorCap(Cid hash, Optional<BatWithId> bat) {
         this.hash = hash;
         this.bat = bat;
     }
@@ -24,12 +24,12 @@ public class MirrorCap implements Cborable {
         return CborObject.CborMap.build(state);
     }
 
-    public static MirrorCap fromCbor(Cborable cbor) {
+    public static BlockMirrorCap fromCbor(Cborable cbor) {
         if (! (cbor instanceof CborObject.CborMap))
-            throw new IllegalStateException("Incorrect cbor for MirrorCap: " + cbor);
+            throw new IllegalStateException("Incorrect cbor for BlockMirrorCap: " + cbor);
 
         CborObject.CborMap m = (CborObject.CborMap) cbor;
-        return new MirrorCap(m.get("h", c -> Cid.cast(((CborObject.CborByteArray)c).value)),
+        return new BlockMirrorCap(m.get("h", c -> Cid.cast(((CborObject.CborByteArray)c).value)),
                 m.getOptional("b", BatWithId::fromCbor));
     }
 }

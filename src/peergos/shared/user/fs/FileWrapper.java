@@ -455,6 +455,8 @@ public class FileWrapper {
                                                                                                 String ownername,
                                                                                                 NetworkAccess network,
                                                                                                 Snapshot version) {
+        if (caps.isEmpty())
+            return Futures.of(new Pair<>(Collections.emptySet(), Collections.emptyList()));
         Set<PublicKeyHash> childWriters = caps.stream()
                 .map(c -> c.cap.writer)
                 .collect(Collectors.toSet());

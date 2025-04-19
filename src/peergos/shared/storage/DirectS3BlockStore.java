@@ -213,7 +213,7 @@ public class DirectS3BlockStore implements ContentAddressedStorage {
             CompletableFuture<List<PresignedUrl>> auths = nonIdentity.isEmpty() ?
                     Futures.of(Collections.emptyList()) :
                     fallback.authReads(nonIdentity.stream()
-                            .map(p -> new MirrorCap(p.right,
+                            .map(p -> new BlockMirrorCap(p.right,
                                     bats.size() > p.left ?
                                             Optional.of(bats.get(p.left)) :
                                             Optional.empty()))
@@ -274,7 +274,7 @@ public class DirectS3BlockStore implements ContentAddressedStorage {
                     .thenApply(Optional::of)
                     .thenAccept(res::complete)
                     .exceptionally(t -> {
-                        fallback.authReads(Arrays.asList(new MirrorCap(hash, bat)))
+                        fallback.authReads(Arrays.asList(new BlockMirrorCap(hash, bat)))
                                 .thenCompose(preAuthedGet -> direct.get(preAuthedGet.get(0).base))
                                 .thenApply(Optional::of)
                                 .thenAccept(res::complete)
@@ -293,7 +293,7 @@ public class DirectS3BlockStore implements ContentAddressedStorage {
         }
         if (authedReads && hash.isRaw()) {
             CompletableFuture<Optional<byte[]>> res = new CompletableFuture<>();
-            fallback.authReads(Arrays.asList(new MirrorCap(hash, bat)))
+            fallback.authReads(Arrays.asList(new BlockMirrorCap(hash, bat)))
                     .thenCompose(preAuthedGet -> direct.get(preAuthedGet.get(0).base, preAuthedGet.get(0).fields))
                     .thenApply(Optional::of)
                     .thenApply(opt -> opt.filter(b -> b.length > 0))
@@ -323,13 +323,13 @@ public class DirectS3BlockStore implements ContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<List<byte[]>> getChampLookup(PublicKeyHash owner, Cid root, byte[] champKey, Optional<BatWithId> bat, Optional<Cid> committedRoot) {
+    public CompletableFuture<List<byte[]>> getChampLookup(PublicKeyHash owner, Cid root, List<ChunkMirrorCap> caps, Optional<Cid> committedRoot) {
         return Futures.asyncExceptionally(
-                () -> fallback.getChampLookup(owner, root, champKey, bat, committedRoot),
+                () -> fallback.getChampLookup(owner, root, caps, committedRoot),
                 t -> {
                     if (!(t instanceof RateLimitException))
                         return Futures.errored(t);
-                    return getChampLookup(owner, root, champKey, bat, committedRoot, hasher);
+                    return getChampLookup(owner, root, caps, committedRoot, hasher);
                 });
     }
 

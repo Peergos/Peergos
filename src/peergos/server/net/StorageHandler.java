@@ -13,6 +13,7 @@ import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.Cid;
 import peergos.shared.io.ipfs.Multihash;
 import peergos.shared.io.ipfs.api.*;
+import peergos.shared.io.ipfs.bases.Multibase;
 import peergos.shared.storage.*;
 import com.sun.net.httpserver.*;
 import peergos.shared.storage.auth.*;
@@ -107,7 +108,7 @@ public class StorageHandler implements HttpHandler {
                 }
                 case AUTH_READS: {
                     CborObject cbor = CborObject.fromByteArray(Serialize.readFully(httpExchange.getRequestBody()));
-                    List<MirrorCap> blockCaps = ((CborObject.CborList) cbor).map(MirrorCap::fromCbor);
+                    List<BlockMirrorCap> blockCaps = ((CborObject.CborList) cbor).map(BlockMirrorCap::fromCbor);
                     dht.authReads(blockCaps).thenAccept(res -> {
                         replyBytes(httpExchange, new CborObject.CborList(res).serialize(), Optional.empty());
                     }).exceptionally(Futures::logAndThrow).get();
@@ -137,7 +138,42 @@ public class StorageHandler implements HttpHandler {
                             Optional.of(BatWithId.decode(last.apply("bat"))) :
                             Optional.empty();
                     try {
-                        dht.getChampLookup(ownerHash.get(), root, champKey, bat, Optional.empty()).thenAccept(blocks -> {
+                        dht.getChampLookup(ownerHash.get(), root, Arrays.asList(new ChunkMirrorCap(champKey, bat)), Optional.empty()).thenAccept(blocks -> {
+                            replyBytes(httpExchange, new CborObject.CborList(blocks.stream()
+                                    .map(CborObject.CborByteArray::new).collect(Collectors.toList())).serialize(), Optional.of(root));
+                        }).exceptionally(Futures::logAndThrow).get();
+                    } finally {
+                        timer.observeDuration();
+                    }
+                    break;
+                }
+                case CHAMP_GET_BULK: {
+                    AggregatedMetrics.STORAGE_CHAMP_GET.inc();
+                    Histogram.Timer timer = AggregatedMetrics.STORAGE_CHAMP_GET_DURATION.labels("duration").startTimer();
+                    Cid root = Cid.decode(args.get(0));
+
+                    if (params.containsKey("caps")) {
+                        try {
+                            byte[] capsRaw = Multibase.decode(last.apply("caps"));
+                            List<ChunkMirrorCap> caps = ((CborObject.CborList) CborObject.fromByteArray(capsRaw)).map(ChunkMirrorCap::fromCbor);
+                            if (caps.size() > MAX_CHAMP_GETS)
+                                throw new IllegalStateException("Too many caps in bulk champ get call! " + caps.size());
+                            dht.getChampLookup(ownerHash.get(), root, caps, Optional.empty()).thenAccept(blocks -> {
+                                replyBytes(httpExchange, new CborObject.CborList(blocks.stream()
+                                        .map(CborObject.CborByteArray::new).collect(Collectors.toList())).serialize(), Optional.of(root));
+                            }).exceptionally(Futures::logAndThrow).get();
+                        } finally {
+                            timer.observeDuration();
+                        }
+                        break;
+                    }
+
+                    byte[] champKey = ArrayOps.hexToBytes(args.get(1));
+                    Optional<BatWithId> bat = params.containsKey("bat") ?
+                            Optional.of(BatWithId.decode(last.apply("bat"))) :
+                            Optional.empty();
+                    try {
+                        dht.getChampLookup(ownerHash.get(), root, List.of(new ChunkMirrorCap(champKey, bat)), Optional.empty()).thenAccept(blocks -> {
                             replyBytes(httpExchange, new CborObject.CborList(blocks.stream()
                                     .map(CborObject.CborByteArray::new).collect(Collectors.toList())).serialize(), Optional.of(root));
                         }).exceptionally(Futures::logAndThrow).get();

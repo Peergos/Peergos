@@ -58,17 +58,20 @@ public class BufferedStorage extends DelegatingStorage {
     @Override
     public CompletableFuture<List<byte[]>> getChampLookup(PublicKeyHash owner,
                                                           Cid root,
-                                                          byte[] champKey,
-                                                          Optional<BatWithId> bat,
+                                                          List<ChunkMirrorCap> caps,
                                                           Optional<Cid> committedRoot) {
         if (isEmpty())
-            return target.getChampLookup(owner, root, champKey, bat, committedRoot);
+            return target.getChampLookup(owner, root, caps, committedRoot);
         // If we are in a write transaction try to perform a local champ lookup from the buffer,
         // falling back to a direct champ get
-        return Futures.asyncExceptionally(
-                () -> getChampLookup(owner, root, champKey, bat, committedRoot, hasher),
-                t -> target.getChampLookup(owner, root, champKey, bat, committedRoot)
-        );
+        //TODO collect all missing lookups into a single remote bulk get
+        return Futures.combineAllInOrder(caps.stream().map(cap -> Futures.asyncExceptionally(
+                () -> getChampLookup(owner, root, cap.mapKey, cap.bat, committedRoot, hasher),
+                t -> target.getChampLookup(owner, root, Arrays.asList(cap), committedRoot)
+        )).collect(Collectors.toList()))
+                .thenApply(res ->res.stream()
+                .flatMap(Collection::stream)
+                .collect(Collectors.toList()));
     }
 
     public CompletableFuture<List<byte[]>> getChampLookup(PublicKeyHash owner,
@@ -109,8 +112,8 @@ public class BufferedStorage extends DelegatingStorage {
                 () -> committedRoot.isPresent() ?
                         get(owner, committedRoot.get(), Optional.empty())
                                 .thenApply(ropt -> ropt.map(WriterData::fromCbor).flatMap(wd ->  wd.tree))
-                                .thenCompose(champRoot -> target.getChampLookup(owner, (Cid) champRoot.get(), champKey, bat, Optional.empty())) :
-                        target.getChampLookup(owner, root, champKey, bat, Optional.empty()), hasher),
+                                .thenCompose(champRoot -> target.getChampLookup(owner, (Cid) champRoot.get(), Arrays.asList(new ChunkMirrorCap(champKey, bat)), Optional.empty())) :
+                        target.getChampLookup(owner, root, Arrays.asList(new ChunkMirrorCap(champKey, bat)), Optional.empty()), hasher),
                 100, 1024 * 1024);
         return ChampWrapper.create(owner, root, Optional.empty(), x -> Futures.of(x.data), cache, hasher, c -> (CborObject.CborMerkleLink) c)
                 .thenCompose(tree -> tree.get(champKey))

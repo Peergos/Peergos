@@ -272,7 +272,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<List<PresignedUrl>> authReads(List<MirrorCap> blocks) {
+    public CompletableFuture<List<PresignedUrl>> authReads(List<BlockMirrorCap> blocks) {
         if (blocks.size() > MAX_BLOCK_AUTHS)
             throw new IllegalStateException("Too many reads to auth!");
         List<PresignedUrl> res = new ArrayList<>();
@@ -293,7 +293,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                         }))
                 .collect(Collectors.toList());
 
-        for (MirrorCap block : blocks) {
+        for (BlockMirrorCap block : blocks) {
             String s3Key = hashToKey(block.hash);
             res.add(S3Request.preSignGet(folder + s3Key, Optional.of(600), Optional.empty(), S3AdminRequests.asAwsDate(ZonedDateTime.now()), host, region, accessKeyId, secretKey, useHttps, hasher).join());
         }
@@ -593,10 +593,10 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<List<byte[]>> getChampLookup(PublicKeyHash owner, Cid root, byte[] champKey, Optional<BatWithId> bat,Optional<Cid> committedRoot) {
+    public CompletableFuture<List<byte[]>> getChampLookup(PublicKeyHash owner, Cid root, List<ChunkMirrorCap> caps, Optional<Cid> committedRoot) {
         if (! hasBlock(root))
             return Futures.errored(new IllegalStateException("Champ root not present locally: " + root));
-        return getChampLookup(owner, root, champKey, bat, committedRoot, hasher);
+        return getChampLookup(owner, root, caps, committedRoot, hasher);
     }
 
     @Override

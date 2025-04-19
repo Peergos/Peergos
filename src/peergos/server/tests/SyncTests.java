@@ -40,7 +40,7 @@ public class SyncTests {
         Files.move(base1.resolve(filename), subdir.resolve(filename));
         DirectorySync.syncDirs(localFs, base1, localFs, base2, null, null, syncedState, 32, 5);
         Assert.assertTrue(syncedState.byPath(filename) == null);
-        String fileRelPath = subdir.getFileName().resolve(filename).toString();
+        String fileRelPath = subdir.getFileName().resolve(filename).toString().replaceAll("\\\\", "/");
         Assert.assertTrue(syncedState.byPath(fileRelPath) != null);
 
         // sync should be stable

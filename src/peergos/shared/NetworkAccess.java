@@ -414,31 +414,97 @@ public class NetworkAccess {
                 .thenApply(p -> p.left.isEmpty() ? Optional.empty() : Optional.of(p.left.get(0)));
     }
 
+    public CompletableFuture<Optional<Cid>> getLastCommittedRoot(PublicKeyHash writer, WriterData base) {
+        return Futures.of(Optional.empty());
+    }
+
     /**
      *
      * @param links
      * @param current
      * @return The retrieved capabilities and the list of absent ones
      */
-    public CompletableFuture<Pair<List<RetrievedCapability>, List<AbsoluteCapability>>> retrieveAllMetadata(List<AbsoluteCapability> links, Snapshot current) {
-        List<CompletableFuture<Either<RetrievedCapability, AbsoluteCapability>>> all = links.stream()
-                .map(link -> current.withWriter(link.owner, link.writer, this)
-                        .thenCompose(version -> getMetadata(version.get(link.writer).props.get(), link)
-                                .thenApply(copt -> copt.isPresent() ?
-                                        Either.<RetrievedCapability, AbsoluteCapability>a(new RetrievedCapability(link, copt.get())) :
-                                        Either.<RetrievedCapability, AbsoluteCapability>b(link))))
-                .collect(Collectors.toList());
-
-        return Futures.combineAll(all)
+    public CompletableFuture<Pair<List<RetrievedCapability>, List<AbsoluteCapability>>> retrieveAllMetadata(
+            List<AbsoluteCapability> links,
+            Snapshot current) {
+        Map<PublicKeyHash, List<AbsoluteCapability>> grouped = links.stream().collect(Collectors.groupingBy(link -> link.writer));
+        return Futures.combineAllInOrder(grouped.values().stream()
+                        .map(byWriter -> retrieveAllMetadataSingleWriter(byWriter, current))
+                        .collect(Collectors.toList()))
                 .thenApply(res -> new Pair<>(
-                        res.stream()
-                                .filter(Either::isA)
-                                .map(e -> e.a())
-                                .collect(Collectors.toList()),
-                        res.stream()
-                                .filter(Either::isB)
-                                .map(e -> e.b())
-                                .collect(Collectors.toList())));
+                        res.stream().flatMap(p -> p.left.stream()).collect(Collectors.toList()),
+                        res.stream().flatMap(p -> p.right.stream()).collect(Collectors.toList())));
+    }
+
+    public CompletableFuture<Pair<List<RetrievedCapability>, List<AbsoluteCapability>>> retrieveAllMetadataSingleWriter(
+            List<AbsoluteCapability> links,
+            Snapshot current) {
+        if (links.isEmpty())
+            return Futures.of(new Pair<>(Collections.emptyList(), Collections.emptyList()));
+        PublicKeyHash owner = links.get(0).owner;
+        // All links should have same owner and writer
+        PublicKeyHash writer = links.get(0).writer;
+        return current.withWriter(owner, writer, this)
+                .thenCompose(v -> {
+                    List<RetrievedCapability> fromCache = new ArrayList<>();
+                    List<AbsoluteCapability> remaining = new ArrayList<>();
+                    for (AbsoluteCapability link : links) {
+                        Pair<Multihash, ByteArrayWrapper> cacheKey = new Pair<>(v.get(writer).props.get().tree.get(), new ByteArrayWrapper(link.getMapKey()));
+                        Optional<CryptreeNode> cached = cache.get(cacheKey);
+                        if (cached != null && cached.isPresent())
+                            fromCache.add(new RetrievedCapability(link, cached.get()));
+                        else
+                            remaining.add(link);
+                    }
+
+                    if (remaining.isEmpty())
+                        return Futures.of(new Pair<>(fromCache, Collections.emptyList()));
+
+                    return Futures.combineAllInOrder(remaining.stream()
+                                    .filter(link -> link.writer.equals(writer))
+                                    .map(link -> link.bat.map(b -> b.calculateId(hasher)
+                                                    .thenApply(id -> Optional.of(new BatWithId(b, id.id))))
+                                            .orElse(Futures.of(Optional.empty()))
+                                            .thenApply(bid -> new ChunkMirrorCap(link.getMapKey(), bid))).collect(Collectors.toList()))
+                            .thenCompose(caps -> {
+                                if (caps.size() != remaining.size())
+                                    throw new IllegalStateException("All caps must have same writer in bulk champ get!");
+
+                                List<List<ChunkMirrorCap>> grouped = new ArrayList<>();
+                                int groupSize = ContentAddressedStorage.MAX_CHAMP_GETS;
+                                for (int i = 0; i < caps.size(); i += groupSize)
+                                    grouped.add(caps.subList(i, Math.min(i + groupSize, caps.size())));
+                                return getLastCommittedRoot(writer, v.get(writer).props.get())
+                                        .thenCompose(committedRoot -> Futures.combineAllInOrder(grouped.stream().map(group ->
+                                                Futures.asyncExceptionally(
+                                                        () -> dhtClient.getChampLookup(owner, (Cid) v.get(writer).props.get().tree.get(), group, committedRoot),
+                                                        t -> dhtClient.getChampLookup(owner, (Cid) v.get(writer).props.get().tree.get(), group, committedRoot, hasher)
+                                                )).collect(Collectors.toList())))
+                                        .thenApply(all -> all.stream().flatMap(List::stream).collect(Collectors.toList()))
+                                        .thenCompose(blocks -> LocalRamStorage.build(hasher, blocks))
+                                        .thenCompose(fromBlocks -> {
+                                            List<CompletableFuture<Either<RetrievedCapability, AbsoluteCapability>>> all = remaining.stream()
+                                                    .map(link -> current.withWriter(link.owner, link.writer, this)
+                                                            .thenCompose(version -> getMetadata(version.get(link.writer).props.get(), link, Optional.empty(), fromBlocks, hasher, cache)
+                                                                    .thenApply(copt -> copt.isPresent() ?
+                                                                            Either.<RetrievedCapability, AbsoluteCapability>a(new RetrievedCapability(link, copt.get())) :
+                                                                            Either.<RetrievedCapability, AbsoluteCapability>b(link))))
+                                                    .collect(Collectors.toList());
+
+                                            return Futures.combineAll(all)
+                                                    .thenApply(res -> new Pair<>(
+                                                            Stream.concat(res.stream()
+                                                                                    .filter(Either::isA)
+                                                                                    .map(e -> e.a()),
+                                                                            fromCache.stream())
+                                                                    .collect(Collectors.toList()),
+                                                            res.stream()
+                                                                    .filter(Either::isB)
+                                                                    .map(e -> e.b())
+                                                                    .collect(Collectors.toList())));
+                                        });
+                            });
+                });
     }
 
     public CompletableFuture<Set<FileWrapper>> retrieveAll(List<EntryPoint> entries) {
@@ -548,6 +614,9 @@ public class NetworkAccess {
                     Set<PublicKeyHash> childWriters = Collections.singleton(cap.writer);
                     return version.withWriters(owner, childWriters, network)
                             .thenCompose(fullVersion -> network.retrieveAllMetadata(Collections.singletonList(cap), fullVersion)
+                                    .thenCompose(p -> p.left.isEmpty() ? // try again once
+                                            network.retrieveAllMetadata(Collections.singletonList(cap), fullVersion) :
+                                            Futures.of(p))
                                     .thenApply(p -> p.left)
                                     .thenCompose(rcs -> {
                                         RetrievedCapability rc = rcs.get(0);
@@ -562,11 +631,21 @@ public class NetworkAccess {
                 });
     }
 
+
     public CompletableFuture<Optional<CryptreeNode>> getMetadata(WriterData base, AbsoluteCapability cap) {
         return getMetadata(base, cap, Optional.empty());
     }
 
     public CompletableFuture<Optional<CryptreeNode>> getMetadata(WriterData base, AbsoluteCapability cap, Optional<Cid> committedRoot) {
+        return getMetadata(base, cap, committedRoot, dhtClient, hasher, cache);
+    }
+
+    public static CompletableFuture<Optional<CryptreeNode>> getMetadata(WriterData base,
+                                                                        AbsoluteCapability cap,
+                                                                        Optional<Cid> committedRoot,
+                                                                        ContentAddressedStorage dhtClient,
+                                                                        Hasher hasher,
+                                                                        CryptreeCache cache) {
         if (base.tree.isEmpty())
             return Futures.of(Optional.empty());
         Pair<Multihash, ByteArrayWrapper> cacheKey = new Pair<>(base.tree.get(), new ByteArrayWrapper(cap.getMapKey()));
@@ -574,8 +653,8 @@ public class NetworkAccess {
             return Futures.of(cache.get(cacheKey));
         return cap.bat.map(b -> b.calculateId(hasher).thenApply(id -> Optional.of(new BatWithId(b, id.id)))).orElse(Futures.of(Optional.empty()))
                 .thenCompose(bat -> Futures.asyncExceptionally(
-                        () -> dhtClient.getChampLookup(cap.owner, (Cid) base.tree.get(), cap.getMapKey(), bat,committedRoot),
-                        t -> dhtClient.getChampLookup(cap.owner, (Cid) base.tree.get(), cap.getMapKey(), bat, committedRoot, hasher)
+                        () -> dhtClient.getChampLookup(cap.owner, (Cid) base.tree.get(), Arrays.asList(new ChunkMirrorCap(cap.getMapKey(), bat)), committedRoot),
+                        t -> dhtClient.getChampLookup(cap.owner, (Cid) base.tree.get(), Arrays.asList(new ChunkMirrorCap(cap.getMapKey(), bat)), committedRoot, hasher)
                 ).thenCompose(blocks -> ChampWrapper.create(cap.owner, (Cid)base.tree.get(), Optional.empty(), x -> Futures.of(x.data), dhtClient, hasher, c -> (CborObject.CborMerkleLink) c)
                         .thenCompose(tree -> tree.get(cap.getMapKey()))
                         .thenApply(c -> c.map(x -> x.target))

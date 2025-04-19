@@ -63,8 +63,8 @@ public class RequestCountingStorage extends DelegatingStorage {
     }
 
     @Override
-    public CompletableFuture<List<byte[]>> getChampLookup(PublicKeyHash owner, Cid root, byte[] champKey, Optional<BatWithId> bat, Optional<Cid> committedRoot) {
-        return target.getChampLookup(owner, root, champKey, bat, committedRoot)
+    public CompletableFuture<List<byte[]>> getChampLookup(PublicKeyHash owner, Cid root, List<ChunkMirrorCap> caps, Optional<Cid> committedRoot) {
+        return target.getChampLookup(owner, root, caps, committedRoot)
                 .thenApply(blocks -> {
                     champGet.incrementAndGet();
                     return blocks;

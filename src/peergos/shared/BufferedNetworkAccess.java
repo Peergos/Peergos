@@ -134,11 +134,17 @@ public class BufferedNetworkAccess extends NetworkAccess {
                 mutable, batCave, batCache, tree, synchronizer, instanceAdmin, spaceUsage, serverMessager, hasher, usernames, isJavascript());
     }
 
-    public CompletableFuture<Optional<CryptreeNode>> getMetadata(WriterData base, AbsoluteCapability cap) {
-        return (pointerBuffer.isEmpty() ?
+    @Override
+    public CompletableFuture<Optional<Cid>> getLastCommittedRoot(PublicKeyHash writer, WriterData base) {
+        return pointerBuffer.isEmpty() ?
                 hasher.sha256(base.serialize())
                         .thenApply(h ->  Optional.of(new Cid(1, Cid.Codec.DagCbor, Multihash.Type.sha2_256, h))) :
-                Futures.of(pointerBuffer.getCommittedPointerTarget(cap.writer)))
+                Futures.of(pointerBuffer.getCommittedPointerTarget(writer));
+    }
+
+    @Override
+    public CompletableFuture<Optional<CryptreeNode>> getMetadata(WriterData base, AbsoluteCapability cap) {
+        return getLastCommittedRoot(cap.writer, base)
                 .thenCompose(committed -> super.getMetadata(base, cap, committed));
     }
 
