@@ -21,6 +21,9 @@ public class MimeTypes {
     final static int[] AVC1 = new int[]{'a', 'v', 'c', '1'};
     final static int[] M4A = new int[]{'M', '4', 'A', ' '};
     final static int[] QT = new int[]{'q', 't', ' ', ' '};
+    final static int[] QT2 = new int[]{'p', 'n', 'o', 't'};
+    final static int[] QT3 = new int[]{'m', 'o', 'o', 'v'};
+    final static int[] QT4 = new int[]{'m', 'd', 'a', 't'};
     final static int[] THREEGP = new int[]{'3', 'g', 'p'};
 
     final static int[] FLV = new int[]{'F', 'L', 'V'};
@@ -127,6 +130,12 @@ public class MimeTypes {
             if (equalArrays(start, 8, THREEGP))
                 return "video/3gpp";
         }
+        if (equalArrays(start, 4, QT2))
+                return "video/quicktime";
+        if (equalArrays(start, 4, QT3))
+                return "video/quicktime";
+        if (equalArrays(start, 4, QT4))
+                return "video/quicktime";
         if (equalArrays(start, 24, WEBM))
             return "video/webm";
         if (equalArrays(start, OGG) && !filename.endsWith("oga"))
