@@ -118,10 +118,10 @@ public class BufferedStorage extends DelegatingStorage {
         return ChampWrapper.create(owner, root, Optional.empty(), x -> Futures.of(x.data), cache, hasher, c -> (CborObject.CborMerkleLink) c)
                 .thenCompose(tree -> tree.get(champKey))
                 .thenApply(c -> c.map(x -> x.target).map(MaybeMultihash::of).orElse(MaybeMultihash.empty()))
-                .thenApply(btreeValue -> {
+                .thenCompose(btreeValue -> {
                     if (btreeValue.isPresent())
                         return cache.get(owner, (Cid) btreeValue.get(), bat);
-                    return Optional.empty();
+                    return Futures.of(Optional.empty());
                 }).thenApply(x -> new ArrayList<>(cache.getCached()));
     }
 

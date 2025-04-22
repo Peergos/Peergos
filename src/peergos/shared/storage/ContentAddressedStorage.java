@@ -183,10 +183,10 @@ public interface ContentAddressedStorage {
         return Futures.combineAll(caps.stream().map(cap -> ChampWrapper.create(owner, (Cid)root, Optional.empty(), x -> Futures.of(x.data), cache, hasher, c -> (CborObject.CborMerkleLink) c)
                         .thenCompose(tree -> tree.get(cap.mapKey))
                         .thenApply(c -> c.map(x -> x.target).map(MaybeMultihash::of).orElse(MaybeMultihash.empty()))
-                        .thenApply(btreeValue -> {
+                        .thenCompose(btreeValue -> {
                             if (btreeValue.isPresent())
                                 return cache.get(owner, (Cid) btreeValue.get(), cap.bat);
-                            return Optional.empty();
+                            return Futures.of(Optional.empty());
                         })).collect(Collectors.toList()))
                 .thenApply(x -> new ArrayList<>(cache.getCached()));
     }
