@@ -32,10 +32,17 @@ public class LocalOnlyStorage implements ContentAddressedStorage {
                     if (opt.isPresent())
                         return Futures.of(opt);
                     return bulkFetcher.get()
-                            .thenCompose(blocks -> Futures.combineAll(blocks.stream().map(data ->
-                                            h.sha256(data).thenApply(hashb -> cache.put(new Cid(1, Cid.Codec.DagCbor, Multihash.Type.sha2_256, hashb), data)))
+                            .thenCompose(blocks -> Futures.combineAllInOrder(blocks.stream().map(data ->
+                                            h.sha256(data)
+                                                    .thenCompose(hashb -> {
+                                                        Cid c = new Cid(1, Cid.Codec.DagCbor, Multihash.Type.sha2_256, hashb);
+                                                        return cache.put(c, data).thenApply(x -> new Pair<>(c, data));
+                                                    }))
                                     .collect(Collectors.toList())))
-                            .thenCompose(x ->  cache.get(hash));
+                            .thenApply(allBlocks -> allBlocks.stream()
+                                    .filter(p -> p.left.equals(hash))
+                                    .map(p -> p.right)
+                                    .findFirst());
                 });
     }
 
