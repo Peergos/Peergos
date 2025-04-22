@@ -652,7 +652,6 @@ public class NetworkAccess {
         Pair<Multihash, ByteArrayWrapper> cacheKey = new Pair<>(root, new ByteArrayWrapper(cap.getMapKey()));
         if (cache.containsKey(cacheKey))
             return Futures.of(cache.get(cacheKey));
-        System.out.println("getMetadata " + cap);
         return cap.bat.map(b -> b.calculateId(hasher).thenApply(id -> Optional.of(new BatWithId(b, id.id)))).orElse(Futures.of(Optional.empty()))
                 .thenCompose(bat -> {
                     return Futures.asyncExceptionally(
@@ -667,7 +666,6 @@ public class NetworkAccess {
                                             return bstore.get(cap.owner, (Cid) btreeValue.get(), bat)
                                                     .thenApply(value -> value.map(cbor -> CryptreeNode.fromCbor(cbor, cap.rBaseKey, btreeValue.get())))
                                                     .thenApply(res -> {
-                                                        System.out.println("CHAMP res " + res);
                                                         if (res.isPresent())
                                                             cache.put(cacheKey, res);
                                                         return res;
@@ -724,7 +722,7 @@ public class NetworkAccess {
         if (! current.versions.containsKey(writer.publicKeyHash))
             throw new IllegalStateException("Trying to commit to incorrect writer!");
         try {
-            System.out.println("Uploading chunk: " + (metadata.isDirectory() ? "dir" : "file")
+            LOG.info("Uploading chunk: " + (metadata.isDirectory() ? "dir" : "file")
                     + " at " + ArrayOps.bytesToHex(mapKey)
                     + " with " + metadata.toCbor().links().size() + " fragments");
             byte[] metaBlob = metadata.serialize();
