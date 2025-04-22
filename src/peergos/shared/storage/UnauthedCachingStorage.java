@@ -100,6 +100,7 @@ public class UnauthedCachingStorage extends DelegatingStorage {
                 .thenApply(missing -> missing.stream()
                                 .flatMap(Optional::stream)
                                 .collect(Collectors.toList()))
+                .exceptionally(t -> caps)
                 .thenCompose(missing -> committedRoot.isPresent() ?
                         get(owner, committedRoot.get(), Optional.empty())
                                 .thenApply(ropt -> ropt.map(WriterData::fromCbor).flatMap(wd ->  wd.tree))
