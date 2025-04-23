@@ -8,9 +8,11 @@ import peergos.server.*;
 import peergos.server.tests.util.*;
 import peergos.server.util.*;
 import peergos.shared.*;
-import peergos.shared.cbor.*;
+import peergos.shared.io.ipfs.Cid;
 import peergos.shared.login.mfa.*;
 import peergos.shared.social.*;
+import peergos.shared.storage.BlockCache;
+import peergos.shared.storage.UnauthedCachingStorage;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
 import peergos.shared.user.fs.transaction.*;
@@ -38,17 +40,39 @@ public class RamUserTests extends UserTests {
     @Parameterized.Parameters()
     public static Collection<Object[]> parameters() throws Exception {
         UserService service = Main.PKI_INIT.main(args).localApi;
-        WriteSynchronizer synchronizer = new WriteSynchronizer(service.mutable, service.storage, crypto.hasher);
-        MutableTree mutableTree = new MutableTreeImpl(service.mutable, service.storage, crypto.hasher, synchronizer);
         // use actual http messager
         ServerMessager.HTTP serverMessager = new ServerMessager.HTTP(new JavaPoster(new URI("http://localhost:" + args.getArg("port")).toURL(), false));
-        NetworkAccess network = new NetworkAccess(service.coreNode, service.account, service.social, service.storage,
-                service.bats, Optional.empty(), service.mutable, mutableTree, synchronizer, service.controller, service.usage,
-                serverMessager, service.crypto.hasher,
-                Arrays.asList("peergos"), false);
+        NetworkAccess network = NetworkAccess.buildBuffered(service.storage, service.bats, service.coreNode, service.account, service.mutable,
+                        5_000, service.social, service.controller, service.usage, serverMessager, crypto.hasher, Arrays.asList("peergos"), false)
+                .withStorage(s -> new UnauthedCachingStorage(s, new NoopCache(), crypto.hasher));
         return Arrays.asList(new Object[][] {
                 {network, service}
         });
+    }
+
+    public static class NoopCache implements BlockCache {
+        @Override
+        public CompletableFuture<Boolean> put(Cid hash, byte[] data) {
+            return Futures.of(true);
+        }
+
+        @Override
+        public CompletableFuture<Optional<byte[]>> get(Cid hash) {
+            CompletableFuture<Optional<byte[]>> res = new CompletableFuture<>();
+            ForkJoinPool.commonPool().submit(() -> res.complete(Optional.empty()));
+            return res;
+//            return Futures.of(Optional.empty());
+        }
+
+        @Override
+        public boolean hasBlock(Cid hash) {
+            return false;
+        }
+
+        @Override
+        public CompletableFuture<Boolean> clear() {
+            return Futures.of(true);
+        }
     }
 
     @Override

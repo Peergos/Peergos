@@ -648,28 +648,32 @@ public class NetworkAccess {
                                                                         CryptreeCache cache) {
         if (base.tree.isEmpty())
             return Futures.of(Optional.empty());
-        Pair<Multihash, ByteArrayWrapper> cacheKey = new Pair<>(base.tree.get(), new ByteArrayWrapper(cap.getMapKey()));
+        Multihash root = base.tree.get();
+        Pair<Multihash, ByteArrayWrapper> cacheKey = new Pair<>(root, new ByteArrayWrapper(cap.getMapKey()));
         if (cache.containsKey(cacheKey))
             return Futures.of(cache.get(cacheKey));
         return cap.bat.map(b -> b.calculateId(hasher).thenApply(id -> Optional.of(new BatWithId(b, id.id)))).orElse(Futures.of(Optional.empty()))
-                .thenCompose(bat -> Futures.asyncExceptionally(
-                        () -> dhtClient.getChampLookup(cap.owner, (Cid) base.tree.get(), Arrays.asList(new ChunkMirrorCap(cap.getMapKey(), bat)), committedRoot),
-                        t -> dhtClient.getChampLookup(cap.owner, (Cid) base.tree.get(), Arrays.asList(new ChunkMirrorCap(cap.getMapKey(), bat)), committedRoot, hasher)
-                ).thenCompose(blocks -> ChampWrapper.create(cap.owner, (Cid)base.tree.get(), Optional.empty(), x -> Futures.of(x.data), dhtClient, hasher, c -> (CborObject.CborMerkleLink) c)
-                        .thenCompose(tree -> tree.get(cap.getMapKey()))
-                        .thenApply(c -> c.map(x -> x.target))
-                        .thenCompose(btreeValue -> {
-                            if (btreeValue.isPresent()) {
-                                return dhtClient.get(cap.owner, (Cid) btreeValue.get(), bat)
-                                        .thenApply(value -> value.map(cbor -> CryptreeNode.fromCbor(cbor, cap.rBaseKey, btreeValue.get())))
-                                        .thenApply(res -> {
-                                            if (res.isPresent())
-                                                cache.put(cacheKey, res);
-                                            return res;
-                                        });
-                            }
-                            return CompletableFuture.completedFuture(Optional.empty());
-                        })));
+                .thenCompose(bat -> {
+                    return Futures.asyncExceptionally(
+                            () -> dhtClient.getChampLookup(cap.owner, (Cid) root, Arrays.asList(new ChunkMirrorCap(cap.getMapKey(), bat)), committedRoot),
+                            t -> dhtClient.getChampLookup(cap.owner, (Cid) root, Arrays.asList(new ChunkMirrorCap(cap.getMapKey(), bat)), committedRoot, hasher)
+                    ).thenCompose(blocks -> LocalRamStorage.build(hasher, blocks))
+                            .thenCompose(bstore -> ChampWrapper.create(cap.owner, (Cid) root, Optional.empty(), x -> Futures.of(x.data), bstore, hasher, c -> (CborObject.CborMerkleLink) c)
+                                    .thenCompose(tree -> tree.get(cap.getMapKey()))
+                                    .thenApply(c -> c.map(x -> x.target))
+                                    .thenCompose(btreeValue -> {
+                                        if (btreeValue.isPresent()) {
+                                            return bstore.get(cap.owner, (Cid) btreeValue.get(), bat)
+                                                    .thenApply(value -> value.map(cbor -> CryptreeNode.fromCbor(cbor, cap.rBaseKey, btreeValue.get())))
+                                                    .thenApply(res -> {
+                                                        if (res.isPresent())
+                                                            cache.put(cacheKey, res);
+                                                        return res;
+                                                    });
+                                        }
+                                        return CompletableFuture.completedFuture(Optional.empty());
+                                    }));
+                });
     }
 
     private CompletableFuture<List<Cid>> bulkUploadFragments(List<Fragment> fragments,
