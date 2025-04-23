@@ -216,7 +216,9 @@ public class RamUserTests extends UserTests {
         long initialUsage = context.getSpaceUsage().join();
         int size = 100*1024*1024;
         byte[] data = new byte[size];
-        AsyncReader thrower = new ThrowingStream(data, size/2);
+        int bufferSize = 20*1024*1024;
+        int throwAtIndex = size / bufferSize / 2 * bufferSize; // needs to be a multiple of the buffer size
+        AsyncReader thrower = new ThrowingStream(data, throwAtIndex);
         FileWrapper txnDir = context.getByPath(Paths.get(username, UserContext.TRANSACTIONS_DIR_NAME)).join().get();
         TransactionService txns = new NonClosingTransactionService(network, crypto, txnDir);
         try {
@@ -229,11 +231,11 @@ public class RamUserTests extends UserTests {
                     context.mirrorBatId(), network, crypto, x -> {}, txns, f -> Futures.of(false)).join();
         } catch (Exception e) {}
         long usageAfterFail = context.getSpaceUsage().join();
-        if (usageAfterFail <= size / 2) { // give server a chance to recalculate usage
+        while (usageAfterFail <= throwAtIndex) { // give server a chance to recalculate usage
             Thread.sleep(2_000);
             usageAfterFail = context.getSpaceUsage().join();
         }
-        Assert.assertTrue(usageAfterFail > size / 2);
+        Assert.assertTrue(usageAfterFail > throwAtIndex);
         context.cleanPartialUploads(t -> true).join();
         long usageAfterCleanup = context.getSpaceUsage().join();
         while (usageAfterCleanup >= initialUsage + 5000) {
@@ -261,7 +263,9 @@ public class RamUserTests extends UserTests {
         long initialUsage = context.getSpaceUsage().join();
         int size = 100*1024*1024;
         byte[] data = new byte[size];
-        AsyncReader thrower = new ThrowingStream(data, size/2);
+        int bufferSize = 20*1024*1024;
+        int throwAtIndex = size / bufferSize / 2 * bufferSize; // needs to be a multiple of the buffer size
+        AsyncReader thrower = new ThrowingStream(data, throwAtIndex);
         FileWrapper txnDir = context.getByPath(Paths.get(username, UserContext.TRANSACTIONS_DIR_NAME)).join().get();
         TransactionService txns = new NonClosingTransactionService(network, crypto, txnDir);
         try {
@@ -270,18 +274,18 @@ public class RamUserTests extends UserTests {
             userRoot.uploadSubtree(Stream.of(dirUploads), context.mirrorBatId(), network, crypto, txns, f -> Futures.of(false), () -> true).join();
         } catch (Exception e) {}
         long usageAfterFail = context.getSpaceUsage().join();
-        if (usageAfterFail <= size / 2) { // give server a chance to recalculate usage
+        if (usageAfterFail <= throwAtIndex) { // give server a chance to recalculate usage
             Thread.sleep(2_000);
             usageAfterFail = context.getSpaceUsage().join();
         }
-        Assert.assertTrue(usageAfterFail > size / 2);
+        Assert.assertTrue(usageAfterFail > throwAtIndex);
 
         // delete the new writing space
         FileWrapper sub = context.getByPath(subdirPath).join().get();
 
         sub.remove(context.getUserRoot().get(), subdirPath, context).join();
         long usageAfterDelete = context.getSpaceUsage().join();
-        while (usageAfterDelete >= size / 2) { // give server a chance to recalculate usage
+        while (usageAfterDelete >= throwAtIndex) { // give server a chance to recalculate usage
             Thread.sleep(2_000);
             usageAfterDelete = context.getSpaceUsage().join();
         }
