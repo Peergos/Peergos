@@ -53,7 +53,10 @@ public class RamUserTests extends UserTests {
     public static class NoopCache implements BlockCache {
         @Override
         public CompletableFuture<Boolean> put(Cid hash, byte[] data) {
-            return Futures.of(true);
+            CompletableFuture<Boolean> res = new CompletableFuture<>();
+            ForkJoinPool.commonPool().submit(() -> res.complete(true));
+            return res;
+//            return Futures.of(true);
         }
 
         @Override
