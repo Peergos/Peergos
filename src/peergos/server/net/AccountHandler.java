@@ -55,16 +55,27 @@ public class AccountHandler implements HttpHandler {
                     dout.writeBoolean(isAdded);
                     break;
                 case "getLogin": {
-                    AggregatedMetrics.LOGIN_GET.inc();
-                    String username = params.get("username").get(0);
-                    PublicSigningKey authorisedReader = PublicSigningKey.fromByteArray(ArrayOps.hexToBytes(params.get("author").get(0)));
-                    Optional<MultiFactorAuthResponse> mfa = params.containsKey("mfa") ?
-                            Optional.of(MultiFactorAuthResponse.fromCbor(CborObject.fromByteArray(ArrayOps.hexToBytes(params.get("mfa").get(0))))) :
-                            Optional.empty();
-                    Either<UserStaticData, MultiFactorAuthRequest> res = account.getLoginData(username, authorisedReader, auth, mfa, false).join();
-                    byte[] resBytes = new LoginResponse(res).serialize();
-                    dout.write(resBytes);
-                    break;
+                    try {
+                        String username = params.get("username").get(0);
+                        PublicSigningKey authorisedReader = PublicSigningKey.fromByteArray(ArrayOps.hexToBytes(params.get("author").get(0)));
+                        Optional<MultiFactorAuthResponse> mfa = params.containsKey("mfa") ?
+                                Optional.of(MultiFactorAuthResponse.fromCbor(CborObject.fromByteArray(ArrayOps.hexToBytes(params.get("mfa").get(0))))) :
+                                Optional.empty();
+                        Either<UserStaticData, MultiFactorAuthRequest> res = account.getLoginData(username, authorisedReader, auth, mfa, false).join();
+                        AggregatedMetrics.LOGIN_GET.inc();
+                        byte[] resBytes = new LoginResponse(res).serialize();
+                        dout.write(resBytes);
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                        String msg = e.getMessage();
+                        if (msg != null && msg.contains("Incorrect password")) {
+                            AggregatedMetrics.LOGIN_GET_FAILURE_PASSWORD.inc();
+                        } else if (msg != null && msg.contains("home server")) {
+                            AggregatedMetrics.LOGIN_GET_FAILURE_EXTERNAL.inc();
+                        }
+                        HttpUtil.replyError(exchange, e);
+                    }
+                    return;
                 }
                 case "listMfa": {
                     AggregatedMetrics.LOGIN_GET_MFA.inc();

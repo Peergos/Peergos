@@ -53,7 +53,9 @@ public class AggregatedMetrics {
     public static final Counter MUTABLE_POINTERS_GET  = build("mutable_pointers_get", "Total mutable-pointers get calls.");
 
     public static final Counter LOGIN_SET  = build("login_set", "Total login set calls.");
-    public static final Counter LOGIN_GET  = build("login_get", "Total login get calls.");
+    public static final Counter LOGIN_GET  = build("login_get", "Total successful login get calls.");
+    public static final Counter LOGIN_GET_FAILURE_PASSWORD  = build("login_get_failure_password", "Total login get calls with incorrect signature.");
+    public static final Counter LOGIN_GET_FAILURE_EXTERNAL  = build("login_get_failure_external", "Total failed login get calls for external users.");
     public static final Counter LOGIN_GET_MFA  = build("login_get_mfa", "Total get mfa calls.");
     public static final Counter LOGIN_ADD_TOTP  = build("login_add_totp", "Total add totp calls.");
     public static final Counter LOGIN_ENABLE_TOTP  = build("login_enable_totp", "Total enable totp calls.");
