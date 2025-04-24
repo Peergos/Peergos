@@ -65,6 +65,9 @@ public class AccountHandler implements HttpHandler {
                         AggregatedMetrics.LOGIN_GET.inc();
                         byte[] resBytes = new LoginResponse(res).serialize();
                         dout.write(resBytes);
+                        byte[] b = bout.toByteArray();
+                        exchange.sendResponseHeaders(200, b.length);
+                        exchange.getResponseBody().write(b);
                     } catch (Exception e) {
                         e.printStackTrace();
                         String msg = e.getMessage();
