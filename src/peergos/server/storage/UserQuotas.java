@@ -1,4 +1,5 @@
 package peergos.server.storage;
+import java.time.LocalDateTime;
 import java.util.logging.*;
 
 import peergos.server.space.*;
@@ -60,6 +61,11 @@ public class UserQuotas implements QuotaAdmin {
         TimeLimited.isAllowedTime(signedTime, 300, dht, owner);
         String username = core.getUsername(owner).join();
         return Futures.of(getQuota(username));
+    }
+
+    @Override
+    public boolean hadQuota(String username, LocalDateTime time) {
+        return false;
     }
 
     @Override

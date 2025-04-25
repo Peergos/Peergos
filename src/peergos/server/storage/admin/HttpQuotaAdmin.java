@@ -8,6 +8,7 @@ import peergos.shared.storage.controller.*;
 import peergos.shared.user.*;
 import peergos.shared.util.*;
 
+import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.stream.*;
@@ -23,6 +24,7 @@ public class HttpQuotaAdmin implements QuotaAdmin {
     public static final String TOKEN_ADD = "token-add";
     public static final String TOKEN_REMOVE = "token-remove";
     public static final String QUOTA_PRIVATE = "quota-by-name";
+    public static final String QUOTA_PRIVATE_TIME = "quota-by-name-time";
     public static final String PAYMENT_PROPERTIES = "payment-properties";
     public static final String QUOTA_PUBLIC = "quota";
     public static final String REQUEST_QUOTA = "request";
@@ -60,6 +62,12 @@ public class HttpQuotaAdmin implements QuotaAdmin {
     public long getQuota(String username) {
         return poster.get(QUOTA_URL + QUOTA_PRIVATE + "?username=" + username)
                 .thenApply(res -> ((CborObject.CborLong)CborObject.fromByteArray(res)).value).join();
+    }
+
+    @Override
+    public boolean hadQuota(String username, LocalDateTime time) {
+        return poster.get(QUOTA_URL + QUOTA_PRIVATE_TIME + "?username=" + username + "&time=")
+                .thenApply(res -> ((CborObject.CborBoolean)CborObject.fromByteArray(res)).value).join();
     }
 
     @Override

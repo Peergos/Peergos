@@ -17,6 +17,7 @@ import peergos.shared.util.ArrayOps;
 import peergos.shared.util.Constants;
 import peergos.shared.util.Either;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
@@ -40,7 +41,7 @@ public class LocalOnlyAccount implements Account {
 
     private boolean hasQuota(String username) {
         try {
-            return quotas.getQuota(username) > 0;
+            return quotas.getQuota(username) > 0 || quotas.hadQuota(username, LocalDateTime.now().minusMonths(1));
         } catch (Exception e) {
             return false;
         }

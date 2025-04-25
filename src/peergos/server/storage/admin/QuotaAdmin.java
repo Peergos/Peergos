@@ -10,6 +10,7 @@ import peergos.shared.storage.*;
 import peergos.shared.storage.controller.*;
 import peergos.shared.util.*;
 
+import java.time.LocalDateTime;
 import java.util.*;
 
 /** The api for administrators approving pending space requests
@@ -38,6 +39,8 @@ public interface QuotaAdmin extends QuotaControl {
     }
 
     long getQuota(String username);
+
+    boolean hadQuota(String username, LocalDateTime time);
 
     List<String> getLocalUsernames();
 
