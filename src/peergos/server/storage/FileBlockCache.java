@@ -77,7 +77,7 @@ public class FileBlockCache implements BlockCache {
                     return (Integer) maxsize;
                 return (Long) maxsize;
             } else {
-                Files.write(json, ("{'maxsize':" + maxSizeBytes + "}").getBytes("UTF-8"));
+                Files.write(json, ("{'maxsize':" + maxSizeBytes + "}").getBytes("UTF-8"), StandardOpenOption.CREATE);
                 return maxSizeBytes;
             }
         } catch (IOException e) {
