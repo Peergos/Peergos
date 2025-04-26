@@ -1,6 +1,5 @@
 package peergos.shared.storage;
 
-import peergos.server.storage.FileBlockCache;
 import peergos.shared.*;
 import peergos.shared.cbor.*;
 import peergos.shared.corenode.*;
