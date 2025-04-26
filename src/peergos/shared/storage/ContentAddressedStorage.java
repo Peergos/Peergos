@@ -1,5 +1,6 @@
 package peergos.shared.storage;
 
+import peergos.server.storage.FileBlockCache;
 import peergos.shared.*;
 import peergos.shared.cbor.*;
 import peergos.shared.corenode.*;
@@ -47,6 +48,8 @@ public interface ContentAddressedStorage {
      * @return an instance of the same type that doesn't do any cross domain requests
      */
     ContentAddressedStorage directToOrigin();
+
+    Optional<BlockCache> getBlockCache();
 
     default CompletableFuture<List<PresignedUrl>> authReads(List<BlockMirrorCap> blocks) {
         return Futures.errored(new IllegalStateException("Unimplemented call!"));
@@ -591,6 +594,11 @@ public interface ContentAddressedStorage {
             return poster.get(apiPrefix + IPNS_GET + "?arg=" + signer.toBase58())
                     .thenApply(raw -> IpnsEntry.fromJson(JSONParser.parse(new String(raw))));
         }
+
+        @Override
+        public Optional<BlockCache> getBlockCache() {
+            return Optional.empty();
+        }
     }
 
     class Proxying implements ContentAddressedStorage {
@@ -742,6 +750,11 @@ public interface ContentAddressedStorage {
                     owner,
                     () -> local.putRaw(owner, writer, signatures, blocks, tid, progressConsumer),
                     target -> p2p.putRaw(target, owner, writer, signatures, blocks, tid, progressConsumer));
+        }
+
+        @Override
+        public Optional<BlockCache> getBlockCache() {
+            return Optional.empty();
         }
     }
 

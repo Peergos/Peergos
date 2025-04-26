@@ -130,4 +130,9 @@ public abstract class DelegatingStorage implements ContentAddressedStorage {
                                                             TransactionId tid) {
         return target.authWrites(owner, writer, signedHashes, blockSizes, batIds, isRaw, tid);
     }
+
+    @Override
+    public Optional<BlockCache> getBlockCache() {
+        return target.getBlockCache();
+    }
 }

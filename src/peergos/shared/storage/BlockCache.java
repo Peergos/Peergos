@@ -15,4 +15,7 @@ public interface BlockCache {
 
     CompletableFuture<Boolean> clear();
 
+    long getMaxSize();
+
+    void setMaxSize(long maxSizeBytes);
 }

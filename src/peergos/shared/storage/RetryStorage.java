@@ -185,4 +185,9 @@ public class RetryStorage implements ContentAddressedStorage {
                                                             TransactionId tid) {
         return runWithRetry(() -> target.authWrites(owner, writer, signedHashes, blockSizes, batIds, isRaw, tid));
     }
+
+    @Override
+    public Optional<BlockCache> getBlockCache() {
+        return target.getBlockCache();
+    }
 }

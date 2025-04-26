@@ -346,4 +346,9 @@ public class OpLog implements Cborable, Account, MutablePointers, ContentAddress
         }
         return new OpLog(ops, null, mirrorBat);
     }
+
+    @Override
+    public Optional<BlockCache> getBlockCache() {
+        return Optional.empty();
+    }
 }
