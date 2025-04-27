@@ -569,7 +569,7 @@ public class Main extends Builder {
                 try {
                     Crypto crypto = JavaCrypto.init();
                     URL target = new URL(a.getArg("peergos-url", "https://peergos.net"));
-                    JavaPoster poster = new JavaPoster(target, true, Optional.empty(), Optional.of("Peergos-" + UserService.CURRENT_VERSION + "-proxy"));
+                    JavaPoster poster = new JavaPoster(target, ! target.getHost().equals("localhost"), Optional.empty(), Optional.of("Peergos-" + UserService.CURRENT_VERSION + "-proxy"));
                     ScryptJava hasher = new ScryptJava();
                     ContentAddressedStorage localDht = NetworkAccess.buildLocalDht(poster, true, hasher);
                     CoreNode core = NetworkAccess.buildDirectCorenode(poster);

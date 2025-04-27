@@ -71,13 +71,14 @@ public class FileBlockCache implements BlockCache {
         Path json = root.resolve("config.json");
         try {
             if (json.toFile().exists()) {
-                Map<String, Object> decoded = (Map<String, Object>) JSONParser.parse(Files.readAllBytes(json));
+                Map<String, Object> decoded = (Map<String, Object>) JSONParser.parse(new String(Files.readAllBytes(json)));
                 Object maxsize = decoded.get("maxsize");
                 if (maxsize instanceof Integer)
                     return (Integer) maxsize;
                 return (Long) maxsize;
             } else {
-                Files.write(json, ("{'maxsize':" + maxSizeBytes + "}").getBytes("UTF-8"), StandardOpenOption.CREATE);
+                json.getParent().toFile().mkdirs();
+                Files.write(json, ("{\"maxsize\":" + maxSizeBytes + "}").getBytes("UTF-8"), StandardOpenOption.CREATE);
                 return maxSizeBytes;
             }
         } catch (IOException e) {
@@ -95,7 +96,7 @@ public class FileBlockCache implements BlockCache {
         this.maxSizeBytes = maxSizeBytes;
         Path json = root.resolve("config.json");
         try {
-            Files.write(json, ("{'maxsize':" + maxSizeBytes + "}").getBytes("UTF-8"));
+            Files.write(json, ("{\"maxsize\":" + maxSizeBytes + "}").getBytes("UTF-8"));
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
