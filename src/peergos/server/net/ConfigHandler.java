@@ -54,7 +54,7 @@ public class ConfigHandler implements HttpHandler {
                 long cacheSizeBytes = cache.getMaxSize();
                 long cacheSizeMB = cacheSizeBytes / (1024 * 1024);
                 exchange.getResponseHeaders().set("Content-Type", "application/json");
-                byte[] res = JSONParser.toString("{'size': " + cacheSizeMB + "}").getBytes();
+                byte[] res = JSONParser.toString("{\"size\": " + cacheSizeMB + "}").getBytes();
                 exchange.sendResponseHeaders(200, res.length);
                 OutputStream resp = exchange.getResponseBody();
                 resp.write(res);

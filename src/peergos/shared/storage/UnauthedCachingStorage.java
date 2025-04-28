@@ -47,6 +47,11 @@ public class UnauthedCachingStorage extends DelegatingStorage {
     }
 
     @Override
+        public Optional<BlockCache> getBlockCache() {
+            return Optional.of(cache);
+        }
+
+    @Override
     public CompletableFuture<Optional<byte[]>> getRaw(PublicKeyHash owner, Cid key, Optional<BatWithId> bat) {
         return cache.get(key)
                 .thenCompose(res -> {
