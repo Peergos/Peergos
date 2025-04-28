@@ -4,10 +4,12 @@ import peergos.server.util.Logging;
 import peergos.server.util.Threads;
 import peergos.shared.io.ipfs.Cid;
 import peergos.shared.io.ipfs.Multihash;
+import peergos.shared.io.ipfs.api.JSONParser;
 import peergos.shared.storage.*;
 import peergos.shared.util.*;
 
 import java.io.*;
+import java.nio.charset.Charset;
 import java.nio.file.*;
 import java.nio.file.attribute.*;
 import java.security.SecureRandom;
@@ -23,7 +25,7 @@ import java.util.logging.*;
 public class FileBlockCache implements BlockCache {
     private static final Logger LOG = Logging.LOG();
     private final Path root;
-    private final long maxSizeBytes;
+    private volatile long maxSizeBytes;
     private long lastSizeCheckTime = 0;
     private AtomicLong totalSize = new AtomicLong(0);
     private AtomicBoolean needToCommitSize = new AtomicBoolean(true);
@@ -31,7 +33,7 @@ public class FileBlockCache implements BlockCache {
 
     public FileBlockCache(Path root, long maxSizeBytes) {
         this.root = root;
-        this.maxSizeBytes = maxSizeBytes;
+        this.maxSizeBytes = getOrSetMaxSize(maxSizeBytes);
         File rootDir = root.toFile();
         if (!rootDir.exists()) {
             final boolean mkdirs = root.toFile().mkdirs();
@@ -63,6 +65,41 @@ public class FileBlockCache implements BlockCache {
         Thread sizeCommitter = new Thread(this::sizeCommitter, "FileBlockCache size");
         sizeCommitter.setDaemon(true);
         sizeCommitter.start();
+    }
+
+    private long getOrSetMaxSize(long maxSizeBytes) {
+        Path json = root.resolve("config.json");
+        try {
+            if (json.toFile().exists()) {
+                Map<String, Object> decoded = (Map<String, Object>) JSONParser.parse(new String(Files.readAllBytes(json)));
+                Object maxsize = decoded.get("maxsize");
+                if (maxsize instanceof Integer)
+                    return (Integer) maxsize;
+                return (Long) maxsize;
+            } else {
+                json.getParent().toFile().mkdirs();
+                Files.write(json, ("{\"maxsize\":" + maxSizeBytes + "}").getBytes("UTF-8"), StandardOpenOption.CREATE);
+                return maxSizeBytes;
+            }
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    @Override
+    public long getMaxSize() {
+        return maxSizeBytes;
+    }
+
+    @Override
+    public void setMaxSize(long maxSizeBytes) {
+        this.maxSizeBytes = maxSizeBytes;
+        Path json = root.resolve("config.json");
+        try {
+            Files.write(json, ("{\"maxsize\":" + maxSizeBytes + "}").getBytes("UTF-8"));
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     private void sizeCommitter() {

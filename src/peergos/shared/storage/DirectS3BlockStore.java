@@ -342,4 +342,9 @@ public class DirectS3BlockStore implements ContentAddressedStorage {
     public CompletableFuture<LinkCounts> getLinkCounts(String owner, LocalDateTime after, BatWithId mirrorBat) {
         return fallback.getLinkCounts(owner, after, mirrorBat);
     }
+
+    @Override
+    public Optional<BlockCache> getBlockCache() {
+        return fallback.getBlockCache();
+    }
 }

@@ -126,4 +126,9 @@ public class NonWriteThroughStorage implements ContentAddressedStorage {
     public CompletableFuture<IpnsEntry> getIpnsEntry(Multihash signer) {
         throw new IllegalStateException("Unimplemented!");
     }
+
+    @Override
+    public Optional<BlockCache> getBlockCache() {
+        return source.getBlockCache();
+    }
 }

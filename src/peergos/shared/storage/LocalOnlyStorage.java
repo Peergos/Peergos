@@ -156,4 +156,9 @@ public class LocalOnlyStorage implements ContentAddressedStorage {
                                                             TransactionId tid) {
         throw new IllegalStateException("Unimplemented!");
     }
+
+    @Override
+    public Optional<BlockCache> getBlockCache() {
+        return Optional.of(cache);
+    }
 }

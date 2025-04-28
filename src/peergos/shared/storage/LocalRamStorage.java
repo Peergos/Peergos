@@ -160,4 +160,9 @@ public class LocalRamStorage implements ContentAddressedStorage {
                                                             TransactionId tid) {
         throw new IllegalStateException("Unimplemented!");
     }
+
+    @Override
+    public Optional<BlockCache> getBlockCache() {
+        return Optional.empty();
+    }
 }

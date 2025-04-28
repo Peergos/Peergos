@@ -226,4 +226,9 @@ public class DelegatingDeletableStorage implements DeletableContentAddressedStor
     public CompletableFuture<BlockMetadata> getBlockMetadata(Cid block) {
         return target.getBlockMetadata(block);
     }
+
+    @Override
+    public Optional<BlockCache> getBlockCache() {
+        return target.getBlockCache();
+    }
 }

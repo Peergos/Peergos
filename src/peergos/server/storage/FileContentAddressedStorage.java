@@ -366,6 +366,11 @@ public class FileContentAddressedStorage implements DeletableContentAddressedSto
     }
 
     @Override
+    public Optional<BlockCache> getBlockCache() {
+        return Optional.empty();
+    }
+
+    @Override
     public String toString() {
         return "FileContentAddressedStorage " + root;
     }

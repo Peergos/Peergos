@@ -108,6 +108,16 @@ public class BufferedStorage extends DelegatingStorage {
             public CompletableFuture<Boolean> clear() {
                 throw new IllegalStateException("Unimplemented!");
             }
+
+            @Override
+            public long getMaxSize() {
+                return 0;
+            }
+
+            @Override
+            public void setMaxSize(long maxSizeBytes) {
+
+            }
         },
                 () -> committedRoot.isPresent() ?
                         get(owner, committedRoot.get(), Optional.empty())

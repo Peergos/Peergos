@@ -88,6 +88,7 @@ public class UserService {
     public final SpaceUsage usage;
     public final ServerMessager serverMessages;
     public final GarbageCollector gc; // not exposed
+    private final Optional<BlockCache> blockCache;
     private HttpServer localhostServer;
 
     public UserService(ContentAddressedStorage storage,
@@ -112,6 +113,7 @@ public class UserService {
         this.usage = usage;
         this.serverMessages = serverMessages;
         this.gc = gc;
+        this.blockCache = storage.getBlockCache();
     }
 
     public static class TlsProperties {
@@ -266,6 +268,9 @@ public class UserService {
             addHandler(localhostServer, null, "/" + Constants.ANDROID_FILE_REFLECTOR,
                     new AndroidFileReflector(crypto, coreNode, mutable, storage),
                     basicAuth, local, host, nodeIds, false);
+            blockCache.ifPresent(cache -> addHandler(localhostServer, null, "/" + Constants.CONFIG,
+                    new ConfigHandler(cache),
+                    basicAuth, local, host, nodeIds, false));
         }
         addHandler(localhostServer, tlsServer, UI_URL, handler, basicAuth, local, host, nodeIds, true);
 

@@ -18,6 +18,16 @@ public class RamBlockCache implements BlockCache {
         this.cacheSize = cacheSize;
     }
 
+    @Override
+    public long getMaxSize() {
+        return Long.MAX_VALUE;
+    }
+
+    @Override
+    public void setMaxSize(long maxSizeBytes) {
+
+    }
+
     public Collection<byte[]> getCached() {
         return cache.values();
     }

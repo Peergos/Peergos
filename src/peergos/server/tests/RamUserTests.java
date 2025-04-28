@@ -76,6 +76,16 @@ public class RamUserTests extends UserTests {
         public CompletableFuture<Boolean> clear() {
             return Futures.of(true);
         }
+
+        @Override
+        public long getMaxSize() {
+            return 0;
+        }
+
+        @Override
+        public void setMaxSize(long maxSizeBytes) {
+
+        }
     }
 
     @Override

@@ -251,4 +251,9 @@ public class RAMStorage implements DeletableContentAddressedStorage {
     public int totalSize() {
         return storage.values().stream().mapToInt(a -> a.length).sum();
     }
+
+    @Override
+    public Optional<BlockCache> getBlockCache() {
+        return Optional.empty();
+    }
 }

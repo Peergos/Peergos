@@ -31,4 +31,13 @@ public class JSBlockCache implements BlockCache {
     public CompletableFuture<Boolean> clear() {
         return cache.clear();
     }
+
+    @Override
+    public long getMaxSize() {
+        return 0;
+    }
+
+    @Override
+    public void setMaxSize(long maxSizeBytes) {
+    }
 }
