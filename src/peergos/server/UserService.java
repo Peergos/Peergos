@@ -89,6 +89,7 @@ public class UserService {
     public final ServerMessager serverMessages;
     public final GarbageCollector gc; // not exposed
     private final Optional<BlockCache> blockCache;
+    private final Optional<Args> syncArgs;
     private HttpServer localhostServer;
 
     public UserService(ContentAddressedStorage storage,
@@ -101,7 +102,8 @@ public class UserService {
                        InstanceAdmin controller,
                        SpaceUsage usage,
                        ServerMessager serverMessages,
-                       GarbageCollector gc) {
+                       GarbageCollector gc,
+                       Optional<Args> syncArgs) {
         this.storage = storage;
         this.bats = bats;
         this.crypto = crypto;
@@ -114,6 +116,7 @@ public class UserService {
         this.serverMessages = serverMessages;
         this.gc = gc;
         this.blockCache = storage.getBlockCache();
+        this.syncArgs = syncArgs;
     }
 
     public static class TlsProperties {
@@ -270,6 +273,9 @@ public class UserService {
                     basicAuth, local, host, nodeIds, false);
             blockCache.ifPresent(cache -> addHandler(localhostServer, null, "/" + Constants.CONFIG,
                     new ConfigHandler(cache),
+                    basicAuth, local, host, nodeIds, false));
+            syncArgs.ifPresent(args -> addHandler(localhostServer, null, "/" + Constants.SYNC,
+                    new SyncConfigHandler(args, storage, coreNode),
                     basicAuth, local, host, nodeIds, false));
         }
         addHandler(localhostServer, tlsServer, UI_URL, handler, basicAuth, local, host, nodeIds, true);
