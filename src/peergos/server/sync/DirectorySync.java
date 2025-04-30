@@ -7,6 +7,7 @@ import peergos.server.storage.FileBlockCache;
 import peergos.server.user.JavaImageThumbnailer;
 import peergos.server.util.Args;
 import peergos.server.util.Logging;
+import peergos.server.util.Threads;
 import peergos.shared.Crypto;
 import peergos.shared.NetworkAccess;
 import peergos.shared.corenode.HTTPCoreNode;
@@ -72,12 +73,32 @@ public class DirectorySync {
             Crypto crypto = Main.initCrypto();
             String cacheSize = args.getArg("block-cache-size-bytes");
             long blockCacheSizeBytes = cacheSize.endsWith("g") ?
-                    Long.parseLong(cacheSize.substring(0, cacheSize.length() - 1)) * 1024L*1024*1024 :
+                    Long.parseLong(cacheSize.substring(0, cacheSize.length() - 1)) * 1024L * 1024 * 1024 :
                     Long.parseLong(cacheSize);
             NetworkAccess network = Builder.buildJavaNetworkAccess(serverURL, address.startsWith("https"), Optional.of("Peergos-" + UserService.CURRENT_VERSION + "-sync")).join()
                     .withStorage(s -> new UnauthedCachingStorage(s, new FileBlockCache(args.fromPeergosDir("block-cache-dir", "block-cache"), blockCacheSizeBytes), crypto.hasher));
             ThumbnailGenerator.setInstance(new JavaImageThumbnailer());
-            List<String> links = Arrays.asList(args.getArg("links").split(","));
+            List<String> links = new ArrayList<>(Arrays.asList(args.getArg("links").split(",")));
+            List<String> localDirs = new ArrayList<>(Arrays.asList(args.getArg("local-dirs").split(",")));
+            int maxDownloadParallelism = args.getInt("max-parallelism", 32);
+            int minFreeSpacePercent = args.getInt("min-free-space-percent", 5);
+            boolean oneRun = args.getBoolean("run-once", false);
+            Path peergosDir = args.getPeergosDir();
+            return syncDir(links, localDirs, maxDownloadParallelism, minFreeSpacePercent, oneRun, peergosDir, network, crypto);
+        } catch (Exception e) {
+            LOG.log(Level.SEVERE, e, e::getMessage);
+            throw new RuntimeException(e);
+        }
+    }
+
+    public static boolean syncDir(List<String> links,
+                                  List<String> localDirs,
+                                  int maxDownloadParallelism,
+                                  int minFreeSpacePercent,
+                                  boolean oneRun,
+                                  Path peergosDir,
+                                  NetworkAccess network,
+                                  Crypto crypto) {
             Supplier<CompletableFuture<String>> linkUserPassword = () -> Futures.of("");
             List<Supplier<CompletableFuture<String>>> linkPasswords = IntStream.range(0, links.size())
                     .mapToObj(i -> linkUserPassword)
@@ -86,18 +107,16 @@ public class DirectorySync {
             List<String> linkPaths = links.stream()
                     .map(link -> UserContext.fromSecretLinksV2(Arrays.asList(link), Arrays.asList(linkUserPassword), network, crypto).join().getEntryPath().join())
                     .collect(Collectors.toList());
-            int maxDownloadParallelism = args.getInt("max-parallelism", 32);
-            int minFreeSpacePercent = args.getInt("min-free-space-percent", 5);
 
             PeergosSyncFS remote = new PeergosSyncFS(context);
             LocalFileSystem local = new LocalFileSystem(crypto.hasher);
-            List<String> localDirs = Arrays.asList(args.getArg("local-dirs").split(","));
+
             List<SyncState> syncedStates = IntStream.range(0, linkPaths.size())
-                    .mapToObj(i -> new JdbcTreeState(args.getPeergosDirChild("dir-sync-state-v3-" + ArrayOps.bytesToHex(Hash.sha256(linkPaths.get(i) + "///" + localDirs.get(i))) + ".sqlite").toString()))
+                    .mapToObj(i -> new JdbcTreeState(peergosDir.resolve("dir-sync-state-v3-" + ArrayOps.bytesToHex(Hash.sha256(linkPaths.get(i) + "///" + localDirs.get(i))) + ".sqlite").toString()))
                     .collect(Collectors.toList());
             if (links.size() != localDirs.size())
                 throw new IllegalArgumentException("Mismatched number of local dirs and links");
-            boolean oneRun = args.getBoolean("run-once", false);
+
             while (true) {
                 try {
                     log("Syncing " + links.size() + " pairs of directories: " + IntStream.range(0, links.size()).mapToObj(i -> Arrays.asList(localDirs.get(i), linkPaths.get(i))).collect(Collectors.toList()));
@@ -119,13 +138,9 @@ public class DirectorySync {
                 } catch (Exception e) {
                     e.printStackTrace();
                     LOG.log(Level.WARNING, e, e::getMessage);
-                    Thread.sleep(30_000);
+                    Threads.sleep(30_000);
                 }
             }
-        } catch (Exception e) {
-            LOG.log(Level.SEVERE, e, e::getMessage);
-            throw new RuntimeException(e);
-        }
         return true;
     }
 
