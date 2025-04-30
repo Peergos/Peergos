@@ -147,11 +147,11 @@ public class SyncConfigHandler implements HttpHandler {
             }
             if (path.startsWith("/"))
                 path = path.substring(1);
-            String action = path.substring(Constants.CONFIG.length());
+            String action = path.substring(Constants.SYNC.length());
             Map<String, List<String>> params = HttpUtil.parseQuery(exchange.getRequestURI().getQuery());
             Function<String, String> last = key -> params.get(key).get(params.get(key).size() - 1);
 
-            if (action.equals("sync/add-pair")) {
+            if (action.equals("add-pair")) {
                 Map<String, Object> json = (Map<String, Object>) JSONParser.parse(new String(Serialize.readFully(exchange.getRequestBody())));
                 List<String> links = syncer.getArgs().getOptionalArg("links")
                         .map(a -> a.split(","))
@@ -172,7 +172,7 @@ public class SyncConfigHandler implements HttpHandler {
                 System.out.println("Syncing " + localDirs.get(localDirs.size() - 1));
                 exchange.sendResponseHeaders(200, 0);
                 exchange.close();
-            } else if (action.equals("sync/remove-pair")) {
+            } else if (action.equals("remove-pair")) {
                 long label = Long.parseLong(last.apply("label"));
                 List<String> links = syncer.getArgs().getOptionalArg("links")
                         .map(a -> a.split(","))
@@ -199,7 +199,7 @@ public class SyncConfigHandler implements HttpHandler {
                 syncer.getArgs().saveToFile();
                 exchange.sendResponseHeaders(200, 0);
                 exchange.close();
-            } else if (action.equals("sync/get-pairs")) {
+            } else if (action.equals("get-pairs")) {
 //                PublicKeyHash owner = PublicKeyHash.fromString(params.get("owner").get(0));
 //                TimeLimited.isAllowedTime(ArrayOps.hexToBytes(last.apply("sig")), 30, storage, owner);
                 // TODO filter links by owner
@@ -235,7 +235,7 @@ public class SyncConfigHandler implements HttpHandler {
                 resp.write(res);
                 exchange.close();
             } else {
-                LOG.info("Unknown sync config handler: " +exchange.getRequestURI());
+                LOG.info("Unknown sync config handler: " + action);
                 exchange.sendResponseHeaders(404, 0);
                 exchange.close();
             }
