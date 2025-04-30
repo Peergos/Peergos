@@ -51,7 +51,7 @@ public class SyncConfigHandler implements HttpHandler {
         this.storage = storage;
         this.core = core;
         WriteSynchronizer synchronizer = new WriteSynchronizer(mutable, storage, crypto.hasher);
-        MutableTreeImpl tree = new MutableTreeImpl(mutable, storage, null, synchronizer);
+        MutableTreeImpl tree = new MutableTreeImpl(mutable, storage, crypto.hasher, synchronizer);
         this.network = new NetworkAccess(core, null, null, storage, null, Optional.empty(),
                 mutable, tree, synchronizer, null, null, null, crypto.hasher,
                 Collections.emptyList(), false);
