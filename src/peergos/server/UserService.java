@@ -274,9 +274,12 @@ public class UserService {
             blockCache.ifPresent(cache -> addHandler(localhostServer, null, "/" + Constants.CONFIG,
                     new ConfigHandler(cache),
                     basicAuth, local, host, nodeIds, false));
-            syncArgs.ifPresent(args -> addHandler(localhostServer, null, "/" + Constants.SYNC,
-                    new SyncConfigHandler(args, storage, coreNode),
-                    basicAuth, local, host, nodeIds, false));
+            syncArgs.ifPresent(args -> {
+                SyncConfigHandler sync = new SyncConfigHandler(args, storage, mutable, coreNode, crypto);
+                sync.start();
+                addHandler(localhostServer, null, "/" + Constants.SYNC,
+                        sync, basicAuth, local, host, nodeIds, false);
+            });
         }
         addHandler(localhostServer, tlsServer, UI_URL, handler, basicAuth, local, host, nodeIds, true);
 

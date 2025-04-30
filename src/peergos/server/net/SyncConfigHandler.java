@@ -2,17 +2,22 @@ package peergos.server.net;
 
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
+import org.peergos.config.Jsonable;
 import peergos.server.sync.DirectorySync;
 import peergos.server.util.Args;
 import peergos.server.util.HttpUtil;
 import peergos.server.util.Logging;
-import peergos.server.util.TimeLimited;
+import peergos.shared.Crypto;
+import peergos.shared.NetworkAccess;
 import peergos.shared.corenode.CoreNode;
-import peergos.shared.crypto.hash.PublicKeyHash;
 import peergos.shared.io.ipfs.api.JSONParser;
+import peergos.shared.mutable.MutablePointers;
 import peergos.shared.storage.ContentAddressedStorage;
-import peergos.shared.util.ArrayOps;
+import peergos.shared.user.MutableTreeImpl;
+import peergos.shared.user.UserContext;
+import peergos.shared.user.WriteSynchronizer;
 import peergos.shared.util.Constants;
+import peergos.shared.util.Futures;
 import peergos.shared.util.Serialize;
 
 import java.io.OutputStream;
@@ -21,6 +26,7 @@ import java.util.*;
 import java.util.function.Function;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.stream.Collectors;
 
 public class SyncConfigHandler implements HttpHandler {
 	private static final Logger LOG = Logging.LOG();
@@ -29,11 +35,27 @@ public class SyncConfigHandler implements HttpHandler {
     private final SyncRunner syncer;
     private final ContentAddressedStorage storage;
     private final CoreNode core;
+    private final NetworkAccess network;
+    private final Crypto crypto;
 
-    public SyncConfigHandler(Args a, ContentAddressedStorage storage, CoreNode core) {
+    public SyncConfigHandler(Args a,
+                             ContentAddressedStorage storage,
+                             MutablePointers mutable,
+                             CoreNode core,
+                             Crypto crypto) {
         this.syncer = new SyncRunner(a);
         this.storage = storage;
         this.core = core;
+        WriteSynchronizer synchronizer = new WriteSynchronizer(mutable, storage, crypto.hasher);
+        MutableTreeImpl tree = new MutableTreeImpl(mutable, storage, null, synchronizer);
+        this.network = new NetworkAccess(core, null, null, storage, null, Optional.empty(),
+                mutable, tree, synchronizer, null, null, null, crypto.hasher,
+                Collections.emptyList(), false);
+        this.crypto = crypto;
+    }
+
+    public void start() {
+        syncer.start();
     }
 
     static class SyncRunner {
@@ -79,6 +101,35 @@ public class SyncConfigHandler implements HttpHandler {
         }
     }
 
+    private static class SyncConfig implements Jsonable {
+        public final List<String> localDirs, remotePaths, linkLabels;
+
+        public SyncConfig(List<String> localDirs, List<String> remotePaths, List<String> linkLabels) {
+            if (localDirs.size() != remotePaths.size())
+                throw new IllegalStateException("Invalid SyncConfig!");
+            if (localDirs.size() != linkLabels.size())
+                throw new IllegalStateException("Invalid SyncConfig!");
+            this.localDirs = localDirs;
+            this.remotePaths = remotePaths;
+            this.linkLabels = linkLabels;
+        }
+
+        @Override
+        public Map<String, Object> toJson() {
+            LinkedHashMap<String, Object> res = new LinkedHashMap<>();
+            List<Object> pairs = new ArrayList<>();
+            for (int i=0; i < localDirs.size(); i++) {
+                LinkedHashMap<String, Object> pair = new LinkedHashMap<>();
+                pair.put("localpath", localDirs.get(i));
+                pair.put("remotepath", remotePaths.get(i));
+                pair.put("label", linkLabels.get(i));
+                pairs.add(pair);
+            }
+            res.put("pairs", pairs);
+            return res;
+        }
+    }
+
     @Override
     public void handle(HttpExchange exchange) {
         long t1 = System.currentTimeMillis();
@@ -118,10 +169,11 @@ public class SyncConfigHandler implements HttpHandler {
                 syncer.getArgs().saveToFile();
                 // restart sync client
                 syncer.runNow();
+                System.out.println("Syncing " + localDirs.get(localDirs.size() - 1));
                 exchange.sendResponseHeaders(200, 0);
                 exchange.close();
             } else if (action.equals("sync/remove-pair")) {
-                Map<String, Object> json = (Map<String, Object>) JSONParser.parse(new String(Serialize.readFully(exchange.getRequestBody())));
+                long label = Long.parseLong(last.apply("label"));
                 List<String> links = syncer.getArgs().getOptionalArg("links")
                         .map(a -> a.split(","))
                         .map(Arrays::asList)
@@ -130,10 +182,17 @@ public class SyncConfigHandler implements HttpHandler {
                         .map(a -> a.split(","))
                         .map(Arrays::asList)
                         .orElse(new ArrayList<>());
-                links.remove((String)json.get("link"));
-                localDirs.remove((String)json.get("dir"));
-                if (links.size() != localDirs.size())
-                    throw new IllegalStateException("Couldn't remove sync directory pair");
+                int toRemove = 0;
+                for (;toRemove < links.size(); toRemove++) {
+                    String link = links.get(toRemove);
+                    if (link.substring(link.lastIndexOf("/", link.indexOf("#")) + 1, link.indexOf("#")).equals(Long.toString(label)))
+                        break;
+                }
+                if (toRemove == links.size())
+                    throw new IllegalArgumentException("Unknown label");
+                links.remove(toRemove);
+                localDirs.remove(toRemove);
+
                 syncer.setArgs(syncer.getArgs()
                         .with("links", String.join(",", links))
                         .with("local-dirs", String.join(",", localDirs)));
@@ -141,16 +200,34 @@ public class SyncConfigHandler implements HttpHandler {
                 exchange.sendResponseHeaders(200, 0);
                 exchange.close();
             } else if (action.equals("sync/get-pairs")) {
-                PublicKeyHash owner = PublicKeyHash.fromString(params.get("owner").get(0));
-                TimeLimited.isAllowedTime(ArrayOps.hexToBytes(last.apply("sig")), 30, storage, owner);
+//                PublicKeyHash owner = PublicKeyHash.fromString(params.get("owner").get(0));
+//                TimeLimited.isAllowedTime(ArrayOps.hexToBytes(last.apply("sig")), 30, storage, owner);
                 // TODO filter links by owner
-                String username = core.getUsername(owner).join();
+//                String username = core.getUsername(owner).join();
 
                 Optional<String> links = syncer.getArgs().getOptionalArg("links");
                 Optional<String> dirs = syncer.getArgs().getOptionalArg("local-dirs");
-                Map<String, Object> json = new LinkedHashMap<>();
-                links.ifPresent(val -> json.put("links", val));
-                dirs.ifPresent(val -> json.put("local-dirs", val));
+                Optional<List<String>> remotePaths = links.map(a -> a.split(","))
+                        .map(Arrays::asList)
+                        .map(caps -> caps.stream()
+                                .map(cap -> UserContext.fromSecretLinksV2(Arrays.asList(cap),
+                                                Arrays.asList(() -> Futures.of("")), network, crypto)
+                                        .join()
+                                        .getEntryPath()
+                                        .join())
+                                .collect(Collectors.toList()));
+                Map<String, Object> json = new SyncConfig(dirs.map(a -> a.split(","))
+                        .map(Arrays::asList)
+                        .orElse(new ArrayList<>()),
+                        remotePaths.orElse(new ArrayList<>()),
+                        links.map(a -> a.split(","))
+                                .map(Arrays::asList)
+                                .map(all -> all.stream()
+                                        // only return the link champ label, which is not sensitive, but enough for the owner to delete it
+                                        .map(link -> link.substring(link.lastIndexOf("/", link.indexOf("#")) + 1, link.indexOf("#")))
+                                        .collect(Collectors.toList()))
+                                .orElse(new ArrayList<>())
+                ).toJson();
                 byte[] res = JSONParser.toString(json).getBytes(StandardCharsets.UTF_8);
 
                 exchange.sendResponseHeaders(200, res.length);
