@@ -194,6 +194,7 @@ public class CLI implements Runnable {
         if (stat.fileProperties().isDirectory)
             return peergosFileSystem.ls(path, false).stream()
                 .map(Path::toString)
+                .sorted()
                 .collect(Collectors.joining("\n"));
 
         return path.toString();
@@ -208,6 +209,7 @@ public class CLI implements Runnable {
             if (path.toFile().isDirectory())
                 return Files.list(path)
                         .map(Path::toString)
+                        .sorted()
                         .collect(Collectors.joining("\n"));
         } catch (IOException e) {
             throw new RuntimeException(e);
