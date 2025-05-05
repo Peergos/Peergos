@@ -403,8 +403,18 @@ public class DirectorySync {
                                 SyncFilesystem remoteFs, Path remoteDir,
                                 SyncState syncedVersions, RamTreeState localTree, SyncState remoteTree,
                                 Set<String> doneFiles, int minPercentFree) throws IOException {
-        long totalSpace = Files.getFileStore(localDir).getTotalSpace();
-        long freeSpace = Files.getFileStore(localDir).getUsableSpace();
+        long totalSpace;
+        try {
+            totalSpace = Files.getFileStore(localDir).getTotalSpace();
+        } catch (SecurityException e) { // Android won't let us do this
+            totalSpace = Long.MAX_VALUE;
+        }
+        long freeSpace;
+        try {
+            freeSpace = Files.getFileStore(localDir).getUsableSpace();
+        } catch (SecurityException e) { // Android won't let us do this
+            freeSpace = Long.MAX_VALUE / 2;
+        }
         if (synced == null) {
             if (local == null) { // remotely added or renamed
                 List<FileState> byHash = localTree.byHash(remote.hashTree.rootHash);

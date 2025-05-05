@@ -13,7 +13,7 @@ import java.util.Set;
 import java.util.function.Consumer;
 import java.util.stream.Stream;
 
-interface SyncFilesystem {
+public interface SyncFilesystem {
 
     boolean exists(Path p);
 
