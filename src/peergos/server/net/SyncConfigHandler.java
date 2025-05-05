@@ -64,7 +64,6 @@ public class SyncConfigHandler implements HttpHandler {
                 .orElse(new ArrayList<>());
 
         this.syncer = new SyncRunner(links, localDirs, 32, 5, a.getPeergosDir(), network, crypto);
-        ThumbnailGenerator.setInstance(new JavaImageThumbnailer());
     }
 
     private void saveConfigToFile(List<String> links, List<String> localDirs) {

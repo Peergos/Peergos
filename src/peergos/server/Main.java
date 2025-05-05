@@ -568,6 +568,7 @@ public class Main extends Builder {
             a -> {
                 try {
                     Crypto crypto = JavaCrypto.init();
+                    ThumbnailGenerator.setInstance(new JavaImageThumbnailer());
                     URL target = new URL(a.getArg("peergos-url", "https://peergos.net"));
                     JavaPoster poster = new JavaPoster(target, ! target.getHost().equals("localhost"), Optional.empty(), Optional.of("Peergos-" + UserService.CURRENT_VERSION + "-proxy"));
                     ScryptJava hasher = new ScryptJava();
@@ -633,6 +634,7 @@ public class Main extends Builder {
     public static ServerProcesses startPeergos(Args a) {
         try {
             Crypto crypto = initCrypto();
+            ThumbnailGenerator.setInstance(new JavaImageThumbnailer());
             Hasher hasher = crypto.hasher;
             PublicSigningKey.addProvider(PublicSigningKey.Type.Ed25519, crypto.signer);
 
