@@ -947,7 +947,21 @@ public class FileWrapper {
         List<FileUploadProperties> sortedChildren = children.files.stream()
                 .sorted(Comparator.comparingLong(a -> a.length))
                 .collect(Collectors.toList());
-        return Futures.reduceAll(sortedChildren, identity,
+        // split into batches to see partial progress with many ~MiB files
+        List<List<FileUploadProperties>> groupedChildren = new ArrayList<>();
+        int currentTotal = 0;
+        int batchSize = 20 * 1024 * 1024;
+        groupedChildren.add(new ArrayList<>());
+        for (int i=0; i < sortedChildren.size(); i++) {
+            FileUploadProperties next = sortedChildren.get(i);
+            if (currentTotal + next.length > batchSize) {
+                groupedChildren.add(new ArrayList<>());
+                currentTotal = 0;
+            }
+            groupedChildren.get(groupedChildren.size() - 1).add(next);
+            currentTotal += next.length;
+        }
+        return Futures.reduceAll(groupedChildren, identity, (id, group) -> Futures.reduceAll(group, id,
                         (p, f) -> {
                             // don't bother with file upload transactions as single chunk uploads are atomic anyway
                             // (nothing to resume or cleanup later in case of failure)
@@ -1016,7 +1030,8 @@ public class FileWrapper {
                                     });
                         },
                         (a, b) -> new Pair<>(b.left, Stream.concat(a.right.stream(), b.right.stream()).collect(Collectors.toList())))
-                .thenCompose(r -> atomicallyClearTransactionsAndAddToParent(Collections.emptyList(), r.right, parent, transactions, r.left, c, commitWatcher, network, crypto))
+                .thenCompose(r -> atomicallyClearTransactionsAndAddToParent(Collections.emptyList(), r.right, parent, transactions, r.left, c, commitWatcher, network, crypto)),
+                        (a, b) -> new Pair<>(b.left, Stream.concat(a.right.stream(), b.right.stream()).collect(Collectors.toList())))
                 .thenApply(x -> x.left);
     }
 
