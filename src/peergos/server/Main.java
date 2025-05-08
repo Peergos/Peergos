@@ -605,7 +605,7 @@ public class Main extends Builder {
                     OfflineBatCache offlineBats = new OfflineBatCache(batCave, new JdbcBatCave(Builder.getDBConnector(a, "bat-cache-sql-file", dbConnector), commands));
 
                     UserService server = new UserService(withoutS3, offlineBats, crypto, offlineCorenode, offlineAccounts,
-                            httpSocial, pointerCache, admin, httpUsage, serverMessager, null, Optional.of(a));
+                            httpSocial, pointerCache, admin, httpUsage, serverMessager, null, Optional.of(a), Optional.of(new HostDirEnumerator.Java()));
 
                     InetSocketAddress localAPIAddress = new InetSocketAddress("localhost", port);
                     List<String> appSubdomains = Arrays.asList("markup-viewer,calendar,code-editor,pdf".split(","));
@@ -773,9 +773,9 @@ public class Main extends Builder {
             ServerMessageStore serverMessages = new ServerMessageStore(getDBConnector(a, "server-messages-sql-file", dbConnectionPool),
                     sqlCommands, core, p2pDht);
             UserService localAPI = new UserService(cachingStorage, p2pBats, crypto, corePropagator, verifyingAccount,
-                    p2pSocial, p2mMutable, storageAdmin, p2pSpaceUsage, serverMessages, gc, Optional.of(a));
+                    p2pSocial, p2mMutable, storageAdmin, p2pSpaceUsage, serverMessages, gc, Optional.of(a), Optional.of(new HostDirEnumerator.Java()));
             UserService p2pAPI = new UserService(incomingP2PStorage, p2pBats, crypto, corePropagator, verifyingAccount,
-                    p2pSocial, p2mMutable, storageAdmin, p2pSpaceUsage, serverMessages, gc, Optional.empty());
+                    p2pSocial, p2mMutable, storageAdmin, p2pSpaceUsage, serverMessages, gc, Optional.empty(), Optional.empty());
             InetSocketAddress localAPIAddress = userAPIAddress;
             InetSocketAddress p2pAPIAddress = new InetSocketAddress("localhost", localP2PApi.getTCPPort());
 

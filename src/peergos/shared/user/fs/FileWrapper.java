@@ -950,7 +950,7 @@ public class FileWrapper {
         // split into batches to see partial progress with many ~MiB files
         List<List<FileUploadProperties>> groupedChildren = new ArrayList<>();
         int currentTotal = 0;
-        int batchSize = 20 * 1024 * 1024;
+        int batchSize = 10 * 1024 * 1024;
         groupedChildren.add(new ArrayList<>());
         for (int i=0; i < sortedChildren.size(); i++) {
             FileUploadProperties next = sortedChildren.get(i);

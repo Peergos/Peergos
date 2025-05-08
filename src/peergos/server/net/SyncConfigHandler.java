@@ -3,8 +3,8 @@ package peergos.server.net;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 import org.peergos.config.Jsonable;
+import peergos.server.HostDirEnumerator;
 import peergos.server.sync.DirectorySync;
-import peergos.server.user.JavaImageThumbnailer;
 import peergos.server.util.Args;
 import peergos.server.util.HttpUtil;
 import peergos.server.util.Logging;
@@ -41,10 +41,12 @@ public class SyncConfigHandler implements HttpHandler {
     private final CoreNode core;
     private final NetworkAccess network;
     private final Crypto crypto;
+    private final HostDirEnumerator hostPaths;
 
     public SyncConfigHandler(Args a,
                              ContentAddressedStorage storage,
                              MutablePointers mutable,
+                             HostDirEnumerator hostPaths,
                              CoreNode core,
                              Crypto crypto) {
         this.args = a;
@@ -56,6 +58,7 @@ public class SyncConfigHandler implements HttpHandler {
                 mutable, tree, synchronizer, null, null, null, crypto.hasher,
                 Collections.emptyList(), false);
         this.crypto = crypto;
+        this.hostPaths = hostPaths;
         List<String> links = args.getOptionalArg("links")
                 .map(arg -> Arrays.asList(arg.split(",")))
                 .orElse(new ArrayList<>());
@@ -226,6 +229,14 @@ public class SyncConfigHandler implements HttpHandler {
                 ).toJson();
                 byte[] res = JSONParser.toString(json).getBytes(StandardCharsets.UTF_8);
 
+                exchange.sendResponseHeaders(200, res.length);
+                OutputStream resp = exchange.getResponseBody();
+                resp.write(res);
+                exchange.close();
+            } else if (action.equals("get-host-paths")) {
+                String prefix = last.apply("prefix");
+                List<String> json = hostPaths.getHostDirs(prefix).join();
+                byte[] res = JSONParser.toString(json).getBytes(StandardCharsets.UTF_8);
                 exchange.sendResponseHeaders(200, res.length);
                 OutputStream resp = exchange.getResponseBody();
                 resp.write(res);
