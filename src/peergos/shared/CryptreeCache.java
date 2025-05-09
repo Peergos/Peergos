@@ -15,6 +15,10 @@ public class CryptreeCache {
         this.cache = new LRUCache<>(cacheSize);
     }
 
+    public CryptreeCache(int cacheSize) {
+        this.cache = new LRUCache<>(cacheSize);
+    }
+
     public synchronized boolean containsKey(Pair<Multihash, ByteArrayWrapper> cacheKey) {
         return cache.containsKey(cacheKey);
     }
