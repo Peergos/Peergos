@@ -135,15 +135,20 @@ public class SyncConfigHandler implements HttpHandler {
                 String link = (String) json.get("link");
                 String localDir = (String) json.get("dir");
                 List<String> links = getLinks();
-                links.add(link);
                 List<String> localDirs = getLocalDirs();
-                localDirs.add(localDir);
-                saveConfigToFile(links, localDirs);
-                // run sync client now
-                syncer.start();
-                System.out.println("Syncing " + localDir);
-                exchange.sendResponseHeaders(200, 0);
-                exchange.close();
+                if (links.indexOf(link) == localDirs.indexOf(localDirs)) {
+                    exchange.sendResponseHeaders(200, 0);
+                    exchange.close();
+                } else {
+                    links.add(link);
+                    localDirs.add(localDir);
+                    saveConfigToFile(links, localDirs);
+                    // run sync client now
+                    syncer.start();
+                    System.out.println("Syncing " + localDir);
+                    exchange.sendResponseHeaders(200, 0);
+                    exchange.close();
+                }
             } else if (action.equals("remove-pair")) {
                 long label = Long.parseLong(last.apply("label"));
                 int toRemove = 0;
