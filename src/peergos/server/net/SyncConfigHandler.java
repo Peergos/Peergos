@@ -4,7 +4,7 @@ import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 import org.peergos.config.Jsonable;
 import peergos.server.HostDirEnumerator;
-import peergos.server.sync.DirectorySync;
+import peergos.server.sync.SyncRunner;
 import peergos.server.util.Args;
 import peergos.server.util.HttpUtil;
 import peergos.server.util.Logging;
@@ -17,14 +17,12 @@ import peergos.shared.storage.ContentAddressedStorage;
 import peergos.shared.user.MutableTreeImpl;
 import peergos.shared.user.UserContext;
 import peergos.shared.user.WriteSynchronizer;
-import peergos.shared.user.fs.ThumbnailGenerator;
 import peergos.shared.util.Constants;
 import peergos.shared.util.Futures;
 import peergos.shared.util.Serialize;
 
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Path;
 import java.util.*;
 import java.util.function.Function;
 import java.util.logging.Level;
@@ -37,21 +35,19 @@ public class SyncConfigHandler implements HttpHandler {
     private static final boolean LOGGING = true;
     private final Args args;
     private final SyncRunner syncer;
-    private final ContentAddressedStorage storage;
-    private final CoreNode core;
     private final NetworkAccess network;
     private final Crypto crypto;
     private final HostDirEnumerator hostPaths;
 
     public SyncConfigHandler(Args a,
+                             SyncRunner syncer,
                              ContentAddressedStorage storage,
                              MutablePointers mutable,
                              HostDirEnumerator hostPaths,
                              CoreNode core,
                              Crypto crypto) {
         this.args = a;
-        this.storage = storage;
-        this.core = core;
+        this.syncer = syncer;
         WriteSynchronizer synchronizer = new WriteSynchronizer(mutable, storage, crypto.hasher);
         MutableTreeImpl tree = new MutableTreeImpl(mutable, storage, crypto.hasher, synchronizer);
         this.network = new NetworkAccess(core, null, null, storage, null, Optional.empty(),
@@ -59,73 +55,28 @@ public class SyncConfigHandler implements HttpHandler {
                 Collections.emptyList(), false);
         this.crypto = crypto;
         this.hostPaths = hostPaths;
-        List<String> links = args.getOptionalArg("links")
-                .map(arg -> Arrays.asList(arg.split(",")))
-                .orElse(new ArrayList<>());
-        List<String> localDirs = args.getOptionalArg("local-dirs")
-                .map(arg -> Arrays.asList(arg.split(",")))
-                .orElse(new ArrayList<>());
-
-        this.syncer = new SyncRunner(links, localDirs, 32, 5, a.getPeergosDir(), network, crypto);
     }
 
     private void saveConfigToFile(List<String> links, List<String> localDirs) {
         args.with("links", String.join(",", links)).with("local-dirs", String.join(",", localDirs)).saveToFile();
     }
 
-    public void start() {
-        syncer.start();
+    public List<String> getLinks() {
+        Args updated = Args.parse(new String[]{}, Optional.of(args.getPeergosDir().resolve("config")), false);
+        if (! updated.hasArg("links"))
+            return new ArrayList<>();
+        return new ArrayList<>(Arrays.asList(updated.getArg("links").split(",")));
     }
 
-    static class SyncRunner {
-        public final List<String> links, localDirs;
-        private final int maxDownloadParallelism, minFreeSpacePercent;
-        private final Path peergosDir;
-        private final NetworkAccess network;
-        private final Crypto crypto;
-        private final Thread runner;
+    public List<String> getLocalDirs() {
+        Args updated = Args.parse(new String[]{}, Optional.of(args.getPeergosDir().resolve("config")), false);
+        if (! updated.hasArg("local-dirs"))
+            return new ArrayList<>();
+        return new ArrayList<>(Arrays.asList(updated.getArg("local-dirs").split(",")));
+    }
 
-        public SyncRunner(List<String> links,
-                          List<String> localDirs,
-                          int maxDownloadParallelism,
-                          int minFreeSpacePercent,
-                          Path peergosDir,
-                          NetworkAccess network,
-                          Crypto crypto) {
-            this.links = Collections.synchronizedList(links);
-            this.localDirs = Collections.synchronizedList(localDirs);
-            this.maxDownloadParallelism = maxDownloadParallelism;
-            this.minFreeSpacePercent = minFreeSpacePercent;
-            this.peergosDir = peergosDir;
-            this.network = network;
-            this.crypto = crypto;
-            this.runner = new Thread(() -> {
-                while (true) {
-                    if (! links.isEmpty()) {
-                        try {
-                            runIteration();
-                        } catch (Exception e) {
-                            LOG.log(Level.WARNING, e.getMessage(), e);
-                        }
-                    }
-                    try {
-                        Thread.sleep(30_000);
-                    } catch (InterruptedException e) {}
-                }
-            });
-        }
-
-        public void start() {
-            runner.start();
-        }
-
-        public void runNow() {
-            runner.interrupt();
-        }
-
-        public void runIteration() {
-            DirectorySync.syncDir(links, localDirs, maxDownloadParallelism, minFreeSpacePercent, true, peergosDir, network, crypto);
-        }
+    public void start() {
+        syncer.start();
     }
 
     private static class SyncConfig implements Jsonable {
@@ -183,28 +134,32 @@ public class SyncConfigHandler implements HttpHandler {
 
                 String link = (String) json.get("link");
                 String localDir = (String) json.get("dir");
-                syncer.links.add(link);
-                syncer.localDirs.add(localDir);;
-                saveConfigToFile(syncer.links, syncer.localDirs);
-                // restart sync client
-                syncer.runNow();
+                List<String> links = getLinks();
+                links.add(link);
+                List<String> localDirs = getLocalDirs();
+                localDirs.add(localDir);
+                saveConfigToFile(links, localDirs);
+                // run sync client now
+                syncer.start();
                 System.out.println("Syncing " + localDir);
                 exchange.sendResponseHeaders(200, 0);
                 exchange.close();
             } else if (action.equals("remove-pair")) {
                 long label = Long.parseLong(last.apply("label"));
                 int toRemove = 0;
-                for (;toRemove < syncer.links.size(); toRemove++) {
-                    String link = syncer.links.get(toRemove);
+                List<String> links = getLinks();
+                for (;toRemove < links.size(); toRemove++) {
+                    String link = links.get(toRemove);
                     if (link.substring(link.lastIndexOf("/", link.indexOf("#")) + 1, link.indexOf("#")).equals(Long.toString(label)))
                         break;
                 }
-                if (toRemove == syncer.links.size())
+                if (toRemove == links.size())
                     throw new IllegalArgumentException("Unknown label");
-                syncer.links.remove(toRemove);
-                syncer.localDirs.remove(toRemove);
+                links.remove(toRemove);
+                List<String> localDirs = getLocalDirs();
+                localDirs.remove(toRemove);
 
-                saveConfigToFile(syncer.links, syncer.localDirs);
+                saveConfigToFile(links, localDirs);
                 exchange.sendResponseHeaders(200, 0);
                 exchange.close();
             } else if (action.equals("get-pairs")) {
@@ -213,16 +168,18 @@ public class SyncConfigHandler implements HttpHandler {
                 // TODO filter links by owner
 //                String username = core.getUsername(owner).join();
 
-                List<String> remotePaths = syncer.links.stream()
+                List<String> links = getLinks();
+                List<String> remotePaths = links.stream()
                                 .map(cap -> UserContext.fromSecretLinksV2(Arrays.asList(cap),
                                                 Arrays.asList(() -> Futures.of("")), network, crypto)
                                         .join()
                                         .getEntryPath()
                                         .join())
                                 .collect(Collectors.toList());
-                Map<String, Object> json = new SyncConfig(syncer.localDirs,
+                List<String> localDirs = getLocalDirs();
+                Map<String, Object> json = new SyncConfig(localDirs,
                         remotePaths,
-                        syncer.links.stream()
+                        links.stream()
                                 // only return the link champ label, which is not sensitive, but enough for the owner to delete it
                                 .map(link -> link.substring(link.lastIndexOf("/", link.indexOf("#")) + 1, link.indexOf("#")))
                                 .collect(Collectors.toList())

@@ -11,6 +11,7 @@ import peergos.server.sql.*;
 import peergos.server.storage.admin.*;
 import peergos.server.storage.auth.*;
 import peergos.server.sync.DirectorySync;
+import peergos.server.sync.SyncRunner;
 import peergos.server.user.JavaImageThumbnailer;
 import peergos.shared.*;
 import peergos.server.corenode.*;
@@ -604,8 +605,9 @@ public class Main extends Builder {
 
                     OfflineBatCache offlineBats = new OfflineBatCache(batCave, new JdbcBatCave(Builder.getDBConnector(a, "bat-cache-sql-file", dbConnector), commands));
 
+                    SyncRunner.ThreadBased syncer = new SyncRunner.ThreadBased(a, withoutS3, pointerCache, offlineCorenode, crypto);
                     UserService server = new UserService(withoutS3, offlineBats, crypto, offlineCorenode, offlineAccounts,
-                            httpSocial, pointerCache, admin, httpUsage, serverMessager, null, Optional.of(a), Optional.of(new HostDirEnumerator.Java()));
+                            httpSocial, pointerCache, admin, httpUsage, serverMessager, null, Optional.of(new SyncProperties(a, syncer, new HostDirEnumerator.Java())));
 
                     InetSocketAddress localAPIAddress = new InetSocketAddress("localhost", port);
                     List<String> appSubdomains = Arrays.asList("markup-viewer,calendar,code-editor,pdf".split(","));
@@ -772,10 +774,11 @@ public class Main extends Builder {
             ProxyingBatCave p2pBats = new ProxyingBatCave(nodeIds, core, batStore, new HttpBatCave(p2pHttpProxy, p2pHttpProxy));
             ServerMessageStore serverMessages = new ServerMessageStore(getDBConnector(a, "server-messages-sql-file", dbConnectionPool),
                     sqlCommands, core, p2pDht);
+            SyncRunner.ThreadBased syncer = new SyncRunner.ThreadBased(a, cachingStorage, p2mMutable, corePropagator, crypto);
             UserService localAPI = new UserService(cachingStorage, p2pBats, crypto, corePropagator, verifyingAccount,
-                    p2pSocial, p2mMutable, storageAdmin, p2pSpaceUsage, serverMessages, gc, Optional.of(a), Optional.of(new HostDirEnumerator.Java()));
+                    p2pSocial, p2mMutable, storageAdmin, p2pSpaceUsage, serverMessages, gc, Optional.of(new SyncProperties(a, syncer, new HostDirEnumerator.Java())));
             UserService p2pAPI = new UserService(incomingP2PStorage, p2pBats, crypto, corePropagator, verifyingAccount,
-                    p2pSocial, p2mMutable, storageAdmin, p2pSpaceUsage, serverMessages, gc, Optional.empty(), Optional.empty());
+                    p2pSocial, p2mMutable, storageAdmin, p2pSpaceUsage, serverMessages, gc, Optional.empty());
             InetSocketAddress localAPIAddress = userAPIAddress;
             InetSocketAddress p2pAPIAddress = new InetSocketAddress("localhost", localP2PApi.getTCPPort());
 
