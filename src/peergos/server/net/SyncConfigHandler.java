@@ -136,7 +136,8 @@ public class SyncConfigHandler implements HttpHandler {
                 String localDir = (String) json.get("dir");
                 List<String> links = getLinks();
                 List<String> localDirs = getLocalDirs();
-                if (links.indexOf(link) == localDirs.indexOf(localDirs)) {
+                int existing = links.indexOf(link);
+                if (existing != -1 && existing == localDirs.indexOf(localDirs)) {
                     exchange.sendResponseHeaders(200, 0);
                     exchange.close();
                 } else {

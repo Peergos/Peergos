@@ -12,6 +12,7 @@ import peergos.shared.user.WriteSynchronizer;
 
 import java.nio.file.Path;
 import java.util.*;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -22,6 +23,7 @@ public interface SyncRunner {
     class ThreadBased implements SyncRunner {
         private static final Logger LOG = Logging.LOG();
         private final Thread runner;
+        private final AtomicBoolean started = new AtomicBoolean(false);
 
         public ThreadBased(Args args,
                            ContentAddressedStorage storage,
@@ -60,7 +62,11 @@ public interface SyncRunner {
 
         @Override
         public void start() {
-            runner.start();
+            if (! started.get()) {
+                runner.start();
+                started.set(true);
+            } else
+                runner.interrupt();
         }
     }
 }
