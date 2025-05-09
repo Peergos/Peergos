@@ -5,6 +5,7 @@ import peergos.shared.util.Futures;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 
 public interface HostDirEnumerator {
@@ -14,9 +15,17 @@ public interface HostDirEnumerator {
     class Java implements HostDirEnumerator {
         @Override
         public CompletableFuture<List<String>> getHostDirs(String prefix) {
-            File dir = new File(prefix);
+            Set<String> roots = Set.of(System.getProperty("user.home"));
             List<String> res = new ArrayList<>();
-            recurse(dir, res);
+            for (String root : roots) {
+                if (root.startsWith(prefix)) {
+                    File dir = new File(root);
+                    recurse(dir, res);
+                } else if (prefix.startsWith(root)) {
+                    File dir = new File(prefix);
+                    recurse(dir, res);
+                }
+            }
             return Futures.of(res);
         }
 
@@ -24,7 +33,7 @@ public interface HostDirEnumerator {
             File[] kids = dir.listFiles();
             if (kids != null) {
                 for (File kid : kids) {
-                    if (kid.isDirectory()) {
+                    if (kid.isDirectory() && ! kid.isHidden()) {
                         res.add(kid.getAbsolutePath());
                         recurse(kid, res);
                     }

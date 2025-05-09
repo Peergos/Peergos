@@ -38,15 +38,17 @@ public interface SyncRunner {
                 while (true) {
                     Path peergosDir = args.getPeergosDir();
                     Args updated = Args.parse(new String[]{"-run-once", "true"}, Optional.of(peergosDir.resolve("config")), false);
-                    List<String> links = new ArrayList<>(Arrays.asList(updated.getArg("links").split(",")));
-                    List<String> localDirs = new ArrayList<>(Arrays.asList(updated.getArg("local-dirs").split(",")));
-                    int maxDownloadParallelism = updated.getInt("max-parallelism", 32);
-                    int minFreeSpacePercent = updated.getInt("min-free-space-percent", 5);
-                    if (! links.isEmpty()) {
-                        try {
-                            DirectorySync.syncDir(links, localDirs, maxDownloadParallelism, minFreeSpacePercent, true, peergosDir, network, crypto);
-                        } catch (Exception e) {
-                            LOG.log(Level.WARNING, e.getMessage(), e);
+                    if (updated.hasArg("links")) {
+                        List<String> links = new ArrayList<>(Arrays.asList(updated.getArg("links").split(",")));
+                        List<String> localDirs = new ArrayList<>(Arrays.asList(updated.getArg("local-dirs").split(",")));
+                        int maxDownloadParallelism = updated.getInt("max-parallelism", 32);
+                        int minFreeSpacePercent = updated.getInt("min-free-space-percent", 5);
+                        if (!links.isEmpty()) {
+                            try {
+                                DirectorySync.syncDir(links, localDirs, maxDownloadParallelism, minFreeSpacePercent, true, peergosDir, network, crypto);
+                            } catch (Exception e) {
+                                LOG.log(Level.WARNING, e.getMessage(), e);
+                            }
                         }
                     }
                     try {
