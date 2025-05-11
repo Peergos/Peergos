@@ -128,7 +128,7 @@ public class DirectorySync {
                         long t0 = System.currentTimeMillis();
                         String username = remoteDir.getName(0).toString();
                         PublicKeyHash owner = network.coreNode.getPublicKeyHash(username).join().get();
-                        syncDirs(local, localDir, remote, remoteDir, owner, network, syncedState, maxDownloadParallelism, minFreeSpacePercent);
+                        syncDirs(local, localDir, remote, remoteDir, owner, network, syncedState, peergosDir, maxDownloadParallelism, minFreeSpacePercent);
                         long t1 = System.currentTimeMillis();
                         log("Dir sync took " + (t1 - t0) / 1000 + "s");
                     }
@@ -204,6 +204,7 @@ public class DirectorySync {
     public static void syncDirs(SyncFilesystem localFS, Path localDir,
                                 SyncFilesystem remoteFS, Path remoteDir, PublicKeyHash owner, NetworkAccess network,
                                 SyncState syncedVersions,
+                                Path peergosDir,
                                 int maxParallelism,
                                 int minPercentFreeSpace) throws IOException {
         // first complete any failed in progress copy ops
@@ -219,178 +220,194 @@ public class DirectorySync {
             syncedVersions.finishCopies(List.of(op));
         }
 
-        RamTreeState localState = new RamTreeState();
-        buildDirState(localFS, localDir, localState, syncedVersions);
-        log("Found " + localState.filesByPath.size() + " local files");
+        String localStateDbFile = "remote-tmp-"+System.currentTimeMillis() + ".sqlite";
+        String remnoteStateDbFile = "remote-tmp-"+System.currentTimeMillis() + ".sqlite";
+        try {
+            SyncState localState = new JdbcTreeState(peergosDir.resolve(localStateDbFile).toString());
+            buildDirState(localFS, localDir, localState, syncedVersions);
+            log("Found " + localState.filesCount() + " local files");
 
-        Snapshot syncedVersion = syncedVersions.getSnapshot(remoteDir.toString());
-        Snapshot remoteVersion = network == null ?
-                new Snapshot(new HashMap<>()) :
-                Futures.reduceAll(syncedVersion.versions.keySet(),
-                        new Snapshot(new HashMap<>()),
-                        (v, w) -> v.withWriter(owner, w, network),
-                        (a, b) -> a.mergeAndOverwriteWith(b)).join();
-        SyncState remoteState = remoteVersion.equals(syncedVersion) && ! remoteVersion.versions.isEmpty() ? syncedVersions : new RamTreeState();
-        if (! remoteVersion.equals(syncedVersion) || remoteVersion.versions.isEmpty())
-            buildDirState(remoteFS, remoteDir, remoteState, syncedVersions);
-        log("Found " + remoteState.filesCount() + " remote files");
+            Snapshot syncedVersion = syncedVersions.getSnapshot(remoteDir.toString());
+            Snapshot remoteVersion = network == null ?
+                    new Snapshot(new HashMap<>()) :
+                    Futures.reduceAll(syncedVersion.versions.keySet(),
+                            new Snapshot(new HashMap<>()),
+                            (v, w) -> v.withWriter(owner, w, network),
+                            (a, b) -> a.mergeAndOverwriteWith(b)).join();
+            SyncState remoteState = remoteVersion.equals(syncedVersion) && !remoteVersion.versions.isEmpty() ?
+                    syncedVersions :
+                    new JdbcTreeState(peergosDir.resolve(remnoteStateDbFile).toString());
+            if (!remoteVersion.equals(syncedVersion) || remoteVersion.versions.isEmpty())
+                buildDirState(remoteFS, remoteDir, remoteState, syncedVersions);
+            log("Found " + remoteState.filesCount() + " remote files");
 
-        TreeSet<String> allPaths = new TreeSet<>(localState.filesByPath.keySet());
-        allPaths.addAll(remoteState.allFilePaths());
-        Set<String> doneFiles = Collections.synchronizedSet(new HashSet<>());
+            TreeSet<String> allPaths = new TreeSet<>(localState.allFilePaths());
+            allPaths.addAll(remoteState.allFilePaths());
+            Set<String> doneFiles = Collections.synchronizedSet(new HashSet<>());
 
-        // upload new small files in a single bulk operation
-        Set<String> smallFiles = new HashSet<>();
-        Set<String> deletes = new HashSet<>();
-        for (String relativePath : allPaths) {
-            FileState synced = syncedVersions.byPath(relativePath);
-            FileState local = localState.byPath(relativePath);
-            FileState remote = remoteState.byPath(relativePath);
-            boolean isSmallRemoteCopy = synced == null && remote == null && local.size < Chunk.MAX_SIZE;
-            if (isSmallRemoteCopy)
-                smallFiles.add(relativePath);
+            // upload new small files in a single bulk operation
+            Set<String> smallFiles = new HashSet<>();
+            Set<String> deletes = new HashSet<>();
+            for (String relativePath : allPaths) {
+                FileState synced = syncedVersions.byPath(relativePath);
+                FileState local = localState.byPath(relativePath);
+                FileState remote = remoteState.byPath(relativePath);
+                boolean isSmallRemoteCopy = synced == null && remote == null && local.size < Chunk.MAX_SIZE;
+                if (isSmallRemoteCopy)
+                    smallFiles.add(relativePath);
 
-            boolean isLocalDelete = local == null && Objects.equals(remote, synced);
-            if (isLocalDelete && remote != null) {
-                List<FileState> byHash = localState.byHash(remote.hashTree.rootHash);
-                Optional<FileState> remoteAtHashedPath = byHash.size() == 1 ?
-                        Optional.ofNullable(remoteState.byPath(byHash.get(0).relPath)) :
-                        Optional.empty();
-                if (byHash.size() != 1 || ! remoteAtHashedPath.isEmpty())
-                    deletes.add(relativePath);
-            }
-        }
-
-        if (! smallFiles.isEmpty()) {
-            log("Remote: bulk uploading " + smallFiles.size() + " small files");
-            Map<String, FileWrapper.FolderUploadProperties> folders = new HashMap<>();
-            for (String relPath : smallFiles) {
-                doneFiles.add(relPath);
-                String folderPath = relPath.contains("/") ? relPath.substring(0, relPath.lastIndexOf("/")) : "";
-                FileWrapper.FolderUploadProperties folder = folders.get(folderPath);
-                if (folder == null) {
-                    List<String> relativePath = folderPath.isEmpty() ? Collections.emptyList() : Arrays.asList(folderPath.split("/"));
-                    folder = new FileWrapper.FolderUploadProperties(relativePath, new ArrayList<>());
-                    folders.put(folderPath, folder);
+                boolean isLocalDelete = local == null && Objects.equals(remote, synced);
+                if (isLocalDelete && remote != null) {
+                    List<FileState> byHash = localState.byHash(remote.hashTree.rootHash);
+                    Optional<FileState> remoteAtHashedPath = byHash.size() == 1 ?
+                            Optional.ofNullable(remoteState.byPath(byHash.get(0).relPath)) :
+                            Optional.empty();
+                    if (byHash.size() != 1 || !remoteAtHashedPath.isEmpty())
+                        deletes.add(relativePath);
                 }
-                String filename = relPath.substring(relPath.lastIndexOf("/") + 1);
-                FileState local = localState.byPath(relPath);
-                if (relPath.contains("/"))
-                    remoteState.addDir(relPath.substring(0, relPath.length() - filename.length() - 1));
-                AtomicBoolean uploadStarted = new AtomicBoolean(false);
-                LocalDateTime modificationTime = LocalDateTime.ofInstant(Instant.ofEpochSecond(local.modificationTime / 1000, 0), ZoneOffset.UTC);
-                folder.files.add(new FileWrapper.FileUploadProperties(filename,
-                        () -> {
-                            try {
-                                return localFS.getBytes(localDir.resolve(relPath), 0);
-                            } catch (IOException e) {
-                                throw new RuntimeException(e);
-                            }
-                        },
-                        (int)(local.size >> 32), (int) local.size, Optional.of(modificationTime), Optional.of(local.hashTree), false, true, x -> {
-                    if (! uploadStarted.get()) {
-                        log("REMOTE: Uploading " + relPath);
-                        uploadStarted.set(true);
+            }
+
+            if (!smallFiles.isEmpty()) {
+                log("Remote: bulk uploading " + smallFiles.size() + " small files");
+                Map<String, FileWrapper.FolderUploadProperties> folders = new HashMap<>();
+                for (String relPath : smallFiles) {
+                    doneFiles.add(relPath);
+                    String folderPath = relPath.contains("/") ? relPath.substring(0, relPath.lastIndexOf("/")) : "";
+                    FileWrapper.FolderUploadProperties folder = folders.get(folderPath);
+                    if (folder == null) {
+                        List<String> relativePath = folderPath.isEmpty() ? Collections.emptyList() : Arrays.asList(folderPath.split("/"));
+                        folder = new FileWrapper.FolderUploadProperties(relativePath, new ArrayList<>());
+                        folders.put(folderPath, folder);
                     }
-                }));
-            }
-            remoteFS.uploadSubtree(remoteDir, folders.values().stream());
-            for (String relPath : smallFiles) {
-                syncedVersions.add(localState.byPath(relPath));
-            }
-        }
-
-        // do deletes in bulk
-        if (! deletes.isEmpty()) {
-            Map<String, Set<String>> byFolder = new HashMap<>();
-            for (String relPath : deletes) {
-                doneFiles.add(relPath);
-                String folderPath = relPath.contains("/") ? relPath.substring(0, relPath.lastIndexOf("/")) : "";
-                Set<String> folder = byFolder.get(folderPath);
-                if (folder == null) {
-                    folder = new HashSet<>();
-                    byFolder.put(folderPath, folder);
+                    String filename = relPath.substring(relPath.lastIndexOf("/") + 1);
+                    FileState local = localState.byPath(relPath);
+                    if (relPath.contains("/"))
+                        remoteState.addDir(relPath.substring(0, relPath.length() - filename.length() - 1));
+                    AtomicBoolean uploadStarted = new AtomicBoolean(false);
+                    LocalDateTime modificationTime = LocalDateTime.ofInstant(Instant.ofEpochSecond(local.modificationTime / 1000, 0), ZoneOffset.UTC);
+                    folder.files.add(new FileWrapper.FileUploadProperties(filename,
+                            () -> {
+                                try {
+                                    return localFS.getBytes(localDir.resolve(relPath), 0);
+                                } catch (IOException e) {
+                                    throw new RuntimeException(e);
+                                }
+                            },
+                            (int) (local.size >> 32), (int) local.size, Optional.of(modificationTime), Optional.of(local.hashTree), false, true, x -> {
+                        if (!uploadStarted.get()) {
+                            log("REMOTE: Uploading " + relPath);
+                            uploadStarted.set(true);
+                        }
+                    }));
                 }
-                String filename = relPath.substring(relPath.lastIndexOf("/") + 1);
-                folder.add(filename);
+                remoteFS.uploadSubtree(remoteDir, folders.values().stream());
+                for (String relPath : smallFiles) {
+                    syncedVersions.add(localState.byPath(relPath));
+                }
             }
-            byFolder.forEach((dir, files) -> {
-                log("REMOTE: bulk deleting " + files.size() + " from " + remoteDir.resolve(dir));
-                remoteFS.bulkDelete(remoteDir.resolve(dir), files);
-                for (String file : files) {
-                    String path = dir + (dir.isEmpty() ? "" : "/") + file;
-                    log("REMOTE: deleted " + path);
-                    syncedVersions.remove(path);
-                }
-            });
-        }
 
-        List<ForkJoinTask<?>> downloads = new ArrayList<>();
-        AtomicInteger maxDownloadConcurrency = new AtomicInteger(maxParallelism);
-
-        for (String relativePath : allPaths) {
-            if (doneFiles.contains(relativePath))
-                continue;
-            FileState synced = syncedVersions.byPath(relativePath);
-            FileState local = localState.byPath(relativePath);
-            FileState remote = remoteState.byPath(relativePath);
-            boolean isLocalCopy = synced == null && local == null;
-            if (isLocalCopy) {
-                while (maxDownloadConcurrency.get() == 0) {
-                    try {Thread.sleep(100); } catch (InterruptedException e) {}
-                }
-                maxDownloadConcurrency.decrementAndGet();
-                downloads.add(ForkJoinPool.commonPool().submit(() -> {
-                    try {
-                        syncFile(synced, local, remote, localFS, localDir, remoteFS, remoteDir, syncedVersions, localState, remoteState, doneFiles, minPercentFreeSpace);
-                    } catch (IOException e) {
-                        throw new RuntimeException(e);
-                    } finally {
-                        maxDownloadConcurrency.incrementAndGet();
+            // do deletes in bulk
+            if (!deletes.isEmpty()) {
+                Map<String, Set<String>> byFolder = new HashMap<>();
+                for (String relPath : deletes) {
+                    doneFiles.add(relPath);
+                    String folderPath = relPath.contains("/") ? relPath.substring(0, relPath.lastIndexOf("/")) : "";
+                    Set<String> folder = byFolder.get(folderPath);
+                    if (folder == null) {
+                        folder = new HashSet<>();
+                        byFolder.put(folderPath, folder);
                     }
-                }));
-            } else
-                syncFile(synced, local, remote, localFS, localDir, remoteFS, remoteDir, syncedVersions, localState, remoteState, doneFiles, minPercentFreeSpace);
-        }
-
-        for (ForkJoinTask<?> download : downloads) {
-            download.join();
-        }
-
-        // all files are in sync, now sync dirs
-        Comparator<String> longestFirst = (a, b) -> -a.compareTo(b);
-        SortedSet<String> allDirs = new TreeSet<>(longestFirst);
-        allDirs.addAll(remoteState.getDirs());
-        allDirs.addAll(localState.getDirs());
-        allDirs.addAll(syncedVersions.getDirs());
-        for (String dirPath : allDirs) {
-            boolean hasLocal = localState.hasDir(dirPath);
-            boolean hasRemote = remoteState.hasDir(dirPath);
-            boolean hasSynced = syncedVersions.hasDir(dirPath);
-            if (hasLocal && hasRemote) {
-                syncedVersions.addDir(dirPath);
-            } else if (! hasLocal && ! hasRemote) {
-                syncedVersions.removeDir(dirPath);
-            } else if (hasLocal) {
-                if (hasSynced) { // delete
-                    log("Sync local: delete dir " + dirPath);
-                    localFS.delete(localDir.resolve(dirPath));
-                } else {
-                    log("Sync Remote: mkdir " + dirPath);
-                    remoteFS.mkdirs(remoteDir.resolve(dirPath));
+                    String filename = relPath.substring(relPath.lastIndexOf("/") + 1);
+                    folder.add(filename);
                 }
-            } else {
-                if (hasSynced) { // delete
-                    log("Sync Remote: delete dir " + dirPath);
-                    remoteFS.delete(remoteDir.resolve(dirPath));
+                byFolder.forEach((dir, files) -> {
+                    log("REMOTE: bulk deleting " + files.size() + " from " + remoteDir.resolve(dir));
+                    remoteFS.bulkDelete(remoteDir.resolve(dir), files);
+                    for (String file : files) {
+                        String path = dir + (dir.isEmpty() ? "" : "/") + file;
+                        log("REMOTE: deleted " + path);
+                        syncedVersions.remove(path);
+                    }
+                });
+            }
+
+            List<ForkJoinTask<?>> downloads = new ArrayList<>();
+            AtomicInteger maxDownloadConcurrency = new AtomicInteger(maxParallelism);
+
+            for (String relativePath : allPaths) {
+                if (doneFiles.contains(relativePath))
+                    continue;
+                FileState synced = syncedVersions.byPath(relativePath);
+                FileState local = localState.byPath(relativePath);
+                FileState remote = remoteState.byPath(relativePath);
+                boolean isLocalCopy = synced == null && local == null;
+                if (isLocalCopy) {
+                    while (maxDownloadConcurrency.get() == 0) {
+                        try {
+                            Thread.sleep(100);
+                        } catch (InterruptedException e) {
+                        }
+                    }
+                    maxDownloadConcurrency.decrementAndGet();
+                    downloads.add(ForkJoinPool.commonPool().submit(() -> {
+                        try {
+                            syncFile(synced, local, remote, localFS, localDir, remoteFS, remoteDir, syncedVersions, localState, remoteState, doneFiles, minPercentFreeSpace);
+                        } catch (IOException e) {
+                            throw new RuntimeException(e);
+                        } finally {
+                            maxDownloadConcurrency.incrementAndGet();
+                        }
+                    }));
+                } else
+                    syncFile(synced, local, remote, localFS, localDir, remoteFS, remoteDir, syncedVersions, localState, remoteState, doneFiles, minPercentFreeSpace);
+            }
+
+            for (ForkJoinTask<?> download : downloads) {
+                download.join();
+            }
+
+            // all files are in sync, now sync dirs
+            Comparator<String> longestFirst = (a, b) -> -a.compareTo(b);
+            SortedSet<String> allDirs = new TreeSet<>(longestFirst);
+            allDirs.addAll(remoteState.getDirs());
+            allDirs.addAll(localState.getDirs());
+            allDirs.addAll(syncedVersions.getDirs());
+            for (String dirPath : allDirs) {
+                boolean hasLocal = localState.hasDir(dirPath);
+                boolean hasRemote = remoteState.hasDir(dirPath);
+                boolean hasSynced = syncedVersions.hasDir(dirPath);
+                if (hasLocal && hasRemote) {
+                    syncedVersions.addDir(dirPath);
+                } else if (!hasLocal && !hasRemote) {
+                    syncedVersions.removeDir(dirPath);
+                } else if (hasLocal) {
+                    if (hasSynced) { // delete
+                        log("Sync local: delete dir " + dirPath);
+                        localFS.delete(localDir.resolve(dirPath));
+                    } else {
+                        log("Sync Remote: mkdir " + dirPath);
+                        remoteFS.mkdirs(remoteDir.resolve(dirPath));
+                    }
                 } else {
-                    log("Sync Local: mkdir " + dirPath);
-                    localFS.mkdirs(localDir.resolve(dirPath));
+                    if (hasSynced) { // delete
+                        log("Sync Remote: delete dir " + dirPath);
+                        remoteFS.delete(remoteDir.resolve(dirPath));
+                    } else {
+                        log("Sync Local: mkdir " + dirPath);
+                        localFS.mkdirs(localDir.resolve(dirPath));
+                    }
                 }
             }
-        }
 
-        syncedVersions.setSnapshot(remoteDir.toString(), remoteVersion);
+            syncedVersions.setSnapshot(remoteDir.toString(), remoteVersion);
+        } finally {
+            File localState = peergosDir.resolve(localStateDbFile).toFile();
+            if (localState.exists())
+                localState.delete();
+            File remoteState = peergosDir.resolve(remnoteStateDbFile).toFile();
+            if (remoteState.exists())
+                remoteState.delete();
+        }
     }
 
     private static void log(String msg) {
@@ -401,7 +418,7 @@ public class DirectorySync {
     public static void syncFile(FileState synced, FileState local, FileState remote,
                                 SyncFilesystem localFs, Path localDir,
                                 SyncFilesystem remoteFs, Path remoteDir,
-                                SyncState syncedVersions, RamTreeState localTree, SyncState remoteTree,
+                                SyncState syncedVersions, SyncState localTree, SyncState remoteTree,
                                 Set<String> doneFiles, int minPercentFree) throws IOException {
         long totalSpace;
         try {
