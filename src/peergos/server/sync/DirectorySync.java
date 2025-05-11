@@ -220,8 +220,8 @@ public class DirectorySync {
             syncedVersions.finishCopies(List.of(op));
         }
 
-        String localStateDbFile = "remote-tmp-"+System.currentTimeMillis() + ".sqlite";
-        String remnoteStateDbFile = "remote-tmp-"+System.currentTimeMillis() + ".sqlite";
+        String localStateDbFile = "local-tmp-"+System.currentTimeMillis() + ".sqlite";
+        String remoteStateDbFile = "remote-tmp-"+System.currentTimeMillis() + ".sqlite";
         try {
             SyncState localState = new JdbcTreeState(peergosDir.resolve(localStateDbFile).toString());
             buildDirState(localFS, localDir, localState, syncedVersions);
@@ -236,7 +236,7 @@ public class DirectorySync {
                             (a, b) -> a.mergeAndOverwriteWith(b)).join();
             SyncState remoteState = remoteVersion.equals(syncedVersion) && !remoteVersion.versions.isEmpty() ?
                     syncedVersions :
-                    new JdbcTreeState(peergosDir.resolve(remnoteStateDbFile).toString());
+                    new JdbcTreeState(peergosDir.resolve(remoteStateDbFile).toString());
             if (!remoteVersion.equals(syncedVersion) || remoteVersion.versions.isEmpty())
                 buildDirState(remoteFS, remoteDir, remoteState, syncedVersions);
             log("Found " + remoteState.filesCount() + " remote files");
@@ -404,7 +404,7 @@ public class DirectorySync {
             File localState = peergosDir.resolve(localStateDbFile).toFile();
             if (localState.exists())
                 localState.delete();
-            File remoteState = peergosDir.resolve(remnoteStateDbFile).toFile();
+            File remoteState = peergosDir.resolve(remoteStateDbFile).toFile();
             if (remoteState.exists())
                 remoteState.delete();
         }
