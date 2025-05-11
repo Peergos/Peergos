@@ -17,10 +17,7 @@ import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Optional;
-import java.util.Set;
+import java.util.*;
 import java.util.function.Consumer;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
@@ -201,8 +198,14 @@ public class PeergosSyncFS implements SyncFilesystem {
         FileProperties props = f.getFileProperties();
         if (props.treeHash.isPresent()) {
             FileState synced = syncedVersions.byPath(relativePath);
-            if (synced != null && synced.hashTree.rootHash.equals(props.treeHash.get().rootHash))
+            HashBranch branch = props.treeHash.get();
+            if (synced != null && synced.hashTree.rootHash.equals(branch.rootHash))
                 return synced.hashTree;
+            if (props.size < 1024L * Chunk.MAX_SIZE)
+                return new HashTree(branch.rootHash, branch.level1.map(List::of)
+                        .orElseThrow(() -> new IllegalStateException("Invalid hash branch")),
+                        Collections.emptyList(),
+                        Collections.emptyList());
         }
 
         byte[] buf = new byte[4 * 1024];
