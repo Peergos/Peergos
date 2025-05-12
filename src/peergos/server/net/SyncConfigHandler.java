@@ -198,7 +198,7 @@ public class SyncConfigHandler implements HttpHandler {
                 exchange.close();
             } else if (action.equals("get-host-paths")) {
                 String prefix = last.apply("prefix");
-                List<String> json = hostPaths.getHostDirs(prefix).join();
+                List<String> json = hostPaths.getHostDirs(prefix, 5).join();
                 Collections.sort(json);
                 byte[] res = JSONParser.toString(json).getBytes(StandardCharsets.UTF_8);
                 exchange.sendResponseHeaders(200, res.length);
