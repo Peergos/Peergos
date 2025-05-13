@@ -34,7 +34,7 @@ public class ThumbnailGenerator {
 
     private static VideoGenerator videoInstance = new NoopVideoThumbnailer();
 
-    public static synchronized void setInstance(VideoGenerator instance) {
+    public static synchronized void setVideoInstance(VideoGenerator instance) {
         ThumbnailGenerator.videoInstance = instance;
     }
 
