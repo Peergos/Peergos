@@ -681,7 +681,7 @@ public class DirectorySync {
         long start = op.diffStart;
         long end = op.diffEnd;
         try (AsyncReader fin = srcFs.getBytes(op.source, start)) {
-            Optional<Thumbnail> thumbnail = Optional.empty();
+            Optional<Thumbnail> thumbnail = srcFs.getThumbnail(op.source);
             LocalDateTime modified = LocalDateTime.ofInstant(Instant.ofEpochSecond(lastModified / 1000, 0), ZoneOffset.UTC);
             targetFs.setBytes(op.target, start, fin, end - start, Optional.of(op.sourceState.hashTree), Optional.of(modified), thumbnail);
         }

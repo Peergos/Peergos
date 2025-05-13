@@ -124,6 +124,11 @@ public class LocalFileSystem implements SyncFilesystem {
     }
 
     @Override
+    public Optional<Thumbnail> getThumbnail(Path p) {
+        return ThumbnailGenerator.getVideo().generateVideoThumbnail(p.toFile());
+    }
+
+    @Override
     public HashTree hashFile(Path p, Optional<FileWrapper> meta, String relPath, SyncState syncedVersions) {
         return ScryptJava.hashFile(p, hasher);
     }

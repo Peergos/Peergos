@@ -43,6 +43,8 @@ public interface SyncFilesystem {
 
     void uploadSubtree(Path baseDir, Stream<FileWrapper.FolderUploadProperties> directories);
 
+    Optional<Thumbnail> getThumbnail(Path p);
+
     HashTree hashFile(Path p, Optional<FileWrapper> meta, String relativePath, SyncState syncedState);
 
     void applyToSubtree(Path start, Consumer<FileProps> file, Consumer<FileProps> dir) throws IOException;

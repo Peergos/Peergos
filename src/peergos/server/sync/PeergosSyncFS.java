@@ -193,6 +193,11 @@ public class PeergosSyncFS implements SyncFilesystem {
     }
 
     @Override
+    public Optional<Thumbnail> getThumbnail(Path p) {
+        return Optional.empty();
+    }
+
+    @Override
     public HashTree hashFile(Path p, Optional<FileWrapper> meta, String relativePath, SyncState syncedVersions) {
         FileWrapper f = meta.orElseGet(() -> context.getByPath(p).join().get());
         FileProperties props = f.getFileProperties();
