@@ -58,7 +58,10 @@ public class SyncConfigHandler implements HttpHandler {
     }
 
     private void saveConfigToFile(List<String> links, List<String> localDirs) {
-        args.with("links", String.join(",", links)).with("local-dirs", String.join(",", localDirs)).saveToFile();
+        if (links.isEmpty())
+            args.removeArg("links").removeArg("local-dirs").saveToFile();
+        else
+            args.with("links", String.join(",", links)).with("local-dirs", String.join(",", localDirs)).saveToFile();
     }
 
     public List<String> getLinks() {
