@@ -76,7 +76,8 @@ public class SyncConfigHandler implements HttpHandler {
     }
 
     public void start() {
-        syncer.start();
+        if (! getLinks().isEmpty())
+            syncer.start();
     }
 
     private static class SyncConfig implements Jsonable {
