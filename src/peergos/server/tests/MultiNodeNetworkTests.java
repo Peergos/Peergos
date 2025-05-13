@@ -41,7 +41,7 @@ public class MultiNodeNetworkTests {
             .with("useIPFS", "true")
             .with("enable-gc", "true")
             .with("allow-external-login", "true")
-            .with(IpfsWrapper.IPFS_BOOTSTRAP_NODES, ""); // no bootstrapping
+            .removeArg(IpfsWrapper.IPFS_BOOTSTRAP_NODES); // no bootstrapping
     private static Random random = new Random(0);
     private static List<NetworkAccess> nodes = new ArrayList<>();
     private static List<ServerProcesses> services = new ArrayList<>();

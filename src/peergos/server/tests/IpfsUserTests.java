@@ -26,7 +26,7 @@ public class IpfsUserTests extends UserTests {
 //            .with("gc.period.millis", "10000")
             .with("collect-metrics", "true")
             .with("metrics.address", "localhost")
-            .with(IpfsWrapper.IPFS_BOOTSTRAP_NODES, ""); // no bootstrapping
+            .removeArg(IpfsWrapper.IPFS_BOOTSTRAP_NODES); // no bootstrapping
 
     public IpfsUserTests(NetworkAccess network, UserService service) {
         super(network, service);
