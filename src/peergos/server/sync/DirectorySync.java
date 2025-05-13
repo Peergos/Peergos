@@ -681,7 +681,9 @@ public class DirectorySync {
         long start = op.diffStart;
         long end = op.diffEnd;
         try (AsyncReader fin = srcFs.getBytes(op.source, start)) {
-            targetFs.setBytes(op.target, start, fin, end - start, Optional.of(op.sourceState.hashTree), Optional.of(LocalDateTime.ofInstant(Instant.ofEpochSecond(lastModified / 1000, 0), ZoneOffset.UTC)));
+            Optional<Thumbnail> thumbnail = Optional.empty();
+            LocalDateTime modified = LocalDateTime.ofInstant(Instant.ofEpochSecond(lastModified / 1000, 0), ZoneOffset.UTC);
+            targetFs.setBytes(op.target, start, fin, end - start, Optional.of(op.sourceState.hashTree), Optional.of(modified), thumbnail);
         }
         if (priorSize > size) {
             log("Sync Truncating file " + op.sourceState.relPath + " from " + priorSize + " to " + size);

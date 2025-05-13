@@ -95,7 +95,7 @@ public class LocalFileSystem implements SyncFilesystem {
     }
 
     @Override
-    public void setBytes(Path p, long fileOffset, AsyncReader fin, long size, Optional<HashTree> hash, Optional<LocalDateTime> modificationTime) throws IOException {
+    public void setBytes(Path p, long fileOffset, AsyncReader fin, long size, Optional<HashTree> hash, Optional<LocalDateTime> modificationTime, Optional<Thumbnail> thumbnail) throws IOException {
         try (RandomAccessFile raf = new RandomAccessFile(p.toFile(), "rw")) {
             raf.seek(fileOffset);
             byte[] buf = new byte[4096];

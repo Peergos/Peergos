@@ -727,13 +727,14 @@ public class FileWrapper {
                                                              long length,
                                                              Optional<HashTree> hash,
                                                              Optional<LocalDateTime> modificationTime,
+                                                             Optional<Thumbnail> thumbnail,
                                                              NetworkAccess network,
                                                              Crypto crypto,
                                                              ProgressConsumer<Long> monitor) {
         if (! isWritable())
             throw new IllegalStateException("Folder not writable!");
         return network.synchronizer.applyComplexUpdate(owner(), signingPair(), (current, committer) ->
-                        uploadFileSection(current, committer, filename, fileData, Optional.empty(), false, 0, length, hash,
+                        uploadFileSection(current, committer, filename, fileData, thumbnail, false, 0, length, hash,
                                 modificationTime, Optional.empty(), Optional.empty(), Optional.empty(), false, false, false,
                                 network, crypto, monitor, crypto.random.randomBytes(32), Optional.empty(), Optional.of(Bat.random(crypto.random)), mirrorBatId())
                                 .thenCompose(p -> getUpdated(p.left, network)
