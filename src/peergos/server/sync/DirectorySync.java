@@ -567,16 +567,38 @@ public class DirectorySync {
                     // already synced
                     if (! syncLocalDeletes && syncedVersions.hasLocalDelete(remote.relPath))
                         syncedVersions.removeLocalDelete(remote.relPath);
+                    if (! syncRemoteDeletes && syncedVersions.hasRemoteDelete(remote.relPath))
+                        syncedVersions.removeRemoteDelete(remote.relPath);
                 } else {
-                    if (remote.size > local.size && (freeSpace + local.size - remote.size) * 100 / totalSpace < minPercentFree)
-                        throw new IllegalStateException("Not enough free space to sync and keep " + minPercentFree + "% free");
-                    log("Sync Local: Copying changes to " + remote.relPath);
-                    List<Pair<Long, Long>> diffs = remote.diffRanges(local);
-                    List<CopyOp> ops = diffs.stream()
-                            .map(d -> new CopyOp(true, remoteDir.resolve(remote.relPath), localDir.resolve(remote.relPath), remote, null, d.left, d.right))
-                            .collect(Collectors.toList());
-                    copyFileDiffAndTruncate(remoteFs, localFs, ops, syncedVersions);
-                    syncedVersions.add(remote);
+                    if (syncedVersions.hasRemoteDelete(remote.relPath)) {
+                        // remote file was deleted, then a different file with same path was added. Rename local and copy remote
+                        log("Sync Remote: Concurrent change: " + local.relPath + " renaming local version");
+                        FileState renamed = renameOnConflict(localFs, localDir.resolve(local.relPath), local);
+                        List<Pair<Long, Long>> diffs = remote.diffRanges(null);
+                        List<CopyOp> ops = diffs.stream()
+                                .map(d -> new CopyOp(true, remoteDir.resolve(remote.relPath), localDir.resolve(remote.relPath), remote, null, d.left, d.right))
+                                .collect(Collectors.toList());
+                        copyFileDiffAndTruncate(remoteFs, localFs, ops, syncedVersions);
+                        syncedVersions.add(remote);
+
+                        List<Pair<Long, Long>> diffs2 = local.diffRanges(null);
+                        List<CopyOp> ops2 = diffs2.stream()
+                                .map(d -> new CopyOp(false, localDir.resolve(renamed.relPath), remoteDir.resolve(renamed.relPath), renamed, null, d.left, d.right))
+                                .collect(Collectors.toList());
+                        copyFileDiffAndTruncate(localFs, remoteFs, ops2, syncedVersions);
+                        syncedVersions.add(renamed);
+                        syncedVersions.removeRemoteDelete(remote.relPath);
+                    } else {
+                        if (remote.size > local.size && (freeSpace + local.size - remote.size) * 100 / totalSpace < minPercentFree)
+                            throw new IllegalStateException("Not enough free space to sync and keep " + minPercentFree + "% free");
+                        log("Sync Local: Copying changes to " + remote.relPath);
+                        List<Pair<Long, Long>> diffs = remote.diffRanges(local);
+                        List<CopyOp> ops = diffs.stream()
+                                .map(d -> new CopyOp(true, remoteDir.resolve(remote.relPath), localDir.resolve(remote.relPath), remote, null, d.left, d.right))
+                                .collect(Collectors.toList());
+                        copyFileDiffAndTruncate(remoteFs, localFs, ops, syncedVersions);
+                        syncedVersions.add(remote);
+                    }
                 }
             } else if (synced.equals(remote)) { // local only change
                 if (local == null) { // deletion or rename
@@ -599,7 +621,7 @@ public class DirectorySync {
                     // already synced
                 } else {
                     if (syncedVersions.hasLocalDelete(local.relPath)) {
-                        // local file was deleted, then a different file with same path was added. Keep remote rename local.
+                        // local file was deleted, then a different file with same path was added. Keep remote, rename local.
                         log("Sync Remote: Concurrent change: " + local.relPath + " renaming different local version after local delete");
                         FileState renamed = renameOnConflict(localFs, localDir.resolve(local.relPath), local);
                         List<Pair<Long, Long>> diffs = remote.diffRanges(null);
@@ -655,6 +677,8 @@ public class DirectorySync {
                             .collect(Collectors.toList());
                     copyFileDiffAndTruncate(localFs, remoteFs, ops, syncedVersions);
                     syncedVersions.add(local);
+                    if (! syncRemoteDeletes && syncedVersions.hasRemoteDelete(local.relPath))
+                        syncedVersions.removeRemoteDelete(local.relPath);
                     return;
                 }
                 // concurrent change, rename one sync the other
