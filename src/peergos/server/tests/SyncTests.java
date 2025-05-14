@@ -66,6 +66,11 @@ public class SyncTests {
 
     @Test
     public void ignoreLocalDeleteBeforeConflict() throws Exception {
+        ignoreLocalDeleteBeforeConflict(6 * 1024 * 1024);
+        ignoreLocalDeleteBeforeConflict(1024);
+    }
+
+    public void ignoreLocalDeleteBeforeConflict(int fileSize) throws Exception {
         Path tmp = Files.createTempDirectory("peergos-sync");
         Path base1 = Files.createTempDirectory("peergos-sync");
         Path base2 = Files.createTempDirectory("peergos-sync");
@@ -77,7 +82,7 @@ public class SyncTests {
         boolean syncRemoteDeletes = true;
         DirectorySync.syncDirs(localFs, base1, localFs, base2, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, tmp, 32, 5);
 
-        byte[] data = new byte[6 * 1024 * 1024];
+        byte[] data = new byte[fileSize];
         new Random(42).nextBytes(data);
         String filename = "file.bin";
         Files.write(base1.resolve(filename), data, StandardOpenOption.CREATE);
@@ -99,7 +104,7 @@ public class SyncTests {
         Assert.assertFalse(base1.resolve(filename).toFile().exists());
 
         // add a different local file with the same name (it should be renamed, and then synced)
-        byte[] data2 = new byte[7 * 1024 * 1024];
+        byte[] data2 = new byte[fileSize + 1024 * 1024];
         new Random(28).nextBytes(data2);
         Files.write(base1.resolve(filename), data2, StandardOpenOption.CREATE);
         DirectorySync.syncDirs(localFs, base1, localFs, base2, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, tmp, 32, 5);
@@ -111,6 +116,11 @@ public class SyncTests {
 
     @Test
     public void ignoreLocalDeleteBeforeRestore() throws Exception {
+        ignoreLocalDeleteBeforeRestore(6 * 1024 * 1024);
+        ignoreLocalDeleteBeforeRestore(1024);
+    }
+
+    public void ignoreLocalDeleteBeforeRestore(int fileSize) throws Exception {
         Path tmp = Files.createTempDirectory("peergos-sync");
         Path base1 = Files.createTempDirectory("peergos-sync");
         Path base2 = Files.createTempDirectory("peergos-sync");
@@ -122,7 +132,7 @@ public class SyncTests {
         boolean syncRemoteDeletes = true;
         DirectorySync.syncDirs(localFs, base1, localFs, base2, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, tmp, 32, 5);
 
-        byte[] data = new byte[6 * 1024 * 1024];
+        byte[] data = new byte[fileSize];
         new Random(42).nextBytes(data);
         String filename = "file.bin";
         Files.write(base1.resolve(filename), data, StandardOpenOption.CREATE);
@@ -152,6 +162,11 @@ public class SyncTests {
 
     @Test
     public void ignoreLocalDeleteBeforeRemoteModification() throws Exception {
+        ignoreLocalDeleteBeforeRemoteModification(6 * 1024 * 1024);
+        ignoreLocalDeleteBeforeRemoteModification(1024);
+    }
+
+    public void ignoreLocalDeleteBeforeRemoteModification(int fileSize) throws Exception {
         Path tmp = Files.createTempDirectory("peergos-sync");
         Path base1 = Files.createTempDirectory("peergos-sync");
         Path base2 = Files.createTempDirectory("peergos-sync");
@@ -163,7 +178,7 @@ public class SyncTests {
         boolean syncRemoteDeletes = true;
         DirectorySync.syncDirs(localFs, base1, localFs, base2, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, tmp, 32, 5);
 
-        byte[] data = new byte[6 * 1024 * 1024];
+        byte[] data = new byte[fileSize];
         new Random(42).nextBytes(data);
         String filename = "file.bin";
         Files.write(base1.resolve(filename), data, StandardOpenOption.CREATE);
@@ -183,7 +198,7 @@ public class SyncTests {
         Assert.assertTrue(base2.resolve(filename).toFile().exists());
 
         // modify the remote file (it should be copied to local)
-        byte[] data2 = new byte[7 * 1024 * 1024];
+        byte[] data2 = new byte[fileSize + 1024 * 1024];
         new Random(28).nextBytes(data2);
         base2.resolve(filename).toFile().delete();
         Files.write(base2.resolve(filename), data2, StandardOpenOption.CREATE);
@@ -196,6 +211,11 @@ public class SyncTests {
 
     @Test
     public void ignoreRemoteDeleteBeforeConflict() throws Exception {
+        ignoreRemoteDeleteBeforeConflict(6 * 1024 * 1024);
+        ignoreRemoteDeleteBeforeConflict(1024);
+    }
+
+    public void ignoreRemoteDeleteBeforeConflict(int fileSize) throws Exception {
         Path tmp = Files.createTempDirectory("peergos-sync");
         Path base1 = Files.createTempDirectory("peergos-sync");
         Path base2 = Files.createTempDirectory("peergos-sync");
@@ -207,7 +227,7 @@ public class SyncTests {
         boolean syncRemoteDeletes = false;
         DirectorySync.syncDirs(localFs, base1, localFs, base2, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, tmp, 32, 5);
 
-        byte[] data = new byte[6 * 1024 * 1024];
+        byte[] data = new byte[fileSize];
         new Random(42).nextBytes(data);
         String filename = "file.bin";
         Files.write(base1.resolve(filename), data, StandardOpenOption.CREATE);
@@ -227,7 +247,7 @@ public class SyncTests {
         Assert.assertTrue(base1.resolve(filename).toFile().exists());
 
         // add a different remote file with the same name (local should be renamed, and then new remote synced)
-        byte[] data2 = new byte[7 * 1024 * 1024];
+        byte[] data2 = new byte[fileSize + 1024 * 1024];
         new Random(28).nextBytes(data2);
         Files.write(base2.resolve(filename), data2, StandardOpenOption.CREATE);
         DirectorySync.syncDirs(localFs, base1, localFs, base2, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, tmp, 32, 5);
@@ -243,6 +263,11 @@ public class SyncTests {
 
     @Test
     public void ignoreRemoteDeleteBeforeRestore() throws Exception {
+        ignoreRemoteDeleteBeforeRestore(6 * 1024 * 1024);
+        ignoreRemoteDeleteBeforeRestore(1024);
+    }
+
+    public void ignoreRemoteDeleteBeforeRestore(int fileSize) throws Exception {
         Path tmp = Files.createTempDirectory("peergos-sync");
         Path base1 = Files.createTempDirectory("peergos-sync");
         Path base2 = Files.createTempDirectory("peergos-sync");
@@ -254,7 +279,7 @@ public class SyncTests {
         boolean syncRemoteDeletes = false;
         DirectorySync.syncDirs(localFs, base1, localFs, base2, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, tmp, 32, 5);
 
-        byte[] data = new byte[6 * 1024 * 1024];
+        byte[] data = new byte[fileSize];
         new Random(42).nextBytes(data);
         String filename = "file.bin";
         Files.write(base1.resolve(filename), data, StandardOpenOption.CREATE);
@@ -284,6 +309,11 @@ public class SyncTests {
 
     @Test
     public void ignoreRemoteDeleteBeforeRemoteModification() throws Exception {
+        ignoreRemoteDeleteBeforeRemoteModification(6 * 1024 * 1024);
+        ignoreRemoteDeleteBeforeRemoteModification(1024);
+    }
+
+    public void ignoreRemoteDeleteBeforeRemoteModification(int fileSize) throws Exception {
         Path tmp = Files.createTempDirectory("peergos-sync");
         Path base1 = Files.createTempDirectory("peergos-sync");
         Path base2 = Files.createTempDirectory("peergos-sync");
@@ -295,7 +325,7 @@ public class SyncTests {
         boolean syncRemoteDeletes = false;
         DirectorySync.syncDirs(localFs, base1, localFs, base2, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, tmp, 32, 5);
 
-        byte[] data = new byte[6 * 1024 * 1024];
+        byte[] data = new byte[fileSize];
         new Random(42).nextBytes(data);
         String filename = "file.bin";
         Files.write(base1.resolve(filename), data, StandardOpenOption.CREATE);
@@ -315,7 +345,7 @@ public class SyncTests {
         Assert.assertTrue(base1.resolve(filename).toFile().exists());
 
         // modify the local file (it should be copied to remote)
-        byte[] data2 = new byte[7 * 1024 * 1024];
+        byte[] data2 = new byte[fileSize + 1024 * 1024];
         new Random(28).nextBytes(data2);
         base1.resolve(filename).toFile().delete();
         Files.write(base1.resolve(filename), data2, StandardOpenOption.CREATE);

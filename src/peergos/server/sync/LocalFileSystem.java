@@ -120,7 +120,27 @@ public class LocalFileSystem implements SyncFilesystem {
 
     @Override
     public void uploadSubtree(Path baseDir, Stream<FileWrapper.FolderUploadProperties> directories) {
-        throw new IllegalStateException("Unimplemented!");
+        byte[] buf = new byte[5*1024*1024];
+        directories.forEach(folder -> {
+            Path dir = baseDir.resolve(folder.path());
+            dir.toFile().mkdirs();
+            for (FileWrapper.FileUploadProperties file : folder.files) {
+                AsyncReader reader = file.fileData.get();
+                long written = 0;
+                try {
+                    FileOutputStream fout = new FileOutputStream(dir.resolve(file.filename).toFile());
+                    while (written < file.length) {
+                        int read = reader.readIntoArray(buf, 0, (int) Math.min(buf.length, file.length - written)).join();
+                        fout.write(buf, 0, read);
+                        written += read;
+                    }
+                    fout.flush();
+                    fout.close();
+                } catch (IOException e) {
+                    throw new RuntimeException(e);
+                }
+            }
+        });
     }
 
     @Override
