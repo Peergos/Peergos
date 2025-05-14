@@ -247,8 +247,8 @@ public class DirectorySync {
             syncedVersions.finishCopies(List.of(op));
         }
 
-        String localStateDbFile = "local-tmp-"+System.currentTimeMillis() + ".sqlite";
-        String remoteStateDbFile = "remote-tmp-"+System.currentTimeMillis() + ".sqlite";
+        String localStateDbFile = "local-tmp-"+System.nanoTime() + ".sqlite";
+        String remoteStateDbFile = "remote-tmp-"+System.nanoTime() + ".sqlite";
         try {
             SyncState localState = new JdbcTreeState(peergosDir.resolve(localStateDbFile).toString());
             buildDirState(localFS, localDir, localState, syncedVersions);
@@ -619,6 +619,10 @@ public class DirectorySync {
                     }
                 } else if (remote.hashTree.rootHash.equals(local.hashTree.rootHash)) {
                     // already synced
+                    if (! syncLocalDeletes && syncedVersions.hasLocalDelete(remote.relPath))
+                        syncedVersions.removeLocalDelete(remote.relPath);
+                    if (! syncRemoteDeletes && syncedVersions.hasRemoteDelete(remote.relPath))
+                        syncedVersions.removeRemoteDelete(remote.relPath);
                 } else {
                     if (syncedVersions.hasLocalDelete(local.relPath)) {
                         // local file was deleted, then a different file with same path was added. Keep remote, rename local.
@@ -810,7 +814,7 @@ public class DirectorySync {
             if (hasBackSlashes)
                 relPath = relPath.replaceAll("\\\\", "/");
             FileState atSync = synced.byPath(relPath);
-            if (atSync != null && atSync.modificationTime == props.modifiedTime) {
+            if (atSync != null && atSync.modificationTime == props.modifiedTime && atSync.size == props.size) {
                 res.add(atSync);
             } else {
                 HashTree hashTree = fs.hashFile(props.path, props.meta, relPath, synced);
