@@ -15,6 +15,8 @@ import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 public interface SyncRunner {
 
@@ -43,11 +45,25 @@ public interface SyncRunner {
                     if (updated.hasArg("links")) {
                         List<String> links = new ArrayList<>(Arrays.asList(updated.getArg("links").split(",")));
                         List<String> localDirs = new ArrayList<>(Arrays.asList(updated.getArg("local-dirs").split(",")));
+                        List<Boolean> syncLocalDeletes = args.hasArg("sync-local-deletes") ?
+                                new ArrayList<>(Arrays.stream(args.getArg("sync-local-deletes").split(","))
+                                        .map(Boolean::parseBoolean)
+                                        .collect(Collectors.toList())) :
+                                IntStream.range(0, links.size())
+                                        .mapToObj(x -> true)
+                                        .collect(Collectors.toList());
+                        List<Boolean> syncRemoteDeletes = args.hasArg("sync-remote-deletes") ?
+                                new ArrayList<>(Arrays.stream(args.getArg("sync-remote-deletes").split(","))
+                                        .map(Boolean::parseBoolean)
+                                        .collect(Collectors.toList())) :
+                                IntStream.range(0, links.size())
+                                        .mapToObj(x -> true)
+                                        .collect(Collectors.toList());
                         int maxDownloadParallelism = updated.getInt("max-parallelism", 32);
                         int minFreeSpacePercent = updated.getInt("min-free-space-percent", 5);
                         if (!links.isEmpty()) {
                             try {
-                                DirectorySync.syncDir(links, localDirs, maxDownloadParallelism, minFreeSpacePercent, true, peergosDir, network, crypto);
+                                DirectorySync.syncDir(links, localDirs, syncLocalDeletes, syncRemoteDeletes, maxDownloadParallelism, minFreeSpacePercent, true, peergosDir, network, crypto);
                             } catch (Exception e) {
                                 LOG.log(Level.WARNING, e.getMessage(), e);
                             }

@@ -9,6 +9,8 @@ class RamTreeState implements SyncState {
     public final Map<String, FileState> filesByPath = new HashMap<>();
     public final Map<RootHash, List<FileState>> fileByHash = new HashMap<>();
     private final Set<String> dirs = new HashSet<>();
+    private final Set<String> localDeletes = new HashSet<>();
+    private final Set<String> remoteDeletes = new HashSet<>();
     private final List<CopyOp> inProgress = new ArrayList<>();
     private final Map<String, Snapshot> versions = new HashMap<>();
 
@@ -53,6 +55,36 @@ class RamTreeState implements SyncState {
 
     public synchronized Set<String> getDirs() {
         return dirs;
+    }
+
+    @Override
+    public void addLocalDelete(String path) {
+        localDeletes.add(path);
+    }
+
+    @Override
+    public void removeLocalDelete(String path) {
+        localDeletes.remove(path);
+    }
+
+    @Override
+    public boolean hasLocalDelete(String p) {
+        return localDeletes.contains(p);
+    }
+
+    @Override
+    public void addRemoteDelete(String path) {
+        remoteDeletes.add(path);
+    }
+
+    @Override
+    public void removeRemoteDelete(String path) {
+        remoteDeletes.remove(path);
+    }
+
+    @Override
+    public boolean hasRemoteDelete(String p) {
+        return remoteDeletes.contains(p);
     }
 
     @Override

@@ -80,11 +80,25 @@ public class DirectorySync {
             ThumbnailGenerator.setInstance(new JavaImageThumbnailer());
             List<String> links = new ArrayList<>(Arrays.asList(args.getArg("links").split(",")));
             List<String> localDirs = new ArrayList<>(Arrays.asList(args.getArg("local-dirs").split(",")));
+            List<Boolean> syncLocalDeletes = args.hasArg("sync-local-deletes") ?
+                    new ArrayList<>(Arrays.stream(args.getArg("sync-local-deletes").split(","))
+                            .map(Boolean::parseBoolean)
+                            .collect(Collectors.toList())) :
+                    IntStream.range(0, links.size())
+                            .mapToObj(x -> true)
+                            .collect(Collectors.toList());
+            List<Boolean> syncRemoteDeletes = args.hasArg("sync-remote-deletes") ?
+                    new ArrayList<>(Arrays.stream(args.getArg("sync-remote-deletes").split(","))
+                            .map(Boolean::parseBoolean)
+                            .collect(Collectors.toList())) :
+                    IntStream.range(0, links.size())
+                            .mapToObj(x -> true)
+                            .collect(Collectors.toList());
             int maxDownloadParallelism = args.getInt("max-parallelism", 32);
             int minFreeSpacePercent = args.getInt("min-free-space-percent", 5);
             boolean oneRun = args.getBoolean("run-once", false);
             Path peergosDir = args.getPeergosDir();
-            return syncDir(links, localDirs, maxDownloadParallelism, minFreeSpacePercent, oneRun, peergosDir, network, crypto);
+            return syncDir(links, localDirs, syncLocalDeletes, syncRemoteDeletes, maxDownloadParallelism, minFreeSpacePercent, oneRun, peergosDir, network, crypto);
         } catch (Exception e) {
             LOG.log(Level.SEVERE, e, e::getMessage);
             throw new RuntimeException(e);
@@ -93,54 +107,61 @@ public class DirectorySync {
 
     public static boolean syncDir(List<String> links,
                                   List<String> localDirs,
+                                  List<Boolean> syncLocalDeletes,
+                                  List<Boolean> syncRemoteDeletes,
                                   int maxDownloadParallelism,
                                   int minFreeSpacePercent,
                                   boolean oneRun,
                                   Path peergosDir,
                                   NetworkAccess network,
                                   Crypto crypto) {
-            Supplier<CompletableFuture<String>> linkUserPassword = () -> Futures.of("");
-            List<Supplier<CompletableFuture<String>>> linkPasswords = IntStream.range(0, links.size())
-                    .mapToObj(i -> linkUserPassword)
-                    .collect(Collectors.toList());
-            UserContext context = UserContext.fromSecretLinksV2(links, linkPasswords, network, crypto).join();
-            List<String> linkPaths = links.stream()
-                    .map(link -> UserContext.fromSecretLinksV2(Arrays.asList(link), Arrays.asList(linkUserPassword), network, crypto).join().getEntryPath().join())
-                    .collect(Collectors.toList());
+        if (syncLocalDeletes.size() != links.size())
+            throw new IllegalStateException("Incorrect number of sync-local-deletes!");
+        if (syncRemoteDeletes.size() != links.size())
+            throw new IllegalStateException("Incorrect number of sync-remote-deletes!");
+        Supplier<CompletableFuture<String>> linkUserPassword = () -> Futures.of("");
+        List<Supplier<CompletableFuture<String>>> linkPasswords = IntStream.range(0, links.size())
+                .mapToObj(i -> linkUserPassword)
+                .collect(Collectors.toList());
+        UserContext context = UserContext.fromSecretLinksV2(links, linkPasswords, network, crypto).join();
+        List<String> linkPaths = links.stream()
+                .map(link -> UserContext.fromSecretLinksV2(Arrays.asList(link), Arrays.asList(linkUserPassword), network, crypto).join().getEntryPath().join())
+                .collect(Collectors.toList());
 
-            PeergosSyncFS remote = new PeergosSyncFS(context);
-            LocalFileSystem local = new LocalFileSystem(crypto.hasher);
+        PeergosSyncFS remote = new PeergosSyncFS(context);
+        LocalFileSystem local = new LocalFileSystem(crypto.hasher);
 
-            List<SyncState> syncedStates = IntStream.range(0, linkPaths.size())
-                    .mapToObj(i -> new JdbcTreeState(peergosDir.resolve("dir-sync-state-v3-" + ArrayOps.bytesToHex(Hash.sha256(linkPaths.get(i) + "///" + localDirs.get(i))) + ".sqlite").toString()))
-                    .collect(Collectors.toList());
-            if (links.size() != localDirs.size())
-                throw new IllegalArgumentException("Mismatched number of local dirs and links");
+        List<SyncState> syncedStates = IntStream.range(0, linkPaths.size())
+                .mapToObj(i -> new JdbcTreeState(peergosDir.resolve("dir-sync-state-v3-" + ArrayOps.bytesToHex(Hash.sha256(linkPaths.get(i) + "///" + localDirs.get(i))) + ".sqlite").toString()))
+                .collect(Collectors.toList());
+        if (links.size() != localDirs.size())
+            throw new IllegalArgumentException("Mismatched number of local dirs and links");
 
-            while (true) {
-                try {
-                    log("Syncing " + links.size() + " pairs of directories: " + IntStream.range(0, links.size()).mapToObj(i -> Arrays.asList(localDirs.get(i), linkPaths.get(i))).collect(Collectors.toList()));
-                    for (int i=0; i < links.size(); i++) {
-                        Path localDir = Paths.get(localDirs.get(i));
-                        Path remoteDir = PathUtil.get(linkPaths.get(i));
-                        SyncState syncedState = syncedStates.get(i);
-                        log("Syncing " + localDir + " to+from " + remoteDir);
-                        long t0 = System.currentTimeMillis();
-                        String username = remoteDir.getName(0).toString();
-                        PublicKeyHash owner = network.coreNode.getPublicKeyHash(username).join().get();
-                        syncDirs(local, localDir, remote, remoteDir, owner, network, syncedState, peergosDir, maxDownloadParallelism, minFreeSpacePercent);
-                        long t1 = System.currentTimeMillis();
-                        log("Dir sync took " + (t1 - t0) / 1000 + "s");
-                    }
-                    if (oneRun)
-                        break;
-                    Thread.sleep(30_000);
-                } catch (Exception e) {
-                    e.printStackTrace();
-                    LOG.log(Level.WARNING, e, e::getMessage);
-                    Threads.sleep(30_000);
+        while (true) {
+            try {
+                log("Syncing " + links.size() + " pairs of directories: " + IntStream.range(0, links.size()).mapToObj(i -> Arrays.asList(localDirs.get(i), linkPaths.get(i))).collect(Collectors.toList()));
+                for (int i=0; i < links.size(); i++) {
+                    Path localDir = Paths.get(localDirs.get(i));
+                    Path remoteDir = PathUtil.get(linkPaths.get(i));
+                    SyncState syncedState = syncedStates.get(i);
+                    log("Syncing " + localDir + " to+from " + remoteDir);
+                    long t0 = System.currentTimeMillis();
+                    String username = remoteDir.getName(0).toString();
+                    PublicKeyHash owner = network.coreNode.getPublicKeyHash(username).join().get();
+                    syncDirs(local, localDir, remote, remoteDir, syncLocalDeletes.get(i), syncRemoteDeletes.get(i),
+                            owner, network, syncedState, peergosDir, maxDownloadParallelism, minFreeSpacePercent);
+                    long t1 = System.currentTimeMillis();
+                    log("Dir sync took " + (t1 - t0) / 1000 + "s");
                 }
+                if (oneRun)
+                    break;
+                Thread.sleep(30_000);
+            } catch (Exception e) {
+                e.printStackTrace();
+                LOG.log(Level.WARNING, e, e::getMessage);
+                Threads.sleep(30_000);
             }
+        }
         return true;
     }
 
@@ -201,8 +222,14 @@ public class DirectorySync {
         return Futures.of(new MultiFactorAuthResponse(totp.credentialId, Either.a(code)));
     }
 
-    public static void syncDirs(SyncFilesystem localFS, Path localDir,
-                                SyncFilesystem remoteFS, Path remoteDir, PublicKeyHash owner, NetworkAccess network,
+    public static void syncDirs(SyncFilesystem localFS,
+                                Path localDir,
+                                SyncFilesystem remoteFS,
+                                Path remoteDir,
+                                boolean syncLocalDeletes,
+                                boolean syncRemoteDeletes,
+                                PublicKeyHash owner,
+                                NetworkAccess network,
                                 SyncState syncedVersions,
                                 Path peergosDir,
                                 int maxParallelism,
@@ -247,7 +274,7 @@ public class DirectorySync {
 
             // upload new small files in a single bulk operation
             Set<String> smallFiles = new HashSet<>();
-            Set<String> deletes = new HashSet<>();
+            Set<String> localDeletes = new HashSet<>();
             for (String relativePath : allPaths) {
                 FileState synced = syncedVersions.byPath(relativePath);
                 FileState local = localState.byPath(relativePath);
@@ -263,7 +290,7 @@ public class DirectorySync {
                             Optional.ofNullable(remoteState.byPath(byHash.get(0).relPath)) :
                             Optional.empty();
                     if (byHash.size() != 1 || !remoteAtHashedPath.isEmpty())
-                        deletes.add(relativePath);
+                        localDeletes.add(relativePath);
                 }
             }
 
@@ -307,18 +334,22 @@ public class DirectorySync {
             }
 
             // do deletes in bulk
-            if (!deletes.isEmpty()) {
+            if (! localDeletes.isEmpty()) {
                 Map<String, Set<String>> byFolder = new HashMap<>();
-                for (String relPath : deletes) {
+                for (String relPath : localDeletes) {
                     doneFiles.add(relPath);
-                    String folderPath = relPath.contains("/") ? relPath.substring(0, relPath.lastIndexOf("/")) : "";
-                    Set<String> folder = byFolder.get(folderPath);
-                    if (folder == null) {
-                        folder = new HashSet<>();
-                        byFolder.put(folderPath, folder);
+                    if (! syncLocalDeletes) {
+                        syncedVersions.addLocalDelete(relPath);
+                    } else {
+                        String folderPath = relPath.contains("/") ? relPath.substring(0, relPath.lastIndexOf("/")) : "";
+                        Set<String> folder = byFolder.get(folderPath);
+                        if (folder == null) {
+                            folder = new HashSet<>();
+                            byFolder.put(folderPath, folder);
+                        }
+                        String filename = relPath.substring(relPath.lastIndexOf("/") + 1);
+                        folder.add(filename);
                     }
-                    String filename = relPath.substring(relPath.lastIndexOf("/") + 1);
-                    folder.add(filename);
                 }
                 byFolder.forEach((dir, files) -> {
                     log("REMOTE: bulk deleting " + files.size() + " from " + remoteDir.resolve(dir));
@@ -351,7 +382,8 @@ public class DirectorySync {
                     maxDownloadConcurrency.decrementAndGet();
                     downloads.add(ForkJoinPool.commonPool().submit(() -> {
                         try {
-                            syncFile(synced, local, remote, localFS, localDir, remoteFS, remoteDir, syncedVersions, localState, remoteState, doneFiles, minPercentFreeSpace);
+                            syncFile(synced, local, remote, localFS, localDir, remoteFS, remoteDir, syncedVersions,
+                                    localState, remoteState, syncLocalDeletes, syncRemoteDeletes, doneFiles, minPercentFreeSpace);
                         } catch (IOException e) {
                             throw new RuntimeException(e);
                         } finally {
@@ -359,7 +391,8 @@ public class DirectorySync {
                         }
                     }));
                 } else
-                    syncFile(synced, local, remote, localFS, localDir, remoteFS, remoteDir, syncedVersions, localState, remoteState, doneFiles, minPercentFreeSpace);
+                    syncFile(synced, local, remote, localFS, localDir, remoteFS, remoteDir, syncedVersions, localState,
+                            remoteState, syncLocalDeletes, syncRemoteDeletes, doneFiles, minPercentFreeSpace);
             }
 
             for (ForkJoinTask<?> download : downloads) {
@@ -419,6 +452,8 @@ public class DirectorySync {
                                 SyncFilesystem localFs, Path localDir,
                                 SyncFilesystem remoteFs, Path remoteDir,
                                 SyncState syncedVersions, SyncState localTree, SyncState remoteTree,
+                                boolean syncLocalDeletes,
+                                boolean syncRemoteDeletes,
                                 Set<String> doneFiles, int minPercentFree) throws IOException {
         long totalSpace;
         try {
@@ -520,12 +555,18 @@ public class DirectorySync {
                     if (byHash.size() == 1 && localAtHashedPath.isEmpty()) {// rename
                         // we will do the local rename when we process the new remote entry
                     } else {
-                        log("Sync Local: delete " + local.relPath);
-                        localFs.delete(localDir.resolve(local.relPath));
-                        syncedVersions.remove(local.relPath);
+                        if (syncRemoteDeletes) {
+                            log("Sync Local: delete " + local.relPath);
+                            localFs.delete(localDir.resolve(local.relPath));
+                            syncedVersions.remove(local.relPath);
+                        } else {
+                            syncedVersions.addRemoteDelete(local.relPath);
+                        }
                     }
                 } else if (remote.hashTree.rootHash.equals(local.hashTree.rootHash)) {
                     // already synced
+                    if (! syncLocalDeletes && syncedVersions.hasLocalDelete(remote.relPath))
+                        syncedVersions.removeLocalDelete(remote.relPath);
                 } else {
                     if (remote.size > local.size && (freeSpace + local.size - remote.size) * 100 / totalSpace < minPercentFree)
                         throw new IllegalStateException("Not enough free space to sync and keep " + minPercentFree + "% free");
@@ -546,21 +587,45 @@ public class DirectorySync {
                     if (byHash.size() == 1 && remoteAtHashedPath.isEmpty()) {// rename
                         // we will do the local rename when we process the new remote entry
                     } else {
-                        log("Sync Remote: delete " + remote.relPath);
-                        remoteFs.delete(remoteDir.resolve(remote.relPath));
-                        syncedVersions.remove(remote.relPath);
+                        if (syncLocalDeletes) {
+                            log("Sync Remote: delete " + remote.relPath);
+                            remoteFs.delete(remoteDir.resolve(remote.relPath));
+                            syncedVersions.remove(remote.relPath);
+                        } else {
+                            syncedVersions.addLocalDelete(remote.relPath);
+                        }
                     }
                 } else if (remote.hashTree.rootHash.equals(local.hashTree.rootHash)) {
                     // already synced
                 } else {
-                    log("Sync Remote: Copying changes to " + local.relPath);
-                    List<Pair<Long, Long>> diffs = local.diffRanges(remote);
-                    List<CopyOp> ops = diffs.stream()
-                            .map(d -> new CopyOp(false, localDir.resolve(local.relPath), remoteDir.resolve(local.relPath), local, null, d.left, d.right))
-                            .collect(Collectors.toList());
-                    copyFileDiffAndTruncate(localFs, remoteFs, ops, syncedVersions);
-                    remoteFs.setHash(remoteDir.resolve(local.relPath), local.hashTree, local.size);
-                    syncedVersions.add(local);
+                    if (syncedVersions.hasLocalDelete(local.relPath)) {
+                        // local file was deleted, then a different file with same path was added. Keep remote rename local.
+                        log("Sync Remote: Concurrent change: " + local.relPath + " renaming different local version after local delete");
+                        FileState renamed = renameOnConflict(localFs, localDir.resolve(local.relPath), local);
+                        List<Pair<Long, Long>> diffs = remote.diffRanges(null);
+                        List<CopyOp> ops = diffs.stream()
+                                .map(d -> new CopyOp(true, remoteDir.resolve(remote.relPath), localDir.resolve(remote.relPath), remote, null, d.left, d.right))
+                                .collect(Collectors.toList());
+                        copyFileDiffAndTruncate(remoteFs, localFs, ops, syncedVersions);
+                        syncedVersions.add(remote);
+
+                        List<Pair<Long, Long>> diffs2 = local.diffRanges(null);
+                        List<CopyOp> ops2 = diffs2.stream()
+                                .map(d -> new CopyOp(false, localDir.resolve(renamed.relPath), remoteDir.resolve(renamed.relPath), renamed, null, d.left, d.right))
+                                .collect(Collectors.toList());
+                        copyFileDiffAndTruncate(localFs, remoteFs, ops2, syncedVersions);
+                        syncedVersions.add(renamed);
+                        syncedVersions.removeLocalDelete(local.relPath);
+                    } else {
+                        log("Sync Remote: Copying changes to " + local.relPath);
+                        List<Pair<Long, Long>> diffs = local.diffRanges(remote);
+                        List<CopyOp> ops = diffs.stream()
+                                .map(d -> new CopyOp(false, localDir.resolve(local.relPath), remoteDir.resolve(local.relPath), local, null, d.left, d.right))
+                                .collect(Collectors.toList());
+                        copyFileDiffAndTruncate(localFs, remoteFs, ops, syncedVersions);
+                        remoteFs.setHash(remoteDir.resolve(local.relPath), local.hashTree, local.size);
+                        syncedVersions.add(local);
+                    }
                 }
             } else { // concurrent change/deletion
                 if (local == null && remote == null) {// concurrent deletes
@@ -578,6 +643,8 @@ public class DirectorySync {
                             .collect(Collectors.toList());
                     copyFileDiffAndTruncate(remoteFs, localFs, ops, syncedVersions);
                     syncedVersions.add(remote);
+                    if (! syncLocalDeletes && syncedVersions.hasLocalDelete(remote.relPath))
+                        syncedVersions.removeLocalDelete(remote.relPath);
                     return;
                 }
                 if (remote == null) { // remote delete, copy changed local

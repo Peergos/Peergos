@@ -25,42 +25,164 @@ public class SyncTests {
         LocalFileSystem localFs = new LocalFileSystem(Main.initCrypto().hasher);
         SyncState syncedState = new JdbcTreeState(":memory:");
 
-        DirectorySync.syncDirs(localFs, base1, localFs, base2, null, null, syncedState, tmp, 32, 5);
+        DirectorySync.syncDirs(localFs, base1, localFs, base2, true, true, null, null, syncedState, tmp, 32, 5);
 
         byte[] data = new byte[6 * 1024 * 1024];
         new Random(42).nextBytes(data);
         String filename = "file.bin";
         Files.write(base1.resolve(filename), data, StandardOpenOption.CREATE);
 
-        DirectorySync.syncDirs(localFs, base1, localFs, base2, null, null, syncedState, tmp, 32, 5);
-        Assert.assertTrue(syncedState.byPath(filename) != null);
+        DirectorySync.syncDirs(localFs, base1, localFs, base2, true, true, null, null, syncedState, tmp, 32, 5);
+        Assert.assertNotNull(syncedState.byPath(filename));
 
         // move file to a subdir
         Path subdir = base1.resolve("subdir");
         subdir.toFile().mkdirs();
         Files.move(base1.resolve(filename), subdir.resolve(filename));
-        DirectorySync.syncDirs(localFs, base1, localFs, base2, null, null, syncedState, tmp, 32, 5);
-        Assert.assertTrue(syncedState.byPath(filename) == null);
+        DirectorySync.syncDirs(localFs, base1, localFs, base2, true, true, null, null, syncedState, tmp, 32, 5);
+        Assert.assertNull(syncedState.byPath(filename));
         String fileRelPath = subdir.getFileName().resolve(filename).toString().replaceAll("\\\\", "/");
-        Assert.assertTrue(syncedState.byPath(fileRelPath) != null);
+        Assert.assertNotNull(syncedState.byPath(fileRelPath));
 
         // sync should be stable
-        DirectorySync.syncDirs(localFs, base1, localFs, base2, null, null, syncedState, tmp, 32, 5);
-        Assert.assertTrue(syncedState.byPath(filename) == null);
-        Assert.assertTrue(syncedState.byPath(fileRelPath) != null);
+        DirectorySync.syncDirs(localFs, base1, localFs, base2, true, true, null, null, syncedState, tmp, 32, 5);
+        Assert.assertNull(syncedState.byPath(filename));
+        Assert.assertNotNull(syncedState.byPath(fileRelPath));
 
         // move the file back
         Files.move(subdir.resolve(filename), base1.resolve(filename));
-        DirectorySync.syncDirs(localFs, base1, localFs, base2, null, null, syncedState, tmp, 32, 5);
-        Assert.assertTrue(syncedState.byPath(filename) != null);
-        Assert.assertTrue(syncedState.byPath(fileRelPath) == null);
+        DirectorySync.syncDirs(localFs, base1, localFs, base2, true, true, null, null, syncedState, tmp, 32, 5);
+        Assert.assertNotNull(syncedState.byPath(filename));
+        Assert.assertNull(syncedState.byPath(fileRelPath));
 
         // check stability
-        DirectorySync.syncDirs(localFs, base1, localFs, base2, null, null, syncedState, tmp, 32, 5);
-        Assert.assertTrue(syncedState.byPath(filename) != null);
-        Assert.assertTrue(syncedState.byPath(fileRelPath) == null);
+        DirectorySync.syncDirs(localFs, base1, localFs, base2, true, true, null, null, syncedState, tmp, 32, 5);
+        Assert.assertNotNull(syncedState.byPath(filename));
+        Assert.assertNull(syncedState.byPath(fileRelPath));
 
         Assert.assertTrue(syncedState.getInProgressCopies().isEmpty());
+    }
+
+    @Test
+    public void ignoreLocalDeleteBeforeConflict() throws Exception {
+        Path tmp = Files.createTempDirectory("peergos-sync");
+        Path base1 = Files.createTempDirectory("peergos-sync");
+        Path base2 = Files.createTempDirectory("peergos-sync");
+
+        LocalFileSystem localFs = new LocalFileSystem(Main.initCrypto().hasher);
+        SyncState syncedState = new JdbcTreeState(":memory:");
+
+        DirectorySync.syncDirs(localFs, base1, localFs, base2, false, true, null, null, syncedState, tmp, 32, 5);
+
+        byte[] data = new byte[6 * 1024 * 1024];
+        new Random(42).nextBytes(data);
+        String filename = "file.bin";
+        Files.write(base1.resolve(filename), data, StandardOpenOption.CREATE);
+
+        DirectorySync.syncDirs(localFs, base1, localFs, base2, false, true, null, null, syncedState, tmp, 32, 5);
+        Assert.assertNotNull(syncedState.byPath(filename));
+
+        // delete local file and check remote is not deleted
+        base1.resolve(filename).toFile().delete();
+        DirectorySync.syncDirs(localFs, base1, localFs, base2, false, true, null, null, syncedState, tmp, 32, 5);
+        Assert.assertNotNull(syncedState.byPath(filename));
+        Assert.assertTrue(base2.resolve(filename).toFile().exists());
+        Assert.assertTrue(syncedState.hasLocalDelete(filename));
+        DirectorySync.syncDirs(localFs, base1, localFs, base2, false, true, null, null, syncedState, tmp, 32, 5);
+        Assert.assertNotNull(syncedState.byPath(filename));
+        Assert.assertTrue(syncedState.hasLocalDelete(filename));
+        Assert.assertTrue(base2.resolve(filename).toFile().exists());
+
+        // add a different local file with the same name (it should be renamed, and then synced)
+        byte[] data2 = new byte[7 * 1024 * 1024];
+        new Random(28).nextBytes(data2);
+        Files.write(base1.resolve(filename), data2, StandardOpenOption.CREATE);
+        DirectorySync.syncDirs(localFs, base1, localFs, base2, false, true, null, null, syncedState, tmp, 32, 5);
+        Assert.assertTrue(Arrays.equals(Files.readAllBytes(base2.resolve(filename)), data));
+        Assert.assertTrue(Arrays.equals(Files.readAllBytes(base1.resolve(filename)), data));
+        Assert.assertTrue(! syncedState.hasLocalDelete(filename));
+        Assert.assertTrue(syncedState.allFilePaths().size() == 2);
+    }
+
+    @Test
+    public void ignoreLocalDeleteBeforeRestore() throws Exception {
+        Path tmp = Files.createTempDirectory("peergos-sync");
+        Path base1 = Files.createTempDirectory("peergos-sync");
+        Path base2 = Files.createTempDirectory("peergos-sync");
+
+        LocalFileSystem localFs = new LocalFileSystem(Main.initCrypto().hasher);
+        SyncState syncedState = new JdbcTreeState(":memory:");
+
+        DirectorySync.syncDirs(localFs, base1, localFs, base2, false, true, null, null, syncedState, tmp, 32, 5);
+
+        byte[] data = new byte[6 * 1024 * 1024];
+        new Random(42).nextBytes(data);
+        String filename = "file.bin";
+        Files.write(base1.resolve(filename), data, StandardOpenOption.CREATE);
+
+        DirectorySync.syncDirs(localFs, base1, localFs, base2, false, true, null, null, syncedState, tmp, 32, 5);
+        Assert.assertNotNull(syncedState.byPath(filename));
+
+        // delete local file and check remote is not deleted
+        base1.resolve(filename).toFile().delete();
+        DirectorySync.syncDirs(localFs, base1, localFs, base2, false, true, null, null, syncedState, tmp, 32, 5);
+        Assert.assertNotNull(syncedState.byPath(filename));
+        Assert.assertTrue(base2.resolve(filename).toFile().exists());
+        Assert.assertTrue(syncedState.hasLocalDelete(filename));
+        DirectorySync.syncDirs(localFs, base1, localFs, base2, false, true, null, null, syncedState, tmp, 32, 5);
+        Assert.assertNotNull(syncedState.byPath(filename));
+        Assert.assertTrue(syncedState.hasLocalDelete(filename));
+        Assert.assertTrue(base2.resolve(filename).toFile().exists());
+
+        // restore the local file (it should be removed from the delete list)
+        Files.write(base1.resolve(filename), data, StandardOpenOption.CREATE);
+        DirectorySync.syncDirs(localFs, base1, localFs, base2, false, true, null, null, syncedState, tmp, 32, 5);
+        Assert.assertTrue(Arrays.equals(Files.readAllBytes(base2.resolve(filename)), data));
+        Assert.assertTrue(Arrays.equals(Files.readAllBytes(base1.resolve(filename)), data));
+        Assert.assertTrue(! syncedState.hasLocalDelete(filename));
+        Assert.assertTrue(syncedState.allFilePaths().size() == 1);
+    }
+
+    @Test
+    public void ignoreLocalDeleteBeforeRemoteModification() throws Exception {
+        Path tmp = Files.createTempDirectory("peergos-sync");
+        Path base1 = Files.createTempDirectory("peergos-sync");
+        Path base2 = Files.createTempDirectory("peergos-sync");
+
+        LocalFileSystem localFs = new LocalFileSystem(Main.initCrypto().hasher);
+        SyncState syncedState = new JdbcTreeState(":memory:");
+
+        DirectorySync.syncDirs(localFs, base1, localFs, base2, false, true, null, null, syncedState, tmp, 32, 5);
+
+        byte[] data = new byte[6 * 1024 * 1024];
+        new Random(42).nextBytes(data);
+        String filename = "file.bin";
+        Files.write(base1.resolve(filename), data, StandardOpenOption.CREATE);
+
+        DirectorySync.syncDirs(localFs, base1, localFs, base2, false, true, null, null, syncedState, tmp, 32, 5);
+        Assert.assertNotNull(syncedState.byPath(filename));
+
+        // delete local file and check remote is not deleted
+        base1.resolve(filename).toFile().delete();
+        DirectorySync.syncDirs(localFs, base1, localFs, base2, false, true, null, null, syncedState, tmp, 32, 5);
+        Assert.assertNotNull(syncedState.byPath(filename));
+        Assert.assertTrue(base2.resolve(filename).toFile().exists());
+        Assert.assertTrue(syncedState.hasLocalDelete(filename));
+        DirectorySync.syncDirs(localFs, base1, localFs, base2, false, true, null, null, syncedState, tmp, 32, 5);
+        Assert.assertNotNull(syncedState.byPath(filename));
+        Assert.assertTrue(syncedState.hasLocalDelete(filename));
+        Assert.assertTrue(base2.resolve(filename).toFile().exists());
+
+        // modify the remote file (it should be copied to local)
+        byte[] data2 = new byte[7 * 1024 * 1024];
+        new Random(28).nextBytes(data2);
+        base2.resolve(filename).toFile().delete();
+        Files.write(base2.resolve(filename), data2, StandardOpenOption.CREATE);
+        DirectorySync.syncDirs(localFs, base1, localFs, base2, false, true, null, null, syncedState, tmp, 32, 5);
+        Assert.assertTrue(Arrays.equals(Files.readAllBytes(base2.resolve(filename)), data2));
+        Assert.assertTrue(Arrays.equals(Files.readAllBytes(base1.resolve(filename)), data2));
+        Assert.assertTrue(! syncedState.hasLocalDelete(filename));
+        Assert.assertTrue(syncedState.allFilePaths().size() == 1);
     }
 
     @Test
@@ -73,12 +195,12 @@ public class SyncTests {
         FileState state1 = new FileState(path, 12345000, 12345, hash);
         synced.add(state1);
         FileState retrieved = synced.byPath(path);
-        Assert.assertTrue(retrieved.modificationTime == state1.modificationTime);
-        Assert.assertTrue(retrieved.size == state1.size);
+        Assert.assertEquals(retrieved.modificationTime, state1.modificationTime);
+        Assert.assertEquals(retrieved.size, state1.size);
         FileState state2 = new FileState(path, 12346000, 12346, hash);
         synced.add(state2);
         retrieved = synced.byPath(path);
-        Assert.assertTrue(retrieved.modificationTime == state2.modificationTime);
-        Assert.assertTrue(retrieved.size == state2.size);
+        Assert.assertEquals(retrieved.modificationTime, state2.modificationTime);
+        Assert.assertEquals(retrieved.size, state2.size);
     }
 }
