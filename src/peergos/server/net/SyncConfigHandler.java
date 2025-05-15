@@ -195,7 +195,7 @@ public class SyncConfigHandler implements HttpHandler {
                     saveConfigToFile(links, localDirs, syncLocalDeletes, syncRemoteDeletes);
                     // run sync client now
                     syncer.start();
-                    System.out.println("Syncing " + localDir);
+                    System.out.println("Syncing " + localDir + " syncLocalDeletes: " + newSyncLocalDeletes + ", syncRemoteDeletes: " + newSyncRemoteDeletes);
                     exchange.sendResponseHeaders(200, 0);
                     exchange.close();
                 }

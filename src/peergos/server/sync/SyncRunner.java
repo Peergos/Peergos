@@ -45,15 +45,15 @@ public interface SyncRunner {
                     if (updated.hasArg("links")) {
                         List<String> links = new ArrayList<>(Arrays.asList(updated.getArg("links").split(",")));
                         List<String> localDirs = new ArrayList<>(Arrays.asList(updated.getArg("local-dirs").split(",")));
-                        List<Boolean> syncLocalDeletes = args.hasArg("sync-local-deletes") ?
-                                new ArrayList<>(Arrays.stream(args.getArg("sync-local-deletes").split(","))
+                        List<Boolean> syncLocalDeletes = updated.hasArg("sync-local-deletes") ?
+                                new ArrayList<>(Arrays.stream(updated.getArg("sync-local-deletes").split(","))
                                         .map(Boolean::parseBoolean)
                                         .collect(Collectors.toList())) :
                                 IntStream.range(0, links.size())
                                         .mapToObj(x -> true)
                                         .collect(Collectors.toList());
-                        List<Boolean> syncRemoteDeletes = args.hasArg("sync-remote-deletes") ?
-                                new ArrayList<>(Arrays.stream(args.getArg("sync-remote-deletes").split(","))
+                        List<Boolean> syncRemoteDeletes = updated.hasArg("sync-remote-deletes") ?
+                                new ArrayList<>(Arrays.stream(updated.getArg("sync-remote-deletes").split(","))
                                         .map(Boolean::parseBoolean)
                                         .collect(Collectors.toList())) :
                                 IntStream.range(0, links.size())
