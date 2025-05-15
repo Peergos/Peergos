@@ -26,38 +26,38 @@ public class SyncTests {
         LocalFileSystem localFs = new LocalFileSystem(Main.initCrypto().hasher);
         SyncState syncedState = new JdbcTreeState(":memory:");
 
-        DirectorySync.syncDirs(localFs, base1, localFs, base2, true, true, null, null, syncedState, tmp, 32, 5);
+        DirectorySync.syncDirs(localFs, base1, localFs, base2, true, true, null, null, syncedState, tmp, 32, 5, DirectorySync::log);
 
         byte[] data = new byte[6 * 1024 * 1024];
         new Random(42).nextBytes(data);
         String filename = "file.bin";
         Files.write(base1.resolve(filename), data, StandardOpenOption.CREATE);
 
-        DirectorySync.syncDirs(localFs, base1, localFs, base2, true, true, null, null, syncedState, tmp, 32, 5);
+        DirectorySync.syncDirs(localFs, base1, localFs, base2, true, true, null, null, syncedState, tmp, 32, 5, DirectorySync::log);
         Assert.assertNotNull(syncedState.byPath(filename));
 
         // move file to a subdir
         Path subdir = base1.resolve("subdir");
         subdir.toFile().mkdirs();
         Files.move(base1.resolve(filename), subdir.resolve(filename));
-        DirectorySync.syncDirs(localFs, base1, localFs, base2, true, true, null, null, syncedState, tmp, 32, 5);
+        DirectorySync.syncDirs(localFs, base1, localFs, base2, true, true, null, null, syncedState, tmp, 32, 5, DirectorySync::log);
         Assert.assertNull(syncedState.byPath(filename));
         String fileRelPath = subdir.getFileName().resolve(filename).toString().replaceAll("\\\\", "/");
         Assert.assertNotNull(syncedState.byPath(fileRelPath));
 
         // sync should be stable
-        DirectorySync.syncDirs(localFs, base1, localFs, base2, true, true, null, null, syncedState, tmp, 32, 5);
+        DirectorySync.syncDirs(localFs, base1, localFs, base2, true, true, null, null, syncedState, tmp, 32, 5, DirectorySync::log);
         Assert.assertNull(syncedState.byPath(filename));
         Assert.assertNotNull(syncedState.byPath(fileRelPath));
 
         // move the file back
         Files.move(subdir.resolve(filename), base1.resolve(filename));
-        DirectorySync.syncDirs(localFs, base1, localFs, base2, true, true, null, null, syncedState, tmp, 32, 5);
+        DirectorySync.syncDirs(localFs, base1, localFs, base2, true, true, null, null, syncedState, tmp, 32, 5, DirectorySync::log);
         Assert.assertNotNull(syncedState.byPath(filename));
         Assert.assertNull(syncedState.byPath(fileRelPath));
 
         // check stability
-        DirectorySync.syncDirs(localFs, base1, localFs, base2, true, true, null, null, syncedState, tmp, 32, 5);
+        DirectorySync.syncDirs(localFs, base1, localFs, base2, true, true, null, null, syncedState, tmp, 32, 5, DirectorySync::log);
         Assert.assertNotNull(syncedState.byPath(filename));
         Assert.assertNull(syncedState.byPath(fileRelPath));
 
@@ -80,24 +80,24 @@ public class SyncTests {
 
         boolean syncLocalDeletes = false;
         boolean syncRemoteDeletes = true;
-        DirectorySync.syncDirs(localFs, base1, localFs, base2, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, tmp, 32, 5);
+        DirectorySync.syncDirs(localFs, base1, localFs, base2, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, tmp, 32, 5, DirectorySync::log);
 
         byte[] data = new byte[fileSize];
         new Random(42).nextBytes(data);
         String filename = "file.bin";
         Files.write(base1.resolve(filename), data, StandardOpenOption.CREATE);
 
-        DirectorySync.syncDirs(localFs, base1, localFs, base2, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, tmp, 32, 5);
+        DirectorySync.syncDirs(localFs, base1, localFs, base2, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, tmp, 32, 5, DirectorySync::log);
         Assert.assertNotNull(syncedState.byPath(filename));
 
         // delete local file and check remote is not deleted
         base1.resolve(filename).toFile().delete();
-        DirectorySync.syncDirs(localFs, base1, localFs, base2, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, tmp, 32, 5);
+        DirectorySync.syncDirs(localFs, base1, localFs, base2, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, tmp, 32, 5, DirectorySync::log);
         Assert.assertNotNull(syncedState.byPath(filename));
         Assert.assertTrue(base2.resolve(filename).toFile().exists());
         Assert.assertFalse(base1.resolve(filename).toFile().exists());
         Assert.assertTrue(syncedState.hasLocalDelete(filename));
-        DirectorySync.syncDirs(localFs, base1, localFs, base2, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, tmp, 32, 5);
+        DirectorySync.syncDirs(localFs, base1, localFs, base2, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, tmp, 32, 5, DirectorySync::log);
         Assert.assertNotNull(syncedState.byPath(filename));
         Assert.assertTrue(syncedState.hasLocalDelete(filename));
         Assert.assertTrue(base2.resolve(filename).toFile().exists());
@@ -107,7 +107,7 @@ public class SyncTests {
         byte[] data2 = new byte[fileSize + 1024 * 1024];
         new Random(28).nextBytes(data2);
         Files.write(base1.resolve(filename), data2, StandardOpenOption.CREATE);
-        DirectorySync.syncDirs(localFs, base1, localFs, base2, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, tmp, 32, 5);
+        DirectorySync.syncDirs(localFs, base1, localFs, base2, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, tmp, 32, 5, DirectorySync::log);
         Assert.assertArrayEquals(Files.readAllBytes(base2.resolve(filename)), data);
         Assert.assertArrayEquals(Files.readAllBytes(base1.resolve(filename)), data);
         Assert.assertFalse(syncedState.hasLocalDelete(filename));
@@ -130,30 +130,30 @@ public class SyncTests {
 
         boolean syncLocalDeletes = false;
         boolean syncRemoteDeletes = true;
-        DirectorySync.syncDirs(localFs, base1, localFs, base2, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, tmp, 32, 5);
+        DirectorySync.syncDirs(localFs, base1, localFs, base2, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, tmp, 32, 5, DirectorySync::log);
 
         byte[] data = new byte[fileSize];
         new Random(42).nextBytes(data);
         String filename = "file.bin";
         Files.write(base1.resolve(filename), data, StandardOpenOption.CREATE);
 
-        DirectorySync.syncDirs(localFs, base1, localFs, base2, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, tmp, 32, 5);
+        DirectorySync.syncDirs(localFs, base1, localFs, base2, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, tmp, 32, 5, DirectorySync::log);
         Assert.assertNotNull(syncedState.byPath(filename));
 
         // delete local file and check remote is not deleted
         base1.resolve(filename).toFile().delete();
-        DirectorySync.syncDirs(localFs, base1, localFs, base2, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, tmp, 32, 5);
+        DirectorySync.syncDirs(localFs, base1, localFs, base2, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, tmp, 32, 5, DirectorySync::log);
         Assert.assertNotNull(syncedState.byPath(filename));
         Assert.assertTrue(base2.resolve(filename).toFile().exists());
         Assert.assertTrue(syncedState.hasLocalDelete(filename));
-        DirectorySync.syncDirs(localFs, base1, localFs, base2, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, tmp, 32, 5);
+        DirectorySync.syncDirs(localFs, base1, localFs, base2, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, tmp, 32, 5, DirectorySync::log);
         Assert.assertNotNull(syncedState.byPath(filename));
         Assert.assertTrue(syncedState.hasLocalDelete(filename));
         Assert.assertTrue(base2.resolve(filename).toFile().exists());
 
         // restore the local file (it should be removed from the delete list)
         Files.write(base1.resolve(filename), data, StandardOpenOption.CREATE);
-        DirectorySync.syncDirs(localFs, base1, localFs, base2, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, tmp, 32, 5);
+        DirectorySync.syncDirs(localFs, base1, localFs, base2, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, tmp, 32, 5, DirectorySync::log);
         Assert.assertArrayEquals(Files.readAllBytes(base2.resolve(filename)), data);
         Assert.assertArrayEquals(Files.readAllBytes(base1.resolve(filename)), data);
         Assert.assertFalse(syncedState.hasLocalDelete(filename));
@@ -176,23 +176,23 @@ public class SyncTests {
 
         boolean syncLocalDeletes = false;
         boolean syncRemoteDeletes = true;
-        DirectorySync.syncDirs(localFs, base1, localFs, base2, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, tmp, 32, 5);
+        DirectorySync.syncDirs(localFs, base1, localFs, base2, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, tmp, 32, 5, DirectorySync::log);
 
         byte[] data = new byte[fileSize];
         new Random(42).nextBytes(data);
         String filename = "file.bin";
         Files.write(base1.resolve(filename), data, StandardOpenOption.CREATE);
 
-        DirectorySync.syncDirs(localFs, base1, localFs, base2, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, tmp, 32, 5);
+        DirectorySync.syncDirs(localFs, base1, localFs, base2, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, tmp, 32, 5, DirectorySync::log);
         Assert.assertNotNull(syncedState.byPath(filename));
 
         // delete local file and check remote is not deleted
         base1.resolve(filename).toFile().delete();
-        DirectorySync.syncDirs(localFs, base1, localFs, base2, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, tmp, 32, 5);
+        DirectorySync.syncDirs(localFs, base1, localFs, base2, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, tmp, 32, 5, DirectorySync::log);
         Assert.assertNotNull(syncedState.byPath(filename));
         Assert.assertTrue(base2.resolve(filename).toFile().exists());
         Assert.assertTrue(syncedState.hasLocalDelete(filename));
-        DirectorySync.syncDirs(localFs, base1, localFs, base2, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, tmp, 32, 5);
+        DirectorySync.syncDirs(localFs, base1, localFs, base2, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, tmp, 32, 5, DirectorySync::log);
         Assert.assertNotNull(syncedState.byPath(filename));
         Assert.assertTrue(syncedState.hasLocalDelete(filename));
         Assert.assertTrue(base2.resolve(filename).toFile().exists());
@@ -202,7 +202,7 @@ public class SyncTests {
         new Random(28).nextBytes(data2);
         base2.resolve(filename).toFile().delete();
         Files.write(base2.resolve(filename), data2, StandardOpenOption.CREATE);
-        DirectorySync.syncDirs(localFs, base1, localFs, base2, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, tmp, 32, 5);
+        DirectorySync.syncDirs(localFs, base1, localFs, base2, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, tmp, 32, 5, DirectorySync::log);
         Assert.assertArrayEquals(Files.readAllBytes(base2.resolve(filename)), data2);
         Assert.assertArrayEquals(Files.readAllBytes(base1.resolve(filename)), data2);
         Assert.assertFalse(syncedState.hasLocalDelete(filename));
@@ -225,23 +225,23 @@ public class SyncTests {
 
         boolean syncLocalDeletes = true;
         boolean syncRemoteDeletes = false;
-        DirectorySync.syncDirs(localFs, base1, localFs, base2, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, tmp, 32, 5);
+        DirectorySync.syncDirs(localFs, base1, localFs, base2, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, tmp, 32, 5, DirectorySync::log);
 
         byte[] data = new byte[fileSize];
         new Random(42).nextBytes(data);
         String filename = "file.bin";
         Files.write(base1.resolve(filename), data, StandardOpenOption.CREATE);
 
-        DirectorySync.syncDirs(localFs, base1, localFs, base2, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, tmp, 32, 5);
+        DirectorySync.syncDirs(localFs, base1, localFs, base2, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, tmp, 32, 5, DirectorySync::log);
         Assert.assertNotNull(syncedState.byPath(filename));
 
         // delete remote file and check local is not deleted
         base2.resolve(filename).toFile().delete();
-        DirectorySync.syncDirs(localFs, base1, localFs, base2, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, tmp, 32, 5);
+        DirectorySync.syncDirs(localFs, base1, localFs, base2, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, tmp, 32, 5, DirectorySync::log);
         Assert.assertNotNull(syncedState.byPath(filename));
         Assert.assertTrue(base1.resolve(filename).toFile().exists());
         Assert.assertTrue(syncedState.hasRemoteDelete(filename));
-        DirectorySync.syncDirs(localFs, base1, localFs, base2, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, tmp, 32, 5);
+        DirectorySync.syncDirs(localFs, base1, localFs, base2, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, tmp, 32, 5, DirectorySync::log);
         Assert.assertNotNull(syncedState.byPath(filename));
         Assert.assertTrue(syncedState.hasRemoteDelete(filename));
         Assert.assertTrue(base1.resolve(filename).toFile().exists());
@@ -250,7 +250,7 @@ public class SyncTests {
         byte[] data2 = new byte[fileSize + 1024 * 1024];
         new Random(28).nextBytes(data2);
         Files.write(base2.resolve(filename), data2, StandardOpenOption.CREATE);
-        DirectorySync.syncDirs(localFs, base1, localFs, base2, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, tmp, 32, 5);
+        DirectorySync.syncDirs(localFs, base1, localFs, base2, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, tmp, 32, 5, DirectorySync::log);
         Assert.assertArrayEquals(Files.readAllBytes(base2.resolve(filename)), data2);
         Assert.assertArrayEquals(Files.readAllBytes(base1.resolve(filename)), data2);
         Assert.assertFalse(syncedState.hasRemoteDelete(filename));
@@ -277,30 +277,30 @@ public class SyncTests {
 
         boolean syncLocalDeletes = true;
         boolean syncRemoteDeletes = false;
-        DirectorySync.syncDirs(localFs, base1, localFs, base2, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, tmp, 32, 5);
+        DirectorySync.syncDirs(localFs, base1, localFs, base2, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, tmp, 32, 5, DirectorySync::log);
 
         byte[] data = new byte[fileSize];
         new Random(42).nextBytes(data);
         String filename = "file.bin";
         Files.write(base1.resolve(filename), data, StandardOpenOption.CREATE);
 
-        DirectorySync.syncDirs(localFs, base1, localFs, base2, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, tmp, 32, 5);
+        DirectorySync.syncDirs(localFs, base1, localFs, base2, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, tmp, 32, 5, DirectorySync::log);
         Assert.assertNotNull(syncedState.byPath(filename));
 
         // delete remote file and check local is not deleted
         base2.resolve(filename).toFile().delete();
-        DirectorySync.syncDirs(localFs, base1, localFs, base2, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, tmp, 32, 5);
+        DirectorySync.syncDirs(localFs, base1, localFs, base2, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, tmp, 32, 5, DirectorySync::log);
         Assert.assertNotNull(syncedState.byPath(filename));
         Assert.assertTrue(base1.resolve(filename).toFile().exists());
         Assert.assertTrue(syncedState.hasRemoteDelete(filename));
-        DirectorySync.syncDirs(localFs, base1, localFs, base2, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, tmp, 32, 5);
+        DirectorySync.syncDirs(localFs, base1, localFs, base2, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, tmp, 32, 5, DirectorySync::log);
         Assert.assertNotNull(syncedState.byPath(filename));
         Assert.assertTrue(syncedState.hasRemoteDelete(filename));
         Assert.assertTrue(base1.resolve(filename).toFile().exists());
 
         // restore the remote file (it should be removed from the delete list)
         Files.write(base2.resolve(filename), data, StandardOpenOption.CREATE);
-        DirectorySync.syncDirs(localFs, base1, localFs, base2, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, tmp, 32, 5);
+        DirectorySync.syncDirs(localFs, base1, localFs, base2, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, tmp, 32, 5, DirectorySync::log);
         Assert.assertArrayEquals(Files.readAllBytes(base2.resolve(filename)), data);
         Assert.assertArrayEquals(Files.readAllBytes(base1.resolve(filename)), data);
         Assert.assertFalse(syncedState.hasRemoteDelete(filename));
@@ -323,23 +323,23 @@ public class SyncTests {
 
         boolean syncLocalDeletes = true;
         boolean syncRemoteDeletes = false;
-        DirectorySync.syncDirs(localFs, base1, localFs, base2, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, tmp, 32, 5);
+        DirectorySync.syncDirs(localFs, base1, localFs, base2, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, tmp, 32, 5, DirectorySync::log);
 
         byte[] data = new byte[fileSize];
         new Random(42).nextBytes(data);
         String filename = "file.bin";
         Files.write(base1.resolve(filename), data, StandardOpenOption.CREATE);
 
-        DirectorySync.syncDirs(localFs, base1, localFs, base2, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, tmp, 32, 5);
+        DirectorySync.syncDirs(localFs, base1, localFs, base2, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, tmp, 32, 5, DirectorySync::log);
         Assert.assertNotNull(syncedState.byPath(filename));
 
         // delete remote file and check local is not deleted
         base2.resolve(filename).toFile().delete();
-        DirectorySync.syncDirs(localFs, base1, localFs, base2, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, tmp, 32, 5);
+        DirectorySync.syncDirs(localFs, base1, localFs, base2, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, tmp, 32, 5, DirectorySync::log);
         Assert.assertNotNull(syncedState.byPath(filename));
         Assert.assertTrue(base1.resolve(filename).toFile().exists());
         Assert.assertTrue(syncedState.hasRemoteDelete(filename));
-        DirectorySync.syncDirs(localFs, base1, localFs, base2, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, tmp, 32, 5);
+        DirectorySync.syncDirs(localFs, base1, localFs, base2, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, tmp, 32, 5, DirectorySync::log);
         Assert.assertNotNull(syncedState.byPath(filename));
         Assert.assertTrue(syncedState.hasRemoteDelete(filename));
         Assert.assertTrue(base1.resolve(filename).toFile().exists());
@@ -349,7 +349,7 @@ public class SyncTests {
         new Random(28).nextBytes(data2);
         base1.resolve(filename).toFile().delete();
         Files.write(base1.resolve(filename), data2, StandardOpenOption.CREATE);
-        DirectorySync.syncDirs(localFs, base1, localFs, base2, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, tmp, 32, 5);
+        DirectorySync.syncDirs(localFs, base1, localFs, base2, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, tmp, 32, 5, DirectorySync::log);
         Assert.assertArrayEquals(Files.readAllBytes(base2.resolve(filename)), data2);
         Assert.assertArrayEquals(Files.readAllBytes(base1.resolve(filename)), data2);
         Assert.assertFalse(syncedState.hasRemoteDelete(filename));

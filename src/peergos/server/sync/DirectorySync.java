@@ -385,7 +385,7 @@ public class DirectorySync {
                     downloads.add(ForkJoinPool.commonPool().submit(() -> {
                         try {
                             syncFile(synced, local, remote, localFS, localDir, remoteFS, remoteDir, syncedVersions,
-                                    localState, remoteState, syncLocalDeletes, syncRemoteDeletes, doneFiles, minPercentFreeSpace);
+                                    localState, remoteState, syncLocalDeletes, syncRemoteDeletes, doneFiles, minPercentFreeSpace, LOG);
                         } catch (IOException e) {
                             throw new RuntimeException(e);
                         } finally {
