@@ -63,7 +63,8 @@ public interface SyncRunner {
                         int minFreeSpacePercent = updated.getInt("min-free-space-percent", 5);
                         if (!links.isEmpty()) {
                             try {
-                                DirectorySync.syncDir(links, localDirs, syncLocalDeletes, syncRemoteDeletes, maxDownloadParallelism, minFreeSpacePercent, true, peergosDir, network, crypto);
+                                DirectorySync.syncDir(links, localDirs, syncLocalDeletes, syncRemoteDeletes,
+                                        maxDownloadParallelism, minFreeSpacePercent, true, peergosDir, DirectorySync::log, network, crypto);
                             } catch (Exception e) {
                                 LOG.log(Level.WARNING, e.getMessage(), e);
                             }

@@ -29,7 +29,6 @@ import peergos.shared.util.*;
 
 import java.io.*;
 import java.net.URL;
-import java.nio.file.FileSystem;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -43,7 +42,7 @@ import java.util.concurrent.ForkJoinTask;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.function.Supplier;
+import java.util.function.*;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
@@ -98,7 +97,8 @@ public class DirectorySync {
             int minFreeSpacePercent = args.getInt("min-free-space-percent", 5);
             boolean oneRun = args.getBoolean("run-once", false);
             Path peergosDir = args.getPeergosDir();
-            return syncDir(links, localDirs, syncLocalDeletes, syncRemoteDeletes, maxDownloadParallelism, minFreeSpacePercent, oneRun, peergosDir, network, crypto);
+            return syncDir(links, localDirs, syncLocalDeletes, syncRemoteDeletes, maxDownloadParallelism,
+                    minFreeSpacePercent, oneRun, peergosDir, m -> log(m), network, crypto);
         } catch (Exception e) {
             LOG.log(Level.SEVERE, e, e::getMessage);
             throw new RuntimeException(e);
@@ -113,6 +113,7 @@ public class DirectorySync {
                                   int minFreeSpacePercent,
                                   boolean oneRun,
                                   Path peergosDir,
+                                  Consumer<String> LOG,
                                   NetworkAccess network,
                                   Crypto crypto) {
         if (syncLocalDeletes.size() != links.size())
@@ -149,7 +150,7 @@ public class DirectorySync {
                     String username = remoteDir.getName(0).toString();
                     PublicKeyHash owner = network.coreNode.getPublicKeyHash(username).join().get();
                     syncDirs(local, localDir, remote, remoteDir, syncLocalDeletes.get(i), syncRemoteDeletes.get(i),
-                            owner, network, syncedState, peergosDir, maxDownloadParallelism, minFreeSpacePercent);
+                            owner, network, syncedState, peergosDir, maxDownloadParallelism, minFreeSpacePercent, LOG);
                     long t1 = System.currentTimeMillis();
                     log("Dir sync took " + (t1 - t0) / 1000 + "s");
                 }
@@ -158,7 +159,7 @@ public class DirectorySync {
                 Thread.sleep(30_000);
             } catch (Exception e) {
                 e.printStackTrace();
-                LOG.log(Level.WARNING, e, e::getMessage);
+                DirectorySync.LOG.log(Level.WARNING, e, e::getMessage);
                 Threads.sleep(30_000);
             }
         }
@@ -233,7 +234,8 @@ public class DirectorySync {
                                 SyncState syncedVersions,
                                 Path peergosDir,
                                 int maxParallelism,
-                                int minPercentFreeSpace) throws IOException {
+                                int minPercentFreeSpace,
+                                Consumer<String> LOG) throws IOException {
         // first complete any failed in progress copy ops
         List<CopyOp> ops = syncedVersions.getInProgressCopies();
         if (! ops.isEmpty())
@@ -295,7 +297,7 @@ public class DirectorySync {
             }
 
             if (!smallFiles.isEmpty()) {
-                log("Remote: bulk uploading " + smallFiles.size() + " small files");
+                LOG.accept("Remote: bulk uploading " + smallFiles.size() + " small files");
                 Map<String, FileWrapper.FolderUploadProperties> folders = new HashMap<>();
                 for (String relPath : smallFiles) {
                     doneFiles.add(relPath);
@@ -322,7 +324,7 @@ public class DirectorySync {
                             },
                             (int) (local.size >> 32), (int) local.size, Optional.of(modificationTime), Optional.of(local.hashTree), false, true, x -> {
                         if (!uploadStarted.get()) {
-                            log("REMOTE: Uploading " + relPath);
+                            LOG.accept("REMOTE: Uploading " + relPath);
                             uploadStarted.set(true);
                         }
                     }));
@@ -352,11 +354,11 @@ public class DirectorySync {
                     }
                 }
                 byFolder.forEach((dir, files) -> {
-                    log("REMOTE: bulk deleting " + files.size() + " from " + remoteDir.resolve(dir));
+                    LOG.accept("REMOTE: bulk deleting " + files.size() + " from " + remoteDir.resolve(dir));
                     remoteFS.bulkDelete(remoteDir.resolve(dir), files);
                     for (String file : files) {
                         String path = dir + (dir.isEmpty() ? "" : "/") + file;
-                        log("REMOTE: deleted " + path);
+                        LOG.accept("REMOTE: deleted " + path);
                         syncedVersions.remove(path);
                     }
                 });
@@ -392,7 +394,7 @@ public class DirectorySync {
                     }));
                 } else
                     syncFile(synced, local, remote, localFS, localDir, remoteFS, remoteDir, syncedVersions, localState,
-                            remoteState, syncLocalDeletes, syncRemoteDeletes, doneFiles, minPercentFreeSpace);
+                            remoteState, syncLocalDeletes, syncRemoteDeletes, doneFiles, minPercentFreeSpace, LOG);
             }
 
             for (ForkJoinTask<?> download : downloads) {
@@ -443,7 +445,7 @@ public class DirectorySync {
         }
     }
 
-    private static void log(String msg) {
+    public static void log(String msg) {
         System.out.println(msg);
         LOG.info(msg);
     }
@@ -454,7 +456,9 @@ public class DirectorySync {
                                 SyncState syncedVersions, SyncState localTree, SyncState remoteTree,
                                 boolean syncLocalDeletes,
                                 boolean syncRemoteDeletes,
-                                Set<String> doneFiles, int minPercentFree) throws IOException {
+                                Set<String> doneFiles,
+                                int minPercentFree,
+                                Consumer<String> LOG) throws IOException {
         long totalSpace;
         try {
             totalSpace = Files.getFileStore(localDir).getTotalSpace();
@@ -475,14 +479,14 @@ public class DirectorySync {
                         Optional.empty();
                 if (byHash.size() == 1 && remoteAtHashedPath.isEmpty()) {// rename
                     FileState toMove = byHash.get(0);
-                    log("Sync Local: Moving " + toMove.relPath + " ==> " + remote.relPath);
+                    LOG.accept("Sync Local: Moving " + toMove.relPath + " ==> " + remote.relPath);
                     localFs.moveTo(localDir.resolve(toMove.relPath), localDir.resolve(remote.relPath));
                     syncedVersions.remove(toMove.relPath);
                     doneFiles.add(toMove.relPath);
                 } else {
                     if ((freeSpace - remote.size) * 100 / totalSpace < minPercentFree)
                         throw new IllegalStateException("Not enough free space to sync and keep " + minPercentFree + "% free");
-                    log("Sync Local: Copying " + remote.relPath);
+                    LOG.accept("Sync Local: Copying " + remote.relPath);
                     List<Pair<Long, Long>> diffs = remote.diffRanges(null);
                     List<CopyOp> ops = diffs.stream()
                             .map(d -> new CopyOp(true, remoteDir.resolve(remote.relPath), localDir.resolve(remote.relPath), remote, null, d.left, d.right))
@@ -497,12 +501,12 @@ public class DirectorySync {
                         Optional.empty();
                 if (byHash.size() == 1 && localAtHashedPath.isEmpty()) {// rename
                     FileState toMove = byHash.get(0);
-                    log("Sync Remote: Moving " + toMove.relPath + " ==> " + local.relPath);
+                    LOG.accept("Sync Remote: Moving " + toMove.relPath + " ==> " + local.relPath);
                     remoteFs.moveTo(remoteDir.resolve(toMove.relPath), remoteDir.resolve(Paths.get(local.relPath)));
                     syncedVersions.remove(toMove.relPath);
                     doneFiles.add(toMove.relPath);
                 } else {
-                    log("Sync Remote: Copying " + local.relPath);
+                    LOG.accept("Sync Remote: Copying " + local.relPath);
                     List<Pair<Long, Long>> diffs = local.diffRanges(null);
                     List<CopyOp> ops = diffs.stream()
                             .map(d -> new CopyOp(false, localDir.resolve(local.relPath), remoteDir.resolve(local.relPath), local, null, d.left, d.right))
@@ -514,12 +518,12 @@ public class DirectorySync {
                 // concurrent addition, rename 1 if contents are different
                 if (remote.hashTree.rootHash.equals(local.hashTree.rootHash)) {
                     if (local.modificationTime > remote.modificationTime) {
-                        log("Remote: Set mod time " + local.relPath);
+                        LOG.accept("Remote: Set mod time " + local.relPath);
                         remoteFs.setModificationTime(remoteDir.resolve(local.relPath), local.modificationTime);
                         syncedVersions.add(local);
                         return;
                     } else if (remote.modificationTime > local.modificationTime) {
-                        log("Sync Local: Set mod time " + local.relPath);
+                        LOG.accept("Sync Local: Set mod time " + local.relPath);
                         localFs.setModificationTime(localDir.resolve(local.relPath), remote.modificationTime);
                         syncedVersions.add(remote);
                         return;
@@ -528,7 +532,7 @@ public class DirectorySync {
                 } else {
                     if ((freeSpace - remote.size) * 100 / totalSpace < minPercentFree)
                         throw new IllegalStateException("Not enough free space to sync and keep " + minPercentFree + "% free. Conflict on " + local.relPath);
-                    log("Sync Remote: Concurrent file addition: " + local.relPath + " renaming local version");
+                    LOG.accept("Sync Remote: Concurrent file addition: " + local.relPath + " renaming local version");
                     FileState renamed = renameOnConflict(localFs, localDir.resolve(local.relPath), local);
                     List<Pair<Long, Long>> diffs = remote.diffRanges(null);
                     List<CopyOp> ops = diffs.stream()
@@ -556,7 +560,7 @@ public class DirectorySync {
                         // we will do the local rename when we process the new remote entry
                     } else {
                         if (syncRemoteDeletes) {
-                            log("Sync Local: delete " + local.relPath);
+                            LOG.accept("Sync Local: delete " + local.relPath);
                             localFs.delete(localDir.resolve(local.relPath));
                             syncedVersions.remove(local.relPath);
                         } else {
@@ -572,7 +576,7 @@ public class DirectorySync {
                 } else {
                     if (syncedVersions.hasRemoteDelete(remote.relPath)) {
                         // remote file was deleted, then a different file with same path was added. Rename local and copy remote
-                        log("Sync Remote: Concurrent change: " + local.relPath + " renaming local version");
+                        LOG.accept("Sync Remote: Concurrent change: " + local.relPath + " renaming local version");
                         FileState renamed = renameOnConflict(localFs, localDir.resolve(local.relPath), local);
                         List<Pair<Long, Long>> diffs = remote.diffRanges(null);
                         List<CopyOp> ops = diffs.stream()
@@ -591,7 +595,7 @@ public class DirectorySync {
                     } else {
                         if (remote.size > local.size && (freeSpace + local.size - remote.size) * 100 / totalSpace < minPercentFree)
                             throw new IllegalStateException("Not enough free space to sync and keep " + minPercentFree + "% free");
-                        log("Sync Local: Copying changes to " + remote.relPath);
+                        LOG.accept("Sync Local: Copying changes to " + remote.relPath);
                         List<Pair<Long, Long>> diffs = remote.diffRanges(local);
                         List<CopyOp> ops = diffs.stream()
                                 .map(d -> new CopyOp(true, remoteDir.resolve(remote.relPath), localDir.resolve(remote.relPath), remote, null, d.left, d.right))
@@ -610,7 +614,7 @@ public class DirectorySync {
                         // we will do the local rename when we process the new remote entry
                     } else {
                         if (syncLocalDeletes) {
-                            log("Sync Remote: delete " + remote.relPath);
+                            LOG.accept("Sync Remote: delete " + remote.relPath);
                             remoteFs.delete(remoteDir.resolve(remote.relPath));
                             syncedVersions.remove(remote.relPath);
                         } else {
@@ -626,7 +630,7 @@ public class DirectorySync {
                 } else {
                     if (syncedVersions.hasLocalDelete(local.relPath)) {
                         // local file was deleted, then a different file with same path was added. Keep remote, rename local.
-                        log("Sync Remote: Concurrent change: " + local.relPath + " renaming different local version after local delete");
+                        LOG.accept("Sync Remote: Concurrent change: " + local.relPath + " renaming different local version after local delete");
                         FileState renamed = renameOnConflict(localFs, localDir.resolve(local.relPath), local);
                         List<Pair<Long, Long>> diffs = remote.diffRanges(null);
                         List<CopyOp> ops = diffs.stream()
@@ -643,7 +647,7 @@ public class DirectorySync {
                         syncedVersions.add(renamed);
                         syncedVersions.removeLocalDelete(local.relPath);
                     } else {
-                        log("Sync Remote: Copying changes to " + local.relPath);
+                        LOG.accept("Sync Remote: Copying changes to " + local.relPath);
                         List<Pair<Long, Long>> diffs = local.diffRanges(remote);
                         List<CopyOp> ops = diffs.stream()
                                 .map(d -> new CopyOp(false, localDir.resolve(local.relPath), remoteDir.resolve(local.relPath), local, null, d.left, d.right))
@@ -655,14 +659,14 @@ public class DirectorySync {
                 }
             } else { // concurrent change/deletion
                 if (local == null && remote == null) {// concurrent deletes
-                    log("Sync Concurrent delete on " + synced.relPath);
+                    LOG.accept("Sync Concurrent delete on " + synced.relPath);
                     syncedVersions.remove(synced.relPath);
                     return;
                 }
                 if (local == null) { // local delete, copy changed remote
                     if ((freeSpace - remote.size) * 100 / totalSpace < minPercentFree)
                         throw new IllegalStateException("Not enough free space to sync and keep " + minPercentFree + "% free");
-                    log("Sync Local: deleted, copying changed remote " + remote.relPath + ", Synced: " + synced.prettyPrint() + ", remote: " + remote.prettyPrint());
+                    LOG.accept("Sync Local: deleted, copying changed remote " + remote.relPath + ", Synced: " + synced.prettyPrint() + ", remote: " + remote.prettyPrint());
                     List<Pair<Long, Long>> diffs = remote.diffRanges(null);
                     List<CopyOp> ops = diffs.stream()
                             .map(d -> new CopyOp(true, remoteDir.resolve(remote.relPath), localDir.resolve(remote.relPath), remote, null, d.left, d.right))
@@ -674,7 +678,7 @@ public class DirectorySync {
                     return;
                 }
                 if (remote == null) { // remote delete, copy changed local
-                    log("Sync Remote: deleted, copying changed local " + local.relPath);
+                    LOG.accept("Sync Remote: deleted, copying changed local " + local.relPath);
                     List<Pair<Long, Long>> diffs = local.diffRanges(null);
                     List<CopyOp> ops = diffs.stream()
                             .map(d -> new CopyOp(false, localDir.resolve(local.relPath), remoteDir.resolve(local.relPath), local, null, d.left, d.right))
@@ -693,7 +697,7 @@ public class DirectorySync {
                     syncedVersions.add(local);
                 } else if (synced.hashTree.rootHash.equals(remote.hashTree.rootHash)) {
                     // synced content is same as remote, so just a local change
-                    log("Sync Remote: Copying changes to " + local.relPath);
+                    LOG.accept("Sync Remote: Copying changes to " + local.relPath);
                     List<Pair<Long, Long>> diffs = local.diffRanges(remote);
                     List<CopyOp> ops = diffs.stream()
                             .map(d -> new CopyOp(false, localDir.resolve(local.relPath), remoteDir.resolve(local.relPath), local, remote, d.left, d.right))
@@ -702,7 +706,7 @@ public class DirectorySync {
                     remoteFs.setHash(remoteDir.resolve(local.relPath), local.hashTree, local.size);
                     syncedVersions.add(local);
                 } else {
-                    log("Sync Remote: Concurrent change: " + local.relPath + " renaming local version");
+                    LOG.accept("Sync Remote: Concurrent change: " + local.relPath + " renaming local version");
                     FileState renamed = renameOnConflict(localFs, localDir.resolve(local.relPath), local);
                     List<Pair<Long, Long>> diffs = remote.diffRanges(null);
                     List<CopyOp> ops = diffs.stream()
