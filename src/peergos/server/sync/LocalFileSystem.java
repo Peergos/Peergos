@@ -6,7 +6,7 @@ import peergos.server.crypto.hash.ScryptJava;
 import peergos.server.simulation.FileAsyncReader;
 import peergos.shared.crypto.hash.Hasher;
 import peergos.shared.user.fs.*;
-import peergos.shared.util.Pair;
+import peergos.shared.util.PathUtil;
 import peergos.shared.util.Triple;
 
 import java.io.*;
@@ -24,27 +24,54 @@ public class LocalFileSystem implements SyncFilesystem {
 
     private static final Logger LOG = LoggerFactory.getLogger(LocalFileSystem.class);
     private final Hasher hasher;
+    private final Path root;
+    private final boolean hasBackSlashes;
 
-    public LocalFileSystem(Hasher hasher) {
+    public LocalFileSystem(Path root, Hasher hasher) {
+        this.root = root;
         this.hasher = hasher;
+        if (! exists(root))
+            throw new IllegalStateException("Dir does not exist: " + root);
+        this.hasBackSlashes = ! root.getFileSystem().getSeparator().equals("/");
+    }
+
+    @Override
+    public long totalSpace() throws IOException {
+        return Files.getFileStore(root).getTotalSpace();
+    }
+
+    @Override
+    public long freeSpace() throws IOException {
+        return Files.getFileStore(root).getUsableSpace();
+    }
+
+    @Override
+    public String getRoot() {
+        return root.toString();
+    }
+
+    @Override
+    public Path resolve(String p) {
+        return PathUtil.get(p);
     }
 
     @Override
     public boolean exists(Path p) {
-        return p.toFile().exists();
+        return root.resolve(p).toFile().exists();
     }
 
     @Override
     public void mkdirs(Path p) {
-        File f = p.toFile();
+        File f = root.resolve(p).toFile();
         if (f.exists() && f.isDirectory())
             return;
         if (!f.mkdirs() && ! f.exists())
-            throw new IllegalStateException("Couldn't create " + p);
+            throw new IllegalStateException("Couldn't create " + root.resolve(p));
     }
 
     @Override
     public void delete(Path p) {
+        p = root.resolve(p);
         try {
             if (Files.isDirectory(p) && Files.list(p).anyMatch(f -> true))
                 throw new IllegalStateException("Trying to delete non empty directory: " + p);
@@ -61,19 +88,19 @@ public class LocalFileSystem implements SyncFilesystem {
 
     @Override
     public void moveTo(Path src, Path target) {
-        target.getParent().toFile().mkdirs();
-        src.toFile().renameTo(target.toFile());
+        root.resolve(target).getParent().toFile().mkdirs();
+        root.resolve(src).toFile().renameTo(root.resolve(target).toFile());
     }
 
     @Override
     public long getLastModified(Path p) {
-        long millis = p.toFile().lastModified();
+        long millis = root.resolve(p).toFile().lastModified();
         return millis / 1000 * 1000;
     }
 
     @Override
     public void setModificationTime(Path p, long modificationTime) {
-        p.toFile().setLastModified(modificationTime / 1000 * 1000);
+        root.resolve(p).toFile().setLastModified(modificationTime / 1000 * 1000);
     }
 
     @Override
@@ -84,19 +111,19 @@ public class LocalFileSystem implements SyncFilesystem {
 
     @Override
     public long size(Path p) {
-        return p.toFile().length();
+        return root.resolve(p).toFile().length();
     }
 
     @Override
     public void truncate(Path p, long size) throws IOException {
-        try (RandomAccessFile raf = new RandomAccessFile(p.toFile(), "rw")) {
+        try (RandomAccessFile raf = new RandomAccessFile(root.resolve(p).toFile(), "rw")) {
             raf.setLength(size);
         }
     }
 
     @Override
     public void setBytes(Path p, long fileOffset, AsyncReader fin, long size, Optional<HashTree> hash, Optional<LocalDateTime> modificationTime, Optional<Thumbnail> thumbnail) throws IOException {
-        try (RandomAccessFile raf = new RandomAccessFile(p.toFile(), "rw")) {
+        try (RandomAccessFile raf = new RandomAccessFile(root.resolve(p).toFile(), "rw")) {
             raf.seek(fileOffset);
             byte[] buf = new byte[4096];
             long done = 0;
@@ -108,21 +135,21 @@ public class LocalFileSystem implements SyncFilesystem {
             if (modificationTime.isPresent()) {
                 long time = modificationTime.get().toInstant(ZoneOffset.UTC).toEpochMilli() / 1000 * 1000;
                 if (time >= 0)
-                    p.toFile().setLastModified(time);
+                    root.resolve(p).toFile().setLastModified(time);
             }
         }
     }
 
     @Override
     public AsyncReader getBytes(Path p, long fileOffset) throws IOException {
-        return new FileAsyncReader(p.toFile());
+        return new FileAsyncReader(root.resolve(p).toFile());
     }
 
     @Override
-    public void uploadSubtree(Path baseDir, Stream<FileWrapper.FolderUploadProperties> directories) {
+    public void uploadSubtree(Stream<FileWrapper.FolderUploadProperties> directories) {
         byte[] buf = new byte[5*1024*1024];
         directories.forEach(folder -> {
-            Path dir = baseDir.resolve(folder.path());
+            Path dir = root.resolve(folder.path());
             dir.toFile().mkdirs();
             for (FileWrapper.FileUploadProperties file : folder.files) {
                 AsyncReader reader = file.fileData.get();
@@ -145,18 +172,24 @@ public class LocalFileSystem implements SyncFilesystem {
 
     @Override
     public Optional<Thumbnail> getThumbnail(Path p) {
-        return ThumbnailGenerator.getVideo().generateVideoThumbnail(p.toFile());
+        return ThumbnailGenerator.getVideo().generateVideoThumbnail(root.resolve(p).toFile());
     }
 
     @Override
     public HashTree hashFile(Path p, Optional<FileWrapper> meta, String relPath, SyncState syncedVersions) {
-        return ScryptJava.hashFile(p, hasher);
+        return ScryptJava.hashFile(root.resolve(p), hasher);
     }
 
     @Override
-    public void applyToSubtree(Path start, Consumer<FileProps> file, Consumer<FileProps> dir) throws IOException {
+    public void applyToSubtree(Consumer<FileProps> file, Consumer<FileProps> dir) throws IOException {
+        applyToSubtree(root, file, dir);
+    }
+
+    private void applyToSubtree(Path start, Consumer<FileProps> file, Consumer<FileProps> dir) throws IOException {
         Files.list(start).forEach(c -> {
-            FileProps props = new FileProps(start.resolve(c.getFileName()), c.toFile().lastModified() / 1000 * 1000, c.toFile().length(), Optional.empty());
+            String relPath = root.relativize(start.resolve(c.getFileName())).toString();
+            String canonicalRelPath = hasBackSlashes ? relPath.replaceAll("\\\\", "/") : relPath;
+            FileProps props = new FileProps(canonicalRelPath, c.toFile().lastModified() / 1000 * 1000, c.toFile().length(), Optional.empty());
             if (Files.isRegularFile(c)) {
                 file.accept(props);
             } else if (Files.isDirectory(c)) {

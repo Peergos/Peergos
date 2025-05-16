@@ -15,6 +15,14 @@ import java.util.stream.Stream;
 
 public interface SyncFilesystem {
 
+    long totalSpace() throws IOException;
+
+    long freeSpace() throws IOException;
+
+    String getRoot();
+
+    Path resolve(String p);
+
     boolean exists(Path p);
 
     void mkdirs(Path p);
@@ -41,22 +49,22 @@ public interface SyncFilesystem {
 
     AsyncReader getBytes(Path p, long fileOffset) throws IOException;
 
-    void uploadSubtree(Path baseDir, Stream<FileWrapper.FolderUploadProperties> directories);
+    void uploadSubtree(Stream<FileWrapper.FolderUploadProperties> directories);
 
     Optional<Thumbnail> getThumbnail(Path p);
 
     HashTree hashFile(Path p, Optional<FileWrapper> meta, String relativePath, SyncState syncedState);
 
-    void applyToSubtree(Path start, Consumer<FileProps> file, Consumer<FileProps> dir) throws IOException;
+    void applyToSubtree(Consumer<FileProps> file, Consumer<FileProps> dir) throws IOException;
 
     class FileProps {
-        public final Path path;
+        public final String relPath;
         public final long modifiedTime;
         public final long size;
         public final Optional<FileWrapper> meta;
 
-        public FileProps(Path path, long modifiedTime, long size, Optional<FileWrapper> meta) {
-            this.path = path;
+        public FileProps(String relPath, long modifiedTime, long size, Optional<FileWrapper> meta) {
+            this.relPath = relPath;
             this.modifiedTime = modifiedTime;
             this.size = size;
             this.meta = meta;
