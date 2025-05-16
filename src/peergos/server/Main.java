@@ -607,7 +607,7 @@ public class Main extends Builder {
 
                     SyncRunner.ThreadBased syncer = new SyncRunner.ThreadBased(a, withoutS3, pointerCache, offlineCorenode, crypto);
                     UserService server = new UserService(withoutS3, offlineBats, crypto, offlineCorenode, offlineAccounts,
-                            httpSocial, pointerCache, admin, httpUsage, serverMessager, null, Optional.of(new SyncProperties(a, syncer, new HostDirEnumerator.Java())));
+                            httpSocial, pointerCache, admin, httpUsage, serverMessager, null, Optional.of(new SyncProperties(a, syncer, Either.a(new HostDirEnumerator.Java()))));
 
                     InetSocketAddress localAPIAddress = new InetSocketAddress("localhost", port);
                     List<String> appSubdomains = Arrays.asList("markup-viewer,calendar,code-editor,pdf".split(","));
@@ -776,7 +776,7 @@ public class Main extends Builder {
                     sqlCommands, core, p2pDht);
             SyncRunner.ThreadBased syncer = new SyncRunner.ThreadBased(a, cachingStorage, p2mMutable, corePropagator, crypto);
             UserService localAPI = new UserService(cachingStorage, p2pBats, crypto, corePropagator, verifyingAccount,
-                    p2pSocial, p2mMutable, storageAdmin, p2pSpaceUsage, serverMessages, gc, Optional.of(new SyncProperties(a, syncer, new HostDirEnumerator.Java())));
+                    p2pSocial, p2mMutable, storageAdmin, p2pSpaceUsage, serverMessages, gc, Optional.of(new SyncProperties(a, syncer, Either.a(new HostDirEnumerator.Java()))));
             UserService p2pAPI = new UserService(incomingP2PStorage, p2pBats, crypto, corePropagator, verifyingAccount,
                     p2pSocial, p2mMutable, storageAdmin, p2pSpaceUsage, serverMessages, gc, Optional.empty());
             InetSocketAddress localAPIAddress = userAPIAddress;

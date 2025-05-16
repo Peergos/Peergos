@@ -3,6 +3,7 @@ package peergos.server.net;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 import org.peergos.config.Jsonable;
+import peergos.server.HostDirChooser;
 import peergos.server.HostDirEnumerator;
 import peergos.server.sync.SyncRunner;
 import peergos.server.util.Args;
@@ -18,6 +19,7 @@ import peergos.shared.user.MutableTreeImpl;
 import peergos.shared.user.UserContext;
 import peergos.shared.user.WriteSynchronizer;
 import peergos.shared.util.Constants;
+import peergos.shared.util.Either;
 import peergos.shared.util.Futures;
 import peergos.shared.util.Serialize;
 
@@ -38,13 +40,13 @@ public class SyncConfigHandler implements HttpHandler {
     private final SyncRunner syncer;
     private final NetworkAccess network;
     private final Crypto crypto;
-    private final HostDirEnumerator hostPaths;
+    private final Either<HostDirEnumerator, HostDirChooser> hostPaths;
 
     public SyncConfigHandler(Args a,
                              SyncRunner syncer,
                              ContentAddressedStorage storage,
                              MutablePointers mutable,
-                             HostDirEnumerator hostPaths,
+                             Either<HostDirEnumerator, HostDirChooser> hostPaths,
                              CoreNode core,
                              Crypto crypto) {
         this.args = a;
@@ -252,9 +254,22 @@ public class SyncConfigHandler implements HttpHandler {
                 resp.write(res);
                 exchange.close();
             } else if (action.equals("get-host-paths")) {
+                if (hostPaths.isB())
+                    throw new IllegalStateException("Use direct dir chooser");
                 String prefix = last.apply("prefix");
-                List<String> json = hostPaths.getHostDirs(prefix, 5).join();
+                List<String> json = hostPaths.a().getHostDirs(prefix, 5).join();
                 Collections.sort(json);
+                byte[] res = JSONParser.toString(json).getBytes(StandardCharsets.UTF_8);
+                exchange.sendResponseHeaders(200, res.length);
+                OutputStream resp = exchange.getResponseBody();
+                resp.write(res);
+                exchange.close();
+            } else if (action.equals("get-host-dir")) {
+                if (hostPaths.isA())
+                    throw new IllegalStateException("Use dir lister");
+                String rootUri = hostPaths.b().chooseDir().join();
+                Map<String, Object> json = new LinkedHashMap<>();
+                json.put("root", rootUri);
                 byte[] res = JSONParser.toString(json).getBytes(StandardCharsets.UTF_8);
                 exchange.sendResponseHeaders(200, res.length);
                 OutputStream resp = exchange.getResponseBody();
