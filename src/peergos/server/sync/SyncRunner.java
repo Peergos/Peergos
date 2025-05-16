@@ -11,6 +11,7 @@ import peergos.shared.user.MutableTreeImpl;
 import peergos.shared.user.WriteSynchronizer;
 
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.logging.Level;
@@ -64,7 +65,7 @@ public interface SyncRunner {
                         if (!links.isEmpty()) {
                             try {
                                 DirectorySync.syncDirs(links, localDirs, syncLocalDeletes, syncRemoteDeletes,
-                                        maxDownloadParallelism, minFreeSpacePercent, true, peergosDir, DirectorySync::log, network, crypto);
+                                        maxDownloadParallelism, minFreeSpacePercent, true, root -> new LocalFileSystem(Paths.get(root), crypto.hasher), peergosDir, DirectorySync::log, network, crypto);
                             } catch (Exception e) {
                                 LOG.log(Level.WARNING, e.getMessage(), e);
                             }

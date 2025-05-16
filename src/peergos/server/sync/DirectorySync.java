@@ -97,7 +97,7 @@ public class DirectorySync {
             boolean oneRun = args.getBoolean("run-once", false);
             Path peergosDir = args.getPeergosDir();
             return syncDirs(links, localDirs, syncLocalDeletes, syncRemoteDeletes, maxDownloadParallelism,
-                    minFreeSpacePercent, oneRun, peergosDir, m -> log(m), network, crypto);
+                    minFreeSpacePercent, oneRun, root -> new LocalFileSystem(Paths.get(root), crypto.hasher), peergosDir, m -> log(m), network, crypto);
         } catch (Exception e) {
             LOG.log(Level.SEVERE, e, e::getMessage);
             throw new RuntimeException(e);
@@ -122,6 +122,7 @@ public class DirectorySync {
                                    int maxDownloadParallelism,
                                    int minFreeSpacePercent,
                                    boolean oneRun,
+                                   Function<String, SyncFilesystem> localBuilder,
                                    Path peergosDir,
                                    Consumer<String> LOG,
                                    NetworkAccess network,
@@ -153,7 +154,7 @@ public class DirectorySync {
                     String username = remoteDir.getName(0).toString();
                     PublicKeyHash owner = network.coreNode.getPublicKeyHash(username).join().get();
                     PeergosSyncFS remote = buildRemote(links.get(i), remoteDir, network, crypto);
-                    LocalFileSystem local = new LocalFileSystem(localDir, crypto.hasher);
+                    SyncFilesystem local = localBuilder.apply(localDirs.get(i));
                     syncDir(local, remote, syncLocalDeletes.get(i), syncRemoteDeletes.get(i),
                             owner, network, syncedState, peergosDir, maxDownloadParallelism, minFreeSpacePercent, LOG);
                     long t1 = System.currentTimeMillis();
