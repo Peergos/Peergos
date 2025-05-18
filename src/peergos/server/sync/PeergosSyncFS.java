@@ -62,6 +62,8 @@ public class PeergosSyncFS implements SyncFilesystem {
 
     @Override
     public void mkdirs(Path p) {
+        if (p == null) // base dir
+            return;
         Optional<BatId> mirrorBat = context.mirrorBatId();
         if (exists(p))
             return;
@@ -281,7 +283,7 @@ public class PeergosSyncFS implements SyncFilesystem {
         Set<FileWrapper> children = base.getChildren(base.version, context.crypto.hasher, context.network, false).join();
         for (FileWrapper child : children) {
             Path childPath = basePath.resolve(child.getName());
-            FileProps childProps = new FileProps(childPath.toString(),
+            FileProps childProps = new FileProps(root.relativize(childPath).toString(),
                     child.getFileProperties().modified.toInstant(ZoneOffset.UTC).toEpochMilli() / 1000 * 1000,
                     child.getSize(), Optional.of(child));
             if (! child.isDirectory()) {

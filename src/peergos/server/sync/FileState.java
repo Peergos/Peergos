@@ -17,6 +17,8 @@ public class FileState implements Cborable {
     public final HashTree hashTree;
 
     public FileState(String relPath, long modificationTime, long size, HashTree hashTree) {
+        if (relPath.contains(".."))
+            throw new IllegalStateException("Invalid path");
         this.relPath = relPath;
         this.modificationTime = modificationTime;
         this.size = size;
