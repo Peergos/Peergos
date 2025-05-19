@@ -94,7 +94,15 @@ public class MimeTypes {
                     new Pair<>("xml", "xml"),
                     new Pair<>("asp", "asp"),
                     new Pair<>("rt", "richtext"),
-                    new Pair<>("java", "x-java-source")
+                    new Pair<>("rtx", "richtext"),
+                    new Pair<>("java", "x-java-source"),
+                    new Pair<>("mjs", "javascript"),
+                    new Pair<>("gv", "vnd.graphviz"),
+                    new Pair<>("f", "x-fortran"),
+                    new Pair<>("s", "x-asm"),
+                    new Pair<>("p", "x-pascal"),
+                    new Pair<>("yaml", "yaml"),
+                    new Pair<>("c", "x-c")
             ).collect(Collectors.toMap(p -> p.left, p -> p.right));
 
     public static String calculateMimeType(byte[] start, String filename) {
