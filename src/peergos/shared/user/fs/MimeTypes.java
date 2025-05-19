@@ -1,5 +1,12 @@
 package peergos.shared.user.fs;
 
+import peergos.shared.util.Pair;
+
+import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
+
 public class MimeTypes {
     final static int[] MID = new int[]{'M', 'T', 'h', 'd'};
     final static int[] ID3 = new int[]{'I', 'D', '3'};
@@ -80,6 +87,15 @@ public class MimeTypes {
     final static int[] CBOR_PEERGOS_EMAIL = new int[]{0x82 /* cbor list with 2 elements*/, CBOR_PEERGOS_EMAIL_INT};
 
     final static int HEADER_BYTES_TO_IDENTIFY_MIME_TYPE = 40;
+
+    final static Map<String, String> TEXT_MIMETYPES = Stream.of(
+                    new Pair<>("md", "md"),
+                    new Pair<>("csv", "csv"),
+                    new Pair<>("xml", "xml"),
+                    new Pair<>("asp", "asp"),
+                    new Pair<>("rt", "richtext"),
+                    new Pair<>("java", "x-java-source")
+            ).collect(Collectors.toMap(p -> p.left, p -> p.right));
 
     public static String calculateMimeType(byte[] start, String filename) {
         if (equalArrays(start, BMP))
@@ -236,6 +252,11 @@ public class MimeTypes {
                 return "image/svg+xml";
             if (filename.endsWith(".json"))
                 return "application/json";
+            if (filename.contains(".")) {
+                String extension = filename.substring(filename.lastIndexOf(".") + 1);
+                if (TEXT_MIMETYPES.containsKey(extension))
+                    return "text/" + TEXT_MIMETYPES.get(extension);
+            }
             try {
                 String prefix = new String(start).trim().toLowerCase();
                 if (prefix.contains("html>") || prefix.contains("<html"))
