@@ -34,6 +34,7 @@ import java.util.stream.Stream;
 
 public class SyncConfigHandler implements HttpHandler {
 	private static final Logger LOG = Logging.LOG();
+    public static final String SYNC_CONFIG_FILENAME = "sync-config";
 
     private static final boolean LOGGING = true;
     private final Args args;
@@ -69,38 +70,40 @@ public class SyncConfigHandler implements HttpHandler {
                     .removeArg("local-dirs")
                     .removeArg("sync-local-deletes")
                     .removeArg("sync-remote-deletes")
+                    .with("config", SYNC_CONFIG_FILENAME)
                     .saveToFile();
         else
             args.with("links", String.join(",", links))
                     .with("local-dirs", String.join(",", localDirs))
                     .with("sync-local-deletes", String.join(",", syncLocalDeletes.stream().map(Object::toString).collect(Collectors.toList())))
                     .with("sync-remote-deletes", String.join(",", syncRemoteDeletes.stream().map(Object::toString).collect(Collectors.toList())))
+                    .with("config", SYNC_CONFIG_FILENAME)
                     .saveToFile();
     }
 
     public List<String> getLinks() {
-        Args updated = Args.parse(new String[]{}, Optional.of(args.getPeergosDir().resolve("config")), false);
+        Args updated = Args.parse(new String[]{}, Optional.of(args.getPeergosDir().resolve(SYNC_CONFIG_FILENAME)), false);
         if (! updated.hasArg("links"))
             return new ArrayList<>();
         return new ArrayList<>(Arrays.asList(updated.getArg("links").split(",")));
     }
 
     public List<String> getLocalDirs() {
-        Args updated = Args.parse(new String[]{}, Optional.of(args.getPeergosDir().resolve("config")), false);
+        Args updated = Args.parse(new String[]{}, Optional.of(args.getPeergosDir().resolve(SYNC_CONFIG_FILENAME)), false);
         if (! updated.hasArg("local-dirs"))
             return new ArrayList<>();
         return new ArrayList<>(Arrays.asList(updated.getArg("local-dirs").split(",")));
     }
 
     public List<Boolean> getSyncLocalDeletes() {
-        Args updated = Args.parse(new String[]{}, Optional.of(args.getPeergosDir().resolve("config")), false);
+        Args updated = Args.parse(new String[]{}, Optional.of(args.getPeergosDir().resolve(SYNC_CONFIG_FILENAME)), false);
         if (! updated.hasArg("sync-local-deletes"))
             return new ArrayList<>();
         return new ArrayList<>(Stream.of(updated.getArg("sync-local-deletes").split(",")).map(Boolean::parseBoolean).collect(Collectors.toList()));
     }
 
     public List<Boolean> getSyncRemoteDeletes() {
-        Args updated = Args.parse(new String[]{}, Optional.of(args.getPeergosDir().resolve("config")), false);
+        Args updated = Args.parse(new String[]{}, Optional.of(args.getPeergosDir().resolve(SYNC_CONFIG_FILENAME)), false);
         if (! updated.hasArg("sync-remote-deletes"))
             return new ArrayList<>();
         return new ArrayList<>(Stream.of(updated.getArg("sync-remote-deletes").split(",")).map(Boolean::parseBoolean).collect(Collectors.toList()));
