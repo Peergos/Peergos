@@ -45,7 +45,7 @@ public class OfflinePointerCache implements MutablePointers {
                         long start = System.currentTimeMillis();
                         cache.get(owner, writer).thenAccept(cached -> {
                             if (cached.isPresent()) {
-                                ForkJoinPool.commonPool().submit(() -> {
+                                ForkJoinPool.commonPool().execute(() -> {
                                     long t = System.currentTimeMillis();
                                     if (t < start + 1_000)
                                         try {Thread.sleep(1_000 + start - t);} catch (InterruptedException e) {}
