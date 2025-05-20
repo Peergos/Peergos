@@ -42,9 +42,16 @@ public class OfflinePointerCache implements MutablePointers {
                                     res.completeExceptionally(t);
                                     return null;
                                 });
+                        long start = System.currentTimeMillis();
                         cache.get(owner, writer).thenAccept(cached -> {
-                            if (cached.isPresent())
-                                res.complete(cached);
+                            if (cached.isPresent()) {
+                                ForkJoinPool.commonPool().submit(() -> {
+                                    long t = System.currentTimeMillis();
+                                    if (t < start + 1_000)
+                                        try {Thread.sleep(1_000 + start - t);} catch (InterruptedException e) {}
+                                    res.complete(cached);
+                                });
+                            }
                         });
                         return res;
                     }
