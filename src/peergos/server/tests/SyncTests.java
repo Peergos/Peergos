@@ -93,7 +93,7 @@ public class SyncTests {
         Assert.assertNotNull(syncedState.byPath(filename));
 
         // delete local file and check remote is not deleted
-        base1.resolve(filename).toFile().delete();
+        Files.delete(base1.resolve(filename));
         DirectorySync.syncDir(localFs, remoteFs, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, tmp, 32, 5, DirectorySync::log);
         Assert.assertNotNull(syncedState.byPath(filename));
         Assert.assertTrue(base2.resolve(filename).toFile().exists());
@@ -144,7 +144,7 @@ public class SyncTests {
         Assert.assertNotNull(syncedState.byPath(filename));
 
         // delete local file and check remote is not deleted
-        base1.resolve(filename).toFile().delete();
+        Files.delete(base1.resolve(filename));
         DirectorySync.syncDir(localFs, remoteFs, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, tmp, 32, 5, DirectorySync::log);
         Assert.assertNotNull(syncedState.byPath(filename));
         Assert.assertTrue(base2.resolve(filename).toFile().exists());
@@ -191,7 +191,7 @@ public class SyncTests {
         Assert.assertNotNull(syncedState.byPath(filename));
 
         // delete local file and check remote is not deleted
-        base1.resolve(filename).toFile().delete();
+        Files.delete(base1.resolve(filename));
         DirectorySync.syncDir(localFs, remoteFs, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, tmp, 32, 5, DirectorySync::log);
         Assert.assertNotNull(syncedState.byPath(filename));
         Assert.assertTrue(base2.resolve(filename).toFile().exists());
@@ -204,7 +204,7 @@ public class SyncTests {
         // modify the remote file (it should be copied to local)
         byte[] data2 = new byte[fileSize + 1024 * 1024];
         new Random(28).nextBytes(data2);
-        base2.resolve(filename).toFile().delete();
+        Files.delete(base2.resolve(filename));
         Files.write(base2.resolve(filename), data2, StandardOpenOption.CREATE);
         DirectorySync.syncDir(localFs, remoteFs, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, tmp, 32, 5, DirectorySync::log);
         Assert.assertArrayEquals(Files.readAllBytes(base2.resolve(filename)), data2);
@@ -241,7 +241,7 @@ public class SyncTests {
         Assert.assertNotNull(syncedState.byPath(filename));
 
         // delete remote file and check local is not deleted
-        base2.resolve(filename).toFile().delete();
+        Files.delete(base2.resolve(filename));
         DirectorySync.syncDir(localFs, remoteFs, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, tmp, 32, 5, DirectorySync::log);
         Assert.assertNotNull(syncedState.byPath(filename));
         Assert.assertTrue(base1.resolve(filename).toFile().exists());
@@ -294,7 +294,7 @@ public class SyncTests {
         Assert.assertNotNull(syncedState.byPath(filename));
 
         // delete remote file and check local is not deleted
-        base2.resolve(filename).toFile().delete();
+        Files.delete(base2.resolve(filename));
         DirectorySync.syncDir(localFs, remoteFs, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, tmp, 32, 5, DirectorySync::log);
         Assert.assertNotNull(syncedState.byPath(filename));
         Assert.assertTrue(base1.resolve(filename).toFile().exists());
@@ -341,7 +341,7 @@ public class SyncTests {
         Assert.assertNotNull(syncedState.byPath(filename));
 
         // delete remote file and check local is not deleted
-        base2.resolve(filename).toFile().delete();
+        Files.delete(base2.resolve(filename));
         DirectorySync.syncDir(localFs, remoteFs, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, tmp, 32, 5, DirectorySync::log);
         Assert.assertNotNull(syncedState.byPath(filename));
         Assert.assertTrue(base1.resolve(filename).toFile().exists());
@@ -354,7 +354,7 @@ public class SyncTests {
         // modify the local file (it should be copied to remote)
         byte[] data2 = new byte[fileSize + 1024 * 1024];
         new Random(28).nextBytes(data2);
-        base1.resolve(filename).toFile().delete();
+        Files.delete(base1.resolve(filename));
         Files.write(base1.resolve(filename), data2, StandardOpenOption.CREATE);
         DirectorySync.syncDir(localFs, remoteFs, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, tmp, 32, 5, DirectorySync::log);
         Assert.assertArrayEquals(Files.readAllBytes(base2.resolve(filename)), data2);

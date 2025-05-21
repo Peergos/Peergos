@@ -78,18 +78,26 @@ public class LocalFileSystem implements SyncFilesystem {
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
-        p.toFile().delete();
+        try {
+            Files.delete(p);
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     @Override
     public void bulkDelete(Path dir, Set<String> children) {
-        throw new IllegalStateException("Unimplemented");
+        children.forEach(kid -> delete(dir.resolve(kid)));
     }
 
     @Override
     public void moveTo(Path src, Path target) {
-        root.resolve(target).getParent().toFile().mkdirs();
-        root.resolve(src).toFile().renameTo(root.resolve(target).toFile());
+        try {
+            Files.createDirectories(root.resolve(target).getParent());
+            Files.move(root.resolve(src), root.resolve(target));
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     @Override
@@ -152,19 +160,18 @@ public class LocalFileSystem implements SyncFilesystem {
             Path dir = root.resolve(folder.path());
             dir.toFile().mkdirs();
             for (FileWrapper.FileUploadProperties file : folder.files) {
-                AsyncReader reader = file.fileData.get();
-                long written = 0;
-                try {
-                    FileOutputStream fout = new FileOutputStream(dir.resolve(file.filename).toFile());
-                    while (written < file.length) {
-                        int read = reader.readIntoArray(buf, 0, (int) Math.min(buf.length, file.length - written)).join();
-                        fout.write(buf, 0, read);
-                        written += read;
+                try (AsyncReader reader = file.fileData.get()) {
+                    long written = 0;
+                    try (FileOutputStream fout = new FileOutputStream(dir.resolve(file.filename).toFile())) {
+                        while (written < file.length) {
+                            int read = reader.readIntoArray(buf, 0, (int) Math.min(buf.length, file.length - written)).join();
+                            fout.write(buf, 0, read);
+                            written += read;
+                        }
+                        fout.flush();
+                    } catch (IOException e) {
+                        throw new RuntimeException(e);
                     }
-                    fout.flush();
-                    fout.close();
-                } catch (IOException e) {
-                    throw new RuntimeException(e);
                 }
             }
         });
