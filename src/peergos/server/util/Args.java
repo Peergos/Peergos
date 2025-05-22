@@ -236,7 +236,7 @@ public class Args {
                 .map(e -> e.getKey() + " = " + e.getValue())
                 .collect(Collectors.joining("\n"));
         try {
-            Files.write(file, text.getBytes(), StandardOpenOption.CREATE);
+            Files.write(file, text.getBytes(), StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
