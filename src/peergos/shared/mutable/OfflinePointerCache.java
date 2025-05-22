@@ -51,7 +51,7 @@ public class OfflinePointerCache implements MutablePointers {
                                 }
                             });
                             return true;
-                        }, 1, TimeUnit.SECONDS);
+                        }, 1_000, TimeUnit.MILLISECONDS);
                         return res;
                     }
                     online.updateAsync();
