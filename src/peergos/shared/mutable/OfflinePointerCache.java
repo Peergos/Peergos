@@ -9,6 +9,8 @@ import java.util.concurrent.*;
 
 public class OfflinePointerCache implements MutablePointers {
 
+    private static final ScheduledThreadPoolExecutor executor = new ScheduledThreadPoolExecutor(1);
+
     private final MutablePointers target;
     private final PointerCache cache;
     private final OnlineState online;
@@ -33,7 +35,7 @@ public class OfflinePointerCache implements MutablePointers {
         return Futures.asyncExceptionally(() -> {
                     if (online.isOnline()) {
                         CompletableFuture<Optional<byte[]>> res = new CompletableFuture<>();
-                        // race the cache with the server
+                        // race the cache with the server after 1s
                         target.getPointer(owner, writer)
                                 .thenAccept(pointer -> {
                                     pointer.ifPresent(p -> cache.put(owner, writer, p));
@@ -42,17 +44,13 @@ public class OfflinePointerCache implements MutablePointers {
                                     res.completeExceptionally(t);
                                     return null;
                                 });
-                        long start = System.currentTimeMillis();
-                        cache.get(owner, writer).thenAccept(cached -> {
-                            if (cached.isPresent()) {
-                                ForkJoinPool.commonPool().execute(() -> {
-                                    long t = System.currentTimeMillis();
-                                    if (t < start + 1_000)
-                                        try {Thread.sleep(1_000 + start - t);} catch (InterruptedException e) {}
+                        executor.schedule(() -> {
+                            cache.get(owner, writer).thenAccept(cached -> {
+                                if (cached.isPresent()) {
                                     res.complete(cached);
-                                });
-                            }
-                        });
+                                }
+                            });
+                        }, 1, TimeUnit.SECONDS);
                         return res;
                     }
                     online.updateAsync();
