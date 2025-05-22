@@ -727,13 +727,14 @@ public class FileWrapper {
                                                              long length,
                                                              Optional<HashTree> hash,
                                                              Optional<LocalDateTime> modificationTime,
+                                                             Optional<Thumbnail> thumbnail,
                                                              NetworkAccess network,
                                                              Crypto crypto,
                                                              ProgressConsumer<Long> monitor) {
         if (! isWritable())
             throw new IllegalStateException("Folder not writable!");
         return network.synchronizer.applyComplexUpdate(owner(), signingPair(), (current, committer) ->
-                        uploadFileSection(current, committer, filename, fileData, Optional.empty(), false, 0, length, hash,
+                        uploadFileSection(current, committer, filename, fileData, thumbnail, false, 0, length, hash,
                                 modificationTime, Optional.empty(), Optional.empty(), Optional.empty(), false, false, false,
                                 network, crypto, monitor, crypto.random.randomBytes(32), Optional.empty(), Optional.of(Bat.random(crypto.random)), mirrorBatId())
                                 .thenCompose(p -> getUpdated(p.left, network)
@@ -947,7 +948,21 @@ public class FileWrapper {
         List<FileUploadProperties> sortedChildren = children.files.stream()
                 .sorted(Comparator.comparingLong(a -> a.length))
                 .collect(Collectors.toList());
-        return Futures.reduceAll(sortedChildren, identity,
+        // split into batches to see partial progress with many ~MiB files
+        List<List<FileUploadProperties>> groupedChildren = new ArrayList<>();
+        int currentTotal = 0;
+        int batchSize = 10 * 1024 * 1024;
+        groupedChildren.add(new ArrayList<>());
+        for (int i=0; i < sortedChildren.size(); i++) {
+            FileUploadProperties next = sortedChildren.get(i);
+            if (currentTotal + next.length > batchSize) {
+                groupedChildren.add(new ArrayList<>());
+                currentTotal = 0;
+            }
+            groupedChildren.get(groupedChildren.size() - 1).add(next);
+            currentTotal += next.length;
+        }
+        return Futures.reduceAll(groupedChildren, identity, (id, group) -> Futures.reduceAll(group, id,
                         (p, f) -> {
                             // don't bother with file upload transactions as single chunk uploads are atomic anyway
                             // (nothing to resume or cleanup later in case of failure)
@@ -1016,7 +1031,8 @@ public class FileWrapper {
                                     });
                         },
                         (a, b) -> new Pair<>(b.left, Stream.concat(a.right.stream(), b.right.stream()).collect(Collectors.toList())))
-                .thenCompose(r -> atomicallyClearTransactionsAndAddToParent(Collections.emptyList(), r.right, parent, transactions, r.left, c, commitWatcher, network, crypto))
+                .thenCompose(r -> atomicallyClearTransactionsAndAddToParent(Collections.emptyList(), r.right, parent, transactions, r.left, c, commitWatcher, network, crypto)),
+                        (a, b) -> new Pair<>(b.left, Stream.concat(a.right.stream(), b.right.stream()).collect(Collectors.toList())))
                 .thenApply(x -> x.left);
     }
 

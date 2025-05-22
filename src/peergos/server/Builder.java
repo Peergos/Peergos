@@ -44,12 +44,16 @@ import java.util.stream.*;
 
 public class Builder {
 
-    public static Crypto initNativeCrypto(Salsa20Poly1305 symmetric, Ed25519 signer, Curve25519 boxer) {
+    public static Crypto initNativeCrypto(Salsa20Poly1305 symmetric, Ed25519 signer, Curve25519 boxer, Hasher h) {
         SafeRandomJava random = new SafeRandomJava();
-        return Crypto.init(() -> new Crypto(random, new ScryptJava(), symmetric, signer, boxer));
+        return Crypto.init(() -> new Crypto(random, h, symmetric, signer, boxer));
     }
 
     public static Crypto initCrypto() {
+        return initCrypto(new ScryptJava());
+    }
+
+    public static Crypto initCrypto(Hasher h) {
         try {
             if (! "linux".equalsIgnoreCase(System.getProperty("os.name")))
                 return JavaCrypto.init();
@@ -57,7 +61,7 @@ public class Builder {
             Salsa20Poly1305 symmetricProvider = new JniTweetNacl.Symmetric(nativeNacl);
             Ed25519 signer = new JniTweetNacl.Signer(nativeNacl);
             Curve25519 boxer = new Curve25519Java();
-            return initNativeCrypto(symmetricProvider, signer, boxer);
+            return initNativeCrypto(symmetricProvider, signer, boxer, h);
         } catch (Throwable t) {
             return JavaCrypto.init();
         }

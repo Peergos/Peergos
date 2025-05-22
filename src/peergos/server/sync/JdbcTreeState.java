@@ -22,9 +22,13 @@ public class JdbcTreeState implements SyncState {
     private static final String UPDATE_SNAPSHOT = "UPDATE snapshots SET snapshot=? WHERE path=?;";
     private static final String INSERT = "INSERT INTO syncstate (path, roothash, modtime, size, hashtree) VALUES(?, ?, ?, ?, ?);";
     private static final String INSERT_DIR_SUFFIX = "INTO syncdirs (path) VALUES(?);";
+    private static final String INSERT_LOCAL_DELETE_SUFFIX = "INTO synclocaldeletes (path) VALUES(?);";
+    private static final String INSERT_REMOTE_DELETE_SUFFIX = "INTO syncremotedeletes (path) VALUES(?);";
     private static final String UPDATE = "UPDATE syncstate SET roothash=?, hashtree=?, modtime=?, size=? WHERE path=?;";
     private static final String DELETE = "DELETE from syncstate WHERE path = ?;";
     private static final String DELETE_DIR = "DELETE from syncdirs WHERE path = ?;";
+    private static final String DELETE_LOCAL_DELETE = "DELETE from synclocaldeletes WHERE path = ?;";
+    private static final String DELETE_REMOTE_DELETE = "DELETE from syncremotedeletes WHERE path = ?;";
     private static final String GET_BY_PATH = "SELECT path, modtime, size, hashtree FROM syncstate WHERE path = ?;";
     private static final String GET_SNAPSHOT = "SELECT snapshot FROM snapshots WHERE path = ?;";
     private static final String COUNT_FILES = "SELECT COUNT(*) FROM syncstate;";
@@ -32,6 +36,8 @@ public class JdbcTreeState implements SyncState {
     private static final String GET_BY_HASH = "SELECT path, modtime, size, hashtree FROM syncstate WHERE roothash = ?;";
     private static final String GET_DIRS = "SELECT path FROM syncdirs;";
     private static final String HAS_DIR = "SELECT path FROM syncdirs WHERE path=?;";
+    private static final String HAS_LOCAL_DELETE = "SELECT path FROM synclocaldeletes WHERE path=?;";
+    private static final String HAS_REMOTE_DELETE = "SELECT path FROM syncremotedeletes WHERE path=?;";
     private static final String INSERT_COPY_OP = "INSERT INTO copyops (islocal, source, target, start, end, sourcestate, targetstate) VALUES(?, ?, ?, ?, ?, ?, ?);";
     private static final String REMOVE_COPY_OP = "DELETE FROM copyops WHERE source=? AND target=? AND start=? AND end=?";
     private static final String LIST_COPY_OPS = "SELECT islocal, source, target, start, end, sourcestate, targetstate FROM copyops;";
@@ -67,6 +73,8 @@ public class JdbcTreeState implements SyncState {
             cmds.createTable("CREATE TABLE IF NOT EXISTS syncstate (path text primary key not null, roothash blob, modtime bigint not null, size bigint not null, hashtree blob); " +
                     "CREATE INDEX IF NOT EXISTS sync_hash_index ON syncstate (roothash);", conn);
             cmds.createTable("CREATE TABLE IF NOT EXISTS syncdirs (path text primary key not null);", conn);
+            cmds.createTable("CREATE TABLE IF NOT EXISTS synclocaldeletes (path text primary key not null);", conn);
+            cmds.createTable("CREATE TABLE IF NOT EXISTS syncremotedeletes (path text primary key not null);", conn);
             cmds.createTable("CREATE TABLE IF NOT EXISTS snapshots (path text primary key not null, snapshot blob);", conn);
             cmds.createTable("CREATE TABLE IF NOT EXISTS copyops (islocal bool not null, source text not null, target text not null, " +
                     "start "+cmds.sqlInteger()+" not null, end " + cmds.sqlInteger() + " not null, sourcestate blob, targetstate blob);", conn);
@@ -183,6 +191,74 @@ public class JdbcTreeState implements SyncState {
                 res.add(rs.getString(1));
 
             return res;
+        } catch (SQLException sqe) {
+            throw new IllegalStateException(sqe);
+        }
+    }
+
+    @Override
+    public void addLocalDelete(String relPath) {
+        try (Connection conn = getConnection();
+             PreparedStatement insert = conn.prepareStatement(cmds.insertOrIgnoreCommand("INSERT ", INSERT_LOCAL_DELETE_SUFFIX))) {
+            insert.setString(1, relPath);
+            insert.executeUpdate();
+        } catch (SQLException sqe) {
+            throw new IllegalStateException(sqe);
+        }
+    }
+
+    @Override
+    public void removeLocalDelete(String path) {
+        try (Connection conn = getConnection();
+             PreparedStatement remove = conn.prepareStatement(DELETE_LOCAL_DELETE)) {
+            remove.setString(1, path);
+            remove.executeUpdate();
+        } catch (SQLException sqe) {
+            throw new IllegalStateException(sqe);
+        }
+    }
+
+    @Override
+    public boolean hasLocalDelete(String path) {
+        try (Connection conn = getConnection();
+             PreparedStatement select = conn.prepareStatement(HAS_LOCAL_DELETE)) {
+            select.setString(1, path);
+            ResultSet rs = select.executeQuery();
+            return (rs.next());
+        } catch (SQLException sqe) {
+            throw new IllegalStateException(sqe);
+        }
+    }
+
+    @Override
+    public void addRemoteDelete(String relPath) {
+        try (Connection conn = getConnection();
+             PreparedStatement insert = conn.prepareStatement(cmds.insertOrIgnoreCommand("INSERT ", INSERT_REMOTE_DELETE_SUFFIX))) {
+            insert.setString(1, relPath);
+            insert.executeUpdate();
+        } catch (SQLException sqe) {
+            throw new IllegalStateException(sqe);
+        }
+    }
+
+    @Override
+    public void removeRemoteDelete(String path) {
+        try (Connection conn = getConnection();
+             PreparedStatement remove = conn.prepareStatement(DELETE_REMOTE_DELETE)) {
+            remove.setString(1, path);
+            remove.executeUpdate();
+        } catch (SQLException sqe) {
+            throw new IllegalStateException(sqe);
+        }
+    }
+
+    @Override
+    public boolean hasRemoteDelete(String path) {
+        try (Connection conn = getConnection();
+             PreparedStatement select = conn.prepareStatement(HAS_REMOTE_DELETE)) {
+            select.setString(1, path);
+            ResultSet rs = select.executeQuery();
+            return (rs.next());
         } catch (SQLException sqe) {
             throw new IllegalStateException(sqe);
         }

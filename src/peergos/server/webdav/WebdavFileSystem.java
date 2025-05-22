@@ -134,7 +134,7 @@ public class WebdavFileSystem implements IWebdavStore {
             hash.setChunk(0, contents, context.crypto.hasher).join();
             HashTree h = hash.complete(context.crypto.hasher).join();
             parentFolder.get().uploadFileWithHash(path.getFileName().toString(), new AsyncReader.ArrayBacked(contents),
-                    contents.length, Optional.of(h), Optional.empty(), context.network, context.crypto, l -> {}).join();
+                    contents.length, Optional.of(h), Optional.empty(), Optional.empty(), context.network, context.crypto, l -> {}).join();
         } catch (Exception e) {
             LOG.warning("PeergosFileSystem.createResource(" + uri + ") failed");
             throw new WebdavException(e);

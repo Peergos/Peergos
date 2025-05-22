@@ -371,7 +371,7 @@ public abstract class UserTests {
         HashTree h = hash.complete(context.crypto.hasher).join();
         String filename = "afile.bin";
         context.getUserRoot().join()
-                .uploadFileWithHash(filename, AsyncReader.build(contents), 0, Optional.of(h), Optional.empty(), network, crypto, x -> {}).join();
+                .uploadFileWithHash(filename, AsyncReader.build(contents), 0, Optional.of(h), Optional.empty(), Optional.empty(), network, crypto, x -> {}).join();
         FileWrapper emptyFile = context.getByPath(Paths.get(username, filename)).join().get();
         HashBranch expected = emptyFile.getFileProperties().treeHash.get();
         HashBranch empty = h.branch(0);

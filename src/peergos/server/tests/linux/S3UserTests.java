@@ -32,7 +32,7 @@ public class S3UserTests extends UserTests {
 
     private static Args pkiArgs = buildArgs()
             .with("useIPFS", "true")
-            .with(IpfsWrapper.IPFS_BOOTSTRAP_NODES, ""); // no bootstrapping
+            .removeArg(IpfsWrapper.IPFS_BOOTSTRAP_NODES); // no bootstrapping
 
     private static Args withS3(Args in) {
         return in.with("s3.bucket", "local-s3")

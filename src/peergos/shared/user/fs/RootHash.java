@@ -2,6 +2,7 @@ package peergos.shared.user.fs;
 
 import peergos.shared.cbor.CborObject;
 import peergos.shared.cbor.Cborable;
+import peergos.shared.util.ArrayOps;
 
 import java.util.Arrays;
 import java.util.Objects;
@@ -42,5 +43,10 @@ public class RootHash implements Cborable {
     @Override
     public int hashCode() {
         return Arrays.hashCode(hash);
+    }
+
+    @Override
+    public String toString() {
+        return ArrayOps.bytesToHex(hash);
     }
 }

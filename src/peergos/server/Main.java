@@ -11,6 +11,7 @@ import peergos.server.sql.*;
 import peergos.server.storage.admin.*;
 import peergos.server.storage.auth.*;
 import peergos.server.sync.DirectorySync;
+import peergos.server.sync.SyncRunner;
 import peergos.server.user.JavaImageThumbnailer;
 import peergos.shared.*;
 import peergos.server.corenode.*;
@@ -568,6 +569,7 @@ public class Main extends Builder {
             a -> {
                 try {
                     Crypto crypto = JavaCrypto.init();
+                    ThumbnailGenerator.setInstance(new JavaImageThumbnailer());
                     URL target = new URL(a.getArg("peergos-url", "https://peergos.net"));
                     JavaPoster poster = new JavaPoster(target, ! target.getHost().equals("localhost"), Optional.empty(), Optional.of("Peergos-" + UserService.CURRENT_VERSION + "-proxy"));
                     ScryptJava hasher = new ScryptJava();
@@ -603,8 +605,9 @@ public class Main extends Builder {
 
                     OfflineBatCache offlineBats = new OfflineBatCache(batCave, new JdbcBatCave(Builder.getDBConnector(a, "bat-cache-sql-file", dbConnector), commands));
 
+                    SyncRunner.ThreadBased syncer = new SyncRunner.ThreadBased(a, withoutS3, pointerCache, offlineCorenode, crypto);
                     UserService server = new UserService(withoutS3, offlineBats, crypto, offlineCorenode, offlineAccounts,
-                            httpSocial, pointerCache, admin, httpUsage, serverMessager, null);
+                            httpSocial, pointerCache, admin, httpUsage, serverMessager, null, Optional.of(new SyncProperties(a, syncer, Either.a(new HostDirEnumerator.Java()))));
 
                     InetSocketAddress localAPIAddress = new InetSocketAddress("localhost", port);
                     List<String> appSubdomains = Arrays.asList("markup-viewer,calendar,code-editor,pdf".split(","));
@@ -633,6 +636,7 @@ public class Main extends Builder {
     public static ServerProcesses startPeergos(Args a) {
         try {
             Crypto crypto = initCrypto();
+            ThumbnailGenerator.setInstance(new JavaImageThumbnailer());
             Hasher hasher = crypto.hasher;
             PublicSigningKey.addProvider(PublicSigningKey.Type.Ed25519, crypto.signer);
 
@@ -770,10 +774,11 @@ public class Main extends Builder {
             ProxyingBatCave p2pBats = new ProxyingBatCave(nodeIds, core, batStore, new HttpBatCave(p2pHttpProxy, p2pHttpProxy));
             ServerMessageStore serverMessages = new ServerMessageStore(getDBConnector(a, "server-messages-sql-file", dbConnectionPool),
                     sqlCommands, core, p2pDht);
+            SyncRunner.ThreadBased syncer = new SyncRunner.ThreadBased(a, cachingStorage, p2mMutable, corePropagator, crypto);
             UserService localAPI = new UserService(cachingStorage, p2pBats, crypto, corePropagator, verifyingAccount,
-                    p2pSocial, p2mMutable, storageAdmin, p2pSpaceUsage, serverMessages, gc);
+                    p2pSocial, p2mMutable, storageAdmin, p2pSpaceUsage, serverMessages, gc, Optional.of(new SyncProperties(a, syncer, Either.a(new HostDirEnumerator.Java()))));
             UserService p2pAPI = new UserService(incomingP2PStorage, p2pBats, crypto, corePropagator, verifyingAccount,
-                    p2pSocial, p2mMutable, storageAdmin, p2pSpaceUsage, serverMessages, gc);
+                    p2pSocial, p2mMutable, storageAdmin, p2pSpaceUsage, serverMessages, gc, Optional.empty());
             InetSocketAddress localAPIAddress = userAPIAddress;
             InetSocketAddress p2pAPIAddress = new InetSocketAddress("localhost", localP2PApi.getTCPPort());
 

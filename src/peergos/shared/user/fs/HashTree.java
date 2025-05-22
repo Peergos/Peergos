@@ -53,6 +53,11 @@ public class HashTree implements Cborable {
                 level3.stream().skip(chunkIndex / 1024 / 1024 / 1024).findFirst());
     }
 
+    @Override
+    public String toString() {
+        return rootHash.toString();
+    }
+
     public static HashTree fromBranches(List<HashBranch> branches) {
         List<ChunkHashList> level1 = branches.stream().flatMap(b -> b.level1.stream()).collect(Collectors.toList());
         List<ChunkHashList> level2 = branches.stream().flatMap(b -> b.level2.stream()).collect(Collectors.toList());

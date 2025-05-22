@@ -28,6 +28,18 @@ public interface SyncState {
 
     Set<String> getDirs();
 
+    void addLocalDelete(String path);
+
+    void removeLocalDelete(String path);
+
+    boolean hasLocalDelete(String p);
+
+    void addRemoteDelete(String path);
+
+    void removeRemoteDelete(String path);
+
+    boolean hasRemoteDelete(String p);
+
     void startCopies(List<CopyOp> ops);
 
     void finishCopies(List<CopyOp> ops);

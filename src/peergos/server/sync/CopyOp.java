@@ -10,6 +10,10 @@ class CopyOp {
     public final long diffStart, diffEnd;
 
     public CopyOp(boolean isLocalTarget, Path source, Path target, FileState sourceState, FileState targetState, long diffStart, long diffEnd) {
+        if (source.toString().contains(".."))
+            throw new IllegalStateException();
+        if (target.toString().contains(".."))
+            throw new IllegalStateException();
         this.isLocalTarget = isLocalTarget;
         this.source = source;
         this.target = target;

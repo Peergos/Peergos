@@ -9,6 +9,8 @@ import java.util.concurrent.*;
 
 public class OfflinePointerCache implements MutablePointers {
 
+    private static final ScheduledThreadPoolExecutor executor = new ScheduledThreadPoolExecutor(1);
+
     private final MutablePointers target;
     private final PointerCache cache;
     private final OnlineState online;
@@ -33,7 +35,7 @@ public class OfflinePointerCache implements MutablePointers {
         return Futures.asyncExceptionally(() -> {
                     if (online.isOnline()) {
                         CompletableFuture<Optional<byte[]>> res = new CompletableFuture<>();
-                        // race the cache with the server
+                        // race the cache with the server after 1s
                         target.getPointer(owner, writer)
                                 .thenAccept(pointer -> {
                                     pointer.ifPresent(p -> cache.put(owner, writer, p));
@@ -42,10 +44,14 @@ public class OfflinePointerCache implements MutablePointers {
                                     res.completeExceptionally(t);
                                     return null;
                                 });
-                        cache.get(owner, writer).thenAccept(cached -> {
-                            if (cached.isPresent())
-                                res.complete(cached);
-                        });
+                        executor.schedule(() -> {
+                            cache.get(owner, writer).thenAccept(cached -> {
+                                if (cached.isPresent()) {
+                                    res.complete(cached);
+                                }
+                            });
+                            return true;
+                        }, 1_000, TimeUnit.MILLISECONDS);
                         return res;
                     }
                     online.updateAsync();
