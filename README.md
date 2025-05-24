@@ -285,7 +285,7 @@ docker pull ghcr.io/peergos/web-ui:master
 
 Run the peergos image with:
 ```bash
-docker run --volume $(PEERGOS_PATH):/opt/peergos/data ghcr.io/peergos/web-ui:master daemon -listen-host 0.0.0.0 -public-domain localhost:8000 -log-to-console true
+docker run --volume $(PEERGOS_PATH):/opt/peergos/data ghcr.io/peergos/web-ui:master daemon -listen-host 0.0.0.0 -public-domain $YOUR_DOMAIN_NAME -log-to-console true
 ```
 
 Usage - self hosting (with S3 compatible blockstore)
