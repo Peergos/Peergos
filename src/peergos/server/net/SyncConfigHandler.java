@@ -278,6 +278,13 @@ public class SyncConfigHandler implements HttpHandler {
                 OutputStream resp = exchange.getResponseBody();
                 resp.write(res);
                 exchange.close();
+            } else if (action.equals("sync-now")) {
+                syncer.runNow();
+                byte[] res = JSONParser.toString(new LinkedHashMap<>()).getBytes(StandardCharsets.UTF_8);
+                exchange.sendResponseHeaders(200, res.length);
+                OutputStream resp = exchange.getResponseBody();
+                resp.write(res);
+                exchange.close();
             } else {
                 LOG.info("Unknown sync config handler: " + action);
                 exchange.sendResponseHeaders(404, 0);

@@ -25,6 +25,8 @@ public interface SyncRunner {
 
     void start();
 
+    void runNow();
+
     class ThreadBased implements SyncRunner {
         private static final Logger LOG = Logging.LOG();
         private final Thread runner;
@@ -87,6 +89,11 @@ public interface SyncRunner {
                 started.set(true);
             } else
                 runner.interrupt();
+        }
+
+        @Override
+        public void runNow() {
+            runner.interrupt();
         }
     }
 }
