@@ -633,6 +633,17 @@ public class Main extends Builder {
             Collections.emptyList()
     );
 
+    private static boolean isLanIP(String host) {
+        try {
+            if (host.contains(":"))
+                host = host.substring(0, host.indexOf(":"));
+            InetAddress ip = InetAddress.getByName(host);
+            return ip.isSiteLocalAddress();
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
     public static ServerProcesses startPeergos(Args a) {
         try {
             Crypto crypto = initCrypto();
@@ -702,7 +713,7 @@ public class Main extends Builder {
 
             Optional<String> tlsHostname = a.hasArg("tls.keyfile.password") ? Optional.of(listeningHost) : Optional.empty();
             Optional<String> publicHostname = tlsHostname.isPresent() ? tlsHostname : a.getOptionalArg("public-domain");
-            Origin origin = new Origin(publicHostname.map(host -> "https://" + host).orElse("http://localhost:" + webPort));
+            Origin origin = new Origin(publicHostname.map(host -> (isLanIP(host) ? "http://" : "https://") + host).orElse("http://localhost:" + webPort));
             String rpId = publicHostname.orElse("localhost");
             JdbcAccount rawAccount = new JdbcAccount(getDBConnector(a, "account-sql-file", dbConnectionPool), sqlCommands, origin, rpId);
             Account account = new AccountWithStorage(localStorageForLinks, localPointers, rawAccount);
