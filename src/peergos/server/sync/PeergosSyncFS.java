@@ -90,7 +90,7 @@ public class PeergosSyncFS implements SyncFilesystem {
 
     @Override
     public void moveTo(Path src, Path target) {
-        if (target.getParent().equals(src.getParent())) { // rename
+        if (Objects.equals(target.getParent(), src.getParent())) { // rename
             Optional<FileWrapper> parentOpt = context.getByPath(root.resolve(src).getParent()).join();
             if (parentOpt.isEmpty())
                 throw new IllegalStateException("Couldn't retrieve " + root.resolve(src).getParent());
