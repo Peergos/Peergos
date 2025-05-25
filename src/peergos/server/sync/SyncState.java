@@ -8,6 +8,10 @@ import java.util.Set;
 
 public interface SyncState {
 
+    boolean hasCompletedSync();
+
+    void setCompletedSync(boolean done);
+
     long filesCount();
 
     Set<String> allFilePaths();

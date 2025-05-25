@@ -22,6 +22,7 @@ public class JdbcTreeState implements SyncState {
     private static final String UPDATE_SNAPSHOT = "UPDATE snapshots SET snapshot=? WHERE path=?;";
     private static final String INSERT = "INSERT INTO syncstate (path, roothash, modtime, size, hashtree) VALUES(?, ?, ?, ?, ?);";
     private static final String INSERT_DIR_SUFFIX = "INTO syncdirs (path) VALUES(?);";
+    private static final String SET_DONE_SUFFIX = "INTO syncdone (key, done) VALUES(?, ?);";
     private static final String INSERT_LOCAL_DELETE_SUFFIX = "INTO synclocaldeletes (path) VALUES(?);";
     private static final String INSERT_REMOTE_DELETE_SUFFIX = "INTO syncremotedeletes (path) VALUES(?);";
     private static final String UPDATE = "UPDATE syncstate SET roothash=?, hashtree=?, modtime=?, size=? WHERE path=?;";
@@ -36,6 +37,7 @@ public class JdbcTreeState implements SyncState {
     private static final String GET_BY_HASH = "SELECT path, modtime, size, hashtree FROM syncstate WHERE roothash = ?;";
     private static final String GET_DIRS = "SELECT path FROM syncdirs;";
     private static final String HAS_DIR = "SELECT path FROM syncdirs WHERE path=?;";
+    private static final String DONE_SYNC = "SELECT done FROM syncdone WHERE key=?;";
     private static final String HAS_LOCAL_DELETE = "SELECT path FROM synclocaldeletes WHERE path=?;";
     private static final String HAS_REMOTE_DELETE = "SELECT path FROM syncremotedeletes WHERE path=?;";
     private static final String INSERT_COPY_OP = "INSERT INTO copyops (islocal, source, target, start, end, sourcestate, targetstate) VALUES(?, ?, ?, ?, ?, ?, ?);";
@@ -72,6 +74,7 @@ public class JdbcTreeState implements SyncState {
         try (Connection conn = getConnection()) {
             cmds.createTable("CREATE TABLE IF NOT EXISTS syncstate (path text primary key not null, roothash blob, modtime bigint not null, size bigint not null, hashtree blob); " +
                     "CREATE INDEX IF NOT EXISTS sync_hash_index ON syncstate (roothash);", conn);
+            cmds.createTable("CREATE TABLE IF NOT EXISTS syncdone (key text primary key not null, done bool not null);", conn);
             cmds.createTable("CREATE TABLE IF NOT EXISTS syncdirs (path text primary key not null);", conn);
             cmds.createTable("CREATE TABLE IF NOT EXISTS synclocaldeletes (path text primary key not null);", conn);
             cmds.createTable("CREATE TABLE IF NOT EXISTS syncremotedeletes (path text primary key not null);", conn);
@@ -80,6 +83,31 @@ public class JdbcTreeState implements SyncState {
                     "start "+cmds.sqlInteger()+" not null, end " + cmds.sqlInteger() + " not null, sourcestate blob, targetstate blob);", conn);
         } catch (Exception e) {
             throw new RuntimeException(e);
+        }
+    }
+
+    @Override
+    public boolean hasCompletedSync() {
+        try (Connection conn = getConnection();
+             PreparedStatement select = conn.prepareStatement(DONE_SYNC)) {
+            select.setString(1, "done");
+            ResultSet rs = select.executeQuery();
+            rs.next();
+            return rs.getBoolean(1);
+        } catch (SQLException sqe) {
+            throw new IllegalStateException(sqe);
+        }
+    }
+
+    @Override
+    public void setCompletedSync(boolean done) {
+        try (Connection conn = getConnection();
+             PreparedStatement insert = conn.prepareStatement(cmds.insertOrIgnoreCommand("INSERT ", SET_DONE_SUFFIX))) {
+            insert.setString(1, "done");
+            insert.setBoolean(2, done);
+            insert.executeUpdate();
+        } catch (SQLException sqe) {
+            throw new IllegalStateException(sqe);
         }
     }
 

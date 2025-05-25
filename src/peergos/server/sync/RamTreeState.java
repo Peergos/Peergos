@@ -4,6 +4,7 @@ import peergos.shared.user.Snapshot;
 import peergos.shared.user.fs.RootHash;
 
 import java.util.*;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 class RamTreeState implements SyncState {
     public final Map<String, FileState> filesByPath = new HashMap<>();
@@ -13,6 +14,17 @@ class RamTreeState implements SyncState {
     private final Set<String> remoteDeletes = new HashSet<>();
     private final List<CopyOp> inProgress = new ArrayList<>();
     private final Map<String, Snapshot> versions = new HashMap<>();
+    private final AtomicBoolean completedSync = new AtomicBoolean(false);
+
+    @Override
+    public boolean hasCompletedSync() {
+        return completedSync.get();
+    }
+
+    @Override
+    public void setCompletedSync(boolean done) {
+        completedSync.set(done);
+    }
 
     @Override
     public long filesCount() {

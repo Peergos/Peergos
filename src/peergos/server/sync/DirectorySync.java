@@ -252,6 +252,29 @@ public class DirectorySync {
             }
             syncedVersions.finishCopies(List.of(op));
         }
+        if (! syncedVersions.hasCompletedSync()) {
+            // Do an incremental sync of only files to make progress quicker
+            // We don't need to prehash entire dirs here,
+            // because we are not trying to detect moves/renames
+
+            localFS.applyToSubtree(file -> {
+                Path p = PathUtil.get(file.relPath);
+                if (! remoteFS.exists(p)) {
+                    if (file.size > 1024*1024) { // avoid doing many small files in non bulk uploads
+                        try {
+                            LOG.accept("REMOTE: Uploading " + file.relPath);
+                            HashTree hashTree = localFS.hashFile(p, Optional.empty(), file.relPath, syncedVersions);
+                            LocalDateTime modified = LocalDateTime.ofInstant(Instant.ofEpochSecond(file.modifiedTime / 1000, 0), ZoneOffset.UTC);
+                            remoteFS.setBytes(p, 0, localFS.getBytes(p, 0), file.size, Optional.of(hashTree),
+                                    Optional.of(modified), localFS.getThumbnail(p));
+                            syncedVersions.add(new FileState(file.relPath, file.modifiedTime, file.size, hashTree));
+                        } catch (IOException e) {
+                            throw new RuntimeException(e);
+                        }
+                    }
+                }
+            }, dir -> {});
+        }
 
         String localStateDbFile = "local-tmp-"+System.nanoTime() + ".sqlite";
         String remoteStateDbFile = "remote-tmp-"+System.nanoTime() + ".sqlite";
@@ -439,6 +462,7 @@ public class DirectorySync {
             }
 
             syncedVersions.setSnapshot(remoteFS.getRoot(), remoteVersion);
+            syncedVersions.setCompletedSync(true);
         } finally {
             File localState = peergosDir.resolve(localStateDbFile).toFile();
             if (localState.exists())
