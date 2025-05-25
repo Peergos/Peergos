@@ -18,6 +18,74 @@ import java.util.Set;
 public class SyncTests {
 
     @Test
+    public void rename() throws Exception {
+        Path tmp = Files.createTempDirectory("peergos-sync");
+        Path base1 = Files.createTempDirectory("peergos-sync");
+        Path base2 = Files.createTempDirectory("peergos-sync");
+
+        LocalFileSystem localFs = new LocalFileSystem(base1, Main.initCrypto().hasher);
+        LocalFileSystem remoteFs = new LocalFileSystem(base2, Main.initCrypto().hasher);
+        SyncState syncedState = new JdbcTreeState(":memory:");
+
+        DirectorySync.syncDir(localFs, remoteFs, true, true, null, null, syncedState, tmp, 32, 5, DirectorySync::log);
+
+        byte[] data = new byte[6 * 1024 * 1024];
+        new Random(42).nextBytes(data);
+        String filename = "file.bin";
+        Files.write(base1.resolve(filename), data, StandardOpenOption.CREATE);
+
+        DirectorySync.syncDir(localFs, remoteFs, true, true, null, null, syncedState, tmp, 32, 5, DirectorySync::log);
+        Assert.assertNotNull(syncedState.byPath(filename));
+
+        // rename file
+        String filename2 = "newfile.bin";
+        Files.move(base1.resolve(filename), base1.resolve(filename2));
+        DirectorySync.syncDir(localFs, remoteFs, true, true, null, null, syncedState, tmp, 32, 5, DirectorySync::log);
+        Assert.assertNull(syncedState.byPath(filename));
+        Assert.assertNotNull(syncedState.byPath(filename2));
+
+        // sync should be stable
+        DirectorySync.syncDir(localFs, remoteFs, true, true, null, null, syncedState, tmp, 32, 5, DirectorySync::log);
+        Assert.assertNull(syncedState.byPath(filename));
+        Assert.assertNotNull(syncedState.byPath(filename2));
+    }
+
+    @Test
+    public void renameIgnoringDeletes() throws Exception {
+        Path tmp = Files.createTempDirectory("peergos-sync");
+        Path base1 = Files.createTempDirectory("peergos-sync");
+        Path base2 = Files.createTempDirectory("peergos-sync");
+
+        LocalFileSystem localFs = new LocalFileSystem(base1, Main.initCrypto().hasher);
+        LocalFileSystem remoteFs = new LocalFileSystem(base2, Main.initCrypto().hasher);
+        SyncState syncedState = new JdbcTreeState(":memory:");
+
+        boolean syncLocalDeletes = false;
+        boolean syncRemoteDeletes = false;
+        DirectorySync.syncDir(localFs, remoteFs, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, tmp, 32, 5, DirectorySync::log);
+
+        byte[] data = new byte[6 * 1024 * 1024];
+        new Random(42).nextBytes(data);
+        String filename = "file.bin";
+        Files.write(base1.resolve(filename), data, StandardOpenOption.CREATE);
+
+        DirectorySync.syncDir(localFs, remoteFs, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, tmp, 32, 5, DirectorySync::log);
+        Assert.assertNotNull(syncedState.byPath(filename));
+
+        // rename file
+        String filename2 = "newfile.bin";
+        Files.move(base1.resolve(filename), base1.resolve(filename2));
+        DirectorySync.syncDir(localFs, remoteFs, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, tmp, 32, 5, DirectorySync::log);
+        Assert.assertNull(syncedState.byPath(filename));
+        Assert.assertNotNull(syncedState.byPath(filename2));
+
+        // sync should be stable
+        DirectorySync.syncDir(localFs, remoteFs, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, tmp, 32, 5, DirectorySync::log);
+        Assert.assertNull(syncedState.byPath(filename));
+        Assert.assertNotNull(syncedState.byPath(filename2));
+    }
+
+    @Test
     public void moves() throws Exception {
         Path tmp = Files.createTempDirectory("peergos-sync");
         Path base1 = Files.createTempDirectory("peergos-sync");
