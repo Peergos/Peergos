@@ -258,12 +258,12 @@ public class DirectorySync {
             // because we are not trying to detect moves/renames
 
             localFS.applyToSubtree(file -> {
-                FileState synced = syncedVersions.byPath(file.relPath);
-                if (synced != null)
-                    return;
-                Path p = PathUtil.get(file.relPath);
-                if (! remoteFS.exists(p)) {
-                    if (file.size > 1024*1024) { // avoid doing many small files in non bulk uploads
+                if (file.size > 1024*1024) { // avoid doing many small files in non bulk uploads
+                    FileState synced = syncedVersions.byPath(file.relPath);
+                    if (synced != null)
+                        return;
+                    Path p = PathUtil.get(file.relPath);
+                    if (! remoteFS.exists(p)) {
                         try {
                             LOG.accept("REMOTE: Uploading " + file.relPath);
                             HashTree hashTree = localFS.hashFile(p, Optional.empty(), file.relPath, syncedVersions);
