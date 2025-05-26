@@ -274,6 +274,11 @@ public class DirectorySync {
                         } catch (IOException e) {
                             throw new RuntimeException(e);
                         }
+                    } else {
+                        HashTree remoteHash = remoteFS.hashFile(p, Optional.empty(), file.relPath, syncedVersions);
+                        HashTree localHash = localFS.hashFile(p, Optional.empty(), file.relPath, syncedVersions);
+                        if (localHash.equals(remoteHash))
+                            syncedVersions.add(new FileState(file.relPath, file.modifiedTime, file.size, localHash));
                     }
                 }
             }, dir -> {});
