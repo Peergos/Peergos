@@ -312,8 +312,11 @@ public class DirectorySync {
                 if (isSmallRemoteCopy)
                     smallFiles.add(relativePath);
 
-                boolean isLocalDelete = local == null && Objects.equals(remote, synced);
-                if (isLocalDelete && remote != null) {
+                boolean isLocalDelete = local == null &&
+                        remote != null &&
+                        synced != null &&
+                        remote.equalsIgnoreModtime(synced);
+                if (isLocalDelete ) {
                     List<FileState> byHash = localState.byHash(remote.hashTree.rootHash);
                     Optional<FileState> remoteAtHashedPath = byHash.size() == 1 ?
                             Optional.ofNullable(remoteState.byPath(byHash.get(0).relPath)) :

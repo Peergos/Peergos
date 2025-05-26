@@ -58,6 +58,19 @@ public class HashTree implements Cborable {
         return rootHash.toString();
     }
 
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+        HashTree hashTree = (HashTree) o;
+        return Objects.equals(rootHash, hashTree.rootHash) && Objects.equals(level1, hashTree.level1) && Objects.equals(level2, hashTree.level2) && Objects.equals(level3, hashTree.level3);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(rootHash, level1, level2, level3);
+    }
+
     public static HashTree fromBranches(List<HashBranch> branches) {
         List<ChunkHashList> level1 = branches.stream().flatMap(b -> b.level1.stream()).collect(Collectors.toList());
         List<ChunkHashList> level2 = branches.stream().flatMap(b -> b.level2.stream()).collect(Collectors.toList());

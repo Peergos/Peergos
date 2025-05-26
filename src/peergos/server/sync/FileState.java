@@ -79,6 +79,10 @@ public class FileState implements Cborable {
         return new FileState(relPath, modTime, size, hash);
     }
 
+    public boolean equalsIgnoreModtime(FileState other) {
+        return relPath.equals(other.relPath) && size == other.size && hashTree.equals(other.hashTree);
+    }
+
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;
