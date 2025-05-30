@@ -183,7 +183,12 @@ public class PeergosSyncFS implements SyncFilesystem {
     public void setBytes(Path p, long fileOffset, AsyncReader data, long size, Optional<HashTree> hash, Optional<LocalDateTime> modificationTime, Optional<Thumbnail> thumbnail) throws IOException {
         Optional<FileWrapper> existing = context.getByPath(root.resolve(p)).join();
         if (existing.isEmpty() && fileOffset == 0) {
-            FileWrapper parent = context.getByPath(root.resolve(p).getParent()).join().get();
+            Optional<FileWrapper> parentOpt = context.getByPath(root.resolve(p).getParent()).join();
+            if (parentOpt.isEmpty()) {
+                mkdirs(p.getParent());
+                parentOpt = context.getByPath(root.resolve(p).getParent()).join();
+            }
+            FileWrapper parent = parentOpt.get();
             parent.uploadFileWithHash(p.getFileName().toString(), data, size, hash, modificationTime, thumbnail, context.network, context.crypto, x -> {}).join();
         } else {
             FileWrapper f = existing.get();
