@@ -26,6 +26,8 @@ public interface HostDirEnumerator {
                     File dir = new File(prefix);
                     recurse(dir, res, mathDepthFromPrefix - Paths.get(prefix).getNameCount());
                 }
+                if (res.isEmpty() && ! root.startsWith(prefix))
+                    recurse(new File(root), res, mathDepthFromPrefix - Paths.get(root).getNameCount());
             }
             return Futures.of(res);
         }

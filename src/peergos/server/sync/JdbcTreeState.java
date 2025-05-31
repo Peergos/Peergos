@@ -177,6 +177,8 @@ public class JdbcTreeState implements SyncState {
 
     @Override
     public void addDir(String relPath) {
+        if (relPath.contains("\\"))
+            throw new IllegalStateException("Relative paths must be normalised to use /'s not \\'s!");
         try (Connection conn = getConnection();
              PreparedStatement insert = conn.prepareStatement(cmds.insertOrIgnoreCommand("INSERT ", INSERT_DIR_SUFFIX))) {
             insert.setString(1, relPath);
@@ -309,6 +311,8 @@ public class JdbcTreeState implements SyncState {
 
     @Override
     public void add(FileState fs) {
+        if (fs.relPath.contains("\\"))
+            throw new IllegalStateException("Relative paths must be normalised to use /'s not \\'s!");
         FileState existing = byPath(fs.relPath);
         if (existing != null) {
             try (Connection conn = getConnection();

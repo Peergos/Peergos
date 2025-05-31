@@ -288,7 +288,7 @@ public class PeergosSyncFS implements SyncFilesystem {
         Set<FileWrapper> children = base.getChildren(base.version, context.crypto.hasher, context.network, false).join();
         for (FileWrapper child : children) {
             Path childPath = basePath.resolve(child.getName());
-            FileProps childProps = new FileProps(root.relativize(childPath).toString(),
+            FileProps childProps = new FileProps(root.relativize(childPath).toString().replaceAll("\\\\", "/"),
                     child.getFileProperties().modified.toInstant(ZoneOffset.UTC).toEpochMilli() / 1000 * 1000,
                     child.getSize(), Optional.of(child));
             if (! child.isDirectory()) {
