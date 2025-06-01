@@ -18,7 +18,7 @@ public class HttpMutablePointers implements MutablePointersProxy {
     }
     private static final String P2P_PROXY_PROTOCOL = "/http";
 
-    private static final boolean LOGGING = true;
+    private static final boolean LOGGING = false;
     private final HttpPoster direct, p2p;
     private final String directUrlPrefix;
 
