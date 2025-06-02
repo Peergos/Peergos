@@ -280,8 +280,10 @@ public class PeergosSyncFS implements SyncFilesystem {
     }
 
     private void applyToSubtree(Path start, Consumer<FileProps> onFile, Consumer<FileProps> onDir) {
-        FileWrapper base = context.getByPath(start).join().get();
-        applyToSubtree(start, base, onFile, onDir);
+        Optional<FileWrapper> baseDir = context.getByPath(start).join();
+        if (baseDir.isEmpty())
+            throw new IllegalStateException("Couldn't retrieve Peergos base directory!");
+        applyToSubtree(start, baseDir.get(), onFile, onDir);
     }
 
     private void applyToSubtree(Path basePath, FileWrapper base, Consumer<FileProps> onFile, Consumer<FileProps> onDir) {
