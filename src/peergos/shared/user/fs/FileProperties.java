@@ -285,8 +285,6 @@ public class FileProperties implements Cborable {
             return "spreadsheet";
         if (mimeType.equals("application/vnd.oasis.opendocument.presentation"))
             return "presentation";
-        if (mimeType.equals("application/vnd.peergos-todo"))
-            return "todo";
         return "file";
     }
 
