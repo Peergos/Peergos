@@ -70,8 +70,8 @@ public class MimeTypes {
     final static int[] TTF = new int[]{0, 1, 0, 0};
 
     // mimetypes for files that are cbor list(mimetype int, map(data)), mimetypes < 24 use a single byte
-    public static final String PEERGOS_TODO = "application/vnd.peergos-todo";
-    public static final int CBOR_PEERGOS_TODO_INT = 10;
+
+    private static final int CBOR_PEERGOS_TODO_INT = 10; //legacy
     final static int[] CBOR_PEERGOS_TODO = new int[]{0x82 /* cbor list with 2 elements*/, CBOR_PEERGOS_TODO_INT};
 
     public static final String PEERGOS_POST = "application/vnd.peergos-post";
@@ -238,8 +238,6 @@ public class MimeTypes {
         if (equalArrays(start, TTF))
             return "font/ttf";
 
-        if (equalArrays(start, CBOR_PEERGOS_TODO))
-            return PEERGOS_TODO;
         if (equalArrays(start, CBOR_PEERGOS_POST))
             return PEERGOS_POST;
         if (equalArrays(start, CBOR_PEERGOS_IDENTITY_PROOF))
