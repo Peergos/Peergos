@@ -301,7 +301,7 @@ public class DirectorySync {
         SyncState remoteState = remoteChange ? new RamTreeState() : syncedVersions;
         long t3 = System.currentTimeMillis();
         if (remoteChange)
-            buildDirState(remoteFS, remoteState, syncedVersions);
+            remoteVersion = buildDirState(remoteFS, remoteState, syncedVersions);
         long t4 = System.currentTimeMillis();
         log("Found " + remoteState.filesCount() + " remote files in " + (t4-t3)/1_000 + "s");
 
