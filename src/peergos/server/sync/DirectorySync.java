@@ -288,8 +288,10 @@ public class DirectorySync {
         String remoteStateDbFile = "remote-tmp-"+System.nanoTime() + ".sqlite";
         try {
             SyncState localState = new JdbcTreeState(peergosDir.resolve(localStateDbFile).toString());
+            long t1 = System.currentTimeMillis();
             buildDirState(localFS, localState, syncedVersions);
-            log("Found " + localState.filesCount() + " local files");
+            long t2 = System.currentTimeMillis();
+            log("Found " + localState.filesCount() + " local files in " + (t2-t1)/1_000 + "s");
 
             Snapshot syncedVersion = syncedVersions.getSnapshot(remoteFS.getRoot());
             Snapshot remoteVersion = network == null ?
@@ -301,9 +303,11 @@ public class DirectorySync {
             SyncState remoteState = remoteVersion.equals(syncedVersion) && !remoteVersion.versions.isEmpty() ?
                     syncedVersions :
                     new JdbcTreeState(peergosDir.resolve(remoteStateDbFile).toString());
+            long t3 = System.currentTimeMillis();
             if (!remoteVersion.equals(syncedVersion) || remoteVersion.versions.isEmpty())
                 buildDirState(remoteFS, remoteState, syncedVersions);
-            log("Found " + remoteState.filesCount() + " remote files");
+            long t4 = System.currentTimeMillis();
+            log("Found " + remoteState.filesCount() + " remote files in " + (t4-t3)/1_000 + "s");
 
             TreeSet<String> allPaths = new TreeSet<>(localState.allFilePaths());
             allPaths.addAll(remoteState.allFilePaths());
