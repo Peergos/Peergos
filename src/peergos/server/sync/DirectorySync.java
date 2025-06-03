@@ -156,7 +156,7 @@ public class DirectorySync {
                     PeergosSyncFS remote = buildRemote(links.get(i), remoteDir, network, crypto);
                     SyncFilesystem local = localBuilder.apply(localDirs.get(i));
                     syncDir(local, remote, syncLocalDeletes.get(i), syncRemoteDeletes.get(i),
-                            owner, network, syncedState, peergosDir, maxDownloadParallelism, minFreeSpacePercent, LOG);
+                            owner, network, syncedState, maxDownloadParallelism, minFreeSpacePercent, LOG);
                     long t1 = System.currentTimeMillis();
                     log("Dir sync took " + (t1 - t0) / 1000 + "s");
                 }
@@ -236,7 +236,6 @@ public class DirectorySync {
                                PublicKeyHash owner,
                                NetworkAccess network,
                                SyncState syncedVersions,
-                               Path peergosDir,
                                int maxParallelism,
                                int minPercentFreeSpace,
                                Consumer<String> LOG) throws IOException {
@@ -296,12 +295,12 @@ public class DirectorySync {
                 Futures.reduceAll(syncedVersion.versions.keySet(),
                         new Snapshot(new HashMap<>()),
                         (v, w) -> v.withWriter(owner, w, network),
-                        (a, b) -> a.mergeAndOverwriteWith(b)).join();
-        SyncState remoteState = remoteVersion.equals(syncedVersion) && !remoteVersion.versions.isEmpty() ?
-                syncedVersions :
-                new RamTreeState();
+                        Snapshot::mergeAndOverwriteWith).join();
+        log("Synced version: " + syncedVersion + "Remote version: " + remoteVersion);
+        boolean remoteChange = ! remoteVersion.equals(syncedVersion) || remoteVersion.versions.isEmpty();
+        SyncState remoteState = remoteChange ? new RamTreeState() : syncedVersions;
         long t3 = System.currentTimeMillis();
-        if (!remoteVersion.equals(syncedVersion) || remoteVersion.versions.isEmpty())
+        if (remoteChange)
             buildDirState(remoteFS, remoteState, syncedVersions);
         long t4 = System.currentTimeMillis();
         log("Found " + remoteState.filesCount() + " remote files in " + (t4-t3)/1_000 + "s");
