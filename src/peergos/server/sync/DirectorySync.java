@@ -296,7 +296,7 @@ public class DirectorySync {
                         new Snapshot(new HashMap<>()),
                         (v, w) -> v.withWriter(owner, w, network),
                         Snapshot::mergeAndOverwriteWith).join();
-        log("Synced version: " + syncedVersion + "Remote version: " + remoteVersion);
+
         boolean remoteChange = ! remoteVersion.equals(syncedVersion) || remoteVersion.versions.isEmpty();
         SyncState remoteState = remoteChange ? new RamTreeState() : syncedVersions;
         long t3 = System.currentTimeMillis();

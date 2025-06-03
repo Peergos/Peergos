@@ -5,6 +5,12 @@ import org.junit.Test;
 import peergos.server.Main;
 import peergos.server.sync.*;
 import peergos.shared.Crypto;
+import peergos.shared.MaybeMultihash;
+import peergos.shared.crypto.hash.PublicKeyHash;
+import peergos.shared.io.ipfs.Cid;
+import peergos.shared.io.ipfs.Multihash;
+import peergos.shared.user.CommittedWriterData;
+import peergos.shared.user.Snapshot;
 import peergos.shared.user.fs.HashTree;
 
 import java.io.IOException;
@@ -12,6 +18,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.Arrays;
+import java.util.Optional;
 import java.util.Random;
 import java.util.Set;
 
@@ -451,5 +458,13 @@ public class SyncTests {
         retrieved = synced.byPath(path);
         Assert.assertEquals(retrieved.modificationTime, state2.modificationTime);
         Assert.assertEquals(retrieved.size, state2.size);
+        Cid c = new Cid(1, Cid.Codec.DagCbor, Multihash.Type.sha2_256, new byte[32]);
+        PublicKeyHash writer = new PublicKeyHash(c);
+        CommittedWriterData base = new CommittedWriterData(MaybeMultihash.of(c), Optional.empty(), Optional.of(3L));
+        Snapshot original = new Snapshot(writer, base);
+        synced.setSnapshot("/some/dir", original);
+        synced.setSnapshot("/some/dir", original);
+        Snapshot s = synced.getSnapshot("/some/dir");
+        Assert.assertTrue(s.equals(original));
     }
 }

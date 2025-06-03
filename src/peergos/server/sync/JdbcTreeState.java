@@ -166,6 +166,7 @@ public class JdbcTreeState implements SyncState {
     public Snapshot getSnapshot(String basePath) {
         try (Connection conn = getConnection();
              PreparedStatement select = conn.prepareStatement(GET_SNAPSHOT)) {
+            select.setString(1, basePath);
             ResultSet rs = select.executeQuery();
             if (rs.next())
                 return Snapshot.fromCbor(CborObject.fromByteArray(rs.getBytes(1)));

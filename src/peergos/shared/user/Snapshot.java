@@ -102,6 +102,19 @@ public class Snapshot implements Cborable {
     }
 
     @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+        Snapshot snapshot = (Snapshot) o;
+        return Objects.equals(versions, snapshot.versions);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hashCode(versions);
+    }
+
+    @Override
     public String toString() {
         return versions.toString();
     }
