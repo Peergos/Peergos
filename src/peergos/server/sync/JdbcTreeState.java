@@ -73,7 +73,8 @@ public class JdbcTreeState implements SyncState {
     private synchronized void init() {
         try (Connection conn = getConnection()) {
             cmds.createTable("CREATE TABLE IF NOT EXISTS syncstate (path text primary key not null, roothash blob, modtime bigint not null, size bigint not null, hashtree blob); " +
-                    "CREATE INDEX IF NOT EXISTS sync_hash_index ON syncstate (roothash);", conn);
+                    "CREATE INDEX IF NOT EXISTS sync_hash_index ON syncstate (roothash);" +
+                    "CREATE INDEX IF NOT EXISTS sync_path_index ON syncstate (path);", conn);
             cmds.createTable("CREATE TABLE IF NOT EXISTS syncdone (key text primary key not null, done bool not null);", conn);
             cmds.createTable("CREATE TABLE IF NOT EXISTS syncdirs (path text primary key not null);", conn);
             cmds.createTable("CREATE TABLE IF NOT EXISTS synclocaldeletes (path text primary key not null);", conn);
