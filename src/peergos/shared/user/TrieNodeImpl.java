@@ -191,7 +191,6 @@ public class TrieNodeImpl implements TrieNode {
     @Override
     public TrieNodeImpl put(String path, EntryPoint e) {
         FileProperties.ensureValidPath(path);
-        LOG.info("Entrie.put(" + path + ")");
         path = TrieNode.canonicalise(path);
         if (path.length() == 0) {
             return new TrieNodeImpl(children, Optional.of(e));
@@ -208,7 +207,6 @@ public class TrieNodeImpl implements TrieNode {
     @Override
     public TrieNode putNode(String path, TrieNode t) {
         FileProperties.ensureValidPath(path);
-        LOG.info("Entrie.put(" + path + ")");
         path = TrieNode.canonicalise(path);
         if (path.length() == 0) {
             return t;
