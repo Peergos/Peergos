@@ -194,7 +194,7 @@ public class LocalFileSystem implements SyncFilesystem {
 
     private void applyToSubtree(Path start, Consumer<FileProps> file, Consumer<FileProps> dir) throws IOException {
         Files.list(start).forEach(c -> {
-            String relPath = root.relativize(start.resolve(c.getFileName())).toString();
+            String relPath = root.relativize(start.resolve(c.getFileName())).normalize().toString();
             String canonicalRelPath = hasBackSlashes ? relPath.replaceAll("\\\\", "/") : relPath;
             FileProps props = new FileProps(canonicalRelPath, c.toFile().lastModified() / 1000 * 1000, c.toFile().length(), Optional.empty());
             if (Files.isRegularFile(c)) {
