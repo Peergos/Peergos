@@ -838,6 +838,8 @@ public class DirectorySync {
             FileState atSync = synced.byPath(relPath);
             if (atSync != null && atSync.modificationTime == props.modifiedTime && atSync.size == props.size) {
                 res.add(atSync);
+                if (props.meta.isPresent())
+                    version.update(props.meta.get().version);
             } else {
                 HashTree hashTree = fs.hashFile(PathUtil.get(props.relPath), props.meta, relPath, synced);
                 if (props.meta.isPresent()) {
