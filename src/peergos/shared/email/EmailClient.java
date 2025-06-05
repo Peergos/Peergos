@@ -9,9 +9,11 @@ import peergos.shared.io.ipfs.api.JSONParser;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.AsyncReader;
 import peergos.shared.user.fs.FileWrapper;
+import peergos.shared.user.fs.SecretLink;
 import peergos.shared.util.*;
 
 import java.nio.file.*;
+import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.stream.*;
@@ -243,10 +245,13 @@ public class EmailClient {
     }
 
     @JsMethod
-    public CompletableFuture<Snapshot> connectToBridge(UserContext context, String bridgeUsername) {
+    public CompletableFuture<SecretLink> connectToBridge(UserContext context) {
         Path pendingDir = App.getDataDir("email", context.username)
                 .resolve(PathUtil.get("default", "pending"));
-        return context.sendInitialFollowRequest(bridgeUsername)
-                .thenCompose(x -> context.shareWriteAccessWith(pendingDir, Collections.singleton(bridgeUsername)));
+
+        return context.createSecretLink(pendingDir.toString(), true, Optional.empty(),
+                Optional.empty(), "", false)
+                .thenCompose(linkProps -> context.getUserRoot()
+                        .thenApply(userRoot -> linkProps.toLink(userRoot.owner())));
     }
 }
