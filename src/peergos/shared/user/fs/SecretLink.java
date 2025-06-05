@@ -19,6 +19,7 @@ public class SecretLink {
         this.linkPassword = linkPassword;
     }
 
+    @JsMethod
     public String toLink() {
         return "secret/" + Multibase.Base.Base58BTC.prefix + owner.toBase58() + "/" + labelString() + "#" + linkPassword;
     }

@@ -1881,7 +1881,7 @@ public class PeergosNetworkUtils {
 
         App emailApp = App.init(user, "email").join();
         EmailClient client = EmailClient.load(emailApp, crypto).join();
-        client.connectToBridge(user, email.username).join();
+        client.connectToBridge(user).join();
 
         Path path = new File(user.username + "/.apps/email").toPath();
         FileWrapper parentDir = user.getByPath(path.getParent().toString()).join().get();
@@ -1900,15 +1900,13 @@ public class PeergosNetworkUtils {
         App emailApp = App.init(user, "email").join();
         EmailClient client = EmailClient.load(emailApp, crypto).join();
         client = EmailClient.load(emailApp, crypto).join(); //test that keys are found and loaded
-        client.connectToBridge(user, email.username).join();
+        SecretLink writableLink = client.connectToBridge(user).join();
 
         Optional<String> emailAddress =  client.getEmailAddress().join();
         Assert.assertTrue("email address", emailAddress.isEmpty());
 
         //email bridge setup
-        email.sendReplyFollowRequest(email.processFollowRequests().join().get(0), true, true).join();
-        user.processFollowRequests().join();
-        EmailBridgeClient bridge = EmailBridgeClient.build(email, user.username, user.username + "@example.com");
+        EmailBridgeClient bridge = EmailBridgeClient.build(writableLink, network, crypto, user.username, user.username + "@example.com");
 
         emailAddress =  client.getEmailAddress().join();
         Assert.assertTrue("email address", emailAddress.isPresent());
