@@ -26,11 +26,11 @@ public class EmailBridgeClient {
     private final PublicBoxingKey encryptionTarget;
     private static final Path emailDataDir = PathUtil.get(".apps", "email", "data");
 
-    public EmailBridgeClient(String clientUsername, UserContext clientWritableContext, NetworkAccess network, Crypto crypto, PublicBoxingKey encryptionTarget) {
+    public EmailBridgeClient(String clientUsername, UserContext clientWritableContext, PublicBoxingKey encryptionTarget) {
         this.clientUsername = clientUsername;
         this.clientWritableContext = clientWritableContext;
-        this.network = network;
-        this.crypto = crypto;
+        this.network = clientWritableContext.network;
+        this.crypto = clientWritableContext.crypto;
         this.encryptionTarget = encryptionTarget;
     }
 
@@ -157,6 +157,6 @@ public class EmailBridgeClient {
             pendingDirectory.uploadOrReplaceFile("email.json", new AsyncReader.ArrayBacked(data), data.length, network,
                     crypto, l -> {}).join();
         }
-        return new EmailBridgeClient(clientUsername, writableContext, network, crypto, getEncryptionTarget(network, crypto, writableContext.getByPath(pendingPath).join().get()));
+        return new EmailBridgeClient(clientUsername, writableContext, getEncryptionTarget(network, crypto, writableContext.getByPath(pendingPath).join().get()));
     }
 }
