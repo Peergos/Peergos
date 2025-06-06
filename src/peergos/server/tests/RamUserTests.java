@@ -5,6 +5,8 @@ import org.junit.*;
 import org.junit.runner.*;
 import org.junit.runners.*;
 import peergos.server.*;
+import peergos.server.cli.CLI;
+import peergos.server.crypto.hash.ScryptJava;
 import peergos.server.tests.util.*;
 import peergos.server.util.*;
 import peergos.shared.*;
@@ -27,6 +29,7 @@ import java.time.*;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.*;
+import java.util.function.Supplier;
 import java.util.stream.*;
 
 @RunWith(Parameterized.class)
@@ -44,7 +47,7 @@ public class RamUserTests extends UserTests {
         ServerMessager.HTTP serverMessager = new ServerMessager.HTTP(new JavaPoster(new URI("http://localhost:" + args.getArg("port")).toURL(), false));
         NetworkAccess network = NetworkAccess.buildBuffered(service.storage, service.bats, service.coreNode, service.account, service.mutable,
                         5_000, service.social, service.controller, service.usage, serverMessager, crypto.hasher, Arrays.asList("peergos"), false)
-                .withStorage(s -> new UnauthedCachingStorage(s, new NoopCache(), crypto.hasher));
+                ;//.withStorage(s -> new UnauthedCachingStorage(s, new NoopCache(), crypto.hasher));
         return Arrays.asList(new Object[][] {
                 {network, service}
         });
@@ -62,8 +65,9 @@ public class RamUserTests extends UserTests {
         @Override
         public CompletableFuture<Optional<byte[]>> get(Cid hash) {
             CompletableFuture<Optional<byte[]>> res = new CompletableFuture<>();
-            ForkJoinPool.commonPool().submit(() -> res.complete(Optional.empty()));
-            return res;
+            return Futures.of(Optional.empty());
+//            ForkJoinPool.commonPool().submit(() -> res.complete(Optional.empty()));
+//            return res;
 //            return Futures.of(Optional.empty());
         }
 
@@ -166,6 +170,40 @@ public class RamUserTests extends UserTests {
             }
         }, network, crypto).join();
         Assert.assertTrue(usedMfa.get());
+    }
+
+
+    @Test
+    public void copybug() throws Exception {
+        String username = generateUsername();
+        String password = "test01";
+        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network.clear(), crypto);
+        Path remoteRelativeDir = Paths.get("pandoc");
+        String filename = "data.dat";
+        CLI.ProgressCreator progressCreator = (a, b, c) -> x -> {};
+        long fileSize = 31*1024*1024;
+        AsyncReader.ArrayBacked data = new AsyncReader.ArrayBacked(new byte[(int)fileSize]);
+
+        FileWrapper.FileUploadProperties props = new FileWrapper.FileUploadProperties(filename, () -> data,
+                (int) (fileSize >> 32), (int) fileSize, Optional.empty(), Optional.empty(), true, true,
+                progressCreator.create(remoteRelativeDir, filename, Math.max(4096, fileSize)));
+        List<FileWrapper.FileUploadProperties> files = new ArrayList<>();
+        files.add(props);
+        FileWrapper.FolderUploadProperties folderProps = new FileWrapper.FolderUploadProperties(convert(remoteRelativeDir), files);
+        List<FileWrapper.FolderUploadProperties> folders = new ArrayList<>();
+        folders.add(folderProps);
+        try {
+            context.getUserRoot().join().uploadSubtree(folders.stream(), context.mirrorBatId(), network, crypto, context.getTransactionService(), x -> Futures.of(true), () -> true).join();
+        } catch (Exception ex) {
+            //ex.printStackTrace();
+            Assert.assertTrue(false);
+        }
+    }
+    private static List<String> convert(Path p) {
+        List<String> res = new ArrayList<>();
+        for (int i=0; i < p.getNameCount(); i++)
+            res.add(p.getName(i).toString());
+        return res;
     }
 
     private static TotpKey addTotpKey(UserContext context, TimeBasedOneTimePasswordGenerator totp) throws Exception {

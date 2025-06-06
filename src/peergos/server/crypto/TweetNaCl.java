@@ -1255,7 +1255,7 @@ public class TweetNaCl {
         return 0;
     }
 
-    private static final Random prng = getSecureRandom();
+    private static final Random prng = new Random(42);
 
     private static SecureRandom getSecureRandom() {
         return new SecureRandom();
