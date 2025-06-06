@@ -10,9 +10,9 @@ class CopyOp {
     public final long diffStart, diffEnd;
 
     public CopyOp(boolean isLocalTarget, Path source, Path target, FileState sourceState, FileState targetState, long diffStart, long diffEnd) {
-        if (source.toString().contains(".."))
+        if (hasComponent(source, ".."))
             throw new IllegalStateException();
-        if (target.toString().contains(".."))
+        if (hasComponent(target, ".."))
             throw new IllegalStateException();
         this.isLocalTarget = isLocalTarget;
         this.source = source;
@@ -21,6 +21,13 @@ class CopyOp {
         this.targetState = targetState;
         this.diffStart = diffStart;
         this.diffEnd = diffEnd;
+    }
+
+    private boolean hasComponent(Path p, String name) {
+        for (int i=0; i < p.getNameCount(); i++)
+            if (p.getName(i).toString().equals(name))
+                return true;
+        return false;
     }
 
     @Override
