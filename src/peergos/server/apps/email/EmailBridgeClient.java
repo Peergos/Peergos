@@ -80,7 +80,7 @@ public class EmailBridgeClient {
         if (emailMessage.forwardingToEmail.isPresent()) {
             allAttachments.addAll(emailMessage.forwardingToEmail.get().attachments);
         }
-        FileWrapper sentAttachments = sent.getChild("attachments", crypto.hasher, network).join().get();
+        FileWrapper sentAttachments = sent.getUpdated(network).join().getChild("attachments", crypto.hasher, network).join().get();
         for(Attachment attachment : allAttachments) {
             byte[] bytes = attachmentsMap.get(attachment.uuid);
             if (bytes != null) {

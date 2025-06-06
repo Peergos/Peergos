@@ -176,13 +176,26 @@ public interface ContentAddressedStorage {
                                                    List<ChunkMirrorCap> caps,
                                                    Optional<Cid> committedRoot);
 
+    default CompletableFuture<Cid> getChampRoot(Optional<Cid> committedRoot,
+                                                Cid root,
+                                                PublicKeyHash owner,
+                                                ContentAddressedStorage target) {
+        return committedRoot.isPresent() ?
+                target.get(owner, committedRoot.get(), Optional.empty())
+                        .thenApply(ropt -> ropt.map(WriterData::fromCbor)
+                                .flatMap(wd -> wd.tree.map(t -> (Cid)t))
+                                .orElse(root)) :
+                Futures.of(root);
+    }
+
     default CompletableFuture<List<byte[]>> getChampLookup(PublicKeyHash owner,
                                                            Cid root,
                                                            List<ChunkMirrorCap> caps,
                                                            Optional<Cid> committedRoot,
                                                            Hasher hasher) {
         CachingStorage cache = new CachingStorage(this, 100, 1024 * 1024);
-        return Futures.combineAll(caps.stream().map(cap -> ChampWrapper.create(owner, (Cid)root, Optional.empty(), x -> Futures.of(x.data), cache, hasher, c -> (CborObject.CborMerkleLink) c)
+        return Futures.combineAll(caps.stream().map(cap -> getChampRoot(committedRoot, root, owner, cache)
+                        .thenCompose(champRoot -> ChampWrapper.create(owner, champRoot, Optional.empty(), x -> Futures.of(x.data), cache, hasher, c -> (CborObject.CborMerkleLink) c))
                         .thenCompose(tree -> tree.get(cap.mapKey))
                         .thenApply(c -> c.map(x -> x.target).map(MaybeMultihash::of).orElse(MaybeMultihash.empty()))
                         .thenCompose(btreeValue -> {

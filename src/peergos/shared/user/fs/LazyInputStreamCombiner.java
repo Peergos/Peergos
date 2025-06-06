@@ -81,8 +81,7 @@ public class LazyInputStreamCombiner implements AsyncReader {
     }
 
     private void prefetch(int nChunks) {
-        syncPrefetch(nChunks);
-//        ForkJoinPool.commonPool().execute(() -> syncPrefetch(nChunks));
+        ForkJoinPool.commonPool().execute(() -> syncPrefetch(nChunks));
     }
 
     private void syncPrefetch(int nChunks) {
@@ -126,8 +125,7 @@ public class LazyInputStreamCombiner implements AsyncReader {
                 continue;
 
             LOG.info("Submitting chunk download " + (chunkOffset / Chunk.MAX_SIZE));
-//            ForkJoinPool.commonPool().execute(() ->
-                    getChunk(nextChunkCap.withMapKey(mapKey.left, mapKey.right), chunkOffset, size).join();
+            ForkJoinPool.commonPool().execute(() -> getChunk(nextChunkCap.withMapKey(mapKey.left, mapKey.right), chunkOffset, size));
         }
     }
 
@@ -292,7 +290,7 @@ public class LazyInputStreamCombiner implements AsyncReader {
         }
         long globalOffset = globalIndex + index;
 
-        prefetch(1);//Math.min(5, nBufferedChunks));
+        prefetch(Math.min(5, nBufferedChunks));
 
         if (available >= length) // we are done
             return CompletableFuture.completedFuture(length);

@@ -36,8 +36,7 @@ public class RetryStorage implements ContentAddressedStorage {
     }
 
     private static <V> void retryAfter(Supplier<CompletableFuture<V>> method, int milliseconds) {
-        method.get().join();
-//        executor.schedule(method::get, milliseconds, TimeUnit.MILLISECONDS);
+        executor.schedule(method::get, milliseconds, TimeUnit.MILLISECONDS);
     }
 
     private static int jitter(int minMilliseconds, int rangeMilliseconds) {
