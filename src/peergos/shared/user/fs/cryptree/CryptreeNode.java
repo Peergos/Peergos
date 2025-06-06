@@ -925,6 +925,7 @@ public class CryptreeNode implements Cborable {
                                                             Crypto crypto) {
         if (targetCAPs.isEmpty())
             return Futures.of(current);
+        // This assumes that the new child names do not already exist in this dir
         // Make sure subsequent blobs use a different transaction to obscure linkage of different parts of this dir
         return getDirectChildren(us, current, network).thenCompose(children -> {
             if (children.size() + targetCAPs.size() > getMaxChildLinksPerBlob()) {
