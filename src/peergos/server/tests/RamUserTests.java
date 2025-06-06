@@ -193,7 +193,7 @@ public class RamUserTests extends UserTests {
         List<FileWrapper.FolderUploadProperties> folders = new ArrayList<>();
         folders.add(folderProps);
         try {
-            context.getUserRoot().join().uploadSubtree(folders.stream(), context.mirrorBatId(), network, crypto, context.getTransactionService(), x -> Futures.of(true), () -> true).join();
+            context.getUserRoot().join().uploadSubtree(folders.stream(), context.mirrorBatId(), context.network, crypto, context.getTransactionService(), x -> Futures.of(true), () -> true).join();
         } catch (Exception ex) {
             //ex.printStackTrace();
             Assert.assertTrue(false);
