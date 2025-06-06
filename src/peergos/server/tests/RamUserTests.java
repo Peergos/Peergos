@@ -178,7 +178,7 @@ public class RamUserTests extends UserTests {
         String username = generateUsername();
         String password = "test01";
         UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network.clear(), crypto);
-        Path remoteRelativeDir = Paths.get("pandoc");
+        Path remoteRelativeDir = Paths.get("pandoc","assets");
         String filename = "data.dat";
         CLI.ProgressCreator progressCreator = (a, b, c) -> x -> {};
         long fileSize = 31*1024*1024;
@@ -192,13 +192,39 @@ public class RamUserTests extends UserTests {
         FileWrapper.FolderUploadProperties folderProps = new FileWrapper.FolderUploadProperties(convert(remoteRelativeDir), files);
         List<FileWrapper.FolderUploadProperties> folders = new ArrayList<>();
         folders.add(folderProps);
-        try {
-            context.getUserRoot().join().uploadSubtree(folders.stream(), context.mirrorBatId(), context.network, crypto, context.getTransactionService(), x -> Futures.of(true), () -> true).join();
-        } catch (Exception ex) {
-            //ex.printStackTrace();
-            Assert.assertTrue(false);
-        }
+        context.getUserRoot().join().uploadSubtree(folders.stream(), context.mirrorBatId(), context.network, crypto, context.getTransactionService(), x -> Futures.of(true), () -> true).join();
+
+        String appName = "pandoc";
+        String installAppFromFolder = context.username + "/" + appName;
+        peergos.shared.user.App.init(context, appName).join();
+        boolean result = copyAssetsFolder(context, appName, installAppFromFolder).join();
+        Assert.assertTrue(result);
     }
+    private static CompletableFuture<Boolean> copyAssetsFolder(UserContext context, String appName, String installAppFromFolder) {
+        CompletableFuture<Boolean> future = peergos.shared.util.Futures.incomplete();
+        String appFolderPath = "/" + context.username + "/.apps/" + appName;
+        context.getByPath(installAppFromFolder + "/assets").thenApply(srcAssetsDirOpt -> {
+            if (srcAssetsDirOpt.isPresent()) {
+                context.getByPath(appFolderPath).thenApply(destAppDirOpt -> {
+                    srcAssetsDirOpt.get().copyTo(destAppDirOpt.get(), context)
+                            .thenApply(res -> {
+                                future.complete(true);
+                                return true;
+                            }).exceptionally(throwable -> {
+                                System.out.println("unable to copy app assets. error: " + throwable.getMessage());
+                                future.complete(false);
+                                return false;
+                            });
+                    return null;
+                });
+            }else {
+                future.complete(false);
+            }
+            return null;
+        });
+        return future;
+    }
+
     private static List<String> convert(Path p) {
         List<String> res = new ArrayList<>();
         for (int i=0; i < p.getNameCount(); i++)
