@@ -977,6 +977,11 @@ public class CryptreeNode implements Cborable {
                     }
                 });
             } else {
+                Set<String> existing = children.stream().map(c -> c.name.name).collect(Collectors.toSet());
+                HashSet<String> toAdd = new HashSet<>(targetCAPs.stream().map(c -> c.name.name).collect(Collectors.toSet()));
+                toAdd.retainAll(existing);
+                if (! toAdd.isEmpty())
+                    throw new IllegalStateException("Name conflict in target directory " + toAdd);
                 ArrayList<NamedRelativeCapability> newFiles = new ArrayList<>(children);
                 newFiles.addAll(targetCAPs);
 
