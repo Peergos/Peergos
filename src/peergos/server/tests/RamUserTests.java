@@ -331,6 +331,40 @@ public class RamUserTests extends UserTests {
         context.getByPath(parentPath.resolve(childName)).join().get();
     }
 
+    @Test
+    public void duplicateNameCutAndPaste() throws Exception {
+        String username = generateUsername();
+        String password = "terriblepassword";
+        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
+        FileWrapper userRoot = context.getUserRoot().join();
+        String targetName = "target";
+        userRoot.mkdir(targetName, network, false, context.mirrorBatId(), crypto).join();
+        Path targetPath = Paths.get(username, targetName);
+        FileWrapper target = context.getByPath(targetPath).join().get();
+        byte[] orig = "Some words are here".getBytes();
+        String filename = "test.txt";
+        target.uploadOrReplaceFile(filename, AsyncReader.build(orig), orig.length, network, crypto, x -> {}).join();
+
+        String sourceName = "source";
+        context.getUserRoot().join().mkdir(sourceName, network, false, context.mirrorBatId(), crypto).join();
+        FileWrapper source = context.getByPath(Paths.get(username, sourceName)).join().get();
+        byte[] different = "hi".getBytes();
+        source.uploadOrReplaceFile(filename, AsyncReader.build(different), different.length, network, crypto, x -> {}).join();
+
+        FileWrapper toMove = context.getByPath(Paths.get(username, sourceName, filename)).join().get();
+        try {
+            target = context.getByPath(targetPath).join().get();
+            FileWrapper parent = context.getByPath(Paths.get(username, sourceName)).join().get();
+            toMove.moveTo(target, parent, Paths.get(username, sourceName, filename), context, () -> Futures.of(true)).join();
+            throw new RuntimeException("Should fail before here");
+        } catch (CompletionException e) {}
+        target = context.getByPath(targetPath).join().get();
+        Set<FileWrapper> kids = target.getChildren(crypto.hasher, network).join();
+        Assert.assertTrue(kids.size() == 1);
+        byte[] data = Serialize.readFully(kids.stream().findFirst().get(), crypto, network).join();
+        Assert.assertArrayEquals(data, orig);
+    }
+
     private static byte[] get(URL target) throws IOException {
         HttpURLConnection conn = (HttpURLConnection) target.openConnection();
         conn.setRequestMethod("GET");
