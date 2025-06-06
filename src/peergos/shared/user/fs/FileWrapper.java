@@ -1948,97 +1948,100 @@ public class FileWrapper {
         if (! target.isDirectory()) {
             return Futures.errored(new IllegalStateException("CopyTo target " + target + " must be a directory"));
         }
-        return target.hasChild(getName(), context.crypto.hasher, context.network).thenCompose(nameClash -> {
+        return target.hasChild(getName(), context.crypto.hasher, context.network).thenApply(nameClash -> {
             if (nameClash)
                 throw new IllegalStateException("Child already exists with name " + getName() + " in destination folder.");
+            return true;
+        }).thenCompose(x -> {
             // ensure we aren't trying to move a folder to a descendant folder, which will result in data loss!
-            return target.getPath(context.network).thenCompose(targetPath -> {
-                Path targetP = PathUtil.get(targetPath);
-                if (targetP.startsWith(ourPath))
-                    throw new IllegalStateException("You cannot move a folder to a descendant folder");
+            return target.getPath(context.network).thenApply(targetPath -> {
+                        Path targetP = PathUtil.get(targetPath);
+                        if (targetP.startsWith(ourPath))
+                            throw new IllegalStateException("You cannot move a folder to a descendant folder");
+                        return true;
+                    });
+        }).thenCompose(x -> {
+            Optional<BatId> targetMirrorBatId = target.mirrorBatId()
+                    .or(() -> target.owner().equals(context.signer.publicKeyHash) ?
+                            context.mirrorBatId() :
+                            Optional.empty());
 
-                Optional<BatId> targetMirrorBatId = target.mirrorBatId()
-                        .or(() -> target.owner().equals(context.signer.publicKeyHash) ?
-                                context.mirrorBatId() :
-                                Optional.empty());
+            NetworkAccess net = context.network;
+            Hasher hasher = context.crypto.hasher;
 
-                NetworkAccess net = context.network;
-                Hasher hasher = context.crypto.hasher;
-
-                return context.getPublicFile(ourPath).thenApply(opt -> opt.isPresent())
-                        .thenCompose(isPublic -> net.synchronizer.applyComplexUpdate(owner(), signingPair(),
-                                (v, c) -> context.sharedWithCache.getAllDescendantShares(ourPath, v)
-                                        .thenCompose(shared -> {
-                                            return (isPublic || !owner().equals(target.owner()) ?
-                                                    Futures.of(false) :
-                                                    shared.isEmpty() // fast path
-                                                            ? Futures.of(true) : preserveAccess.get())
-                                                    .thenCompose(keepAccess -> {
-                                                        boolean differentParentWriter = !target.writer().equals(parent.writer());
-                                                        // TODO optimise different parent writer case by correcting owned keys
-                                                        if (keepAccess && !differentParentWriter) {
-                                                            // just update parent and child pointers, no need to re-upload, rotate keys etc.
-                                                            boolean differentWriter = !target.writer().equals(writer());
-                                                            boolean ourFile = context.signer != null && target.owner().equals(context.signer.publicKeyHash);
-                                                            RelativeCapability newParentLink = new RelativeCapability(differentWriter ?
-                                                                    Optional.of(target.writer()) :
-                                                                    Optional.empty(),
-                                                                    target.getLocation().getMapKey(), target.writableFilePointer().bat, target.getParentKey(), Optional.empty());
-                                                            CryptreeNode newMetadata = pointer.fileAccess.withParentLink(getParentKey(), newParentLink);
-                                                            RelativeCapability ourNewcap = target.writableFilePointer().relativise(pointer.capability);
-                                                            return IpfsTransaction.call(owner(),
-                                                                    tid -> target.getPath(net).thenCompose(newPath -> v.withWriter(owner(), target.writer(), net)
-                                                                            .thenCompose(w -> net.uploadChunk(w, c, newMetadata, owner(), pointer.capability.getMapKey(), signingPair(), tid))
-                                                                            .thenCompose(v2 -> target.pointer.fileAccess.addChildrenAndCommit(v2, c,
-                                                                                    Arrays.asList(new NamedRelativeCapability(getName(), ourNewcap)),
-                                                                                    target.writableFilePointer(), target.signingPair(), targetMirrorBatId, net, context.crypto))
-                                                                            .thenCompose(v3 -> parent.pointer.fileAccess
-                                                                                    .removeChildren(v3, c, Arrays.asList(isLink() ? linkPointer.get().capability : getPointer().capability), parent.writableFilePointer(),
-                                                                                            parent.entryWriter, net, context.crypto.random, hasher))
-                                                                            .thenCompose(v4 -> !ourFile || shared.isEmpty() ? Futures.of(v4) : context.sharedWithCache.clearSharedWith(ourPath, v4, c, net))
-                                                                            .thenCompose(v5 -> !ourFile || shared.isEmpty() ? Futures.of(v5) : context.sharedWithCache.addAllSharedWith(shared.entrySet().stream()
-                                                                                    .collect(Collectors.toMap(e -> PathUtil.get(newPath).resolve(e.getKey().relativize(ourPath)), e -> e.getValue())), v5, c, net))),
-                                                                    net.dhtClient);
-
-                                                        }
-                                                        return version.withWriter(owner(), target.writer(), net)
-                                                                .thenCompose(both -> copyTo(target, this.props.thumbnail, targetMirrorBatId, net, context.crypto, both, c))
-                                                                .thenCompose(v2 -> version.withWriter(owner(), parent.writer(), net)
+            return context.getPublicFile(ourPath).thenApply(opt -> opt.isPresent())
+                    .thenCompose(isPublic -> net.synchronizer.applyComplexUpdate(owner(), signingPair(),
+                            (v, c) -> context.sharedWithCache.getAllDescendantShares(ourPath, v)
+                                    .thenCompose(shared -> {
+                                        return (isPublic || !owner().equals(target.owner()) ?
+                                                Futures.of(false) :
+                                                shared.isEmpty() // fast path
+                                                        ? Futures.of(true) : preserveAccess.get())
+                                                .thenCompose(keepAccess -> {
+                                                    boolean differentParentWriter = !target.writer().equals(parent.writer());
+                                                    // TODO optimise different parent writer case by correcting owned keys
+                                                    if (keepAccess && !differentParentWriter) {
+                                                        // just update parent and child pointers, no need to re-upload, rotate keys etc.
+                                                        boolean differentWriter = !target.writer().equals(writer());
+                                                        boolean ourFile = context.signer != null && target.owner().equals(context.signer.publicKeyHash);
+                                                        RelativeCapability newParentLink = new RelativeCapability(differentWriter ?
+                                                                Optional.of(target.writer()) :
+                                                                Optional.empty(),
+                                                                target.getLocation().getMapKey(), target.writableFilePointer().bat, target.getParentKey(), Optional.empty());
+                                                        CryptreeNode newMetadata = pointer.fileAccess.withParentLink(getParentKey(), newParentLink);
+                                                        RelativeCapability ourNewcap = target.writableFilePointer().relativise(pointer.capability);
+                                                        return IpfsTransaction.call(owner(),
+                                                                tid -> target.getPath(net).thenCompose(newPath -> v.withWriter(owner(), target.writer(), net)
+                                                                        .thenCompose(w -> net.uploadChunk(w, c, newMetadata, owner(), pointer.capability.getMapKey(), signingPair(), tid))
+                                                                        .thenCompose(v2 -> target.pointer.fileAccess.addChildrenAndCommit(v2, c,
+                                                                                Arrays.asList(new NamedRelativeCapability(getName(), ourNewcap)),
+                                                                                target.writableFilePointer(), target.signingPair(), targetMirrorBatId, net, context.crypto))
                                                                         .thenCompose(v3 -> parent.pointer.fileAccess
-                                                                                .removeChildren(v2, c, isLink() ? Arrays.asList(linkPointer.get().capability) : Arrays.asList(getPointer().capability), parent.writableFilePointer(),
+                                                                                .removeChildren(v3, c, Arrays.asList(isLink() ? linkPointer.get().capability : getPointer().capability), parent.writableFilePointer(),
                                                                                         parent.entryWriter, net, context.crypto.random, hasher))
-                                                                        .thenCompose(v4 -> IpfsTransaction.call(owner(),
-                                                                                        tid -> FileWrapper.deleteAllChunks(
-                                                                                                isLink() ?
-                                                                                                        (WritableAbsoluteCapability) getLinkPointer().capability :
-                                                                                                        writableFilePointer(),
-                                                                                                parent.signingPair(), tid, hasher, net, v4, c), net.dhtClient)
-                                                                                .thenCompose(v5 -> context.isSecretLink() ? Futures.of(v5) :
-                                                                                        context.sharedWithCache.clearSharedWith(ourPath, v5, c, net)))
-                                                                );
-                                                    });
-                                        }))).thenApply(s -> true);
-            });
+                                                                        .thenCompose(v4 -> !ourFile || shared.isEmpty() ? Futures.of(v4) : context.sharedWithCache.clearSharedWith(ourPath, v4, c, net))
+                                                                        .thenCompose(v5 -> !ourFile || shared.isEmpty() ? Futures.of(v5) : context.sharedWithCache.addAllSharedWith(shared.entrySet().stream()
+                                                                                .collect(Collectors.toMap(e -> PathUtil.get(newPath).resolve(e.getKey().relativize(ourPath)), e -> e.getValue())), v5, c, net))),
+                                                                net.dhtClient);
+
+                                                    }
+                                                    return version.withWriter(owner(), target.writer(), net)
+                                                            .thenCompose(both -> copyTo(target, this.props.thumbnail, targetMirrorBatId, net, context.crypto, both, c))
+                                                            .thenCompose(v2 -> version.withWriter(owner(), parent.writer(), net)
+                                                                    .thenCompose(v3 -> parent.pointer.fileAccess
+                                                                            .removeChildren(v2, c, isLink() ? Arrays.asList(linkPointer.get().capability) : Arrays.asList(getPointer().capability), parent.writableFilePointer(),
+                                                                                    parent.entryWriter, net, context.crypto.random, hasher))
+                                                                    .thenCompose(v4 -> IpfsTransaction.call(owner(),
+                                                                                    tid -> FileWrapper.deleteAllChunks(
+                                                                                            isLink() ?
+                                                                                                    (WritableAbsoluteCapability) getLinkPointer().capability :
+                                                                                                    writableFilePointer(),
+                                                                                            parent.signingPair(), tid, hasher, net, v4, c), net.dhtClient)
+                                                                            .thenCompose(v5 -> context.isSecretLink() ? Futures.of(v5) :
+                                                                                    context.sharedWithCache.clearSharedWith(ourPath, v5, c, net)))
+                                                            );
+                                                });
+                                    }))).thenApply(s -> true);
         });
+}
+
+@JsMethod
+public CompletableFuture<Boolean> copyTo(FileWrapper target, UserContext context) {
+    ensureUnmodified();
+    NetworkAccess network = context.network;
+    Crypto crypto = context.crypto;
+    if (! target.isDirectory()) {
+        return Futures.errored(new IllegalStateException("CopyTo target " + target + " must be a directory"));
     }
 
-    @JsMethod
-    public CompletableFuture<Boolean> copyTo(FileWrapper target, UserContext context) {
-        ensureUnmodified();
-        NetworkAccess network = context.network;
-        Crypto crypto = context.crypto;
-        if (! target.isDirectory()) {
-            return Futures.errored(new IllegalStateException("CopyTo target " + target + " must be a directory"));
-        }
-
-        Optional<BatId> targetMirrorBatId = target.mirrorBatId()
-                .or(() -> target.owner().equals(context.signer.publicKeyHash) ?
-                        context.mirrorBatId() :
-                        Optional.empty());
-        return context.network.synchronizer.applyComplexUpdate(target.owner(), target.signingPair(),
-                (version, committer) -> version.withWriter(owner(), writer(), network)
-                        .thenCompose(both -> copyTo(target, this.props.thumbnail, targetMirrorBatId, network, crypto, both, committer)))
-                .thenApply(newAccess -> true);
+    Optional<BatId> targetMirrorBatId = target.mirrorBatId()
+            .or(() -> target.owner().equals(context.signer.publicKeyHash) ?
+                    context.mirrorBatId() :
+                    Optional.empty());
+    return context.network.synchronizer.applyComplexUpdate(target.owner(), target.signingPair(),
+                    (version, committer) -> version.withWriter(owner(), writer(), network)
+                            .thenCompose(both -> copyTo(target, this.props.thumbnail, targetMirrorBatId, network, crypto, both, committer)))
+            .thenApply(newAccess -> true);
     }
 
     public CompletableFuture<Optional<HashTree>> getHash(NetworkAccess network, Hasher hasher) {
