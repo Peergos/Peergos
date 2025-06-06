@@ -30,7 +30,6 @@ public class BufferedNetworkAccess extends NetworkAccess {
     private final BufferedStorage blockBuffer;
     private final BufferedPointers pointerBuffer;
     private final int bufferSize;
-    private final ContentAddressedStorage blocks;
     private boolean safeToCommit = true;
 
     public BufferedNetworkAccess(BufferedStorage blockBuffer,
@@ -39,7 +38,6 @@ public class BufferedNetworkAccess extends NetworkAccess {
                                  CoreNode coreNode,
                                  Account account,
                                  SocialNetwork social,
-                                 ContentAddressedStorage dhtClient,
                                  MutablePointers unbufferedMutable,
                                  BatCave batCave,
                                  Optional<EncryptedBatCache> batCache,
@@ -56,7 +54,6 @@ public class BufferedNetworkAccess extends NetworkAccess {
         this.blockBuffer = blockBuffer;
         this.pointerBuffer = mutableBuffer;
         this.bufferSize = bufferSize;
-        this.blocks = dhtClient;
         synchronizer.setCommitterBuilder(this::buildCommitter);
         synchronizer.setFlusher((o, v, w) -> commit(o, w).thenApply(b -> v));
     }
@@ -94,7 +91,7 @@ public class BufferedNetworkAccess extends NetworkAccess {
         BufferedStorage blockBuffer = this.blockBuffer.clone();
         WriteSynchronizer synchronizer = new WriteSynchronizer(base.mutable, blockBuffer, hasher);
         MutableTree tree = new MutableTreeImpl(base.mutable, blockBuffer, hasher, synchronizer);
-        return new BufferedNetworkAccess(blockBuffer, pointerBuffer, bufferSize, base.coreNode, base.account, base.social, base.dhtClient,
+        return new BufferedNetworkAccess(blockBuffer, pointerBuffer, bufferSize, base.coreNode, base.account, base.social,
                 base.mutable, base.batCave, base.batCache, tree, synchronizer, base.instanceAdmin, base.spaceUsage, base.serverMessager, hasher, usernames, isJavascript());
     }
 
@@ -103,7 +100,7 @@ public class BufferedNetworkAccess extends NetworkAccess {
         BufferedStorage blockBuffer = this.blockBuffer.withStorage(modifiedStorage);
         WriteSynchronizer synchronizer = new WriteSynchronizer(super.mutable, blockBuffer, hasher);
         MutableTree tree = new MutableTreeImpl(mutable, blockBuffer, hasher, synchronizer);
-        return new BufferedNetworkAccess(blockBuffer, pointerBuffer, bufferSize, coreNode, account, social, blocks,
+        return new BufferedNetworkAccess(blockBuffer, pointerBuffer, bufferSize, coreNode, account, social,
                 mutable, batCave, batCache, tree, synchronizer, instanceAdmin, spaceUsage, serverMessager, hasher, usernames, isJavascript());
     }
 
@@ -113,24 +110,24 @@ public class BufferedNetworkAccess extends NetworkAccess {
         BufferedPointers pointerBuffer = new BufferedPointers(newMutable);
         WriteSynchronizer synchronizer = new WriteSynchronizer(newMutable, blockBuffer, hasher);
         MutableTree tree = new MutableTreeImpl(newMutable, blockBuffer, hasher, synchronizer);
-        return new BufferedNetworkAccess(blockBuffer, pointerBuffer, bufferSize, coreNode, account, social, blocks,
+        return new BufferedNetworkAccess(blockBuffer, pointerBuffer, bufferSize, coreNode, account, social,
                 newMutable, batCave, batCache, tree, synchronizer, instanceAdmin, spaceUsage, serverMessager, hasher, usernames, isJavascript());
     }
 
     @Override
     public NetworkAccess withBatOfflineCache(Optional<EncryptedBatCache> batCache) {
-        return new BufferedNetworkAccess(blockBuffer, pointerBuffer, bufferSize, coreNode, account, social, blocks,
+        return new BufferedNetworkAccess(blockBuffer, pointerBuffer, bufferSize, coreNode, account, social,
                 mutable, batCave, batCache, tree, synchronizer, instanceAdmin, spaceUsage, serverMessager, hasher, usernames, isJavascript());
     }
 
     @Override
     public NetworkAccess withAccountCache(Function<Account, Account> wrapper) {
-        return new BufferedNetworkAccess(blockBuffer, pointerBuffer, bufferSize, coreNode, wrapper.apply(account), social, blocks,
+        return new BufferedNetworkAccess(blockBuffer, pointerBuffer, bufferSize, coreNode, wrapper.apply(account), social,
                 mutable, batCave, batCache, tree, synchronizer, instanceAdmin, spaceUsage, serverMessager, hasher, usernames, isJavascript());
     }
 
     public NetworkAccess withCorenode(CoreNode newCore) {
-        return new BufferedNetworkAccess(blockBuffer, pointerBuffer, bufferSize, newCore, account, social, dhtClient,
+        return new BufferedNetworkAccess(blockBuffer, pointerBuffer, bufferSize, newCore, account, social,
                 mutable, batCave, batCache, tree, synchronizer, instanceAdmin, spaceUsage, serverMessager, hasher, usernames, isJavascript());
     }
 
@@ -172,7 +169,7 @@ public class BufferedNetworkAccess extends NetworkAccess {
         List<Pair<BufferedPointers.WriterUpdate, Optional<CommittedWriterData>>> writes = blockBuffer.getAllWriterData(writerUpdates);
         CompletableFuture<Boolean> res = new CompletableFuture<>();
         blockBuffer.signBlocks(writers)
-                .thenCompose(b -> blocks.startTransaction(owner))
+                .thenCompose(b -> blockBuffer.target().startTransaction(owner))
                 .thenCompose(tid -> Futures.reduceAll(writes.stream(), true, (a,u) ->
                                  blockBuffer.commit(owner, u.left.writer, tid)
                                         .thenCompose(b -> pointerBuffer.commit(owner, writers.get(u.left.writer),
@@ -180,7 +177,7 @@ public class BufferedNetworkAccess extends NetworkAccess {
                                                 .thenCompose(x -> u.right
                                                         .map(cwd -> synchronizer.updateWriterState(owner, u.left.writer, new Snapshot(u.left.writer, cwd)))
                                                         .orElse(Futures.of(true)))), (x,y) -> x && y)
-                        .thenCompose(x -> blocks.closeTransaction(owner, tid))
+                        .thenCompose(x -> blockBuffer.target().closeTransaction(owner, tid))
                         .thenApply(x -> {
                             pointerBuffer.clear();
                             blockBuffer.clear();

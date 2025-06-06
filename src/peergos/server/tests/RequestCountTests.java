@@ -42,7 +42,7 @@ public class RequestCountTests {
 
         int bufferSize = 20 * 1024 * 1024;
         this.network = new BufferedNetworkAccess(blockBuffer, mutableBuffer, bufferSize, service.coreNode, service.account, service.social,
-                blockBuffer, unbufferedMutable, service.bats, Optional.empty(), tree, synchronizer, service.controller, service.usage,
+                unbufferedMutable, service.bats, Optional.empty(), tree, synchronizer, service.controller, service.usage,
                 service.serverMessages, hasher, Arrays.asList("peergos"), false);
     }
 

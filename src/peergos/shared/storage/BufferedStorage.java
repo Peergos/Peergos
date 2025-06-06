@@ -39,6 +39,10 @@ public class BufferedStorage extends DelegatingStorage {
         }
     }
 
+    public ContentAddressedStorage target() {
+        return target;
+    }
+
     @Override
     public ContentAddressedStorage directToOrigin() {
         return this;

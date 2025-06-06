@@ -162,7 +162,7 @@ public class NetworkAccess {
 
         int bufferSize = 1024 * 1024;
         return new BufferedNetworkAccess(blockBuffer, mutableBuffer, bufferSize, null, account,
-                null, dht, unbufferedMutable, bats, Optional.empty(), tree, synchronizer, null,
+                null, unbufferedMutable, bats, Optional.empty(), tree, synchronizer, null,
                 null, null, hasher, Collections.emptyList(), false);
     }
 
@@ -372,7 +372,7 @@ public class NetworkAccess {
 
         int bufferSize = 20 * 1024 * 1024;
         return new BufferedNetworkAccess(blockBuffer, mutableBuffer, bufferSize, coreNode, account,
-                social, dht, unbufferedMutable, batCave, Optional.empty(), tree, synchronizer, instanceAdmin, usage, serverMessager, hasher, usernames, isJavascript);
+                social, unbufferedMutable, batCave, Optional.empty(), tree, synchronizer, instanceAdmin, usage, serverMessager, hasher, usernames, isJavascript);
     }
 
     public static CompletableFuture<NetworkAccess> buildPublicNetworkAccess(Hasher hasher,
