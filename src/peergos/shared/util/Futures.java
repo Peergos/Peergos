@@ -18,7 +18,7 @@ public class Futures {
     public static final <V> CompletableFuture<V> orTimeout(Supplier<CompletableFuture<V>> work, long millis) {
         CompletableFuture<V> res = new CompletableFuture<>();
         executor.schedule(() -> res.completeExceptionally(new TimeoutException()), millis, TimeUnit.MILLISECONDS);
-        executor.submit(() -> work.get()
+        ForkJoinPool.commonPool().execute(() -> work.get()
                 .thenApply(res::complete)
                 .exceptionally(res::completeExceptionally));
         return res;
