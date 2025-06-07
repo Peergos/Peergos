@@ -2398,6 +2398,19 @@ public class UserContext {
                         .collect(Collectors.toList()));
     }
 
+    public CompletableFuture<List<Pair<SharedItem, FileWrapper>>> getFiles(List<SharedItem> pointers, Snapshot v) {
+        return Futures.combineAllInOrder(pointers.stream()
+                .map(s -> Futures.asyncExceptionally(() -> network.getFile(v, s.cap, Optional.empty(), s.owner)
+                                .thenCompose(fopt -> fopt.map(f -> Futures.of(Optional.of(f)))
+                                        .orElseGet(() -> getByPath(s.path))),
+                        t -> getByPath(s.path))
+                        .thenApply(opt -> opt.map(f -> new Pair<>(s, f))))
+                .collect(Collectors.toList()))
+                .thenApply(res -> res.stream()
+                        .flatMap(Optional::stream)
+                        .collect(Collectors.toList()));
+    }
+
     public CompletableFuture<Set<FileWrapper>> getChildren(String path) {
         FileProperties.ensureValidPath(path);
         return entrie.getChildren(path, crypto.hasher, network);

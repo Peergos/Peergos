@@ -8,10 +8,20 @@ import java.util.function.*;
 import java.util.stream.*;
 
 public class Futures {
+    private static final ScheduledThreadPoolExecutor executor = new ScheduledThreadPoolExecutor(1);
 
     @JsMethod
     public static final <T> CompletableFuture<T> of(T val) {
         return CompletableFuture.completedFuture(val);
+    }
+
+    public static final <V> CompletableFuture<V> orTimeout(Supplier<CompletableFuture<V>> work, long millis) {
+        CompletableFuture<V> res = new CompletableFuture<>();
+        executor.schedule(() -> res.completeExceptionally(new TimeoutException()), millis, TimeUnit.MILLISECONDS);
+        ForkJoinPool.commonPool().execute(() -> work.get()
+                .thenApply(res::complete)
+                .exceptionally(res::completeExceptionally));
+        return res;
     }
 
     /**
