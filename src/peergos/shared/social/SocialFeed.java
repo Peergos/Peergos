@@ -248,7 +248,7 @@ public class SocialFeed {
                     return context.getFollowingNodes()
                             .thenCompose(friends -> {
                                 List<CompletableFuture<Optional<Pair<FriendSourcedTrieNode,Snapshot>>>> pointers = friends.stream()
-                                        .map(f -> f.getLatestVersion(network)
+                                        .map(f -> Futures.orTimeout(() -> f.getLatestVersion(network), 2_000)
                                                 .thenApply(v -> Optional.of(new Pair<>(f, v)))
                                                 .exceptionally(t -> Optional.empty()))
                                         .collect(Collectors.toList());
