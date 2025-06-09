@@ -1016,6 +1016,8 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         }
     }
 
+    private static AtomicBoolean hasBulkDeleteError = new AtomicBoolean(false);
+
     @Override
     public void bulkDelete(List<BlockVersion> versions) {
         List<Pair<String, String>> keyVersions = versions.stream()
@@ -1039,7 +1041,9 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         } catch (Exception e) {
             // fallback to doing deletes with parallel single calls
             // This is necessary because B2 doesn't implement the bulk delete call!!
-            System.out.println("Falling back to parallel individual block deletes... (B2 doesn't implement bulk delete)" + e.getMessage());
+            if (! hasBulkDeleteError.get())
+                System.out.println("Falling back to parallel individual block deletes... (B2 doesn't implement bulk delete)" + e.getMessage());
+            hasBulkDeleteError.set(true);
             for (BlockVersion version : versions) {
                 new Thread(() -> delete(version)).start();
             }
