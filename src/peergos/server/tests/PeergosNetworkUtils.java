@@ -1514,7 +1514,8 @@ public class PeergosNetworkUtils {
         List<Text> postBody = Arrays.asList(new Text("G'day, skip!"));
         SocialPost post = new SocialPost(sharer.username, postBody, LocalDateTime.now(),
                 SocialPost.Resharing.Friends, Optional.empty(), Collections.emptyList(), Collections.emptyList());
-        Pair<Path, FileWrapper> p = sharer.getSocialFeed().join().createNewPost(post).join();
+        SocialFeed sharerFeed = sharer.getSocialFeed().join();
+        Pair<Path, FileWrapper> p = sharerFeed.createNewPost(post).join();
         sharer.shareReadAccessWith(p.left, Set.of(a.username)).join();
         List<SharedItem> withPost = freshFeed.update().join().getShared(0, feedSize + 5, crypto, fresherA.network).join();
         SharedItem sharedPost = withPost.get(withPost.size() - 1);
@@ -1523,6 +1524,26 @@ public class PeergosNetworkUtils {
         SocialPost receivedPost = Serialize.parse(postFile.getInputStream(network, crypto, x -> {}).join(),
                 postFile.getSize(), SocialPost::fromCbor).join();
         assertTrue(receivedPost.body.equals(post.body));
+
+        // 2 comments on post
+        SocialPost comment;
+        for (int i=0; i < 2; i++) {
+            List<Text> commentBody = Arrays.asList(new Text("Amazing! " + i));
+            byte[] postBytes = post.serialize();
+            Multihash postHash = crypto.hasher.hashFromStream(AsyncReader.build(postBytes), postBytes.length).join();
+            comment = new SocialPost(a.username, commentBody, LocalDateTime.now(),
+                    SocialPost.Resharing.Friends, Optional.of(new FileRef(sharedPost.path, sharedPost.cap, postHash)), Collections.emptyList(), Collections.emptyList());
+            Pair<Path, FileWrapper> com = a.getSocialFeed().join().createNewPost(comment).join();
+            a.shareReadAccessWith(com.left, Set.of(sharer.username)).join();
+        }
+
+        SocialFeed withComment = sharer.getSocialFeed().join().update().join();
+        List<SharedItem> comments = withComment.getShared(0, 10, crypto, sharer.network).join();
+        SharedItem c = comments.get(comments.size() - 1);
+        FileWrapper comFile = sharer.getByPath(c.path).join().get();
+        SocialPost receivedComment = Serialize.parse(comFile.getInputStream(network, crypto, x -> {}).join(),
+                comFile.getSize(), SocialPost::fromCbor).join();
+        System.out.println();
     }
 
     public static void socialPostPropagation(NetworkAccess network, Random random) {
