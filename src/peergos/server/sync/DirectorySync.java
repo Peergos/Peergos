@@ -317,8 +317,14 @@ public class DirectorySync {
             FileState local = localState.byPath(relativePath);
             FileState remote = remoteState.byPath(relativePath);
             boolean isSmallRemoteCopy = synced == null && remote == null && local.size < Chunk.MAX_SIZE;
-            if (isSmallRemoteCopy)
-                smallFiles.add(relativePath);
+            if (isSmallRemoteCopy) {
+                List<FileState> byHash = remoteState.byHash(local.hashTree.rootHash);
+                Optional<FileState> localAtHashedPath = byHash.size() == 1 ?
+                        Optional.ofNullable(localState.byPath(byHash.get(0).relPath)) :
+                        Optional.empty();
+                if (byHash.size() != 1 || localAtHashedPath.isPresent())
+                    smallFiles.add(relativePath);
+            }
 
             boolean isLocalDelete = local == null &&
                     remote != null &&
@@ -329,12 +335,12 @@ public class DirectorySync {
                 Optional<FileState> remoteAtHashedPath = byHash.size() == 1 ?
                         Optional.ofNullable(remoteState.byPath(byHash.get(0).relPath)) :
                         Optional.empty();
-                if (byHash.size() != 1 || !remoteAtHashedPath.isEmpty())
+                if (byHash.size() != 1 || remoteAtHashedPath.isPresent())
                     localDeletes.add(relativePath);
             }
         }
 
-        if (!smallFiles.isEmpty()) {
+        if (! smallFiles.isEmpty()) {
             LOG.accept("Remote: bulk uploading " + smallFiles.size() + " small files");
             Map<String, FileWrapper.FolderUploadProperties> folders = new HashMap<>();
             for (String relPath : smallFiles) {

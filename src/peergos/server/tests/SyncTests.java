@@ -17,16 +17,25 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
-import java.util.Arrays;
-import java.util.Optional;
-import java.util.Random;
-import java.util.Set;
+import java.util.*;
 
 public class SyncTests {
 
     @Test
     public void rename() throws Exception {
-        Path tmp = Files.createTempDirectory("peergos-sync");
+        for (int filesize : List.of(1024, 6 * 1024 * 1024)) {
+            rename("file.bin", "newfile.bin", true, true, filesize);
+            rename("file.bin", "newfile.bin", false, false, filesize);
+            rename("newfile.bin", "file.bin", true, true, filesize);
+            rename("newfile.bin", "file.bin", false, false, filesize);
+        }
+    }
+
+    public void rename(String originalFilename,
+                       String newFilename,
+                       boolean syncLocalDeletes,
+                       boolean syncRemoteDeletes,
+                       int filesize) throws Exception {
         Path base1 = Files.createTempDirectory("peergos-sync");
         Path base2 = Files.createTempDirectory("peergos-sync");
 
@@ -34,32 +43,29 @@ public class SyncTests {
         LocalFileSystem remoteFs = new LocalFileSystem(base2, Main.initCrypto().hasher);
         SyncState syncedState = new JdbcTreeState(":memory:");
 
-        DirectorySync.syncDir(localFs, remoteFs, true, true, null, null, syncedState, 32, 5, DirectorySync::log);
+        DirectorySync.syncDir(localFs, remoteFs, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, 32, 5, DirectorySync::log);
 
-        byte[] data = new byte[6 * 1024 * 1024];
+        byte[] data = new byte[filesize];
         new Random(42).nextBytes(data);
-        String filename = "file.bin";
-        Files.write(base1.resolve(filename), data, StandardOpenOption.CREATE);
+        Files.write(base1.resolve(originalFilename), data, StandardOpenOption.CREATE);
 
-        DirectorySync.syncDir(localFs, remoteFs, true, true, null, null, syncedState, 32, 5, DirectorySync::log);
-        Assert.assertNotNull(syncedState.byPath(filename));
+        DirectorySync.syncDir(localFs, remoteFs, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, 32, 5, DirectorySync::log);
+        Assert.assertNotNull(syncedState.byPath(originalFilename));
 
         // rename file
-        String filename2 = "newfile.bin";
-        Files.move(base1.resolve(filename), base1.resolve(filename2));
-        DirectorySync.syncDir(localFs, remoteFs, true, true, null, null, syncedState, 32, 5, DirectorySync::log);
-        Assert.assertNull(syncedState.byPath(filename));
-        Assert.assertNotNull(syncedState.byPath(filename2));
+        Files.move(base1.resolve(originalFilename), base1.resolve(newFilename));
+        DirectorySync.syncDir(localFs, remoteFs, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, 32, 5, DirectorySync::log);
+        Assert.assertNull(syncedState.byPath(originalFilename));
+        Assert.assertNotNull(syncedState.byPath(newFilename));
 
         // sync should be stable
-        DirectorySync.syncDir(localFs, remoteFs, true, true, null, null, syncedState, 32, 5, DirectorySync::log);
-        Assert.assertNull(syncedState.byPath(filename));
-        Assert.assertNotNull(syncedState.byPath(filename2));
+        DirectorySync.syncDir(localFs, remoteFs, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, 32, 5, DirectorySync::log);
+        Assert.assertNull(syncedState.byPath(originalFilename));
+        Assert.assertNotNull(syncedState.byPath(newFilename));
     }
 
     @Test
     public void renameIgnoringDeletes() throws Exception {
-        Path tmp = Files.createTempDirectory("peergos-sync");
         Path base1 = Files.createTempDirectory("peergos-sync");
         Path base2 = Files.createTempDirectory("peergos-sync");
 
@@ -94,7 +100,6 @@ public class SyncTests {
 
     @Test
     public void moves() throws Exception {
-        Path tmp = Files.createTempDirectory("peergos-sync");
         Path base1 = Files.createTempDirectory("peergos-sync");
         Path base2 = Files.createTempDirectory("peergos-sync");
 
@@ -147,7 +152,6 @@ public class SyncTests {
     }
 
     public void ignoreLocalDeleteBeforeConflict(int fileSize) throws Exception {
-        Path tmp = Files.createTempDirectory("peergos-sync");
         Path base1 = Files.createTempDirectory("peergos-sync");
         Path base2 = Files.createTempDirectory("peergos-sync");
 
@@ -198,7 +202,6 @@ public class SyncTests {
     }
 
     public void ignoreLocalDeleteBeforeRestore(int fileSize) throws Exception {
-        Path tmp = Files.createTempDirectory("peergos-sync");
         Path base1 = Files.createTempDirectory("peergos-sync");
         Path base2 = Files.createTempDirectory("peergos-sync");
 
@@ -245,7 +248,6 @@ public class SyncTests {
     }
 
     public void ignoreLocalDeleteBeforeRemoteModification(int fileSize) throws Exception {
-        Path tmp = Files.createTempDirectory("peergos-sync");
         Path base1 = Files.createTempDirectory("peergos-sync");
         Path base2 = Files.createTempDirectory("peergos-sync");
 
@@ -295,7 +297,6 @@ public class SyncTests {
     }
 
     public void ignoreRemoteDeleteBeforeConflict(int fileSize) throws Exception {
-        Path tmp = Files.createTempDirectory("peergos-sync");
         Path base1 = Files.createTempDirectory("peergos-sync");
         Path base2 = Files.createTempDirectory("peergos-sync");
 
@@ -348,7 +349,6 @@ public class SyncTests {
     }
 
     public void ignoreRemoteDeleteBeforeRestore(int fileSize) throws Exception {
-        Path tmp = Files.createTempDirectory("peergos-sync");
         Path base1 = Files.createTempDirectory("peergos-sync");
         Path base2 = Files.createTempDirectory("peergos-sync");
 
@@ -395,7 +395,6 @@ public class SyncTests {
     }
 
     public void ignoreRemoteDeleteBeforeRemoteModification(int fileSize) throws Exception {
-        Path tmp = Files.createTempDirectory("peergos-sync");
         Path base1 = Files.createTempDirectory("peergos-sync");
         Path base2 = Files.createTempDirectory("peergos-sync");
 
