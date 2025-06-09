@@ -1039,7 +1039,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         } catch (Exception e) {
             // fallback to doing deletes with parallel single calls
             // This is necessary because B2 doesn't implement the bulk delete call!!
-            System.out.println("Falling back to parallel individual block deletes...");
+            System.out.println("Falling back to parallel individual block deletes... (B2 doesn't implement bulk delete)" + e.getMessage());
             for (BlockVersion version : versions) {
                 new Thread(() -> delete(version)).start();
             }
