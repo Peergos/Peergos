@@ -39,6 +39,10 @@ public class BufferedStorage extends DelegatingStorage {
         }
     }
 
+    public ContentAddressedStorage target() {
+        return target;
+    }
+
     @Override
     public ContentAddressedStorage directToOrigin() {
         return this;
@@ -125,14 +129,17 @@ public class BufferedStorage extends DelegatingStorage {
                                 .thenCompose(champRoot -> target.getChampLookup(owner, (Cid) champRoot.get(), Arrays.asList(new ChunkMirrorCap(champKey, bat)), Optional.empty())) :
                         target.getChampLookup(owner, root, Arrays.asList(new ChunkMirrorCap(champKey, bat)), Optional.empty()), hasher),
                 100, 1024 * 1024);
-        return ChampWrapper.create(owner, root, Optional.empty(), x -> Futures.of(x.data), cache, hasher, c -> (CborObject.CborMerkleLink) c)
+        return Futures.asyncExceptionally(() -> ChampWrapper.create(owner, root, Optional.empty(), x -> Futures.of(x.data), cache, hasher, c -> (CborObject.CborMerkleLink) c)
                 .thenCompose(tree -> tree.get(champKey))
                 .thenApply(c -> c.map(x -> x.target).map(MaybeMultihash::of).orElse(MaybeMultihash.empty()))
                 .thenCompose(btreeValue -> {
                     if (btreeValue.isPresent())
                         return cache.get(owner, (Cid) btreeValue.get(), bat);
                     return Futures.of(Optional.empty());
-                }).thenApply(x -> new ArrayList<>(cache.getCached()));
+                }).thenApply(x -> new ArrayList<>(cache.getCached())),
+                    t -> getChampRoot(committedRoot, root, owner, this)
+                            .thenCompose(champRoot -> target.getChampLookup(owner, champRoot, Arrays.asList(new ChunkMirrorCap(champKey, bat)), Optional.empty()))
+                );
     }
 
     @Override

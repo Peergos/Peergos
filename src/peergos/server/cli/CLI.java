@@ -19,6 +19,7 @@ import peergos.server.util.*;
 import peergos.shared.*;
 import peergos.shared.cbor.*;
 import peergos.shared.corenode.HTTPCoreNode;
+import peergos.shared.crypto.hash.Hasher;
 import peergos.shared.login.mfa.*;
 import peergos.shared.mutable.HttpMutablePointers;
 import peergos.shared.social.FollowRequestWithCipherText;
@@ -305,14 +306,14 @@ public class CLI implements Runnable {
         }
     }
 
-    private List<String> convert(Path p) {
+    private static List<String> convert(Path p) {
         List<String> res = new ArrayList<>();
         for (int i=0; i < p.getNameCount(); i++)
             res.add(p.getName(i).toString());
         return res;
     }
 
-    private AsyncReader reader(File f) {
+    private static AsyncReader reader(File f) {
         try {
             return new FileAsyncReader(f);
         } catch (IOException e) {
@@ -320,14 +321,15 @@ public class CLI implements Runnable {
         }
     }
 
-    private interface ProgressCreator {
+    public interface ProgressCreator {
         ProgressConsumer<Long> create(Path remoteRelativeDir, String filename, Long size);
     }
 
-    private Stream<FileWrapper.FolderUploadProperties> parseLocalFolder(Path remoteRelativeDir,
+    public static Stream<FileWrapper.FolderUploadProperties> parseLocalFolder(Path remoteRelativeDir,
                                                                         Path localDir,
                                                                         boolean skipExisting,
                                                                         AtomicLong fileCount,
+                                                                        Hasher hasher,
                                                                         ProgressCreator progressCreator) {
         try {
             List<FileWrapper.FileUploadProperties> files = Files.list(localDir)
@@ -336,7 +338,7 @@ public class CLI implements Runnable {
                         long fileSize = p.toFile().length();
                         LocalDateTime modified = LocalDateTime.ofInstant(Instant.ofEpochSecond(p.toFile().lastModified() / 1000, 0), ZoneOffset.UTC);
                         return new FileWrapper.FileUploadProperties(p.getFileName().toString(), () -> reader(p.toFile()),
-                                (int) (fileSize >> 32), (int) fileSize, Optional.of(modified), Optional.of(ScryptJava.hashFile(p, cliContext.userContext.crypto.hasher)), skipExisting, true,
+                                (int) (fileSize >> 32), (int) fileSize, Optional.of(modified), Optional.of(ScryptJava.hashFile(p, hasher)), skipExisting, true,
                                 progressCreator.create(remoteRelativeDir, p.getFileName().toString(), Math.max(4096, fileSize)));
                     })
                     .collect(Collectors.toList());
@@ -345,7 +347,7 @@ public class CLI implements Runnable {
             return Stream.concat(Stream.of(dir),
                     Files.list(localDir)
                             .filter(p -> p.toFile().isDirectory())
-                            .flatMap(p -> parseLocalFolder(remoteRelativeDir.resolve(p.getFileName()), localDir.resolve(p.getFileName()), skipExisting, fileCount, progressCreator)));
+                            .flatMap(p -> parseLocalFolder(remoteRelativeDir.resolve(p.getFileName()), localDir.resolve(p.getFileName()), skipExisting, fileCount, hasher, progressCreator)));
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
@@ -361,7 +363,7 @@ public class CLI implements Runnable {
             AtomicLong fileCount = new AtomicLong(0);
             AtomicLong doneFiles = new AtomicLong(0);
             peergosFileSystem.writeSubtree(remotePath, parseLocalFolder(localPath.getFileName(), localPath, skipExisting, fileCount,
-                    (path, name, size) -> {
+                    cliContext.userContext.crypto.hasher, (path, name, size) -> {
                         ProgressBar pb = new ProgressBar(doneFiles, fileCount, path, name);
                         return bytesWritten -> pb.update(writerForProgress, bytesWritten, size);
                     }), f -> Futures.of(true));

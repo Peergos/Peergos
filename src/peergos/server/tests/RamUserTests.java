@@ -5,6 +5,8 @@ import org.junit.*;
 import org.junit.runner.*;
 import org.junit.runners.*;
 import peergos.server.*;
+import peergos.server.cli.CLI;
+import peergos.server.crypto.hash.ScryptJava;
 import peergos.server.tests.util.*;
 import peergos.server.util.*;
 import peergos.shared.*;
@@ -27,6 +29,7 @@ import java.time.*;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.*;
+import java.util.function.Supplier;
 import java.util.stream.*;
 
 @RunWith(Parameterized.class)
@@ -64,7 +67,6 @@ public class RamUserTests extends UserTests {
             CompletableFuture<Optional<byte[]>> res = new CompletableFuture<>();
             ForkJoinPool.commonPool().submit(() -> res.complete(Optional.empty()));
             return res;
-//            return Futures.of(Optional.empty());
         }
 
         @Override
@@ -166,6 +168,77 @@ public class RamUserTests extends UserTests {
             }
         }, network, crypto).join();
         Assert.assertTrue(usedMfa.get());
+    }
+
+
+    @Test
+    public void copybug() throws Exception {
+        String username = generateUsername();
+        String password = "test01";
+        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network.clear(), crypto);
+        Path remoteRelativeDir = Paths.get("pandoc","assets");
+        String filename = "data.dat";
+        CLI.ProgressCreator progressCreator = (a, b, c) -> x -> {};
+        long fileSize1 = 31*1024*1024;
+        AsyncReader.ArrayBacked data1 = new AsyncReader.ArrayBacked(new byte[(int)fileSize1]);
+
+        FileWrapper.FileUploadProperties props1 = new FileWrapper.FileUploadProperties(filename, () -> data1,
+                (int) (fileSize1 >> 32), (int) fileSize1, Optional.empty(), Optional.empty(), true, true,
+                progressCreator.create(remoteRelativeDir, filename, Math.max(4096, fileSize1)));
+
+        String filename2 = "index.html";
+        long fileSize2 = 4294;
+        AsyncReader.ArrayBacked data2 = new AsyncReader.ArrayBacked(new byte[(int)fileSize2]);
+
+        FileWrapper.FileUploadProperties props2 = new FileWrapper.FileUploadProperties(filename2, () -> data2,
+                (int) (fileSize2 >> 32), (int) fileSize2, Optional.empty(), Optional.empty(), true, true,
+                progressCreator.create(remoteRelativeDir, filename2, Math.max(4096, fileSize2)));
+
+
+        List<FileWrapper.FileUploadProperties> files = new ArrayList<>();
+        files.add(props2);
+        files.add(props1);
+        FileWrapper.FolderUploadProperties folderProps = new FileWrapper.FolderUploadProperties(convert(remoteRelativeDir), files);
+        List<FileWrapper.FolderUploadProperties> folders = new ArrayList<>();
+        folders.add(folderProps);
+        context.getUserRoot().join().uploadSubtree(folders.stream(), context.mirrorBatId(), context.network, crypto, context.getTransactionService(), x -> Futures.of(true), () -> true).join();
+
+        String appName = "pandoc";
+        String installAppFromFolder = context.username + "/" + appName;
+        peergos.shared.user.App.init(context, appName).join();
+        boolean result = copyAssetsFolder(context, appName, installAppFromFolder).join();
+        Assert.assertTrue(result);
+    }
+    private static CompletableFuture<Boolean> copyAssetsFolder(UserContext context, String appName, String installAppFromFolder) {
+        CompletableFuture<Boolean> future = peergos.shared.util.Futures.incomplete();
+        String appFolderPath = "/" + context.username + "/.apps/" + appName;
+        context.getByPath(installAppFromFolder + "/assets").thenApply(srcAssetsDirOpt -> {
+            if (srcAssetsDirOpt.isPresent()) {
+                context.getByPath(appFolderPath).thenApply(destAppDirOpt -> {
+                    srcAssetsDirOpt.get().copyTo(destAppDirOpt.get(), context)
+                            .thenApply(res -> {
+                                future.complete(true);
+                                return true;
+                            }).exceptionally(throwable -> {
+                                System.out.println("unable to copy app assets. error: " + throwable.getMessage());
+                                future.complete(false);
+                                return false;
+                            });
+                    return null;
+                });
+            }else {
+                future.complete(false);
+            }
+            return null;
+        });
+        return future;
+    }
+
+    private static List<String> convert(Path p) {
+        List<String> res = new ArrayList<>();
+        for (int i=0; i < p.getNameCount(); i++)
+            res.add(p.getName(i).toString());
+        return res;
     }
 
     private static TotpKey addTotpKey(UserContext context, TimeBasedOneTimePasswordGenerator totp) throws Exception {

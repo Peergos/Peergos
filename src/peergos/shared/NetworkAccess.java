@@ -162,7 +162,7 @@ public class NetworkAccess {
 
         int bufferSize = 1024 * 1024;
         return new BufferedNetworkAccess(blockBuffer, mutableBuffer, bufferSize, null, account,
-                null, dht, unbufferedMutable, bats, Optional.empty(), tree, synchronizer, null,
+                null, unbufferedMutable, bats, Optional.empty(), tree, synchronizer, null,
                 null, null, hasher, Collections.emptyList(), false);
     }
 
@@ -372,7 +372,7 @@ public class NetworkAccess {
 
         int bufferSize = 20 * 1024 * 1024;
         return new BufferedNetworkAccess(blockBuffer, mutableBuffer, bufferSize, coreNode, account,
-                social, dht, unbufferedMutable, batCave, Optional.empty(), tree, synchronizer, instanceAdmin, usage, serverMessager, hasher, usernames, isJavascript);
+                social, unbufferedMutable, batCave, Optional.empty(), tree, synchronizer, instanceAdmin, usage, serverMessager, hasher, usernames, isJavascript);
     }
 
     public static CompletableFuture<NetworkAccess> buildPublicNetworkAccess(Hasher hasher,
@@ -658,7 +658,10 @@ public class NetworkAccess {
                             () -> dhtClient.getChampLookup(cap.owner, (Cid) root, Arrays.asList(new ChunkMirrorCap(cap.getMapKey(), bat)), committedRoot),
                             t -> dhtClient.getChampLookup(cap.owner, (Cid) root, Arrays.asList(new ChunkMirrorCap(cap.getMapKey(), bat)), committedRoot, hasher)
                     ).thenCompose(blocks -> LocalRamStorage.build(hasher, blocks))
-                            .thenCompose(bstore -> ChampWrapper.create(cap.owner, (Cid) root, Optional.empty(), x -> Futures.of(x.data), bstore, hasher, c -> (CborObject.CborMerkleLink) c)
+                            .thenCompose(bstore -> Futures.asyncExceptionally(
+                                            () -> ChampWrapper.create(cap.owner, (Cid) root, Optional.empty(), x -> Futures.of(x.data), bstore, hasher, c -> (CborObject.CborMerkleLink) c),
+                                            t -> dhtClient.getChampRoot(committedRoot, (Cid) root, cap.owner, dhtClient).thenCompose(champRoot -> ChampWrapper.create(cap.owner, champRoot, Optional.empty(), x -> Futures.of(x.data), bstore, hasher, c -> (CborObject.CborMerkleLink) c))
+                                    )
                                     .thenCompose(tree -> tree.get(cap.getMapKey()))
                                     .thenApply(c -> c.map(x -> x.target))
                                     .thenCompose(btreeValue -> {

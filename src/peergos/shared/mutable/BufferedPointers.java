@@ -35,6 +35,7 @@ public class BufferedPointers implements MutablePointers {
     private final MutablePointers target;
     private final Map<PublicKeyHash, SigningPrivateKeyAndPublicHash> writers = new HashMap<>();
     private final Map<PublicKeyHash, WriterUpdate> latest = new HashMap<>();
+    private final Map<PublicKeyHash, WriterUpdate> lastCommits = new LRUCache<>(20);
     private final List<WriterUpdate> writerUpdates = new ArrayList<>();
 
     public BufferedPointers(MutablePointers target) {
@@ -44,6 +45,10 @@ public class BufferedPointers implements MutablePointers {
     }
 
     public Optional<Cid> getCommittedPointerTarget(PublicKeyHash writer) {
+        if (writerUpdates.isEmpty())
+            return Optional.ofNullable(lastCommits.get(writer))
+                    .flatMap(u -> u.currentHash.toOptional()
+                            .map(c -> (Cid) c));
         return writerUpdates.stream()
                 .filter(u ->  u.writer.equals(writer)).map(u -> u.prevHash)
                 .findFirst()
@@ -122,7 +127,12 @@ public class BufferedPointers implements MutablePointers {
                                              SigningPrivateKeyAndPublicHash signer,
                                              PointerUpdate casUpdate) {
         return signer.secret.signMessage(casUpdate.serialize())
-                .thenCompose(signed -> target.setPointer(owner, signer.publicKeyHash, signed));
+                .thenCompose(signed -> target.setPointer(owner, signer.publicKeyHash, signed))
+                .thenApply(b -> {
+                    if (b)
+                        lastCommits.put(signer.publicKeyHash, new WriterUpdate(signer.publicKeyHash, casUpdate.original, casUpdate.updated, casUpdate.sequence));
+                    return b;
+                });
     }
 
     @Override

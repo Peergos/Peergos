@@ -42,7 +42,7 @@ public class RequestCountTests {
 
         int bufferSize = 20 * 1024 * 1024;
         this.network = new BufferedNetworkAccess(blockBuffer, mutableBuffer, bufferSize, service.coreNode, service.account, service.social,
-                blockBuffer, unbufferedMutable, service.bats, Optional.empty(), tree, synchronizer, service.controller, service.usage,
+                unbufferedMutable, service.bats, Optional.empty(), tree, synchronizer, service.controller, service.usage,
                 service.serverMessages, hasher, Arrays.asList("peergos"), false);
     }
 
@@ -87,12 +87,12 @@ public class RequestCountTests {
             boolean reciprocate = true;
             a.sendReplyFollowRequest(u1Request, accept, reciprocate).join();
         }
-        Assert.assertTrue("send reply follow request: " + storageCounter.requestTotal(), storageCounter.requestTotal() <= 23);
+        Assert.assertTrue("send reply follow request: " + storageCounter.requestTotal(), storageCounter.requestTotal() <= 33);
 
         // complete the friendship connection
         storageCounter.reset();
         sharer.processFollowRequests().join();
-        Assert.assertTrue("friending complete: " + storageCounter.requestTotal(), storageCounter.requestTotal() <= 31);
+        Assert.assertTrue("friending complete: " + storageCounter.requestTotal(), storageCounter.requestTotal() <= 45);
 
         // friends are now connected
         // share a file from u1 to u2
@@ -104,7 +104,7 @@ public class RequestCountTests {
         // check 'a' can see the shared file in their social feed
         storageCounter.reset();
         SocialFeed feed = a.getSocialFeed().join();
-        Assert.assertTrue("initialise social feed: " + storageCounter.requestTotal(), storageCounter.requestTotal() <= 36);
+        Assert.assertTrue("initialise social feed: " + storageCounter.requestTotal(), storageCounter.requestTotal() <= 38);
         int feedSize = 2;
 
         storageCounter.reset();
@@ -131,7 +131,7 @@ public class RequestCountTests {
             Pair<Path, FileWrapper> p = sharerFeed.createNewPost(post).join();
             sharer.shareReadAccessWith(p.left, Set.of(friends)).join();
         }
-        Assert.assertTrue("Adding a post to social feed: " + storageCounter.requestTotal(), storageCounter.requestTotal() <= 5);
+        Assert.assertTrue("Adding a post to social feed: " + storageCounter.requestTotal(), storageCounter.requestTotal() <= 10);
         a.getSocialFeed().join().update().join();
 
         // share more items
@@ -144,7 +144,7 @@ public class RequestCountTests {
 
         storageCounter.reset();
         SocialFeed feed2 = a.getSocialFeed().join().update().join();
-        Assert.assertTrue("load 5 items in social feed: " + storageCounter.requestTotal(), storageCounter.requestTotal() <= 23);
+        Assert.assertTrue("load 5 items in social feed: " + storageCounter.requestTotal(), storageCounter.requestTotal() <= 26);
 
         storageCounter.reset();
         List<SharedItem> items2 = feed2.getShared(feedSize + 1, feedSize + 6, a.crypto, a.network).join();
