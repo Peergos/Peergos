@@ -12,8 +12,10 @@ import peergos.shared.user.WriteSynchronizer;
 
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Consumer;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
@@ -27,10 +29,30 @@ public interface SyncRunner {
 
     void runNow();
 
+    StatusHolder getStatusHolder();
+
+    class StatusHolder {
+        private String status;
+        private LocalDateTime updateTime;
+
+        public synchronized void setStatus(String newStatus) {
+            status = newStatus;
+            updateTime = LocalDateTime.now();
+        }
+
+        public synchronized String getStatusAndTime() {
+            if (status == null)
+                return "";
+            return status + " at " + updateTime.getYear() + "-" + updateTime.getMonthValue()+"-" +
+                    updateTime.getDayOfMonth() + " " + updateTime.getHour() + ":" + updateTime.getMinute() + ":" + updateTime.getSecond();
+        }
+    }
+
     class ThreadBased implements SyncRunner {
         private static final Logger LOG = Logging.LOG();
         private final Thread runner;
         private final AtomicBoolean started = new AtomicBoolean(false);
+        private final StatusHolder status = new StatusHolder();
 
         public ThreadBased(Args args,
                            ContentAddressedStorage storage,
@@ -68,8 +90,12 @@ public interface SyncRunner {
                         int minFreeSpacePercent = updated.getInt("min-free-space-percent", 5);
                         if (!links.isEmpty()) {
                             try {
+                                Consumer<String> statusUpdater = msg -> {
+                                    status.setStatus(msg);
+                                    DirectorySync.log(msg);
+                                };
                                 DirectorySync.syncDirs(links, localDirs, syncLocalDeletes, syncRemoteDeletes,
-                                        maxDownloadParallelism, minFreeSpacePercent, true, root -> new LocalFileSystem(Paths.get(root), crypto.hasher), peergosDir, DirectorySync::log, network, crypto);
+                                        maxDownloadParallelism, minFreeSpacePercent, true, root -> new LocalFileSystem(Paths.get(root), crypto.hasher), peergosDir, statusUpdater, network, crypto);
                             } catch (Exception e) {
                                 LOG.log(Level.WARNING, e.getMessage(), e);
                             }
@@ -94,6 +120,11 @@ public interface SyncRunner {
         @Override
         public void runNow() {
             runner.interrupt();
+        }
+
+        @Override
+        public StatusHolder getStatusHolder() {
+            return status;
         }
     }
 }
