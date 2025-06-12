@@ -414,7 +414,7 @@ public class NetworkAccess {
                 .thenApply(p -> p.left.isEmpty() ? Optional.empty() : Optional.of(p.left.get(0)));
     }
 
-    public CompletableFuture<Optional<Cid>> getLastCommittedRoot(PublicKeyHash writer, WriterData base) {
+    public CompletableFuture<Optional<Cid>> getLastCommittedRoot(PublicKeyHash writer, CommittedWriterData base) {
         return Futures.of(Optional.empty());
     }
 
@@ -474,7 +474,7 @@ public class NetworkAccess {
                                 int groupSize = ContentAddressedStorage.MAX_CHAMP_GETS;
                                 for (int i = 0; i < caps.size(); i += groupSize)
                                     grouped.add(caps.subList(i, Math.min(i + groupSize, caps.size())));
-                                return getLastCommittedRoot(writer, v.get(writer).props.get())
+                                return getLastCommittedRoot(writer, v.get(writer))
                                         .thenCompose(committedRoot -> Futures.combineAllInOrder(grouped.stream().map(group ->
                                                 Futures.asyncExceptionally(
                                                         () -> dhtClient.getChampLookup(owner, (Cid) v.get(writer).props.get().tree.get(), group, committedRoot),
@@ -485,7 +485,7 @@ public class NetworkAccess {
                                         .thenCompose(fromBlocks -> {
                                             List<CompletableFuture<Either<RetrievedCapability, AbsoluteCapability>>> all = remaining.stream()
                                                     .map(link -> current.withWriter(link.owner, link.writer, this)
-                                                            .thenCompose(version -> getMetadata(version.get(link.writer).props.get(), link, Optional.empty(), fromBlocks, hasher, cache)
+                                                            .thenCompose(version -> getMetadata(version.get(link.writer), link, Optional.empty(), fromBlocks, hasher, cache)
                                                                     .thenApply(copt -> copt.isPresent() ?
                                                                             Either.<RetrievedCapability, AbsoluteCapability>a(new RetrievedCapability(link, copt.get())) :
                                                                             Either.<RetrievedCapability, AbsoluteCapability>b(link))))
@@ -577,7 +577,7 @@ public class NetworkAccess {
                                                             Optional<SigningPrivateKeyAndPublicHash> entryWriter,
                                                             String ownerName) {
         return version.withWriter(cap.owner, cap.writer, this)
-                .thenCompose(v -> getMetadata(v.get(cap.writer).props.get(), cap)
+                .thenCompose(v -> getMetadata(v.get(cap.writer), cap)
                 .thenCompose(faOpt -> {
                     if (! faOpt.isPresent())
                         return Futures.of(Optional.empty());
@@ -632,23 +632,23 @@ public class NetworkAccess {
     }
 
 
-    public CompletableFuture<Optional<CryptreeNode>> getMetadata(WriterData base, AbsoluteCapability cap) {
+    public CompletableFuture<Optional<CryptreeNode>> getMetadata(CommittedWriterData base, AbsoluteCapability cap) {
         return getMetadata(base, cap, Optional.empty());
     }
 
-    public CompletableFuture<Optional<CryptreeNode>> getMetadata(WriterData base, AbsoluteCapability cap, Optional<Cid> committedRoot) {
+    public CompletableFuture<Optional<CryptreeNode>> getMetadata(CommittedWriterData base, AbsoluteCapability cap, Optional<Cid> committedRoot) {
         return getMetadata(base, cap, committedRoot, dhtClient, hasher, cache);
     }
 
-    public static CompletableFuture<Optional<CryptreeNode>> getMetadata(WriterData base,
+    public static CompletableFuture<Optional<CryptreeNode>> getMetadata(CommittedWriterData base,
                                                                         AbsoluteCapability cap,
                                                                         Optional<Cid> committedRoot,
                                                                         ContentAddressedStorage dhtClient,
                                                                         Hasher hasher,
                                                                         CryptreeCache cache) {
-        if (base.tree.isEmpty())
+        if (base.props.isEmpty() || base.props.get().tree.isEmpty())
             return Futures.of(Optional.empty());
-        Multihash root = base.tree.get();
+        Multihash root = base.props.get().tree.get();
         Pair<Multihash, ByteArrayWrapper> cacheKey = new Pair<>(root, new ByteArrayWrapper(cap.getMapKey()));
         if (cache.containsKey(cacheKey))
             return Futures.of(cache.get(cacheKey));

@@ -1122,7 +1122,7 @@ public class MultiUserTests {
         Optional<FileWrapper> priorUnsharedView = userToUnshareWith.getByPath(friendsPathToFile).get();
         AbsoluteCapability priorPointer = priorUnsharedView.get().getPointer().capability;
         CommittedWriterData cwd = network.synchronizer.getValue(priorPointer.owner, priorPointer.writer).join().get(priorPointer.writer);
-        CryptreeNode priorFileAccess = network.getMetadata(cwd.props.get(), priorPointer).get().get();
+        CryptreeNode priorFileAccess = network.getMetadata(cwd, priorPointer).get().get();
         SymmetricKey priorMetaKey = priorFileAccess.getParentKey(priorPointer.rBaseKey);
 
         // unshare with a single user
@@ -1139,7 +1139,7 @@ public class MultiUserTests {
         String friendsNewPathToFile = u1.username + "/" + newname;
         Optional<FileWrapper> unsharedView2 = userToUnshareWith.getByPath(friendsNewPathToFile).get();
         CommittedWriterData cwd2 = network.synchronizer.getValue(priorPointer.owner, priorPointer.writer).join().get(priorPointer.writer);
-        CryptreeNode fileAccess = network.getMetadata(cwd2.props.get(), priorPointer.withMapKey(newCap.getMapKey(), newCap.bat)).get().get();
+        CryptreeNode fileAccess = network.getMetadata(cwd2, priorPointer.withMapKey(newCap.getMapKey(), newCap.bat)).get().get();
         // check we are trying to decrypt the correct thing
         PaddedCipherText priorPropsCipherText = ((CborObject.CborMap) priorFileAccess.toCbor()).getObject("p", PaddedCipherText::fromCbor);
         CborObject.CborMap priorFromParent = priorPropsCipherText.decrypt(priorMetaKey, x -> (CborObject.CborMap)x);

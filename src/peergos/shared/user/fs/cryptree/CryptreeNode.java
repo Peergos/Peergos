@@ -612,7 +612,7 @@ public class CryptreeNode implements Cborable {
     public CompletableFuture<Optional<RetrievedCapability>> getNextChunk(Snapshot version,
                                                                          AbsoluteCapability nextChunkCap,
                                                                          NetworkAccess network) {
-        return network.getMetadata(version.get(nextChunkCap.writer).props.get(), nextChunkCap)
+        return network.getMetadata(version.get(nextChunkCap.writer), nextChunkCap)
                 .thenApply(faOpt -> faOpt.map(fa -> new RetrievedCapability(nextChunkCap, fa)));
     }
 
@@ -882,7 +882,7 @@ public class CryptreeNode implements Cborable {
 
                         return retriever(cap.rBaseKey, streamSecret, cap.getMapKey(), cap.bat, crypto.hasher)
                                 .thenCompose(retriever ->
-                                        retriever.getFile(current.get(writer).props.get(), network, crypto, cap, streamSecret, props.size, committedHash(), 1, x -> {})
+                                        retriever.getFile(current.get(writer), network, crypto, cap, streamSecret, props.size, committedHash(), 1, x -> {})
                                                 .thenCompose(data -> {
                                                     int chunkSize = (int) Math.min(props.size, Chunk.MAX_SIZE);
                                                     byte[] chunkData = new byte[chunkSize];
@@ -900,7 +900,7 @@ public class CryptreeNode implements Cborable {
                                                                         getWriterLink(cap.rBaseKey), mirrorBatId(),
                                                                         crypto.random, crypto.hasher, network, x -> {});
                                                             });
-                                                }).thenCompose(updated -> network.getMetadata(updated.get(nextCap.writer).props.get(), nextCap)
+                                                }).thenCompose(updated -> network.getMetadata(updated.get(nextCap.writer), nextCap)
                                                 .thenCompose(mOpt -> {
                                                     if (!mOpt.isPresent())
                                                         return CompletableFuture.completedFuture(updated);
@@ -967,7 +967,7 @@ public class CryptreeNode implements Cborable {
                                                         return IpfsTransaction.call(us.owner,
                                                                 tid -> next.commit(newBase, committer, nextPointer, signer, network, tid)
                                                                         .thenCompose(updatedBase ->
-                                                                                network.getMetadata(updatedBase.get(nextPointer.writer).props.get(), nextPointer)
+                                                                                network.getMetadata(updatedBase.get(nextPointer.writer), nextPointer)
                                                                                         .thenCompose(nextOpt -> nextOpt.get().
                                                                                                 addChildrenAndCommit(updatedBase, committer, remaining,
                                                                                                         nextPointer, signer, mirrorBat, network, crypto)))

@@ -230,7 +230,7 @@ public class SharedWithCache {
     }
 
     private static CompletableFuture<SharedWithState> parseCacheFile(FileWrapper cache, NetworkAccess network, Crypto crypto) {
-        return cache.getInputStream(cache.version.get(cache.writer()).props.get(), network, crypto, x -> {})
+        return cache.getInputStream(cache.version.get(cache.writer()), network, crypto, x -> {})
                 .thenCompose(in -> Serialize.readFully(in, cache.getSize()))
                 .thenApply(CborObject::fromByteArray)
                 .thenApply(SharedWithState::fromCbor);

@@ -14,7 +14,7 @@ import java.util.concurrent.*;
 
 public interface FileRetriever {
 
-    CompletableFuture<AsyncReader> getFile(WriterData version,
+    CompletableFuture<AsyncReader> getFile(CommittedWriterData version,
                                            NetworkAccess network,
                                            Crypto crypto,
                                            AbsoluteCapability ourCap,
@@ -24,14 +24,14 @@ public interface FileRetriever {
                                            int nBufferedChunks,
                                            ProgressConsumer<Long> monitor);
 
-    CompletableFuture<Optional<Pair<byte[], Optional<Bat>>>> getMapLabelAt(WriterData version,
+    CompletableFuture<Optional<Pair<byte[], Optional<Bat>>>> getMapLabelAt(CommittedWriterData version,
                                                                            AbsoluteCapability startCap,
                                                                            Optional<byte[]> streamSecret,
                                                                            long offset,
                                                                            Hasher hasher,
                                                                            NetworkAccess network);
 
-    CompletableFuture<Optional<LocatedChunk>> getChunk(WriterData version,
+    CompletableFuture<Optional<LocatedChunk>> getChunk(CommittedWriterData version,
                                                        NetworkAccess network,
                                                        Crypto crypto,
                                                        long startIndex,

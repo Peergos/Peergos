@@ -2562,7 +2562,7 @@ public class UserContext {
                                                                                               Snapshot s,
                                                                                               NetworkAccess network) {
         return homeDir.getChild(ENTRY_POINTS_FROM_FRIENDS_GROUPS_FILENAME, crypto.hasher, network)
-                .thenCompose(fopt -> fopt.map(f -> f.getInputStream(s.get(f.writer()).props.get(), network, crypto, x -> {})
+                .thenCompose(fopt -> fopt.map(f -> f.getInputStream(s.get(f.writer()), network, crypto, x -> {})
                         .thenCompose(reader -> Serialize.parse(reader, f.getSize(), FriendsGroups::fromCbor))
                         .thenApply(g -> new Pair<>(g, fopt)))
                         .orElse(CompletableFuture.completedFuture(new Pair<>(FriendsGroups.empty(), Optional.empty()))));
