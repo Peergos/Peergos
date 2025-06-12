@@ -144,7 +144,7 @@ public class DirectorySync {
 
         while (true) {
             try {
-                log("Syncing " + links.size() + " pairs of directories: " + IntStream.range(0, links.size()).mapToObj(i -> Arrays.asList(localDirs.get(i), linkPaths.get(i))).collect(Collectors.toList()));
+                LOG.accept("Syncing " + links.size() + " pairs of directories: " + IntStream.range(0, links.size()).mapToObj(i -> Arrays.asList(localDirs.get(i), linkPaths.get(i))).collect(Collectors.toList()));
                 for (int i=0; i < links.size(); i++) {
                     Path localDir = Paths.get(localDirs.get(i));
                     Path remoteDir = PathUtil.get(linkPaths.get(i));
@@ -158,7 +158,7 @@ public class DirectorySync {
                     syncDir(local, remote, syncLocalDeletes.get(i), syncRemoteDeletes.get(i),
                             owner, network, syncedState, maxDownloadParallelism, minFreeSpacePercent, LOG);
                     long t1 = System.currentTimeMillis();
-                    log("Dir sync took " + (t1 - t0) / 1000 + "s");
+                    LOG.accept("Dir sync took " + (t1 - t0) / 1000 + "s");
                 }
                 if (oneRun)
                     break;
@@ -287,7 +287,7 @@ public class DirectorySync {
         long t1 = System.currentTimeMillis();
         buildDirState(localFS, localState, syncedVersions);
         long t2 = System.currentTimeMillis();
-        log("Found " + localState.filesCount() + " local files in " + (t2-t1)/1_000 + "s");
+        LOG.accept("Found " + localState.filesCount() + " local files in " + (t2-t1)/1_000 + "s");
 
         Snapshot syncedVersion = syncedVersions.getSnapshot(remoteFS.getRoot());
         Snapshot remoteVersion = network == null ?
@@ -303,7 +303,7 @@ public class DirectorySync {
         if (remoteChange)
             remoteVersion = buildDirState(remoteFS, remoteState, syncedVersions);
         long t4 = System.currentTimeMillis();
-        log("Found " + remoteState.filesCount() + " remote files in " + (t4-t3)/1_000 + "s");
+        LOG.accept("Found " + remoteState.filesCount() + " remote files in " + (t4-t3)/1_000 + "s");
 
         TreeSet<String> allPaths = new TreeSet<>(localState.allFilePaths());
         allPaths.addAll(remoteState.allFilePaths());
@@ -461,18 +461,18 @@ public class DirectorySync {
                 syncedVersions.removeDir(dirPath);
             } else if (hasLocal) {
                 if (hasSynced) { // delete
-                    log("Sync local: delete dir " + dirPath);
+                    LOG.accept("Sync local: delete dir " + dirPath);
                     localFS.delete(localFS.resolve(dirPath));
                 } else {
-                    log("Sync Remote: mkdir " + dirPath);
+                    LOG.accept("Sync Remote: mkdir " + dirPath);
                     remoteFS.mkdirs(remoteFS.resolve(dirPath));
                 }
             } else {
                 if (hasSynced) { // delete
-                    log("Sync Remote: delete dir " + dirPath);
+                    LOG.accept("Sync Remote: delete dir " + dirPath);
                     remoteFS.delete(remoteFS.resolve(dirPath));
                 } else {
-                    log("Sync Local: mkdir " + dirPath);
+                    LOG.accept("Sync Local: mkdir " + dirPath);
                     localFS.mkdirs(localFS.resolve(dirPath));
                 }
             }

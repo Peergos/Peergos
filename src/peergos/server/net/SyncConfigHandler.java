@@ -25,6 +25,7 @@ import peergos.shared.util.Serialize;
 
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
+import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.ForkJoinPool;
 import java.util.function.Function;
@@ -309,6 +310,14 @@ public class SyncConfigHandler implements HttpHandler {
             } else if (action.equals("sync-now")) {
                 syncer.runNow();
                 byte[] res = JSONParser.toString(new LinkedHashMap<>()).getBytes(StandardCharsets.UTF_8);
+                exchange.sendResponseHeaders(200, res.length);
+                OutputStream resp = exchange.getResponseBody();
+                resp.write(res);
+                exchange.close();
+            } else if (action.equals("status")) {
+                LinkedHashMap<Object, Object> reply = new LinkedHashMap<>();
+                reply.put("msg", syncer.getStatusHolder().getStatusAndTime());
+                byte[] res = JSONParser.toString(reply).getBytes(StandardCharsets.UTF_8);
                 exchange.sendResponseHeaders(200, res.length);
                 OutputStream resp = exchange.getResponseBody();
                 resp.write(res);
