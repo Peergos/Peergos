@@ -133,11 +133,15 @@ public class BufferedNetworkAccess extends NetworkAccess {
 
     @Override
     public CompletableFuture<Optional<Cid>> getLastCommittedRoot(PublicKeyHash writer, WriterData base) {
-        Optional<Cid> lastCommitTarget = pointerBuffer.getCommittedPointerTarget(writer);
-        return lastCommitTarget.isPresent() ?
-                Futures.of(lastCommitTarget) :
+        return pointerBuffer.isEmpty() ?
                 hasher.sha256(base.serialize())
-                        .thenApply(h ->  Optional.of(new Cid(1, Cid.Codec.DagCbor, Multihash.Type.sha2_256, h)));
+                        .thenApply(h ->  Optional.of(new Cid(1, Cid.Codec.DagCbor, Multihash.Type.sha2_256, h))) :
+                Futures.of(pointerBuffer.getCommittedPointerTarget(writer));
+//        Optional<Cid> lastCommitTarget = pointerBuffer.getCommittedPointerTarget(writer);
+//        return lastCommitTarget.isPresent() ?
+//                Futures.of(lastCommitTarget) :
+//                hasher.sha256(base.serialize())
+//                        .thenApply(h ->  Optional.of(new Cid(1, Cid.Codec.DagCbor, Multihash.Type.sha2_256, h)));
     }
 
     @Override
