@@ -660,7 +660,8 @@ public class NetworkAccess {
                     ).thenCompose(blocks -> LocalRamStorage.build(hasher, blocks))
                             .thenCompose(bstore -> Futures.asyncExceptionally(
                                             () -> ChampWrapper.create(cap.owner, (Cid) root, Optional.empty(), x -> Futures.of(x.data), bstore, hasher, c -> (CborObject.CborMerkleLink) c),
-                                            t -> dhtClient.getChampRoot(committedRoot, (Cid) root, cap.owner, dhtClient).thenCompose(champRoot -> ChampWrapper.create(cap.owner, champRoot, Optional.empty(), x -> Futures.of(x.data), bstore, hasher, c -> (CborObject.CborMerkleLink) c))
+                                            t -> dhtClient.getChampRoot(committedRoot, (Cid) root, cap.owner, dhtClient)
+                                                    .thenCompose(champRoot -> ChampWrapper.create(cap.owner, champRoot, Optional.empty(), x -> Futures.of(x.data), bstore, hasher, c -> (CborObject.CborMerkleLink) c))
                                     )
                                     .thenCompose(tree -> tree.get(cap.getMapKey()))
                                     .thenApply(c -> c.map(x -> x.target))
