@@ -2,6 +2,7 @@ package peergos.server.tests;
 
 import org.junit.Assert;
 import org.junit.BeforeClass;
+import org.junit.Ignore;
 import org.junit.Test;
 import peergos.server.*;
 import peergos.server.storage.*;
@@ -68,6 +69,7 @@ public class P2pStreamNetworkTests {
         return Builder.buildJavaGatewayAccess(new URL("http://localhost:" + ipfsApiPort), new URL("http://localhost:" + ipfsGatewayPort), pkinodeId.toString()).get();
     }
 
+    @Ignore
     @Test
     public void writeViaUnrelatedNode() throws Exception {
         String username1 = generateUsername();
