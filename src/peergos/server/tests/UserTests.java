@@ -1250,7 +1250,7 @@ public abstract class UserTests {
                 updatedFile.getFileProperties().streamSecret, newcap.getMapKey(), Optional.empty(), crypto.hasher).join();
         Assert.assertTrue(nextChunkRel.right.isEmpty());
         NetworkAccess cleared = network.clear();
-        WriterData uwd = WriterData.getWriterData(owner, updatedFile.writer(), network.mutable, network.dhtClient).join().props.get();
+        CommittedWriterData uwd = WriterData.getWriterData(owner, updatedFile.writer(), network.mutable, network.dhtClient).join();
         Optional<CryptreeNode> secondChunk = cleared.getMetadata(uwd, newcap.withMapKey(nextChunkRel.left, Optional.empty())).join();
         Assert.assertTrue(secondChunk.isPresent());
         // now the third chunk
@@ -1347,7 +1347,7 @@ public abstract class UserTests {
         // check we can't get the third chunk any more
         WritableAbsoluteCapability pointer = original.writableFilePointer();
         CommittedWriterData cwd = network.synchronizer.getValue(pointer.owner, pointer.writer).join().get(pointer.writer);
-        Optional<CryptreeNode> thirdChunk = network.getMetadata(cwd.props.get(), pointer.withMapKey(thirdChunkLabel.left, thirdChunkLabel.right)).join();
+        Optional<CryptreeNode> thirdChunk = network.getMetadata(cwd, pointer.withMapKey(thirdChunkLabel.left, thirdChunkLabel.right)).join();
         Assert.assertTrue("File is truncated", ! thirdChunk.isPresent());
         Assert.assertTrue("File has correct size", truncated.getFileProperties().size == truncateLength);
 
@@ -1601,7 +1601,7 @@ public abstract class UserTests {
 
         AbsoluteCapability pointer = subfolder.getPointer().capability;
         CommittedWriterData cwd = network.synchronizer.getValue(pointer.owner, pointer.writer).join().get(pointer.writer);
-        Optional<CryptreeNode> subdir = network.getMetadata(cwd.props.get(), pointer).join();
+        Optional<CryptreeNode> subdir = network.getMetadata(cwd, pointer).join();
         Assert.assertTrue("Child deleted", ! subdir.isPresent());
     }
 

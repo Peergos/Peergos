@@ -35,7 +35,7 @@ public class EncryptedChunkRetriever implements FileRetriever {
     }
 
     @Override
-    public CompletableFuture<AsyncReader> getFile(WriterData version,
+    public CompletableFuture<AsyncReader> getFile(CommittedWriterData version,
                                                   NetworkAccess network,
                                                   Crypto crypto,
                                                   AbsoluteCapability ourCap,
@@ -55,7 +55,7 @@ public class EncryptedChunkRetriever implements FileRetriever {
                 });
     }
 
-    public CompletableFuture<Optional<Pair<byte[], Optional<Bat>>>> getMapLabelAt(WriterData version,
+    public CompletableFuture<Optional<Pair<byte[], Optional<Bat>>>> getMapLabelAt(CommittedWriterData version,
                                                                                   AbsoluteCapability startCap,
                                                                                   Optional<byte[]> streamSecret,
                                                                                   long offset,
@@ -79,7 +79,7 @@ public class EncryptedChunkRetriever implements FileRetriever {
                 );
     }
 
-    public CompletableFuture<Optional<LocatedChunk>> getChunk(WriterData version,
+    public CompletableFuture<Optional<LocatedChunk>> getChunk(CommittedWriterData version,
                                                               NetworkAccess network,
                                                               Crypto crypto,
                                                               long startIndex,

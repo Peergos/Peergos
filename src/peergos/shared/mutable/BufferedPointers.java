@@ -44,15 +44,16 @@ public class BufferedPointers implements MutablePointers {
         this.target = target;
     }
 
-    public Optional<Cid> getCommittedPointerTarget(PublicKeyHash writer) {
+    public Optional<Pair<Optional<Cid>, Optional<Long>>> getCommittedPointerTarget(PublicKeyHash writer) {
         if (writerUpdates.isEmpty())
             return Optional.ofNullable(lastCommits.get(writer))
-                    .flatMap(u -> u.currentHash.toOptional()
-                            .map(c -> (Cid) c));
+                    .map(w -> new Pair<>(w.currentHash.toOptional().map(h ->  (Cid) h),
+                            w.currentSequence));
         return writerUpdates.stream()
-                .filter(u ->  u.writer.equals(writer)).map(u -> u.prevHash)
+                .filter(u ->  u.writer.equals(writer))
                 .findFirst()
-                .flatMap(m -> m.toOptional().map(h ->  (Cid) h));
+                .map(m -> new Pair<>(m.prevHash.toOptional().map(h ->  (Cid) h),
+                        m.currentSequence.map(x -> x-1)));
     }
 
     public List<WriterUpdate> getUpdates() {

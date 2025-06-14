@@ -19,7 +19,7 @@ public class LazyInputStreamCombiner implements AsyncReader {
     public static void disableLog() {
         LOG.setLevel(Level.OFF);
     }
-    private final WriterData version;
+    private final CommittedWriterData version;
     private final NetworkAccess network;
     private final Crypto crypto;
     private final SymmetricKey baseKey;
@@ -41,7 +41,7 @@ public class LazyInputStreamCombiner implements AsyncReader {
     private AbsoluteCapability currentNextChunkPointer;
     private int index; // index within current chunk
 
-    public LazyInputStreamCombiner(WriterData version,
+    public LazyInputStreamCombiner(CommittedWriterData version,
                                    long globalIndex,
                                    byte[] chunk,
                                    Location nextChunkLoc,

@@ -564,7 +564,7 @@ public class FileWrapper {
         CryptreeNode fileAccess = pointer.fileAccess;
         return fileAccess.retriever(pointer.capability.rBaseKey, props.streamSecret, getLocation().getMapKey(), pointer.capability.bat, crypto.hasher)
                 .thenCompose(retriever -> retriever
-                        .getMapLabelAt(version.get(writer()).props.get(), writableFilePointer(),
+                        .getMapLabelAt(version.get(writer()), writableFilePointer(),
                                 getFileProperties().streamSecret, offset, crypto.hasher, network)
                         .thenApply(Optional::get));
     }
@@ -587,7 +587,7 @@ public class FileWrapper {
 
         return initialVersion.withWriter(owner(), writer(), network)
                 .thenCompose(snapshot -> getMapKey(newSize, network, crypto).thenCompose(endMapKey ->
-                        getInputStream(snapshot.get(writer()).props.get(), network, crypto, props.size, 1, x -> {}).thenCompose(originalReader -> {
+                        getInputStream(snapshot.get(writer()), network, crypto, props.size, 1, x -> {}).thenCompose(originalReader -> {
                             long startOfLastChunk = newSize - (newSize % Chunk.MAX_SIZE);
                             return originalReader.seek(startOfLastChunk).thenCompose(seekedOriginal -> {
                                 byte[] lastChunk = new byte[(int)(newSize % Chunk.MAX_SIZE)];
@@ -1103,11 +1103,11 @@ public class FileWrapper {
 
                         BiFunction<Snapshot, Long, CompletableFuture<Snapshot>> composer = (version, startIndex) -> {
                             MaybeMultihash currentHash = us.pointer.fileAccess.committedHash();
-                            return retriever.getChunk(version.get(us.writer()).props.get(), network, crypto, startIndex,
+                            return retriever.getChunk(version.get(us.writer()), network, crypto, startIndex,
                                     filesSize.get(), ourCap, props.streamSecret, currentHash, monitor)
                                     .thenCompose(currentLocation -> {
                                                 CompletableFuture<Optional<Pair<Location, Optional<Bat>>>> locationAt = retriever
-                                                        .getMapLabelAt(version.get(us.writer()).props.get(), ourCap,
+                                                        .getMapLabelAt(version.get(us.writer()), ourCap,
                                                                 props.streamSecret, startIndex + Chunk.MAX_SIZE, crypto.hasher, network)
                                                         .thenApply(x -> x.map(mb -> new Pair<>(getLocation().withMapKey(mb.left), mb.right)));
                                                 return locationAt.thenCompose(locationAndBat ->
@@ -1374,7 +1374,7 @@ public class FileWrapper {
                                                         // update size only
                                                         return updatedChild.updateSize(committer, writeEnd, network);
                                                     }
-                                                    return updatedChild.getInputStream(latestSnapshot.get(updatedChild.writer()).props.get(), network, crypto, l -> {})
+                                                    return updatedChild.getInputStream(latestSnapshot.get(updatedChild.writer()), network, crypto, l -> {})
                                                             .thenCompose(is -> updatedChild.recalculateThumbnail(
                                                                 latestSnapshot, committer, filename, is, isHidden,
                                                                 updatedChild.getSize(), updatedChild.props.created, network, (WritableAbsoluteCapability)updatedChild.pointer.capability,
@@ -1395,7 +1395,7 @@ public class FileWrapper {
                                                             startIndex, endIndex, network, crypto, monitor)
                                                             .thenCompose(s -> redoMimetypeAndThumbnail ?
                                                                     child.getUpdated(s, network)
-                                                                            .thenCompose(updatedChild -> updatedChild.getInputStream(s.get(updatedChild.writer()).props.get(), network, crypto, l -> {})
+                                                                            .thenCompose(updatedChild -> updatedChild.getInputStream(s.get(updatedChild.writer()), network, crypto, l -> {})
                                                                                     .thenCompose(is -> updatedChild.recalculateThumbnail(s, committer, filename, is, isHidden,
                                                                                             updatedChild.getSize(), updatedChild.props.created, network, (WritableAbsoluteCapability)updatedChild.pointer.capability,
                                                                                             updatedChild.getFileProperties().streamSecret))) :
@@ -1456,7 +1456,7 @@ public class FileWrapper {
     @JsMethod
     public CompletableFuture<Boolean> calculateAndUpdateThumbnail(NetworkAccess network, Crypto crypto) {
         return network.synchronizer.applyComplexComputation(owner(), signingPair(),
-                (latestSnapshot, committer) -> getInputStream(latestSnapshot.get(writer()).props.get(), network, crypto, l -> {})
+                (latestSnapshot, committer) -> getInputStream(latestSnapshot.get(writer()), network, crypto, l -> {})
                         .thenCompose(is -> recalculateThumbnail(
                                 latestSnapshot, committer, getName(), is, props.isHidden,
                                 getSize(), props.created, network, (WritableAbsoluteCapability)pointer.capability,
@@ -1892,7 +1892,7 @@ public class FileWrapper {
                         .thenCompose(loc -> {
                             WritableAbsoluteCapability chunkCap = cap.withMapKey(loc.left, loc.right);
                             long chunkIndex = b * 1024;
-                            return network.getMetadata(version.get(writer()).props.get(), chunkCap)
+                            return network.getMetadata(version.get(writer()), chunkCap)
                                     .thenApply(meta -> new PropsUpdate(chunkCap, meta.get(), entryWriter, meta.get().getProperties(chunkCap.rBaseKey)
                                             .withHash(Optional.of(hash.branch(chunkIndex)))));
                         }))
@@ -2060,7 +2060,7 @@ public CompletableFuture<Boolean> copyTo(FileWrapper target, UserContext context
             return FileProperties.calculateMapKey(getFileProperties().streamSecret.get(),
                     cap.getMapKey(), cap.bat, b * 1024 * Chunk.MAX_SIZE, hasher).thenCompose(loc -> {
                 WritableAbsoluteCapability chunkCap = cap.withMapKey(loc.left, loc.right);
-                return network.getMetadata(version.get(writer()).props.get(), chunkCap)
+                return network.getMetadata(version.get(writer()), chunkCap)
                         .thenApply(meta -> meta.get().getProperties(chunkCap.rBaseKey).treeHash.get());
             });
         }).collect(Collectors.toList()))
@@ -2108,7 +2108,7 @@ public CompletableFuture<Boolean> copyTo(FileWrapper target, UserContext context
                                                 })));
             } else {
                 return version.withWriter(owner(), writer(), network).thenCompose(snapshot ->
-                        getInputStream(snapshot.get(writer()).props.get(), network, crypto, x -> {})
+                        getInputStream(snapshot.get(writer()), network, crypto, x -> {})
                                 .thenCompose(stream -> getHash(network, crypto.hasher).thenCompose(hashTree -> target.uploadFileSection(snapshot, committer,
                                                 getName(), stream, existingThumbnail, false, 0, getSize(), hashTree,
                                                 Optional.of(getFileProperties().modified),
@@ -2205,7 +2205,7 @@ public CompletableFuture<Boolean> copyTo(FileWrapper target, UserContext context
                                                              Committer committer) {
 
         return initialVersion.withWriter(currentCap.owner, currentCap.writer, network)
-                .thenCompose(version -> network.getMetadata(version.get(currentCap.writer).props.get(), currentCap)
+                .thenCompose(version -> network.getMetadata(version.get(currentCap.writer), currentCap)
                         .thenCompose(mOpt -> {
                             if (! mOpt.isPresent()) {
                                 return CompletableFuture.completedFuture(version);
@@ -2247,7 +2247,7 @@ public CompletableFuture<Boolean> copyTo(FileWrapper target, UserContext context
                                                               Snapshot version,
                                                               Committer committer) {
         return version.withWriter(currentCap.owner, currentCap.writer, network)
-                .thenCompose(current -> network.getMetadata(current.get(currentCap.writer).props.get(), currentCap)
+                .thenCompose(current -> network.getMetadata(current.get(currentCap.writer), currentCap)
                         .thenCompose(mOpt -> {
                             if (! mOpt.isPresent()) {
                                 return CompletableFuture.completedFuture(current);
@@ -2430,10 +2430,10 @@ public CompletableFuture<Boolean> copyTo(FileWrapper target, UserContext context
                                                                    Crypto crypto,
                                                                    ProgressConsumer<Long> monitor) {
         return network.synchronizer.getValue(owner(), writer())
-                .thenCompose(state -> getInputStream(state.get(writer()).props.get(), network, crypto, getFileProperties().size, 1, monitor));
+                .thenCompose(state -> getInputStream(state.get(writer()), network, crypto, getFileProperties().size, 1, monitor));
     }
 
-    public CompletableFuture<? extends AsyncReader> getInputStream(WriterData version,
+    public CompletableFuture<? extends AsyncReader> getInputStream(CommittedWriterData version,
                                                                    NetworkAccess network,
                                                                    Crypto crypto,
                                                                    ProgressConsumer<Long> monitor) {
@@ -2461,7 +2461,7 @@ public CompletableFuture<Boolean> copyTo(FileWrapper target, UserContext context
                                                                    int fileSizeLow,
                                                                    ProgressConsumer<Long> monitor) {
         return network.synchronizer.getValue(owner(), writer())
-                .thenCompose(state -> getInputStream(state.get(writer()).props.get(), network, crypto, fileSize(fileSizeHi, fileSizeLow), 1, monitor));
+                .thenCompose(state -> getInputStream(state.get(writer()), network, crypto, fileSize(fileSizeHi, fileSizeLow), 1, monitor));
     }
 
     public CompletableFuture<? extends AsyncReader> getInputStream(NetworkAccess network,
@@ -2477,10 +2477,10 @@ public CompletableFuture<Boolean> copyTo(FileWrapper target, UserContext context
                                                                    int nBufferedChunks,
                                                                    ProgressConsumer<Long> monitor) {
         return network.synchronizer.getValue(owner(), writer())
-                .thenCompose(state -> getInputStream(state.get(writer()).props.get(), network, crypto, fileSize, nBufferedChunks, monitor));
+                .thenCompose(state -> getInputStream(state.get(writer()), network, crypto, fileSize, nBufferedChunks, monitor));
     }
 
-    public CompletableFuture<? extends AsyncReader> getInputStream(WriterData version,
+    public CompletableFuture<? extends AsyncReader> getInputStream(CommittedWriterData version,
                                                                    NetworkAccess network,
                                                                    Crypto crypto,
                                                                    long fileSize,

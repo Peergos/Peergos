@@ -150,7 +150,7 @@ public class PeergosSyncFS implements SyncFilesystem {
             long chunkIndex = b * 1024;
             context.network.synchronizer.applyComplexUpdate(f.owner(), f.signingPair(),
                     (s, c) -> {
-                        CryptreeNode meta = context.network.getMetadata(s.get(f.writer()).props.get(), chunkCap).join().get();
+                        CryptreeNode meta = context.network.getMetadata(s.get(f.writer()), chunkCap).join().get();
                         return meta.updateProperties(s, c, chunkCap, Optional.of(f.signingPair()), meta.getProperties(chunkCap.rBaseKey)
                                 .withHash(Optional.of(hashTree.branch(chunkIndex))), context.network);
                     }, () -> true).join();
