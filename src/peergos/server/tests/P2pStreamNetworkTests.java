@@ -2,6 +2,7 @@ package peergos.server.tests;
 
 import org.junit.Assert;
 import org.junit.BeforeClass;
+import org.junit.Ignore;
 import org.junit.Test;
 import peergos.server.*;
 import peergos.server.storage.*;
@@ -14,6 +15,7 @@ import peergos.shared.user.fs.*;
 
 import java.net.URL;
 import java.util.*;
+import java.util.concurrent.TimeUnit;
 
 import static peergos.server.Main.IPFS;
 import static peergos.server.tests.UserTests.randomString;
@@ -81,7 +83,7 @@ public class P2pStreamNetworkTests {
                 nodes.get(1), crypto, x -> {}).get();
         Thread.sleep(7000);
         Optional<FileWrapper> file = ensureSignedUp(username1, password1, nodes.get(0), crypto)
-                .getByPath("/" + username1 + "/" + filename).get();
+                .getByPath("/" + username1 + "/" + filename).orTimeout(10, TimeUnit.SECONDS).join();
         Assert.assertTrue(file.isPresent());
     }
 

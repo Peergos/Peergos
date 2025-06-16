@@ -132,20 +132,20 @@ public class BufferedNetworkAccess extends NetworkAccess {
     }
 
     @Override
-    public CompletableFuture<Optional<Cid>> getLastCommittedRoot(PublicKeyHash writer, WriterData base) {
-        return pointerBuffer.isEmpty() ?
-                hasher.sha256(base.serialize())
-                        .thenApply(h ->  Optional.of(new Cid(1, Cid.Codec.DagCbor, Multihash.Type.sha2_256, h))) :
-                Futures.of(pointerBuffer.getCommittedPointerTarget(writer));
-//        Optional<Cid> lastCommitTarget = pointerBuffer.getCommittedPointerTarget(writer);
-//        return lastCommitTarget.isPresent() ?
-//                Futures.of(lastCommitTarget) :
-//                hasher.sha256(base.serialize())
-//                        .thenApply(h ->  Optional.of(new Cid(1, Cid.Codec.DagCbor, Multihash.Type.sha2_256, h)));
+    public CompletableFuture<Optional<Cid>> getLastCommittedRoot(PublicKeyHash writer, CommittedWriterData base) {
+        Optional<Pair<Optional<Cid>, Optional<Long>>> lastCommitTarget = pointerBuffer.getCommittedPointerTarget(writer);
+        if (lastCommitTarget.isEmpty()) {
+            return Futures.of(base.hash.toOptional().map(c -> (Cid) c));
+        }
+        boolean higherBaseVersion = base.sequence.orElse(-1L) > lastCommitTarget.get().right.orElse(-1L);
+        // If a later commit is not in local buffer, then there must have been an external commit, use it
+        if (higherBaseVersion && base.hash.isPresent() && ! blockBuffer.hasBufferedBlock((Cid) base.hash.get()))
+            return Futures.of(base.hash.toOptional().map(c -> (Cid) c));
+        return Futures.of(lastCommitTarget.get().left);
     }
 
     @Override
-    public CompletableFuture<Optional<CryptreeNode>> getMetadata(WriterData base, AbsoluteCapability cap) {
+    public CompletableFuture<Optional<CryptreeNode>> getMetadata(CommittedWriterData base, AbsoluteCapability cap) {
         return getLastCommittedRoot(cap.writer, base)
                 .thenCompose(committed -> super.getMetadata(base, cap, committed));
     }

@@ -33,6 +33,12 @@ public class BufferedStorage extends DelegatingStorage {
         this.hasher = hasher;
     }
 
+    public boolean hasBufferedBlock(Cid c) {
+        synchronized (storage) {
+            return storage.containsKey(c);
+        }
+    }
+
     public boolean isEmpty() {
         synchronized (storage) {
             return storage.isEmpty();
@@ -84,8 +90,9 @@ public class BufferedStorage extends DelegatingStorage {
                                                           Optional<BatWithId> bat,
                                                           Optional<Cid> committedRoot,
                                                           Hasher hasher) {
-        CachingStorage cache = new CachingStorage(new LocalOnlyStorage(new BlockCache() {
+        BlockCache ramBlockCache = new BlockCache() {
             Map<Cid, byte[]> localCache = new HashMap<>();
+
             @Override
             public CompletableFuture<Boolean> put(Cid hash, byte[] data) {
                 localCache.put(hash, data);
@@ -122,24 +129,39 @@ public class BufferedStorage extends DelegatingStorage {
             public void setMaxSize(long maxSizeBytes) {
 
             }
-        },
+        };
+        LocalOnlyStorage localStorage = new LocalOnlyStorage(ramBlockCache,
                 () -> committedRoot.isPresent() ?
                         get(owner, committedRoot.get(), Optional.empty())
-                                .thenApply(ropt -> ropt.map(WriterData::fromCbor).flatMap(wd ->  wd.tree))
+                                .thenApply(ropt -> ropt.map(WriterData::fromCbor).flatMap(wd -> wd.tree))
                                 .thenCompose(champRoot -> target.getChampLookup(owner, (Cid) champRoot.get(), Arrays.asList(new ChunkMirrorCap(champKey, bat)), Optional.empty())) :
-                        target.getChampLookup(owner, root, Arrays.asList(new ChunkMirrorCap(champKey, bat)), Optional.empty()), hasher),
-                100, 1024 * 1024);
-        return Futures.asyncExceptionally(() -> ChampWrapper.create(owner, root, Optional.empty(), x -> Futures.of(x.data), cache, hasher, c -> (CborObject.CborMerkleLink) c)
-                .thenCompose(tree -> tree.get(champKey))
-                .thenApply(c -> c.map(x -> x.target).map(MaybeMultihash::of).orElse(MaybeMultihash.empty()))
-                .thenCompose(btreeValue -> {
-                    if (btreeValue.isPresent())
-                        return cache.get(owner, (Cid) btreeValue.get(), bat);
-                    return Futures.of(Optional.empty());
-                }).thenApply(x -> new ArrayList<>(cache.getCached())),
-                    t -> getChampRoot(committedRoot, root, owner, this)
-                            .thenCompose(champRoot -> target.getChampLookup(owner, champRoot, Arrays.asList(new ChunkMirrorCap(champKey, bat)), Optional.empty()))
-                );
+                        target.getChampLookup(owner, root, Arrays.asList(new ChunkMirrorCap(champKey, bat)), Optional.empty()), hasher);
+        CachingStorage cache = new CachingStorage(localStorage, 100, 1024 * 1024);
+        return Futures.asyncExceptionally(() -> Futures.asyncExceptionally(
+                                () -> ChampWrapper.create(owner, root, Optional.empty(), x -> Futures.of(x.data), cache, hasher, c -> (CborObject.CborMerkleLink) c),
+                                t -> getChampRoot(committedRoot, root, owner, target)
+                                        .thenCompose(champRoot -> ChampWrapper.create(owner, champRoot, Optional.empty(), x -> Futures.of(x.data), cache, hasher, c -> (CborObject.CborMerkleLink) c))
+                        )
+                        .thenCompose(tree -> tree.get(champKey))
+                        .thenApply(c -> c.map(x -> x.target).map(MaybeMultihash::of).orElse(MaybeMultihash.empty()))
+                        .thenCompose(btreeValue -> {
+                            if (btreeValue.isPresent())
+                                return Futures.asyncExceptionally(
+                                        () -> cache.get(owner, (Cid) btreeValue.get(), bat),
+                                        t -> target.get(owner, (Cid) btreeValue.get(), bat).thenCompose(res -> {
+                                            if (res.isPresent()) {
+                                                // add directly retrieved block to results
+                                                ramBlockCache.put((Cid) btreeValue.get(), res.get().serialize());
+                                                return cache.get(owner, (Cid) btreeValue.get(), bat);
+                                            }
+                                            return Futures.of(res);
+                                        })
+                                );
+                            return Futures.of(Optional.empty());
+                        }).thenApply(x -> new ArrayList<>(cache.getCached())),
+                t -> getChampRoot(committedRoot, root, owner, this)
+                        .thenCompose(champRoot -> target.getChampLookup(owner, champRoot, Arrays.asList(new ChunkMirrorCap(champKey, bat)), Optional.empty()))
+        );
     }
 
     @Override
