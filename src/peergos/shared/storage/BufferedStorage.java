@@ -33,6 +33,12 @@ public class BufferedStorage extends DelegatingStorage {
         this.hasher = hasher;
     }
 
+    public boolean hasBufferedBlock(Cid c) {
+        synchronized (storage) {
+            return storage.containsKey(c);
+        }
+    }
+
     public boolean isEmpty() {
         synchronized (storage) {
             return storage.isEmpty();
@@ -131,27 +137,31 @@ public class BufferedStorage extends DelegatingStorage {
                                 .thenCompose(champRoot -> target.getChampLookup(owner, (Cid) champRoot.get(), Arrays.asList(new ChunkMirrorCap(champKey, bat)), Optional.empty())) :
                         target.getChampLookup(owner, root, Arrays.asList(new ChunkMirrorCap(champKey, bat)), Optional.empty()), hasher);
         CachingStorage cache = new CachingStorage(localStorage, 100, 1024 * 1024);
-        return Futures.asyncExceptionally(() -> ChampWrapper.create(owner, root, Optional.empty(), x -> Futures.of(x.data), cache, hasher, c -> (CborObject.CborMerkleLink) c)
-                .thenCompose(tree -> tree.get(champKey))
-                .thenApply(c -> c.map(x -> x.target).map(MaybeMultihash::of).orElse(MaybeMultihash.empty()))
-                .thenCompose(btreeValue -> {
-                    if (btreeValue.isPresent())
-                        return Futures.asyncExceptionally(
-                                () -> cache.get(owner, (Cid) btreeValue.get(), bat),
-                                t -> target.get(owner, (Cid) btreeValue.get(), bat).thenCompose(res -> {
-                                    if (res.isPresent()) {
-                                        // add directly retrieved block to results
-                                        ramBlockCache.put((Cid) btreeValue.get(), res.get().serialize());
-                                        return cache.get(owner, (Cid) btreeValue.get(), bat);
-                                    }
-                                    return Futures.of(res);
-                                })
-                        );
-                    return Futures.of(Optional.empty());
-                }).thenApply(x -> new ArrayList<>(cache.getCached())),
-                    t -> getChampRoot(committedRoot, root, owner, this)
-                            .thenCompose(champRoot -> target.getChampLookup(owner, champRoot, Arrays.asList(new ChunkMirrorCap(champKey, bat)), Optional.empty()))
-                );
+        return Futures.asyncExceptionally(() -> Futures.asyncExceptionally(
+                                () -> ChampWrapper.create(owner, root, Optional.empty(), x -> Futures.of(x.data), cache, hasher, c -> (CborObject.CborMerkleLink) c),
+                                t -> getChampRoot(committedRoot, root, owner, target)
+                                        .thenCompose(champRoot -> ChampWrapper.create(owner, champRoot, Optional.empty(), x -> Futures.of(x.data), cache, hasher, c -> (CborObject.CborMerkleLink) c))
+                        )
+                        .thenCompose(tree -> tree.get(champKey))
+                        .thenApply(c -> c.map(x -> x.target).map(MaybeMultihash::of).orElse(MaybeMultihash.empty()))
+                        .thenCompose(btreeValue -> {
+                            if (btreeValue.isPresent())
+                                return Futures.asyncExceptionally(
+                                        () -> cache.get(owner, (Cid) btreeValue.get(), bat),
+                                        t -> target.get(owner, (Cid) btreeValue.get(), bat).thenCompose(res -> {
+                                            if (res.isPresent()) {
+                                                // add directly retrieved block to results
+                                                ramBlockCache.put((Cid) btreeValue.get(), res.get().serialize());
+                                                return cache.get(owner, (Cid) btreeValue.get(), bat);
+                                            }
+                                            return Futures.of(res);
+                                        })
+                                );
+                            return Futures.of(Optional.empty());
+                        }).thenApply(x -> new ArrayList<>(cache.getCached())),
+                t -> getChampRoot(committedRoot, root, owner, this)
+                        .thenCompose(champRoot -> target.getChampLookup(owner, champRoot, Arrays.asList(new ChunkMirrorCap(champKey, bat)), Optional.empty()))
+        );
     }
 
     @Override

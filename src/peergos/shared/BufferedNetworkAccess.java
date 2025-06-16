@@ -134,12 +134,14 @@ public class BufferedNetworkAccess extends NetworkAccess {
     @Override
     public CompletableFuture<Optional<Cid>> getLastCommittedRoot(PublicKeyHash writer, CommittedWriterData base) {
         Optional<Pair<Optional<Cid>, Optional<Long>>> lastCommitTarget = pointerBuffer.getCommittedPointerTarget(writer);
-        if (lastCommitTarget.isEmpty())
+        if (lastCommitTarget.isEmpty()) {
             return Futures.of(base.hash.toOptional().map(c -> (Cid) c));
-        // Take whichever commit was later (higher sequence)
-        return base.sequence.orElse(-1L) > lastCommitTarget.get().right.orElse(-1L) ?
-                Futures.of(base.hash.toOptional().map(c -> (Cid) c)) :
-                Futures.of(lastCommitTarget.get().left);
+        }
+        boolean higherBaseVersion = base.sequence.orElse(-1L) > lastCommitTarget.get().right.orElse(-1L);
+        // If a later commit is not in local buffer, then there must have been an external commit, use it
+        if (higherBaseVersion && base.hash.isPresent() && ! blockBuffer.hasBufferedBlock((Cid) base.hash.get()))
+            return Futures.of(base.hash.toOptional().map(c -> (Cid) c));
+        return Futures.of(lastCommitTarget.get().left);
     }
 
     @Override
