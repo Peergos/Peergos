@@ -284,6 +284,75 @@ public class ChampTests {
     }
 
     @Test
+    public void merge() throws Exception {
+        RAMStorage storage = new RAMStorage(crypto.hasher);
+        int bitWidth = 5;
+        int maxCollisions = 3;
+        SigningPrivateKeyAndPublicHash user = createUser(storage, crypto);
+        Random r = new Random(28);
+
+        Supplier<Multihash> randomHash = () -> {
+            byte[] hash = new byte[32];
+            r.nextBytes(hash);
+            return new Multihash(Multihash.Type.sha2_256, hash);
+        };
+        TransactionId tid = storage.startTransaction(user.publicKeyHash).get();
+
+        for (int prefixLen = 0; prefixLen < 5; prefixLen++)
+            for (int i=0; i < 100; i++) {
+                int suffixLen = 5;
+                int nKeys = r.nextInt(10);
+                Pair<Champ<CborObject.CborMerkleLink>, Multihash> root = randomTree(user, r, prefixLen, suffixLen, nKeys, bitWidth, maxCollisions,
+                        Optional.empty(), hasher, randomHash, storage);
+
+                Map<ByteArrayWrapper, Triple<ByteArrayWrapper, Optional<CborObject.CborMerkleLink>, Optional<CborObject.CborMerkleLink>>> original = new HashMap<>();
+                Function<Cborable, CborObject.CborMerkleLink> fromCbor = c -> (CborObject.CborMerkleLink) c;
+                ChampUtil.applyToDiff(owner, MaybeMultihash.empty(), MaybeMultihash.of(root.right), 0, hasher,
+                        Collections.emptyList(), Collections.emptyList(), t -> original.put(t.left, t), bitWidth, storage, fromCbor).join();
+
+                Map<ByteArrayWrapper, Triple<ByteArrayWrapper, Optional<CborObject.CborMerkleLink>, Optional<CborObject.CborMerkleLink>>> remoteUpdated = new HashMap<>(original);
+                Pair<Champ<CborObject.CborMerkleLink>, Multihash> remoteRoot = root;
+                for (int j=0; j < 10; j++) {
+                    byte[] keyBytes = new byte[prefixLen + suffixLen];
+                    r.nextBytes(keyBytes);
+                    ByteArrayWrapper key = new ByteArrayWrapper(keyBytes);
+                    Multihash value = randomHash.get();
+                    if (original.containsKey(key) || remoteUpdated.containsKey(key))
+                        continue;
+                    remoteUpdated.put(key, new Triple<>(key, Optional.empty(), Optional.of(new CborObject.CborMerkleLink(value))));
+                    remoteRoot = remoteRoot.left.put(user.publicKeyHash, user, key, hasher.apply(key).join(), 0,
+                            Optional.empty(), Optional.of(new CborObject.CborMerkleLink(value)), bitWidth, maxCollisions, Optional.empty(), hasher, tid, storage,
+                            writeHasher, root.right).get();
+                }
+
+                Map<ByteArrayWrapper, Triple<ByteArrayWrapper, Optional<CborObject.CborMerkleLink>, Optional<CborObject.CborMerkleLink>>> localUpdated = new HashMap<>(original);
+                Pair<Champ<CborObject.CborMerkleLink>, Multihash> localRoot = root;
+                for (int j=0; j < 10; j++) {
+                    byte[] keyBytes = new byte[prefixLen + suffixLen];
+                    r.nextBytes(keyBytes);
+                    ByteArrayWrapper key = new ByteArrayWrapper(keyBytes);
+                    Multihash value = randomHash.get();
+                    if (remoteUpdated.containsKey(key) || localUpdated.containsKey(key))
+                        continue;
+                    localUpdated.put(key, new Triple<>(key, Optional.empty(), Optional.of(new CborObject.CborMerkleLink(value))));
+                    localRoot = localRoot.left.put(user.publicKeyHash, user, key, hasher.apply(key).join(), 0,
+                            Optional.empty(), Optional.of(new CborObject.CborMerkleLink(value)), bitWidth, maxCollisions, Optional.empty(), hasher, tid, storage,
+                            writeHasher, root.right).get();
+                }
+                Pair<Champ<CborObject.CborMerkleLink>, Multihash> merged = ChampUtil.merge(owner, user, MaybeMultihash.of(root.right), MaybeMultihash.of(localRoot.right),
+                        MaybeMultihash.of(remoteRoot.right), Optional.empty(), tid, bitWidth, maxCollisions, hasher, fromCbor, storage, writeHasher).join();
+
+                Map<ByteArrayWrapper, Multihash> newMappings = new HashMap<>();
+                ChampUtil.applyToDiff(owner, MaybeMultihash.empty(), MaybeMultihash.of(merged.right), 0,
+                        hasher, Collections.emptyList(), Collections.emptyList(), t -> {
+                            newMappings.put(t.left, t.right.get().target);
+                        }, bitWidth, storage, fromCbor).join();
+                Assert.assertTrue(newMappings.keySet().containsAll(localUpdated.keySet()));
+                Assert.assertTrue(newMappings.keySet().containsAll(remoteUpdated.keySet()));
+            }
+    }
+
+    @Test
     public void mirrorOnRoot() throws Exception {
         RAMStorage storage = new RAMStorage(crypto.hasher);
         int bitWidth = 5;
