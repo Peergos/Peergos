@@ -1,5 +1,6 @@
 package peergos.shared.user.fs;
 
+import jsinterop.annotations.JsMethod;
 import peergos.shared.cbor.*;
 import peergos.shared.inode.*;
 
@@ -19,6 +20,11 @@ public class NamedRelativeCapability implements Cborable {
 
     public NamedAbsoluteCapability toAbsolute(AbsoluteCapability source) {
         return new NamedAbsoluteCapability(name, cap.toAbsolute(source));
+    }
+
+    @JsMethod
+    public String name() {
+        return name.name;
     }
 
     @Override

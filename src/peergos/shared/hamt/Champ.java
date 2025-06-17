@@ -1,6 +1,5 @@
 package peergos.shared.hamt;
 
-import peergos.server.storage.*;
 import peergos.shared.*;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.*;
