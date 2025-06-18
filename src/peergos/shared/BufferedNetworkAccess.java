@@ -205,7 +205,8 @@ public class BufferedNetworkAccess extends NetworkAccess {
                                                                     // 3. commit the new pointer
                                                                     Optional<Long> seq = cas.sequence;
                                                                     return blockBuffer.put(owner, writers.get(u.left.writer), newWD.serialize(), hasher, tid)
-                                                                            .thenCompose(mergedRoot -> blockBuffer.commit(owner, u.left.writer, tid)
+                                                                            .thenCompose(mergedRoot -> blockBuffer.signBlocks(writers)
+                                                                                    .thenCompose(signed -> blockBuffer.commit(owner, u.left.writer, tid))
                                                                                     .thenCompose(x -> pointerBuffer.commit(owner, writers.get(u.left.writer),
                                                                                             new PointerUpdate(actualExisting, MaybeMultihash.of(mergedRoot), seq.map(s -> s + 1)))));
                                                                 });
