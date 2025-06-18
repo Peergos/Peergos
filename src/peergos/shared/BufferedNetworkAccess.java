@@ -98,6 +98,12 @@ public class BufferedNetworkAccess extends NetworkAccess {
                 base.mutable, base.batCave, base.batCache, tree, synchronizer, base.instanceAdmin, base.spaceUsage, base.serverMessager, hasher, usernames, isJavascript());
     }
 
+    public void forceClear() {
+        blockBuffer.clear();
+        pointerBuffer.clear();
+        synchronizer.clear();
+    }
+
     @Override
     public NetworkAccess withStorage(Function<ContentAddressedStorage, ContentAddressedStorage> modifiedStorage) {
         BufferedStorage blockBuffer = this.blockBuffer.withStorage(modifiedStorage);
