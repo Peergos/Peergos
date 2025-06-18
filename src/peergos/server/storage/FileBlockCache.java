@@ -294,20 +294,31 @@ public class FileBlockCache implements BlockCache {
     private AtomicBoolean cleaning = new AtomicBoolean(false);
 
     public void ensureWithinSizeLimit(long maxSize) {
-        if (totalSize.get() <= maxSize || cleaning.get())
+        if (totalSize.get() <= maxSize/2 || cleaning.get())
             return;
         if (! cleaning.compareAndSet(false, true))
             return;
-        Logging.LOG().info("Starting FileBlockCache reduction from " + totalSize.get());
+        boolean fastDelete = totalSize.get() > maxSize;
+        Logging.LOG().info("Starting FileBlockCache reduction from " + totalSize.get() + " fast delete: " + fastDelete);
         AtomicLong toDelete = new AtomicLong(totalSize.get() - (maxSize/2));
         List<BlockFile> byAccessTime = new ArrayList<>(1_000_000);
         AtomicLong newTotalSize = new AtomicLong(0);
         applyToAll((p, a) -> {
-            byAccessTime.add(new BlockFile(p, a.lastAccessTime().toMillis(), a.size()));
-            newTotalSize.addAndGet(a.size());
+            if (fastDelete) {
+                if (totalSize.get() > maxSize / 2) {
+                    delete(p.toFile());
+                    totalSize.addAndGet(-a.size());
+                }
+            } else {
+                byAccessTime.add(new BlockFile(p, a.lastAccessTime().toMillis(), a.size()));
+                newTotalSize.addAndGet(a.size());
+            }
         });
         Collections.sort(byAccessTime, Comparator.comparingLong(a -> a.time));
-        Logging.LOG().info("Reclaiming " + toDelete.get() + " bytes from FileBlockCache");
+        if (fastDelete)
+            Logging.LOG().info("Reduced FileBlockCache down to " + totalSize.get());
+        else
+            Logging.LOG().info("Reclaiming " + toDelete.get() + " bytes from FileBlockCache");
         for (BlockFile e : byAccessTime) {
             if (toDelete.get() <= 0)
                 break;
@@ -315,7 +326,8 @@ public class FileBlockCache implements BlockCache {
             newTotalSize.addAndGet(-e.size);
             toDelete.addAndGet(-e.size);
         }
-        totalSize.set(newTotalSize.get());
+        if (! fastDelete)
+            totalSize.set(newTotalSize.get());
         cleaning.set(false);
     }
 }
