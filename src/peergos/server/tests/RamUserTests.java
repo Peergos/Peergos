@@ -293,13 +293,12 @@ public class RamUserTests extends UserTests {
         FileWrapper file2 = context2.getByPath(Paths.get(username, "dir2", "file2")).join().get();
 
         int MB = 1024 * 1024;
-        ForkJoinTask<CompletableFuture<FileWrapper>> future = ForkJoinPool.commonPool()
-                .submit(() -> file1.overwriteFile(AsyncReader.build(new byte[MB]), MB, context1.network, crypto, x -> {Threads.sleep(1_000);}));
-        file2.overwriteFile(AsyncReader.build(new byte[MB]), MB, context2.network, crypto, x -> {Threads.sleep(1_000);}).join();
-        future.join().join();
+        CompletableFuture<FileWrapper> future = CompletableFuture.supplyAsync(() -> file1.overwriteFile(AsyncReader.build(new byte[MB]), MB, context1.network, crypto, x -> {Threads.sleep(1_000);}).join());
+        FileWrapper f2 = file2.overwriteFile(AsyncReader.build(new byte[MB]), MB, context2.network, crypto, x -> {Threads.sleep(1_000);}).join();
+        FileWrapper f1 = future.join();
 
-        FileWrapper updatedFile1 = context1.getByPath(Paths.get(username, "dir1", "file1")).join().get();
-        FileWrapper updatedFile2 = context2.getByPath(Paths.get(username, "dir2", "file2")).join().get();
+        FileWrapper updatedFile1 = context1.getByPath(username + "/dir1/file1", f1.version).join().get();
+        FileWrapper updatedFile2 = context2.getByPath(username + "/dir2/file2", f2.version).join().get();
         Assert.assertEquals(MB, updatedFile1.getSize());
         Assert.assertEquals(MB, updatedFile2.getSize());
     }
