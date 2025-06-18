@@ -15,6 +15,7 @@ import peergos.shared.login.mfa.*;
 import peergos.shared.social.*;
 import peergos.shared.storage.BlockCache;
 import peergos.shared.storage.UnauthedCachingStorage;
+import peergos.shared.storage.auth.BatId;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
 import peergos.shared.user.fs.transaction.*;
@@ -35,9 +36,11 @@ import java.util.stream.*;
 @RunWith(Parameterized.class)
 public class RamUserTests extends UserTests {
     private static Args args = buildArgs().with("useIPFS", "false");
+    private final NetworkAccess alternativeNet;
 
-    public RamUserTests(NetworkAccess network, UserService service) {
+    public RamUserTests(NetworkAccess network, UserService service, NetworkAccess alternativeNet) {
         super(network, service);
+        this.alternativeNet = alternativeNet;
     }
 
     @Parameterized.Parameters()
@@ -48,8 +51,11 @@ public class RamUserTests extends UserTests {
         NetworkAccess network = NetworkAccess.buildBuffered(service.storage, service.bats, service.coreNode, service.account, service.mutable,
                         5_000, service.social, service.controller, service.usage, serverMessager, crypto.hasher, Arrays.asList("peergos"), false)
                 .withStorage(s -> new UnauthedCachingStorage(s, new NoopCache(), crypto.hasher));
+        NetworkAccess altNetwork = NetworkAccess.buildBuffered(service.storage, service.bats, service.coreNode, service.account, service.mutable,
+                        0, service.social, service.controller, service.usage, serverMessager, crypto.hasher, Arrays.asList("peergos"), false)
+                .withStorage(s -> new UnauthedCachingStorage(s, new NoopCache(), crypto.hasher));
         return Arrays.asList(new Object[][] {
-                {network, service}
+                {network, service, altNetwork}
         });
     }
 
@@ -260,6 +266,41 @@ public class RamUserTests extends UserTests {
         String clientCode = totp.generateOneTimePasswordString(key, now);
         context.network.account.enableTotpFactor(context.username, totpKey.credentialId, clientCode, context.signer).join();
         return totpKey;
+    }
+
+    @Test
+    public void concurrentModification() throws Exception {
+        String username = generateUsername();
+        String password = "password";
+        UserContext context1 = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
+        Optional<BatId> mirrorBat = context1.mirrorBatId();
+        UserContext context2 = PeergosNetworkUtils.ensureSignedUp(username, password, alternativeNet, crypto);
+
+        context1.getUserRoot().join().mkdir("dir1", context1.network, false, mirrorBat, crypto).join();
+        context1.getUserRoot().join().mkdir("dir2", context1.network, false, mirrorBat, crypto).join();
+
+        FileWrapper dir1 = context1.getByPath(Paths.get(username, "dir1")).join().get();
+
+        FileWrapper dir2 = context2.getByPath(Paths.get(username, "dir2")).join().get();
+
+        dir1.uploadOrReplaceFile("file1", AsyncReader.build(new byte[1024]), 1024, context1.network,
+                crypto, x -> {}).join();
+
+        dir2.uploadOrReplaceFile("file2", AsyncReader.build(new byte[1024]), 1024, context1.network,
+                crypto, x -> {}).join();
+
+        FileWrapper file1 = context1.getByPath(Paths.get(username, "dir1", "file1")).join().get();
+        FileWrapper file2 = context2.getByPath(Paths.get(username, "dir2", "file2")).join().get();
+
+        ForkJoinTask<CompletableFuture<FileWrapper>> future = ForkJoinPool.commonPool()
+                .submit(() -> file1.overwriteFile(AsyncReader.build(new byte[2048]), 2048, context1.network, crypto, x -> {}));
+        file2.overwriteFile(AsyncReader.build(new byte[2048]), 2048, context2.network, crypto, x -> {}).join();
+        future.join().join();
+
+        FileWrapper updatedFile1 = context1.getByPath(Paths.get(username, "dir1", "file1")).join().get();
+        FileWrapper updatedFile2 = context2.getByPath(Paths.get(username, "dir2", "file2")).join().get();
+        Assert.assertEquals(2048, updatedFile1.getSize());
+        Assert.assertEquals(2048, updatedFile2.getSize());
     }
 
     @Test

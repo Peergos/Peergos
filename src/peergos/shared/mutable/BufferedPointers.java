@@ -45,19 +45,23 @@ public class BufferedPointers implements MutablePointers {
     }
 
     public Optional<Pair<Optional<Cid>, Optional<Long>>> getCommittedPointerTarget(PublicKeyHash writer) {
-        if (writerUpdates.isEmpty())
-            return Optional.ofNullable(lastCommits.get(writer))
-                    .map(w -> new Pair<>(w.currentHash.toOptional().map(h ->  (Cid) h),
-                            w.currentSequence));
-        return writerUpdates.stream()
-                .filter(u ->  u.writer.equals(writer))
-                .findFirst()
-                .map(m -> new Pair<>(m.prevHash.toOptional().map(h ->  (Cid) h),
-                        m.currentSequence.map(x -> x-1)));
+        synchronized (writerUpdates) {
+            if (writerUpdates.isEmpty())
+                return Optional.ofNullable(lastCommits.get(writer))
+                        .map(w -> new Pair<>(w.currentHash.toOptional().map(h -> (Cid) h),
+                                w.currentSequence));
+            return writerUpdates.stream()
+                    .filter(u -> u.writer.equals(writer))
+                    .findFirst()
+                    .map(m -> new Pair<>(m.prevHash.toOptional().map(h -> (Cid) h),
+                            m.currentSequence.map(x -> x - 1)));
+        }
     }
 
     public List<WriterUpdate> getUpdates() {
-        return writerUpdates;
+        synchronized (writerUpdates) {
+            return writerUpdates.subList(0, writerUpdates.size());
+        }
     }
 
     public Map<PublicKeyHash, SigningPrivateKeyAndPublicHash> getSigners() {
@@ -68,28 +72,32 @@ public class BufferedPointers implements MutablePointers {
                                   MaybeMultihash newHash,
                                   MaybeMultihash prevHash,
                                   Optional<Long> prevSequence) {
-        if (Objects.equals(prevHash, newHash) &&
-                (writerUpdates.isEmpty() || ! writerUpdates.get(writerUpdates.size() - 1).currentHash.equals(newHash)))
-            throw new IllegalStateException("Noop pointer update!");
-        PublicKeyHash writer = w.publicKeyHash;
-        writers.put(writer, w);
-        if (writerUpdates.isEmpty()) {
-            writerUpdates.add(new WriterUpdate(writer, prevHash, newHash, PointerUpdate.increment(prevSequence)));
-        } else {
-            WriterUpdate last = writerUpdates.get(writerUpdates.size() - 1);
-            if (last.writer.equals(writer)) {
-                writerUpdates.set(writerUpdates.size() - 1, new WriterUpdate(writer, last.prevHash, newHash, last.currentSequence));
-            } else {
+        synchronized (writerUpdates) {
+            if (Objects.equals(prevHash, newHash) &&
+                    (writerUpdates.isEmpty() || !writerUpdates.get(writerUpdates.size() - 1).currentHash.equals(newHash)))
+                throw new IllegalStateException("Noop pointer update!");
+            PublicKeyHash writer = w.publicKeyHash;
+            writers.put(writer, w);
+            if (writerUpdates.isEmpty()) {
                 writerUpdates.add(new WriterUpdate(writer, prevHash, newHash, PointerUpdate.increment(prevSequence)));
+            } else {
+                WriterUpdate last = writerUpdates.get(writerUpdates.size() - 1);
+                if (last.writer.equals(writer)) {
+                    writerUpdates.set(writerUpdates.size() - 1, new WriterUpdate(writer, last.prevHash, newHash, last.currentSequence));
+                } else {
+                    writerUpdates.add(new WriterUpdate(writer, prevHash, newHash, PointerUpdate.increment(prevSequence)));
+                }
             }
+            WriterUpdate last = writerUpdates.get(writerUpdates.size() - 1);
+            latest.put(w.publicKeyHash, last);
+            return new PointerUpdate(last.prevHash, last.currentHash, last.currentSequence);
         }
-        WriterUpdate last = writerUpdates.get(writerUpdates.size() - 1);
-        latest.put(w.publicKeyHash, last);
-        return new PointerUpdate(last.prevHash, last.currentHash, last.currentSequence);
     }
 
     public boolean isEmpty() {
-        return writerUpdates.isEmpty();
+        synchronized (writerUpdates) {
+            return writerUpdates.isEmpty();
+        }
     }
 
     @Override
@@ -118,10 +126,12 @@ public class BufferedPointers implements MutablePointers {
     }
 
     public List<Cid> getRoots() {
-        return writerUpdates.stream()
-                .flatMap(u -> u.currentHash.toOptional().stream())
-                .map(c -> (Cid)c)
-                .collect(Collectors.toList());
+        synchronized (writerUpdates) {
+            return writerUpdates.stream()
+                    .flatMap(u -> u.currentHash.toOptional().stream())
+                    .map(c -> (Cid) c)
+                    .collect(Collectors.toList());
+        }
     }
 
     public CompletableFuture<Boolean> commit(PublicKeyHash owner,
@@ -143,7 +153,9 @@ public class BufferedPointers implements MutablePointers {
 
     public void clear() {
         writers.clear();
-        writerUpdates.clear();
+        synchronized (writerUpdates) {
+            writerUpdates.clear();
+        }
         latest.clear();
     }
 }

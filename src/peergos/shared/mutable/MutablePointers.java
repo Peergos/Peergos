@@ -6,8 +6,8 @@ import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.Multihash;
 import peergos.shared.MaybeMultihash;
-import peergos.shared.storage.CasException;
 import peergos.shared.storage.ContentAddressedStorage;
+import peergos.shared.storage.PointerCasException;
 import peergos.shared.util.*;
 
 import java.util.*;
@@ -85,7 +85,7 @@ public interface MutablePointers {
                             // check CAS [current hash, new hash]
                             boolean validSequence = currentSequence.isEmpty() || (newSequence.isPresent() && newSequence.get() > currentSequence.get());
                             if (!existing.equals(claimedCurrentHash))
-                                return Futures.errored(new CasException(existing, claimedCurrentHash));
+                                return Futures.errored(new PointerCasException(existing, currentSequence, claimedCurrentHash));
                             if (!validSequence)
                                 return Futures.errored(new IllegalStateException("Invalid sequence number update in mutable pointer: " + currentSequence + " => " + newSequence));
                             return Futures.of(true);
