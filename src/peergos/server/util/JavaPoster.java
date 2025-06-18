@@ -1,6 +1,7 @@
 package peergos.server.util;
 
 import peergos.shared.io.ipfs.api.*;
+import peergos.shared.storage.PointerCasException;
 import peergos.shared.user.*;
 import peergos.shared.util.*;
 
@@ -107,7 +108,12 @@ public class JavaPoster implements HttpPoster {
                 System.err.println("Trailer:" + trailer);
             else
                 System.err.println(e.getMessage() + " retrieving " + url);
-            res.completeExceptionally(trailer.isEmpty() ? e : new RuntimeException(trailer.get()));
+            Throwable rese = trailer.isEmpty() ?
+                    e :
+                    trailer.get().startsWith("PointerCAS:") ?
+                            PointerCasException.fromString(trailer.get()) :
+                            new RuntimeException(trailer.get());
+            res.completeExceptionally(rese);
         } else
             res.completeExceptionally(e);
     }
