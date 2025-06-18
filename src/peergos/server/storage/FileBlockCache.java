@@ -281,16 +281,6 @@ public class FileBlockCache implements BlockCache {
         }
     }
 
-    private static class BlockFile {
-        public final Path p;
-        public final long time, size;
-
-        public BlockFile(Path p, long time, long size) {
-            this.p = p;
-            this.time = time;
-            this.size = size;
-        }
-    }
     private AtomicBoolean cleaning = new AtomicBoolean(false);
 
     public void ensureWithinSizeLimit(long maxSize) {
@@ -298,36 +288,15 @@ public class FileBlockCache implements BlockCache {
             return;
         if (! cleaning.compareAndSet(false, true))
             return;
-        boolean fastDelete = totalSize.get() > maxSize;
-        Logging.LOG().info("Starting FileBlockCache reduction from " + totalSize.get() + " fast delete: " + fastDelete);
-        AtomicLong toDelete = new AtomicLong(totalSize.get() - (maxSize/2));
-        List<BlockFile> byAccessTime = new ArrayList<>(1_000_000);
-        AtomicLong newTotalSize = new AtomicLong(0);
+        // delete files randomly, don't bother trying to sort by access time
+        Logging.LOG().info("Starting FileBlockCache reduction from " + totalSize.get());
         applyToAll((p, a) -> {
-            if (fastDelete) {
-                if (totalSize.get() > maxSize / 2) {
-                    delete(p.toFile());
-                    totalSize.addAndGet(-a.size());
-                }
-            } else {
-                byAccessTime.add(new BlockFile(p, a.lastAccessTime().toMillis(), a.size()));
-                newTotalSize.addAndGet(a.size());
+            if (totalSize.get() > maxSize / 2) {
+                delete(p.toFile());
+                totalSize.addAndGet(-a.size());
             }
         });
-        Collections.sort(byAccessTime, Comparator.comparingLong(a -> a.time));
-        if (fastDelete)
-            Logging.LOG().info("Reduced FileBlockCache down to " + totalSize.get());
-        else
-            Logging.LOG().info("Reclaiming " + toDelete.get() + " bytes from FileBlockCache");
-        for (BlockFile e : byAccessTime) {
-            if (toDelete.get() <= 0)
-                break;
-            delete(e.p.toFile());
-            newTotalSize.addAndGet(-e.size);
-            toDelete.addAndGet(-e.size);
-        }
-        if (! fastDelete)
-            totalSize.set(newTotalSize.get());
+        Logging.LOG().info("Reduced FileBlockCache down to " + totalSize.get());
         cleaning.set(false);
     }
 }
