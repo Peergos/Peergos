@@ -36,11 +36,12 @@ import java.util.stream.*;
 @RunWith(Parameterized.class)
 public class RamUserTests extends UserTests {
     private static Args args = buildArgs().with("useIPFS", "false");
-    private final NetworkAccess alternativeNet;
+    private final NetworkAccess alternativeNet1, alternativeNet2;
 
-    public RamUserTests(NetworkAccess network, UserService service, NetworkAccess alternativeNet) {
+    public RamUserTests(NetworkAccess network, UserService service, NetworkAccess alternativeNet1, NetworkAccess alternativeNet2) {
         super(network, service);
-        this.alternativeNet = alternativeNet;
+        this.alternativeNet1 = alternativeNet1;
+        this.alternativeNet2 = alternativeNet2;
     }
 
     @Parameterized.Parameters()
@@ -51,11 +52,14 @@ public class RamUserTests extends UserTests {
         NetworkAccess network = NetworkAccess.buildBuffered(service.storage, service.bats, service.coreNode, service.account, service.mutable,
                         5_000, service.social, service.controller, service.usage, serverMessager, crypto.hasher, Arrays.asList("peergos"), false)
                 .withStorage(s -> new UnauthedCachingStorage(s, new NoopCache(), crypto.hasher));
-        NetworkAccess altNetwork = NetworkAccess.buildBuffered(service.storage, service.bats, service.coreNode, service.account, service.mutable,
+        NetworkAccess altNetwork1 = NetworkAccess.buildBuffered(service.storage, service.bats, service.coreNode, service.account, service.mutable,
+                        0, service.social, service.controller, service.usage, serverMessager, crypto.hasher, Arrays.asList("peergos"), false)
+                .withStorage(s -> new UnauthedCachingStorage(s, new NoopCache(), crypto.hasher));
+        NetworkAccess altNetwork2 = NetworkAccess.buildBuffered(service.storage, service.bats, service.coreNode, service.account, service.mutable,
                         0, service.social, service.controller, service.usage, serverMessager, crypto.hasher, Arrays.asList("peergos"), false)
                 .withStorage(s -> new UnauthedCachingStorage(s, new NoopCache(), crypto.hasher));
         return Arrays.asList(new Object[][] {
-                {network, service, altNetwork}
+                {network, service, altNetwork1, altNetwork2}
         });
     }
 
@@ -272,9 +276,9 @@ public class RamUserTests extends UserTests {
     public void concurrentModification() throws Exception {
         String username = generateUsername();
         String password = "password";
-        UserContext context1 = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
+        UserContext context1 = PeergosNetworkUtils.ensureSignedUp(username, password, alternativeNet1, crypto);
         Optional<BatId> mirrorBat = context1.mirrorBatId();
-        UserContext context2 = PeergosNetworkUtils.ensureSignedUp(username, password, alternativeNet, crypto);
+        UserContext context2 = PeergosNetworkUtils.ensureSignedUp(username, password, alternativeNet2, crypto);
 
         context1.getUserRoot().join().mkdir("dir1", context1.network, false, mirrorBat, crypto).join();
         context1.getUserRoot().join().mkdir("dir2", context1.network, false, mirrorBat, crypto).join();
@@ -283,24 +287,26 @@ public class RamUserTests extends UserTests {
 
         FileWrapper dir2 = context2.getByPath(Paths.get(username, "dir2")).join().get();
 
-        dir1.uploadOrReplaceFile("file1", AsyncReader.build(new byte[1024]), 1024, context1.network,
+        int KB = 1024;
+        dir1.uploadOrReplaceFile("file1", AsyncReader.build(new byte[KB]), KB, context1.network,
                 crypto, x -> {}).join();
 
-        dir2.uploadOrReplaceFile("file2", AsyncReader.build(new byte[1024]), 1024, context1.network,
+        dir2.uploadOrReplaceFile("file2", AsyncReader.build(new byte[KB]), KB, context1.network,
                 crypto, x -> {}).join();
 
         FileWrapper file1 = context1.getByPath(Paths.get(username, "dir1", "file1")).join().get();
         FileWrapper file2 = context2.getByPath(Paths.get(username, "dir2", "file2")).join().get();
 
+        int MB = 1024 * 1024;
         ForkJoinTask<CompletableFuture<FileWrapper>> future = ForkJoinPool.commonPool()
-                .submit(() -> file1.overwriteFile(AsyncReader.build(new byte[2048]), 2048, context1.network, crypto, x -> {}));
-        file2.overwriteFile(AsyncReader.build(new byte[2048]), 2048, context2.network, crypto, x -> {}).join();
+                .submit(() -> file1.overwriteFile(AsyncReader.build(new byte[MB]), MB, context1.network, crypto, x -> {Threads.sleep(1_000);}));
+        file2.overwriteFile(AsyncReader.build(new byte[MB]), MB, context2.network, crypto, x -> {Threads.sleep(1_000);}).join();
         future.join().join();
 
         FileWrapper updatedFile1 = context1.getByPath(Paths.get(username, "dir1", "file1")).join().get();
         FileWrapper updatedFile2 = context2.getByPath(Paths.get(username, "dir2", "file2")).join().get();
-        Assert.assertEquals(2048, updatedFile1.getSize());
-        Assert.assertEquals(2048, updatedFile2.getSize());
+        Assert.assertEquals(MB, updatedFile1.getSize());
+        Assert.assertEquals(MB, updatedFile2.getSize());
     }
 
     @Test
