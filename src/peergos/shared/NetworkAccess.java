@@ -397,8 +397,35 @@ public class NetworkAccess {
         return this;
     }
 
-    public Committer buildCommitter(Committer c, PublicKeyHash owner, Supplier<Boolean> commitWatcher) {
-        return c;
+    public Committer buildCommitter(Committer com, PublicKeyHash owner, Supplier<Boolean> commitWatcher) {
+        return (o, w, updated, e, tid) -> Futures.asyncExceptionally(() -> com.commit(o, w, updated, e, tid),
+                t -> {
+                    Throwable cause = Exceptions.getRootCause(t);
+                    if (cause instanceof PointerCasException) {
+                        PointerCasException cas = (PointerCasException) cause;
+                        MaybeMultihash actualExisting = cas.existing;
+                        return WriterData.getWriterData(owner, (Cid) e.hash.get(), Optional.empty(), dhtClient)
+                                .thenCompose(original -> WriterData.getWriterData(owner, (Cid) actualExisting.get(), Optional.empty(), dhtClient)
+                                                .thenCompose(remote -> ChampUtil.merge(owner, w,
+                                                                MaybeMultihash.of(original.props.get().tree.get()),
+                                                                MaybeMultihash.of(updated.get().tree.get()),
+                                                                MaybeMultihash.of(remote.props.get().tree.get()),
+                                                                Optional.empty(), tid, ChampWrapper.BIT_WIDTH,
+                                                                ChampWrapper.MAX_HASH_COLLISIONS_PER_LEVEL, x -> Futures.of(x.data),
+                                                                c -> (CborObject.CborMerkleLink)c, dhtClient, hasher)
+                                                        .thenApply(p -> remote.props.get().withChamp(p.right))))
+                                .thenCompose(newWD -> {
+                                    // 1. write the new writer data for the merged champs
+                                    // 2. commit the new pointer
+                                    Optional<Long> seq = cas.sequence;
+                                    return dhtClient.put(owner, w, newWD.serialize(), hasher, tid)
+                                            .thenCompose(mergedRoot -> mutable.setPointer(owner, w,
+                                                            new PointerUpdate(actualExisting, MaybeMultihash.of(mergedRoot), seq.map(s -> s + 1)))
+                                                    .thenApply(x -> new Snapshot(w.publicKeyHash, new CommittedWriterData(MaybeMultihash.of(mergedRoot), newWD, seq.map(s -> s + 1)))));
+                                });
+                    }
+                    return Futures.errored(t);
+                });
     }
 
     public CompletableFuture<Boolean> commit(PublicKeyHash owner) {

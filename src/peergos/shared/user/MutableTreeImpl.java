@@ -62,7 +62,8 @@ public class MutableTreeImpl implements MutableTree {
     public CompletableFuture<MaybeMultihash> get(WriterData base, PublicKeyHash owner, PublicKeyHash writer, byte[] mapKey) {
         if (! base.tree.isPresent())
             throw new IllegalStateException("Tree root not present for " + writer);
-        return ChampWrapper.create(owner, (Cid)base.tree.get(), Optional.empty(), hasher, dht, writeHasher, c -> (CborObject.CborMerkleLink)c).thenCompose(tree -> tree.get(mapKey))
+        return ChampWrapper.create(owner, (Cid)base.tree.get(), Optional.empty(), hasher, dht, writeHasher, c -> (CborObject.CborMerkleLink)c)
+                .thenCompose(tree -> tree.get(mapKey))
                 .thenApply(c -> c.map(x -> x.target).map(MaybeMultihash::of).orElse(MaybeMultihash.empty()))
                 .thenApply(maybe -> LOGGING ?
                         log(maybe, "TREE.get (" + ArrayOps.bytesToHex(mapKey)

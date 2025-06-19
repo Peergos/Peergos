@@ -2,6 +2,7 @@ package peergos.shared.mutable;
 
 import peergos.shared.crypto.hash.*;
 import peergos.shared.storage.CasException;
+import peergos.shared.storage.PointerCasException;
 
 import java.net.*;
 import java.util.*;
@@ -40,6 +41,8 @@ public class RetryMutablePointers implements MutablePointers {
                         if (retriesLeft == 1) {
                             res.completeExceptionally(e);
                         } else if (e instanceof ConnectException) {
+                            res.completeExceptionally(e);
+                        } else if (e instanceof PointerCasException) {
                             res.completeExceptionally(e);
                         } else if (e instanceof CasException) {
                             res.completeExceptionally(e);

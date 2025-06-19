@@ -130,6 +130,14 @@ public abstract class UserTests {
                 parent.mirrorBatId());
     }
 
+    @After
+    public void clearBuffer() {
+        if (network instanceof BufferedNetworkAccess) {
+            ((BufferedNetworkAccess) network).forceClear();
+        } else
+            network.clear();
+    }
+
     @Test
     public void serializationSizesSmall() {
         SigningKeyPair signer = SigningKeyPair.random(crypto.random, crypto.signer);

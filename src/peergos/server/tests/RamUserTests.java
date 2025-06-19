@@ -15,6 +15,7 @@ import peergos.shared.login.mfa.*;
 import peergos.shared.social.*;
 import peergos.shared.storage.BlockCache;
 import peergos.shared.storage.UnauthedCachingStorage;
+import peergos.shared.storage.auth.BatId;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
 import peergos.shared.user.fs.transaction.*;
@@ -35,9 +36,12 @@ import java.util.stream.*;
 @RunWith(Parameterized.class)
 public class RamUserTests extends UserTests {
     private static Args args = buildArgs().with("useIPFS", "false");
+    private final NetworkAccess alternativeNet1, alternativeNet2;
 
-    public RamUserTests(NetworkAccess network, UserService service) {
+    public RamUserTests(NetworkAccess network, UserService service, NetworkAccess alternativeNet1, NetworkAccess alternativeNet2) {
         super(network, service);
+        this.alternativeNet1 = alternativeNet1;
+        this.alternativeNet2 = alternativeNet2;
     }
 
     @Parameterized.Parameters()
@@ -48,25 +52,26 @@ public class RamUserTests extends UserTests {
         NetworkAccess network = NetworkAccess.buildBuffered(service.storage, service.bats, service.coreNode, service.account, service.mutable,
                         5_000, service.social, service.controller, service.usage, serverMessager, crypto.hasher, Arrays.asList("peergos"), false)
                 .withStorage(s -> new UnauthedCachingStorage(s, new NoopCache(), crypto.hasher));
+        NetworkAccess altNetwork1 = NetworkAccess.buildBuffered(service.storage, service.bats, service.coreNode, service.account, service.mutable,
+                        0, service.social, service.controller, service.usage, serverMessager, crypto.hasher, Arrays.asList("peergos"), false)
+                .withStorage(s -> new UnauthedCachingStorage(s, new NoopCache(), crypto.hasher));
+        NetworkAccess altNetwork2 = NetworkAccess.buildBuffered(service.storage, service.bats, service.coreNode, service.account, service.mutable,
+                        0, service.social, service.controller, service.usage, serverMessager, crypto.hasher, Arrays.asList("peergos"), false)
+                .withStorage(s -> new UnauthedCachingStorage(s, new NoopCache(), crypto.hasher));
         return Arrays.asList(new Object[][] {
-                {network, service}
+                {network, service, altNetwork1, altNetwork2}
         });
     }
 
     public static class NoopCache implements BlockCache {
         @Override
         public CompletableFuture<Boolean> put(Cid hash, byte[] data) {
-            CompletableFuture<Boolean> res = new CompletableFuture<>();
-            ForkJoinPool.commonPool().submit(() -> res.complete(true));
-            return res;
-//            return Futures.of(true);
+            return CompletableFuture.supplyAsync(() -> true);
         }
 
         @Override
         public CompletableFuture<Optional<byte[]>> get(Cid hash) {
-            CompletableFuture<Optional<byte[]>> res = new CompletableFuture<>();
-            ForkJoinPool.commonPool().submit(() -> res.complete(Optional.empty()));
-            return res;
+            return CompletableFuture.supplyAsync(Optional::empty);
         }
 
         @Override
@@ -260,6 +265,42 @@ public class RamUserTests extends UserTests {
         String clientCode = totp.generateOneTimePasswordString(key, now);
         context.network.account.enableTotpFactor(context.username, totpKey.credentialId, clientCode, context.signer).join();
         return totpKey;
+    }
+
+    @Test
+    public void concurrentModification() throws Exception {
+        String username = generateUsername();
+        String password = "password";
+        UserContext context1 = PeergosNetworkUtils.ensureSignedUp(username, password, alternativeNet1, crypto);
+        Optional<BatId> mirrorBat = context1.mirrorBatId();
+        UserContext context2 = PeergosNetworkUtils.ensureSignedUp(username, password, alternativeNet2, crypto);
+
+        context1.getUserRoot().join().mkdir("dir1", context1.network, false, mirrorBat, crypto).join();
+        context1.getUserRoot().join().mkdir("dir2", context1.network, false, mirrorBat, crypto).join();
+
+        FileWrapper dir1 = context1.getByPath(Paths.get(username, "dir1")).join().get();
+
+        FileWrapper dir2 = context2.getByPath(Paths.get(username, "dir2")).join().get();
+
+        int KB = 1024;
+        dir1.uploadOrReplaceFile("file1", AsyncReader.build(new byte[KB]), KB, context1.network,
+                crypto, x -> {}).join();
+
+        dir2.uploadOrReplaceFile("file2", AsyncReader.build(new byte[KB]), KB, context1.network,
+                crypto, x -> {}).join();
+
+        FileWrapper file1 = context1.getByPath(Paths.get(username, "dir1", "file1")).join().get();
+        FileWrapper file2 = context2.getByPath(Paths.get(username, "dir2", "file2")).join().get();
+
+        int MB = 1024 * 1024;
+        CompletableFuture<FileWrapper> future = CompletableFuture.supplyAsync(() -> file1.overwriteFile(AsyncReader.build(new byte[MB]), MB, context1.network, crypto, x -> {Threads.sleep(1_000);}).join());
+        FileWrapper f2 = file2.overwriteFile(AsyncReader.build(new byte[MB]), MB, context2.network, crypto, x -> {Threads.sleep(1_000);}).join();
+        FileWrapper f1 = future.join();
+
+        FileWrapper updatedFile1 = context1.getByPath(username + "/dir1/file1", f1.version).join().get();
+        FileWrapper updatedFile2 = context2.getByPath(username + "/dir2/file2", f2.version).join().get();
+        Assert.assertEquals(MB, updatedFile1.getSize());
+        Assert.assertEquals(MB, updatedFile2.getSize());
     }
 
     @Test
