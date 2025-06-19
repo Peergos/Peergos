@@ -47,9 +47,21 @@ public class UnauthedCachingStorage extends DelegatingStorage {
     }
 
     @Override
-        public Optional<BlockCache> getBlockCache() {
-            return Optional.of(cache);
-        }
+    public Optional<BlockCache> getBlockCache() {
+        return Optional.of(cache);
+    }
+
+    private synchronized CompletableFuture<Optional<byte[]>> getPending(Cid key) {
+        return pending.get(key);
+    }
+
+    private synchronized void putPending(Cid key, CompletableFuture<Optional<byte[]>> val) {
+        pending.put(key, val);
+    }
+
+    private synchronized void removePending(Cid key) {
+        pending.remove(key);
+    }
 
     @Override
     public CompletableFuture<Optional<byte[]>> getRaw(PublicKeyHash owner, Cid key, Optional<BatWithId> bat) {
@@ -58,22 +70,23 @@ public class UnauthedCachingStorage extends DelegatingStorage {
                     if (res.isPresent())
                         return Futures.of(res);
 
-                    if (pending.containsKey(key))
-                        return pending.get(key);
+                    CompletableFuture<Optional<byte[]>> inProgress = getPending(key);
+                    if (inProgress != null)
+                        return inProgress;
 
                     CompletableFuture<Optional<byte[]>> pipe = new CompletableFuture<>();
-                    pending.put(key, pipe);
+                    putPending(key, pipe);
 
                     return target.getRaw(owner, key, bat).thenApply(blockOpt -> {
                         if (blockOpt.isPresent()) {
                             byte[] value = blockOpt.get();
                             cache.put(key, value);
                         }
-                        pending.remove(key);
+                        removePending(key);
                         pipe.complete(blockOpt);
                         return blockOpt;
                     }).exceptionally(t -> {
-                        pending.remove(key);
+                        removePending(key);
                         pipe.completeExceptionally(t);
                         return Optional.empty();
                     });
@@ -212,7 +225,8 @@ public class UnauthedCachingStorage extends DelegatingStorage {
                                                 .orElse(retrieved.stream()
                                                         .filter(f -> f.hash.get().equals(hashes.get(i)))
                                                         .findFirst()
-                                                        .get().fragment), Optional.of(hashes.get(i))))
+                                                        .orElseThrow(() -> new IllegalStateException("Missing fragment: " + hashes.get(i)))
+                                                        .fragment), Optional.of(hashes.get(i))))
                                         .collect(Collectors.toList());
                             });
                 });
