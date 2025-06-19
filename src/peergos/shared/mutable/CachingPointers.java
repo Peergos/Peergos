@@ -86,7 +86,9 @@ public class CachingPointers implements MutablePointers {
 
     @Override
     public MutablePointers clearCache() {
-        cache.clear();
+        synchronized (cache) {
+            cache.clear();
+        }
         targetCache.clear();
         return this;
     }

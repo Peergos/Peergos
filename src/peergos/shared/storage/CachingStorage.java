@@ -28,7 +28,9 @@ public class CachingStorage extends DelegatingStorage {
     }
 
     public Collection<byte[]> getCached() {
-        return cache.values();
+        synchronized (cache) {
+            return cache.values();
+        }
     }
 
     @Override
@@ -43,7 +45,9 @@ public class CachingStorage extends DelegatingStorage {
 
     @Override
     public void clearBlockCache() {
-        cache.clear();
+        synchronized (cache) {
+            cache.clear();
+        }
         target.clearBlockCache();
     }
 
@@ -57,8 +61,11 @@ public class CachingStorage extends DelegatingStorage {
                 .thenApply(res -> {
                     for (int i=0; i < blocks.size(); i++) {
                         byte[] block = blocks.get(i);
-                        if (block.length < maxValueSize)
-                            cache.put(res.get(i), block);
+                        if (block.length < maxValueSize) {
+                            synchronized (cache) {
+                                cache.put(res.get(i), block);
+                            }
+                        }
                     }
                     return res;
                 });
@@ -66,27 +73,40 @@ public class CachingStorage extends DelegatingStorage {
 
     @Override
     public CompletableFuture<Optional<CborObject>> get(PublicKeyHash owner, Cid key, Optional<BatWithId> bat) {
-        if (cache.containsKey(key))
-            return CompletableFuture.completedFuture(Optional.of(CborObject.fromByteArray(cache.get(key))));
-
-        if (pending.containsKey(key))
-            return pending.get(key);
+        synchronized (cache) {
+            byte[] cached = cache.get(key);
+            if (cached != null)
+                return CompletableFuture.completedFuture(Optional.of(CborObject.fromByteArray(cached)));
+        }
 
         CompletableFuture<Optional<CborObject>> pipe = new CompletableFuture<>();
-        pending.put(key, pipe);
+        synchronized (pending) {
+            CompletableFuture<Optional<CborObject>> inProgress = pending.get(key);
+            if (inProgress != null)
+                return inProgress;
+
+            pending.put(key, pipe);
+        }
 
         CompletableFuture<Optional<CborObject>> result = new CompletableFuture<>();
         target.get(owner, key, bat).thenAccept(cborOpt -> {
             if (cborOpt.isPresent()) {
                 byte[] value = cborOpt.get().toByteArray();
-                if (value.length > 0 && value.length < maxValueSize)
-                    cache.put(key, value);
+                if (value.length > 0 && value.length < maxValueSize) {
+                    synchronized (cache) {
+                        cache.put(key, value);
+                    }
+                }
             }
-            pending.remove(key);
+            synchronized (pending) {
+                pending.remove(key);
+            }
             pipe.complete(cborOpt);
             result.complete(cborOpt);
         }).exceptionally(t -> {
-            pending.remove(key);
+            synchronized (pending) {
+                pending.remove(key);
+            }
             pipe.completeExceptionally(t);
             result.completeExceptionally(t);
             return null;
@@ -105,8 +125,11 @@ public class CachingStorage extends DelegatingStorage {
                 .thenApply(res -> {
                     for (int i=0; i < blocks.size(); i++) {
                         byte[] block = blocks.get(i);
-                        if (block.length < maxValueSize)
-                            cache.put(res.get(i), block);
+                        if (block.length < maxValueSize) {
+                            synchronized (cache) {
+                                cache.put(res.get(i), block);
+                            }
+                        }
                     }
                     return res;
                 });
@@ -114,25 +137,40 @@ public class CachingStorage extends DelegatingStorage {
 
     @Override
     public CompletableFuture<Optional<byte[]>> getRaw(PublicKeyHash owner, Cid key, Optional<BatWithId> bat) {
-        if (cache.containsKey(key))
-            return CompletableFuture.completedFuture(Optional.of(cache.get(key)));
+        synchronized (cache) {
+            byte[] cached = cache.get(key);
+            if (cached != null)
+                return CompletableFuture.completedFuture(Optional.of(cached));
+        }
 
-        if (pendingRaw.containsKey(key))
-            return pendingRaw.get(key);
+        synchronized (pendingRaw) {
+            CompletableFuture<Optional<byte[]>> inProgress = pendingRaw.get(key);
+            if (inProgress != null)
+                return inProgress;
+        }
 
         CompletableFuture<Optional<byte[]>> pipe = new CompletableFuture<>();
-        pendingRaw.put(key, pipe);
+        synchronized (pendingRaw) {
+            pendingRaw.put(key, pipe);
+        }
         return target.getRaw(owner, key, bat).thenApply(rawOpt -> {
             if (rawOpt.isPresent()) {
                 byte[] value = rawOpt.get();
-                if (value.length > 0 && value.length < maxValueSize)
-                    cache.put(key, value);
+                if (value.length > 0 && value.length < maxValueSize) {
+                    synchronized (cache) {
+                        cache.put(key, value);
+                    }
+                }
             }
-            pendingRaw.remove(key);
+            synchronized (pendingRaw) {
+                pendingRaw.remove(key);
+            }
             pipe.complete(rawOpt);
             return rawOpt;
         }).exceptionally(t -> {
-            pending.remove(key);
+            synchronized (pendingRaw) {
+                pendingRaw.remove(key);
+            }
             pipe.completeExceptionally(t);
             return Optional.empty();
         });

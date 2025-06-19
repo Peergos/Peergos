@@ -93,15 +93,22 @@ public class AuthedCachingStorage extends DelegatingStorage {
             return authoriseGet(key, cache.get(key), bat)
                     .thenApply(res -> Optional.of(CborObject.fromByteArray(res)));
 
-        if (pending.containsKey(key))
-            return pending.get(key)
+        CompletableFuture<Optional<CborObject>> inProgress;
+        synchronized (pending) {
+            inProgress = pending.get(key);
+        }
+        if (inProgress != null) {
+            return inProgress
                     .thenCompose(copt -> copt.isEmpty() ?
                             Futures.of(Optional.empty()) :
                             authoriseGet(key, copt.get().serialize(), bat)
                                     .thenApply(b -> copt));
+        }
 
         CompletableFuture<Optional<CborObject>> pipe = new CompletableFuture<>();
-        pending.put(key, pipe);
+        synchronized (pending) {
+            pending.put(key, pipe);
+        }
 
         CompletableFuture<Optional<CborObject>> result = new CompletableFuture<>();
         target.get(owner, key, bat).thenAccept(cborOpt -> {
@@ -110,11 +117,15 @@ public class AuthedCachingStorage extends DelegatingStorage {
                 if (value.length > 0 && value.length < maxValueSize)
                     cache.put(key, value);
             }
-            pending.remove(key);
+            synchronized (pending) {
+                pending.remove(key);
+            }
             pipe.complete(cborOpt);
             result.complete(cborOpt);
         }).exceptionally(t -> {
-            pending.remove(key);
+            synchronized (pending) {
+                pending.remove(key);
+            }
             pipe.completeExceptionally(t);
             result.completeExceptionally(t);
             return null;
@@ -142,19 +153,28 @@ public class AuthedCachingStorage extends DelegatingStorage {
 
     @Override
     public CompletableFuture<Optional<byte[]>> getRaw(PublicKeyHash owner, Cid key, Optional<BatWithId> bat) {
-        if (cache.containsKey(key))
-            return authoriseGet(key, cache.get(key), bat)
+        byte[] cached = cache.get(key);
+        if (cached != null) {
+            return authoriseGet(key, cached, bat)
                     .thenApply(res -> Optional.of(res));
+        }
 
-        if (pendingRaw.containsKey(key))
-            return pendingRaw.get(key)
+        CompletableFuture<Optional<byte[]>> inProgress;
+        synchronized (pendingRaw) {
+            inProgress = pendingRaw.get(key);
+        }
+        if (inProgress != null) {
+            return inProgress
                     .thenCompose(opt -> opt.isEmpty() ?
                             Futures.of(Optional.empty()) :
                             authoriseGet(key, opt.get(), bat)
                                     .thenApply(b -> opt));
+        }
 
         CompletableFuture<Optional<byte[]>> pipe = new CompletableFuture<>();
-        pendingRaw.put(key, pipe);
+        synchronized (pendingRaw) {
+            pendingRaw.put(key, pipe);
+        }
         return target.getRaw(owner, key, bat).thenApply(rawOpt -> {
             if (rawOpt.isPresent()) {
                 byte[] value = rawOpt.get();
@@ -164,11 +184,15 @@ public class AuthedCachingStorage extends DelegatingStorage {
                         legacyBlocks.put(key, true);
                 }
             }
-            pendingRaw.remove(key);
+            synchronized (pendingRaw) {
+                pendingRaw.remove(key);
+            }
             pipe.complete(rawOpt);
             return rawOpt;
         }).exceptionally(t -> {
-            pendingRaw.remove(key);
+            synchronized (pendingRaw) {
+                pendingRaw.remove(key);
+            }
             pipe.completeExceptionally(t);
             return Optional.empty();
         });
