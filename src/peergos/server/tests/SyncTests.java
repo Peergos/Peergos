@@ -65,6 +65,53 @@ public class SyncTests {
     }
 
     @Test
+    public void renameWithDuplicates() throws Exception {
+        for (int i=2; i < 7; i++)
+            renameDupe("file.bin", "newfile.bin", true, true, 1024, i);
+    }
+
+    public void renameDupe(String originalFilename,
+                           String newFilename,
+                           boolean syncLocalDeletes,
+                           boolean syncRemoteDeletes,
+                           int filesize,
+                           int nCopies) throws Exception {
+        Path base1 = Files.createTempDirectory("peergos-sync");
+        Path base2 = Files.createTempDirectory("peergos-sync");
+
+        LocalFileSystem localFs = new LocalFileSystem(base1, Main.initCrypto().hasher);
+        LocalFileSystem remoteFs = new LocalFileSystem(base2, Main.initCrypto().hasher);
+        SyncState syncedState = new JdbcTreeState(":memory:");
+
+        DirectorySync.syncDir(localFs, remoteFs, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, 32, 5, DirectorySync::log);
+
+        byte[] data = new byte[filesize];
+        new Random(42).nextBytes(data);
+        Files.write(base1.resolve(originalFilename), data, StandardOpenOption.CREATE);
+        for (int i=1; i < nCopies; i++)
+            Files.write(base1.resolve(i + "_" + originalFilename), data, StandardOpenOption.CREATE);
+
+        DirectorySync.syncDir(localFs, remoteFs, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, 32, 5, DirectorySync::log);
+        Assert.assertNotNull(syncedState.byPath(originalFilename));
+        Assert.assertEquals(syncedState.allFilePaths().size(), nCopies);
+
+        // rename file
+        Files.move(base1.resolve(originalFilename), base1.resolve(newFilename));
+        List<String> ops = new ArrayList<>();
+        DirectorySync.syncDir(localFs, remoteFs, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, 32, 5, ops::add);
+        Assert.assertNull(syncedState.byPath(originalFilename));
+        Assert.assertNotNull(syncedState.byPath(newFilename));
+        Assert.assertTrue(ops.stream().noneMatch(op -> op.contains("upload")));
+        Assert.assertTrue(ops.stream().anyMatch(op -> op.contains("Moving")));
+
+        // sync should be stable
+        DirectorySync.syncDir(localFs, remoteFs, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, 32, 5, DirectorySync::log);
+        Assert.assertNull(syncedState.byPath(originalFilename));
+        Assert.assertNotNull(syncedState.byPath(newFilename));
+    }
+
+
+    @Test
     public void renameIgnoringDeletes() throws Exception {
         Path base1 = Files.createTempDirectory("peergos-sync");
         Path base2 = Files.createTempDirectory("peergos-sync");

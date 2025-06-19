@@ -318,11 +318,14 @@ public class DirectorySync {
             FileState remote = remoteState.byPath(relativePath);
             boolean isSmallRemoteCopy = synced == null && remote == null && local.size < Chunk.MAX_SIZE;
             if (isSmallRemoteCopy) {
-                List<FileState> byHash = remoteState.byHash(local.hashTree.rootHash);
-                Optional<FileState> localAtHashedPath = byHash.size() == 1 ?
-                        Optional.ofNullable(localState.byPath(byHash.get(0).relPath)) :
+                List<FileState> remoteByHash = remoteState.byHash(local.hashTree.rootHash);
+                List<FileState> localByHash = localState.byHash(local.hashTree.rootHash);
+                List<FileState> extraRemote = remoteByHash.stream().filter(f -> ! localByHash.contains(f)).collect(Collectors.toList());
+
+                Optional<FileState> localAtHashedPath = extraRemote.size() == 1 ?
+                        Optional.ofNullable(localState.byPath(extraRemote.get(0).relPath)) :
                         Optional.empty();
-                if (byHash.size() != 1 || localAtHashedPath.isPresent())
+                if (extraRemote.size() != 1 || localAtHashedPath.isPresent())
                     smallFiles.add(relativePath);
             }
 
@@ -331,11 +334,14 @@ public class DirectorySync {
                     synced != null &&
                     remote.equalsIgnoreModtime(synced);
             if (isLocalDelete ) {
-                List<FileState> byHash = localState.byHash(remote.hashTree.rootHash);
-                Optional<FileState> remoteAtHashedPath = byHash.size() == 1 ?
-                        Optional.ofNullable(remoteState.byPath(byHash.get(0).relPath)) :
+                List<FileState> remoteByHash = remoteState.byHash(remote.hashTree.rootHash);
+                List<FileState> localByHash = localState.byHash(remote.hashTree.rootHash);
+                List<FileState> extraLocal = localByHash.stream().filter(f -> ! remoteByHash.contains(f)).collect(Collectors.toList());
+
+                Optional<FileState> remoteAtHashedPath = extraLocal.size() == 1 ?
+                        Optional.ofNullable(remoteState.byPath(extraLocal.get(0).relPath)) :
                         Optional.empty();
-                if (byHash.size() != 1 || remoteAtHashedPath.isPresent())
+                if (extraLocal.size() != 1 || remoteAtHashedPath.isPresent())
                     localDeletes.add(relativePath);
             }
         }
@@ -501,12 +507,16 @@ public class DirectorySync {
 
         if (synced == null) {
             if (local == null) { // remotely added or renamed
-                List<FileState> byHash = localTree.byHash(remote.hashTree.rootHash);
-                Optional<FileState> remoteAtHashedPath = byHash.size() == 1 ?
-                        Optional.ofNullable(remoteTree.byPath(byHash.get(0).relPath)) :
+                List<FileState> remoteByHash = remoteTree.byHash(remote.hashTree.rootHash);
+                List<FileState> localByHash = localTree.byHash(remote.hashTree.rootHash);
+                List<FileState> extraLocal = localByHash.stream().filter(f -> ! remoteByHash.contains(f)).collect(Collectors.toList());
+
+                Optional<FileState> remoteAtHashedPath = extraLocal.size() == 1 ?
+                        Optional.ofNullable(remoteTree.byPath(extraLocal.get(0).relPath)) :
                         Optional.empty();
-                if (byHash.size() == 1 && remoteAtHashedPath.isEmpty()) {// rename
-                    FileState toMove = byHash.get(0);
+
+                if (extraLocal.size() == 1 && remoteAtHashedPath.isEmpty()) {// rename
+                    FileState toMove = extraLocal.get(0);
                     LOG.accept("Sync Local: Moving " + toMove.relPath + " ==> " + remote.relPath);
                     localFs.moveTo(localFs.resolve(toMove.relPath), localFs.resolve(remote.relPath));
                     syncedVersions.remove(toMove.relPath);
@@ -523,12 +533,16 @@ public class DirectorySync {
                 }
                 syncedVersions.add(remote);
             } else if (remote == null) { // locally added or renamed
-                List<FileState> byHash = remoteTree.byHash(local.hashTree.rootHash);
-                Optional<FileState> localAtHashedPath = byHash.size() == 1 ?
-                        Optional.ofNullable(localTree.byPath(byHash.get(0).relPath)) :
+                List<FileState> remoteByHash = remoteTree.byHash(local.hashTree.rootHash);
+                List<FileState> localByHash = localTree.byHash(local.hashTree.rootHash);
+                List<FileState> extraRemote = remoteByHash.stream().filter(f -> ! localByHash.contains(f)).collect(Collectors.toList());
+
+                Optional<FileState> localAtHashedPath = extraRemote.size() == 1 ?
+                        Optional.ofNullable(localTree.byPath(extraRemote.get(0).relPath)) :
                         Optional.empty();
-                if (byHash.size() == 1 && localAtHashedPath.isEmpty()) {// rename
-                    FileState toMove = byHash.get(0);
+
+                if (extraRemote.size() == 1 && localAtHashedPath.isEmpty()) {// rename
+                    FileState toMove = extraRemote.get(0);
                     LOG.accept("Sync Remote: Moving " + toMove.relPath + " ==> " + local.relPath);
                     remoteFs.moveTo(remoteFs.resolve(toMove.relPath), Paths.get(local.relPath));
                     syncedVersions.remove(toMove.relPath);
@@ -580,11 +594,14 @@ public class DirectorySync {
         } else { // synced != null
             if (synced.equals(local)) { // remote change only
                 if (remote == null) { // deletion or rename
-                    List<FileState> byHash = remoteTree.byHash(local.hashTree.rootHash);
-                    Optional<FileState> localAtHashedPath = byHash.size() == 1 ?
-                            Optional.ofNullable(localTree.byPath(byHash.get(0).relPath)) :
+                    List<FileState> remoteByHash = remoteTree.byHash(local.hashTree.rootHash);
+                    List<FileState> localByHash = localTree.byHash(local.hashTree.rootHash);
+                    List<FileState> extraRemote = remoteByHash.stream().filter(f -> ! localByHash.contains(f)).collect(Collectors.toList());
+
+                    Optional<FileState> localAtHashedPath = extraRemote.size() == 1 ?
+                            Optional.ofNullable(localTree.byPath(extraRemote.get(0).relPath)) :
                             Optional.empty();
-                    if (byHash.size() == 1 && localAtHashedPath.isEmpty()) {// rename
+                    if (extraRemote.size() == 1 && localAtHashedPath.isEmpty()) {// rename
                         // we will do the local rename when we process the new remote entry
                     } else {
                         if (syncRemoteDeletes) {
@@ -634,11 +651,14 @@ public class DirectorySync {
                 }
             } else if (synced.equals(remote)) { // local only change
                 if (local == null) { // deletion or rename
-                    List<FileState> byHash = localTree.byHash(remote.hashTree.rootHash);
-                    Optional<FileState> remoteAtHashedPath = byHash.size() == 1 ?
-                            Optional.ofNullable(remoteTree.byPath(byHash.get(0).relPath)) :
+                    List<FileState> remoteByHash = remoteTree.byHash(remote.hashTree.rootHash);
+                    List<FileState> localByHash = localTree.byHash(remote.hashTree.rootHash);
+                    List<FileState> extraLocal = localByHash.stream().filter(f -> ! remoteByHash.contains(f)).collect(Collectors.toList());
+
+                    Optional<FileState> remoteAtHashedPath = extraLocal.size() == 1 ?
+                            Optional.ofNullable(remoteTree.byPath(extraLocal.get(0).relPath)) :
                             Optional.empty();
-                    if (byHash.size() == 1 && remoteAtHashedPath.isEmpty()) {// rename
+                    if (extraLocal.size() == 1 && remoteAtHashedPath.isEmpty()) {// rename
                         // we will do the local rename when we process the new remote entry
                     } else {
                         if (syncLocalDeletes) {
