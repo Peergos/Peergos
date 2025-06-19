@@ -78,13 +78,18 @@ public class CachingVerifyingStorage extends DelegatingStorage {
 
     @Override
     public void clearBlockCache() {
-        cache.clear();
+        synchronized (cache) {
+            cache.clear();
+        }
         target.clearBlockCache();
     }
 
     private boolean cache(Multihash h, byte[] block) {
-        if (block.length < maxValueSize)
-            cache.put(h, block);
+        if (block.length < maxValueSize) {
+            synchronized (cache) {
+                cache.put(h, block);
+            }
+        }
         return true;
     }
 
@@ -119,16 +124,20 @@ public class CachingVerifyingStorage extends DelegatingStorage {
 
     @Override
     public CompletableFuture<Optional<CborObject>> get(PublicKeyHash owner, Cid key, Optional<BatWithId> bat) {
-        byte[] cached = cache.get(key);
-        if (cached != null)
-            return CompletableFuture.completedFuture(Optional.of(CborObject.fromByteArray(cached)));
-
-        CompletableFuture<Optional<CborObject>> pend = pending.get(key);
-        if (pend != null)
-            return pend;
+        synchronized (cache) {
+            byte[] cached = cache.get(key);
+            if (cached != null)
+                return CompletableFuture.completedFuture(Optional.of(CborObject.fromByteArray(cached)));
+        }
 
         CompletableFuture<Optional<CborObject>> pipe = new CompletableFuture<>();
-        pending.put(key, pipe);
+        synchronized (pending) {
+            CompletableFuture<Optional<CborObject>> pend = pending.get(key);
+            if (pend != null)
+                return pend;
+
+            pending.put(key, pipe);
+        }
 
         CompletableFuture<Optional<CborObject>> result = new CompletableFuture<>();
         target.get(owner, key, bat)
@@ -141,11 +150,15 @@ public class CachingVerifyingStorage extends DelegatingStorage {
                         if (value.length > 0)
                             cache(key, value);
                     }
-                    pending.remove(key);
+                    synchronized (pending) {
+                        pending.remove(key);
+                    }
                     pipe.complete(cborOpt);
                     result.complete(cborOpt);
                 }).exceptionally(t -> {
-            pending.remove(key);
+            synchronized (pending) {
+                pending.remove(key);
+            }
             pipe.completeExceptionally(t);
             result.completeExceptionally(t);
             return null;
@@ -175,16 +188,20 @@ public class CachingVerifyingStorage extends DelegatingStorage {
 
     @Override
     public CompletableFuture<Optional<byte[]>> getRaw(PublicKeyHash owner, Cid key, Optional<BatWithId> bat) {
-        byte[] cached = cache.get(key);
-        if (cached != null)
-            return CompletableFuture.completedFuture(Optional.of(cached));
-
-        CompletableFuture<Optional<byte[]>> pend = pendingRaw.get(key);
-        if (pend != null)
-            return pend;
+        synchronized (cache) {
+            byte[] cached = cache.get(key);
+            if (cached != null)
+                return CompletableFuture.completedFuture(Optional.of(cached));
+        }
 
         CompletableFuture<Optional<byte[]>> pipe = new CompletableFuture<>();
-        pendingRaw.put(key, pipe);
+        synchronized (pendingRaw) {
+            CompletableFuture<Optional<byte[]>> pend = pendingRaw.get(key);
+            if (pend != null)
+                return pend;
+
+            pendingRaw.put(key, pipe);
+        }
         target.getRaw(owner, key, bat)
                 .thenCompose(arrOpt -> arrOpt.map(bytes -> verify(bytes, key, () -> bytes)
                                 .thenApply(Optional::of))
@@ -196,11 +213,15 @@ public class CachingVerifyingStorage extends DelegatingStorage {
                         if (value.length > 0)
                             cache(key, value);
                     }
-                    pendingRaw.remove(key);
+                    synchronized (pendingRaw) {
+                        pendingRaw.remove(key);
+                    }
                     pipe.complete(rawOpt);
                     return rawOpt;
                 }).exceptionally(t -> {
-                    pendingRaw.remove(key);
+                    synchronized (pendingRaw) {
+                        pendingRaw.remove(key);
+                    }
                     pipe.completeExceptionally(t);
                     return null;
                 });
