@@ -97,7 +97,8 @@ public class DirectorySync {
             boolean oneRun = args.getBoolean("run-once", false);
             Path peergosDir = args.getPeergosDir();
             return syncDirs(links, localDirs, syncLocalDeletes, syncRemoteDeletes, maxDownloadParallelism,
-                    minFreeSpacePercent, oneRun, root -> new LocalFileSystem(Paths.get(root), crypto.hasher), peergosDir, m -> log(m), network, crypto);
+                    minFreeSpacePercent, oneRun, root -> new LocalFileSystem(Paths.get(root), crypto.hasher),
+                    peergosDir, m -> log(m), e -> log(e), network, crypto);
         } catch (Exception e) {
             LOG.log(Level.SEVERE, e, e::getMessage);
             throw new RuntimeException(e);
@@ -125,6 +126,7 @@ public class DirectorySync {
                                    Function<String, SyncFilesystem> localBuilder,
                                    Path peergosDir,
                                    Consumer<String> LOG,
+                                   Consumer<String> ERROR,
                                    NetworkAccess network,
                                    Crypto crypto) {
         if (syncLocalDeletes.size() != links.size())
@@ -160,10 +162,12 @@ public class DirectorySync {
                     long t1 = System.currentTimeMillis();
                     LOG.accept("Dir sync took " + (t1 - t0) / 1000 + "s");
                 }
+                ERROR.accept("");
                 if (oneRun)
                     break;
                 Thread.sleep(30_000);
             } catch (Exception e) {
+                ERROR.accept(e.getMessage());
                 e.printStackTrace();
                 DirectorySync.LOG.log(Level.WARNING, e, e::getMessage);
                 Threads.sleep(30_000);

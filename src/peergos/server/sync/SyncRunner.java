@@ -34,10 +34,17 @@ public interface SyncRunner {
     class StatusHolder {
         private String status;
         private LocalDateTime updateTime;
+        private Optional<String> error = Optional.empty();
 
         public synchronized void setStatus(String newStatus) {
             status = newStatus;
             updateTime = LocalDateTime.now();
+        }
+
+        public synchronized void setError(String error) {
+            this.error = error == null || error.isEmpty() ?
+                    Optional.empty() :
+                    Optional.of(error);
         }
 
         public synchronized String getStatusAndTime() {
@@ -45,6 +52,10 @@ public interface SyncRunner {
                 return "";
             return status + " at " + updateTime.getYear() + "-" + updateTime.getMonthValue()+"-" +
                     updateTime.getDayOfMonth() + " " + updateTime.getHour() + ":" + updateTime.getMinute() + ":" + updateTime.getSecond();
+        }
+
+        public synchronized Optional<String> getError() {
+            return error;
         }
     }
 
@@ -94,8 +105,14 @@ public interface SyncRunner {
                                     status.setStatus(msg);
                                     DirectorySync.log(msg);
                                 };
+                                Consumer<String> errorUpdater = msg -> {
+                                    status.setError(msg);
+                                    DirectorySync.log(msg);
+                                };
                                 DirectorySync.syncDirs(links, localDirs, syncLocalDeletes, syncRemoteDeletes,
-                                        maxDownloadParallelism, minFreeSpacePercent, true, root -> new LocalFileSystem(Paths.get(root), crypto.hasher), peergosDir, statusUpdater, network, crypto);
+                                        maxDownloadParallelism, minFreeSpacePercent, true,
+                                        root -> new LocalFileSystem(Paths.get(root), crypto.hasher),
+                                        peergosDir, statusUpdater, errorUpdater, network, crypto);
                             } catch (Exception e) {
                                 LOG.log(Level.WARNING, e.getMessage(), e);
                             }

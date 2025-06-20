@@ -317,6 +317,8 @@ public class SyncConfigHandler implements HttpHandler {
             } else if (action.equals("status")) {
                 LinkedHashMap<Object, Object> reply = new LinkedHashMap<>();
                 reply.put("msg", syncer.getStatusHolder().getStatusAndTime());
+                Optional<String> error = syncer.getStatusHolder().getError();
+                error.ifPresent(err -> reply.put("error", err));
                 byte[] res = JSONParser.toString(reply).getBytes(StandardCharsets.UTF_8);
                 exchange.sendResponseHeaders(200, res.length);
                 OutputStream resp = exchange.getResponseBody();
