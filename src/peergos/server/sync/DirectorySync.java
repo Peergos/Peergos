@@ -694,7 +694,7 @@ public class DirectorySync {
                         syncedVersions.add(remote);
                     }
                 }
-            } else if (synced.equals(remote)) { // local only change
+            } else if (synced.equalsIgnoreModtime(remote)) { // local only change
                 if (local == null) { // deletion or rename
                     List<FileState> remoteByHash = remoteTree.byHash(remote.hashTree.rootHash);
                     List<FileState> localByHash = localTree.byHash(remote.hashTree.rootHash);
