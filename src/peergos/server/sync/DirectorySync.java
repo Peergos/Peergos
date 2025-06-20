@@ -320,12 +320,21 @@ public class DirectorySync {
             if (isSmallRemoteCopy) {
                 List<FileState> remoteByHash = remoteState.byHash(local.hashTree.rootHash);
                 List<FileState> localByHash = localState.byHash(local.hashTree.rootHash);
-                List<FileState> extraRemote = remoteByHash.stream().filter(f -> ! localByHash.contains(f)).collect(Collectors.toList());
+                List<FileState> extraRemote = remoteByHash.stream()
+                        .filter(f -> ! localByHash.contains(f))
+                        .sorted(Comparator.comparing(f -> f.relPath))
+                        .collect(Collectors.toList());
+                List<FileState> extraLocal = localByHash.stream()
+                        .filter(f -> ! remoteByHash.contains(f))
+                        .sorted(Comparator.comparing(f -> f.relPath))
+                        .collect(Collectors.toList());
+                // This index is deterministic because of the sorting
+                int index = extraLocal.indexOf(local);
 
-                Optional<FileState> localAtHashedPath = extraRemote.size() == 1 ?
-                        Optional.ofNullable(localState.byPath(extraRemote.get(0).relPath)) :
+                Optional<FileState> localAtHashedPath = extraRemote.size() == extraLocal.size() ?
+                        Optional.ofNullable(localState.byPath(extraRemote.get(index).relPath)) :
                         Optional.empty();
-                if (extraRemote.size() != 1 || localAtHashedPath.isPresent())
+                if (extraRemote.size() != extraLocal.size() || localAtHashedPath.isPresent())
                     smallFiles.add(relativePath);
             }
 
@@ -336,12 +345,20 @@ public class DirectorySync {
             if (isLocalDelete ) {
                 List<FileState> remoteByHash = remoteState.byHash(remote.hashTree.rootHash);
                 List<FileState> localByHash = localState.byHash(remote.hashTree.rootHash);
-                List<FileState> extraLocal = localByHash.stream().filter(f -> ! remoteByHash.contains(f)).collect(Collectors.toList());
+                List<FileState> extraLocal = localByHash.stream()
+                        .filter(f -> ! remoteByHash.contains(f))
+                        .sorted(Comparator.comparing(f -> f.relPath))
+                        .collect(Collectors.toList());
+                List<FileState> extraRemote = remoteByHash.stream()
+                        .filter(f -> ! localByHash.contains(f))
+                        .sorted(Comparator.comparing(f -> f.relPath))
+                        .collect(Collectors.toList());
+                int index = extraRemote.indexOf(remote);
 
-                Optional<FileState> remoteAtHashedPath = extraLocal.size() == 1 ?
-                        Optional.ofNullable(remoteState.byPath(extraLocal.get(0).relPath)) :
+                Optional<FileState> remoteAtHashedPath = extraLocal.size() == extraRemote.size() ?
+                        Optional.ofNullable(remoteState.byPath(extraLocal.get(index).relPath)) :
                         Optional.empty();
-                if (extraLocal.size() != 1 || remoteAtHashedPath.isPresent())
+                if (extraLocal.size() != extraRemote.size() || remoteAtHashedPath.isPresent())
                     localDeletes.add(relativePath);
             }
         }
@@ -509,14 +526,22 @@ public class DirectorySync {
             if (local == null) { // remotely added or renamed
                 List<FileState> remoteByHash = remoteTree.byHash(remote.hashTree.rootHash);
                 List<FileState> localByHash = localTree.byHash(remote.hashTree.rootHash);
-                List<FileState> extraLocal = localByHash.stream().filter(f -> ! remoteByHash.contains(f)).collect(Collectors.toList());
+                List<FileState> extraLocal = localByHash.stream()
+                        .filter(f -> ! remoteByHash.contains(f))
+                        .sorted(Comparator.comparing(f -> f.relPath))
+                        .collect(Collectors.toList());
+                List<FileState> extraRemote = remoteByHash.stream()
+                        .filter(f -> ! localByHash.contains(f))
+                        .sorted(Comparator.comparing(f -> f.relPath))
+                        .collect(Collectors.toList());
+                int index = extraRemote.indexOf(remote);
 
-                Optional<FileState> remoteAtHashedPath = extraLocal.size() == 1 ?
-                        Optional.ofNullable(remoteTree.byPath(extraLocal.get(0).relPath)) :
+                Optional<FileState> remoteAtHashedPath = extraLocal.size() == extraRemote.size() ?
+                        Optional.ofNullable(remoteTree.byPath(extraLocal.get(index).relPath)) :
                         Optional.empty();
 
-                if (extraLocal.size() == 1 && remoteAtHashedPath.isEmpty()) {// rename
-                    FileState toMove = extraLocal.get(0);
+                if (extraLocal.size() == extraRemote.size() && remoteAtHashedPath.isEmpty()) {// rename
+                    FileState toMove = extraLocal.get(index);
                     LOG.accept("Sync Local: Moving " + toMove.relPath + " ==> " + remote.relPath);
                     localFs.moveTo(localFs.resolve(toMove.relPath), localFs.resolve(remote.relPath));
                     syncedVersions.remove(toMove.relPath);
@@ -535,14 +560,22 @@ public class DirectorySync {
             } else if (remote == null) { // locally added or renamed
                 List<FileState> remoteByHash = remoteTree.byHash(local.hashTree.rootHash);
                 List<FileState> localByHash = localTree.byHash(local.hashTree.rootHash);
-                List<FileState> extraRemote = remoteByHash.stream().filter(f -> ! localByHash.contains(f)).collect(Collectors.toList());
+                List<FileState> extraRemote = remoteByHash.stream()
+                        .filter(f -> ! localByHash.contains(f))
+                        .sorted(Comparator.comparing(f -> f.relPath))
+                        .collect(Collectors.toList());
+                List<FileState> extraLocal = localByHash.stream()
+                        .filter(f -> ! remoteByHash.contains(f))
+                        .sorted(Comparator.comparing(f -> f.relPath))
+                        .collect(Collectors.toList());
+                int index = extraLocal.indexOf(local);
 
-                Optional<FileState> localAtHashedPath = extraRemote.size() == 1 ?
-                        Optional.ofNullable(localTree.byPath(extraRemote.get(0).relPath)) :
+                Optional<FileState> localAtHashedPath = extraRemote.size() == extraLocal.size() ?
+                        Optional.ofNullable(localTree.byPath(extraRemote.get(index).relPath)) :
                         Optional.empty();
 
-                if (extraRemote.size() == 1 && localAtHashedPath.isEmpty()) {// rename
-                    FileState toMove = extraRemote.get(0);
+                if (extraRemote.size() == extraLocal.size() && localAtHashedPath.isEmpty()) {// rename
+                    FileState toMove = extraRemote.get(index);
                     LOG.accept("Sync Remote: Moving " + toMove.relPath + " ==> " + local.relPath);
                     remoteFs.moveTo(remoteFs.resolve(toMove.relPath), Paths.get(local.relPath));
                     syncedVersions.remove(toMove.relPath);
@@ -596,12 +629,20 @@ public class DirectorySync {
                 if (remote == null) { // deletion or rename
                     List<FileState> remoteByHash = remoteTree.byHash(local.hashTree.rootHash);
                     List<FileState> localByHash = localTree.byHash(local.hashTree.rootHash);
-                    List<FileState> extraRemote = remoteByHash.stream().filter(f -> ! localByHash.contains(f)).collect(Collectors.toList());
+                    List<FileState> extraRemote = remoteByHash.stream()
+                            .filter(f -> ! localByHash.contains(f))
+                            .sorted(Comparator.comparing(f -> f.relPath))
+                            .collect(Collectors.toList());
+                    List<FileState> extraLocal = localByHash.stream()
+                            .filter(f -> ! remoteByHash.contains(f))
+                            .sorted(Comparator.comparing(f -> f.relPath))
+                            .collect(Collectors.toList());
+                    int index = extraLocal.indexOf(local);
 
-                    Optional<FileState> localAtHashedPath = extraRemote.size() == 1 ?
-                            Optional.ofNullable(localTree.byPath(extraRemote.get(0).relPath)) :
+                    Optional<FileState> localAtHashedPath = extraRemote.size() == extraLocal.size() ?
+                            Optional.ofNullable(localTree.byPath(extraRemote.get(index).relPath)) :
                             Optional.empty();
-                    if (extraRemote.size() == 1 && localAtHashedPath.isEmpty()) {// rename
+                    if (extraRemote.size() == extraLocal.size() && localAtHashedPath.isEmpty()) {// rename
                         // we will do the local rename when we process the new remote entry
                     } else {
                         if (syncRemoteDeletes) {
@@ -653,12 +694,20 @@ public class DirectorySync {
                 if (local == null) { // deletion or rename
                     List<FileState> remoteByHash = remoteTree.byHash(remote.hashTree.rootHash);
                     List<FileState> localByHash = localTree.byHash(remote.hashTree.rootHash);
-                    List<FileState> extraLocal = localByHash.stream().filter(f -> ! remoteByHash.contains(f)).collect(Collectors.toList());
+                    List<FileState> extraLocal = localByHash.stream()
+                            .filter(f -> ! remoteByHash.contains(f))
+                            .sorted(Comparator.comparing(f -> f.relPath))
+                            .collect(Collectors.toList());
+                    List<FileState> extraRemote = remoteByHash.stream()
+                            .filter(f -> ! localByHash.contains(f))
+                            .sorted(Comparator.comparing(f -> f.relPath))
+                            .collect(Collectors.toList());
+                    int index = extraRemote.indexOf(remote);
 
-                    Optional<FileState> remoteAtHashedPath = extraLocal.size() == 1 ?
-                            Optional.ofNullable(remoteTree.byPath(extraLocal.get(0).relPath)) :
+                    Optional<FileState> remoteAtHashedPath = extraLocal.size() == extraRemote.size() ?
+                            Optional.ofNullable(remoteTree.byPath(extraLocal.get(index).relPath)) :
                             Optional.empty();
-                    if (extraLocal.size() == 1 && remoteAtHashedPath.isEmpty()) {// rename
+                    if (extraLocal.size() == extraRemote.size() && remoteAtHashedPath.isEmpty()) {// rename
                         // we will do the local rename when we process the new remote entry
                     } else {
                         if (syncLocalDeletes) {
