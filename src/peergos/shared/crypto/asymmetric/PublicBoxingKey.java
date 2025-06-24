@@ -13,7 +13,8 @@ import java.util.Map;
 public interface PublicBoxingKey extends Cborable {
     Map<Integer, Type> byValue = new HashMap<>();
     enum Type {
-        Curve25519(0x1);
+        Curve25519(0x1),
+        MLKEM(0x2);
 
         public final int value;
         Type(int value)

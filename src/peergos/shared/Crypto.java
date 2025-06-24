@@ -37,6 +37,7 @@ public class Crypto {
         PublicSigningKey.addProvider(PublicSigningKey.Type.Ed25519, instance.signer);
         SymmetricKey.setRng(SymmetricKey.Type.TweetNaCl, instance.random);
         PublicBoxingKey.addProvider(PublicBoxingKey.Type.Curve25519, instance.boxer);
+//        PublicBoxingKey.addProvider(PublicBoxingKey.Type.MLKEM, instance.mlkem);
         PublicBoxingKey.setRng(PublicBoxingKey.Type.Curve25519, instance.random);
         return instance;
     }
