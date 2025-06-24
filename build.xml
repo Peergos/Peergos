@@ -221,7 +221,7 @@
     <mkdir dir="war/WEB-INF/classes"/>
     <javac srcdir="src" encoding="utf-8"
         destdir="war/WEB-INF/classes"
-        source="11" target="11" nowarn="true"
+        source="17" target="17" nowarn="true"
         debug="true" debuglevel="lines,vars,source">
         <include name="peergos/client/**" />
         <include name="peergos/shared/**" />
