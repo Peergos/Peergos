@@ -3,6 +3,8 @@ package peergos.shared.crypto.asymmetric.mlkem;
 import peergos.shared.cbor.CborObject;
 import peergos.shared.cbor.Cborable;
 
+import java.util.Arrays;
+import java.util.Objects;
 import java.util.SortedMap;
 import java.util.TreeMap;
 
@@ -18,6 +20,19 @@ public class MlkemPublicKey implements Cborable {
 
     public Mlkem.Encapsulation encapsulate() {
         return implementation.encapsulate(keyBytes);
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+        MlkemPublicKey that = (MlkemPublicKey) o;
+        return Objects.deepEquals(keyBytes, that.keyBytes);
+    }
+
+    @Override
+    public int hashCode() {
+        return Arrays.hashCode(keyBytes);
     }
 
     @Override

@@ -10,6 +10,7 @@ import peergos.shared.crypto.symmetric.TweetNaClKey;
 import peergos.shared.util.ArrayOps;
 
 import java.util.Arrays;
+import java.util.Objects;
 import java.util.SortedMap;
 import java.util.TreeMap;
 
@@ -55,6 +56,20 @@ public class HybridCurve25519MLKEMPublicKey implements PublicBoxingKey {
     @Override
     public byte[] createNonce() {
         throw new IllegalStateException("This should not be called!");
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+        HybridCurve25519MLKEMPublicKey that = (HybridCurve25519MLKEMPublicKey) o;
+        return Objects.equals(curve25519, that.curve25519) &&
+                Objects.equals(mlkem, that.mlkem);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(curve25519, mlkem);
     }
 
     @Override
