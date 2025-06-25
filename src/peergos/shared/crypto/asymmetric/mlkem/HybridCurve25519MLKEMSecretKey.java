@@ -10,6 +10,7 @@ import peergos.shared.crypto.asymmetric.curve25519.Curve25519SecretKey;
 import peergos.shared.crypto.symmetric.TweetNaClKey;
 import peergos.shared.util.ArrayOps;
 
+import java.util.Arrays;
 import java.util.SortedMap;
 import java.util.TreeMap;
 
@@ -52,13 +53,13 @@ public class HybridCurve25519MLKEMSecretKey implements SecretBoxingKey {
         SortedMap<String, Cborable> state = new TreeMap<>();
         state.put("c", curve25519.toCbor());
         state.put("m", mlkem.toCbor());
-        return CborObject.CborMap.build(state);
+        return new CborObject.CborList(Arrays.asList(new CborObject.CborLong(type().value), CborObject.CborMap.build(state)));
     }
 
     public static HybridCurve25519MLKEMSecretKey fromCbor(Cborable cbor, Crypto crypto) {
-        if (! (cbor instanceof CborObject.CborMap))
+        if (! (cbor instanceof CborObject.CborList))
             throw new IllegalStateException("Invalid cbor for HybridCurve25519MLKEMSecretKey! " + cbor);
-        CborObject.CborMap m = (CborObject.CborMap) cbor;
+        CborObject.CborMap m = (CborObject.CborMap) ((CborObject.CborList) cbor).value.get(1);
         Curve25519SecretKey curve25519 = m.get("c", c -> Curve25519SecretKey.fromCbor(c, crypto.boxer));
         MlkemSecretKey mlkem = m.get("m", c -> MlkemSecretKey.fromCbor(c, crypto.mlkem));
         return new HybridCurve25519MLKEMSecretKey(curve25519, mlkem, crypto);

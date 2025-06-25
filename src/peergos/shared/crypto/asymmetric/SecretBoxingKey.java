@@ -19,7 +19,7 @@ public interface SecretBoxingKey extends Cborable {
 
     static SecretBoxingKey fromCbor(Cborable cbor) {
         if (! (cbor instanceof CborObject.CborList))
-            throw new IllegalStateException("Invalid cbor for PublicBoxingKey! " + cbor);
+            throw new IllegalStateException("Invalid cbor for SecretBoxingKey! " + cbor);
         CborObject.CborLong type = (CborObject.CborLong) ((CborObject.CborList) cbor).value.get(0);
         PublicBoxingKey.Type t = PublicBoxingKey.Type.byValue((int) type.value);
         switch (t) {

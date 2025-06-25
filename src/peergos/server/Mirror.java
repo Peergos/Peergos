@@ -52,8 +52,7 @@ public class Mirror {
                     Optional<SecretGenerationAlgorithm> alg = userData.generationAlgorithm;
                     Optional<SigningKeyPair> loginKeyPair = legacyAccount ?
                             Optional.empty() :
-                            Optional.of(UserUtil.generateUser(username, password, crypto.hasher, crypto.symmetricProvider,
-                    crypto.random, crypto.signer, crypto.boxer, alg.get()).join().getUser());
+                            Optional.of(UserUtil.generateUser(username, password, crypto, alg.get()).join().getUser());
 
                     System.out.println("To mirror all your data on another server run the \"daemon\" command with these additional arguments:");
                     System.out.println("-mirror.username " + username);

@@ -162,8 +162,7 @@ public class UserContext {
             SecretGenerationAlgorithm algorithm = WriterData.fromCbor(pair.right).generationAlgorithm
                     .orElseThrow(() -> new IllegalStateException("No login algorithm specified in user data!"));
             progressCallback.accept("Generating keys");
-            return UserUtil.generateUser(username, password, crypto.hasher, crypto.symmetricProvider,
-                    crypto.random, crypto.signer, crypto.boxer, algorithm)
+            return UserUtil.generateUser(username, password, crypto, algorithm)
                     .thenCompose(userWithRoot -> {
                         progressCallback.accept("Logging in");
                         return login(username, userWithRoot, mfa, cacheMfaLoginData, pair, network, crypto, progressCallback);
@@ -405,8 +404,7 @@ public class UserContext {
                         throw new IllegalStateException("User already exists!");
                     return true;
                 })
-                .thenCompose(x -> UserUtil.generateUser(username, password, crypto.hasher, crypto.symmetricProvider,
-                        crypto.random, crypto.signer, crypto.boxer, algorithm))
+                .thenCompose(x -> UserUtil.generateUser(username, password, crypto, algorithm))
                 .thenCompose(userWithRoot -> {
                     PublicSigningKey loginPublicKey = userWithRoot.getUser().publicSigningKey;
 
@@ -1165,14 +1163,13 @@ public class UserContext {
         if (! isLegacy && newAlgorithm.generateBoxerAndIdentity())
             throw new IllegalStateException("Cannot migrate from an upgraded style account to a legacy style account!");
 
-        return UserUtil.generateUser(username, oldPassword, crypto.hasher, crypto.symmetricProvider, crypto.random, crypto.signer, crypto.boxer, existingAlgorithm)
+        return UserUtil.generateUser(username, oldPassword, crypto, existingAlgorithm)
                 .thenCompose(existingLogin -> {
                     SecretSigningKey existingLoginSecret = existingLogin.getUser().secretSigningKey;
                     if (isLegacy && !existingLoginSecret.equals(this.signer.secret))
                         throw new IllegalArgumentException("Incorrect existing password during change password attempt!");
 
-                    return UserUtil.generateUser(username, newPassword, crypto.hasher, crypto.symmetricProvider,
-                            crypto.random, crypto.signer, crypto.boxer, newAlgorithm)
+                    return UserUtil.generateUser(username, newPassword, crypto, newAlgorithm)
                             .thenCompose(updatedLogin -> {
                                 PublicSigningKey newLoginPublicKey = updatedLogin.getUser().publicSigningKey;
                                 PublicKeyHash existingOwner = ContentAddressedStorage.hashKey(existingLogin.getUser().publicSigningKey);
@@ -1751,7 +1748,7 @@ public class UserContext {
      * @return
      */
     private CompletableFuture<Boolean> blindAndSendFollowRequest(PublicKeyHash targetIdentity, PublicBoxingKey targetBoxer, FollowRequest req) {
-        BlindFollowRequest blindRequest = BlindFollowRequest.build(targetBoxer, req, crypto.random, crypto.boxer);
+        BlindFollowRequest blindRequest = BlindFollowRequest.build(targetBoxer, req, crypto);
         return network.social.sendFollowRequest(targetIdentity, blindRequest.serialize());
     }
 

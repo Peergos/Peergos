@@ -1,7 +1,9 @@
 package peergos.shared.user;
 
+import peergos.shared.Crypto;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.asymmetric.curve25519.*;
+import peergos.shared.crypto.asymmetric.mlkem.Mlkem;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.crypto.random.*;
 import peergos.shared.crypto.symmetric.*;
@@ -14,35 +16,33 @@ public class UserUtil {
 
     public static CompletableFuture<UserWithRoot> generateUser(String username,
                                                                String password,
-                                                               Hasher hasher,
-                                                               Salsa20Poly1305 provider,
-                                                               SafeRandom random,
-                                                               Ed25519 signer,
-                                                               Curve25519 boxer,
+                                                               Crypto crypto,
                                                                SecretGenerationAlgorithm algorithm) {
         if (password.equals(username))
             return Futures.errored(new IllegalStateException("Your password cannot be the same as your username!"));
-        CompletableFuture<byte[]> fut = hasher.hashToKeyBytes(username + algorithm.getExtraSalt(), password, algorithm);
+        CompletableFuture<byte[]> fut = crypto.hasher.hashToKeyBytes(username + algorithm.getExtraSalt(), password, algorithm);
         return fut.thenApply(keyBytes -> {
             byte[] signBytesSeed = Arrays.copyOfRange(keyBytes, 0, 32);
             boolean hasBoxer = algorithm.generateBoxerAndIdentity();
-            byte[] secretBoxBytes = hasBoxer ? Arrays.copyOfRange(keyBytes, 32, 64) : random.randomBytes(32);
+            byte[] secretBoxBytes = hasBoxer ? Arrays.copyOfRange(keyBytes, 32, 64) : crypto.random.randomBytes(32);
 
             byte[] rootKeyBytes = Arrays.copyOfRange(keyBytes, hasBoxer ? 64 : 32, hasBoxer ? 96 : 64);
 	
             byte[] secretSignBytes = Arrays.copyOf(signBytesSeed, 64);
             byte[] publicSignBytes = new byte[32];
 	
-            signer.crypto_sign_keypair(publicSignBytes, secretSignBytes);
+            crypto.signer.crypto_sign_keypair(publicSignBytes, secretSignBytes);
 	
-            byte[] pubilcBoxBytes = new byte[32];
-            boxer.crypto_box_keypair(pubilcBoxBytes, secretBoxBytes);
+            byte[] publicBoxBytes = new byte[32];
+            crypto.boxer.crypto_box_keypair(publicBoxBytes, secretBoxBytes);
 	
-            SigningKeyPair signingKeyPair = new SigningKeyPair(new Ed25519PublicKey(publicSignBytes, signer), new Ed25519SecretKey(secretSignBytes, signer));
+            SigningKeyPair signingKeyPair = new SigningKeyPair(new Ed25519PublicKey(publicSignBytes, crypto.signer), new Ed25519SecretKey(secretSignBytes, crypto.signer));
 
-            BoxingKeyPair boxingKeyPair = new BoxingKeyPair(new Curve25519PublicKey(pubilcBoxBytes, boxer, random), new Curve25519SecretKey(secretBoxBytes, boxer));
+            BoxingKeyPair boxingKeyPair = hasBoxer ?
+                    new BoxingKeyPair(new Curve25519PublicKey(publicBoxBytes, crypto.boxer, crypto.random), new Curve25519SecretKey(secretBoxBytes, crypto.boxer)) :
+                    BoxingKeyPair.randomHybrid(crypto);
 
-            SymmetricKey root =  new TweetNaClKey(rootKeyBytes, false, provider, random);
+            SymmetricKey root =  new TweetNaClKey(rootKeyBytes, false, crypto.symmetricProvider, crypto.random);
 
             return new UserWithRoot(signingKeyPair, boxingKeyPair, root);
         });

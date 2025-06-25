@@ -168,8 +168,7 @@ public class Main extends Builder {
             // setup peergos user and pki keys
             String peergosPassword = args.getArg("peergos.password");
             String pkiUsername = "peergos";
-            UserWithRoot peergos = UserUtil.generateUser(pkiUsername, peergosPassword, crypto.hasher, crypto.symmetricProvider,
-                    crypto.random, crypto.signer, crypto.boxer, SecretGenerationAlgorithm.getDefaultWithoutExtraSalt()).get();
+            UserWithRoot peergos = UserUtil.generateUser(pkiUsername, peergosPassword, crypto, SecretGenerationAlgorithm.getDefaultWithoutExtraSalt()).get();
 
             boolean useIPFS = args.getBoolean("useIPFS");
             ContentAddressedStorage dht = useIPFS ?
@@ -185,8 +184,7 @@ public class Main extends Builder {
 
             if (peergosPassword.equals(pkiPassword))
                 throw new IllegalStateException("Pki password and peergos password must be different!!");
-            SigningKeyPair pkiKeys = UserUtil.generateUser(pkiUsername, pkiPassword, crypto.hasher, crypto.symmetricProvider,
-                    crypto.random, crypto.signer, crypto.boxer, SecretGenerationAlgorithm.getDefaultWithoutExtraSalt()).get().getUser();
+            SigningKeyPair pkiKeys = UserUtil.generateUser(pkiUsername, pkiPassword, crypto, SecretGenerationAlgorithm.getDefaultWithoutExtraSalt()).get().getUser();
             IpfsTransaction.call(peergosPublicHash,
                     tid -> dht.putSigningKey(peergosIdentityKeys.secretSigningKey.signMessage(
                             pkiKeys.publicSigningKey.serialize()).join(),
