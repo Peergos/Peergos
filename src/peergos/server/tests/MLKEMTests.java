@@ -13,6 +13,7 @@ import peergos.server.crypto.asymmetric.mlkem.fips203.message.CipherText;
 import peergos.server.crypto.asymmetric.mlkem.fips203.message.MLKEMCipherText;
 import peergos.shared.Crypto;
 import peergos.shared.crypto.BoxingKeyPair;
+import peergos.shared.crypto.InvalidCipherTextException;
 
 import java.nio.charset.StandardCharsets;
 
@@ -47,5 +48,23 @@ public class MLKEMTests {
 
         byte[] decrypted = bob.secretBoxingKey.decryptMessage(toSend, alice.publicBoxingKey);
         Assert.assertArrayEquals(decrypted, msg);
+    }
+
+    @Test
+    public void hybridMsgTamper() {
+        BoxingKeyPair alice = BoxingKeyPair.randomHybrid(crypto);
+        BoxingKeyPair bob = BoxingKeyPair.randomHybrid(crypto);
+
+        byte[] msg = "G'day mate! This is hopefully post quantum secure!".getBytes(StandardCharsets.UTF_8);
+
+        byte[] toSend = bob.publicBoxingKey.encryptMessageFor(msg, alice.secretBoxingKey);
+        for (int i=20; i < toSend.length; i++) {
+            toSend[i] ^= 1;
+
+            try {
+                byte[] decrypted = bob.secretBoxingKey.decryptMessage(toSend, alice.publicBoxingKey);
+            } catch (RuntimeException e) {}
+            toSend[i] ^= 1;
+        }
     }
 }
