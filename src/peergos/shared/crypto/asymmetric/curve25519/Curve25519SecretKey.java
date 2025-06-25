@@ -51,7 +51,7 @@ public class Curve25519SecretKey implements SecretBoxingKey {
         return new CborObject.CborList(Arrays.asList(new CborObject.CborLong(type().value), new CborObject.CborByteArray(secretKey)));
     }
 
-    public static SecretBoxingKey fromCbor(Cborable cbor, Curve25519 provider) {
+    public static Curve25519SecretKey fromCbor(Cborable cbor, Curve25519 provider) {
         if (! (cbor instanceof CborObject.CborList))
             throw new IllegalStateException("Invalid cbor for SecretBoxingKey! " + cbor);
         CborObject.CborByteArray key = (CborObject.CborByteArray) ((CborObject.CborList) cbor).value.get(1);

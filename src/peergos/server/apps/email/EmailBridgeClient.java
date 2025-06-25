@@ -1,6 +1,5 @@
 package peergos.server.apps.email;
 
-import jsinterop.annotations.JsMethod;
 import peergos.shared.Crypto;
 import peergos.shared.NetworkAccess;
 import peergos.shared.cbor.*;
@@ -130,12 +129,12 @@ public class EmailBridgeClient {
     }
 
     private SourcedAsymmetricCipherText encryptEmail(EmailMessage m) {
-        BoxingKeyPair tmp = BoxingKeyPair.random(crypto.random, crypto.boxer);
+        BoxingKeyPair tmp = BoxingKeyPair.randomCurve25519(crypto.random, crypto.boxer);
         return SourcedAsymmetricCipherText.build(tmp, encryptionTarget, m);
     }
 
     private SourcedAsymmetricCipherText encryptAttachment(byte[] fileData) {
-        BoxingKeyPair tmp = BoxingKeyPair.random(crypto.random, crypto.boxer);
+        BoxingKeyPair tmp = BoxingKeyPair.randomCurve25519(crypto.random, crypto.boxer);
         return SourcedAsymmetricCipherText.build(tmp, encryptionTarget, new CborObject.CborByteArray(fileData));
     }
 

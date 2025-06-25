@@ -144,7 +144,7 @@ public abstract class UserTests {
         byte[] rawSignPub = signer.publicSigningKey.serialize(); // 36
         byte[] rawSignSecret = signer.secretSigningKey.serialize(); // 68
         byte[] rawSignBoth = signer.serialize(); // 105
-        BoxingKeyPair boxer = BoxingKeyPair.random(crypto.random, crypto.boxer);
+        BoxingKeyPair boxer = BoxingKeyPair.randomCurve25519(crypto.random, crypto.boxer);
         byte[] rawBoxPub = boxer.publicBoxingKey.serialize(); // 36
         byte[] rawBoxSecret = boxer.secretBoxingKey.serialize(); // 36
         byte[] rawBoxBoth = boxer.serialize(); // 73

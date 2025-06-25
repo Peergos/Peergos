@@ -2,6 +2,7 @@ package peergos.server.tests;
 
 import org.junit.Assert;
 import org.junit.Test;
+import peergos.server.Main;
 import peergos.server.crypto.asymmetric.mlkem.fips203.FIPS203;
 import peergos.server.crypto.asymmetric.mlkem.fips203.MimicloneFIPS203;
 import peergos.server.crypto.asymmetric.mlkem.fips203.ParameterSet;
@@ -10,8 +11,13 @@ import peergos.server.crypto.asymmetric.mlkem.fips203.key.KeyPair;
 import peergos.server.crypto.asymmetric.mlkem.fips203.key.SharedSecretKey;
 import peergos.server.crypto.asymmetric.mlkem.fips203.message.CipherText;
 import peergos.server.crypto.asymmetric.mlkem.fips203.message.MLKEMCipherText;
+import peergos.shared.Crypto;
+import peergos.shared.crypto.BoxingKeyPair;
+
+import java.nio.charset.StandardCharsets;
 
 public class MLKEMTests {
+    private static Crypto crypto = Main.initCrypto();
 
     @Test
     public void usage() {
@@ -28,5 +34,18 @@ public class MLKEMTests {
         byte[] bobSharedSecret = fips203.decapsulate(bobKeys.getDecapsulationKey(), cipherText).getBytes();
 
         Assert.assertArrayEquals(aliceSharedSecret, bobSharedSecret);
+    }
+
+    @Test
+    public void hybrid() {
+        BoxingKeyPair alice = BoxingKeyPair.randomHybrid(crypto);
+        BoxingKeyPair bob = BoxingKeyPair.randomHybrid(crypto);
+
+        byte[] msg = "G'day mate! This is hopefully post quantum secure!".getBytes(StandardCharsets.UTF_8);
+
+        byte[] toSend = bob.publicBoxingKey.encryptMessageFor(msg, alice.secretBoxingKey);
+
+        byte[] decrypted = bob.secretBoxingKey.decryptMessage(toSend, alice.publicBoxingKey);
+        Assert.assertArrayEquals(decrypted, msg);
     }
 }

@@ -7,13 +7,10 @@ import peergos.shared.cbor.*;
 import peergos.shared.crypto.*;
 import peergos.shared.io.ipfs.api.JSONParser;
 import peergos.shared.user.*;
-import peergos.shared.user.fs.AsyncReader;
-import peergos.shared.user.fs.FileWrapper;
 import peergos.shared.user.fs.SecretLink;
 import peergos.shared.util.*;
 
 import java.nio.file.*;
-import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.stream.*;
@@ -211,7 +208,7 @@ public class EmailClient {
         return Futures.reduceAll(dirs, true,
                 (b, d) -> emailApp.createDirectoryInternal(PathUtil.get(account, d), null),
                 (a, b) -> a && b).thenCompose(x -> {
-            BoxingKeyPair encryptionKeys = BoxingKeyPair.random(crypto.random, crypto.boxer);
+            BoxingKeyPair encryptionKeys = BoxingKeyPair.randomCurve25519(crypto.random, crypto.boxer);
             return emailApp.writeInternal(PathUtil.get(account, ENCRYPTION_KEYPAIR_PATH), encryptionKeys.serialize(), null)
                     .thenCompose(b -> emailApp.writeInternal(PathUtil.get(account, "pending", PUBLIC_KEY_FILENAME),
                             encryptionKeys.publicBoxingKey.serialize(), null))

@@ -5,6 +5,7 @@ import io.libp2p.core.*;
 import peergos.server.corenode.*;
 import peergos.server.crypto.*;
 import peergos.server.crypto.asymmetric.curve25519.*;
+import peergos.server.crypto.asymmetric.mlkem.JavaMlkem;
 import peergos.server.crypto.hash.*;
 import peergos.server.crypto.random.*;
 import peergos.server.login.*;
@@ -20,6 +21,7 @@ import peergos.shared.corenode.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.asymmetric.curve25519.*;
+import peergos.shared.crypto.asymmetric.mlkem.Mlkem;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.crypto.password.*;
 import peergos.shared.crypto.symmetric.*;
@@ -44,9 +46,9 @@ import java.util.stream.*;
 
 public class Builder {
 
-    public static Crypto initNativeCrypto(Salsa20Poly1305 symmetric, Ed25519 signer, Curve25519 boxer, Hasher h) {
+    public static Crypto initNativeCrypto(Salsa20Poly1305 symmetric, Ed25519 signer, Curve25519 boxer, Mlkem mlkem, Hasher h) {
         SafeRandomJava random = new SafeRandomJava();
-        return Crypto.init(() -> new Crypto(random, h, symmetric, signer, boxer));
+        return Crypto.init(() -> new Crypto(random, h, symmetric, signer, boxer, mlkem));
     }
 
     public static Crypto initCrypto() {
@@ -61,7 +63,8 @@ public class Builder {
             Salsa20Poly1305 symmetricProvider = new JniTweetNacl.Symmetric(nativeNacl);
             Ed25519 signer = new JniTweetNacl.Signer(nativeNacl);
             Curve25519 boxer = new Curve25519Java();
-            return initNativeCrypto(symmetricProvider, signer, boxer, h);
+            JavaMlkem mlkem = new JavaMlkem();
+            return initNativeCrypto(symmetricProvider, signer, boxer, mlkem, h);
         } catch (Throwable t) {
             return JavaCrypto.init();
         }

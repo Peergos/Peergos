@@ -1,8 +1,12 @@
 package peergos.shared.crypto;
 
+import peergos.shared.Crypto;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.asymmetric.curve25519.*;
+import peergos.shared.crypto.asymmetric.mlkem.HybridCurve25519MLKEMPublicKey;
+import peergos.shared.crypto.asymmetric.mlkem.HybridCurve25519MLKEMSecretKey;
+import peergos.shared.crypto.asymmetric.mlkem.MlkemKeyPair;
 import peergos.shared.crypto.random.*;
 
 import java.util.*;
@@ -34,18 +38,29 @@ public class BoxingKeyPair implements Cborable
         return new BoxingKeyPair(pub, secret);
     }
 
-    public static BoxingKeyPair random(SafeRandom random, Curve25519 boxer) {
+    public static BoxingKeyPair randomHybrid(Crypto crypto) {
+        BoxingKeyPair curve25519 = randomCurve25519(crypto.random, crypto.boxer);
+        MlkemKeyPair mlkemKeyPair = crypto.mlkem.generateKeyPair();
+
+        HybridCurve25519MLKEMPublicKey hybridPublic = new HybridCurve25519MLKEMPublicKey(
+                (Curve25519PublicKey) curve25519.publicBoxingKey, mlkemKeyPair.publicKey, crypto);
+        HybridCurve25519MLKEMSecretKey hybridSecret = new HybridCurve25519MLKEMSecretKey(
+                (Curve25519SecretKey) curve25519.secretBoxingKey, mlkemKeyPair.secretKey, crypto);
+        return new BoxingKeyPair(hybridPublic, hybridSecret);
+    }
+
+    public static BoxingKeyPair randomCurve25519(SafeRandom random, Curve25519 boxer) {
 
         byte[] secretBoxBytes = new byte[32];
         byte[] publicBoxBytes = new byte[32];
 
         random.randombytes(secretBoxBytes, 0, 32);
 
-        return random(secretBoxBytes, publicBoxBytes, boxer, random);
+        return randomCurve25519(secretBoxBytes, publicBoxBytes, boxer, random);
     }
 
-    private static BoxingKeyPair random(byte[] secretBoxBytes, byte[] publicBoxBytes,
-                                        Curve25519 boxer, SafeRandom random) {
+    private static BoxingKeyPair randomCurve25519(byte[] secretBoxBytes, byte[] publicBoxBytes,
+                                                  Curve25519 boxer, SafeRandom random) {
         boxer.crypto_box_keypair(publicBoxBytes, secretBoxBytes);
 
         return new BoxingKeyPair(

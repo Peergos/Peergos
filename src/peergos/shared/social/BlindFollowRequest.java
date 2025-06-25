@@ -36,7 +36,7 @@ public class BlindFollowRequest implements Cborable {
 
     public static BlindFollowRequest build(PublicBoxingKey targetBoxer, FollowRequest request, SafeRandom random, Curve25519 boxer) {
         // create a tmp keypair whose public key we can prepend to the request without leaking information
-        BoxingKeyPair tmp = BoxingKeyPair.random(random, boxer);
+        BoxingKeyPair tmp = BoxingKeyPair.randomCurve25519(random, boxer);
 
         return new BlindFollowRequest(tmp.publicBoxingKey,
                 PaddedAsymmetricCipherText.build(tmp.secretBoxingKey, targetBoxer, request, 512));
