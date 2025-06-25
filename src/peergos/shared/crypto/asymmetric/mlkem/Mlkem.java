@@ -1,5 +1,7 @@
 package peergos.shared.crypto.asymmetric.mlkem;
 
+import peergos.shared.crypto.random.JSNaCl;
+
 public interface Mlkem {
 
     Encapsulation encapsulate(byte[] publicKeyBytes);
@@ -18,19 +20,25 @@ public interface Mlkem {
     }
 
     class Javascript implements Mlkem {
+        JSNaCl mlJs = new JSNaCl();
+
         @Override
         public Encapsulation encapsulate(byte[] publicKeyBytes) {
-            throw new IllegalStateException("TODO");
+            byte[][] encapsulated = mlJs.encapsulate(publicKeyBytes);
+            return new Encapsulation(encapsulated[0], encapsulated[1]);
         }
 
         @Override
         public byte[] decapsulate(byte[] cipherTextBytes, byte[] secretKeyBytes) {
-            throw new IllegalStateException("TODO");
+            return mlJs.decapsulate(cipherTextBytes, secretKeyBytes);
         }
 
         @Override
         public MlkemKeyPair generateKeyPair() {
-            throw new IllegalStateException("TODO");
+            byte[][] keyPair = mlJs.generateMlkemKeyPair();
+            MlkemPublicKey publicKey = new MlkemPublicKey(keyPair[0], this);
+            MlkemSecretKey secretKey = new MlkemSecretKey(keyPair[1], this);
+            return new MlkemKeyPair(publicKey, secretKey);
         }
     }
 }

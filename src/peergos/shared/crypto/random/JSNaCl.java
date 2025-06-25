@@ -18,4 +18,8 @@ public class JSNaCl {
     native public byte[] crypto_box_open(byte[] cipher, byte[] nonce, byte[] theirPublicBoxingKey, byte[] secretBoxingKey);
     native public byte[] crypto_box(byte[] message, byte[] nonce, byte[] theirPublicBoxingKey, byte[] ourSecretBoxingKey);
     native public byte[] crypto_box_keypair(byte[] pk, byte[] sk);
+
+    native public byte[][] generateMlkemKeyPair();
+    native public byte[][] encapsulate(byte[] publicKeyBytes);
+    native public byte[] decapsulate(byte[] cipherTextBytes, byte[] secretKeyBytes);
 }
