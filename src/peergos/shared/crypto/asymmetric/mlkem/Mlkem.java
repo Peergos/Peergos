@@ -27,7 +27,15 @@ public interface Mlkem {
         @Override
         public CompletableFuture<Encapsulation> encapsulate(byte[] publicKeyBytes) {
             return mlJs.encapsulate(publicKeyBytes)
-                    .thenApply(encapsulated -> new Encapsulation(encapsulated[0], encapsulated[1]));
+                    .thenApply(encapsulated -> {
+                        byte[] sharedSecret = new byte[encapsulated[0].length];
+                        for (int i=0; i < sharedSecret.length; i++)
+                            sharedSecret[i] = encapsulated[0][i];
+                        byte[] cipherText = new byte[encapsulated[1].length];
+                        for (int i=0; i < cipherText.length; i++)
+                            cipherText[i] = encapsulated[1][i];
+                        return new Encapsulation(sharedSecret, cipherText);
+                    });
         }
 
         @Override
