@@ -9,6 +9,7 @@ import peergos.shared.crypto.asymmetric.mlkem.HybridCurve25519MLKEMPublicKey;
 import peergos.shared.crypto.random.*;
 
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
 
 public class BlindFollowRequest implements Cborable {
 
@@ -36,13 +37,13 @@ public class BlindFollowRequest implements Cborable {
         return new BlindFollowRequest(dummysource, followRequest);
     }
 
-    public static BlindFollowRequest build(PublicBoxingKey targetBoxer, FollowRequest request, Crypto crypto) {
+    public static CompletableFuture<BlindFollowRequest> build(PublicBoxingKey targetBoxer, FollowRequest request, Crypto crypto) {
         // create a tmp keypair whose public key we can prepend to the request without leaking information
         BoxingKeyPair tmp = targetBoxer instanceof HybridCurve25519MLKEMPublicKey ?
                 BoxingKeyPair.randomHybrid(crypto) :
                 BoxingKeyPair.randomCurve25519(crypto.random, crypto.boxer);
 
-        return new BlindFollowRequest(tmp.publicBoxingKey,
-                PaddedAsymmetricCipherText.build(tmp.secretBoxingKey, targetBoxer, request, 512));
+        return PaddedAsymmetricCipherText.build(tmp.secretBoxingKey, targetBoxer, request, 512)
+                .thenApply(cipher -> new BlindFollowRequest(tmp.publicBoxingKey, cipher));
     }
 }

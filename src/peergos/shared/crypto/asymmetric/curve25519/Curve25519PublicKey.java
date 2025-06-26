@@ -5,8 +5,10 @@ import peergos.shared.crypto.asymmetric.PublicBoxingKey;
 import peergos.shared.crypto.asymmetric.SecretBoxingKey;
 import peergos.shared.crypto.random.*;
 import peergos.shared.util.ArrayOps;
+import peergos.shared.util.Futures;
 
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
 
 public class Curve25519PublicKey implements PublicBoxingKey {
     public static final int BOX_NONCE_BYTES = 24;
@@ -45,9 +47,10 @@ public class Curve25519PublicKey implements PublicBoxingKey {
         return Arrays.copyOfRange(publicKey, 0, publicKey.length);
     }
 
-    public byte[] encryptMessageFor(byte[] input, SecretBoxingKey from) {
+    @Override
+    public CompletableFuture<byte[]> encryptMessageFor(byte[] input, SecretBoxingKey from) {
         byte[] nonce = createNonce();
-        return ArrayOps.concat(implementation.crypto_box(input, nonce, publicKey, from.getSecretBoxingKey()), nonce);
+        return Futures.of(ArrayOps.concat(implementation.crypto_box(input, nonce, publicKey, from.getSecretBoxingKey()), nonce));
     }
 
     public byte[] createNonce() {

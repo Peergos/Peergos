@@ -67,7 +67,7 @@ public class EmailBridgeClient {
 
         FileWrapper outbox = pendingFolder().getChild("outbox", crypto.hasher, network).join().get();
         FileWrapper sent = pendingFolder().getChild("sent", crypto.hasher, network).join().get();
-        byte[] rawCipherText = encryptEmail(emailMessage).serialize();
+        byte[] rawCipherText = encryptEmail(emailMessage).join().serialize();
         sent.uploadFileSection(file.getName(), AsyncReader.build(rawCipherText), false, 0, rawCipherText.length, Optional.empty(),
                 true, network, crypto, x -> {}).join();
 
@@ -86,7 +86,7 @@ public class EmailBridgeClient {
                 FileWrapper outboxAttachmentDir = outbox.getChild("attachments", crypto.hasher, network).join().get();
                 FileWrapper attachmentFile = outboxAttachmentDir.getChild(attachment.uuid, crypto.hasher, network).join().get();
                 Path attachmentFilePath = pendingPath.resolve(PathUtil.get("outbox", "attachments", attachment.uuid));
-                byte[] rawAttachmentCipherText = encryptAttachment(bytes).serialize();
+                byte[] rawAttachmentCipherText = encryptAttachment(bytes).join().serialize();
                 sentAttachments.uploadFileSection(attachment.uuid, AsyncReader.build(rawAttachmentCipherText),
                         false, 0, rawAttachmentCipherText.length, Optional.empty(),
                         true, network, crypto, x -> {}).join();
@@ -99,7 +99,7 @@ public class EmailBridgeClient {
         int dotIndex = filename.lastIndexOf('.');
         String fileExtension = dotIndex > -1 && dotIndex <= filename.length() -1
                 ?  filename.substring(dotIndex + 1) : "";
-        byte[] rawCipherText = encryptAttachment(data).serialize();
+        byte[] rawCipherText = encryptAttachment(data).join().serialize();
         AsyncReader.ArrayBacked reader = new AsyncReader.ArrayBacked(rawCipherText);
         String uuid = uploadAttachment(reader, fileExtension, rawCipherText.length).join();
         return new Attachment(filename, size, type, uuid);
@@ -119,7 +119,7 @@ public class EmailBridgeClient {
     public void addToInbox(EmailMessage m) {
         FileWrapper inbox = pendingFolder().getChild("inbox", crypto.hasher, network).join().get();
         network.synchronizer.applyComplexUpdate(inbox.owner(), inbox.signingPair(), (s, c) -> {
-            byte[] rawCipherText = encryptEmail(m).serialize();
+            byte[] rawCipherText = encryptEmail(m).join().serialize();
             return inbox.getUpdated(s, network).join()
                     .uploadFileSection(s, c, m.id + ".cbor", AsyncReader.build(rawCipherText), false, 0,
                             rawCipherText.length, Optional.empty(), false, true, true,
@@ -128,12 +128,12 @@ public class EmailBridgeClient {
         }).join();
     }
 
-    private SourcedAsymmetricCipherText encryptEmail(EmailMessage m) {
+    private CompletableFuture<SourcedAsymmetricCipherText> encryptEmail(EmailMessage m) {
         BoxingKeyPair tmp = BoxingKeyPair.randomCurve25519(crypto.random, crypto.boxer);
         return SourcedAsymmetricCipherText.build(tmp, encryptionTarget, m);
     }
 
-    private SourcedAsymmetricCipherText encryptAttachment(byte[] fileData) {
+    private CompletableFuture<SourcedAsymmetricCipherText> encryptAttachment(byte[] fileData) {
         BoxingKeyPair tmp = BoxingKeyPair.randomCurve25519(crypto.random, crypto.boxer);
         return SourcedAsymmetricCipherText.build(tmp, encryptionTarget, new CborObject.CborByteArray(fileData));
     }

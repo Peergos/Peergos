@@ -58,11 +58,11 @@ public class EmailClient {
         this.encryptionKeys = encryptionKeys;
     }
 
-    private EmailMessage decryptEmail(SourcedAsymmetricCipherText cipherText) {
+    private CompletableFuture<EmailMessage> decryptEmail(SourcedAsymmetricCipherText cipherText) {
         return cipherText.decrypt(encryptionKeys.secretBoxingKey, EmailMessage::fromCbor);
     }
 
-    private byte[] decryptAttachment(SourcedAsymmetricCipherText cipherText) {
+    private CompletableFuture<byte[]> decryptAttachment(SourcedAsymmetricCipherText cipherText) {
         return cipherText.decrypt(encryptionKeys.secretBoxingKey, c -> ((CborObject.CborByteArray)c).value);
     }
 
@@ -127,16 +127,12 @@ public class EmailClient {
     }
 
     public CompletableFuture<List<EmailMessage>> listFiles(Path internalPath) {
-        List<EmailMessage> res = new ArrayList<>();
         return emailApp.dirInternal(internalPath, null)
                 .thenApply(filenames -> filenames.stream().filter(n -> n.endsWith(".cbor")).collect(Collectors.toList()))
-                .thenCompose(filenames -> Futures.reduceAll(filenames, true,
-                        (r, n) -> emailApp.readInternal(internalPath.resolve(n), null)
+                .thenCompose(filenames -> Futures.combineAllInOrder(filenames.stream()
+                        .map(n -> emailApp.readInternal(internalPath.resolve(n), null)
                                 .thenApply(bytes -> SourcedAsymmetricCipherText.fromCbor(CborObject.fromByteArray(bytes)))
-                                .thenApply(this::decryptEmail)
-                                .thenApply(m -> res.add(m)),
-                        (a, b) -> b))
-                .thenApply(x -> res);
+                                .thenCompose(this::decryptEmail)).collect(Collectors.toList())));
     }
 
     @JsMethod
@@ -169,11 +165,12 @@ public class EmailClient {
 
             return Futures.asyncExceptionally(() -> emailApp.readInternal(srcFilePath, null).thenCompose(bytes -> {
                         SourcedAsymmetricCipherText cipherText = SourcedAsymmetricCipherText.fromCbor(CborObject.fromByteArray(bytes));
-                        return emailApp.writeInternal(destFilePath, decryptAttachment(cipherText), null).thenCompose(res ->
-                                emailApp.deleteInternal(srcFilePath, null).thenCompose(bool ->
+                        return decryptAttachment(cipherText)
+                                .thenCompose(decryptedAttachment -> emailApp.writeInternal(destFilePath, decryptedAttachment, null))
+                                .thenCompose(res -> emailApp.deleteInternal(srcFilePath, null).thenCompose(bool ->
                                         reduceMovingAttachmentsToFolder(attachments, folder, index + 1, future)
                                 )
-                        );
+                                );
                     }),
                     // If the read failed because it has already been copied, we have nothing to do
                     t -> emailApp.readInternal(destFilePath, null).thenApply(x -> true));

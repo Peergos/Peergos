@@ -1748,8 +1748,8 @@ public class UserContext {
      * @return
      */
     private CompletableFuture<Boolean> blindAndSendFollowRequest(PublicKeyHash targetIdentity, PublicBoxingKey targetBoxer, FollowRequest req) {
-        BlindFollowRequest blindRequest = BlindFollowRequest.build(targetBoxer, req, crypto);
-        return network.social.sendFollowRequest(targetIdentity, blindRequest.serialize());
+        return BlindFollowRequest.build(targetBoxer, req, crypto)
+                .thenCompose(blindRequest -> network.social.sendFollowRequest(targetIdentity, blindRequest.serialize()));
     }
 
     public CompletableFuture<Boolean> sendFollowRequest(String targetUsername, SymmetricKey requestedKey) {
@@ -2291,94 +2291,93 @@ public class UserContext {
     private CompletableFuture<List<FollowRequestWithCipherText>> processFollowRequests(List<BlindFollowRequest> all) {
         return getSharingFolder().thenCompose(sharing ->
                 getFollowerRoots(false).thenCompose(followerRoots -> getPendingOutgoingFollowRequests()
-                        .thenCompose(pendingOut -> {
-                    List<FollowRequestWithCipherText> withDecrypted = all.stream()
-                            .map(b -> new FollowRequestWithCipherText(b.followRequest.decrypt(boxer.secretBoxingKey, b.dummySource, FollowRequest::fromCbor), b))
-                            .collect(Collectors.toList());
+                        .thenCompose(pendingOut -> Futures.combineAllInOrder(all.stream()
+                                .map(b -> b.followRequest.decrypt(boxer.secretBoxingKey, b.dummySource, FollowRequest::fromCbor).thenApply(decrypted -> new FollowRequestWithCipherText(decrypted, b)))
+                                .collect(Collectors.toList())).thenCompose(withDecrypted -> {
 
-                    List<FollowRequestWithCipherText> replies = withDecrypted.stream()
-                            .filter(p -> pendingOut.pendingOutgoingFollowRequests.contains(p.req.entry.get().ownerName))
-                            .collect(Collectors.toList());
+                            List<FollowRequestWithCipherText> replies = withDecrypted.stream()
+                                    .filter(p -> pendingOut.pendingOutgoingFollowRequests.contains(p.req.entry.get().ownerName))
+                                    .collect(Collectors.toList());
 
-                    BiFunction<TrieNode, FollowRequestWithCipherText, CompletableFuture<TrieNode>> addToStatic = (root, p) -> {
-                        FollowRequest freq = p.req;
-                        if (! Arrays.equals(freq.entry.get().pointer.rBaseKey.serialize(), SymmetricKey.createNull().serialize())) {
-                            CompletableFuture<TrieNode> updatedRoot = freq.entry.get().ownerName.equals(username) ?
-                                    CompletableFuture.completedFuture(root) : // ignore responses claiming to be owned by us
-                                    addExternalEntryPoint(freq.entry.get())
-                                    .thenCompose(x -> removeFromPendingOutgoing(freq.entry.get().ownerName))
-                                    .thenCompose(x -> retrieveAndAddEntryPointToTrie(root, freq.entry.get()));
-                            return updatedRoot.thenCompose(newRoot -> {
-                                entrie = newRoot;
-                                // clear their response follow req too
+                            BiFunction<TrieNode, FollowRequestWithCipherText, CompletableFuture<TrieNode>> addToStatic = (root, p) -> {
+                                FollowRequest freq = p.req;
+                                if (! Arrays.equals(freq.entry.get().pointer.rBaseKey.serialize(), SymmetricKey.createNull().serialize())) {
+                                    CompletableFuture<TrieNode> updatedRoot = freq.entry.get().ownerName.equals(username) ?
+                                            CompletableFuture.completedFuture(root) : // ignore responses claiming to be owned by us
+                                            addExternalEntryPoint(freq.entry.get())
+                                                    .thenCompose(x -> removeFromPendingOutgoing(freq.entry.get().ownerName))
+                                                    .thenCompose(x -> retrieveAndAddEntryPointToTrie(root, freq.entry.get()));
+                                    return updatedRoot.thenCompose(newRoot -> {
+                                        entrie = newRoot;
+                                        // clear their response follow req too
+                                        return signer.secret.signMessage(p.cipher.serialize())
+                                                .thenCompose(signed -> network.social.removeFollowRequest(signer.publicKeyHash, signed))
+                                                .thenApply(b -> newRoot);
+                                    });
+                                }
                                 return signer.secret.signMessage(p.cipher.serialize())
                                         .thenCompose(signed -> network.social.removeFollowRequest(signer.publicKeyHash, signed))
-                                        .thenApply(b -> newRoot);
-                            });
-                        }
-                        return signer.secret.signMessage(p.cipher.serialize())
-                                .thenCompose(signed -> network.social.removeFollowRequest(signer.publicKeyHash, signed))
-                                .thenApply(b -> root);
-                    };
+                                        .thenApply(b -> root);
+                            };
 
-                    BiFunction<TrieNode, FollowRequestWithCipherText, CompletableFuture<TrieNode>> mozart = (trie, p) -> {
-                        FollowRequest freq = p.req;
-                        // delete our folder if they didn't reciprocate
-                        String theirName = freq.entry.get().ownerName;
-                        FileWrapper ourDirForThem = followerRoots.get(theirName);
-                        byte[] ourKeyForThem = ourDirForThem.getKey().serialize();
-                        Optional<byte[]> keyFromResponse = freq.key.map(Cborable::serialize);
-                        if (keyFromResponse.isEmpty()) {
-                            // They didn't reciprocate (follow us)
-                            CompletableFuture<FileWrapper> removeDir = ourDirForThem.remove(sharing,
-                                    PathUtil.get(username, SHARED_DIR_NAME, theirName), this);
+                            BiFunction<TrieNode, FollowRequestWithCipherText, CompletableFuture<TrieNode>> mozart = (trie, p) -> {
+                                FollowRequest freq = p.req;
+                                // delete our folder if they didn't reciprocate
+                                String theirName = freq.entry.get().ownerName;
+                                FileWrapper ourDirForThem = followerRoots.get(theirName);
+                                byte[] ourKeyForThem = ourDirForThem.getKey().serialize();
+                                Optional<byte[]> keyFromResponse = freq.key.map(Cborable::serialize);
+                                if (keyFromResponse.isEmpty()) {
+                                    // They didn't reciprocate (follow us)
+                                    CompletableFuture<FileWrapper> removeDir = ourDirForThem.remove(sharing,
+                                            PathUtil.get(username, SHARED_DIR_NAME, theirName), this);
 
-                            return removeDir.thenCompose(x -> removeFromPendingOutgoing(freq.entry.get().ownerName))
-                                    .thenCompose(b -> addToStatic.apply(trie, p));
-                        } else if (freq.entry.get().pointer.isNull()) {
-                            // They reciprocated, but didn't accept (they follow us, but we can't follow them)
-                            // add entry point to static data to signify their acceptance
-                            // and finally remove the follow request
-                            EntryPoint entryWeSentToThem = new EntryPoint(ourDirForThem.getPointer().capability.readOnly(),
-                                    username);
-                            // add them to followers group
-                            return getGroupUid(SocialState.FOLLOWERS_GROUP_NAME)
-                                    .thenCompose(followersUidOpt -> shareReadAccessWith(PathUtil.get(username,
-                                            SHARED_DIR_NAME, followersUidOpt.get()), Collections.singleton(theirName)))
-                                    .thenCompose(x -> signer.secret.signMessage(p.cipher.serialize())
-                                            .thenCompose(signed -> network.social.removeFollowRequest(signer.publicKeyHash, signed)))
-                                    .thenApply(x -> trie);
-                        } else {
-                            // they accepted and reciprocated
-                            // add entry point to static data to signify their acceptance
-                            EntryPoint entryWeSentToThem = new EntryPoint(ourDirForThem.getPointer().capability.readOnly(),
-                                    username);
+                                    return removeDir.thenCompose(x -> removeFromPendingOutgoing(freq.entry.get().ownerName))
+                                            .thenCompose(b -> addToStatic.apply(trie, p));
+                                } else if (freq.entry.get().pointer.isNull()) {
+                                    // They reciprocated, but didn't accept (they follow us, but we can't follow them)
+                                    // add entry point to static data to signify their acceptance
+                                    // and finally remove the follow request
+                                    EntryPoint entryWeSentToThem = new EntryPoint(ourDirForThem.getPointer().capability.readOnly(),
+                                            username);
+                                    // add them to followers group
+                                    return getGroupUid(SocialState.FOLLOWERS_GROUP_NAME)
+                                            .thenCompose(followersUidOpt -> shareReadAccessWith(PathUtil.get(username,
+                                                    SHARED_DIR_NAME, followersUidOpt.get()), Collections.singleton(theirName)))
+                                            .thenCompose(x -> signer.secret.signMessage(p.cipher.serialize())
+                                                    .thenCompose(signed -> network.social.removeFollowRequest(signer.publicKeyHash, signed)))
+                                            .thenApply(x -> trie);
+                                } else {
+                                    // they accepted and reciprocated
+                                    // add entry point to static data to signify their acceptance
+                                    EntryPoint entryWeSentToThem = new EntryPoint(ourDirForThem.getPointer().capability.readOnly(),
+                                            username);
 
-                            // add new entry point to tree root
-                            EntryPoint entry = freq.entry.get();
-                            if (entry.ownerName.equals(username))
-                                throw new IllegalStateException("Received a follow request claiming to be owned by us!");
-                            // add them to followers and friends group
-                            return getGroupUid(SocialState.FOLLOWERS_GROUP_NAME)
-                                    .thenCompose(followersUidOpt -> shareReadAccessWith(PathUtil.get(username,
-                                            SHARED_DIR_NAME, followersUidOpt.get()), Collections.singleton(theirName)))
-                                    .thenCompose(x -> getGroupUid(SocialState.FRIENDS_GROUP_NAME)
-                                            .thenCompose(friendsUidOpt -> shareReadAccessWith(PathUtil.get(username,
-                                                    SHARED_DIR_NAME, friendsUidOpt.get()), Collections.singleton(theirName))))
-                                    .thenCompose(x -> addToStatic.apply(trie, p.withEntryPoint(entry)))
-                                    .exceptionally(t -> trie);
-                        }
-                    };
-                    List<FollowRequestWithCipherText> initialRequests = withDecrypted.stream()
-                            .filter(p -> !followerRoots.containsKey(p.req.entry.get().ownerName))
-                            .collect(Collectors.toList());
-                    return Futures.reduceAll(replies, entrie, mozart, (a, b) -> a)
-                            .thenApply(newRoot -> {
-                                entrie = newRoot;
-                                return initialRequests;
-                            });
-                }))
-        );
+                                    // add new entry point to tree root
+                                    EntryPoint entry = freq.entry.get();
+                                    if (entry.ownerName.equals(username))
+                                        throw new IllegalStateException("Received a follow request claiming to be owned by us!");
+                                    // add them to followers and friends group
+                                    return getGroupUid(SocialState.FOLLOWERS_GROUP_NAME)
+                                            .thenCompose(followersUidOpt -> shareReadAccessWith(PathUtil.get(username,
+                                                    SHARED_DIR_NAME, followersUidOpt.get()), Collections.singleton(theirName)))
+                                            .thenCompose(x -> getGroupUid(SocialState.FRIENDS_GROUP_NAME)
+                                                    .thenCompose(friendsUidOpt -> shareReadAccessWith(PathUtil.get(username,
+                                                            SHARED_DIR_NAME, friendsUidOpt.get()), Collections.singleton(theirName))))
+                                            .thenCompose(x -> addToStatic.apply(trie, p.withEntryPoint(entry)))
+                                            .exceptionally(t -> trie);
+                                }
+                            };
+                            List<FollowRequestWithCipherText> initialRequests = withDecrypted.stream()
+                                    .filter(p -> !followerRoots.containsKey(p.req.entry.get().ownerName))
+                                    .collect(Collectors.toList());
+                            return Futures.reduceAll(replies, entrie, mozart, (a, b) -> a)
+                                    .thenApply(newRoot -> {
+                                        entrie = newRoot;
+                                        return initialRequests;
+                                    });
+                        }))
+                ));
     }
 
     @JsMethod

@@ -6,6 +6,7 @@ import peergos.shared.crypto.asymmetric.curve25519.Curve25519SecretKey;
 import peergos.shared.crypto.asymmetric.mlkem.HybridCurve25519MLKEMSecretKey;
 
 import java.io.*;
+import java.util.concurrent.CompletableFuture;
 
 public interface SecretBoxingKey extends Cborable {
 
@@ -15,7 +16,7 @@ public interface SecretBoxingKey extends Cborable {
     byte[] getSecretBoxingKey();
 
     @JsMethod
-    byte[] decryptMessage(byte[] cipher, PublicBoxingKey from);
+    CompletableFuture<byte[]> decryptMessage(byte[] cipher, PublicBoxingKey from);
 
     static SecretBoxingKey fromCbor(Cborable cbor) {
         if (! (cbor instanceof CborObject.CborList))

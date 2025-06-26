@@ -44,9 +44,9 @@ public class MLKEMTests {
 
         byte[] msg = "G'day mate! This is hopefully post quantum secure!".getBytes(StandardCharsets.UTF_8);
 
-        byte[] toSend = bob.publicBoxingKey.encryptMessageFor(msg, alice.secretBoxingKey);
+        byte[] toSend = bob.publicBoxingKey.encryptMessageFor(msg, alice.secretBoxingKey).join();
 
-        byte[] decrypted = bob.secretBoxingKey.decryptMessage(toSend, alice.publicBoxingKey);
+        byte[] decrypted = bob.secretBoxingKey.decryptMessage(toSend, alice.publicBoxingKey).join();
         Assert.assertArrayEquals(decrypted, msg);
     }
 
@@ -57,12 +57,12 @@ public class MLKEMTests {
 
         byte[] msg = "G'day mate! This is hopefully post quantum secure!".getBytes(StandardCharsets.UTF_8);
 
-        byte[] toSend = bob.publicBoxingKey.encryptMessageFor(msg, alice.secretBoxingKey);
+        byte[] toSend = bob.publicBoxingKey.encryptMessageFor(msg, alice.secretBoxingKey).join();
         for (int i=20; i < toSend.length; i++) {
             toSend[i] ^= 1;
 
             try {
-                byte[] decrypted = bob.secretBoxingKey.decryptMessage(toSend, alice.publicBoxingKey);
+                byte[] decrypted = bob.secretBoxingKey.decryptMessage(toSend, alice.publicBoxingKey).join();
             } catch (RuntimeException e) {}
             toSend[i] ^= 1;
         }

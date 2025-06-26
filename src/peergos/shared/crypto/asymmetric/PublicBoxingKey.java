@@ -12,6 +12,7 @@ import peergos.shared.util.*;
 import java.io.*;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 
 public interface PublicBoxingKey extends Cborable {
     Map<Integer, Type> byValue = new HashMap<>();
@@ -56,7 +57,7 @@ public interface PublicBoxingKey extends Cborable {
     byte[] getPublicBoxingKey();
 
     @JsMethod
-    byte[] encryptMessageFor(byte[] input, SecretBoxingKey from);
+    CompletableFuture<byte[]> encryptMessageFor(byte[] input, SecretBoxingKey from);
 
     @JsMethod
     byte[] createNonce();
