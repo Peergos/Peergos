@@ -15,24 +15,27 @@ import peergos.shared.crypto.asymmetric.mlkem.Mlkem;
 import peergos.shared.crypto.asymmetric.mlkem.MlkemKeyPair;
 import peergos.shared.crypto.asymmetric.mlkem.MlkemPublicKey;
 import peergos.shared.crypto.asymmetric.mlkem.MlkemSecretKey;
+import peergos.shared.util.Futures;
+
+import java.util.concurrent.CompletableFuture;
 
 public class JavaMlkem implements Mlkem {
 
     private static FIPS203 fips203 = MimicloneFIPS203.create(ParameterSet.ML_KEM_1024);
 
     @Override
-    public MlkemKeyPair generateKeyPair() {
+    public CompletableFuture<MlkemKeyPair> generateKeyPair() {
         KeyPair keyPair = fips203.generateKeyPair();
         MlkemPublicKey publicKey = new MlkemPublicKey(keyPair.getEncapsulationKey().getBytes(), this);
         MlkemSecretKey secretKey = new MlkemSecretKey(keyPair.getDecapsulationKey().getBytes(), this);
-        return new MlkemKeyPair(publicKey, secretKey);
+        return Futures.of(new MlkemKeyPair(publicKey, secretKey));
     }
 
     @Override
-    public Encapsulation encapsulate(byte[] publicKeyBytes) {
+    public CompletableFuture<Encapsulation> encapsulate(byte[] publicKeyBytes) {
         EncapsulationKey publicKey = MLKEMEncapsulationKey.create(publicKeyBytes);
         peergos.server.crypto.asymmetric.mlkem.fips203.encaps.Encapsulation encapsulated = fips203.encapsulate(publicKey);
-        return new Encapsulation(encapsulated.getSharedSecretKey().getBytes(), encapsulated.getCipherText().getBytes());
+        return Futures.of(new Encapsulation(encapsulated.getSharedSecretKey().getBytes(), encapsulated.getCipherText().getBytes()));
     }
 
     /**
@@ -41,9 +44,9 @@ public class JavaMlkem implements Mlkem {
      * @return sharedSecret
      */
     @Override
-    public byte[] decapsulate(byte[] cipherTextBytes, byte[] secretKeyBytes) {
+    public CompletableFuture<byte[]> decapsulate(byte[] cipherTextBytes, byte[] secretKeyBytes) {
         CipherText cipherText = MLKEMCipherText.create(cipherTextBytes);
         DecapsulationKey secretKey = MLKEMDecapsulationKey.create(secretKeyBytes);
-        return fips203.decapsulate(secretKey, cipherText).getBytes();
+        return Futures.of(fips203.decapsulate(secretKey, cipherText).getBytes());
     }
 }

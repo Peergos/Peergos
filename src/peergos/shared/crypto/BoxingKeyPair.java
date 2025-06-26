@@ -6,10 +6,10 @@ import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.asymmetric.curve25519.*;
 import peergos.shared.crypto.asymmetric.mlkem.HybridCurve25519MLKEMPublicKey;
 import peergos.shared.crypto.asymmetric.mlkem.HybridCurve25519MLKEMSecretKey;
-import peergos.shared.crypto.asymmetric.mlkem.MlkemKeyPair;
 import peergos.shared.crypto.random.*;
 
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
 
 public class BoxingKeyPair implements Cborable
 {
@@ -38,15 +38,15 @@ public class BoxingKeyPair implements Cborable
         return new BoxingKeyPair(pub, secret);
     }
 
-    public static BoxingKeyPair randomHybrid(Crypto crypto) {
+    public static CompletableFuture<BoxingKeyPair> randomHybrid(Crypto crypto) {
         BoxingKeyPair curve25519 = randomCurve25519(crypto.random, crypto.boxer);
-        MlkemKeyPair mlkemKeyPair = crypto.mlkem.generateKeyPair();
-
-        HybridCurve25519MLKEMPublicKey hybridPublic = new HybridCurve25519MLKEMPublicKey(
-                (Curve25519PublicKey) curve25519.publicBoxingKey, mlkemKeyPair.publicKey, crypto);
-        HybridCurve25519MLKEMSecretKey hybridSecret = new HybridCurve25519MLKEMSecretKey(
-                (Curve25519SecretKey) curve25519.secretBoxingKey, mlkemKeyPair.secretKey, crypto);
-        return new BoxingKeyPair(hybridPublic, hybridSecret);
+        return crypto.mlkem.generateKeyPair().thenApply(mlkemKeyPair -> {
+            HybridCurve25519MLKEMPublicKey hybridPublic = new HybridCurve25519MLKEMPublicKey(
+                    (Curve25519PublicKey) curve25519.publicBoxingKey, mlkemKeyPair.publicKey, crypto);
+            HybridCurve25519MLKEMSecretKey hybridSecret = new HybridCurve25519MLKEMSecretKey(
+                    (Curve25519SecretKey) curve25519.secretBoxingKey, mlkemKeyPair.secretKey, crypto);
+            return new BoxingKeyPair(hybridPublic, hybridSecret);
+        });
     }
 
     public static BoxingKeyPair randomCurve25519(SafeRandom random, Curve25519 boxer) {

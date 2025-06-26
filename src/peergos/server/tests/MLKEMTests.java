@@ -39,8 +39,8 @@ public class MLKEMTests {
 
     @Test
     public void hybrid() {
-        BoxingKeyPair alice = BoxingKeyPair.randomHybrid(crypto);
-        BoxingKeyPair bob = BoxingKeyPair.randomHybrid(crypto);
+        BoxingKeyPair alice = BoxingKeyPair.randomHybrid(crypto).join();
+        BoxingKeyPair bob = BoxingKeyPair.randomHybrid(crypto).join();
 
         byte[] msg = "G'day mate! This is hopefully post quantum secure!".getBytes(StandardCharsets.UTF_8);
 
@@ -52,8 +52,8 @@ public class MLKEMTests {
 
     @Test
     public void hybridMsgTamper() {
-        BoxingKeyPair alice = BoxingKeyPair.randomHybrid(crypto);
-        BoxingKeyPair bob = BoxingKeyPair.randomHybrid(crypto);
+        BoxingKeyPair alice = BoxingKeyPair.randomHybrid(crypto).join();
+        BoxingKeyPair bob = BoxingKeyPair.randomHybrid(crypto).join();
 
         byte[] msg = "G'day mate! This is hopefully post quantum secure!".getBytes(StandardCharsets.UTF_8);
 

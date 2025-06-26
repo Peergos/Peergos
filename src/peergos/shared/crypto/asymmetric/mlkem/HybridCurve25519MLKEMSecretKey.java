@@ -42,13 +42,11 @@ public class HybridCurve25519MLKEMSecretKey implements SecretBoxingKey {
         if (!(from instanceof HybridCurve25519MLKEMPublicKey))
             throw new IllegalStateException("Didn't provide a HybridCurve25519MLKEMPublicKey!");
         HybridCipherText hybrid = HybridCipherText.fromCbor(CborObject.fromByteArray(hybridCipher));
-        return curve25519.decryptMessage(hybrid.curve25519Ciphertext, ((HybridCurve25519MLKEMPublicKey) from).curve25519).thenCompose(curve25519SharedSecret -> {
-            byte[] mlkemSharedSecret = mlkem.decapsulate(hybrid.mlkemCipherText);
-            return crypto.hasher.hkdfKey(ArrayOps.concat(curve25519SharedSecret, mlkemSharedSecret)).thenApply(combinedSecret -> {
-                TweetNaClKey combinedSecretKey = new TweetNaClKey(combinedSecret, false, crypto.symmetricProvider, crypto.random);
-                return combinedSecretKey.decrypt(hybrid.encryptedInput, hybrid.nonce);
-            });
-        });
+        return curve25519.decryptMessage(hybrid.curve25519Ciphertext, ((HybridCurve25519MLKEMPublicKey) from).curve25519)
+                .thenCompose(curve25519SharedSecret -> mlkem.decapsulate(hybrid.mlkemCipherText)
+                        .thenCompose(mlkemSharedSecret -> crypto.hasher.hkdfKey(ArrayOps.concat(curve25519SharedSecret, mlkemSharedSecret))
+                                .thenApply(combinedSecret -> new TweetNaClKey(combinedSecret, false, crypto.symmetricProvider, crypto.random))
+                                .thenApply(combinedSecretKey -> combinedSecretKey.decrypt(hybrid.encryptedInput, hybrid.nonce))));
     }
 
     @Override

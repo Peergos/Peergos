@@ -7,6 +7,7 @@ import java.util.Arrays;
 import java.util.Objects;
 import java.util.SortedMap;
 import java.util.TreeMap;
+import java.util.concurrent.CompletableFuture;
 
 public class MlkemPublicKey implements Cborable {
 
@@ -18,7 +19,7 @@ public class MlkemPublicKey implements Cborable {
         this.implementation = implementation;
     }
 
-    public Mlkem.Encapsulation encapsulate() {
+    public CompletableFuture<Mlkem.Encapsulation> encapsulate() {
         return implementation.encapsulate(keyBytes);
     }
 

@@ -21,7 +21,7 @@ public class UserUtil {
         if (password.equals(username))
             return Futures.errored(new IllegalStateException("Your password cannot be the same as your username!"));
         CompletableFuture<byte[]> fut = crypto.hasher.hashToKeyBytes(username + algorithm.getExtraSalt(), password, algorithm);
-        return fut.thenApply(keyBytes -> {
+        return fut.thenCompose(keyBytes -> {
             byte[] signBytesSeed = Arrays.copyOfRange(keyBytes, 0, 32);
             boolean hasBoxer = algorithm.generateBoxerAndIdentity();
             byte[] secretBoxBytes = hasBoxer ? Arrays.copyOfRange(keyBytes, 32, 64) : crypto.random.randomBytes(32);
@@ -38,13 +38,12 @@ public class UserUtil {
 	
             SigningKeyPair signingKeyPair = new SigningKeyPair(new Ed25519PublicKey(publicSignBytes, crypto.signer), new Ed25519SecretKey(secretSignBytes, crypto.signer));
 
-            BoxingKeyPair boxingKeyPair = hasBoxer ?
-                    new BoxingKeyPair(new Curve25519PublicKey(publicBoxBytes, crypto.boxer, crypto.random), new Curve25519SecretKey(secretBoxBytes, crypto.boxer)) :
-                    BoxingKeyPair.randomHybrid(crypto);
-
-            SymmetricKey root =  new TweetNaClKey(rootKeyBytes, false, crypto.symmetricProvider, crypto.random);
-
-            return new UserWithRoot(signingKeyPair, boxingKeyPair, root);
+            return (hasBoxer ?
+                    Futures.of(new BoxingKeyPair(new Curve25519PublicKey(publicBoxBytes, crypto.boxer, crypto.random), new Curve25519SecretKey(secretBoxBytes, crypto.boxer))) :
+                    BoxingKeyPair.randomHybrid(crypto)).thenApply(boxingKeyPair -> {
+                SymmetricKey root = new TweetNaClKey(rootKeyBytes, false, crypto.symmetricProvider, crypto.random);
+                return new UserWithRoot(signingKeyPair, boxingKeyPair, root);
+            });
         });
     }
 }

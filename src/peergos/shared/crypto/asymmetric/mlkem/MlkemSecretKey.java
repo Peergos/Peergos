@@ -5,6 +5,7 @@ import peergos.shared.cbor.Cborable;
 
 import java.util.SortedMap;
 import java.util.TreeMap;
+import java.util.concurrent.CompletableFuture;
 
 public class MlkemSecretKey implements Cborable {
 
@@ -16,7 +17,7 @@ public class MlkemSecretKey implements Cborable {
         this.implementation = implementation;
     }
 
-    public byte[] decapsulate(byte[] cipherText) {
+    public CompletableFuture<byte[]> decapsulate(byte[] cipherText) {
         return implementation.decapsulate(cipherText, secretKeyBytes);
     }
 

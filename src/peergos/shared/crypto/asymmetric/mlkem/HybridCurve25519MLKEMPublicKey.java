@@ -42,16 +42,17 @@ public class HybridCurve25519MLKEMPublicKey implements PublicBoxingKey {
         if (!(from instanceof HybridCurve25519MLKEMSecretKey))
             throw new IllegalStateException("Didn't provide a HybridCurve25519MLKEMSecretKey!");
         byte[] curve25519SharedSecret = crypto.random.randomBytes(32);
-        Mlkem.Encapsulation encapsulated = mlkem.encapsulate();
-        byte[] mlkemSharedSecret = encapsulated.sharedSecret;
-        return crypto.hasher.hkdfKey(ArrayOps.concat(curve25519SharedSecret, mlkemSharedSecret)).thenCompose(combinedSecret -> {
-            TweetNaClKey combinedSecretKey = new TweetNaClKey(combinedSecret, false, crypto.symmetricProvider, crypto.random);
-            return curve25519.encryptMessageFor(curve25519SharedSecret, ((HybridCurve25519MLKEMSecretKey) from).curve25519).thenApply(curve25519Ciphertext -> {
-                byte[] mlkemCipherText = encapsulated.cipherText;
-                byte[] symmetricNonce = combinedSecretKey.createNonce();
-                byte[] encryptedInput = combinedSecretKey.encrypt(input, symmetricNonce);
-                // now combine the 3 ciphertexts with cbor
-                return new HybridCipherText(curve25519Ciphertext, mlkemCipherText, encryptedInput, symmetricNonce).serialize();
+        return mlkem.encapsulate().thenCompose(encapsulated -> {
+            byte[] mlkemSharedSecret = encapsulated.sharedSecret;
+            return crypto.hasher.hkdfKey(ArrayOps.concat(curve25519SharedSecret, mlkemSharedSecret)).thenCompose(combinedSecret -> {
+                TweetNaClKey combinedSecretKey = new TweetNaClKey(combinedSecret, false, crypto.symmetricProvider, crypto.random);
+                return curve25519.encryptMessageFor(curve25519SharedSecret, ((HybridCurve25519MLKEMSecretKey) from).curve25519).thenApply(curve25519Ciphertext -> {
+                    byte[] mlkemCipherText = encapsulated.cipherText;
+                    byte[] symmetricNonce = combinedSecretKey.createNonce();
+                    byte[] encryptedInput = combinedSecretKey.encrypt(input, symmetricNonce);
+                    // now combine the 3 ciphertexts with cbor
+                    return new HybridCipherText(curve25519Ciphertext, mlkemCipherText, encryptedInput, symmetricNonce).serialize();
+                });
             });
         });
     }
