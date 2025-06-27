@@ -40,6 +40,7 @@ public interface Hasher {
     byte[] hmacInfo = ArrayOps.concat("peergos".getBytes(StandardCharsets.UTF_8), new byte[]{1});
 
     default CompletableFuture<byte[]> hkdfKey(byte[] ikm) {
+        // See https://soatok.blog/2021/11/17/understanding-hkdf/ for why salt is the secret key to hmac
         byte[] salt = new byte[32];
         return hmacSha256(salt, ikm)
                 .thenCompose(prk -> hmacSha256(prk, hmacInfo));

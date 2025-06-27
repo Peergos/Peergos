@@ -4,6 +4,7 @@ import java.util.logging.*;
 import jsinterop.annotations.JsMethod;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.*;
+import peergos.shared.crypto.asymmetric.mlkem.HybridCurve25519MLKEMPublicKey;
 import peergos.shared.crypto.symmetric.SymmetricKey;
 
 import java.util.*;
@@ -64,6 +65,12 @@ public class UserStaticData implements Cborable {
             this.entries = entries;
             this.identity = identity;
             this.boxer = boxer;
+        }
+
+        public EntryPoints withBoxer(BoxingKeyPair newBoxer) {
+            if (!(newBoxer.publicBoxingKey instanceof HybridCurve25519MLKEMPublicKey))
+                throw new IllegalStateException("You can only upgrade to post-quantum friending!");
+            return new EntryPoints(version, entries, identity, Optional.of(newBoxer));
         }
 
         public EntryPoints addEntryPoint(EntryPoint entry) {

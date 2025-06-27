@@ -3,6 +3,7 @@ package peergos.shared.user;
 import java.io.*;
 import java.util.logging.*;
 
+import peergos.shared.crypto.asymmetric.mlkem.HybridCurve25519MLKEMPublicKey;
 import peergos.shared.fingerprint.*;
 import peergos.shared.inode.*;
 import peergos.shared.io.ipfs.Cid;
@@ -347,6 +348,49 @@ public class UserContext {
                             return getAndVerifyServerIdChain(pkiCurrent, latest)
                                     .thenCompose(x -> updateHostInPki(username, signer, LocalDate.now().plusMonths(2), latest, crypto.hasher, network));
                         }));
+    }
+
+    @JsMethod
+    public boolean isPostQuantum() {
+        return boxer.publicBoxingKey instanceof HybridCurve25519MLKEMPublicKey;
+    }
+
+    /**
+     *
+     * @return if we changed our boxing key
+     */
+    @JsMethod
+    public CompletableFuture<Boolean> ensurePostQuantum(String password,
+                                                        Function<MultiFactorAuthRequest, CompletableFuture<MultiFactorAuthResponse>> mfa) {
+        if (boxer.publicBoxingKey instanceof HybridCurve25519MLKEMPublicKey)
+            return Futures.of(false);
+        return getSocialState().thenCompose(social -> {
+            if (! social.pendingIncoming.isEmpty())
+                return Futures.of(false);
+            return getWriterDataCbor(network, username).thenCompose(pair -> {
+                SecretGenerationAlgorithm algorithm = WriterData.fromCbor(pair.right).generationAlgorithm
+                        .orElseThrow(() -> new IllegalStateException("No login algorithm specified in user data!"));
+
+                return UserUtil.generateUser(username, password, crypto, algorithm)
+                        .thenCompose(generatedCredentials -> {
+                            WriterData userData = WriterData.fromCbor(pair.right);
+                            boolean legacyAccount = userData.staticData.isPresent();
+                            SymmetricKey loginRoot = generatedCredentials.getRoot();
+                            PublicSigningKey loginPub = generatedCredentials.getUser().publicSigningKey;
+                            SecretSigningKey loginSecret = generatedCredentials.getUser().secretSigningKey;
+                            return (legacyAccount ?
+                                    Futures.of(userData.staticData.get()) :
+                                    getLoginData(username, loginPub, loginSecret, mfa, false, network))
+                                    .thenCompose(entryData -> BoxingKeyPair.randomHybrid(crypto)
+                                            .thenCompose(newBoxer -> writeSynchronizer.applyComplexUpdate(signer.publicKeyHash, signer,
+                                                    (s, c) -> IpfsTransaction.call(signer.publicKeyHash,
+                                                            tid -> updateBoxerAndCommit(s, username, newBoxer, entryData,
+                                                                    loginPub, signer, loginRoot, c, network, tid), network.dhtClient)))
+                                            .thenApply(x -> true)
+                                    );
+                        });
+            });
+        });
     }
 
     public CompletableFuture<Boolean> getAndVerifyServerIdChain(Multihash from, Multihash to) {
@@ -2241,6 +2285,29 @@ public class UserContext {
         } else {
             // legacy account
             Optional<UserStaticData> updated = wd.staticData.map(sd -> new UserStaticData(sd.getData(rootKey).addEntryPoint(entry), rootKey));
+            return c.commit(owner.publicKeyHash, owner, wd.withStaticData(updated), cwd, tid);
+        }
+    }
+
+    private static CompletableFuture<Snapshot> updateBoxerAndCommit(Snapshot version,
+                                                                    String username,
+                                                                    BoxingKeyPair newBoxer,
+                                                                    UserStaticData current,
+                                                                    PublicSigningKey loginPublic,
+                                                                    SigningPrivateKeyAndPublicHash owner,
+                                                                    SymmetricKey rootKey,
+                                                                    Committer c,
+                                                                    NetworkAccess network,
+                                                                    TransactionId tid) {
+        CommittedWriterData cwd = version.get(owner.publicKeyHash);
+        WriterData wd = cwd.props.get();
+        if (wd.staticData.isEmpty()) {
+            UserStaticData updated = new UserStaticData(current.getData(rootKey).withBoxer(newBoxer), rootKey);
+            return network.account.setLoginData(new LoginData(username, updated, loginPublic, Optional.empty()), owner)
+                    .thenApply(b -> version);
+        } else {
+            // legacy account
+            Optional<UserStaticData> updated = wd.staticData.map(sd -> new UserStaticData(sd.getData(rootKey).withBoxer(newBoxer), rootKey));
             return c.commit(owner.publicKeyHash, owner, wd.withStaticData(updated), cwd, tid);
         }
     }
