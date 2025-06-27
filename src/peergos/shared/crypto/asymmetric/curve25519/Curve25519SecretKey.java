@@ -3,8 +3,10 @@ package peergos.shared.crypto.asymmetric.curve25519;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.asymmetric.PublicBoxingKey;
 import peergos.shared.crypto.asymmetric.SecretBoxingKey;
+import peergos.shared.util.Futures;
 
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
 
 public class Curve25519SecretKey implements SecretBoxingKey {
 
@@ -40,10 +42,10 @@ public class Curve25519SecretKey implements SecretBoxingKey {
         return Arrays.copyOfRange(secretKey, 0, secretKey.length);
     }
 
-    public byte[] decryptMessage(byte[] cipher, PublicBoxingKey from) {
+    public CompletableFuture<byte[]> decryptMessage(byte[] cipher, PublicBoxingKey from) {
         byte[] nonce = Arrays.copyOfRange(cipher, cipher.length - Curve25519PublicKey.BOX_NONCE_BYTES, cipher.length);
         cipher = Arrays.copyOfRange(cipher, 0, cipher.length - Curve25519PublicKey.BOX_NONCE_BYTES);
-        return implementation.crypto_box_open(cipher, nonce, from.getPublicBoxingKey(), secretKey);
+        return Futures.of(implementation.crypto_box_open(cipher, nonce, from.getPublicBoxingKey(), secretKey));
     }
 
     @Override
@@ -51,7 +53,7 @@ public class Curve25519SecretKey implements SecretBoxingKey {
         return new CborObject.CborList(Arrays.asList(new CborObject.CborLong(type().value), new CborObject.CborByteArray(secretKey)));
     }
 
-    public static SecretBoxingKey fromCbor(Cborable cbor, Curve25519 provider) {
+    public static Curve25519SecretKey fromCbor(Cborable cbor, Curve25519 provider) {
         if (! (cbor instanceof CborObject.CborList))
             throw new IllegalStateException("Invalid cbor for SecretBoxingKey! " + cbor);
         CborObject.CborByteArray key = (CborObject.CborByteArray) ((CborObject.CborList) cbor).value.get(1);

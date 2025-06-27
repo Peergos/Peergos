@@ -144,7 +144,7 @@ public abstract class UserTests {
         byte[] rawSignPub = signer.publicSigningKey.serialize(); // 36
         byte[] rawSignSecret = signer.secretSigningKey.serialize(); // 68
         byte[] rawSignBoth = signer.serialize(); // 105
-        BoxingKeyPair boxer = BoxingKeyPair.random(crypto.random, crypto.boxer);
+        BoxingKeyPair boxer = BoxingKeyPair.randomCurve25519(crypto.random, crypto.boxer);
         byte[] rawBoxPub = boxer.publicBoxingKey.serialize(); // 36
         byte[] rawBoxSecret = boxer.secretBoxingKey.serialize(); // 36
         byte[] rawBoxBoth = boxer.serialize(); // 73
@@ -173,7 +173,7 @@ public abstract class UserTests {
         );
         for (ScryptGenerator p: params) {
             long t1 = System.currentTimeMillis();
-            UserUtil.generateUser(username, password, crypto.hasher, crypto.symmetricProvider, crypto.random, crypto.signer, crypto.boxer, p).get();
+            UserUtil.generateUser(username, password, crypto, p).get();
             long t2 = System.currentTimeMillis();
             LOG.info("User gen took " + (t2 - t1) + " mS");
             System.gc();
@@ -186,8 +186,7 @@ public abstract class UserTests {
         String password = "test01";
 
         SafeRandomJava random = new SafeRandomJava();
-        UserUtil.generateUser(username, password, new ScryptJava(), new Salsa20Poly1305Java(),
-                random, new Ed25519Java(), new Curve25519Java(), SecretGenerationAlgorithm.getLegacy(random)).thenAccept(userWithRoot -> {
+        UserUtil.generateUser(username, password, crypto, SecretGenerationAlgorithm.getLegacy(random)).thenAccept(userWithRoot -> {
 		    PublicSigningKey expected = PublicSigningKey.fromString("7HvEWP6yd1UD8rOorfFrieJ8S7yC8+l3VisV9kXNiHmI7Eav7+3GTRSVBRCymItrzebUUoCi39M6rdgeOU9sXXFD");
 		    if (! expected.equals(userWithRoot.getUser().publicSigningKey))
 		        throw new IllegalStateException("Generated user different from the Javascript! \n"+userWithRoot.getUser().publicSigningKey + " != \n"+expected);

@@ -3,6 +3,7 @@ package peergos.shared;
 import jsinterop.annotations.*;
 import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.asymmetric.curve25519.*;
+import peergos.shared.crypto.asymmetric.mlkem.Mlkem;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.crypto.random.*;
 import peergos.shared.crypto.symmetric.*;
@@ -19,13 +20,15 @@ public class Crypto {
     public final Salsa20Poly1305 symmetricProvider;
     public final Ed25519 signer;
     public final Curve25519 boxer;
+    public final Mlkem mlkem;
 
-    public Crypto(SafeRandom random, Hasher hasher, Salsa20Poly1305 symmetricProvider, Ed25519 signer, Curve25519 boxer) {
+    public Crypto(SafeRandom random, Hasher hasher, Salsa20Poly1305 symmetricProvider, Ed25519 signer, Curve25519 boxer, Mlkem mlkem) {
         this.random = random;
         this.hasher = hasher;
         this.symmetricProvider = symmetricProvider;
         this.signer = signer;
         this.boxer = boxer;
+        this.mlkem = mlkem;
     }
 
     public static synchronized Crypto init(Supplier<Crypto> instanceCreator) {
@@ -37,6 +40,7 @@ public class Crypto {
         PublicSigningKey.addProvider(PublicSigningKey.Type.Ed25519, instance.signer);
         SymmetricKey.setRng(SymmetricKey.Type.TweetNaCl, instance.random);
         PublicBoxingKey.addProvider(PublicBoxingKey.Type.Curve25519, instance.boxer);
+        PublicBoxingKey.addMlkemProvider(PublicBoxingKey.Type.HybridCurve25519MLKEM, instance);
         PublicBoxingKey.setRng(PublicBoxingKey.Type.Curve25519, instance.random);
         return instance;
     }
@@ -47,6 +51,7 @@ public class Crypto {
         Salsa20Poly1305.Javascript symmetricProvider = new Salsa20Poly1305.Javascript();
         Ed25519.Javascript signer = new Ed25519.Javascript();
         Curve25519.Javascript boxer = new Curve25519.Javascript();
-        return init(() -> new Crypto(random, new ScryptJS(), symmetricProvider, signer, boxer));
+        Mlkem mlkem = new Mlkem.Javascript();
+        return init(() -> new Crypto(random, new ScryptJS(), symmetricProvider, signer, boxer, mlkem));
     }
 }

@@ -39,11 +39,10 @@ public interface Hasher {
 
     byte[] hmacInfo = ArrayOps.concat("peergos".getBytes(StandardCharsets.UTF_8), new byte[]{1});
 
-    default CompletableFuture<Bat> hkdfKey(byte[] data) {
+    default CompletableFuture<byte[]> hkdfKey(byte[] ikm) {
         byte[] salt = new byte[32];
-        return hmacSha256(salt, data)
-                .thenCompose(prk -> hmacSha256(prk, hmacInfo))
-                .thenApply(Bat::new);
+        return hmacSha256(salt, ikm)
+                .thenCompose(prk -> hmacSha256(prk, hmacInfo));
     }
 
     default Cid identityHash(byte[] input, boolean isRaw) {

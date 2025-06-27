@@ -4,6 +4,7 @@ import peergos.shared.cbor.*;
 import peergos.shared.crypto.asymmetric.*;
 
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
 import java.util.function.*;
 
 public class SourcedAsymmetricCipherText implements Cborable {
@@ -15,12 +16,15 @@ public class SourcedAsymmetricCipherText implements Cborable {
         this.cipherText = cipherText;
     }
 
-    public static <T extends Cborable> SourcedAsymmetricCipherText build(BoxingKeyPair from, PublicBoxingKey to, T secret) {
-        byte[] cipherText = to.encryptMessageFor(secret.serialize(), from.secretBoxingKey);
-        return new SourcedAsymmetricCipherText(from.publicBoxingKey, new AsymmetricCipherText(cipherText));
+    public static <T extends Cborable> CompletableFuture<SourcedAsymmetricCipherText> build(
+            BoxingKeyPair from,
+            PublicBoxingKey to,
+            T secret) {
+        return to.encryptMessageFor(secret.serialize(), from.secretBoxingKey)
+                .thenApply(cipherText -> new SourcedAsymmetricCipherText(from.publicBoxingKey, new AsymmetricCipherText(cipherText)));
     }
 
-    public <T> T decrypt(SecretBoxingKey to, Function<Cborable, T> fromCbor) {
+    public <T> CompletableFuture<T> decrypt(SecretBoxingKey to, Function<Cborable, T> fromCbor) {
         return cipherText.decrypt(to, from, fromCbor);
     }
 

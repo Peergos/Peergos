@@ -3,6 +3,7 @@ package peergos.shared.crypto;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.asymmetric.*;
 
+import java.util.concurrent.CompletableFuture;
 import java.util.function.*;
 
 public class PaddedAsymmetricCipherText implements Cborable {
@@ -22,12 +23,12 @@ public class PaddedAsymmetricCipherText implements Cborable {
         return new PaddedAsymmetricCipherText(AsymmetricCipherText.fromCbor(cbor));
     }
 
-    public static <T extends Cborable> PaddedAsymmetricCipherText build(SecretBoxingKey from, PublicBoxingKey to, T secret, int paddingBlockSize) {
-        byte[] cipherText = to.encryptMessageFor(PaddedCipherText.pad(secret.serialize(), paddingBlockSize), from);
-        return new PaddedAsymmetricCipherText(new AsymmetricCipherText(cipherText));
+    public static <T extends Cborable> CompletableFuture<PaddedAsymmetricCipherText> build(SecretBoxingKey from, PublicBoxingKey to, T secret, int paddingBlockSize) {
+        return to.encryptMessageFor(PaddedCipherText.pad(secret.serialize(), paddingBlockSize), from)
+                .thenApply(cipherText -> new PaddedAsymmetricCipherText(new AsymmetricCipherText(cipherText)));
     }
 
-    public <T> T decrypt(SecretBoxingKey to, PublicBoxingKey from, Function<Cborable, T> fromCbor) {
+    public <T> CompletableFuture<T> decrypt(SecretBoxingKey to, PublicBoxingKey from, Function<Cborable, T> fromCbor) {
         return cipherText.decrypt(to, from, fromCbor);
     }
 }

@@ -1,12 +1,16 @@
 package peergos.shared.social;
 
+import peergos.shared.Crypto;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.asymmetric.curve25519.*;
+import peergos.shared.crypto.asymmetric.mlkem.HybridCurve25519MLKEMPublicKey;
 import peergos.shared.crypto.random.*;
+import peergos.shared.util.Futures;
 
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
 
 public class BlindFollowRequest implements Cborable {
 
@@ -34,11 +38,12 @@ public class BlindFollowRequest implements Cborable {
         return new BlindFollowRequest(dummysource, followRequest);
     }
 
-    public static BlindFollowRequest build(PublicBoxingKey targetBoxer, FollowRequest request, SafeRandom random, Curve25519 boxer) {
+    public static CompletableFuture<BlindFollowRequest> build(PublicBoxingKey targetBoxer, FollowRequest request, Crypto crypto) {
         // create a tmp keypair whose public key we can prepend to the request without leaking information
-        BoxingKeyPair tmp = BoxingKeyPair.random(random, boxer);
-
-        return new BlindFollowRequest(tmp.publicBoxingKey,
-                PaddedAsymmetricCipherText.build(tmp.secretBoxingKey, targetBoxer, request, 512));
+        return (targetBoxer instanceof HybridCurve25519MLKEMPublicKey ?
+                BoxingKeyPair.randomHybrid(crypto) :
+                Futures.of(BoxingKeyPair.randomCurve25519(crypto.random, crypto.boxer)))
+                .thenCompose(tmp -> PaddedAsymmetricCipherText.build(tmp.secretBoxingKey, targetBoxer, request, 512)
+                        .thenApply(cipher -> new BlindFollowRequest(tmp.publicBoxingKey, cipher)));
     }
 }
