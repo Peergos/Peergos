@@ -238,6 +238,13 @@ public class UserService {
                         new CspHost("http://",  local.getHostName(), local.getPort()));
         StaticHandler handler = webroot.map(p -> (StaticHandler) new FileHandler(host, blockstoreDomains, frameDomains, appSubdomains, p, includeCsp, true, appDevTarget))
                 .orElseGet(() -> new JarHandler(host, blockstoreDomains, frameDomains, appSubdomains, includeCsp, true, PathUtil.get("/webroot"), appDevTarget));
+        try {
+            handler.getAsset("index.html");
+        } catch (Exception e) {
+            String msg = "WARNING: No web assets are present. To include the web-ui you need a jar built from https://github.com/peergos/web-ui";
+            System.out.println(msg);
+            LOG.warning(msg);
+        }
 
         if (useWebCache) {
             LOG.info("Caching web-resources");
