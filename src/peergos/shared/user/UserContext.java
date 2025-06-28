@@ -168,7 +168,9 @@ public class UserContext {
                         progressCallback.accept("Logging in");
                         return login(username, userWithRoot, mfa, cacheMfaLoginData, pair, network, crypto, progressCallback);
                     });
-        }).exceptionally(Futures::logAndThrow);
+                }).thenCompose(ctx -> ctx.isPostQuantum() ? Futures.of(ctx) : ctx.ensurePostQuantum(password, mfa, progressCallback)
+                        .thenCompose(x -> signIn(username, password, mfa, false, network, crypto, t -> {})))
+                .exceptionally(Futures::logAndThrow);
     }
 
     public static CompletableFuture<UserContext> signIn(String username,
@@ -361,9 +363,11 @@ public class UserContext {
      */
     @JsMethod
     public CompletableFuture<Boolean> ensurePostQuantum(String password,
-                                                        Function<MultiFactorAuthRequest, CompletableFuture<MultiFactorAuthResponse>> mfa) {
+                                                        Function<MultiFactorAuthRequest, CompletableFuture<MultiFactorAuthResponse>> mfa,
+                                                        Consumer<String> progressCallback) {
         if (boxer.publicBoxingKey instanceof HybridCurve25519MLKEMPublicKey)
             return Futures.of(false);
+        progressCallback.accept("Upgrading account to post-quantum encryption..");
         return getSocialState().thenCompose(social -> {
             if (! social.pendingIncoming.isEmpty())
                 return Futures.of(false);
