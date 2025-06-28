@@ -6,6 +6,7 @@ import peergos.server.util.*;
 import peergos.shared.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.Multihash;
+import peergos.shared.io.ipfs.bases.Base64;
 import peergos.shared.storage.*;
 import peergos.shared.storage.auth.*;
 import peergos.shared.util.*;
@@ -81,7 +82,9 @@ class S3Exploration {
                 .collect(Collectors.toList()));
         // delete all versions of the key and delete markers using a bulk delete call
         S3AdminRequests.BulkDeleteReply bulkDelete = S3AdminRequests.bulkDelete(
-                versionsToDelete, ZonedDateTime.now(), host, region, accessKey, secretKey, b -> ArrayOps.bytesToHex(Hash.sha256(b)),
+                versionsToDelete, ZonedDateTime.now(), host, region, accessKey, secretKey,
+                b -> ArrayOps.bytesToHex(Hash.sha256(b)),
+                b -> Base64.encodeBase64String(Hash.sha256(b)),
                 (url, body) -> {
                     try {
                         System.out.println("URL: " + url.base);
@@ -192,7 +195,9 @@ class S3Exploration {
             String nonExistentKey = tempKey2 + "ZZ";
             S3AdminRequests.BulkDeleteReply bulkDelete = S3AdminRequests.bulkDelete(
                     Arrays.asList(new Pair<>(tempKey, null), new Pair<>(tempKey2, null), new Pair<>(nonExistentKey, null)),
-                    ZonedDateTime.now(), host, region, accessKey, secretKey, b -> ArrayOps.bytesToHex(Hash.sha256(b)),
+                    ZonedDateTime.now(), host, region, accessKey, secretKey,
+                    b -> ArrayOps.bytesToHex(Hash.sha256(b)),
+                    b -> Base64.encodeBase64String(Hash.sha256(b)),
                     (url, body) -> {
                         try {
                             System.out.println("URL: " + url.base);
