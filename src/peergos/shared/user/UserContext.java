@@ -389,7 +389,7 @@ public class UserContext {
                                             .thenCompose(newBoxer -> writeSynchronizer.applyComplexUpdate(signer.publicKeyHash, signer,
                                                     (s, c) -> IpfsTransaction.call(signer.publicKeyHash,
                                                             tid -> updateBoxerAndCommit(s, username, newBoxer, entryData,
-                                                                    loginPub, signer, loginRoot, c, network, tid), network.dhtClient)))
+                                                                    loginPub, signer, loginRoot, c, crypto, network, tid), network.dhtClient)))
                                             .thenApply(x -> true)
                                     );
                         });
@@ -2301,6 +2301,7 @@ public class UserContext {
                                                                     SigningPrivateKeyAndPublicHash owner,
                                                                     SymmetricKey rootKey,
                                                                     Committer c,
+                                                                    Crypto crypto,
                                                                     NetworkAccess network,
                                                                     TransactionId tid) {
         CommittedWriterData cwd = version.get(owner.publicKeyHash);
@@ -2308,11 +2309,19 @@ public class UserContext {
         if (wd.staticData.isEmpty()) {
             UserStaticData updated = new UserStaticData(current.getData(rootKey).withBoxer(newBoxer), rootKey);
             return network.account.setLoginData(new LoginData(username, updated, loginPublic, Optional.empty()), owner)
+                    .thenCompose(x -> crypto.hasher.sha256(newBoxer.publicBoxingKey.serialize())
+                            .thenCompose(boxerHash -> owner.secret.signMessage(boxerHash)
+                                    .thenCompose(signedBoxerHash -> network.dhtClient.putBoxingKey(owner.publicKeyHash, signedBoxerHash, newBoxer.publicBoxingKey, tid)
+                                            .thenCompose(kh -> c.commit(owner.publicKeyHash, owner, wd.withBoxer(Optional.of(kh)), cwd, tid)))))
                     .thenApply(b -> version);
         } else {
             // legacy account
             Optional<UserStaticData> updated = wd.staticData.map(sd -> new UserStaticData(sd.getData(rootKey).withBoxer(newBoxer), rootKey));
-            return c.commit(owner.publicKeyHash, owner, wd.withStaticData(updated), cwd, tid);
+            return crypto.hasher.sha256(newBoxer.publicBoxingKey.serialize())
+                    .thenCompose(boxerHash -> owner.secret.signMessage(boxerHash)
+                            .thenCompose(signedBoxerHash -> network.dhtClient.putBoxingKey(owner.publicKeyHash, signedBoxerHash, newBoxer.publicBoxingKey, tid)
+                                    .thenCompose(kh -> c.commit(owner.publicKeyHash, owner,
+                                            wd.withStaticData(updated).withBoxer(Optional.of(kh)), cwd, tid))));
         }
     }
 

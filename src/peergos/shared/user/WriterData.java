@@ -80,6 +80,10 @@ public class WriterData implements Cborable {
         return new WriterData(controller, generationAlgorithm, publicData, followRequestReceiver, ownedKeys, namedOwnedKeys, staticData, Optional.of(treeRoot), secretLinks);
     }
 
+    public WriterData withBoxer(Optional<PublicKeyHash> followRequestReceiver) {
+        return new WriterData(controller, generationAlgorithm, publicData, followRequestReceiver, ownedKeys, namedOwnedKeys, staticData, tree, secretLinks);
+    }
+
     public WriterData withPublicRoot(Multihash publicChampRoot) {
         return new WriterData(controller, generationAlgorithm, Optional.of(publicChampRoot), followRequestReceiver, ownedKeys, namedOwnedKeys, staticData, tree, secretLinks);
     }
