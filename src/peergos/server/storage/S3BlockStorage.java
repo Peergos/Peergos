@@ -15,6 +15,7 @@ import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.Cid;
 import peergos.shared.io.ipfs.Multihash;
+import peergos.shared.io.ipfs.bases.Base64;
 import peergos.shared.storage.*;
 import peergos.shared.storage.auth.*;
 import peergos.shared.user.fs.*;
@@ -1026,6 +1027,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         try {
             S3AdminRequests.bulkDelete(keyVersions, ZonedDateTime.now(), host, region, accessKeyId, secretKey,
                     b -> ArrayOps.bytesToHex(Hash.sha256(b)),
+                    b -> Base64.encodeBase64String(Hash.sha256(b)),
                     (url, body) -> {
                         try {
                             return HttpUtil.post(url, body);

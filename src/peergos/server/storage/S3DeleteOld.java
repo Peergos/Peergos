@@ -4,8 +4,8 @@ import peergos.server.*;
 import peergos.server.util.*;
 import peergos.shared.*;
 import peergos.shared.crypto.hash.*;
+import peergos.shared.io.ipfs.bases.Base64;
 import peergos.shared.storage.*;
-import peergos.shared.storage.auth.*;
 import peergos.shared.util.*;
 
 import java.io.*;
@@ -119,6 +119,7 @@ public class S3DeleteOld {
         try {
             S3AdminRequests.bulkDelete(keyVersions, ZonedDateTime.now(), config.getHost(), config.region, config.accessKey, config.secretKey,
                     b -> ArrayOps.bytesToHex(Hash.sha256(b)),
+                    b -> Base64.encodeBase64String(Hash.sha256(b)),
                     (url, body) -> {
                         try {
                             return HttpUtil.post(url, body);

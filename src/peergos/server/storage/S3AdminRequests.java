@@ -361,6 +361,7 @@ public class S3AdminRequests {
                                              String accessKeyId,
                                              String s3SecretKey,
                                              Function<byte[], String> sha256,
+                                             Function<byte[], String> sha256toBase64,
                                              BiFunction<PresignedUrl, byte[], byte[]> poster,
                                              Supplier<DocumentBuilder> builder,
                                              boolean useHttps,
@@ -384,6 +385,7 @@ public class S3AdminRequests {
         String contentSha256 = sha256.apply(body);
         Map<String, String> extraHeaders = new TreeMap<>();
         extraHeaders.put("Content-Length", "" + body.length);
+        extraHeaders.put("x-amz-checksum-sha256", sha256toBase64.apply(body));
         extraHeaders.put("Content-Type", "text/xml");
         Map<String, String> extraQueryParameters = new TreeMap<>();
         extraQueryParameters.put("delete", "true");
