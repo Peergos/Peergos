@@ -169,7 +169,9 @@ public class UserContext {
                         return login(username, userWithRoot, mfa, cacheMfaLoginData, pair, network, crypto, progressCallback);
                     });
                 }).thenCompose(ctx -> ctx.isPostQuantum() ? Futures.of(ctx) : ctx.ensurePostQuantum(password, mfa, progressCallback)
-                        .thenCompose(x -> signIn(username, password, mfa, false, network, crypto, t -> {})))
+                        .thenCompose(updated -> updated ?
+                                signIn(username, password, mfa, false, network, crypto, t -> {}):
+                                Futures.of(ctx)))
                 .exceptionally(Futures::logAndThrow);
     }
 
