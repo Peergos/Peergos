@@ -52,7 +52,13 @@ public class MimicloneFIPS203 implements FIPS203 {
                     null);
 
             // Create sure random instance
-            secureRandom = SecureRandom.getInstance(SECURE_RBG_ALGO, secureParams);
+            SecureRandom impl;
+            try {
+                impl = SecureRandom.getInstance(SECURE_RBG_ALGO, secureParams);
+            } catch (Exception e) {
+                impl = SecureRandom.getInstanceStrong();
+            }
+            secureRandom = impl;
 
         } catch (NoSuchAlgorithmException e) {
             throw new FIPS203Exception(e.getMessage());

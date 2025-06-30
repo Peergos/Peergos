@@ -1,5 +1,6 @@
 package peergos.server.crypto.asymmetric.mlkem.fips203.hash;
 
+import org.bouncycastle.jcajce.provider.digest.SHA3;
 import peergos.server.crypto.asymmetric.mlkem.fips202.keccak.core.KeccakSponge;
 import peergos.server.crypto.asymmetric.mlkem.fips202.keccak.io.BitInputStream;
 import peergos.server.crypto.asymmetric.mlkem.fips202.keccak.io.BitOutputStream;
@@ -35,23 +36,26 @@ public class MLKEMHash implements Hash {
         MessageDigest sha3Hash512;
         KeccakSponge shake128;
         KeccakSponge shake256;
+
+        // Bootstrap SHA3-256
         try {
-
-            // Bootstrap SHA3-256
             sha3Hash256 = MessageDigest.getInstance("SHA3-256");
-
-            // Bootstrap SHA3-512
-            sha3Hash512 = MessageDigest.getInstance("SHA3-512");
-
-            // Bootstrap SHAKE128
-            shake128 = new KeccakSponge(XOFParameterSet.SHAKE128);
-
-            // Bootstrap SHAKE256
-            shake256 = new KeccakSponge(XOFParameterSet.SHAKE256);
-
-        } catch (NoSuchAlgorithmException e) {
-            throw new RuntimeException(e);
+        } catch (Exception e) {
+            sha3Hash256 = new SHA3.Digest256();
         }
+
+        // Bootstrap SHA3-512
+        try {
+            sha3Hash512 = MessageDigest.getInstance("SHA3-512");
+        } catch (Exception e) {
+            sha3Hash512 = new SHA3.Digest512();
+        }
+
+        // Bootstrap SHAKE128
+        shake128 = new KeccakSponge(XOFParameterSet.SHAKE128);
+
+        // Bootstrap SHAKE256
+        shake256 = new KeccakSponge(XOFParameterSet.SHAKE256);
 
         return new MLKEMHash(parameterSet, sha3Hash256, sha3Hash512, shake128, shake256);
     }
