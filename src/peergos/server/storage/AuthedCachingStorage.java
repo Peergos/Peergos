@@ -146,6 +146,7 @@ public class AuthedCachingStorage extends DelegatingStorage {
                         byte[] block = blocks.get(i);
                         if (block.length < maxValueSize)
                             cache.put(res.get(i), block);
+                        progressConsumer.accept((long)block.length);
                     }
                     return res;
                 });

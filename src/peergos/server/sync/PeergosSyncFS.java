@@ -19,6 +19,7 @@ import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.*;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
@@ -180,8 +181,16 @@ public class PeergosSyncFS implements SyncFilesystem {
     }
 
     @Override
-    public void setBytes(Path p, long fileOffset, AsyncReader data, long size, Optional<HashTree> hash, Optional<LocalDateTime> modificationTime, Optional<Thumbnail> thumbnail) throws IOException {
+    public void setBytes(Path p,
+                         long fileOffset,
+                         AsyncReader data,
+                         long size,
+                         Optional<HashTree> hash,
+                         Optional<LocalDateTime> modificationTime,
+                         Optional<Thumbnail> thumbnail,
+                         Consumer<String> progress) throws IOException {
         Optional<FileWrapper> existing = context.getByPath(root.resolve(p)).join();
+        String filename = p.getFileName().toString();
         if (existing.isEmpty() && fileOffset == 0) {
             Optional<FileWrapper> parentOpt = context.getByPath(root.resolve(p).getParent()).join();
             if (parentOpt.isEmpty()) {
@@ -189,7 +198,13 @@ public class PeergosSyncFS implements SyncFilesystem {
                 parentOpt = context.getByPath(root.resolve(p).getParent()).join();
             }
             FileWrapper parent = parentOpt.get();
-            parent.uploadFileWithHash(p.getFileName().toString(), data, size, hash, modificationTime, thumbnail, context.network, context.crypto, x -> {}).join();
+            AtomicLong done = new AtomicLong(0);
+            parent.uploadFileWithHash(filename, data, size, hash, modificationTime, thumbnail,
+                    context.network, context.crypto, x -> {
+                        long total = done.addAndGet(x);
+                        if (total >= 1024*1024)
+                            progress.accept("Uploaded " + (total/1024/1024) + " / " + (size / 1024/1024) + " MiB of " + filename);
+                    }).join();
         } else {
             FileWrapper f = existing.get();
             if (f.isDirty()) {
@@ -200,7 +215,11 @@ public class PeergosSyncFS implements SyncFilesystem {
             }
 
             long end = fileOffset + size;
+            AtomicLong done = new AtomicLong(0);
             f.overwriteSectionJS(data, (int) (fileOffset >>> 32), (int) fileOffset, (int) (end >>> 32), (int) end, context.network, context.crypto, x -> {
+                long total = done.addAndGet(x);
+                if (total >= 1024*1024)
+                    progress.accept("Uploaded " + (total/1024/1024) + " / " + (size / 1024/1024) + " MiB of " + filename);
             }).join();
         }
     }
