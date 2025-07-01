@@ -1,5 +1,6 @@
 package peergos.server.crypto.asymmetric.mlkem.fips203;
 
+import peergos.server.crypto.asymmetric.mlkem.MlkemSecureRandom;
 import peergos.server.crypto.asymmetric.mlkem.fips203.decaps.Decapsulator;
 import peergos.server.crypto.asymmetric.mlkem.fips203.decaps.mlkem.MLKEMDecapsulator;
 import peergos.server.crypto.asymmetric.mlkem.fips203.encaps.Encapsulation;
@@ -15,10 +16,7 @@ import peergos.server.crypto.asymmetric.mlkem.fips203.key.gen.KeyPairGenerationE
 import peergos.server.crypto.asymmetric.mlkem.fips203.key.gen.mlkem.MLKEMKeyPairGenerator;
 import peergos.server.crypto.asymmetric.mlkem.fips203.message.CipherText;
 
-import java.security.DrbgParameters;
-import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
-import java.security.SecureRandomParameters;
 
 import static peergos.server.crypto.asymmetric.mlkem.CryptoUtils.zero;
 
@@ -28,8 +26,7 @@ public class MimicloneFIPS203 implements FIPS203 {
         return new MimicloneFIPS203(params);
     }
 
-    // Secure RBG algorithm set name
-    private static final String SECURE_RBG_ALGO = "DRBG";
+
 
     // FIPS 203 Parameter Set assigned
     private final ParameterSet parameterSet;
@@ -43,26 +40,7 @@ public class MimicloneFIPS203 implements FIPS203 {
         // Assign the chosen parameter set
         this.parameterSet = parameterSet;
 
-        try {
-
-            // Create secure random parameters
-            SecureRandomParameters secureParams = DrbgParameters.instantiation(
-                    parameterSet.getMinSecurityStrength(),
-                    DrbgParameters.Capability.PR_AND_RESEED,
-                    null);
-
-            // Create sure random instance
-            SecureRandom impl;
-            try {
-                impl = SecureRandom.getInstance(SECURE_RBG_ALGO, secureParams);
-            } catch (Exception e) {
-                impl = SecureRandom.getInstanceStrong();
-            }
-            secureRandom = impl;
-
-        } catch (NoSuchAlgorithmException e) {
-            throw new FIPS203Exception(e.getMessage());
-        }
+        secureRandom = MlkemSecureRandom.getSecureRandom(parameterSet.getMinSecurityStrength());
 
         // Initialize the Key Pair Generator
         this.keyPairGenerator = MLKEMKeyPairGenerator.create(parameterSet);
