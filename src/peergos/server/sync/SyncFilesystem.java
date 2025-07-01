@@ -45,7 +45,14 @@ public interface SyncFilesystem {
 
     void truncate(Path p, long size) throws IOException;
 
-    void setBytes(Path p, long fileOffset, AsyncReader data, long size, Optional<HashTree> hash, Optional<LocalDateTime> modificationTime, Optional<Thumbnail> thumbnail) throws IOException;
+    void setBytes(Path p,
+                  long fileOffset,
+                  AsyncReader data,
+                  long size,
+                  Optional<HashTree> hash,
+                  Optional<LocalDateTime> modificationTime,
+                  Optional<Thumbnail> thumbnail,
+                  Consumer<String> progress) throws IOException;
 
     AsyncReader getBytes(Path p, long fileOffset) throws IOException;
 

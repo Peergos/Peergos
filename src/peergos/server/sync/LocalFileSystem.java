@@ -130,7 +130,14 @@ public class LocalFileSystem implements SyncFilesystem {
     }
 
     @Override
-    public void setBytes(Path p, long fileOffset, AsyncReader fin, long size, Optional<HashTree> hash, Optional<LocalDateTime> modificationTime, Optional<Thumbnail> thumbnail) throws IOException {
+    public void setBytes(Path p,
+                         long fileOffset,
+                         AsyncReader fin,
+                         long size,
+                         Optional<HashTree> hash,
+                         Optional<LocalDateTime> modificationTime,
+                         Optional<Thumbnail> thumbnail,
+                         Consumer<String> progress) throws IOException {
         try (RandomAccessFile raf = new RandomAccessFile(root.resolve(p).toFile(), "rw")) {
             raf.seek(fileOffset);
             byte[] buf = new byte[4096];
@@ -139,6 +146,8 @@ public class LocalFileSystem implements SyncFilesystem {
                 int read = fin.readIntoArray(buf, 0, (int) Math.min(buf.length, size - done)).join();
                 raf.write(buf, 0, read);
                 done += read;
+                if (done >= 1024*1024)
+                    progress.accept("Downloaded " + (done/1024/1024) + " / " + (size / 1024/1024) + " MiB of " + p.getFileName().toString());
             }
             if (modificationTime.isPresent()) {
                 long time = modificationTime.get().toInstant(ZoneOffset.UTC).toEpochMilli() / 1000 * 1000;

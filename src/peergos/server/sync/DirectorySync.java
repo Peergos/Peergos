@@ -249,7 +249,7 @@ public class DirectorySync {
             log("Rerunning failed copy operations...");
         for (CopyOp op : ops) {
             try {
-                applyCopyOp(op.isLocalTarget ? remoteFS : localFS, op.isLocalTarget ? localFS : remoteFS, op, syncedVersions);
+                applyCopyOp(op.isLocalTarget ? remoteFS : localFS, op.isLocalTarget ? localFS : remoteFS, op, LOG);
             } catch (FileNotFoundException e) {
                 // A local file has been added and removed concurrently with us trying to copy it, ignore the copy op now
             }
@@ -272,7 +272,7 @@ public class DirectorySync {
                             HashTree hashTree = localFS.hashFile(p, Optional.empty(), file.relPath, syncedVersions);
                             LocalDateTime modified = LocalDateTime.ofInstant(Instant.ofEpochSecond(file.modifiedTime / 1000, 0), ZoneOffset.UTC);
                             remoteFS.setBytes(p, 0, localFS.getBytes(p, 0), file.size, Optional.of(hashTree),
-                                    Optional.of(modified), localFS.getThumbnail(p));
+                                    Optional.of(modified), localFS.getThumbnail(p), LOG);
                             syncedVersions.add(new FileState(file.relPath, file.modifiedTime, file.size, hashTree));
                         } catch (IOException e) {
                             throw new RuntimeException(e);
@@ -558,7 +558,7 @@ public class DirectorySync {
                     List<CopyOp> ops = diffs.stream()
                             .map(d -> new CopyOp(true, remoteFs.resolve(remote.relPath), localFs.resolve(remote.relPath), remote, null, d.left, d.right))
                             .collect(Collectors.toList());
-                    copyFileDiffAndTruncate(remoteFs, localFs, ops, syncedVersions);
+                    copyFileDiffAndTruncate(remoteFs, localFs, ops, syncedVersions, LOG);
                 }
                 syncedVersions.add(remote);
             } else if (remote == null) { // locally added or renamed
@@ -590,7 +590,7 @@ public class DirectorySync {
                     List<CopyOp> ops = diffs.stream()
                             .map(d -> new CopyOp(false, localFs.resolve(local.relPath), remoteFs.resolve(local.relPath), local, null, d.left, d.right))
                             .collect(Collectors.toList());
-                    copyFileDiffAndTruncate(localFs, remoteFs, ops, syncedVersions);
+                    copyFileDiffAndTruncate(localFs, remoteFs, ops, syncedVersions, LOG);
                 }
                 syncedVersions.add(local);
             } else {
@@ -617,14 +617,14 @@ public class DirectorySync {
                     List<CopyOp> ops = diffs.stream()
                             .map(d -> new CopyOp(true, remoteFs.resolve(remote.relPath), localFs.resolve(remote.relPath), remote, null, d.left, d.right))
                             .collect(Collectors.toList());
-                    copyFileDiffAndTruncate(remoteFs, localFs, ops, syncedVersions);
+                    copyFileDiffAndTruncate(remoteFs, localFs, ops, syncedVersions, LOG);
                     syncedVersions.add(remote);
 
                     List<Pair<Long, Long>> diffs2 = local.diffRanges(null);
                     List<CopyOp> ops2 = diffs2.stream()
                             .map(d -> new CopyOp(false, localFs.resolve(renamed.relPath), remoteFs.resolve(renamed.relPath), renamed, null, d.left, d.right))
                             .collect(Collectors.toList());
-                    copyFileDiffAndTruncate(localFs, remoteFs, ops2, syncedVersions);
+                    copyFileDiffAndTruncate(localFs, remoteFs, ops2, syncedVersions, LOG);
                     syncedVersions.add(renamed);
                 }
             }
@@ -672,14 +672,14 @@ public class DirectorySync {
                         List<CopyOp> ops = diffs.stream()
                                 .map(d -> new CopyOp(true, remoteFs.resolve(remote.relPath), localFs.resolve(remote.relPath), remote, null, d.left, d.right))
                                 .collect(Collectors.toList());
-                        copyFileDiffAndTruncate(remoteFs, localFs, ops, syncedVersions);
+                        copyFileDiffAndTruncate(remoteFs, localFs, ops, syncedVersions, LOG);
                         syncedVersions.add(remote);
 
                         List<Pair<Long, Long>> diffs2 = local.diffRanges(null);
                         List<CopyOp> ops2 = diffs2.stream()
                                 .map(d -> new CopyOp(false, localFs.resolve(renamed.relPath), remoteFs.resolve(renamed.relPath), renamed, null, d.left, d.right))
                                 .collect(Collectors.toList());
-                        copyFileDiffAndTruncate(localFs, remoteFs, ops2, syncedVersions);
+                        copyFileDiffAndTruncate(localFs, remoteFs, ops2, syncedVersions, LOG);
                         syncedVersions.add(renamed);
                         syncedVersions.removeRemoteDelete(remote.relPath);
                     } else {
@@ -690,7 +690,7 @@ public class DirectorySync {
                         List<CopyOp> ops = diffs.stream()
                                 .map(d -> new CopyOp(true, remoteFs.resolve(remote.relPath), localFs.resolve(remote.relPath), remote, null, d.left, d.right))
                                 .collect(Collectors.toList());
-                        copyFileDiffAndTruncate(remoteFs, localFs, ops, syncedVersions);
+                        copyFileDiffAndTruncate(remoteFs, localFs, ops, syncedVersions, LOG);
                         syncedVersions.add(remote);
                     }
                 }
@@ -737,14 +737,14 @@ public class DirectorySync {
                         List<CopyOp> ops = diffs.stream()
                                 .map(d -> new CopyOp(true, remoteFs.resolve(remote.relPath), localFs.resolve(remote.relPath), remote, null, d.left, d.right))
                                 .collect(Collectors.toList());
-                        copyFileDiffAndTruncate(remoteFs, localFs, ops, syncedVersions);
+                        copyFileDiffAndTruncate(remoteFs, localFs, ops, syncedVersions, LOG);
                         syncedVersions.add(remote);
 
                         List<Pair<Long, Long>> diffs2 = local.diffRanges(null);
                         List<CopyOp> ops2 = diffs2.stream()
                                 .map(d -> new CopyOp(false, localFs.resolve(renamed.relPath), remoteFs.resolve(renamed.relPath), renamed, null, d.left, d.right))
                                 .collect(Collectors.toList());
-                        copyFileDiffAndTruncate(localFs, remoteFs, ops2, syncedVersions);
+                        copyFileDiffAndTruncate(localFs, remoteFs, ops2, syncedVersions, LOG);
                         syncedVersions.add(renamed);
                         syncedVersions.removeLocalDelete(local.relPath);
                     } else {
@@ -753,7 +753,7 @@ public class DirectorySync {
                         List<CopyOp> ops = diffs.stream()
                                 .map(d -> new CopyOp(false, localFs.resolve(local.relPath), remoteFs.resolve(local.relPath), local, null, d.left, d.right))
                                 .collect(Collectors.toList());
-                        copyFileDiffAndTruncate(localFs, remoteFs, ops, syncedVersions);
+                        copyFileDiffAndTruncate(localFs, remoteFs, ops, syncedVersions, LOG);
                         remoteFs.setHash(remoteFs.resolve(local.relPath), local.hashTree, local.size);
                         syncedVersions.add(local);
                     }
@@ -772,7 +772,7 @@ public class DirectorySync {
                     List<CopyOp> ops = diffs.stream()
                             .map(d -> new CopyOp(true, remoteFs.resolve(remote.relPath), localFs.resolve(remote.relPath), remote, null, d.left, d.right))
                             .collect(Collectors.toList());
-                    copyFileDiffAndTruncate(remoteFs, localFs, ops, syncedVersions);
+                    copyFileDiffAndTruncate(remoteFs, localFs, ops, syncedVersions, LOG);
                     syncedVersions.add(remote);
                     if (! syncLocalDeletes && syncedVersions.hasLocalDelete(remote.relPath))
                         syncedVersions.removeLocalDelete(remote.relPath);
@@ -784,7 +784,7 @@ public class DirectorySync {
                     List<CopyOp> ops = diffs.stream()
                             .map(d -> new CopyOp(false, localFs.resolve(local.relPath), remoteFs.resolve(local.relPath), local, null, d.left, d.right))
                             .collect(Collectors.toList());
-                    copyFileDiffAndTruncate(localFs, remoteFs, ops, syncedVersions);
+                    copyFileDiffAndTruncate(localFs, remoteFs, ops, syncedVersions, LOG);
                     syncedVersions.add(local);
                     if (! syncRemoteDeletes && syncedVersions.hasRemoteDelete(local.relPath))
                         syncedVersions.removeRemoteDelete(local.relPath);
@@ -803,7 +803,7 @@ public class DirectorySync {
                     List<CopyOp> ops = diffs.stream()
                             .map(d -> new CopyOp(false, localFs.resolve(local.relPath), remoteFs.resolve(local.relPath), local, remote, d.left, d.right))
                             .collect(Collectors.toList());
-                    copyFileDiffAndTruncate(localFs, remoteFs, ops, syncedVersions);
+                    copyFileDiffAndTruncate(localFs, remoteFs, ops, syncedVersions, LOG);
                     remoteFs.setHash(remoteFs.resolve(local.relPath), local.hashTree, local.size);
                     syncedVersions.add(local);
                 } else {
@@ -813,14 +813,14 @@ public class DirectorySync {
                     List<CopyOp> ops = diffs.stream()
                             .map(d -> new CopyOp(true, remoteFs.resolve(remote.relPath), localFs.resolve(remote.relPath), remote, null, d.left, d.right))
                             .collect(Collectors.toList());
-                    copyFileDiffAndTruncate(remoteFs, localFs, ops, syncedVersions);
+                    copyFileDiffAndTruncate(remoteFs, localFs, ops, syncedVersions, LOG);
                     syncedVersions.add(remote);
 
                     List<Pair<Long, Long>> diffs2 = local.diffRanges(null);
                     List<CopyOp> ops2 = diffs2.stream()
                             .map(d -> new CopyOp(false, localFs.resolve(renamed.relPath), remoteFs.resolve(renamed.relPath), renamed, null, d.left, d.right))
                             .collect(Collectors.toList());
-                    copyFileDiffAndTruncate(localFs, remoteFs, ops2, syncedVersions);
+                    copyFileDiffAndTruncate(localFs, remoteFs, ops2, syncedVersions, LOG);
                     syncedVersions.add(renamed);
                 }
             }
@@ -859,19 +859,23 @@ public class DirectorySync {
         return new FileState(s.relPath.substring(0, s.relPath.length() - name.length()) + newName, newModified, s.size, s.hashTree);
     }
 
-    public static void copyFileDiffAndTruncate(SyncFilesystem srcFs, SyncFilesystem targetFs, List<CopyOp> ops, SyncState syncDb) throws IOException {
+    public static void copyFileDiffAndTruncate(SyncFilesystem srcFs,
+                                               SyncFilesystem targetFs,
+                                               List<CopyOp> ops,
+                                               SyncState syncDb,
+                                               Consumer<String> progress) throws IOException {
         // first write the operation to the db
         syncDb.startCopies(ops);
 
         for (CopyOp op : ops) {
-            applyCopyOp(srcFs, targetFs, op, syncDb);
+            applyCopyOp(srcFs, targetFs, op, progress);
         }
 
         // now remove the operation from the db
         syncDb.finishCopies(ops);
     }
 
-    public static void applyCopyOp(SyncFilesystem srcFs, SyncFilesystem targetFs, CopyOp op, SyncState syncDb) throws IOException {
+    public static void applyCopyOp(SyncFilesystem srcFs, SyncFilesystem targetFs, CopyOp op, Consumer<String> progress) throws IOException {
         log("COPY from " + op.source + " to " + op.target + " range=[" + op.diffStart +", " + op.diffEnd+"]");
         targetFs.mkdirs(getParent(op.target));
         long priorSize = op.targetState != null ? op.targetState.size : 0;
@@ -883,7 +887,7 @@ public class DirectorySync {
         try (AsyncReader fin = srcFs.getBytes(op.source, start)) {
             Optional<Thumbnail> thumbnail = srcFs.getThumbnail(op.source);
             LocalDateTime modified = LocalDateTime.ofInstant(Instant.ofEpochSecond(lastModified / 1000, 0), ZoneOffset.UTC);
-            targetFs.setBytes(op.target, start, fin, end - start, Optional.of(op.sourceState.hashTree), Optional.of(modified), thumbnail);
+            targetFs.setBytes(op.target, start, fin, end - start, Optional.of(op.sourceState.hashTree), Optional.of(modified), thumbnail, progress);
         }
         if (priorSize > size) {
             log("Sync Truncating file " + op.sourceState.relPath + " from " + priorSize + " to " + size);
