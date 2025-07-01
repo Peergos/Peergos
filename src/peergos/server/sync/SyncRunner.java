@@ -50,8 +50,7 @@ public interface SyncRunner {
         public synchronized String getStatusAndTime() {
             if (status == null)
                 return "";
-            return status + " at " + updateTime.getYear() + "-" + updateTime.getMonthValue()+"-" +
-                    updateTime.getDayOfMonth() + " " + updateTime.getHour() + ":" + updateTime.getMinute() + ":" + updateTime.getSecond();
+            return status + " at " + updateTime.toLocalDate() + " " + updateTime.toLocalTime().withNano(0);
         }
 
         public synchronized Optional<String> getError() {
