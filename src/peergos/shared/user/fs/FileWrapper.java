@@ -291,6 +291,7 @@ public class FileWrapper {
         return new Location(pointer.capability.owner, pointer.capability.writer, pointer.capability.getMapKey());
     }
 
+    @JsMethod
     public CompletableFuture<Set<NamedAbsoluteCapability>> getChildrenCapabilities(Hasher hasher, NetworkAccess network) {
         ensureUnmodified();
         if (!this.isDirectory())
@@ -359,6 +360,36 @@ public class FileWrapper {
         if (capTrie.isPresent())
             return capTrie.get().getChildren("", hasher, network);
         return getChildren(version, hasher, network, true);
+    }
+
+    @JsMethod
+    public CompletableFuture<Boolean> getChildrenFromCaps(Set<NamedAbsoluteCapability> caps,
+                                                          Consumer<Set<FileWrapper>> results,
+                                                          Hasher hasher,
+                                                          NetworkAccess network) {
+        if (capTrie.isPresent()) {
+            return capTrie.get().getChildren("", hasher, network)
+                    .thenAccept(results)
+                    .thenApply(x -> true);
+        }
+        Optional<SigningPrivateKeyAndPublicHash> childsEntryWriter = pointer.capability.wBaseKey
+                .map(wBase -> pointer.fileAccess.getSigner(pointer.capability.rBaseKey, wBase, entryWriter));
+        List<Set<NamedAbsoluteCapability>> batched = new ArrayList<>();
+        Set<NamedAbsoluteCapability> currentBatch = new HashSet<>();
+        batched.add(currentBatch);
+        for (NamedAbsoluteCapability cap : caps) {
+            currentBatch.add(cap);
+            if (currentBatch.size() == ContentAddressedStorage.MAX_CHAMP_GETS) {
+                currentBatch = new HashSet<>();
+                batched.add(currentBatch);
+            }
+        }
+        return Futures.combineAllInOrder(batched.stream()
+                        .filter(b -> !b.isEmpty())
+                        .map(b -> getFiles(owner(), b, childsEntryWriter, ownername, network, version)
+                                .thenAccept(p -> results.accept(p.left)))
+                        .collect(Collectors.toList()))
+                .thenApply(x -> true);
     }
 
     public CompletableFuture<Set<FileWrapper>> getChildren(Snapshot version, Hasher hasher, NetworkAccess network, boolean allowDanglingLinks) {
