@@ -84,7 +84,9 @@ public interface CborObject extends Cborable {
                     for (long i=0; i < nValues; i++) {
                         CborString key = (CborString) deserialize(decoder, maxGroupSize);
                         CborObject value = deserialize(decoder, maxGroupSize);
-                        result.put(key, value);
+                        CborObject existing = result.put(key, value);
+                        if (existing != null)
+                            throw new IllegalStateException("Duplicate map key in cbor!");
                     }
                     return new CborMap(result);
                 }
