@@ -731,12 +731,38 @@ public class FileWrapper {
                                                              NetworkAccess network,
                                                              Crypto crypto,
                                                              ProgressConsumer<Long> monitor) {
+        Optional<SymmetricKey> baseKey = Optional.empty();
+        Optional<SymmetricKey> dataKey = Optional.empty();
+        Optional<SymmetricKey> writeKey = Optional.empty();
+        Optional<byte[]> streamSecret = Optional.empty();
+        Optional<Bat> firstChunkBat = Optional.of(Bat.random(crypto.random));
+        byte[] firstChunkMapKey = crypto.random.randomBytes(32);
+        return uploadFileWithHash(filename, fileData, length, hash, modificationTime, thumbnail, baseKey, dataKey,
+                writeKey, streamSecret, firstChunkBat, firstChunkMapKey, network, crypto, monitor);
+    }
+
+    public CompletableFuture<FileWrapper> uploadFileWithHash(String filename,
+                                                             AsyncReader fileData,
+                                                             long length,
+                                                             Optional<HashTree> hash,
+                                                             Optional<LocalDateTime> modificationTime,
+                                                             Optional<Thumbnail> thumbnail,
+                                                             Optional<SymmetricKey> baseKey,
+                                                             Optional<SymmetricKey> dataKey,
+                                                             Optional<SymmetricKey> writeKey,
+                                                             Optional<byte[]> streamSecret,
+                                                             Optional<Bat> firstChunkBat,
+                                                             byte[] firstChunkMapKey,
+                                                             NetworkAccess network,
+                                                             Crypto crypto,
+                                                             ProgressConsumer<Long> monitor) {
         if (! isWritable())
             throw new IllegalStateException("Folder not writable!");
+
         return network.synchronizer.applyComplexUpdate(owner(), signingPair(), (current, committer) ->
                         uploadFileSection(current, committer, filename, fileData, thumbnail, false, 0, length, hash,
-                                modificationTime, Optional.empty(), Optional.empty(), Optional.empty(), false, false, false,
-                                network, crypto, monitor, crypto.random.randomBytes(32), Optional.empty(), Optional.of(Bat.random(crypto.random)), mirrorBatId())
+                                modificationTime, baseKey, dataKey, writeKey, false, false, false,
+                                network, crypto, monitor, firstChunkMapKey, streamSecret, firstChunkBat, mirrorBatId())
                                 .thenCompose(p -> getUpdated(p.left, network)
                                         .thenCompose(latest -> p.right.isEmpty() ?
                                                 Futures.of(p.left) :

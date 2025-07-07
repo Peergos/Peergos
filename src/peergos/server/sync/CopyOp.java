@@ -8,8 +8,16 @@ class CopyOp {
     public final Path source, target;
     public final FileState sourceState, targetState;
     public final long diffStart, diffEnd;
+    public final SyncFilesystem.PartialUploadProps props;
 
-    public CopyOp(boolean isLocalTarget, Path source, Path target, FileState sourceState, FileState targetState, long diffStart, long diffEnd) {
+    public CopyOp(boolean isLocalTarget,
+                  Path source,
+                  Path target,
+                  FileState sourceState,
+                  FileState targetState,
+                  long diffStart,
+                  long diffEnd,
+                  SyncFilesystem.PartialUploadProps props) {
         if (hasComponent(source, ".."))
             throw new IllegalStateException();
         if (hasComponent(target, ".."))
@@ -21,6 +29,7 @@ class CopyOp {
         this.targetState = targetState;
         this.diffStart = diffStart;
         this.diffEnd = diffEnd;
+        this.props = props;
     }
 
     private boolean hasComponent(Path p, String name) {

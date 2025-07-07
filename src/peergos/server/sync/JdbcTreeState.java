@@ -40,9 +40,9 @@ public class JdbcTreeState implements SyncState {
     private static final String DONE_SYNC = "SELECT done FROM syncdone WHERE key=?;";
     private static final String HAS_LOCAL_DELETE = "SELECT path FROM synclocaldeletes WHERE path=?;";
     private static final String HAS_REMOTE_DELETE = "SELECT path FROM syncremotedeletes WHERE path=?;";
-    private static final String INSERT_COPY_OP = "INSERT INTO copyops (islocal, source, target, start, end, sourcestate, targetstate) VALUES(?, ?, ?, ?, ?, ?, ?);";
-    private static final String REMOVE_COPY_OP = "DELETE FROM copyops WHERE source=? AND target=? AND start=? AND end=?";
-    private static final String LIST_COPY_OPS = "SELECT islocal, source, target, start, end, sourcestate, targetstate FROM copyops;";
+    private static final String INSERT_COPY_OP = "INSERT INTO copyops2 (islocal, source, target, start, end, sourcestate, targetstate, props) VALUES(?, ?, ?, ?, ?, ?, ?, ?);";
+    private static final String REMOVE_COPY_OP = "DELETE FROM copyops2 WHERE source=? AND target=? AND start=? AND end=?";
+    private static final String LIST_COPY_OPS = "SELECT islocal, source, target, start, end, sourcestate, targetstate, props FROM copyops2;";
 
     private final Supplier<Connection> conn;
     private final SqlSupplier cmds = new SqliteCommands();
@@ -80,7 +80,7 @@ public class JdbcTreeState implements SyncState {
             cmds.createTable("CREATE TABLE IF NOT EXISTS synclocaldeletes (path text primary key not null);", conn);
             cmds.createTable("CREATE TABLE IF NOT EXISTS syncremotedeletes (path text primary key not null);", conn);
             cmds.createTable("CREATE TABLE IF NOT EXISTS snapshots (path text primary key not null, snapshot blob);", conn);
-            cmds.createTable("CREATE TABLE IF NOT EXISTS copyops (islocal bool not null, source text not null, target text not null, " +
+            cmds.createTable("CREATE TABLE IF NOT EXISTS copyops2 (islocal bool not null, source text not null, target text not null, props blob not null," +
                     "start "+cmds.sqlInteger()+" not null, end " + cmds.sqlInteger() + " not null, sourcestate blob, targetstate blob);", conn);
         } catch (Exception e) {
             throw new RuntimeException(e);
@@ -381,6 +381,7 @@ public class JdbcTreeState implements SyncState {
                 insert.setLong(5, op.diffEnd);
                 insert.setBytes(6, Optional.ofNullable(op.sourceState).map(Cborable::serialize).orElse(null));
                 insert.setBytes(7, Optional.ofNullable(op.targetState).map(Cborable::serialize).orElse(null));
+                insert.setBytes(8, op.props.serialize());
                 insert.executeUpdate();
             } catch (SQLException sqe) {
                 throw new IllegalStateException(sqe);
@@ -415,7 +416,8 @@ public class JdbcTreeState implements SyncState {
                         Optional.ofNullable(rs.getBytes(6)).map(b -> FileState.fromCbor(CborObject.fromByteArray(b))).orElse(null),
                         Optional.ofNullable(rs.getBytes(7)).map(b -> FileState.fromCbor(CborObject.fromByteArray(b))).orElse(null),
                         rs.getLong(4),
-                        rs.getLong(5)
+                        rs.getLong(5),
+                        SyncFilesystem.PartialUploadProps.fromCbor(CborObject.fromByteArray(rs.getBytes(6)))
                 ));
 
             return res;

@@ -188,6 +188,7 @@ public class PeergosSyncFS implements SyncFilesystem {
                          Optional<HashTree> hash,
                          Optional<LocalDateTime> modificationTime,
                          Optional<Thumbnail> thumbnail,
+                         PartialUploadProps props,
                          Consumer<String> progress) throws IOException {
         Optional<FileWrapper> existing = context.getByPath(root.resolve(p)).join();
         String filename = p.getFileName().toString();
@@ -200,6 +201,12 @@ public class PeergosSyncFS implements SyncFilesystem {
             FileWrapper parent = parentOpt.get();
             AtomicLong done = new AtomicLong(0);
             parent.uploadFileWithHash(filename, data, size, hash, modificationTime, thumbnail,
+                    Optional.of(props.baseKey),
+                    Optional.of(props.dataKey),
+                    Optional.of(props.writeKey),
+                    Optional.of(props.streamSecret),
+                    Optional.of(props.firstChunkBat),
+                    props.firstChunkMapKey,
                     context.network, context.crypto, x -> {
                         long total = done.addAndGet(x);
                         if (total >= 1024*1024)

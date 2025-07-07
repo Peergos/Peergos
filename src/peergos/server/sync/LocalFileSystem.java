@@ -137,6 +137,7 @@ public class LocalFileSystem implements SyncFilesystem {
                          Optional<HashTree> hash,
                          Optional<LocalDateTime> modificationTime,
                          Optional<Thumbnail> thumbnail,
+                         PartialUploadProps props,
                          Consumer<String> progress) throws IOException {
         try (RandomAccessFile raf = new RandomAccessFile(root.resolve(p).toFile(), "rw")) {
             raf.seek(fileOffset);
