@@ -54,7 +54,7 @@ public class ResumeUploadProps implements Cborable {
         return new ResumeUploadProps(baseKey, dataKey, writeKey, streamSecret, initialBat, initialMapKey);
     }
 
-    static ResumeUploadProps random(Crypto crypto) {
+    public static ResumeUploadProps random(Crypto crypto) {
         SymmetricKey baseKey = SymmetricKey.random();
         SymmetricKey dataKey = SymmetricKey.random();
         SymmetricKey writeKey = SymmetricKey.random();
