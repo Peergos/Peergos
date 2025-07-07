@@ -274,7 +274,7 @@ public class DirectorySync {
                             LocalDateTime modified = LocalDateTime.ofInstant(Instant.ofEpochSecond(file.modifiedTime / 1000, 0), ZoneOffset.UTC);
                             CopyOp op = new CopyOp(false, localFS.resolve(file.relPath),
                                     remoteFS.resolve(file.relPath), new FileState(file.relPath, file.modifiedTime, file.size, hashTree), null,
-                                    0, file.size, SyncFilesystem.PartialUploadProps.random(crypto));
+                                    0, file.size, ResumeUploadProps.random(crypto));
                             syncedVersions.startCopies(List.of(op));
                             remoteFS.setBytes(p, 0, localFS.getBytes(p, 0), file.size, Optional.of(hashTree),
                                     Optional.of(modified), localFS.getThumbnail(p), op.props, LOG);
@@ -563,7 +563,7 @@ public class DirectorySync {
                     LOG.accept("Sync Local: Copying " + remote.relPath);
                     List<Pair<Long, Long>> diffs = remote.diffRanges(null);
                     List<CopyOp> ops = diffs.stream()
-                            .map(d -> new CopyOp(true, remoteFs.resolve(remote.relPath), localFs.resolve(remote.relPath), remote, null, d.left, d.right, SyncFilesystem.PartialUploadProps.random(crypto)))
+                            .map(d -> new CopyOp(true, remoteFs.resolve(remote.relPath), localFs.resolve(remote.relPath), remote, null, d.left, d.right, ResumeUploadProps.random(crypto)))
                             .collect(Collectors.toList());
                     copyFileDiffAndTruncate(remoteFs, localFs, ops, syncedVersions, LOG);
                 }
@@ -595,7 +595,7 @@ public class DirectorySync {
                     LOG.accept("Sync Remote: Copying " + local.relPath);
                     List<Pair<Long, Long>> diffs = local.diffRanges(null);
                     List<CopyOp> ops = diffs.stream()
-                            .map(d -> new CopyOp(false, localFs.resolve(local.relPath), remoteFs.resolve(local.relPath), local, null, d.left, d.right, SyncFilesystem.PartialUploadProps.random(crypto)))
+                            .map(d -> new CopyOp(false, localFs.resolve(local.relPath), remoteFs.resolve(local.relPath), local, null, d.left, d.right, ResumeUploadProps.random(crypto)))
                             .collect(Collectors.toList());
                     copyFileDiffAndTruncate(localFs, remoteFs, ops, syncedVersions, LOG);
                 }
@@ -622,14 +622,14 @@ public class DirectorySync {
                     FileState renamed = renameOnConflict(localFs, localFs.resolve(local.relPath), local);
                     List<Pair<Long, Long>> diffs = remote.diffRanges(null);
                     List<CopyOp> ops = diffs.stream()
-                            .map(d -> new CopyOp(true, remoteFs.resolve(remote.relPath), localFs.resolve(remote.relPath), remote, null, d.left, d.right, SyncFilesystem.PartialUploadProps.random(crypto)))
+                            .map(d -> new CopyOp(true, remoteFs.resolve(remote.relPath), localFs.resolve(remote.relPath), remote, null, d.left, d.right, ResumeUploadProps.random(crypto)))
                             .collect(Collectors.toList());
                     copyFileDiffAndTruncate(remoteFs, localFs, ops, syncedVersions, LOG);
                     syncedVersions.add(remote);
 
                     List<Pair<Long, Long>> diffs2 = local.diffRanges(null);
                     List<CopyOp> ops2 = diffs2.stream()
-                            .map(d -> new CopyOp(false, localFs.resolve(renamed.relPath), remoteFs.resolve(renamed.relPath), renamed, null, d.left, d.right, SyncFilesystem.PartialUploadProps.random(crypto)))
+                            .map(d -> new CopyOp(false, localFs.resolve(renamed.relPath), remoteFs.resolve(renamed.relPath), renamed, null, d.left, d.right, ResumeUploadProps.random(crypto)))
                             .collect(Collectors.toList());
                     copyFileDiffAndTruncate(localFs, remoteFs, ops2, syncedVersions, LOG);
                     syncedVersions.add(renamed);
@@ -677,14 +677,14 @@ public class DirectorySync {
                         FileState renamed = renameOnConflict(localFs, localFs.resolve(local.relPath), local);
                         List<Pair<Long, Long>> diffs = remote.diffRanges(null);
                         List<CopyOp> ops = diffs.stream()
-                                .map(d -> new CopyOp(true, remoteFs.resolve(remote.relPath), localFs.resolve(remote.relPath), remote, null, d.left, d.right, SyncFilesystem.PartialUploadProps.random(crypto)))
+                                .map(d -> new CopyOp(true, remoteFs.resolve(remote.relPath), localFs.resolve(remote.relPath), remote, null, d.left, d.right, ResumeUploadProps.random(crypto)))
                                 .collect(Collectors.toList());
                         copyFileDiffAndTruncate(remoteFs, localFs, ops, syncedVersions, LOG);
                         syncedVersions.add(remote);
 
                         List<Pair<Long, Long>> diffs2 = local.diffRanges(null);
                         List<CopyOp> ops2 = diffs2.stream()
-                                .map(d -> new CopyOp(false, localFs.resolve(renamed.relPath), remoteFs.resolve(renamed.relPath), renamed, null, d.left, d.right, SyncFilesystem.PartialUploadProps.random(crypto)))
+                                .map(d -> new CopyOp(false, localFs.resolve(renamed.relPath), remoteFs.resolve(renamed.relPath), renamed, null, d.left, d.right, ResumeUploadProps.random(crypto)))
                                 .collect(Collectors.toList());
                         copyFileDiffAndTruncate(localFs, remoteFs, ops2, syncedVersions, LOG);
                         syncedVersions.add(renamed);
@@ -695,7 +695,7 @@ public class DirectorySync {
                         LOG.accept("Sync Local: Copying changes to " + remote.relPath);
                         List<Pair<Long, Long>> diffs = remote.diffRanges(local);
                         List<CopyOp> ops = diffs.stream()
-                                .map(d -> new CopyOp(true, remoteFs.resolve(remote.relPath), localFs.resolve(remote.relPath), remote, null, d.left, d.right, SyncFilesystem.PartialUploadProps.random(crypto)))
+                                .map(d -> new CopyOp(true, remoteFs.resolve(remote.relPath), localFs.resolve(remote.relPath), remote, null, d.left, d.right, ResumeUploadProps.random(crypto)))
                                 .collect(Collectors.toList());
                         copyFileDiffAndTruncate(remoteFs, localFs, ops, syncedVersions, LOG);
                         syncedVersions.add(remote);
@@ -742,14 +742,14 @@ public class DirectorySync {
                         FileState renamed = renameOnConflict(localFs, localFs.resolve(local.relPath), local);
                         List<Pair<Long, Long>> diffs = remote.diffRanges(null);
                         List<CopyOp> ops = diffs.stream()
-                                .map(d -> new CopyOp(true, remoteFs.resolve(remote.relPath), localFs.resolve(remote.relPath), remote, null, d.left, d.right, SyncFilesystem.PartialUploadProps.random(crypto)))
+                                .map(d -> new CopyOp(true, remoteFs.resolve(remote.relPath), localFs.resolve(remote.relPath), remote, null, d.left, d.right, ResumeUploadProps.random(crypto)))
                                 .collect(Collectors.toList());
                         copyFileDiffAndTruncate(remoteFs, localFs, ops, syncedVersions, LOG);
                         syncedVersions.add(remote);
 
                         List<Pair<Long, Long>> diffs2 = local.diffRanges(null);
                         List<CopyOp> ops2 = diffs2.stream()
-                                .map(d -> new CopyOp(false, localFs.resolve(renamed.relPath), remoteFs.resolve(renamed.relPath), renamed, null, d.left, d.right, SyncFilesystem.PartialUploadProps.random(crypto)))
+                                .map(d -> new CopyOp(false, localFs.resolve(renamed.relPath), remoteFs.resolve(renamed.relPath), renamed, null, d.left, d.right, ResumeUploadProps.random(crypto)))
                                 .collect(Collectors.toList());
                         copyFileDiffAndTruncate(localFs, remoteFs, ops2, syncedVersions, LOG);
                         syncedVersions.add(renamed);
@@ -758,7 +758,7 @@ public class DirectorySync {
                         LOG.accept("Sync Remote: Copying changes to " + local.relPath);
                         List<Pair<Long, Long>> diffs = local.diffRanges(remote);
                         List<CopyOp> ops = diffs.stream()
-                                .map(d -> new CopyOp(false, localFs.resolve(local.relPath), remoteFs.resolve(local.relPath), local, null, d.left, d.right, SyncFilesystem.PartialUploadProps.random(crypto)))
+                                .map(d -> new CopyOp(false, localFs.resolve(local.relPath), remoteFs.resolve(local.relPath), local, null, d.left, d.right, ResumeUploadProps.random(crypto)))
                                 .collect(Collectors.toList());
                         copyFileDiffAndTruncate(localFs, remoteFs, ops, syncedVersions, LOG);
                         remoteFs.setHash(remoteFs.resolve(local.relPath), local.hashTree, local.size);
@@ -777,7 +777,7 @@ public class DirectorySync {
                     LOG.accept("Sync Local: deleted, copying changed remote " + remote.relPath + ", Synced: " + synced.prettyPrint() + ", remote: " + remote.prettyPrint());
                     List<Pair<Long, Long>> diffs = remote.diffRanges(null);
                     List<CopyOp> ops = diffs.stream()
-                            .map(d -> new CopyOp(true, remoteFs.resolve(remote.relPath), localFs.resolve(remote.relPath), remote, null, d.left, d.right, SyncFilesystem.PartialUploadProps.random(crypto)))
+                            .map(d -> new CopyOp(true, remoteFs.resolve(remote.relPath), localFs.resolve(remote.relPath), remote, null, d.left, d.right, ResumeUploadProps.random(crypto)))
                             .collect(Collectors.toList());
                     copyFileDiffAndTruncate(remoteFs, localFs, ops, syncedVersions, LOG);
                     syncedVersions.add(remote);
@@ -789,7 +789,7 @@ public class DirectorySync {
                     LOG.accept("Sync Remote: deleted, copying changed local " + local.relPath);
                     List<Pair<Long, Long>> diffs = local.diffRanges(null);
                     List<CopyOp> ops = diffs.stream()
-                            .map(d -> new CopyOp(false, localFs.resolve(local.relPath), remoteFs.resolve(local.relPath), local, null, d.left, d.right, SyncFilesystem.PartialUploadProps.random(crypto)))
+                            .map(d -> new CopyOp(false, localFs.resolve(local.relPath), remoteFs.resolve(local.relPath), local, null, d.left, d.right, ResumeUploadProps.random(crypto)))
                             .collect(Collectors.toList());
                     copyFileDiffAndTruncate(localFs, remoteFs, ops, syncedVersions, LOG);
                     syncedVersions.add(local);
@@ -808,7 +808,7 @@ public class DirectorySync {
                     LOG.accept("Sync Remote: Copying changes to " + local.relPath);
                     List<Pair<Long, Long>> diffs = local.diffRanges(remote);
                     List<CopyOp> ops = diffs.stream()
-                            .map(d -> new CopyOp(false, localFs.resolve(local.relPath), remoteFs.resolve(local.relPath), local, remote, d.left, d.right, SyncFilesystem.PartialUploadProps.random(crypto)))
+                            .map(d -> new CopyOp(false, localFs.resolve(local.relPath), remoteFs.resolve(local.relPath), local, remote, d.left, d.right, ResumeUploadProps.random(crypto)))
                             .collect(Collectors.toList());
                     copyFileDiffAndTruncate(localFs, remoteFs, ops, syncedVersions, LOG);
                     remoteFs.setHash(remoteFs.resolve(local.relPath), local.hashTree, local.size);
@@ -818,14 +818,14 @@ public class DirectorySync {
                     FileState renamed = renameOnConflict(localFs, localFs.resolve(local.relPath), local);
                     List<Pair<Long, Long>> diffs = remote.diffRanges(null);
                     List<CopyOp> ops = diffs.stream()
-                            .map(d -> new CopyOp(true, remoteFs.resolve(remote.relPath), localFs.resolve(remote.relPath), remote, null, d.left, d.right, SyncFilesystem.PartialUploadProps.random(crypto)))
+                            .map(d -> new CopyOp(true, remoteFs.resolve(remote.relPath), localFs.resolve(remote.relPath), remote, null, d.left, d.right, ResumeUploadProps.random(crypto)))
                             .collect(Collectors.toList());
                     copyFileDiffAndTruncate(remoteFs, localFs, ops, syncedVersions, LOG);
                     syncedVersions.add(remote);
 
                     List<Pair<Long, Long>> diffs2 = local.diffRanges(null);
                     List<CopyOp> ops2 = diffs2.stream()
-                            .map(d -> new CopyOp(false, localFs.resolve(renamed.relPath), remoteFs.resolve(renamed.relPath), renamed, null, d.left, d.right, SyncFilesystem.PartialUploadProps.random(crypto)))
+                            .map(d -> new CopyOp(false, localFs.resolve(renamed.relPath), remoteFs.resolve(renamed.relPath), renamed, null, d.left, d.right, ResumeUploadProps.random(crypto)))
                             .collect(Collectors.toList());
                     copyFileDiffAndTruncate(localFs, remoteFs, ops2, syncedVersions, LOG);
                     syncedVersions.add(renamed);

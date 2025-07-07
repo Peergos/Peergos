@@ -1,12 +1,7 @@
 package peergos.server.sync;
 
-import peergos.shared.cbor.CborObject;
-import peergos.shared.cbor.Cborable;
-import peergos.shared.crypto.symmetric.SymmetricKey;
-import peergos.shared.storage.auth.Bat;
 import peergos.shared.user.fs.*;
 import peergos.shared.util.Triple;
-import peergos.shared.Crypto;
 
 import java.io.IOException;
 import java.nio.file.Path;
@@ -14,8 +9,6 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
-import java.util.SortedMap;
-import java.util.TreeMap;
 import java.util.function.Consumer;
 import java.util.stream.Stream;
 
@@ -51,62 +44,6 @@ public interface SyncFilesystem {
 
     void truncate(Path p, long size) throws IOException;
 
-    class PartialUploadProps implements Cborable {
-        public final SymmetricKey baseKey, dataKey, writeKey;
-        public final byte[] streamSecret;
-        public final Bat firstChunkBat;
-        public final byte[] firstChunkMapKey;
-
-        public PartialUploadProps(SymmetricKey baseKey,
-                                  SymmetricKey dataKey,
-                                  SymmetricKey writeKey,
-                                  byte[] streamSecret,
-                                  Bat firstChunkBat,
-                                  byte[] firstChunkMapKey) {
-            this.baseKey = baseKey;
-            this.dataKey = dataKey;
-            this.writeKey = writeKey;
-            this.streamSecret = streamSecret;
-            this.firstChunkBat = firstChunkBat;
-            this.firstChunkMapKey = firstChunkMapKey;
-        }
-
-        @Override
-        public CborObject toCbor() {
-            SortedMap<String, Cborable> state = new TreeMap<>();
-            state.put("b", baseKey.toCbor());
-            state.put("d", dataKey.toCbor());
-            state.put("w", writeKey.toCbor());
-            state.put("s", new CborObject.CborByteArray(streamSecret));
-            state.put("ib", firstChunkBat.toCbor());
-            state.put("m", new CborObject.CborByteArray(firstChunkMapKey));
-            return CborObject.CborMap.build(state);
-        }
-
-        public static PartialUploadProps fromCbor(Cborable cbor) {
-            if (! (cbor instanceof CborObject.CborMap))
-                throw new IllegalStateException("Invalid cbor for PartialUploadProps! " + cbor);
-            CborObject.CborMap m = (CborObject.CborMap) cbor;
-            SymmetricKey baseKey = m.get("b", SymmetricKey::fromCbor);
-            SymmetricKey dataKey = m.get("d", SymmetricKey::fromCbor);
-            SymmetricKey writeKey = m.get("w", SymmetricKey::fromCbor);
-            byte[] streamSecret = m.getByteArray("s");
-            Bat initialBat = m.get("ib", Bat::fromCbor);
-            byte[] initialMapKey = m.getByteArray("m");
-            return new PartialUploadProps(baseKey, dataKey, writeKey, streamSecret, initialBat, initialMapKey);
-        }
-
-        static PartialUploadProps random(Crypto crypto) {
-            SymmetricKey baseKey = SymmetricKey.random();
-            SymmetricKey dataKey = SymmetricKey.random();
-            SymmetricKey writeKey = SymmetricKey.random();
-            byte[] streamSecret = crypto.random.randomBytes(32);
-            Bat firstChunkBat = Bat.random(crypto.random);
-            byte[] firstChunkMapKey = crypto.random.randomBytes(32);
-            return new PartialUploadProps(baseKey, dataKey, writeKey, streamSecret, firstChunkBat, firstChunkMapKey);
-        }
-    }
-
     void setBytes(Path p,
                   long fileOffset,
                   AsyncReader data,
@@ -114,7 +51,7 @@ public interface SyncFilesystem {
                   Optional<HashTree> hash,
                   Optional<LocalDateTime> modificationTime,
                   Optional<Thumbnail> thumbnail,
-                  PartialUploadProps props,
+                  ResumeUploadProps props,
                   Consumer<String> progress) throws IOException;
 
     AsyncReader getBytes(Path p, long fileOffset) throws IOException;

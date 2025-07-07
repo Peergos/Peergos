@@ -3,6 +3,7 @@ import java.nio.file.*;
 import java.util.logging.*;
 
 import jsinterop.annotations.*;
+import peergos.server.sync.ResumeUploadProps;
 import peergos.shared.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
@@ -670,13 +671,13 @@ public class FileWrapper {
         return uploadSubtree(Stream.of(currentFolder), mirrorBat, network, crypto, transactions, resumeFile, () -> true);
     }
 
-    private CompletableFuture<Pair<Snapshot, Optional<NamedRelativeCapability>>> resumeUpload(FileUploadTransaction txn,
-                                                                                              AsyncReader data,
-                                                                                              ProgressConsumer<Long> monitor,
-                                                                                              Snapshot s,
-                                                                                              Committer c,
-                                                                                              NetworkAccess network,
-                                                                                              Crypto crypto) {
+    public CompletableFuture<Pair<Snapshot, Optional<NamedRelativeCapability>>> resumeUpload(FileUploadTransaction txn,
+                                                                                             AsyncReader data,
+                                                                                             ProgressConsumer<Long> monitor,
+                                                                                             Snapshot s,
+                                                                                             Committer c,
+                                                                                             NetworkAccess network,
+                                                                                             Crypto crypto) {
         RelativeCapability fromParent = writableFilePointer().relativise(txn.writeCap());
         FileProperties props = txn.props;
         // first find how many chunks were already uploaded, then seek reader to that offset and continue
@@ -731,14 +732,7 @@ public class FileWrapper {
                                                              NetworkAccess network,
                                                              Crypto crypto,
                                                              ProgressConsumer<Long> monitor) {
-        Optional<SymmetricKey> baseKey = Optional.empty();
-        Optional<SymmetricKey> dataKey = Optional.empty();
-        Optional<SymmetricKey> writeKey = Optional.empty();
-        Optional<byte[]> streamSecret = Optional.empty();
-        Optional<Bat> firstChunkBat = Optional.of(Bat.random(crypto.random));
-        byte[] firstChunkMapKey = crypto.random.randomBytes(32);
-        return uploadFileWithHash(filename, fileData, length, hash, modificationTime, thumbnail, baseKey, dataKey,
-                writeKey, streamSecret, firstChunkBat, firstChunkMapKey, network, crypto, monitor);
+        return uploadFileWithHash(filename, fileData, length, hash, modificationTime, thumbnail, Optional.empty(), network, crypto, monitor);
     }
 
     public CompletableFuture<FileWrapper> uploadFileWithHash(String filename,
@@ -747,12 +741,7 @@ public class FileWrapper {
                                                              Optional<HashTree> hash,
                                                              Optional<LocalDateTime> modificationTime,
                                                              Optional<Thumbnail> thumbnail,
-                                                             Optional<SymmetricKey> baseKey,
-                                                             Optional<SymmetricKey> dataKey,
-                                                             Optional<SymmetricKey> writeKey,
-                                                             Optional<byte[]> streamSecret,
-                                                             Optional<Bat> firstChunkBat,
-                                                             byte[] firstChunkMapKey,
+                                                             Optional<ResumeUploadProps> props,
                                                              NetworkAccess network,
                                                              Crypto crypto,
                                                              ProgressConsumer<Long> monitor) {
@@ -760,9 +749,20 @@ public class FileWrapper {
             throw new IllegalStateException("Folder not writable!");
 
         return network.synchronizer.applyComplexUpdate(owner(), signingPair(), (current, committer) ->
-                        uploadFileSection(current, committer, filename, fileData, thumbnail, false, 0, length, hash,
-                                modificationTime, baseKey, dataKey, writeKey, false, false, false,
-                                network, crypto, monitor, firstChunkMapKey, streamSecret, firstChunkBat, mirrorBatId())
+                        (props.isPresent() ?
+                                calculateMimeType(fileData, length, filename)
+                                        .thenCompose(mimeType -> fileData.reset().thenCompose(resetData -> resumeUpload(new FileUploadTransaction(System.currentTimeMillis(),
+                                                filename, filename, new FileProperties(filename,
+                                                false, false, mimeType, length, modificationTime.orElseGet(LocalDateTime::now),
+                                                modificationTime.orElseGet(LocalDateTime::now), false, thumbnail, props.map(p -> p.streamSecret), hash.map(t -> t.branch(0))),
+                                                signingPair(), new Location(owner(), writer(), props.get().firstChunkMapKey),
+                                                props.map(p -> p.firstChunkBat), length, props.get().baseKey, props.get().dataKey,
+                                                props.get().writeKey, props.get().streamSecret), resetData, monitor, current, committer, network, crypto))) :
+                                uploadFileSection(current, committer, filename, fileData, thumbnail, false, 0, length, hash,
+                                        modificationTime, Optional.empty(), Optional.empty(), Optional.empty(),
+                                        false, false, false,
+                                        network, crypto, monitor, crypto.random.randomBytes(32),
+                                        Optional.of(crypto.random.randomBytes(32)), Optional.of(Bat.random(crypto.random)), mirrorBatId()))
                                 .thenCompose(p -> getUpdated(p.left, network)
                                         .thenCompose(latest -> p.right.isEmpty() ?
                                                 Futures.of(p.left) :

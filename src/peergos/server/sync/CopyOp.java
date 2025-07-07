@@ -8,7 +8,7 @@ class CopyOp {
     public final Path source, target;
     public final FileState sourceState, targetState;
     public final long diffStart, diffEnd;
-    public final SyncFilesystem.PartialUploadProps props;
+    public final ResumeUploadProps props;
 
     public CopyOp(boolean isLocalTarget,
                   Path source,
@@ -17,7 +17,7 @@ class CopyOp {
                   FileState targetState,
                   long diffStart,
                   long diffEnd,
-                  SyncFilesystem.PartialUploadProps props) {
+                  ResumeUploadProps props) {
         if (hasComponent(source, ".."))
             throw new IllegalStateException();
         if (hasComponent(target, ".."))
