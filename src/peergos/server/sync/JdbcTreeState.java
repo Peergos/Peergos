@@ -7,6 +7,7 @@ import peergos.shared.cbor.CborObject;
 import peergos.shared.cbor.Cborable;
 import peergos.shared.user.Snapshot;
 import peergos.shared.user.fs.HashTree;
+import peergos.shared.user.fs.ResumeUploadProps;
 import peergos.shared.user.fs.RootHash;
 
 import java.nio.file.Paths;

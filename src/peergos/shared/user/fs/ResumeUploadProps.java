@@ -1,4 +1,4 @@
-package peergos.server.sync;
+package peergos.shared.user.fs;
 
 import peergos.shared.Crypto;
 import peergos.shared.cbor.CborObject;

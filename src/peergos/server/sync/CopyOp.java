@@ -1,5 +1,7 @@
 package peergos.server.sync;
 
+import peergos.shared.user.fs.ResumeUploadProps;
+
 import java.nio.file.Path;
 import java.util.Objects;
 

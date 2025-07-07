@@ -3,7 +3,6 @@ import java.nio.file.*;
 import java.util.logging.*;
 
 import jsinterop.annotations.*;
-import peergos.server.sync.ResumeUploadProps;
 import peergos.shared.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
