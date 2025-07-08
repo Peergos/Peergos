@@ -38,6 +38,7 @@ public class FileUploader implements AutoCloseable {
     private final AsyncReader reader; // resettable input stream
     private final byte[] firstLocation;
     private final Optional<Bat> firstBat;
+    private final Supplier<Boolean> isCancelled;
 
     public FileUploader(String name, AsyncReader fileData,
                         int offsetHi, int offsetLow, int lengthHi, int lengthLow,
@@ -50,7 +51,8 @@ public class FileUploader implements AutoCloseable {
                         FileProperties fileProperties,
                         Optional<HashTree> hash,
                         byte[] firstLocation,
-                        Optional<Bat> firstBat) {
+                        Optional<Bat> firstBat,
+                        Supplier<Boolean> isCancelled) {
         long length = (lengthLow & 0xFFFFFFFFL) + ((lengthHi & 0xFFFFFFFFL) << 32);
         this.props = fileProperties;
         this.hash = hash;
@@ -72,14 +74,15 @@ public class FileUploader implements AutoCloseable {
         this.monitor = monitor;
         this.firstLocation = firstLocation;
         this.firstBat = firstBat;
+        this.isCancelled = isCancelled;
     }
 
     public FileUploader(String name, AsyncReader fileData, long offset, long length,
                         SymmetricKey baseKey, SymmetricKey dataKey, Location parentLocation, Optional<Bat> parentBat,
                         SymmetricKey parentparentKey, ProgressConsumer<Long> monitor, FileProperties fileProperties,
-                        Optional<HashTree> hash, byte[] firstLocation, Optional<Bat> firstBat) {
+                        Optional<HashTree> hash, byte[] firstLocation, Optional<Bat> firstBat, Supplier<Boolean> isCancelled) {
         this(name, fileData, (int)(offset >> 32), (int) offset, (int) (length >> 32), (int) length,
-                baseKey, dataKey, parentLocation, parentBat, parentparentKey, monitor, fileProperties, hash, firstLocation, firstBat);
+                baseKey, dataKey, parentLocation, parentBat, parentparentKey, monitor, fileProperties, hash, firstLocation, firstBat, isCancelled);
     }
 
     private static class AsyncUploadQueue {
@@ -182,6 +185,8 @@ public class FileUploader implements AutoCloseable {
             SafeRandom random,
             Hasher hasher,
             boolean isJS) {
+        if (isCancelled.get())
+            throw new IllegalStateException("Upload cancelled!");
         LOG.info("encrypting chunk: "+chunkIndex + " of "+name);
         long position = chunkIndex * Chunk.MAX_SIZE;
 

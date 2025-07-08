@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Consumer;
+import java.util.function.Supplier;
 import java.util.stream.Stream;
 
 public interface SyncFilesystem {
@@ -52,6 +53,7 @@ public interface SyncFilesystem {
                   Optional<LocalDateTime> modificationTime,
                   Optional<Thumbnail> thumbnail,
                   ResumeUploadProps props,
+                  Supplier<Boolean> isCancelled,
                   Consumer<String> progress) throws IOException;
 
     AsyncReader getBytes(Path p, long fileOffset) throws IOException;

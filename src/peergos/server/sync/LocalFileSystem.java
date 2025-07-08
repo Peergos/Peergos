@@ -18,6 +18,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Consumer;
+import java.util.function.Supplier;
 import java.util.stream.Stream;
 
 public class LocalFileSystem implements SyncFilesystem {
@@ -138,6 +139,7 @@ public class LocalFileSystem implements SyncFilesystem {
                          Optional<LocalDateTime> modificationTime,
                          Optional<Thumbnail> thumbnail,
                          ResumeUploadProps props,
+                         Supplier<Boolean> isCancelled,
                          Consumer<String> progress) throws IOException {
         try (RandomAccessFile raf = new RandomAccessFile(root.resolve(p).toFile(), "rw")) {
             raf.seek(fileOffset);

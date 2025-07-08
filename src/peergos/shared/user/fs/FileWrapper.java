@@ -647,7 +647,7 @@ public class FileWrapper {
                     long startIndex = props.size;
                     return uploadFileSection(s, committer, filename, fileData,
                             false, startIndex, startIndex + fileSize, Optional.empty(), false, true, false,
-                            network, crypto, monitor, crypto.random.randomBytes(32), Optional.empty(),
+                            network, crypto, () -> false, monitor, crypto.random.randomBytes(32), Optional.empty(),
                             Optional.of(Bat.random(crypto.random)), mirrorBatId());
                 }
         })).thenCompose(finished -> getUpdated(finished, network));
@@ -672,6 +672,7 @@ public class FileWrapper {
 
     public CompletableFuture<Pair<Snapshot, Optional<NamedRelativeCapability>>> resumeUpload(FileUploadTransaction txn,
                                                                                              AsyncReader data,
+                                                                                             Supplier<Boolean> isCancelled,
                                                                                              ProgressConsumer<Long> monitor,
                                                                                              Snapshot s,
                                                                                              Committer c,
@@ -685,7 +686,7 @@ public class FileWrapper {
                     monitor.accept(startChunkIndex * Chunk.MAX_SIZE);
                     FileUploader uploader = new FileUploader(txn.targetFilename(), data, startChunkIndex*Chunk.MAX_SIZE,
                             txn.size(), txn.baseKey, txn.dataKey, getLocation(), getPointer().capability.bat, getParentKey(),
-                            monitor, props, Optional.empty(), txn.getFirstLocation().getMapKey(), txn.firstBat);
+                            monitor, props, Optional.empty(), txn.getFirstLocation().getMapKey(), txn.firstBat, isCancelled);
                     return uploader.uploadFrom(s, c, network, startChunkIndex.intValue(), txn.getFirstLocation().owner,
                             signingPair(), mirrorBatId(), crypto.random, crypto.hasher);
                 }).thenApply(v -> new Pair<>(v, Optional.of(new NamedRelativeCapability(txn.targetFilename(), fromParent))));
@@ -708,7 +709,8 @@ public class FileWrapper {
                                                               Crypto crypto,
                                                               ProgressConsumer<Long> monitor) {
         long fileSize = (fileSizeLow & 0xFFFFFFFFL) + ((fileSizeHi & 0xFFFFFFFFL) << 32);
-        return uploadOrReplaceFile(filename, fileData, fileSize, network, crypto, monitor,
+        Supplier<Boolean> isCancelled = () -> false; // TODO support in UI
+        return uploadOrReplaceFile(filename, fileData, fileSize, network, crypto, isCancelled, monitor,
                 crypto.random.randomBytes(32), Optional.of(Bat.random(crypto.random)), mirrorBatId());
     }
 
@@ -717,8 +719,9 @@ public class FileWrapper {
                                                               long length,
                                                               NetworkAccess network,
                                                               Crypto crypto,
+                                                              Supplier<Boolean> isCancelled,
                                                               ProgressConsumer<Long> monitor) {
-        return uploadOrReplaceFile(filename, fileData, length, network, crypto, monitor,
+        return uploadOrReplaceFile(filename, fileData, length, network, crypto, isCancelled, monitor,
                 crypto.random.randomBytes(32), Optional.of(Bat.random(crypto.random)), mirrorBatId());
     }
 
@@ -731,7 +734,8 @@ public class FileWrapper {
                                                              NetworkAccess network,
                                                              Crypto crypto,
                                                              ProgressConsumer<Long> monitor) {
-        return uploadFileWithHash(filename, fileData, length, hash, modificationTime, thumbnail, Optional.empty(), network, crypto, monitor);
+        return uploadFileWithHash(filename, fileData, length, hash, modificationTime, thumbnail, Optional.empty(),
+                network, crypto, () -> false, monitor);
     }
 
     public CompletableFuture<FileWrapper> uploadFileWithHash(String filename,
@@ -743,6 +747,7 @@ public class FileWrapper {
                                                              Optional<ResumeUploadProps> props,
                                                              NetworkAccess network,
                                                              Crypto crypto,
+                                                             Supplier<Boolean> isCancelled,
                                                              ProgressConsumer<Long> monitor) {
         if (! isWritable())
             throw new IllegalStateException("Folder not writable!");
@@ -756,11 +761,11 @@ public class FileWrapper {
                                                 modificationTime.orElseGet(LocalDateTime::now), false, thumbnail, props.map(p -> p.streamSecret), hash.map(t -> t.branch(0))),
                                                 signingPair(), new Location(owner(), writer(), props.get().firstChunkMapKey),
                                                 props.map(p -> p.firstChunkBat), length, props.get().baseKey, props.get().dataKey,
-                                                props.get().writeKey, props.get().streamSecret), resetData, monitor, current, committer, network, crypto))) :
+                                                props.get().writeKey, props.get().streamSecret), resetData, isCancelled, monitor, current, committer, network, crypto))) :
                                 uploadFileSection(current, committer, filename, fileData, thumbnail, false, 0, length, hash,
                                         modificationTime, Optional.empty(), Optional.empty(), Optional.empty(),
                                         false, false, false,
-                                        network, crypto, monitor, crypto.random.randomBytes(32),
+                                        network, crypto, isCancelled, monitor, crypto.random.randomBytes(32),
                                         Optional.of(crypto.random.randomBytes(32)), Optional.of(Bat.random(crypto.random)), mirrorBatId()))
                                 .thenCompose(p -> getUpdated(p.left, network)
                                         .thenCompose(latest -> p.right.isEmpty() ?
@@ -774,12 +779,13 @@ public class FileWrapper {
                                                               long length,
                                                               NetworkAccess network,
                                                               Crypto crypto,
+                                                              Supplier<Boolean> isCancelled,
                                                               ProgressConsumer<Long> monitor,
                                                               byte[] firstChunkMapKey,
                                                               Optional<Bat> firstChunkBat,
                                                               Optional<BatId> mirrorBat) {
         return uploadFileSection(filename, fileData, false, 0, length, Optional.empty(),
-                true, network, crypto, monitor, firstChunkMapKey, Optional.empty(), firstChunkBat, mirrorBat)
+                true, network, crypto, isCancelled, monitor, firstChunkMapKey, Optional.empty(), firstChunkBat, mirrorBat)
                 .thenCompose(f -> f.getChild(filename, crypto.hasher, network)
                         .thenCompose(childOpt -> childOpt.get().truncate(length, network, crypto))
                         .thenCompose(c -> f.getUpdated(f.version.mergeAndOverwriteWith(c.version), network)));
@@ -793,13 +799,14 @@ public class FileWrapper {
                                                            Committer c,
                                                            NetworkAccess network,
                                                            Crypto crypto,
+                                                           Supplier<Boolean> isCancelled,
                                                            ProgressConsumer<Long> monitor,
                                                            byte[] firstChunkMapKey,
                                                            Optional<Bat> firstChunkBat,
                                                            Optional<BatId> mirrorBat) {
         return uploadFileSection(s, c, filename, fileData, isHidden, 0, length,
                 Optional.empty(), false, true, true, network, crypto,
-                monitor, firstChunkMapKey, Optional.empty(), firstChunkBat, mirrorBat);
+                isCancelled, monitor, firstChunkMapKey, Optional.empty(), firstChunkBat, mirrorBat);
     }
 
     public CompletableFuture<FileWrapper> uploadAndReturnFile(String filename,
@@ -809,19 +816,20 @@ public class FileWrapper {
                                                               Optional<BatId> mirrorBat,
                                                               NetworkAccess network,
                                                               Crypto crypto) {
-        return uploadAndReturnFile(filename, fileData, length, isHidden, x -> {}, mirrorBat, network, crypto);
+        return uploadAndReturnFile(filename, fileData, length, isHidden, () -> false, x -> {}, mirrorBat, network, crypto);
     }
 
     public CompletableFuture<FileWrapper> uploadAndReturnFile(String filename,
                                                               AsyncReader fileData,
                                                               long length,
                                                               boolean isHidden,
+                                                              Supplier<Boolean> isCancelled,
                                                               ProgressConsumer<Long> progressMonitor,
                                                               Optional<BatId> mirrorBat,
                                                               NetworkAccess network,
                                                               Crypto crypto) {
         return uploadFileSection(filename, fileData, isHidden, 0, length, Optional.empty(),
-                true, network, crypto, progressMonitor, crypto.random.randomBytes(32), Optional.empty(),
+                true, network, crypto, isCancelled, progressMonitor, crypto.random.randomBytes(32), Optional.empty(),
                 Optional.of(Bat.random(crypto.random)), mirrorBat)
                 .thenCompose(f -> f.getChild(filename, crypto.hasher, network)
                         .thenCompose(childOpt -> childOpt.get().truncate(length, network, crypto)));
@@ -940,6 +948,7 @@ public class FileWrapper {
                                                         TransactionService txns,
                                                         Function<FileUploadTransaction, CompletableFuture<Boolean>> resumeFile,
                                                         Supplier<Boolean> commitWatcher) {
+        Supplier<Boolean> isCancelled = () -> false; // TODO support this in UI
         // only use the supplied mirror BAT if the parent doesn't have a mirror BAT
         Optional<BatId> mirror = mirrorBatId().or(() -> mirrorBat);
         return getPath(network).thenCompose(path ->
@@ -948,7 +957,7 @@ public class FileWrapper {
                             return getUpdated(s, network).thenCompose(us -> Futures.reduceAll(directories, us,
                                     (dir, children) -> dir.getOrMkdirs(children.relativePath, false, mirror, network, crypto, dir.version, c)
                                             .thenCompose(p -> uploadFolder(PathUtil.get(path).resolve(children.path()), p.right,
-                                                    children, mirrorBat, txns, resumeFile, commitWatcher, network, crypto, c)
+                                                    children, mirrorBat, txns, resumeFile, commitWatcher, isCancelled, network, crypto, c)
                                                     .thenCompose(v -> dir.getUpdated(v, network))),
                                     (a, b) -> b))
                                     .thenApply(d -> d.version);
@@ -964,6 +973,7 @@ public class FileWrapper {
                                                            TransactionService transactions,
                                                            Function<FileUploadTransaction, CompletableFuture<Boolean>> resumeFile,
                                                            Supplier<Boolean> commitWatcher,
+                                                           Supplier<Boolean> isCancelled,
                                                            NetworkAccess network,
                                                            Crypto crypto,
                                                            Committer c) {
@@ -995,7 +1005,7 @@ public class FileWrapper {
                             if (f.length <= Chunk.MAX_SIZE || transactions == null) // small files or writable public links
                                 return parent.uploadFileSection(p.left, c, f.filename, fileData, Optional.empty(), false, 0, f.length, f.hash, f.modifiedTime,
                                                 Optional.empty(), Optional.empty(), Optional.empty(), f.skipExisting,
-                                                f.overwriteExisting, true, network.disableCommits(), crypto, f.monitor,
+                                                f.overwriteExisting, true, network.disableCommits(), crypto, isCancelled, f.monitor,
                                                 crypto.random.randomBytes(32), Optional.empty(), Optional.of(Bat.random(crypto.random)), mirrorBat)
                                         .thenApply(pair -> new Pair<>(pair.left, Stream.concat(p.right.stream(), pair.right.stream()).collect(Collectors.toList())))
                                         .thenCompose(r -> {
@@ -1023,7 +1033,7 @@ public class FileWrapper {
                                                             .thenCompose(resume -> {
                                                                 if (resume) {
                                                                     toClose.add(r.b());
-                                                                    return parent.resumeUpload(r.b(), fileData, f.monitor, p.left, c, network, crypto)
+                                                                    return parent.resumeUpload(r.b(), fileData, isCancelled, f.monitor, p.left, c, network, crypto)
                                                                             .thenCompose(res -> fileData.reset().thenCompose(resetAgain ->
                                                                                             parent.generateThumbnailAndUpdate(res.left, c, r.b().writeCap(), f.filename, resetAgain,
                                                                                                     network, false, r.b().props.mimeType,
@@ -1039,14 +1049,14 @@ public class FileWrapper {
                                                                             return fileData.reset().thenCompose(reset -> parent.uploadFileSection(r2.a(), c, f.filename, reset, Optional.empty(),
                                                                                     false, 0, f.length, f.hash, f.modifiedTime, Optional.of(txn.baseKey), Optional.of(txn.dataKey), Optional.of(txn.writeKey),
                                                                                     f.skipExisting, f.overwriteExisting, true,
-                                                                                    network, crypto, f.monitor, txn.firstMapKey(),
+                                                                                    network, crypto, isCancelled, f.monitor, txn.firstMapKey(),
                                                                                     Optional.of(txn.streamSecret()), txn.firstBat, mirrorBat));
                                                                         });
                                                             }).thenApply(pair -> new Pair<>(pair.left, Stream.concat(p.right.stream(), pair.right.stream()).collect(Collectors.toList())));
                                                 toClose.add(txn);
                                                 return fileData.reset().thenCompose(reset -> parent.uploadFileSection(r.a(), c, f.filename, fileData, Optional.empty(), false,
                                                                 0, f.length, f.hash, f.modifiedTime, Optional.of(txn.baseKey), Optional.of(txn.dataKey), Optional.of(txn.writeKey),f.skipExisting, f.overwriteExisting, true,
-                                                                network, crypto, f.monitor, txn.firstMapKey(), Optional.of(txn.streamSecret()), txn.firstBat, mirrorBat))
+                                                                network, crypto, isCancelled, f.monitor, txn.firstMapKey(), Optional.of(txn.streamSecret()), txn.firstBat, mirrorBat))
                                                         .thenApply(pair -> new Pair<>(pair.left, Stream.concat(p.right.stream(), pair.right.stream()).collect(Collectors.toList())));
                                             })
                             ).thenCompose(r -> atomicallyClearTransactionsAndAddToParent(toClose, r.right, parent, transactions, r.left, c, commitWatcher, network, crypto))
@@ -1248,9 +1258,10 @@ public class FileWrapper {
                                                             boolean overwriteExisting,
                                                             NetworkAccess network,
                                                             Crypto crypto,
+                                                            Supplier<Boolean> isCancelled,
                                                             ProgressConsumer<Long> monitor) {
         return uploadFileSection(filename, fileData, isHidden, startIndex, endIndex, baseKey, overwriteExisting,
-                network, crypto, monitor, crypto.random.randomBytes(32), Optional.empty(),
+                network, crypto, isCancelled, monitor, crypto.random.randomBytes(32), Optional.empty(),
                 Optional.of(Bat.random(crypto.random)), mirrorBatId());
     }
 
@@ -1278,6 +1289,7 @@ public class FileWrapper {
                                                             boolean overwriteExisting,
                                                             NetworkAccess network,
                                                             Crypto crypto,
+                                                            Supplier<Boolean> isCancelled,
                                                             ProgressConsumer<Long> monitor,
                                                             byte[] firstChunkMapKey,
                                                             Optional<byte[]> streamSecret,
@@ -1286,7 +1298,7 @@ public class FileWrapper {
         if (isWritable())
             return network.synchronizer.applyComplexUpdate(owner(), signingPair(), (current, committer) ->
                     uploadFileSection(current, committer, filename, fileData, isHidden, startIndex, endIndex,
-                            baseKey, false, overwriteExisting, false, network, crypto, monitor, firstChunkMapKey, streamSecret, firstBat, mirrorBat))
+                            baseKey, false, overwriteExisting, false, network, crypto, isCancelled, monitor, firstChunkMapKey, streamSecret, firstBat, mirrorBat))
                     .thenCompose(finalBase -> getUpdated(finalBase, network));
 
         if (! overwriteExisting)
@@ -1335,13 +1347,14 @@ public class FileWrapper {
                                                          boolean truncateExisting,
                                                          NetworkAccess network,
                                                          Crypto crypto,
+                                                         Supplier<Boolean> isCancelled,
                                                          ProgressConsumer<Long> monitor,
                                                          byte[] firstChunkMapKey,
                                                          Optional<byte[]> streamSecret,
                                                          Optional<Bat> firstBat,
                                                          Optional<BatId> requestedMirrorBat) {
         return uploadFileSection(initialVersion, committer, filename, fileData, Optional.empty(), isHidden, startIndex, endIndex, Optional.empty(), Optional.empty(),
-                baseKey, Optional.empty(), Optional.empty(), skipExisting, overwriteExisting, truncateExisting, network, crypto, monitor, firstChunkMapKey, streamSecret, firstBat, requestedMirrorBat)
+                baseKey, Optional.empty(), Optional.empty(), skipExisting, overwriteExisting, truncateExisting, network, crypto, isCancelled, monitor, firstChunkMapKey, streamSecret, firstBat, requestedMirrorBat)
                 .thenCompose(p -> getUpdated(p.left, network)
                         .thenCompose(latest -> p.right.isEmpty() ?
                                 Futures.of(p.left) :
@@ -1367,6 +1380,7 @@ public class FileWrapper {
             boolean truncateExisting,
             NetworkAccess network,
             Crypto crypto,
+            Supplier<Boolean> isCancelled,
             ProgressConsumer<Long> monitor,
             byte[] firstChunkMapKey,
             Optional<byte[]> streamSecret,
@@ -1456,7 +1470,7 @@ public class FileWrapper {
 
                                                         FileUploader chunks = new FileUploader(filename, resetReader,
                                                                 startIndex, endIndex, fileKey, dataKey, parentLocation, parentBat,
-                                                                dirParentKey, monitor, fileProps, hash, firstChunkMapKey, firstBat);
+                                                                dirParentKey, monitor, fileProps, hash, firstChunkMapKey, firstBat, isCancelled);
 
                                                         SigningPrivateKeyAndPublicHash signer = signingPair();
                                                         WritableAbsoluteCapability fileWriteCap = new
@@ -1610,7 +1624,7 @@ public class FileWrapper {
                                     size,
                                     fileData.length + size,
                                     child.map(f -> f.getPointer().capability.rBaseKey), true, network, crypto,
-                                    monitor, x.left, x.right, x.middle, mirrorBat);
+                                    () -> false, monitor, x.left, x.right, x.middle, mirrorBat);
                         }));
     }
 
@@ -2103,6 +2117,7 @@ public CompletableFuture<Boolean> copyTo(FileWrapper target, UserContext context
         if (! target.isDirectory()) {
             return Futures.errored(new IllegalStateException("CopyTo target " + target + " must be a directory"));
         }
+        Supplier<Boolean> isCancelled = () -> false;
 
         return target.hasChildWithName(version, getFileProperties().name, crypto.hasher, network).thenCompose(childExists -> {
             if (childExists) {
@@ -2137,7 +2152,7 @@ public CompletableFuture<Boolean> copyTo(FileWrapper target, UserContext context
                                 .thenCompose(stream -> getHash(network, crypto.hasher).thenCompose(hashTree -> target.uploadFileSection(snapshot, committer,
                                                 getName(), stream, existingThumbnail, false, 0, getSize(), hashTree,
                                                 Optional.of(getFileProperties().modified),
-                                                Optional.empty(), Optional.empty(), Optional.empty(), false, false, false, network, crypto, x -> {},
+                                                Optional.empty(), Optional.empty(), Optional.empty(), false, false, false, network, crypto, isCancelled, x -> {},
                                                 crypto.random.randomBytes(32), Optional.empty(),
                                                 Optional.of(Bat.random(crypto.random)), targetMirrorBat))
                                         .thenCompose(p -> p.right.isEmpty() ?

@@ -35,6 +35,15 @@ public interface SyncRunner {
         private String status;
         private LocalDateTime updateTime;
         private Optional<String> error = Optional.empty();
+        private final AtomicBoolean cancelled = new AtomicBoolean(false);
+
+        public synchronized void cancel() {
+            cancelled.set(true);
+        }
+
+        public synchronized boolean isCancelled() {
+            return cancelled.get();
+        }
 
         public synchronized void setStatus(String newStatus) {
             status = newStatus;
@@ -111,7 +120,7 @@ public interface SyncRunner {
                                 DirectorySync.syncDirs(links, localDirs, syncLocalDeletes, syncRemoteDeletes,
                                         maxDownloadParallelism, minFreeSpacePercent, true,
                                         root -> new LocalFileSystem(Paths.get(root), crypto.hasher),
-                                        peergosDir, statusUpdater, errorUpdater, network, crypto);
+                                        peergosDir, status::isCancelled, statusUpdater, errorUpdater, network, crypto);
                             } catch (Exception e) {
                                 LOG.log(Level.WARNING, e.getMessage(), e);
                             }

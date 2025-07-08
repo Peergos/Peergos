@@ -108,7 +108,7 @@ public class SmallFileBenchmark {
             String filename = names.get(i);
             long t1 = System.currentTimeMillis();
             userRoot = userRoot.uploadOrReplaceFile(filename, AsyncReader.build(data), data.length, context.network,
-                    crypto, x-> {}).join();
+                    crypto, () -> false, x-> {}).join();
             long duration = System.currentTimeMillis() - t1;
             worst = Math.max(worst, duration);
             best = Math.min(best, duration);

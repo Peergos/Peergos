@@ -98,7 +98,7 @@ public class DirectorySync {
             Path peergosDir = args.getPeergosDir();
             return syncDirs(links, localDirs, syncLocalDeletes, syncRemoteDeletes, maxDownloadParallelism,
                     minFreeSpacePercent, oneRun, root -> new LocalFileSystem(Paths.get(root), crypto.hasher),
-                    peergosDir, m -> log(m), e -> log(e), network, crypto);
+                    peergosDir, () -> false, m -> log(m), e -> log(e), network, crypto);
         } catch (Exception e) {
             LOG.log(Level.SEVERE, e, e::getMessage);
             throw new RuntimeException(e);
@@ -125,6 +125,7 @@ public class DirectorySync {
                                    boolean oneRun,
                                    Function<String, SyncFilesystem> localBuilder,
                                    Path peergosDir,
+                                   Supplier<Boolean> isCancelled,
                                    Consumer<String> LOG,
                                    Consumer<String> ERROR,
                                    NetworkAccess network,
@@ -148,6 +149,8 @@ public class DirectorySync {
             try {
                 LOG.accept("Syncing " + links.size() + " pairs of directories: " + IntStream.range(0, links.size()).mapToObj(i -> Arrays.asList(localDirs.get(i), linkPaths.get(i))).collect(Collectors.toList()));
                 for (int i=0; i < links.size(); i++) {
+                    if (isCancelled.get())
+                        return false;
                     Path localDir = Paths.get(localDirs.get(i));
                     Path remoteDir = PathUtil.get(linkPaths.get(i));
                     SyncState syncedState = syncedStates.get(i);
@@ -158,7 +161,7 @@ public class DirectorySync {
                     PeergosSyncFS remote = buildRemote(links.get(i), remoteDir, network, crypto);
                     SyncFilesystem local = localBuilder.apply(localDirs.get(i));
                     syncDir(local, remote, syncLocalDeletes.get(i), syncRemoteDeletes.get(i),
-                            owner, network, syncedState, maxDownloadParallelism, minFreeSpacePercent, crypto, LOG);
+                            owner, network, syncedState, maxDownloadParallelism, minFreeSpacePercent, crypto, isCancelled, LOG);
                     long t1 = System.currentTimeMillis();
                     LOG.accept("Dir sync took " + (t1 - t0) / 1000 + "s");
                 }
@@ -243,6 +246,7 @@ public class DirectorySync {
                                int maxParallelism,
                                int minPercentFreeSpace,
                                Crypto crypto,
+                               Supplier<Boolean> isCancelled,
                                Consumer<String> LOG) throws IOException {
         // first complete any failed in progress copy ops
         List<CopyOp> ops = syncedVersions.getInProgressCopies();
@@ -250,7 +254,7 @@ public class DirectorySync {
             log("Rerunning failed copy operations...");
         for (CopyOp op : ops) {
             try {
-                applyCopyOp(op.isLocalTarget ? remoteFS : localFS, op.isLocalTarget ? localFS : remoteFS, op, LOG);
+                applyCopyOp(op.isLocalTarget ? remoteFS : localFS, op.isLocalTarget ? localFS : remoteFS, op, isCancelled, LOG);
             } catch (FileNotFoundException e) {
                 // A local file has been added and removed concurrently with us trying to copy it, ignore the copy op now
             }
@@ -277,7 +281,7 @@ public class DirectorySync {
                                     0, file.size, ResumeUploadProps.random(crypto));
                             syncedVersions.startCopies(List.of(op));
                             remoteFS.setBytes(p, 0, localFS.getBytes(p, 0), file.size, Optional.of(hashTree),
-                                    Optional.of(modified), localFS.getThumbnail(p), op.props, LOG);
+                                    Optional.of(modified), localFS.getThumbnail(p), op.props, isCancelled, LOG);
                             syncedVersions.finishCopies(List.of(op));
                             syncedVersions.add(new FileState(file.relPath, file.modifiedTime, file.size, hashTree));
                         } catch (IOException e) {
@@ -372,8 +376,11 @@ public class DirectorySync {
                     localDeletes.add(relativePath);
             }
         }
+        if (isCancelled.get())
+            return;
 
         if (! smallFiles.isEmpty()) {
+
             LOG.accept("Remote: bulk uploading " + smallFiles.size() + " small files");
             Map<String, FileWrapper.FolderUploadProperties> folders = new HashMap<>();
             for (String relPath : smallFiles) {
@@ -411,6 +418,8 @@ public class DirectorySync {
                 syncedVersions.add(localState.byPath(relPath));
             }
         }
+        if (isCancelled.get())
+            return;
 
         // do deletes in bulk
         if (! localDeletes.isEmpty()) {
@@ -447,6 +456,8 @@ public class DirectorySync {
         for (String relativePath : allPaths) {
             if (doneFiles.contains(relativePath))
                 continue;
+            if (isCancelled.get())
+                return;
             FileState synced = syncedVersions.byPath(relativePath);
             FileState local = localState.byPath(relativePath);
             FileState remote = remoteState.byPath(relativePath);
@@ -462,7 +473,7 @@ public class DirectorySync {
                 downloads.add(ForkJoinPool.commonPool().submit(() -> {
                     try {
                         syncFile(synced, local, remote, localFS, remoteFS, syncedVersions,
-                                localState, remoteState, syncLocalDeletes, syncRemoteDeletes, doneFiles, minPercentFreeSpace, crypto, LOG);
+                                localState, remoteState, syncLocalDeletes, syncRemoteDeletes, doneFiles, minPercentFreeSpace, crypto, isCancelled, LOG);
                     } catch (IOException e) {
                         throw new RuntimeException(e);
                     } finally {
@@ -471,7 +482,7 @@ public class DirectorySync {
                 }));
             } else
                 syncFile(synced, local, remote, localFS, remoteFS, syncedVersions, localState,
-                        remoteState, syncLocalDeletes, syncRemoteDeletes, doneFiles, minPercentFreeSpace, crypto, LOG);
+                        remoteState, syncLocalDeletes, syncRemoteDeletes, doneFiles, minPercentFreeSpace, crypto, isCancelled, LOG);
         }
 
         for (ForkJoinTask<?> download : downloads) {
@@ -529,6 +540,7 @@ public class DirectorySync {
                                 Set<String> doneFiles,
                                 int minPercentFree,
                                 Crypto crypto,
+                                Supplier<Boolean> isCancelled,
                                 Consumer<String> LOG) throws IOException {
         long totalSpace = localFs.totalSpace();
         long freeSpace = localFs.freeSpace();
@@ -565,7 +577,7 @@ public class DirectorySync {
                     List<CopyOp> ops = diffs.stream()
                             .map(d -> new CopyOp(true, remoteFs.resolve(remote.relPath), localFs.resolve(remote.relPath), remote, null, d.left, d.right, ResumeUploadProps.random(crypto)))
                             .collect(Collectors.toList());
-                    copyFileDiffAndTruncate(remoteFs, localFs, ops, syncedVersions, LOG);
+                    copyFileDiffAndTruncate(remoteFs, localFs, ops, syncedVersions, isCancelled, LOG);
                 }
                 syncedVersions.add(remote);
             } else if (remote == null) { // locally added or renamed
@@ -597,7 +609,7 @@ public class DirectorySync {
                     List<CopyOp> ops = diffs.stream()
                             .map(d -> new CopyOp(false, localFs.resolve(local.relPath), remoteFs.resolve(local.relPath), local, null, d.left, d.right, ResumeUploadProps.random(crypto)))
                             .collect(Collectors.toList());
-                    copyFileDiffAndTruncate(localFs, remoteFs, ops, syncedVersions, LOG);
+                    copyFileDiffAndTruncate(localFs, remoteFs, ops, syncedVersions, isCancelled, LOG);
                 }
                 syncedVersions.add(local);
             } else {
@@ -624,14 +636,14 @@ public class DirectorySync {
                     List<CopyOp> ops = diffs.stream()
                             .map(d -> new CopyOp(true, remoteFs.resolve(remote.relPath), localFs.resolve(remote.relPath), remote, null, d.left, d.right, ResumeUploadProps.random(crypto)))
                             .collect(Collectors.toList());
-                    copyFileDiffAndTruncate(remoteFs, localFs, ops, syncedVersions, LOG);
+                    copyFileDiffAndTruncate(remoteFs, localFs, ops, syncedVersions, isCancelled, LOG);
                     syncedVersions.add(remote);
 
                     List<Pair<Long, Long>> diffs2 = local.diffRanges(null);
                     List<CopyOp> ops2 = diffs2.stream()
                             .map(d -> new CopyOp(false, localFs.resolve(renamed.relPath), remoteFs.resolve(renamed.relPath), renamed, null, d.left, d.right, ResumeUploadProps.random(crypto)))
                             .collect(Collectors.toList());
-                    copyFileDiffAndTruncate(localFs, remoteFs, ops2, syncedVersions, LOG);
+                    copyFileDiffAndTruncate(localFs, remoteFs, ops2, syncedVersions, isCancelled, LOG);
                     syncedVersions.add(renamed);
                 }
             }
@@ -679,14 +691,14 @@ public class DirectorySync {
                         List<CopyOp> ops = diffs.stream()
                                 .map(d -> new CopyOp(true, remoteFs.resolve(remote.relPath), localFs.resolve(remote.relPath), remote, null, d.left, d.right, ResumeUploadProps.random(crypto)))
                                 .collect(Collectors.toList());
-                        copyFileDiffAndTruncate(remoteFs, localFs, ops, syncedVersions, LOG);
+                        copyFileDiffAndTruncate(remoteFs, localFs, ops, syncedVersions, isCancelled, LOG);
                         syncedVersions.add(remote);
 
                         List<Pair<Long, Long>> diffs2 = local.diffRanges(null);
                         List<CopyOp> ops2 = diffs2.stream()
                                 .map(d -> new CopyOp(false, localFs.resolve(renamed.relPath), remoteFs.resolve(renamed.relPath), renamed, null, d.left, d.right, ResumeUploadProps.random(crypto)))
                                 .collect(Collectors.toList());
-                        copyFileDiffAndTruncate(localFs, remoteFs, ops2, syncedVersions, LOG);
+                        copyFileDiffAndTruncate(localFs, remoteFs, ops2, syncedVersions, isCancelled, LOG);
                         syncedVersions.add(renamed);
                         syncedVersions.removeRemoteDelete(remote.relPath);
                     } else {
@@ -697,7 +709,7 @@ public class DirectorySync {
                         List<CopyOp> ops = diffs.stream()
                                 .map(d -> new CopyOp(true, remoteFs.resolve(remote.relPath), localFs.resolve(remote.relPath), remote, null, d.left, d.right, ResumeUploadProps.random(crypto)))
                                 .collect(Collectors.toList());
-                        copyFileDiffAndTruncate(remoteFs, localFs, ops, syncedVersions, LOG);
+                        copyFileDiffAndTruncate(remoteFs, localFs, ops, syncedVersions, isCancelled, LOG);
                         syncedVersions.add(remote);
                     }
                 }
@@ -744,14 +756,14 @@ public class DirectorySync {
                         List<CopyOp> ops = diffs.stream()
                                 .map(d -> new CopyOp(true, remoteFs.resolve(remote.relPath), localFs.resolve(remote.relPath), remote, null, d.left, d.right, ResumeUploadProps.random(crypto)))
                                 .collect(Collectors.toList());
-                        copyFileDiffAndTruncate(remoteFs, localFs, ops, syncedVersions, LOG);
+                        copyFileDiffAndTruncate(remoteFs, localFs, ops, syncedVersions, isCancelled, LOG);
                         syncedVersions.add(remote);
 
                         List<Pair<Long, Long>> diffs2 = local.diffRanges(null);
                         List<CopyOp> ops2 = diffs2.stream()
                                 .map(d -> new CopyOp(false, localFs.resolve(renamed.relPath), remoteFs.resolve(renamed.relPath), renamed, null, d.left, d.right, ResumeUploadProps.random(crypto)))
                                 .collect(Collectors.toList());
-                        copyFileDiffAndTruncate(localFs, remoteFs, ops2, syncedVersions, LOG);
+                        copyFileDiffAndTruncate(localFs, remoteFs, ops2, syncedVersions, isCancelled, LOG);
                         syncedVersions.add(renamed);
                         syncedVersions.removeLocalDelete(local.relPath);
                     } else {
@@ -760,7 +772,7 @@ public class DirectorySync {
                         List<CopyOp> ops = diffs.stream()
                                 .map(d -> new CopyOp(false, localFs.resolve(local.relPath), remoteFs.resolve(local.relPath), local, null, d.left, d.right, ResumeUploadProps.random(crypto)))
                                 .collect(Collectors.toList());
-                        copyFileDiffAndTruncate(localFs, remoteFs, ops, syncedVersions, LOG);
+                        copyFileDiffAndTruncate(localFs, remoteFs, ops, syncedVersions, isCancelled, LOG);
                         remoteFs.setHash(remoteFs.resolve(local.relPath), local.hashTree, local.size);
                         syncedVersions.add(local);
                     }
@@ -779,7 +791,7 @@ public class DirectorySync {
                     List<CopyOp> ops = diffs.stream()
                             .map(d -> new CopyOp(true, remoteFs.resolve(remote.relPath), localFs.resolve(remote.relPath), remote, null, d.left, d.right, ResumeUploadProps.random(crypto)))
                             .collect(Collectors.toList());
-                    copyFileDiffAndTruncate(remoteFs, localFs, ops, syncedVersions, LOG);
+                    copyFileDiffAndTruncate(remoteFs, localFs, ops, syncedVersions, isCancelled, LOG);
                     syncedVersions.add(remote);
                     if (! syncLocalDeletes && syncedVersions.hasLocalDelete(remote.relPath))
                         syncedVersions.removeLocalDelete(remote.relPath);
@@ -791,7 +803,7 @@ public class DirectorySync {
                     List<CopyOp> ops = diffs.stream()
                             .map(d -> new CopyOp(false, localFs.resolve(local.relPath), remoteFs.resolve(local.relPath), local, null, d.left, d.right, ResumeUploadProps.random(crypto)))
                             .collect(Collectors.toList());
-                    copyFileDiffAndTruncate(localFs, remoteFs, ops, syncedVersions, LOG);
+                    copyFileDiffAndTruncate(localFs, remoteFs, ops, syncedVersions, isCancelled, LOG);
                     syncedVersions.add(local);
                     if (! syncRemoteDeletes && syncedVersions.hasRemoteDelete(local.relPath))
                         syncedVersions.removeRemoteDelete(local.relPath);
@@ -810,7 +822,7 @@ public class DirectorySync {
                     List<CopyOp> ops = diffs.stream()
                             .map(d -> new CopyOp(false, localFs.resolve(local.relPath), remoteFs.resolve(local.relPath), local, remote, d.left, d.right, ResumeUploadProps.random(crypto)))
                             .collect(Collectors.toList());
-                    copyFileDiffAndTruncate(localFs, remoteFs, ops, syncedVersions, LOG);
+                    copyFileDiffAndTruncate(localFs, remoteFs, ops, syncedVersions, isCancelled, LOG);
                     remoteFs.setHash(remoteFs.resolve(local.relPath), local.hashTree, local.size);
                     syncedVersions.add(local);
                 } else {
@@ -820,14 +832,14 @@ public class DirectorySync {
                     List<CopyOp> ops = diffs.stream()
                             .map(d -> new CopyOp(true, remoteFs.resolve(remote.relPath), localFs.resolve(remote.relPath), remote, null, d.left, d.right, ResumeUploadProps.random(crypto)))
                             .collect(Collectors.toList());
-                    copyFileDiffAndTruncate(remoteFs, localFs, ops, syncedVersions, LOG);
+                    copyFileDiffAndTruncate(remoteFs, localFs, ops, syncedVersions, isCancelled, LOG);
                     syncedVersions.add(remote);
 
                     List<Pair<Long, Long>> diffs2 = local.diffRanges(null);
                     List<CopyOp> ops2 = diffs2.stream()
                             .map(d -> new CopyOp(false, localFs.resolve(renamed.relPath), remoteFs.resolve(renamed.relPath), renamed, null, d.left, d.right, ResumeUploadProps.random(crypto)))
                             .collect(Collectors.toList());
-                    copyFileDiffAndTruncate(localFs, remoteFs, ops2, syncedVersions, LOG);
+                    copyFileDiffAndTruncate(localFs, remoteFs, ops2, syncedVersions, isCancelled, LOG);
                     syncedVersions.add(renamed);
                 }
             }
@@ -870,19 +882,22 @@ public class DirectorySync {
                                                SyncFilesystem targetFs,
                                                List<CopyOp> ops,
                                                SyncState syncDb,
+                                               Supplier<Boolean> isCancelled,
                                                Consumer<String> progress) throws IOException {
         // first write the operation to the db
         syncDb.startCopies(ops);
 
         for (CopyOp op : ops) {
-            applyCopyOp(srcFs, targetFs, op, progress);
+            applyCopyOp(srcFs, targetFs, op, isCancelled, progress);
         }
 
         // now remove the operation from the db
         syncDb.finishCopies(ops);
     }
 
-    public static void applyCopyOp(SyncFilesystem srcFs, SyncFilesystem targetFs, CopyOp op, Consumer<String> progress) throws IOException {
+    public static void applyCopyOp(SyncFilesystem srcFs, SyncFilesystem targetFs, CopyOp op, Supplier<Boolean> isCancelled, Consumer<String> progress) throws IOException {
+        if (isCancelled.get())
+            return;
         log("COPY from " + op.source + " to " + op.target + " range=[" + op.diffStart +", " + op.diffEnd+"]");
         targetFs.mkdirs(getParent(op.target));
         long priorSize = op.targetState != null ? op.targetState.size : 0;
@@ -894,8 +909,11 @@ public class DirectorySync {
         try (AsyncReader fin = srcFs.getBytes(op.source, start)) {
             Optional<Thumbnail> thumbnail = srcFs.getThumbnail(op.source);
             LocalDateTime modified = LocalDateTime.ofInstant(Instant.ofEpochSecond(lastModified / 1000, 0), ZoneOffset.UTC);
-            targetFs.setBytes(op.target, start, fin, end - start, Optional.of(op.sourceState.hashTree), Optional.of(modified), thumbnail, op.props, progress);
+            targetFs.setBytes(op.target, start, fin, end - start, Optional.of(op.sourceState.hashTree),
+                    Optional.of(modified), thumbnail, op.props, isCancelled, progress);
         }
+        if (isCancelled.get())
+            return;
         if (priorSize > size) {
             log("Sync Truncating file " + op.sourceState.relPath + " from " + priorSize + " to " + size);
             targetFs.truncate(op.target, size);

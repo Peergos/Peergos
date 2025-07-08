@@ -98,7 +98,7 @@ public class IpfsStressTest {
         int size = rnd.nextInt(15*1024*1024);
         FileWrapper parent = context.getByPath(parentPath.toString()).get().get();
         parent.uploadOrReplaceFile(name, new AsyncReader.ArrayBacked(randomData(rnd, size)), size,
-                        context.network, context.crypto, x -> {}).get();
+                        context.network, context.crypto, () -> false, x -> {}).get();
     }
 
     public static void checkFileContents(byte[] expected, FileWrapper f, UserContext context) throws Exception {

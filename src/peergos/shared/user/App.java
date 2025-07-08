@@ -111,7 +111,7 @@ public class App implements StoreAppData {
         Path pathWithoutUsername = path.subpath(1, path.getNameCount());
         return ctx.getByPath(ctx.username).thenCompose(userRoot -> userRoot.get().getOrMkdirs(pathWithoutUsername.getParent(), ctx.network, false, ctx.mirrorBatId(), ctx.crypto)
                 .thenCompose(dir -> dir.uploadOrReplaceFile(path.getFileName().toString(), AsyncReader.build(data),
-                        data.length, ctx.network, ctx.crypto, x -> {})
+                        data.length, ctx.network, ctx.crypto, () -> false, x -> {})
                         .thenApply(fw -> true)
                 ));
     }

@@ -519,7 +519,7 @@ public class IncomingCapCache {
                     AsyncReader reader = AsyncReader.build(raw);
                     return getAndUpdateRoot(updatedRoot.version, network)
                             .thenCompose(root -> root.uploadOrReplaceFile(friend + FRIEND_STATE_SUFFIX, reader, raw.length,
-                                    false, updatedRoot.version, c, network, crypto, x -> {}, crypto.random.randomBytes(RelativeCapability.MAP_KEY_LENGTH),
+                                    false, updatedRoot.version, c, network, crypto, () -> false, x -> {}, crypto.random.randomBytes(RelativeCapability.MAP_KEY_LENGTH),
                                     Optional.of(Bat.random(crypto.random)),
                                     root.mirrorBatId()))
                             .thenApply(v -> new Pair<>(s.mergeAndOverwriteWith(v), diff));
@@ -546,7 +546,7 @@ public class IncomingCapCache {
                                 byte[] raw = single.serialize();
                                 AsyncReader reader = AsyncReader.build(raw);
                                 return p.right.uploadOrReplaceFile(DIR_STATE, reader, raw.length, false, p.left, c, network, crypto,
-                                        x -> {}, crypto.random.randomBytes(RelativeCapability.MAP_KEY_LENGTH),
+                                        () -> false, x -> {}, crypto.random.randomBytes(RelativeCapability.MAP_KEY_LENGTH),
                                         Optional.of(Bat.random(crypto.random)), root.mirrorBatId());
                             }
                             return Serialize.readFully(capsOpt.get(), crypto, network)

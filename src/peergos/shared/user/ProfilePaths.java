@@ -44,7 +44,7 @@ public class ProfilePaths {
         return user.getUserRoot()
                 .thenCompose(home -> home.getOrMkdirs(p.getParent(), user.network, true, user.mirrorBatId(), user.crypto))
                 .thenCompose(parent -> parent.uploadOrReplaceFile(p.getFileName().toString(),
-                        AsyncReader.build(raw), raw.length, user.network, user.crypto, x -> {}))
+                        AsyncReader.build(raw), raw.length, user.network, user.crypto, () -> false, x -> {}))
                 .thenApply(x -> true);
     }
 

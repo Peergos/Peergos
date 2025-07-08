@@ -21,6 +21,7 @@ import java.time.ZoneOffset;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
+import java.util.function.Supplier;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -189,6 +190,7 @@ public class PeergosSyncFS implements SyncFilesystem {
                          Optional<LocalDateTime> modificationTime,
                          Optional<Thumbnail> thumbnail,
                          ResumeUploadProps props,
+                         Supplier<Boolean> isCancelled,
                          Consumer<String> progress) throws IOException {
         Optional<FileWrapper> existing = context.getByPath(root.resolve(p)).join();
         String filename = p.getFileName().toString();
@@ -202,7 +204,7 @@ public class PeergosSyncFS implements SyncFilesystem {
             AtomicLong done = new AtomicLong(0);
             parent.uploadFileWithHash(filename, data, size, hash, modificationTime, thumbnail,
                     Optional.of(props),
-                    context.network, context.crypto, x -> {
+                    context.network, context.crypto, isCancelled, x -> {
                         long total = done.addAndGet(x);
                         if (total >= 1024*1024)
                             progress.accept("Uploaded " + (total/1024/1024) + " / " + (size / 1024/1024) + " MiB of " + filename);
