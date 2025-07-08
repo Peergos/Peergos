@@ -418,7 +418,7 @@ public class JdbcTreeState implements SyncState {
                         Optional.ofNullable(rs.getBytes(7)).map(b -> FileState.fromCbor(CborObject.fromByteArray(b))).orElse(null),
                         rs.getLong(4),
                         rs.getLong(5),
-                        ResumeUploadProps.fromCbor(CborObject.fromByteArray(rs.getBytes(6)))
+                        ResumeUploadProps.fromCbor(CborObject.fromByteArray(rs.getBytes(8)))
                 ));
 
             return res;
