@@ -146,9 +146,10 @@ public class DirectorySync {
             throw new IllegalArgumentException("Mismatched number of local dirs and links");
 
         while (true) {
-            try {
-                LOG.accept("Syncing " + links.size() + " pairs of directories: " + IntStream.range(0, links.size()).mapToObj(i -> Arrays.asList(localDirs.get(i), linkPaths.get(i))).collect(Collectors.toList()));
-                for (int i=0; i < links.size(); i++) {
+            LOG.accept("Syncing " + links.size() + " pairs of directories: " + IntStream.range(0, links.size()).mapToObj(i -> Arrays.asList(localDirs.get(i), linkPaths.get(i))).collect(Collectors.toList()));
+            boolean errored = false;
+            for (int i=0; i < links.size(); i++) {
+                try {
                     if (isCancelled.get())
                         return false;
                     Path localDir = Paths.get(localDirs.get(i));
@@ -164,17 +165,18 @@ public class DirectorySync {
                             owner, network, syncedState, maxDownloadParallelism, minFreeSpacePercent, crypto, isCancelled, LOG);
                     long t1 = System.currentTimeMillis();
                     LOG.accept("Dir sync took " + (t1 - t0) / 1000 + "s");
+                } catch (Exception e) {
+                    errored = true;
+                    ERROR.accept(e.getMessage());
+                    e.printStackTrace();
+                    DirectorySync.LOG.log(Level.WARNING, e, e::getMessage);
                 }
-                ERROR.accept("");
-                if (oneRun)
-                    break;
-                Thread.sleep(30_000);
-            } catch (Exception e) {
-                ERROR.accept(e.getMessage());
-                e.printStackTrace();
-                DirectorySync.LOG.log(Level.WARNING, e, e::getMessage);
-                Threads.sleep(30_000);
             }
+            if (!errored)
+                ERROR.accept("");
+            if (oneRun)
+                break;
+            Threads.sleep(30_000);
         }
         return true;
     }
