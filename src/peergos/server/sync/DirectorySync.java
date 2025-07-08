@@ -505,16 +505,20 @@ public class DirectorySync {
                 syncedVersions.removeDir(dirPath);
             } else if (hasLocal) {
                 if (hasSynced) { // delete
-                    LOG.accept("Sync local: delete dir " + dirPath);
-                    localFS.delete(localFS.resolve(dirPath));
+                    if (syncRemoteDeletes) {
+                        LOG.accept("Sync local: delete dir " + dirPath);
+                        localFS.delete(localFS.resolve(dirPath));
+                    }
                 } else {
                     LOG.accept("Sync Remote: mkdir " + dirPath);
                     remoteFS.mkdirs(remoteFS.resolve(dirPath));
                 }
             } else {
                 if (hasSynced) { // delete
-                    LOG.accept("Sync Remote: delete dir " + dirPath);
-                    remoteFS.delete(remoteFS.resolve(dirPath));
+                    if (syncLocalDeletes) {
+                        LOG.accept("Sync Remote: delete dir " + dirPath);
+                        remoteFS.delete(remoteFS.resolve(dirPath));
+                    }
                 } else {
                     LOG.accept("Sync Local: mkdir " + dirPath);
                     localFS.mkdirs(localFS.resolve(dirPath));
