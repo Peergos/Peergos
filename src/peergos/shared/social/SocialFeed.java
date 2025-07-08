@@ -99,7 +99,7 @@ public class SocialFeed {
                                                                        ProgressConsumer<Long> monitor) {
         String uuid = UUID.randomUUID().toString();
         return getOrMkdirToStoreMedia("media", postTime)
-                .thenCompose(p -> p.right.uploadAndReturnFile(uuid, media, length, false, monitor,
+                .thenCompose(p -> p.right.uploadAndReturnFile(uuid, media, length, false, () -> false, monitor,
                         p.right.mirrorBatId(), network, crypto)
                         .thenCompose(f ->  media.reset().thenCompose(r -> crypto.hasher.hashFromStream(r, length))
                                 .thenApply(hash -> new Pair<>(f.getFileProperties().getType(),
@@ -358,7 +358,7 @@ public class SocialFeed {
                     if (feedOpt.isEmpty())
                         return updated.uploadFileSection(updated.version, c, FEED_FILE, AsyncReader.build(data),
                                 false, 0, data.length, Optional.empty(), false, false,
-                                false, network, crypto, x -> {},
+                                false, network, crypto, () -> false, x -> {},
                                 crypto.random.randomBytes(RelativeCapability.MAP_KEY_LENGTH),
                                 Optional.empty(),  Optional.of(Bat.random(crypto.random)), updated.mirrorBatId());
                     if (feedOpt.get().getSize() != feedSizeBytes)

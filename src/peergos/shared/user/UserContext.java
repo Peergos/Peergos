@@ -1595,6 +1595,7 @@ public class UserContext {
                             true,
                             network,
                             crypto,
+                            () -> false,
                             x -> {},
                             crypto.random.randomBytes(32),
                             Optional.empty(),
@@ -1833,7 +1834,7 @@ public class UserContext {
                                                     byte[] raw = updated.toCbor().serialize();
                                                     return getUserRoot().thenCompose(home -> home.uploadFileSection(
                                                                     SOCIAL_STATE_FILENAME, AsyncReader.build(raw), true, 0, raw.length, Optional.empty(),
-                                                                    true, network, crypto, x -> {}, crypto.random.randomBytes(32),
+                                                                    true, network, crypto, () -> false, x -> {}, crypto.random.randomBytes(32),
                                                                     Optional.empty(), Optional.of(Bat.random(crypto.random)), mirrorBatId()))
                                                             .thenApply(x -> b);
                                                 }));
@@ -2344,7 +2345,7 @@ public class UserContext {
                     Optional<SymmetricKey> base = existing.map(f -> f.getPointer().capability.rBaseKey);
                     return getUserRoot().thenCompose(home ->
                             home.uploadFileSection(filename, reader, true, offset,
-                                    offset + data.length, base, true, network, crypto, x -> {},
+                                    offset + data.length, base, true, network, crypto, () -> false, x -> {},
                                     crypto.random.randomBytes(32), Optional.empty(), Optional.of(Bat.random(crypto.random)), mirrorBatId()));
                 });
     }
@@ -2660,7 +2661,7 @@ public class UserContext {
                             if (p.right.isPresent())
                                 return p.right.get().overwriteFile(reader, raw.length, network, crypto, x -> {}, s, c);
 
-                            return home.uploadOrReplaceFile(ENTRY_POINTS_FROM_FRIENDS_GROUPS_FILENAME, reader, raw.length, true, s, c, network, crypto, x -> {},
+                            return home.uploadOrReplaceFile(ENTRY_POINTS_FROM_FRIENDS_GROUPS_FILENAME, reader, raw.length, true, s, c, network, crypto, () -> false, x -> {},
                                     crypto.random.randomBytes(RelativeCapability.MAP_KEY_LENGTH), Optional.of(Bat.random(crypto.random)), mirrorBatId());
                         }));
     }

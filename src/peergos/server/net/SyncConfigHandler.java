@@ -258,6 +258,7 @@ public class SyncConfigHandler implements HttpHandler {
                 syncRemoteDeletes.remove(toRemove);
 
                 saveConfigToFile(links, localDirs, remotePaths, syncLocalDeletes, syncRemoteDeletes);
+                syncer.getStatusHolder().cancel();
                 exchange.sendResponseHeaders(200, 0);
                 exchange.close();
             } else if (action.equals("get-pairs")) {

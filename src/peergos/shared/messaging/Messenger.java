@@ -68,17 +68,17 @@ public class Messenger {
                                 .thenCompose(updatedChatRoot -> chatSharedDir.setProperties(chatSharedDir.getFileProperties(), hasher,
                                         network, Optional.of(updatedChatRoot)).thenCompose(b -> chatSharedDir.getUpdated(network))))
                         .thenCompose(chatSharedDir -> chatSharedDir.uploadOrReplaceFile(ChatController.SHARED_MSG_LOG,
-                                AsyncReader.build(new byte[0]), 0, network, crypto, x -> {}, crypto.random.randomBytes(32),
+                                AsyncReader.build(new byte[0]), 0, network, crypto, () -> false, x -> {}, crypto.random.randomBytes(32),
                                 Optional.of(Bat.random(crypto.random)), chatSharedDir.mirrorBatId()))
                         .thenCompose(chatSharedDir -> chatSharedDir.uploadOrReplaceFile(ChatController.SHARED_MSG_LOG_INDEX,
-                                AsyncReader.build(new byte[16]), 16, network, crypto, x -> {}, crypto.random.randomBytes(32),
+                                AsyncReader.build(new byte[16]), 16, network, crypto, () -> false, x -> {}, crypto.random.randomBytes(32),
                                 Optional.of(Bat.random(crypto.random)), chatSharedDir.mirrorBatId()))
                         .thenCompose(chatSharedDir -> chatSharedDir.uploadOrReplaceFile(ChatController.SHARED_CHAT_STATE,
-                                AsyncReader.build(rawChat), rawChat.length, network, crypto, x -> {}, crypto.random.randomBytes(32),
+                                AsyncReader.build(rawChat), rawChat.length, network, crypto, () -> false, x -> {}, crypto.random.randomBytes(32),
                                 Optional.of(Bat.random(crypto.random)), chatSharedDir.mirrorBatId()))
                         .thenCompose(x -> chatRoot.getUpdated(x.version, network))
                         .thenCompose(updatedChatRoot -> updatedChatRoot.uploadOrReplaceFile(ChatController.PRIVATE_CHAT_STATE,
-                                AsyncReader.build(rawPrivateChatState), rawPrivateChatState.length, network, crypto, x -> {},
+                                AsyncReader.build(rawPrivateChatState), rawPrivateChatState.length, network, crypto, () -> false, x -> {},
                                 crypto.random.randomBytes(32), Optional.of(Bat.random(crypto.random)), updatedChatRoot.mirrorBatId()))
                         .thenCompose(newRoot -> ChatController.getChatMessageStore(newRoot, context)
                                 .thenApply(messageStore -> new ChatController(chatId, chat, messageStore,
@@ -133,7 +133,7 @@ public class Messenger {
 
                                             byte[] rawChat = ourVersion.serialize();
                                             return shared.uploadOrReplaceFile(ChatController.SHARED_CHAT_STATE, AsyncReader.build(rawChat),
-                                                    rawChat.length, network, crypto, x -> {}, crypto.random.randomBytes(32),
+                                                    rawChat.length, network, crypto, () -> false, x -> {}, crypto.random.randomBytes(32),
                                                     Optional.of(Bat.random(crypto.random)), shared.mirrorBatId());
                                         })
                                         .thenCompose(b -> sourceChatSharedDir.getChild(ChatController.SHARED_MSG_LOG, hasher, network))
@@ -144,7 +144,7 @@ public class Messenger {
                                                 .thenCompose(updatedShared -> msgsIndex.get().copyTo(updatedShared, context)))
                                         .thenCompose(x -> chatRoot.uploadOrReplaceFile(ChatController.PRIVATE_CHAT_STATE,
                                                 AsyncReader.build(rawPrivateChatState), rawPrivateChatState.length, network,
-                                                crypto, y -> {}, crypto.random.randomBytes(32),
+                                                crypto, () -> false, y -> {}, crypto.random.randomBytes(32),
                                                 Optional.of(Bat.random(crypto.random)), chatRoot.mirrorBatId()))
                                 )).thenCompose(b -> context.shareReadAccessWith(
                                 getChatPath(context.username, chatId).resolve("shared"),
@@ -159,7 +159,7 @@ public class Messenger {
         return context.getByPath(chatPath)
                 .thenCompose(dopt -> dopt.get().uploadOrReplaceFile(ChatController.PRIVATE_CHAT_STATE,
                         AsyncReader.build(rawPrivateChatState), rawPrivateChatState.length, network,
-                        crypto, y -> {}, crypto.random.randomBytes(32),
+                        crypto, () -> false, y -> {}, crypto.random.randomBytes(32),
                         Optional.of(Bat.random(crypto.random)), dopt.get().mirrorBatId()))
                 .thenApply(f -> current.with(state));
     }
@@ -238,7 +238,7 @@ public class Messenger {
                                                                 ProgressConsumer<Long> monitor) {
         String uuid = UUID.randomUUID().toString() + "." + fileExtension;
         return getOrMkdirToStoreMedia(current, postTime)
-                .thenCompose(p -> p.right.uploadAndReturnFile(uuid, media, length, false, monitor,
+                .thenCompose(p -> p.right.uploadAndReturnFile(uuid, media, length, false, () -> false, monitor,
                         p.right.mirrorBatId(), network, crypto)
                         .thenCompose(f ->  media.reset().thenCompose(r -> crypto.hasher.hashFromStream(r, length))
                                 .thenApply(hash -> new Pair<>(f.getFileProperties().getType(),

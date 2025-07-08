@@ -65,7 +65,7 @@ public class LinkIdentity {
         String filename = proof.getFilename();
 
         byte[] raw = proof.serialize();
-        idsDir.uploadOrReplaceFile(filename, AsyncReader.build(raw), raw.length, context.network, context.crypto, x -> {}).join();
+        idsDir.uploadOrReplaceFile(filename, AsyncReader.build(raw), raw.length, context.network, context.crypto, () -> false, x -> {}).join();
 
         if (makePublic)
             context.makePublic(context.getByPath(PathUtil.get(context.username).resolve(subPath).resolve(filename)).join().get()).join();

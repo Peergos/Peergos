@@ -237,7 +237,7 @@ public class MultiNodeNetworkTests {
         // make sure we have some raw fragments
         String filename = "somedata.bin";
         user.getUserRoot().join().uploadOrReplaceFile(filename, AsyncReader.build(new byte[10*1024*1024]),
-                10*1024*1024, user.network, crypto, x -> {}).join();
+                10*1024*1024, user.network, crypto, () -> false, x -> {}).join();
 
         // check retrieval of cryptree node or data both fail without bat
         FileWrapper file = user.getByPath("/" + username + "/" + filename).join().get();
@@ -401,7 +401,7 @@ public class MultiNodeNetworkTests {
         String filename = "hey.txt";
         FileWrapper root = u1.getUserRoot().get();
         FileWrapper upload = root.uploadOrReplaceFile(filename, new AsyncReader.ArrayBacked(data), data.length,
-                getNode(iNode1), crypto, x -> {}).get();
+                getNode(iNode1), crypto, () -> false, x -> {}).get();
         Thread.sleep(10_000); // make sure pointer cache is invalidated
         Optional<FileWrapper> file = u1.getByPath("/" + username1 + "/" + filename).get();
         Assert.assertTrue(file.isPresent());
@@ -437,12 +437,12 @@ public class MultiNodeNetworkTests {
         new Random(28).nextBytes(fileData);
         String filename = "somefile.bin";
         context.getUserRoot().join().uploadOrReplaceFile(filename, AsyncReader.build(fileData),
-                fileData.length, context.network, crypto,  x -> {}).join();
+                fileData.length, context.network, crypto,  () -> false, x -> {}).join();
         FileWrapper file = context.getByPath(PathUtil.get(context.username + "/" + filename)).join().get();
         AbsoluteCapability cap = file.getPointer().capability.readOnly();
 
         context.getUserRoot().join().uploadOrReplaceFile(filename+"2", AsyncReader.build(fileData),
-                fileData.length, context.network, crypto,  x -> {}).join();
+                fileData.length, context.network, crypto,  () -> false, x -> {}).join();
         FileWrapper file2 = context.getByPath(PathUtil.get(context.username + "/" + filename + "2")).join().get();
         AbsoluteCapability cap2 = file2.getPointer().capability.readOnly();
 

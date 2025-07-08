@@ -69,7 +69,7 @@ public class EmailBridgeClient {
         FileWrapper sent = pendingFolder().getChild("sent", crypto.hasher, network).join().get();
         byte[] rawCipherText = encryptEmail(emailMessage).join().serialize();
         sent.uploadFileSection(file.getName(), AsyncReader.build(rawCipherText), false, 0, rawCipherText.length, Optional.empty(),
-                true, network, crypto, x -> {}).join();
+                true, network, crypto, () -> false, x -> {}).join();
 
         // TODO do this inside the update above and make atomic
         FileWrapper original = file.getUpdated(network).join();
@@ -89,7 +89,7 @@ public class EmailBridgeClient {
                 byte[] rawAttachmentCipherText = encryptAttachment(bytes).join().serialize();
                 sentAttachments.uploadFileSection(attachment.uuid, AsyncReader.build(rawAttachmentCipherText),
                         false, 0, rawAttachmentCipherText.length, Optional.empty(),
-                        true, network, crypto, x -> {}).join();
+                        true, network, crypto, () -> false, x -> {}).join();
                 attachmentFile.remove(outboxAttachmentDir, attachmentFilePath, clientWritableContext).join();
             }
         }
@@ -111,7 +111,7 @@ public class EmailBridgeClient {
 
         FileWrapper inbox = pendingFolder().getChild("inbox", crypto.hasher, network).join().get();
         FileWrapper baseDir = inbox.getChild("attachments", crypto.hasher, network).join().get();
-        return baseDir.uploadAndReturnFile(uuid, reader, length, false, l -> {},
+        return baseDir.uploadAndReturnFile(uuid, reader, length, false, () -> false, l -> {},
                         baseDir.mirrorBatId(), network, crypto)
                         .thenApply(hash -> uuid);
     }
@@ -123,7 +123,7 @@ public class EmailBridgeClient {
             return inbox.getUpdated(s, network).join()
                     .uploadFileSection(s, c, m.id + ".cbor", AsyncReader.build(rawCipherText), false, 0,
                             rawCipherText.length, Optional.empty(), false, true, true,
-                            network, crypto, x -> {}, crypto.random.randomBytes(32),
+                            network, crypto, () -> false, x -> {}, crypto.random.randomBytes(32),
                             Optional.empty(), Optional.of(Bat.random(crypto.random)), inbox.mirrorBatId());
         }).join();
     }
@@ -154,7 +154,7 @@ public class EmailBridgeClient {
             byte[] data = contents.getBytes();
             FileWrapper pendingDirectory = writableContext.getByPath(pendingPath).join().get();
             pendingDirectory.uploadOrReplaceFile("email.json", new AsyncReader.ArrayBacked(data), data.length, network,
-                    crypto, l -> {}).join();
+                    crypto, () -> false, l -> {}).join();
         }
         return new EmailBridgeClient(clientUsername, writableContext, getEncryptionTarget(network, crypto, writableContext.getByPath(pendingPath).join().get()));
     }

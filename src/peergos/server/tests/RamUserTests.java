@@ -284,10 +284,10 @@ public class RamUserTests extends UserTests {
 
         int KB = 1024;
         dir1.uploadOrReplaceFile("file1", AsyncReader.build(new byte[KB]), KB, context1.network,
-                crypto, x -> {}).join();
+                crypto, () -> false, x -> {}).join();
 
         dir2.uploadOrReplaceFile("file2", AsyncReader.build(new byte[KB]), KB, context1.network,
-                crypto, x -> {}).join();
+                crypto, () -> false, x -> {}).join();
 
         FileWrapper file1 = context1.getByPath(Paths.get(username, "dir1", "file1")).join().get();
         FileWrapper file2 = context2.getByPath(Paths.get(username, "dir2", "file2")).join().get();
@@ -314,7 +314,7 @@ public class RamUserTests extends UserTests {
         context.getUserRoot().join().mkdir(dirName, context.network, false, context.mirrorBatId(), crypto).join();
         byte[] data = "<html><body><h1>You are AWESOME!</h1></body></html>".getBytes();
         context.getByPath(username + "/" + dirName).join().get()
-                .uploadOrReplaceFile("index.html", AsyncReader.build(data), data.length, network, crypto, x -> {}).join();
+                .uploadOrReplaceFile("index.html", AsyncReader.build(data), data.length, network, crypto, () -> false, x -> {}).join();
         ProfilePaths.setWebRoot(context, "/" + username + "/" + dirName).join();
         ProfilePaths.publishWebroot(context).join();
 
@@ -457,13 +457,13 @@ public class RamUserTests extends UserTests {
         FileWrapper target = context.getByPath(targetPath).join().get();
         byte[] orig = "Some words are here".getBytes();
         String filename = "test.txt";
-        target.uploadOrReplaceFile(filename, AsyncReader.build(orig), orig.length, network, crypto, x -> {}).join();
+        target.uploadOrReplaceFile(filename, AsyncReader.build(orig), orig.length, network, crypto, () -> false, x -> {}).join();
 
         String sourceName = "source";
         context.getUserRoot().join().mkdir(sourceName, network, false, context.mirrorBatId(), crypto).join();
         FileWrapper source = context.getByPath(Paths.get(username, sourceName)).join().get();
         byte[] different = "hi".getBytes();
-        source.uploadOrReplaceFile(filename, AsyncReader.build(different), different.length, network, crypto, x -> {}).join();
+        source.uploadOrReplaceFile(filename, AsyncReader.build(different), different.length, network, crypto, () -> false, x -> {}).join();
 
         FileWrapper toMove = context.getByPath(Paths.get(username, sourceName, filename)).join().get();
         try {
@@ -508,7 +508,7 @@ public class RamUserTests extends UserTests {
         random.nextBytes(fileData);
 
         FileWrapper userRoot2 = userRoot.uploadOrReplaceFile(filename, new AsyncReader.ArrayBacked(fileData), fileData.length,
-                context.network, context.crypto, l -> {}).join();
+                context.network, context.crypto, () -> false, l -> {}).join();
 
         FileWrapper file = context.getByPath(PathUtil.get(username, filename)).join().get();
         FileProperties props = file.getFileProperties();
@@ -555,7 +555,7 @@ public class RamUserTests extends UserTests {
         random.nextBytes(fileData);
 
         FileWrapper userRoot2 = userRoot.uploadOrReplaceFile(filename, new AsyncReader.ArrayBacked(fileData), fileData.length,
-                context.network, context.crypto, l -> {}).join();
+                context.network, context.crypto, () -> false, l -> {}).join();
 
         FileWrapper file = context.getByPath(PathUtil.get(username, filename)).join().get();
         FileProperties props = file.getFileProperties();
@@ -593,7 +593,7 @@ public class RamUserTests extends UserTests {
         byte[] fileData = new byte[14621544];
         random.nextBytes(fileData);
         FileWrapper userRoot2 = userRoot.uploadOrReplaceFile(filename, new AsyncReader.ArrayBacked(fileData), fileData.length,
-                context.network, context.crypto, l -> {}).join();
+                context.network, context.crypto, () -> false, l -> {}).join();
 
         FileWrapper file = context.getByPath(PathUtil.get(username, filename)).join().get();
         FileProperties props = file.getFileProperties();
@@ -634,7 +634,7 @@ public class RamUserTests extends UserTests {
         random.nextBytes(fileData);
 
         FileWrapper userRoot2 = userRoot.uploadOrReplaceFile(filename, new AsyncReader.ArrayBacked(fileData), fileData.length,
-                context.network, context.crypto, l -> {}).join();
+                context.network, context.crypto, () -> false, l -> {}).join();
 
         FileWrapper file = context.getByPath(PathUtil.get(username, filename)).join().get();
         FileProperties props = file.getFileProperties();
@@ -738,7 +738,7 @@ public class RamUserTests extends UserTests {
         byte[] data = new byte[0];
         user1.getByPath(PathUtil.get(username1, folder1, folder11)).join().get()
                 .uploadOrReplaceFile(filename, new AsyncReader.ArrayBacked(data), data.length, user1.network,
-                crypto, l -> {}).join();
+                crypto, () -> false, l -> {}).join();
 
         // create 2nd user and friend user1
         String username2 = generateUsername();
@@ -774,8 +774,7 @@ public class RamUserTests extends UserTests {
             // write empty file
             byte[] data = new byte[1025 * 1024 * 5];
             user.getByPath(Paths.get(username, subdir1)).join().get().uploadOrReplaceFile(filename, new AsyncReader.ArrayBacked(data), data.length, user.network,
-                    crypto, l -> {
-                    }).join();
+                    crypto, () -> false, l -> {}).join();
 
             filePath = PathUtil.get(username, subdir1, filename);
 

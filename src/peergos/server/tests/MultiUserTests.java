@@ -341,7 +341,7 @@ public class MultiUserTests {
         byte[] data = UserTests.randomData(10*1024*1024);
 
         FileWrapper uploaded = u1Root.uploadOrReplaceFile(filename, new AsyncReader.ArrayBacked(data), data.length,
-                u1.network, crypto, l -> {}).get();
+                u1.network, crypto, () -> false, l -> {}).get();
 
         // share the file from u1 to each of the others
         FileWrapper u1File = u1.getByPath(u1.username + "/" + filename).get().get();
@@ -382,7 +382,7 @@ public class MultiUserTests {
         byte[] fileData = "file data".getBytes();
         AsyncReader reader = AsyncReader.build(fileData);
         u1.getByPath(PathUtil.get(u1.username, "subdir")).join().get().uploadOrReplaceFile("file.txt",
-                reader, fileData.length, u1.network, crypto, x -> {}).join();
+                reader, fileData.length, u1.network, crypto, () -> false, x -> {}).join();
         Path filePath = PathUtil.get(u1.username, "subdir", "file.txt");
         FileWrapper file = u1.getByPath(filePath).join().get();
         u1.shareWriteAccessWith(filePath, Collections.singleton(u2.username)).join();
@@ -430,7 +430,7 @@ public class MultiUserTests {
         byte[] data1 = "Hello Peergos friend!".getBytes();
         AsyncReader file1Reader = new AsyncReader.ArrayBacked(data1);
         FileWrapper uploaded = u1Root.uploadOrReplaceFile(filename, file1Reader, data1.length,
-                u1.network, u1.crypto, l -> {}).get();
+                u1.network, u1.crypto, () -> false, l -> {}).get();
 
         // upload a different file with the same name in a sub folder
         uploaded.mkdir("subdir", u1.network, false, u1.mirrorBatId(), crypto).get();
@@ -438,7 +438,7 @@ public class MultiUserTests {
         byte[] data2 = "Goodbye Peergos friend!".getBytes();
         AsyncReader file2Reader = new AsyncReader.ArrayBacked(data2);
         subdir.uploadOrReplaceFile(filename, file2Reader, data2.length,
-                u1.network, u1.crypto, l -> {}).get();
+                u1.network, u1.crypto, () -> false, l -> {}).get();
 
         // share the file from "a" to each of the others
         //        sharingFunction.apply(u1, u2, filenameu1.shareReadAccessWith(PathUtil.get(u1.username, filename), userContexts.stream().map(u -> u.username).collect(Collectors.toSet())).get();
@@ -496,7 +496,7 @@ public class MultiUserTests {
         Path subdirPath = PathUtil.get(u1.username, subdirName);
         FileWrapper subdir = u1.getByPath(subdirPath).get().get();
         FileWrapper uploaded = subdir.uploadOrReplaceFile(filename, file1Reader, data1.length,
-                u1.network, u1.crypto, l -> {}).get();
+                u1.network, u1.crypto, () -> false, l -> {}).get();
 
         Path filePath = PathUtil.get(u1.username, subdirName, filename);
         u1.shareWriteAccessWith(filePath, userContexts.stream().map(u -> u.username).collect(Collectors.toSet())).join();
@@ -568,7 +568,7 @@ public class MultiUserTests {
         Path subdirPath = PathUtil.get(u1.username, subdirName);
         FileWrapper subdir = u1.getByPath(subdirPath).get().get();
         FileWrapper uploaded = subdir.uploadOrReplaceFile(filename, file1Reader, data1.length,
-                u1.network, u1.crypto, l -> {}).get();
+                u1.network, u1.crypto, () -> false, l -> {}).get();
         u1.getByPath(subdirPath).get().get().mkdir("another-dir",  u1.network,false, u1.mirrorBatId(), crypto).join();
 
         Path dirPath = PathUtil.get(u1.username, subdirName);
@@ -658,7 +658,7 @@ public class MultiUserTests {
         Path subdirPath = PathUtil.get(u1.username, subdirName);
         FileWrapper subdir = u1.getByPath(subdirPath).get().get();
         FileWrapper uploaded = subdir.uploadOrReplaceFile(filename, file1Reader, data1.length,
-                u1.network, u1.crypto, l -> {}).get();
+                u1.network, u1.crypto, () -> false, l -> {}).get();
 
         Path filePath = PathUtil.get(u1.username, subdirName, filename);
 
@@ -776,7 +776,7 @@ public class MultiUserTests {
         Path subdirPath = PathUtil.get(u1.username, subdirName);
         FileWrapper subdir = u1.getByPath(subdirPath).get().get();
         FileWrapper uploaded = subdir.uploadOrReplaceFile(filename, file1Reader, data1.length,
-                u1.network, u1.crypto, l -> {}).get();
+                u1.network, u1.crypto, () -> false, l -> {}).get();
 
         Path filePath = PathUtil.get(u1.username, subdirName, filename);
 
@@ -905,7 +905,7 @@ public class MultiUserTests {
         Path subdirPath = PathUtil.get(u1.username, subdirName);
         FileWrapper subdir = u1.getByPath(subdirPath).get().get();
         FileWrapper uploaded = subdir.uploadOrReplaceFile(filename, file1Reader, data1.length,
-                u1.network, u1.crypto, l -> {}).join();
+                u1.network, u1.crypto, () -> false, l -> {}).join();
 
         Path filePath = PathUtil.get(u1.username, subdirName, filename);
         shareFunction.apply(u1, userContexts, filePath);
@@ -983,7 +983,7 @@ public class MultiUserTests {
         Path subdirPath = PathUtil.get(u1.username, subdirName);
         FileWrapper subdir = u1.getByPath(subdirPath).get().get();
         FileWrapper uploaded = subdir.uploadOrReplaceFile(filename, file1Reader, data1.length,
-                u1.network, u1.crypto, l -> {}).join();
+                u1.network, u1.crypto, () -> false, l -> {}).join();
 
         Path filePath = PathUtil.get(u1.username, subdirName, filename);
         shareFunction.apply(u1, userContexts, filePath);
@@ -1098,7 +1098,7 @@ public class MultiUserTests {
         Files.write(f.toPath(), originalFileContents);
         ResetableFileInputStream resetableFileInputStream = new ResetableFileInputStream(f);
         FileWrapper uploaded = u1Root.uploadOrReplaceFile(filename, resetableFileInputStream, f.length(),
-                u1.network, u1.crypto, l -> {}).get();
+                u1.network, u1.crypto, () -> false, l -> {}).get();
 
         // share the file from "a" to each of the others
         String originalPath = u1.username + "/" + filename;
@@ -1192,7 +1192,7 @@ public class MultiUserTests {
         FileWrapper parent = u1New.getByPath(u1New.username).get().get();
         parent.uploadFileSection(newname, suffixStream, false, originalFileContents.length,
                 originalFileContents.length + suffix.length, Optional.empty(), true,
-                u1New.network, crypto, l -> {}, null, Optional.empty(), null, null).get();
+                u1New.network, crypto, () -> false, l -> {}, null, Optional.empty(), null, null).get();
         AsyncReader extendedContents = u1New.getByPath(u1.username + "/" + newname).get().get()
                 .getInputStream(u1New.network, crypto, l -> {}).get();
         byte[] newFileContents = Serialize.readFully(extendedContents, originalFileContents.length + suffix.length).get();
@@ -1220,7 +1220,7 @@ public class MultiUserTests {
         PeergosNetworkUtils.friendBetweenGroups(Arrays.asList(u1), Arrays.asList(u2));
         // Add file bigger than the 1MiB final quota
         u1.getUserRoot().join().uploadOrReplaceFile("afile.bin", AsyncReader.build(new byte[2*1024*1024]),
-                2*1024*1024, u1.network, crypto, x -> {}).join();
+                2*1024*1024, u1.network, crypto, () -> false, x -> {}).join();
         u1.deleteAccount(password1, UserTests::noMfa).join();
 
         // Check u2 can still log in

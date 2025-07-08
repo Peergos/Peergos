@@ -52,7 +52,7 @@ public class TransactionServiceImpl implements TransactionService {
                 Futures.asyncExceptionally(
                         () -> dir.uploadFileSection(version, committer, transaction.name(), asyncReader, false,
                                 0, data.length, Optional.empty(), false, false, false, networkAccess,
-                                crypto, VOID_PROGRESS, crypto.random.randomBytes(32), Optional.empty(), Optional.of(Bat.random(crypto.random)), dir.mirrorBatId())
+                                crypto, () -> false, VOID_PROGRESS, crypto.random.randomBytes(32), Optional.empty(), Optional.of(Bat.random(crypto.random)), dir.mirrorBatId())
                                 .thenApply(Either::a),
                         t -> {
                             if (!(Exceptions.getRootCause(t) instanceof FileExistsException))

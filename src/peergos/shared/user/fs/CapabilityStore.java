@@ -58,7 +58,7 @@ public class CapabilityStore {
                     long startIndex = capStore.map(f -> f.getSize()).orElse(0L);
                     return sharedDir.uploadFileSection(sharedDir.version, c, capStoreFilename, newCapability, false,
                             startIndex, startIndex + serializedCapability.length, Optional.empty(), false, true,
-                            false, network, crypto, x -> {}, crypto.random.randomBytes(32),
+                            false, network, crypto, () -> false, x -> {}, crypto.random.randomBytes(32),
                             Optional.empty(), Optional.of(Bat.random(crypto.random)), sharedDir.mirrorBatId());
                 });
     }

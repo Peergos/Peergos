@@ -60,11 +60,11 @@ public class QuotaTests {
         byte[] data = new byte[1024*1024];
         random.nextBytes(data);
         FileWrapper newHome = home.uploadOrReplaceFile("file-1", new AsyncReader.ArrayBacked(data), data.length,
-                network, crypto, x -> {}).get();
+                network, crypto, () -> false, x -> {}).get();
 
         try {
             newHome.uploadOrReplaceFile("file-2", new AsyncReader.ArrayBacked(data), data.length, network,
-                    crypto, x -> {}).get();
+                    crypto, () -> false, x -> {}).get();
             Assert.fail("Quota wasn't enforced");
         } catch (Exception e) {}
     }
@@ -80,7 +80,7 @@ public class QuotaTests {
         for (int i=0; i < 5; i++) {
             String filename = "file-1";
             context.getUserRoot().join().uploadOrReplaceFile(filename, new AsyncReader.ArrayBacked(data), data.length,
-                    network, crypto, x -> {}).get();
+                    network, crypto, () -> false, x -> {}).get();
             Path filePath = PathUtil.get(username, filename);
             FileWrapper file = context.getByPath(filePath).get().get();
             file.remove(context.getUserRoot().join(), filePath, context).get();
@@ -101,7 +101,7 @@ public class QuotaTests {
         random.nextBytes(data);
         String filename = "file-1";
         home = home.uploadOrReplaceFile(filename, new AsyncReader.ArrayBacked(data), data.length,
-                network, crypto, x -> {}).join();
+                network, crypto, () -> false, x -> {}).join();
         Path filePath = PathUtil.get(username, filename);
         FileWrapper file = context.getByPath(filePath).join().get();
         file.remove(home, filePath, context).join();
@@ -120,12 +120,12 @@ public class QuotaTests {
         random.nextBytes(data);
         String filename = "file-1";
         home = home.uploadOrReplaceFile(filename, new AsyncReader.ArrayBacked(data), data.length,
-                network, crypto, x -> {}).get();
+                network, crypto, () -> false, x -> {}).get();
         Path filePath = PathUtil.get(username, filename);
         FileWrapper file = context.getByPath(filePath).get().get();
         try {
             home = home.uploadOrReplaceFile("file-2", new AsyncReader.ArrayBacked(data), data.length,
-                    network, crypto, x -> {}).get();
+                    network, crypto, () -> false, x -> {}).get();
             Assert.fail();
         } catch (Exception e) {}
         file.remove(home, filePath, context).get();

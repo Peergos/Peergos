@@ -82,7 +82,7 @@ public class IpfsUserTests extends UserTests {
         int filesize = 10 * 1024 * 1024;
         String filename = "file.bin";
         context.getUserRoot().join().uploadOrReplaceFile(filename, AsyncReader.build(new byte[filesize]),
-                filesize, network, crypto, x -> {}).join();
+                filesize, network, crypto, () -> false, x -> {}).join();
         long sizeWithFile = getBlockstoreSize();
         Assert.assertTrue(sizeWithFile > sizeBefore + filesize);
         Threads.sleep(2_000); // Allow time for server to update usage
