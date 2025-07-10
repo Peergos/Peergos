@@ -1,12 +1,16 @@
 package peergos.server.crypto.hash;
 import java.io.FileInputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.file.Path;
 import java.util.*;
+import java.util.function.Supplier;
 import java.util.logging.*;
 
 import java.security.*;
 import java.util.concurrent.CompletableFuture;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
@@ -101,13 +105,11 @@ public class ScryptJava implements Hasher {
                 .thenApply(h -> new Multihash(Multihash.Type.sha2_256, h));
     }
 
-    public static HashTree hashFile(Path p, Hasher hasher) {
-        byte[] buf = new byte[4 * 1024];
-        long size = p.toFile().length();
-        int chunkOffset = 0;
+    public static List<byte[]> hashChunks(InputStream fin, long size) {
         List<byte[]> chunkHashes = new ArrayList<>();
-
-        try (FileInputStream fin = new FileInputStream(p.toFile())) {
+        int chunkOffset = 0;
+        byte[] buf = new byte[64 * 1024];
+        try {
             MessageDigest chunkHash = MessageDigest.getInstance("SHA-256");
             for (long i = 0; i < size; ) {
                 int read = fin.read(buf);
@@ -124,10 +126,46 @@ public class ScryptJava implements Hasher {
             }
             if (size == 0 || size % Chunk.MAX_SIZE != 0)
                 chunkHashes.add(chunkHash.digest());
-
-            return HashTree.build(chunkHashes, hasher).join();
+            return chunkHashes;
         } catch (IOException | NoSuchAlgorithmException e) {
             throw new RuntimeException(e);
         }
+    }
+
+    public static List<byte[]> parallelHashChunks(Supplier<InputStream> fins, int nThreads, long size) {
+        int nChunks = (int) ((size + Chunk.MAX_SIZE - 1)/ Chunk.MAX_SIZE);
+        long chunksPerThread = (nChunks + nThreads - 1) / nThreads;
+        if (size < Chunk.MAX_SIZE)
+            return hashChunks(fins.get(), size);
+        return IntStream.range(0, nThreads)
+                .parallel()
+                .mapToObj(i -> {
+                    try (InputStream fin = fins.get()) {
+                        long start = i * chunksPerThread * Chunk.MAX_SIZE;
+                        long end = Math.min(size, (i + 1) * chunksPerThread * Chunk.MAX_SIZE);
+                        if (start == end || start > size)
+                            return Collections.<byte[]>emptyList();
+                        long skipped = fin.skip(start);
+                        if (skipped != start)
+                            throw new IllegalStateException("Skip did not complete!");
+                        return hashChunks(fin, end - start);
+                    } catch (IOException e) {
+                        throw new IllegalStateException(e);
+                    }
+                })
+                .flatMap(List::stream)
+                .collect(Collectors.toList());
+    }
+
+    public static HashTree hashFile(Path p, Hasher hasher) {
+        long size = p.toFile().length();
+        List<byte[]> chunkHashes = parallelHashChunks(() -> {
+            try {
+                return new FileInputStream(p.toFile());
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+        }, Runtime.getRuntime().availableProcessors(), size);
+        return HashTree.build(chunkHashes, hasher).join();
     }
 }
