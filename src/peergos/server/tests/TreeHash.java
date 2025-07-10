@@ -14,7 +14,7 @@ public class TreeHash {
 
     @Test
     public void parallelTreeHash() {
-        for (long chunks=0; chunks < 1024; chunks += 400) {
+        for (long chunks=0; chunks < 1024; chunks += 200) {
             for (long size : List.of(
                     chunks * Chunk.MAX_SIZE + 1024,
                     Math.max(0, chunks * Chunk.MAX_SIZE - 1024))) {
@@ -39,7 +39,7 @@ public class TreeHash {
     }
 
     static class RandomStream extends InputStream {
-        final Random r = new Random(42);
+        final int val = new Random(42).nextInt() & 0xFF;
         private final long size;
         private long read = 0;
 
@@ -52,7 +52,13 @@ public class TreeHash {
             if (read >= size)
                 return -1;
             read++;
-            return r.nextInt() & 0xFF;
+            return val;
+        }
+
+        @Override
+        public long skip(long n) throws IOException {
+            read += n;
+            return n;
         }
     }
 }
