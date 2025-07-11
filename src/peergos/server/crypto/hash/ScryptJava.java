@@ -135,7 +135,7 @@ public class ScryptJava implements Hasher {
     public static List<byte[]> parallelHashChunks(Supplier<InputStream> fins, int nThreads, long size) {
         int nChunks = (int) ((size + Chunk.MAX_SIZE - 1)/ Chunk.MAX_SIZE);
         long chunksPerThread = (nChunks + nThreads - 1) / nThreads;
-        if (size < Chunk.MAX_SIZE)
+        if (size < Chunk.MAX_SIZE || isWindows())
             return hashChunks(fins.get(), size);
         return IntStream.range(0, nThreads)
                 .parallel()
@@ -167,5 +167,9 @@ public class ScryptJava implements Hasher {
             }
         }, Runtime.getRuntime().availableProcessors(), size);
         return HashTree.build(chunkHashes, hasher).join();
+    }
+
+    private static boolean isWindows() {
+        return System.getProperty("os.name").toLowerCase().startsWith("windows");
     }
 }
