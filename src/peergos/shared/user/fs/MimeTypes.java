@@ -162,7 +162,7 @@ public class MimeTypes {
                 return "video/quicktime";
         if (equalArrays(start, 24, WEBM))
             return "video/webm";
-        if (equalArrays(start, OGG) && !filename.endsWith("oga"))
+        if (equalArrays(start, OGG) && !filename.endsWith("oga") && !filename.endsWith("opus"))
             return "video/ogg";
         if (equalArrays(start, MATROSKA_START))
             return "video/x-matroska";
