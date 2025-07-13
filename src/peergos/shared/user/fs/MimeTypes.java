@@ -15,6 +15,10 @@ public class MimeTypes {
     final static int[] RIFF = new int[]{'R', 'I', 'F', 'F'};
     final static int[] WAV_2 = new int[]{'W', 'A', 'V', 'E'};
     final static int[] FLAC = new int[]{'f', 'L', 'a', 'C'};
+    final static int[] OPUS = new int[]{'O', 'p', 'u', 's', 'H', 'e', 'a', 'd'};
+    final static int[] OGG_FLAC = new int[]{0x7f, 'F', 'L', 'A', 'C'};
+    final static int[] VORBIS = new int[]{1, 'v', 'o', 'r', 'b', 'i', 's'};
+    final static int[] SPEEX = new int[]{'S', 'p', 'e', 'e', 'x', 0x20, 0x20, 0x20};
 
     final static int[] MP4 = new int[]{'f', 't', 'y', 'p'};
     final static int[] ISO2 = new int[]{'i', 's', 'o', '2'};
@@ -38,6 +42,9 @@ public class MimeTypes {
     final static int[] AIFF = new int[]{'A', 'I', 'F', 'F'};
     final static int[] AVI = new int[]{'A', 'V', 'I', ' '};
     final static int[] OGG = new int[]{'O', 'g', 'g', 'S', 0, 2};
+    final static int[] THEORA = new int[]{0x80, 't', 'h', 'e', 'o', 'r', 'a'};
+    final static int[] FISHEAD = new int[]{'f', 'i', 's', 'h', 'e', 'a', 'd', 0};
+    final static int[] OGM_VIDEO = new int[]{1, 'v', 'i', 'd', 'e', 'o', 0, 0, 0};
     final static int[] WEBM = new int[]{'w', 'e', 'b', 'm'};
     final static int[] MATROSKA_START = new int[]{0x1a, 0x45, 0xdf, 0xa3};
 
@@ -162,7 +169,10 @@ public class MimeTypes {
                 return "video/quicktime";
         if (equalArrays(start, 24, WEBM))
             return "video/webm";
-        if (equalArrays(start, OGG) && !filename.endsWith("oga") && !filename.endsWith("opus"))
+        if (equalArrays(start, OGG) &&
+                (equalArrays(start, 28, THEORA) ||
+                        equalArrays(start, 28, FISHEAD) ||
+                        equalArrays(start, 28, OGM_VIDEO)))
             return "video/ogg";
         if (equalArrays(start, MATROSKA_START))
             return "video/x-matroska";
@@ -181,7 +191,11 @@ public class MimeTypes {
             return "audio/mpeg";
         if (equalArrays(start, FLAC))
             return "audio/flac";
-        if (equalArrays(start, OGG)) // not sure how to distinguish from ogg video easily
+        if (equalArrays(start, OGG) &&
+                (equalArrays(start, 28, OPUS) ||
+                        equalArrays(start, 28, OGG_FLAC) ||
+                        equalArrays(start, 28, VORBIS) ||
+                        equalArrays(start, 28, SPEEX))) // not sure how to distinguish from ogg video easily
             return "audio/ogg";
         if (equalArrays(start, RIFF) && equalArrays(start, 8, WAV_2))
             return "audio/wav";
