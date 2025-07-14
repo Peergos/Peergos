@@ -21,6 +21,7 @@ import peergos.shared.*;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.asymmetric.*;
+import peergos.shared.crypto.asymmetric.mlkem.HybridCurve25519MLKEMPublicKey;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.crypto.symmetric.*;
 import peergos.server.*;
@@ -434,23 +435,35 @@ public abstract class UserTests {
         WriterData initialWd = WriterData.getWriterData(initialIdentity, initialIdentity, network.mutable, network.dhtClient).join().props.get();
         Assert.assertTrue(initialWd.staticData.isPresent());
 
-        UserContext login = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
+        List<String> progress = new ArrayList<>();
+        UserContext login = UserContext.signIn(username, password, UserTests::noMfa, false, network, crypto, progress::add).join();
+        WriterData afterPqUpgrade = WriterData.getWriterData(login.signer.publicKeyHash, login.signer.publicKeyHash, network.mutable, network.dhtClient).join().props.get();
+        Pair<PublicKeyHash, PublicBoxingKey> pqKeys = login.getPublicKeys(username).join().get();
+        Assert.assertTrue(afterPqUpgrade.staticData.isPresent());
+        Assert.assertTrue(pqKeys.right instanceof HybridCurve25519MLKEMPublicKey);
+        Assert.assertTrue(login.isPostQuantum());
 
         String newPassword = "newPassword";
-        userContext.changePassword(password, newPassword, UserTests::noMfa).get();
+        login.changePassword(password, newPassword, UserTests::noMfa).get();
         MultiUserTests.checkUserValidity(network, username);
 
-        UserContext changedPassword = PeergosNetworkUtils.ensureSignedUp(username, newPassword, network, crypto);
+        List<String> progress2 = new ArrayList<>();
+        UserContext changedPassword = UserContext.signIn(username, newPassword, UserTests::noMfa, false, network, crypto, progress2::add).join();
         Pair<PublicKeyHash, PublicBoxingKey> newKeyPairs = changedPassword.getPublicKeys(username).join().get();
         PublicBoxingKey newBoxer = newKeyPairs.right;
         PublicKeyHash newIdentity = newKeyPairs.left;
-        Assert.assertTrue(newBoxer.equals(initialBoxer));
+        Assert.assertTrue(! newBoxer.equals(initialBoxer));
+        Assert.assertTrue(newBoxer.equals(pqKeys.right));
         Assert.assertTrue(! newIdentity.equals(initialIdentity));
 
         SecretGenerationAlgorithm alg = WriterData.fromCbor(UserContext.getWriterDataCbor(network, username).join().right).generationAlgorithm.get();
         Assert.assertTrue("password change upgrades legacy accounts", ! alg.generateBoxerAndIdentity());
         WriterData finalWd = WriterData.getWriterData(newIdentity, newIdentity, network.mutable, network.dhtClient).join().props.get();
         Assert.assertTrue(finalWd.staticData.isEmpty());
+
+        UserContext pq = UserContext.signIn(username, newPassword, UserTests::noMfa, network, crypto).join();
+        PublicBoxingKey pqBoxer = pq.getPublicKeys(username).join().get().right;
+        Assert.assertTrue(pqBoxer instanceof HybridCurve25519MLKEMPublicKey);
     }
 
     @Test
