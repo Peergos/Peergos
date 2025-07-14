@@ -507,6 +507,13 @@ public abstract class UserTests {
         PublicBoxingKey pqBoxer = pq.getPublicKeys(username).join().get().right;
         Assert.assertTrue(pqBoxer instanceof HybridCurve25519MLKEMPublicKey);
         Assert.assertTrue(pqBoxer.equals(newKeyPairs.right));
+
+        // change password again
+        String newerPassword = "greentrees";
+        UserContext secondPassChange = pq.changePassword(newPassword, newerPassword, UserTests::noMfa).join();
+        UserContext relogin = UserContext.signIn(username, newerPassword, UserTests::noMfa, network, crypto).join();
+        PublicBoxingKey finalPqBoxer = relogin.getPublicKeys(username).join().get().right;
+        Assert.assertTrue(finalPqBoxer.equals(pqBoxer));
     }
 
     @Test
