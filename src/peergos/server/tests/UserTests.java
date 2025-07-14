@@ -464,6 +464,7 @@ public abstract class UserTests {
         UserContext pq = UserContext.signIn(username, newPassword, UserTests::noMfa, network, crypto).join();
         PublicBoxingKey pqBoxer = pq.getPublicKeys(username).join().get().right;
         Assert.assertTrue(pqBoxer instanceof HybridCurve25519MLKEMPublicKey);
+        Assert.assertTrue(pqBoxer.equals(pqKeys.right));
     }
 
     @Test
