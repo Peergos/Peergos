@@ -32,6 +32,7 @@ public class JdbcIpnsAndSocial {
     private static final String IPNS_TARGET_NAME = "hash";
     private static final String IPNS_CREATE = "INSERT INTO metadatablobs (writingkey, hash) VALUES(?, ?)";
     private static final String IPNS_UPDATE = "UPDATE metadatablobs SET hash=? WHERE writingkey = ? AND hash = ?";
+    private static final String IPNS_DELETE = "DELETE FROM metadatablobs WHERE writingkey = ?;";
     private static final String IPNS_GET = "SELECT * FROM metadatablobs WHERE writingKey = ? LIMIT 1;";
 
     private class FollowRequestData {
@@ -172,6 +173,17 @@ public class JdbcIpnsAndSocial {
         return ((CborObject.CborList) cbor).value.stream()
                 .map(BlindFollowRequest::fromCbor)
                 .collect(Collectors.toList());
+    }
+
+    public void removePointer(PublicKeyHash writingKey) {
+        try (Connection conn = getConnection();
+                 PreparedStatement stmt = conn.prepareStatement(IPNS_DELETE)) {
+                stmt.setString(1, new String(Base64.getEncoder().encode(writingKey.serialize())));
+                stmt.executeUpdate();
+            } catch (SQLException sqe) {
+                LOG.log(Level.WARNING, sqe.getMessage(), sqe);
+                throw new RuntimeException(sqe);
+            }
     }
 
     public CompletableFuture<Boolean> setPointer(PublicKeyHash writingKey, Optional<byte[]> existingCas, byte[] newCas) {

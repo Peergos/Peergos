@@ -59,10 +59,6 @@ public class Main extends Builder {
     public static final Path DEFAULT_PEERGOS_DIR_PATH =
             Paths.get(System.getProperty("user.home"), ".peergos");
 
-    static {
-        PublicSigningKey.addProvider(PublicSigningKey.Type.Ed25519, initCrypto().signer);
-    }
-
     public static final Command.Arg ARG_TRANSACTIONS_SQL_FILE =
         new Command.Arg("transactions-sql-file", "The filename for the transactions datastore", false, "transactions.sql");
     public static final Command.Arg ARG_BAT_STORE =
@@ -279,6 +275,7 @@ public class Main extends Builder {
             args -> {
                 try {
                     Crypto crypto = initCrypto();
+                    PublicSigningKey.addProvider(PublicSigningKey.Type.Ed25519, crypto.signer);
 
                     IpfsWrapper ipfs = null;
                     boolean useIPFS = args.getBoolean("useIPFS");
@@ -346,6 +343,7 @@ public class Main extends Builder {
             args -> {
                 try {
                     Crypto crypto = initCrypto();
+                    PublicSigningKey.addProvider(PublicSigningKey.Type.Ed25519, crypto.signer);
 
                     IpfsWrapper ipfs = null;
                     boolean useIPFS = args.getBoolean("useIPFS");
@@ -567,6 +565,7 @@ public class Main extends Builder {
             a -> {
                 try {
                     Crypto crypto = JavaCrypto.init();
+                    PublicSigningKey.addProvider(PublicSigningKey.Type.Ed25519, crypto.signer);
                     ThumbnailGenerator.setInstance(new JavaImageThumbnailer());
                     URL target = new URL(a.getArg("peergos-url", "https://peergos.net"));
                     JavaPoster poster = new JavaPoster(target, ! target.getHost().equals("localhost"), Optional.empty(), Optional.of("Peergos-" + UserService.CURRENT_VERSION + "-proxy"));
@@ -645,6 +644,7 @@ public class Main extends Builder {
     public static ServerProcesses startPeergos(Args a) {
         try {
             Crypto crypto = initCrypto();
+            PublicSigningKey.addProvider(PublicSigningKey.Type.Ed25519, crypto.signer);
             ThumbnailGenerator.setInstance(new JavaImageThumbnailer());
             Hasher hasher = crypto.hasher;
             PublicSigningKey.addProvider(PublicSigningKey.Type.Ed25519, crypto.signer);
@@ -955,6 +955,7 @@ public class Main extends Builder {
             NetworkAccess network = buildJavaNetworkAccess(api, peergosUrl.startsWith("https"), Optional.of("Peergos-" + UserService.CURRENT_VERSION + "-fuse")).join();
 
             Crypto crypto = initCrypto();
+            PublicSigningKey.addProvider(PublicSigningKey.Type.Ed25519, crypto.signer);
             ThumbnailGenerator.setInstance(new JavaImageThumbnailer());
             UserContext userContext = UserContext.signIn(username, password, Main::getMfaResponseCLI, network, crypto).join();
             PeergosFS peergosFS = new PeergosFS(userContext);
@@ -1096,6 +1097,7 @@ public class Main extends Builder {
                     VERSION,
                     IDENTITY,
                     PROXY,
+                    ServerAdmin.SERVER_ADMIN,
                     PKI,
                     PKI_INIT,
                     IPFS

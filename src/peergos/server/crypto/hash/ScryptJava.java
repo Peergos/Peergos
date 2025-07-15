@@ -25,6 +25,9 @@ import javax.crypto.spec.*;
 
 public class ScryptJava implements Hasher {
 	private static final Logger LOG = Logger.getGlobal();
+    public static void disableLog() {
+        LOG.setLevel(Level.OFF);
+    }
     private static final int LOG_2_MIN_RAM = 17;
 
     @Override

@@ -27,6 +27,9 @@ import java.util.stream.*;
 
 public class IpfsCoreNode implements CoreNode {
 	private static final Logger LOG = Logging.LOG();
+    public static void disableLog() {
+        LOG.setLevel(Level.OFF);
+    }
 	public static final int MAX_FREE_IDENTITY_CHANGES = 10;
 
     private final PublicKeyHash peergosIdentity;
@@ -73,7 +76,7 @@ public class IpfsCoreNode implements CoreNode {
         PointerUpdate currentPkiPointer = mutable.getPointerTarget(peergosIdentity, signer.publicKeyHash, ipfs).join();
         Optional<Long> currentPkiSequence = currentPkiPointer.sequence;
         MaybeMultihash currentPkiRoot = currentPkiPointer.updated;
-        System.out.println("Initializing PKI from root " + currentPkiRoot);
+        LOG.info("Initializing PKI from root " + currentPkiRoot);
         update(currentPkiRoot, currentPkiSequence);
         if (! currentPkiRoot.isPresent()) {
             CommittedWriterData committed = IpfsTransaction.call(peergosIdentity,
@@ -228,7 +231,7 @@ public class IpfsCoreNode implements CoreNode {
         try {
             MaybeMultihash currentTree = getTreeRoot(peerIds, currentChampRoot, ipfs);
             MaybeMultihash updatedTree = getTreeRoot(peerIds, newChampRoot, ipfs);
-            System.out.println("Updating pki to new tree root " + updatedTree);
+            LOG.info("Updating pki to new tree root " + updatedTree);
             Consumer<Triple<ByteArrayWrapper, Optional<CborObject.CborMerkleLink>, Optional<CborObject.CborMerkleLink>>> consumer =
                     t -> updateMapping(peerIds, t.left, t.middle, t.right, ipfs, chains, reverseLookup, usernames);
             Function<Cborable, CborObject.CborMerkleLink> fromCbor = c -> (CborObject.CborMerkleLink)c;

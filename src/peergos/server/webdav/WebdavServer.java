@@ -13,10 +13,13 @@ import org.eclipse.jetty.servlet.ServletContextHandler;
 import org.eclipse.jetty.servlet.ServletHolder;
 import org.eclipse.jetty.util.security.Constraint;
 import org.eclipse.jetty.util.security.Password;
+import peergos.server.Main;
 import peergos.server.user.JavaImageThumbnailer;
 import peergos.server.util.Logging;
 import peergos.server.webdav.modeshape.webdav.WebdavServlet;
 import peergos.server.util.Args;
+import peergos.shared.Crypto;
+import peergos.shared.crypto.asymmetric.PublicSigningKey;
 import peergos.shared.user.fs.ThumbnailGenerator;
 
 import java.util.Collections;
@@ -31,6 +34,8 @@ public class WebdavServer {
     public static Server start(Args args) {
         int port = args.getInt("webdav.port", 8090);
         logger.info( "Starting WEBDAV server version: " + VERSION + " on port: " + port);
+        Crypto crypto = Main.initCrypto();
+        PublicSigningKey.addProvider(PublicSigningKey.Type.Ed25519, crypto.signer);
         ThumbnailGenerator.setInstance(new JavaImageThumbnailer());
         Server server = new Server();
         ServerConnector connector = new ServerConnector(server);

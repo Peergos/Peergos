@@ -11,6 +11,7 @@ import peergos.server.util.Threads;
 import peergos.shared.Crypto;
 import peergos.shared.NetworkAccess;
 import peergos.shared.corenode.HTTPCoreNode;
+import peergos.shared.crypto.asymmetric.PublicSigningKey;
 import peergos.shared.crypto.hash.Hash;
 import peergos.shared.crypto.hash.PublicKeyHash;
 import peergos.shared.login.mfa.MultiFactorAuthMethod;
@@ -69,6 +70,7 @@ public class DirectorySync {
             String address = args.getArg("peergos-url");
             URL serverURL = new URL(address);
             Crypto crypto = Main.initCrypto();
+            PublicSigningKey.addProvider(PublicSigningKey.Type.Ed25519, crypto.signer);
             String cacheSize = args.getArg("block-cache-size-bytes");
             long blockCacheSizeBytes = cacheSize.endsWith("g") ?
                     Long.parseLong(cacheSize.substring(0, cacheSize.length() - 1)) * 1024L * 1024 * 1024 :
