@@ -12,6 +12,7 @@ import peergos.server.storage.admin.QuotaAdmin;
 import peergos.server.storage.auth.*;
 import peergos.shared.Crypto;
 import peergos.shared.corenode.CoreNode;
+import peergos.shared.corenode.HTTPCoreNode;
 import peergos.shared.crypto.hash.PublicKeyHash;
 import peergos.shared.mutable.MutablePointers;
 import peergos.shared.storage.ContentAddressedStorage;
@@ -62,6 +63,8 @@ public class ServerAdmin {
                     Builder.disableLog();
                     IpfsCoreNode.disableLog();
                     ScryptJava.disableLog();
+                    HTTPCoreNode.disableLog();
+
                     Crypto crypto = JavaCrypto.init();
                     String username = a.getArg("username");
                     SqlSupplier sqlCommands = Builder.getSqlCommands(a);
@@ -79,6 +82,7 @@ public class ServerAdmin {
                     CoreNode core = Builder.buildCorenode(a, storage, null, rawPointers, pointers, null,
                             null, null, null, null, null, null, crypto);
                     core.initialize();
+                    storage.setPki(core);
 
                     QuotaAdmin quota = Builder.buildSpaceQuotas(a, storage,
                             Builder.getDBConnector(a, "space-requests-sql-file", dbConnectionPool),
