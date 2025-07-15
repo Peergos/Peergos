@@ -19,6 +19,7 @@ import peergos.server.util.*;
 import peergos.shared.*;
 import peergos.shared.cbor.*;
 import peergos.shared.corenode.HTTPCoreNode;
+import peergos.shared.crypto.asymmetric.PublicSigningKey;
 import peergos.shared.crypto.hash.Hasher;
 import peergos.shared.login.mfa.*;
 import peergos.shared.mutable.HttpMutablePointers;
@@ -868,6 +869,7 @@ public class CLI implements Runnable {
 
     public static void buildAndRun(Args args) {
         CRYPTO = Main.initCrypto();
+        PublicSigningKey.addProvider(PublicSigningKey.Type.Ed25519, CRYPTO.signer);
         disableLogSpam();
         ThumbnailGenerator.setInstance(new JavaImageThumbnailer());
         Logging.LOG().setLevel(Level.WARNING);

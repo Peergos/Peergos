@@ -160,6 +160,11 @@ public class UserQuotas implements QuotaAdmin {
     }
 
     @Override
+    public void removeQuota(String username) {
+        quotas.removeUser(username);
+    }
+
+    @Override
     public CompletableFuture<PaymentProperties> getPaymentProperties(PublicKeyHash owner,
                                                                      boolean newClientSecret,
                                                                      byte[] signedTime) {

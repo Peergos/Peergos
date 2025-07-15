@@ -42,9 +42,14 @@ import java.sql.Connection;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.function.*;
-import java.util.stream.*;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 public class Builder {
+    private static final Logger LOG = Logger.getLogger(Builder.class.getName());
+    public static void disableLog() {
+        LOG.setLevel(Level.OFF);
+    }
 
     public static Crypto initNativeCrypto(Salsa20Poly1305 symmetric, Ed25519 signer, Curve25519 boxer, Mlkem mlkem, Hasher h) {
         SafeRandomJava random = new SafeRandomJava();
@@ -323,8 +328,8 @@ public class Builder {
         long defaultQuota = a.getLong("default-quota");
         long maxUsers = a.getLong("max-users", isPki ? 1 : 0);
         if (! localhostApi && maxUsers > 0)
-            Logging.LOG().warning("Anyone can signup to this instance because we are listening on non-localhost addresses and max-users > 0. Using signup tokens is more secure.");
-        Logging.LOG().info("Using default user space quota of " + defaultQuota);
+            LOG.warning("Anyone can signup to this instance because we are listening on non-localhost addresses and max-users > 0. Using signup tokens is more secure.");
+        LOG.info("Using default user space quota of " + defaultQuota);
         return new UserQuotas(quotas, defaultQuota, maxUsers, spaceRequests, localDht, isPki);
     }
 
@@ -333,9 +338,13 @@ public class Builder {
         return new HttpQuotaAdmin(poster);
     }
 
-    public static CoreNode buildPkiCorenode(MutablePointers mutable, Account account, BatCave batCave, DeletableContentAddressedStorage dht, Args a) {
+    public static CoreNode buildPkiCorenode(MutablePointers mutable,
+                                            Account account,
+                                            BatCave batCave,
+                                            DeletableContentAddressedStorage dht,
+                                            Crypto crypto,
+                                            Args a) {
         try {
-            Crypto crypto = initCrypto();
             PublicKeyHash peergosIdentity = PublicKeyHash.fromString(a.getArg("peergos.identity.hash"));
 
             String pkiSecretKeyfilePassword = a.getArg("pki.keyfile.password");
@@ -386,7 +395,7 @@ public class Builder {
         // build a mirroring proxying corenode, unless we are the pki node
         boolean isPkiNode = nodeId.bareMultihash().equals(pkiServerId);
         return isPkiNode ?
-                buildPkiCorenode(localPointers, account, bats, localStorage, a) :
+                buildPkiCorenode(localPointers, account, bats, localStorage, crypto, a) :
                 new MirrorCoreNode(new HTTPCoreNode(buildP2pHttpProxy(a), pkiServerId), rawAccount, bats, account, proxingMutable,
                         localStorage, rawPointers, localPointers, transactions, localSocial, usageStore, linkCounts, pkiServerId, peergosId,
                         a.fromPeergosDir("pki-mirror-state-path","pki-state.cbor"), crypto);

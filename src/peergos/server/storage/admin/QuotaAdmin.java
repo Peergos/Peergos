@@ -40,6 +40,8 @@ public interface QuotaAdmin extends QuotaControl {
 
     long getQuota(String username);
 
+    void removeQuota(String username);
+
     boolean hadQuota(String username, LocalDateTime time);
 
     List<String> getLocalUsernames();
