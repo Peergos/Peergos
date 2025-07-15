@@ -63,7 +63,7 @@ public class SyncConfigHandler implements HttpHandler {
         this.hostPaths = hostPaths;
     }
 
-    private void saveConfigToFile(List<String> links,
+    private synchronized void saveConfigToFile(List<String> links,
                                   List<String> localDirs,
                                   List<String> remotePaths,
                                   List<Boolean> syncLocalDeletes,
@@ -86,54 +86,57 @@ public class SyncConfigHandler implements HttpHandler {
                     .saveToFile();
     }
 
-    public List<String> getLinks() {
-        Args updated = Args.parse(new String[]{}, Optional.of(args.getPeergosDir().resolve(SYNC_CONFIG_FILENAME)), false);
+    private synchronized Args getUpdatedArgs() {
+        return Args.parse(new String[]{}, Optional.of(args.getPeergosDir().resolve(SYNC_CONFIG_FILENAME)), false);
+    }
+
+    public List<String> getLinks(Args updated) {
         if (! updated.hasArg("links"))
             return new ArrayList<>();
         return new ArrayList<>(Arrays.asList(updated.getArg("links").split(",")));
     }
 
-    public List<String> getRemotePaths() {
-        Args updated = Args.parse(new String[]{}, Optional.of(args.getPeergosDir().resolve(SYNC_CONFIG_FILENAME)), false);
+    public List<String> getRemotePaths(Args updated) {
         if (updated.hasArg("remote-paths")) {
             return new ArrayList<>(Arrays.asList(updated.getArg("remote-paths").split("//")));
         }
-        return getLinks().stream()
+        return getLinks(updated).stream()
                 .map(this::getRemotePath)
                 .collect(Collectors.toList());
     }
 
-    public void updateRemotePaths() {
-        List<String> links = getLinks();
+    public void updateRemotePaths(Args updated) {
+        List<String> links = getLinks(updated);
         List<String> remotePaths = links.stream()
                 .map(this::getRemotePath)
                 .collect(Collectors.toList());
-        saveConfigToFile(links, getLocalDirs(), remotePaths, getSyncLocalDeletes(), getSyncRemoteDeletes());
+        saveConfigToFile(links, getLocalDirs(updated), remotePaths, getSyncLocalDeletes(updated), getSyncRemoteDeletes(updated));
     }
 
-    public List<String> getLocalDirs() {
-        Args updated = Args.parse(new String[]{}, Optional.of(args.getPeergosDir().resolve(SYNC_CONFIG_FILENAME)), false);
+    public List<String> getLocalDirs(Args updated) {
         if (! updated.hasArg("local-dirs"))
             return new ArrayList<>();
         return new ArrayList<>(Arrays.asList(updated.getArg("local-dirs").split(",")));
     }
 
-    public List<Boolean> getSyncLocalDeletes() {
-        Args updated = Args.parse(new String[]{}, Optional.of(args.getPeergosDir().resolve(SYNC_CONFIG_FILENAME)), false);
+    public List<Boolean> getSyncLocalDeletes(Args updated) {
         if (! updated.hasArg("sync-local-deletes"))
             return new ArrayList<>();
-        return new ArrayList<>(Stream.of(updated.getArg("sync-local-deletes").split(",")).map(Boolean::parseBoolean).collect(Collectors.toList()));
+        return new ArrayList<>(Stream.of(updated.getArg("sync-local-deletes").split(","))
+                .map(Boolean::parseBoolean)
+                .collect(Collectors.toList()));
     }
 
-    public List<Boolean> getSyncRemoteDeletes() {
-        Args updated = Args.parse(new String[]{}, Optional.of(args.getPeergosDir().resolve(SYNC_CONFIG_FILENAME)), false);
+    public List<Boolean> getSyncRemoteDeletes(Args updated) {
         if (! updated.hasArg("sync-remote-deletes"))
             return new ArrayList<>();
-        return new ArrayList<>(Stream.of(updated.getArg("sync-remote-deletes").split(",")).map(Boolean::parseBoolean).collect(Collectors.toList()));
+        return new ArrayList<>(Stream.of(updated.getArg("sync-remote-deletes").split(","))
+                .map(Boolean::parseBoolean)
+                .collect(Collectors.toList()));
     }
 
     public void start() {
-        if (! getLinks().isEmpty())
+        if (! getLinks(getUpdatedArgs()).isEmpty())
             syncer.start();
     }
 
@@ -214,11 +217,12 @@ public class SyncConfigHandler implements HttpHandler {
                 String localDir = (String) json.get("dir");
                 Boolean newSyncLocalDeletes = (Boolean) json.get("syncLocalDeletes");
                 Boolean newSyncRemoteDeletes = (Boolean) json.get("syncRemoteDeletes");
-                List<String> links = getLinks();
-                List<String> localDirs = getLocalDirs();
-                List<String> remotePaths = getRemotePaths();
-                List<Boolean> syncLocalDeletes = getSyncLocalDeletes();
-                List<Boolean> syncRemoteDeletes = getSyncRemoteDeletes();
+                Args updated = getUpdatedArgs();
+                List<String> links = getLinks(updated);
+                List<String> localDirs = getLocalDirs(updated);
+                List<String> remotePaths = getRemotePaths(updated);
+                List<Boolean> syncLocalDeletes = getSyncLocalDeletes(updated);
+                List<Boolean> syncRemoteDeletes = getSyncRemoteDeletes(updated);
                 int existing = links.indexOf(link);
                 if (existing != -1 && existing == localDirs.indexOf(localDir)) {
                     exchange.sendResponseHeaders(200, 0);
@@ -239,7 +243,8 @@ public class SyncConfigHandler implements HttpHandler {
             } else if (action.equals("remove-pair")) {
                 long label = Long.parseLong(last.apply("label"));
                 int toRemove = 0;
-                List<String> links = getLinks();
+                Args updated = getUpdatedArgs();
+                List<String> links = getLinks(updated);
                 for (;toRemove < links.size(); toRemove++) {
                     String link = links.get(toRemove);
                     if (link.substring(link.lastIndexOf("/", link.indexOf("#")) + 1, link.indexOf("#")).equals(Long.toString(label)))
@@ -248,13 +253,13 @@ public class SyncConfigHandler implements HttpHandler {
                 if (toRemove == links.size())
                     throw new IllegalArgumentException("Unknown label");
                 links.remove(toRemove);
-                List<String> localDirs = getLocalDirs();
+                List<String> localDirs = getLocalDirs(updated);
                 localDirs.remove(toRemove);
-                List<String> remotePaths = getRemotePaths();
+                List<String> remotePaths = getRemotePaths(updated);
                 remotePaths.remove(toRemove);
-                List<Boolean> syncLocalDeletes = getSyncLocalDeletes();
+                List<Boolean> syncLocalDeletes = getSyncLocalDeletes(updated);
                 syncLocalDeletes.remove(toRemove);
-                List<Boolean> syncRemoteDeletes = getSyncRemoteDeletes();
+                List<Boolean> syncRemoteDeletes = getSyncRemoteDeletes(updated);
                 syncRemoteDeletes.remove(toRemove);
 
                 saveConfigToFile(links, localDirs, remotePaths, syncLocalDeletes, syncRemoteDeletes);
@@ -267,17 +272,18 @@ public class SyncConfigHandler implements HttpHandler {
                 // TODO filter links by owner
 //                String username = core.getUsername(owner).join();
 
-                List<String> links = getLinks();
-                List<String> remotePaths = getRemotePaths();
-                List<String> localDirs = getLocalDirs();
+                Args updated = getUpdatedArgs();
+                List<String> links = getLinks(updated);
+                List<String> remotePaths = getRemotePaths(updated);
+                List<String> localDirs = getLocalDirs(updated);
                 Map<String, Object> json = new SyncConfig(localDirs,
                         remotePaths,
                         links.stream()
                                 // only return the link champ label, which is not sensitive, but enough for the owner to delete it
                                 .map(link -> link.substring(link.lastIndexOf("/", link.indexOf("#")) + 1, link.indexOf("#")))
                                 .collect(Collectors.toList()),
-                        getSyncLocalDeletes(),
-                        getSyncRemoteDeletes()
+                        getSyncLocalDeletes(updated),
+                        getSyncRemoteDeletes(updated)
                 ).toJson();
                 byte[] res = JSONParser.toString(json).getBytes(StandardCharsets.UTF_8);
 
@@ -285,7 +291,7 @@ public class SyncConfigHandler implements HttpHandler {
                 OutputStream resp = exchange.getResponseBody();
                 resp.write(res);
                 exchange.close();
-                ForkJoinPool.commonPool().execute(() -> updateRemotePaths());
+                ForkJoinPool.commonPool().execute(() -> updateRemotePaths(updated));
             } else if (action.equals("get-host-paths")) {
                 if (hostPaths.isB())
                     throw new IllegalStateException("Use direct dir chooser");
