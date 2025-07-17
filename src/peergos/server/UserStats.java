@@ -3,6 +3,7 @@ package peergos.server;
 import peergos.server.storage.*;
 import peergos.shared.*;
 import peergos.shared.corenode.*;
+import peergos.shared.crypto.asymmetric.mlkem.HybridCurve25519MLKEMPublicKey;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.Multihash;
 import peergos.shared.storage.*;
@@ -36,10 +37,15 @@ public class UserStats {
                 Set<PublicKeyHash> ownedKeysRecursive =
                         DeletableContentAddressedStorage.getOwnedKeysRecursive(username, network.coreNode, network.mutable,
                                 (h, s) -> ContentAddressedStorage.getWriterData(owner, h, s, network.dhtClient), network.dhtClient, network.hasher).join();
+                CommittedWriterData cwd = WriterData.getWriterData(owner, owner, network.mutable, network.dhtClient).join();
+                boolean isLegacy = cwd.props.map(wd -> wd.staticData.isPresent()).orElse(false);
+                boolean postQuantum = cwd.props.map(wd -> network.dhtClient.getBoxingKey(owner, wd.followRequestReceiver.get())
+                        .join().get() instanceof HybridCurve25519MLKEMPublicKey)
+                        .orElse(false);
                 String summary = "User: " + username + ", expiry: " + expiry
-                        + ", owned keys: " + ownedKeysRecursive.size() + "\n";
+                        + ", owned keys: " + ownedKeysRecursive.size() + ", legacy: " + isLegacy + ", preQuantum: " + !postQuantum + "\n";
                 System.out.println(summary);
-                return Stream.of(new Summary(username, expiry, hosts, ownedKeysRecursive));
+                return Stream.of(new Summary(username, expiry, hosts, ownedKeysRecursive, isLegacy, ! postQuantum));
             } catch (Exception e) {
                 String host = hosts.stream().findFirst().map(Object::toString).orElse("");
                 errors.add(username + ": " + host);
@@ -79,17 +85,20 @@ public class UserStats {
         public final LocalDate expiry;
         public final List<Multihash> storageProviders;
         public final Set<PublicKeyHash> ownedKeys;
+        public final boolean isLegacy, preQuantum;
 
-        public Summary(String username, LocalDate expiry, List<Multihash> storageProviders, Set<PublicKeyHash> ownedKeys) {
+        public Summary(String username, LocalDate expiry, List<Multihash> storageProviders, Set<PublicKeyHash> ownedKeys, boolean isLegacy, boolean preQuantum) {
             this.username = username;
             this.expiry = expiry;
             this.storageProviders = storageProviders;
             this.ownedKeys = ownedKeys;
+            this.isLegacy = isLegacy;
+            this.preQuantum = preQuantum;
         }
 
         public String toString() {
             return "User: " + username + ", expiry: " + expiry + ", hosts: " + storageProviders
-                    + ", owned keys: " + ownedKeys.size();
+                    + ", owned keys: " + ownedKeys.size() + ", legacy: " + isLegacy + ", preQuantum: " + preQuantum;
         }
     }
 }
