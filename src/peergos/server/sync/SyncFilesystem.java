@@ -1,5 +1,6 @@
 package peergos.server.sync;
 
+import peergos.shared.crypto.hash.PublicKeyHash;
 import peergos.shared.user.fs.*;
 import peergos.shared.util.Triple;
 
@@ -64,7 +65,14 @@ public interface SyncFilesystem {
 
     HashTree hashFile(Path p, Optional<FileWrapper> meta, String relativePath, SyncState syncedState);
 
-    void applyToSubtree(Consumer<FileProps> file, Consumer<FileProps> dir) throws IOException;
+    /**
+     *
+     * @param file
+     * @param dir
+     * @return the writer to ignore from snapshots (we only have read access to it as the entry point)
+     * @throws IOException
+     */
+    Optional<PublicKeyHash> applyToSubtree(Consumer<FileProps> file, Consumer<FileProps> dir) throws IOException;
 
     class FileProps {
         public final String relPath;

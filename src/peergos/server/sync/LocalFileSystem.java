@@ -5,6 +5,7 @@ import org.slf4j.LoggerFactory;
 import peergos.server.crypto.hash.ScryptJava;
 import peergos.server.simulation.FileAsyncReader;
 import peergos.shared.crypto.hash.Hasher;
+import peergos.shared.crypto.hash.PublicKeyHash;
 import peergos.shared.user.fs.*;
 import peergos.shared.util.PathUtil;
 import peergos.shared.util.Triple;
@@ -200,8 +201,9 @@ public class LocalFileSystem implements SyncFilesystem {
     }
 
     @Override
-    public void applyToSubtree(Consumer<FileProps> file, Consumer<FileProps> dir) throws IOException {
+    public Optional<PublicKeyHash> applyToSubtree(Consumer<FileProps> file, Consumer<FileProps> dir) throws IOException {
         applyToSubtree(root, file, dir);
+        return Optional.empty();
     }
 
     private void applyToSubtree(Path start, Consumer<FileProps> file, Consumer<FileProps> dir) throws IOException {

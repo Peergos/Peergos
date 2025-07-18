@@ -63,6 +63,12 @@ public class Snapshot implements Cborable {
         return versions.get(writer.publicKeyHash);
     }
 
+    public Snapshot remove(PublicKeyHash w) {
+        HashMap<PublicKeyHash, CommittedWriterData> removed = new HashMap<>(versions);
+        removed.remove(w);
+        return new Snapshot(removed);
+    }
+
     public Snapshot withVersion(PublicKeyHash writer, CommittedWriterData version) {
         HashMap<PublicKeyHash, CommittedWriterData> result = new HashMap<>(versions);
         result.put(writer, version);
@@ -96,8 +102,8 @@ public class Snapshot implements Cborable {
         if (list.value.size() % 2 != 0)
             throw new IllegalStateException("Invalid cbor list length for Snapshot!");
         HashMap<PublicKeyHash, CommittedWriterData> res = new HashMap<>();
-        for (int i=0; i < list.value.size()/2; i ++)
-            res.put(list.get(i, PublicKeyHash::fromCbor), list.get(i + 1, CommittedWriterData::fromCbor));
+        for (int i=0; i < list.value.size()/2; i++)
+            res.put(list.get(2*i, PublicKeyHash::fromCbor), list.get(2*i + 1, CommittedWriterData::fromCbor));
         return new Snapshot(res);
     }
 
