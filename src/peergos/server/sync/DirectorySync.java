@@ -108,14 +108,13 @@ public class DirectorySync {
     }
 
     public static PeergosSyncFS buildRemote(String link,
-                                            Path linkPath,
                                             NetworkAccess network,
                                             Crypto crypto) {
         Supplier<CompletableFuture<String>> linkUserPassword = () -> Futures.of("");
         List<Supplier<CompletableFuture<String>>> linkPasswords = List.of(linkUserPassword);
         UserContext context = UserContext.fromSecretLinksV2(List.of(link), linkPasswords, network, crypto).join();
-
-        return new PeergosSyncFS(context, linkPath);
+        Path path = PathUtil.get(context.getEntryPath().join());
+        return new PeergosSyncFS(context, path);
     }
 
     public static boolean syncDirs(List<String> links,
@@ -161,7 +160,7 @@ public class DirectorySync {
                     long t0 = System.currentTimeMillis();
                     String username = remoteDir.getName(0).toString();
                     PublicKeyHash owner = network.coreNode.getPublicKeyHash(username).join().get();
-                    PeergosSyncFS remote = buildRemote(links.get(i), remoteDir, network, crypto);
+                    PeergosSyncFS remote = buildRemote(links.get(i), network, crypto);
                     SyncFilesystem local = localBuilder.apply(localDirs.get(i));
                     syncDir(local, remote, syncLocalDeletes.get(i), syncRemoteDeletes.get(i),
                             owner, network, syncedState, maxDownloadParallelism, minFreeSpacePercent, crypto, isCancelled, LOG);
@@ -949,7 +948,7 @@ public class DirectorySync {
         List<Triple<String, FileWrapper, HashTree>> toUpdate = new ArrayList<>();
         AtomicLong downloadedSize = new AtomicLong(0);
 
-        fs.applyToSubtree(props -> {
+        Optional<PublicKeyHash> baseDirWriter = fs.applyToSubtree(props -> {
             String relPath = props.relPath;
             FileState atSync = synced.byPath(relPath);
             if (atSync != null && atSync.modificationTime == props.modifiedTime && atSync.size == props.size) {
@@ -961,11 +960,11 @@ public class DirectorySync {
                 if (props.meta.isPresent()) {
                     version.update(props.meta.get().version);
                     Optional<HashBranch> remoteHash = props.meta.get().getFileProperties().treeHash;
-                    if (! remoteHash.isPresent()) {
+                    if (!remoteHash.isPresent()) {
                         // collect new hashes to set in bulk later
                         toUpdate.add(new Triple<>(relPath, props.meta.get(), hashTree));
                         downloadedSize.addAndGet(props.size);
-                        if (downloadedSize.get() > 100*1024*1024L) {
+                        if (downloadedSize.get() > 100 * 1024 * 1024L) {
                             // set hashes inline if we've downloaded a lot of data to avoid cache thrashing if there is
                             // an exception. This way we continue to make progress.
                             log("REMOTE: Updating " + toUpdate.size() + " hashes: " + toUpdate.stream().limit(10).map(p -> p.left).collect(Collectors.toList()));
@@ -987,7 +986,10 @@ public class DirectorySync {
             log("REMOTE: Updating " + toUpdate.size() + " hashes: " + toUpdate.stream().limit(10).map(p -> p.left).collect(Collectors.toList()));
             fs.setHashes(toUpdate);
         }
-        return version.get();
+        // don't track the entry point writer which we only have read access to
+        if (baseDirWriter.isEmpty())
+            return version.get();
+        return version.get().remove(baseDirWriter.get());
     }
 
     private static Path getParent(Path p) {

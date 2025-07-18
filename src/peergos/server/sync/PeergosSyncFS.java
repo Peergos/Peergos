@@ -1,6 +1,7 @@
 package peergos.server.sync;
 
 import peergos.server.util.Logging;
+import peergos.shared.crypto.hash.PublicKeyHash;
 import peergos.shared.storage.auth.Bat;
 import peergos.shared.storage.auth.BatId;
 import peergos.shared.user.UserContext;
@@ -298,15 +299,16 @@ public class PeergosSyncFS implements SyncFilesystem {
     }
 
     @Override
-    public void applyToSubtree(Consumer<FileProps> onFile, Consumer<FileProps> onDir) {
-        applyToSubtree(root, onFile, onDir);
+    public Optional<PublicKeyHash> applyToSubtree(Consumer<FileProps> onFile, Consumer<FileProps> onDir) {
+        return applyToSubtree(root, onFile, onDir);
     }
 
-    private void applyToSubtree(Path start, Consumer<FileProps> onFile, Consumer<FileProps> onDir) {
+    private Optional<PublicKeyHash> applyToSubtree(Path start, Consumer<FileProps> onFile, Consumer<FileProps> onDir) {
         Optional<FileWrapper> baseDir = context.getByPath(start).join();
         if (baseDir.isEmpty())
             throw new IllegalStateException("Couldn't retrieve Peergos base directory!");
         applyToSubtree(start, baseDir.get(), onFile, onDir);
+        return Optional.of(baseDir.get().getLinkPointer().capability.writer);
     }
 
     private void applyToSubtree(Path basePath, FileWrapper base, Consumer<FileProps> onFile, Consumer<FileProps> onDir) {
