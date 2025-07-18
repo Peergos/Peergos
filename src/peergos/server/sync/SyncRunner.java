@@ -120,7 +120,7 @@ public interface SyncRunner {
                                 DirectorySync.syncDirs(links, localDirs, syncLocalDeletes, syncRemoteDeletes,
                                         maxDownloadParallelism, minFreeSpacePercent, true,
                                         root -> new LocalFileSystem(Paths.get(root), crypto.hasher),
-                                        peergosDir, status::isCancelled, statusUpdater, errorUpdater, network, crypto);
+                                        peergosDir, status::isCancelled, statusUpdater, errorUpdater, network.clear(), crypto);
                             } catch (Exception e) {
                                 LOG.log(Level.WARNING, e.getMessage(), e);
                             }

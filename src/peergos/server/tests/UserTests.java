@@ -892,6 +892,55 @@ public abstract class UserTests {
     }
 
     @Test
+    public void renameWriteSharedDir() throws Exception {
+        String username = generateUsername();
+        String password = "test";
+        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
+        FileWrapper userRoot = context.getUserRoot().get();
+
+        String dirName = "dir";
+        userRoot.mkdir(dirName, context.network, false, context.mirrorBatId(), crypto).join();
+
+        // share write access
+        LinkProperties link = context.createSecretLink(username + "/" + dirName, true, Optional.empty(), Optional.empty(), "", false).join();
+
+        //rename
+        String newname = "dir2";
+        FileWrapper parent = context.getUserRoot().get();
+        FileWrapper file = context.getByPath(username + "/" + dirName).join().get();
+
+        file.rename(newname, parent, PathUtil.get(username, dirName), context).get();
+
+        FileWrapper updatedRoot = context.getUserRoot().get();
+        FileWrapper updatedDir = context.getByPath(updatedRoot.getName() + "/" + newname).get().get();
+        FileProperties linkProps = updatedDir.getLinkPointer().getProperties();
+        Assert.assertTrue(linkProps.isLink);
+        PublicKeyHash linkWriter = updatedDir.getLinkPointer().capability.writer;
+        PublicKeyHash rootWriter = parent.writer();
+        Assert.assertEquals(linkWriter, rootWriter);
+        PublicKeyHash dirWriter = updatedDir.getPointer().capability.writer;
+        Assert.assertNotEquals(dirWriter, rootWriter);
+        SecretLink thelink = SecretLink.fromLink(link.toLinkString(file.owner()));
+        AbsoluteCapability linkCap = network.getSecretLink(thelink)
+                .thenCompose(retrieved -> retrieved.decryptFromPassword(thelink.labelString(), link.linkPassword, crypto)).join();
+        Assert.assertEquals(linkCap.writer, rootWriter);
+        assertTrue(! linkCap.isWritable());
+
+        UserContext fromLink = UserContext.fromSecretLinkV2(link.toLinkString(file.owner()), () -> Futures.of(""), network.clear(), crypto).join();
+        String entryPath = fromLink.getEntryPath().join();
+        assertEquals(entryPath, "/" + username + "/" + newname);
+        Optional<FileWrapper> oldPathFromLink = fromLink.getByPath(username + "/" + dirName).join();
+        Optional<FileWrapper> dirFromLink = fromLink.getByPath(username + "/" + newname).join();
+        Assert.assertTrue(oldPathFromLink.isEmpty());
+        Assert.assertTrue(dirFromLink.isPresent());
+
+        FileProperties dirFromLinkProps = dirFromLink.get().getLinkPointer().getProperties();
+        assertEquals(dirFromLinkProps.name, newname);
+        FileProperties props = dirFromLink.get().getPointer().getProperties();
+        assertEquals(props.name, newname);
+    }
+
+    @Test
     public void fileModifiedDateShouldChangeAfterOverwrite() throws Exception {
         String username = generateUsername();
         String password = "test";

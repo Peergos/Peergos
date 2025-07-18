@@ -108,14 +108,13 @@ public class DirectorySync {
     }
 
     public static PeergosSyncFS buildRemote(String link,
-                                            Path linkPath,
                                             NetworkAccess network,
                                             Crypto crypto) {
         Supplier<CompletableFuture<String>> linkUserPassword = () -> Futures.of("");
         List<Supplier<CompletableFuture<String>>> linkPasswords = List.of(linkUserPassword);
         UserContext context = UserContext.fromSecretLinksV2(List.of(link), linkPasswords, network, crypto).join();
-
-        return new PeergosSyncFS(context, linkPath);
+        Path path = PathUtil.get(context.getEntryPath().join());
+        return new PeergosSyncFS(context, path);
     }
 
     public static boolean syncDirs(List<String> links,
@@ -161,7 +160,7 @@ public class DirectorySync {
                     long t0 = System.currentTimeMillis();
                     String username = remoteDir.getName(0).toString();
                     PublicKeyHash owner = network.coreNode.getPublicKeyHash(username).join().get();
-                    PeergosSyncFS remote = buildRemote(links.get(i), remoteDir, network, crypto);
+                    PeergosSyncFS remote = buildRemote(links.get(i), network, crypto);
                     SyncFilesystem local = localBuilder.apply(localDirs.get(i));
                     syncDir(local, remote, syncLocalDeletes.get(i), syncRemoteDeletes.get(i),
                             owner, network, syncedState, maxDownloadParallelism, minFreeSpacePercent, crypto, isCancelled, LOG);

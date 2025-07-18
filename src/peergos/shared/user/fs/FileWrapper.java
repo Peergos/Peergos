@@ -1850,6 +1850,21 @@ public class FileWrapper {
                                     .thenCompose(v -> userContext.isSecretLink() ? Futures.of(v) :
                                             userContext.sharedWithCache.rename(ourPath,
                                                     ourPath.getParent().resolve(newFilename), v, committer, userContext.network))
+                                    .thenCompose(v -> {
+                                        if (! isLink)
+                                            return Futures.of(v);
+                                        // make sure to update name in link target for writable links, otherwise old name will leak
+                                        RetrievedCapability nonLinkPointer = pointer;
+                                        WritableAbsoluteCapability nonLinkUs = (WritableAbsoluteCapability) nonLinkPointer.capability;
+                                        CryptreeNode nonLinkNodeToUpdate = nonLinkPointer.fileAccess;
+                                        FileProperties nonLinkProps = new FileProperties(newFilename, isDir, false,
+                                                currentProps.mimeType, currentProps.size,
+                                                currentProps.modified, currentProps.created, currentProps.isHidden,
+                                                currentProps.thumbnail, currentProps.streamSecret, currentProps.treeHash);
+                                        return v.withWriter(owner(), nonLinkUs.writer, userContext.network)
+                                                .thenCompose(v2 -> nonLinkNodeToUpdate.updateProperties(v2, committer, nonLinkUs,
+                                                        Optional.of(signingPair()), nonLinkProps, userContext.network));
+                                    })
                     ).thenCompose(newVersion -> parent.getUpdated(newVersion, userContext.network));
                 });
     }
