@@ -813,7 +813,7 @@ public class UserContext {
                     boolean differentWriter = file.getPointer().getParentCap().writer.map(parentWriter -> ! parentWriter.equals(file.writer())).orElse(false);
                     if (props.isLinkWritable && ! differentWriter)
                         throw new IllegalStateException("To generate a writable secret link, the target must already be in a different writing space!");
-                    AbsoluteCapability cap = props.isLinkWritable ? file.getLinkPointer().capability.readOnly() : file.getPointer().capability.readOnly();
+                    AbsoluteCapability cap = props.isLinkWritable ? file.getLinkPointer().capability : file.getPointer().capability.readOnly();
                     SecretLink res = new SecretLink(id, props.label, props.linkPassword);
                     String fullPassword = props.linkPassword + props.userPassword;
                     return EncryptedCapability.createFromPassword(cap, res.labelString(), fullPassword, !props.userPassword.isEmpty(), crypto)

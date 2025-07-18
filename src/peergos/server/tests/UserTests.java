@@ -924,7 +924,6 @@ public abstract class UserTests {
         AbsoluteCapability linkCap = network.getSecretLink(thelink)
                 .thenCompose(retrieved -> retrieved.decryptFromPassword(thelink.labelString(), link.linkPassword, crypto)).join();
         Assert.assertEquals(linkCap.writer, rootWriter);
-        assertTrue(! linkCap.isWritable());
 
         UserContext fromLink = UserContext.fromSecretLinkV2(link.toLinkString(file.owner()), () -> Futures.of(""), network.clear(), crypto).join();
         String entryPath = fromLink.getEntryPath().join();
@@ -933,6 +932,7 @@ public abstract class UserTests {
         Optional<FileWrapper> dirFromLink = fromLink.getByPath(username + "/" + newname).join();
         Assert.assertTrue(oldPathFromLink.isEmpty());
         Assert.assertTrue(dirFromLink.isPresent());
+        assertTrue(dirFromLink.get().isWritable());
 
         FileProperties dirFromLinkProps = dirFromLink.get().getLinkPointer().getProperties();
         assertEquals(dirFromLinkProps.name, newname);
