@@ -113,9 +113,9 @@ public interface SyncRunner {
                                     status.setStatus(msg);
                                     DirectorySync.log(msg);
                                 };
-                                Consumer<String> errorUpdater = msg -> {
-                                    status.setError(msg);
-                                    DirectorySync.log(msg);
+                                Consumer<Throwable> errorUpdater = e -> {
+                                    status.setError(e.getMessage());
+                                    DirectorySync.log(e.getMessage());
                                 };
                                 DirectorySync.syncDirs(links, localDirs, syncLocalDeletes, syncRemoteDeletes,
                                         maxDownloadParallelism, minFreeSpacePercent, true,
