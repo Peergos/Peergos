@@ -254,7 +254,7 @@ public class SyncConfigHandler implements HttpHandler {
                     throw new IllegalArgumentException("Unknown label");
                 links.remove(toRemove);
                 List<String> localDirs = getLocalDirs(updated);
-                localDirs.remove(toRemove);
+                String removedLocal = localDirs.remove(toRemove);
                 List<String> remotePaths = getRemotePaths(updated);
                 remotePaths.remove(toRemove);
                 List<Boolean> syncLocalDeletes = getSyncLocalDeletes(updated);
@@ -263,7 +263,9 @@ public class SyncConfigHandler implements HttpHandler {
                 syncRemoteDeletes.remove(toRemove);
 
                 saveConfigToFile(links, localDirs, remotePaths, syncLocalDeletes, syncRemoteDeletes);
-                syncer.getStatusHolder().cancel();
+                SyncRunner.StatusHolder status = syncer.getStatusHolder();
+                status.setStatus("Removed sync of " + removedLocal);
+                status.cancel();
                 exchange.sendResponseHeaders(200, 0);
                 exchange.close();
             } else if (action.equals("get-pairs")) {
