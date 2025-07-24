@@ -214,7 +214,8 @@ public class SyncConfigHandler implements HttpHandler {
             if (action.equals("add-pair")) {
                 Map<String, Object> json = (Map<String, Object>) JSONParser.parse(new String(Serialize.readFully(exchange.getRequestBody())));
                 String link = (String) json.get("link");
-                String localDir = (String) json.get("dir");
+                String rawLocalDir = (String) json.get("dir");
+                String localDir = isWindows() ? rawLocalDir.replaceAll("\\\\\\\\", "\\\\") : rawLocalDir;
                 Boolean newSyncLocalDeletes = (Boolean) json.get("syncLocalDeletes");
                 Boolean newSyncRemoteDeletes = (Boolean) json.get("syncRemoteDeletes");
                 Args updated = getUpdatedArgs();
@@ -348,5 +349,9 @@ public class SyncConfigHandler implements HttpHandler {
             if (LOGGING)
                 LOG.info("Sync Config Handler returned in: " + (t2 - t1) + " mS");
         }
+    }
+
+    private static boolean isWindows() {
+        return System.getProperty("os.name").toLowerCase().startsWith("windows");
     }
 }
