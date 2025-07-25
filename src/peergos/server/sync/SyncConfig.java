@@ -61,7 +61,9 @@ public class SyncConfig implements Jsonable {
         List<Object> pairs = new ArrayList<>();
         for (int i = 0; i < localDirs.size(); i++) {
             LinkedHashMap<String, Object> pair = new LinkedHashMap<>();
-            pair.put("localpath", localDirs.get(i));
+            String rawLocalDir = localDirs.get(i);
+            String localDir = isWindows() ? rawLocalDir.replaceAll("\\\\\\\\", "\\\\") : rawLocalDir;
+            pair.put("localpath", localDir);
             pair.put("remotepath", remotePaths.get(i));
             pair.put("link", links.get(i));
             pair.put("syncLocalDeletes", syncLocalDeletes.get(i));
@@ -134,5 +136,9 @@ public class SyncConfig implements Jsonable {
                 getSyncRemoteDeletes(a),
                 a.getInt("max-parallelism", 32),
                 a.getInt("min-free-space-percent", 5));
+    }
+
+    private static boolean isWindows() {
+        return System.getProperty("os.name").toLowerCase().startsWith("windows");
     }
 }
