@@ -41,6 +41,10 @@ public interface SyncRunner {
             cancelled.set(true);
         }
 
+        public synchronized void resume() {
+            cancelled.set(false);
+        }
+
         public synchronized boolean isCancelled() {
             return cancelled.get();
         }
@@ -120,7 +124,7 @@ public interface SyncRunner {
                                 DirectorySync.syncDirs(links, localDirs, syncLocalDeletes, syncRemoteDeletes,
                                         maxDownloadParallelism, minFreeSpacePercent, true,
                                         root -> new LocalFileSystem(Paths.get(root), crypto.hasher),
-                                        peergosDir, status::isCancelled, statusUpdater, errorUpdater, network.clear(), crypto);
+                                        peergosDir, status, statusUpdater, errorUpdater, network.clear(), crypto);
                             } catch (Exception e) {
                                 LOG.log(Level.WARNING, e.getMessage(), e);
                             }

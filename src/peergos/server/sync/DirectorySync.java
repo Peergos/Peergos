@@ -100,7 +100,7 @@ public class DirectorySync {
             Path peergosDir = args.getPeergosDir();
             return syncDirs(links, localDirs, syncLocalDeletes, syncRemoteDeletes, maxDownloadParallelism,
                     minFreeSpacePercent, oneRun, root -> new LocalFileSystem(Paths.get(root), crypto.hasher),
-                    peergosDir, () -> false, m -> log(m), e -> log(e.getMessage()), network, crypto);
+                    peergosDir, new SyncRunner.StatusHolder(), m -> log(m), e -> log(e.getMessage()), network, crypto);
         } catch (Exception e) {
             LOG.log(Level.SEVERE, e, e::getMessage);
             throw new RuntimeException(e);
@@ -126,7 +126,7 @@ public class DirectorySync {
                                    boolean oneRun,
                                    Function<String, SyncFilesystem> localBuilder,
                                    Path peergosDir,
-                                   Supplier<Boolean> isCancelled,
+                                   SyncRunner.StatusHolder status,
                                    Consumer<String> LOG,
                                    Consumer<Throwable> ERROR,
                                    NetworkAccess network,
@@ -151,8 +151,10 @@ public class DirectorySync {
             boolean errored = false;
             for (int i=0; i < links.size(); i++) {
                 try {
-                    if (isCancelled.get())
+                    if (status.isCancelled()) {
+                        status.resume();
                         return false;
+                    }
                     Path localDir = Paths.get(localDirs.get(i));
                     Path remoteDir = PathUtil.get(linkPaths.get(i));
                     SyncState syncedState = syncedStates.get(i);
@@ -163,7 +165,7 @@ public class DirectorySync {
                     PeergosSyncFS remote = buildRemote(links.get(i), network, crypto);
                     SyncFilesystem local = localBuilder.apply(localDirs.get(i));
                     syncDir(local, remote, syncLocalDeletes.get(i), syncRemoteDeletes.get(i),
-                            owner, network, syncedState, maxDownloadParallelism, minFreeSpacePercent, crypto, isCancelled, LOG);
+                            owner, network, syncedState, maxDownloadParallelism, minFreeSpacePercent, crypto, status::isCancelled, LOG);
                     long t1 = System.currentTimeMillis();
                     LOG.accept("Dir sync took " + (t1 - t0) / 1000 + "s");
                 } catch (Exception e) {
