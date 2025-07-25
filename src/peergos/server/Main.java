@@ -6,11 +6,13 @@ import peergos.server.cli.CLI;
 import peergos.server.crypto.hash.ScryptJava;
 import peergos.server.login.*;
 import peergos.server.messages.*;
+import peergos.server.net.SyncConfigHandler;
 import peergos.server.space.*;
 import peergos.server.sql.*;
 import peergos.server.storage.admin.*;
 import peergos.server.storage.auth.*;
 import peergos.server.sync.DirectorySync;
+import peergos.server.sync.SyncConfig;
 import peergos.server.sync.SyncRunner;
 import peergos.server.user.JavaImageThumbnailer;
 import peergos.shared.*;
@@ -29,6 +31,7 @@ import peergos.shared.crypto.password.*;
 import peergos.shared.io.ipfs.Cid;
 import peergos.shared.io.ipfs.MultiAddress;
 import peergos.shared.io.ipfs.Multihash;
+import peergos.shared.io.ipfs.api.JSONParser;
 import peergos.shared.login.OfflineAccountStore;
 import peergos.shared.login.mfa.*;
 import peergos.shared.mutable.*;
@@ -618,8 +621,9 @@ public class Main extends Builder {
                     OfflineBatCache offlineBats = new OfflineBatCache(batCave, new JdbcBatCave(Builder.getDBConnector(a, "bat-cache-sql-file", dbConnector), commands));
 
                     SyncRunner.ThreadBased syncer = new SyncRunner.ThreadBased(a, withoutS3, pointerCache, offlineCorenode, crypto);
+                    SyncProperties sync = new SyncProperties(SyncConfig.fromArgs(a), a.getPeergosDir(), syncer, Either.a(new HostDirEnumerator.Java()));
                     UserService server = new UserService(withoutS3, offlineBats, crypto, offlineCorenode, offlineAccounts,
-                            httpSocial, pointerCache, admin, httpUsage, serverMessager, null, Optional.of(new SyncProperties(a, syncer, Either.a(new HostDirEnumerator.Java()))));
+                            httpSocial, pointerCache, admin, httpUsage, serverMessager, null, Optional.of(sync));
 
                     InetSocketAddress localAPIAddress = new InetSocketAddress("localhost", port);
                     List<String> appSubdomains = Arrays.asList("markup-viewer,calendar,code-editor,pdf".split(","));
@@ -799,8 +803,17 @@ public class Main extends Builder {
             ServerMessageStore serverMessages = new ServerMessageStore(getDBConnector(a, "server-messages-sql-file", dbConnectionPool),
                     sqlCommands, core, p2pDht);
             SyncRunner.ThreadBased syncer = new SyncRunner.ThreadBased(a, cachingStorage, p2mMutable, corePropagator, crypto);
+
+            Path jsonSyncConfig = a.getPeergosDir().resolve(SyncConfigHandler.SYNC_CONFIG_FILENAME);
+            Path oldSyncConfig = a.getPeergosDir().resolve(SyncConfigHandler.OLD_SYNC_CONFIG_FILENAME);
+            SyncConfig syncConfig = jsonSyncConfig.toFile().exists() ?
+                    SyncConfig.fromJson((Map<String, Object>)JSONParser.parse(Files.readString(jsonSyncConfig))) :
+                    oldSyncConfig.toFile().exists() ?
+                            SyncConfig.fromArgs(Args.parse(new String[]{"-run-once", "true"}, Optional.of(oldSyncConfig), false)):
+                            SyncConfig.fromArgs(a);
+            SyncProperties sync = new SyncProperties(syncConfig, a.getPeergosDir(), syncer, Either.a(new HostDirEnumerator.Java()));
             UserService localAPI = new UserService(cachingStorage, p2pBats, crypto, corePropagator, verifyingAccount,
-                    p2pSocial, p2mMutable, storageAdmin, p2pSpaceUsage, serverMessages, gc, Optional.of(new SyncProperties(a, syncer, Either.a(new HostDirEnumerator.Java()))));
+                    p2pSocial, p2mMutable, storageAdmin, p2pSpaceUsage, serverMessages, gc, Optional.of(sync));
             UserService p2pAPI = new UserService(incomingP2PStorage, p2pBats, crypto, corePropagator, verifyingAccount,
                     p2pSocial, p2mMutable, storageAdmin, p2pSpaceUsage, serverMessages, gc, Optional.empty());
             InetSocketAddress localAPIAddress = userAPIAddress;

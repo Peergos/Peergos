@@ -1,15 +1,18 @@
 package peergos.server.sync;
 
+import org.peergos.config.Jsonable;
 import peergos.server.util.Args;
 import peergos.server.util.Logging;
 import peergos.shared.Crypto;
 import peergos.shared.NetworkAccess;
 import peergos.shared.corenode.CoreNode;
+import peergos.shared.io.ipfs.api.JSONParser;
 import peergos.shared.mutable.MutablePointers;
 import peergos.shared.storage.ContentAddressedStorage;
 import peergos.shared.user.MutableTreeImpl;
 import peergos.shared.user.WriteSynchronizer;
 
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.LocalDateTime;
@@ -91,48 +94,35 @@ public interface SyncRunner {
                     Collections.emptyList(), false);
             this.runner = new Thread(() -> {
                 while (true) {
-                    Path peergosDir = args.getPeergosDir();
-                    Path jsonSyncConfig = peergosDir.resolve(SYNC_CONFIG_FILENAME);
-                    Path oldSyncConfig = peergosDir.resolve(OLD_SYNC_CONFIG_FILENAME);
-                    Path syncConfig = jsonSyncConfig.toFile().exists() ? jsonSyncConfig : oldSyncConfig;
-                    Args updated = Args.parse(new String[]{"-run-once", "true"}, Optional.of(syncConfig), false);
-                    if (updated.hasArg("links")) {
-                        List<String> links = new ArrayList<>(Arrays.asList(updated.getArg("links").split(",")));
-                        List<String> localDirs = new ArrayList<>(Arrays.asList(updated.getArg("local-dirs").split(",")));
-                        List<Boolean> syncLocalDeletes = updated.hasArg("sync-local-deletes") ?
-                                new ArrayList<>(Arrays.stream(updated.getArg("sync-local-deletes").split(","))
-                                        .map(Boolean::parseBoolean)
-                                        .collect(Collectors.toList())) :
-                                IntStream.range(0, links.size())
-                                        .mapToObj(x -> true)
-                                        .collect(Collectors.toList());
-                        List<Boolean> syncRemoteDeletes = updated.hasArg("sync-remote-deletes") ?
-                                new ArrayList<>(Arrays.stream(updated.getArg("sync-remote-deletes").split(","))
-                                        .map(Boolean::parseBoolean)
-                                        .collect(Collectors.toList())) :
-                                IntStream.range(0, links.size())
-                                        .mapToObj(x -> true)
-                                        .collect(Collectors.toList());
-                        int maxDownloadParallelism = updated.getInt("max-parallelism", 32);
-                        int minFreeSpacePercent = updated.getInt("min-free-space-percent", 5);
-                        if (!links.isEmpty()) {
-                            try {
-                                Consumer<String> statusUpdater = msg -> {
-                                    status.setStatus(msg);
-                                    DirectorySync.log(msg);
-                                };
-                                Consumer<Throwable> errorUpdater = e -> {
-                                    status.setError(e.getMessage());
-                                    DirectorySync.log(e.getMessage());
-                                };
-                                DirectorySync.syncDirs(links, localDirs, syncLocalDeletes, syncRemoteDeletes,
-                                        maxDownloadParallelism, minFreeSpacePercent, true,
-                                        root -> new LocalFileSystem(Paths.get(root), crypto.hasher),
-                                        peergosDir, status, statusUpdater, errorUpdater, network.clear(), crypto);
-                            } catch (Exception e) {
-                                LOG.log(Level.WARNING, e.getMessage(), e);
-                            }
+                    try {
+                        Path peergosDir = args.getPeergosDir();
+                        Path jsonSyncConfig = peergosDir.resolve(SYNC_CONFIG_FILENAME);
+                        Path oldSyncConfig = peergosDir.resolve(OLD_SYNC_CONFIG_FILENAME);
+                        SyncConfig syncConfig = jsonSyncConfig.toFile().exists() ?
+                                SyncConfig.fromJson((Map<String, Object>) JSONParser.parse(Files.readString(jsonSyncConfig))) :
+                                SyncConfig.fromArgs(Args.parse(new String[]{"-run-once", "true"}, Optional.of(oldSyncConfig), false));
+                        if (! syncConfig.links.isEmpty()) {
+                            List<String> links = syncConfig.links;
+                            List<String> localDirs = syncConfig.localDirs;
+                            List<Boolean> syncLocalDeletes = syncConfig.syncLocalDeletes;
+                            List<Boolean> syncRemoteDeletes = syncConfig.syncRemoteDeletes;
+                            int maxDownloadParallelism = syncConfig.maxDownloadParallelism;
+                            int minFreeSpacePercent = syncConfig.minFreeSpacePercent;
+                            Consumer<String> statusUpdater = msg -> {
+                                status.setStatus(msg);
+                                DirectorySync.log(msg);
+                            };
+                            Consumer<Throwable> errorUpdater = e -> {
+                                status.setError(e.getMessage());
+                                DirectorySync.log(e.getMessage());
+                            };
+                            DirectorySync.syncDirs(links, localDirs, syncLocalDeletes, syncRemoteDeletes,
+                                    maxDownloadParallelism, minFreeSpacePercent, true,
+                                    root -> new LocalFileSystem(Paths.get(root), crypto.hasher),
+                                    peergosDir, status, statusUpdater, errorUpdater, network.clear(), crypto);
                         }
+                    } catch (Exception e) {
+                        LOG.log(Level.WARNING, e.getMessage(), e);
                     }
                     try {
                         Thread.sleep(30_000);

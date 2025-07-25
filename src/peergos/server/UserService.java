@@ -284,7 +284,7 @@ public class UserService {
                     new ConfigHandler(cache),
                     basicAuth, local, host, nodeIds, false));
             syncProps.ifPresent(props -> {
-                SyncConfigHandler sync = new SyncConfigHandler(props.args, props.syncer, storage, mutable, props.hostDirs, coreNode, crypto);
+                SyncConfigHandler sync = new SyncConfigHandler(props.config, props.peergosDir, props.syncer, storage, mutable, props.hostDirs, coreNode, crypto);
                 sync.start();
                 addHandler(localhostServer, null, "/" + Constants.SYNC,
                         sync, basicAuth, local, host, nodeIds, false);
