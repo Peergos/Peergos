@@ -577,8 +577,8 @@ public class DirectorySync {
                     syncedVersions.remove(toMove.relPath);
                     doneFiles.add(toMove.relPath);
                 } else {
-                    if ((freeSpace - remote.size) * 100 / totalSpace < minPercentFree)
-                        throw new IllegalStateException("Not enough free space to sync and keep " + minPercentFree + "% free");
+                    if ((freeSpace - remote.size) * 100 / totalSpace < minPercentFree && (freeSpace - remote.size < 5L * 1024*1024*1024))
+                        throw new IllegalStateException("Not enough free space to sync and keep " + minPercentFree + "% free or 5 GB free");
                     LOG.accept("Sync Local: Copying " + remote.relPath);
                     List<Pair<Long, Long>> diffs = remote.diffRanges(null);
                     List<CopyOp> ops = diffs.stream()
@@ -635,8 +635,8 @@ public class DirectorySync {
                     }
                     syncedVersions.add(local);
                 } else {
-                    if ((freeSpace - remote.size) * 100 / totalSpace < minPercentFree)
-                        throw new IllegalStateException("Not enough free space to sync and keep " + minPercentFree + "% free. Conflict on " + local.relPath);
+                    if ((freeSpace - remote.size) * 100 / totalSpace < minPercentFree && (freeSpace - remote.size < 5L * 1024*1024*1024))
+                        throw new IllegalStateException("Not enough free space to sync and keep " + minPercentFree + "% free or 5GB free. Conflict on " + local.relPath);
                     LOG.accept("Sync Remote: Concurrent file addition: " + local.relPath + " renaming local version");
                     FileState renamed = renameOnConflict(localFs, localFs.resolve(local.relPath), local);
                     List<Pair<Long, Long>> diffs = remote.diffRanges(null);
@@ -709,8 +709,9 @@ public class DirectorySync {
                         syncedVersions.add(renamed);
                         syncedVersions.removeRemoteDelete(remote.relPath);
                     } else {
-                        if (remote.size > local.size && (freeSpace + local.size - remote.size) * 100 / totalSpace < minPercentFree)
-                            throw new IllegalStateException("Not enough free space to sync and keep " + minPercentFree + "% free");
+                        if (remote.size > local.size && (freeSpace + local.size - remote.size) * 100 / totalSpace < minPercentFree &&
+                                (freeSpace + local.size - remote.size < 5L * 1024*1024*1024))
+                            throw new IllegalStateException("Not enough free space to sync and keep " + minPercentFree + "% free or 5 GiB free");
                         LOG.accept("Sync Local: Copying changes to " + remote.relPath);
                         List<Pair<Long, Long>> diffs = remote.diffRanges(local);
                         List<CopyOp> ops = diffs.stream()
@@ -791,7 +792,7 @@ public class DirectorySync {
                     return;
                 }
                 if (local == null) { // local delete, copy changed remote
-                    if ((freeSpace - remote.size) * 100 / totalSpace < minPercentFree)
+                    if ((freeSpace - remote.size) * 100 / totalSpace < minPercentFree && (freeSpace - remote.size < 5L * 1024*1024*1024))
                         throw new IllegalStateException("Not enough free space to sync and keep " + minPercentFree + "% free");
                     LOG.accept("Sync Local: deleted, copying changed remote " + remote.relPath + ", Synced: " + synced.prettyPrint() + ", remote: " + remote.prettyPrint());
                     List<Pair<Long, Long>> diffs = remote.diffRanges(null);
@@ -817,8 +818,8 @@ public class DirectorySync {
                     return;
                 }
                 // concurrent change, rename one sync the other
-                if ((freeSpace - remote.size) * 100 / totalSpace < minPercentFree)
-                    throw new IllegalStateException("Not enough free space to sync and keep " + minPercentFree + "% free");
+                if ((freeSpace - remote.size) * 100 / totalSpace < minPercentFree && (freeSpace - remote.size < 5L * 1024*1024*1024))
+                    throw new IllegalStateException("Not enough free space to sync and keep " + minPercentFree + "% free or 5 GiB free");
                 // if local and remote are the same, update sync and return
                 if (local.equals(remote)) {
                     syncedVersions.add(local);
