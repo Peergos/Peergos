@@ -278,6 +278,8 @@ public class UserService {
             addHandler(localhostServer, null, "/" + Constants.ANDROID_FILE_REFLECTOR,
                     new AndroidFileReflector(crypto, coreNode, mutable, storage),
                     basicAuth, local, host, nodeIds, false);
+            addHandler(localhostServer, null, "/" + Constants.STOP,
+                    new StopHandler(), basicAuth, local, host, nodeIds, false);
             blockCache.ifPresent(cache -> addHandler(localhostServer, null, "/" + Constants.CONFIG,
                     new ConfigHandler(cache),
                     basicAuth, local, host, nodeIds, false));

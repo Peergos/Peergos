@@ -338,6 +338,21 @@ public class Main extends Builder {
             )
     );
 
+    public static final Command<Boolean> STOP = new Command<>("stop",
+            "Stop any running Peergos instance",
+            args -> {
+                try {
+                    int port = args.getInt("port");
+                    new JavaPoster(new URL("http://localhost:" + port), false)
+                            .post(Constants.STOP, new byte[0], false).join();
+                    return true;
+                } catch (Exception e) {
+                    throw new RuntimeException(e);
+                }
+            },
+            Arrays.asList()
+    );
+
     public static final Command<ServerProcesses> PKI = new Command<>("pki",
             "Start the Peergos PKI Server that has already been bootstrapped",
             args -> {
@@ -1046,7 +1061,7 @@ public class Main extends Builder {
 
                 try {
                     // By default we run a proxy instance and open it in the browser
-                    // Check if proxy is already running
+                    // Check if proxy is already running and stop it if the version is different
                     int port = args.getInt("port", 7777);
                     URI api = new URI("http://localhost:" + port);
                     JavaPoster poster = new JavaPoster(api.toURL(), false, Optional.empty(), Optional.empty());
@@ -1055,7 +1070,13 @@ public class Main extends Builder {
                     boolean alreadyRunning = false;
                     try {
                         localDht.ids().join();
-                        alreadyRunning = true;
+                        HttpInstanceAdmin admin = new HttpInstanceAdmin(poster);
+                        InstanceAdmin.VersionInfo running = admin.getVersionInfo().join();
+                        InstanceAdmin.VersionInfo ourVersion = new InstanceAdmin.VersionInfo(UserService.CURRENT_VERSION, Admin.getSourceVersion());
+                        if (! running.equals(ourVersion))
+                            STOP.main(args);
+                        else
+                            alreadyRunning = true;
                     } catch (Exception e){}
 
                     if (! alreadyRunning) {
@@ -1098,6 +1119,7 @@ public class Main extends Builder {
                     IDENTITY,
                     PROXY,
                     ServerAdmin.SERVER_ADMIN,
+                    STOP,
                     PKI,
                     PKI_INIT,
                     IPFS
