@@ -36,7 +36,8 @@ import java.util.stream.Stream;
 
 public class SyncConfigHandler implements HttpHandler {
 	private static final Logger LOG = Logging.LOG();
-    public static final String SYNC_CONFIG_FILENAME = "sync-config";
+    public static final String OLD_SYNC_CONFIG_FILENAME = "sync-config";
+    public static final String SYNC_CONFIG_FILENAME = "sync-config.json";
 
     private static final boolean LOGGING = true;
     private final Args args;
@@ -75,7 +76,7 @@ public class SyncConfigHandler implements HttpHandler {
                     .removeArg("sync-local-deletes")
                     .removeArg("sync-remote-deletes")
                     .with("config", SYNC_CONFIG_FILENAME)
-                    .saveToFile();
+                    .saveToJSONFile();
         else
             args.with("links", String.join(",", links))
                     .with("local-dirs", String.join(",", localDirs))
@@ -83,7 +84,7 @@ public class SyncConfigHandler implements HttpHandler {
                     .with("sync-local-deletes", String.join(",", syncLocalDeletes.stream().map(Object::toString).collect(Collectors.toList())))
                     .with("sync-remote-deletes", String.join(",", syncRemoteDeletes.stream().map(Object::toString).collect(Collectors.toList())))
                     .with("config", SYNC_CONFIG_FILENAME)
-                    .saveToFile();
+                    .saveToJSONFile();
     }
 
     private synchronized Args getUpdatedArgs() {

@@ -1,6 +1,7 @@
 package peergos.server.util;
 
 import peergos.server.*;
+import peergos.shared.io.ipfs.api.JSONParser;
 import peergos.shared.util.*;
 
 import java.io.IOException;
@@ -193,6 +194,18 @@ public class Args {
         return parseFile(toFile);
     }
 
+    private static Map<String, String> parseJSONFile(Path path) {
+        try {
+            if (! path.toFile().exists())
+                return Collections.emptyMap();
+            String lines = new String(Files.readAllBytes(path));
+
+            return (Map)JSONParser.parse(lines);
+        } catch (IOException ioe) {
+            throw new IllegalStateException(ioe.getMessage(), ioe);
+        }
+    }
+
     private static Map<String, String> parseFile(Path path) {
         try {
             if (! path.toFile().exists())
@@ -221,6 +234,24 @@ public class Args {
         Path config = fromPeergosDir(CONFIG_FILENAME, CONFIG_FILENAME);
         if (! config.toFile().exists())
             saveToFile(config);
+    }
+
+    /** Save all parameters to a config file, excluding environment vars
+     *
+     */
+    public void saveToJSONFile() {
+        saveToJSONFile(fromPeergosDir(CONFIG_FILENAME, CONFIG_FILENAME));
+    }
+
+    private void saveToJSONFile(Path file) {
+        String text = JSONParser.toString(new TreeMap<>(params).entrySet().stream()
+                .filter(e -> ! envOnly.containsKey(e.getKey()))
+                .collect(Collectors.toMap(e -> e.getKey(), e -> e.getValue())));
+        try {
+            Files.write(file, text.getBytes(), StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     /** Save all parameters to a config file, excluding environment vars
@@ -279,7 +310,9 @@ public class Args {
         Map<String, String> fromEnv = includeEnv ? parseEnv() : Collections.emptyMap();
         Map<String, String> fromParams = parseParams(params);
         Map<String, String> fromFile = configFile.isPresent() ?
-                parseFile(configFile.get()) :
+                (configFile.get().toString().endsWith(".json") ?
+                        parseJSONFile(configFile.get()) :
+                        parseFile(configFile.get())) :
                 parseFile(fromParams, fromEnv);
 
         Map<String, String> combined = paramMap();

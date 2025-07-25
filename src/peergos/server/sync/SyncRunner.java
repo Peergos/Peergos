@@ -21,6 +21,7 @@ import java.util.logging.Logger;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
+import static peergos.server.net.SyncConfigHandler.OLD_SYNC_CONFIG_FILENAME;
 import static peergos.server.net.SyncConfigHandler.SYNC_CONFIG_FILENAME;
 
 public interface SyncRunner {
@@ -91,7 +92,10 @@ public interface SyncRunner {
             this.runner = new Thread(() -> {
                 while (true) {
                     Path peergosDir = args.getPeergosDir();
-                    Args updated = Args.parse(new String[]{"-run-once", "true"}, Optional.of(peergosDir.resolve(SYNC_CONFIG_FILENAME)), false);
+                    Path jsonSyncConfig = peergosDir.resolve(SYNC_CONFIG_FILENAME);
+                    Path oldSyncConfig = peergosDir.resolve(OLD_SYNC_CONFIG_FILENAME);
+                    Path syncConfig = jsonSyncConfig.toFile().exists() ? jsonSyncConfig : oldSyncConfig;
+                    Args updated = Args.parse(new String[]{"-run-once", "true"}, Optional.of(syncConfig), false);
                     if (updated.hasArg("links")) {
                         List<String> links = new ArrayList<>(Arrays.asList(updated.getArg("links").split(",")));
                         List<String> localDirs = new ArrayList<>(Arrays.asList(updated.getArg("local-dirs").split(",")));
