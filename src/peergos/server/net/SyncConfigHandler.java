@@ -67,16 +67,10 @@ public class SyncConfigHandler implements HttpHandler {
                 Collections.emptyList(), false);
         this.crypto = crypto;
         this.hostPaths = hostPaths;
+        saveConfigToFile(a);
     }
 
-    private synchronized void saveConfigToFile(List<String> links,
-                                               List<String> localDirs,
-                                               List<String> remotePaths,
-                                               List<Boolean> syncLocalDeletes,
-                                               List<Boolean> syncRemoteDeletes,
-                                               int maxDownloadParallelism,
-                                               int minPercentFreeSpace) {
-        SyncConfig config = new SyncConfig(localDirs, remotePaths, links, syncLocalDeletes, syncRemoteDeletes, maxDownloadParallelism, minPercentFreeSpace);
+    private synchronized void saveConfigToFile(SyncConfig config) {
         byte[] bytes = org.peergos.util.JSONParser.toString(config.toJson()).getBytes(StandardCharsets.UTF_8);
         try {
             Files.write(peergosDir.resolve(SYNC_CONFIG_FILENAME), bytes);
@@ -99,8 +93,8 @@ public class SyncConfigHandler implements HttpHandler {
         List<String> remotePaths = links.stream()
                 .map(this::getRemotePath)
                 .collect(Collectors.toList());
-        saveConfigToFile(links, updated.localDirs, remotePaths, updated.syncLocalDeletes, updated.syncRemoteDeletes,
-                updated.maxDownloadParallelism, updated.minFreeSpacePercent);
+        saveConfigToFile(new SyncConfig(links, updated.localDirs, remotePaths, updated.syncLocalDeletes, updated.syncRemoteDeletes,
+                updated.maxDownloadParallelism, updated.minFreeSpacePercent));
     }
 
     public void start() {
@@ -160,8 +154,8 @@ public class SyncConfigHandler implements HttpHandler {
                     remotePaths.add(getRemotePath(link));
                     syncLocalDeletes.add(newSyncLocalDeletes);
                     syncRemoteDeletes.add(newSyncRemoteDeletes);
-                    saveConfigToFile(links, localDirs, remotePaths, syncLocalDeletes, syncRemoteDeletes,
-                            updated.maxDownloadParallelism, updated.minFreeSpacePercent);
+                    saveConfigToFile(new SyncConfig(links, localDirs, remotePaths, syncLocalDeletes, syncRemoteDeletes,
+                            updated.maxDownloadParallelism, updated.minFreeSpacePercent));
                     // run sync client now
                     syncer.start();
                     System.out.println("Syncing " + localDir + " syncLocalDeletes: " + newSyncLocalDeletes + ", syncRemoteDeletes: " + newSyncRemoteDeletes);
@@ -190,8 +184,8 @@ public class SyncConfigHandler implements HttpHandler {
                 List<Boolean> syncRemoteDeletes = updated.syncRemoteDeletes;
                 syncRemoteDeletes.remove(toRemove);
 
-                saveConfigToFile(links, localDirs, remotePaths, syncLocalDeletes, syncRemoteDeletes,
-                        updated.maxDownloadParallelism, updated.minFreeSpacePercent);
+                saveConfigToFile(new SyncConfig(links, localDirs, remotePaths, syncLocalDeletes, syncRemoteDeletes,
+                        updated.maxDownloadParallelism, updated.minFreeSpacePercent));
                 SyncRunner.StatusHolder status = syncer.getStatusHolder();
                 status.setStatus("Removed sync of " + removedLocal);
                 status.cancel();
