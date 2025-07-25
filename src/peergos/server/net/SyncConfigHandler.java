@@ -93,7 +93,7 @@ public class SyncConfigHandler implements HttpHandler {
         List<String> remotePaths = links.stream()
                 .map(this::getRemotePath)
                 .collect(Collectors.toList());
-        saveConfigToFile(new SyncConfig(links, updated.localDirs, remotePaths, updated.syncLocalDeletes, updated.syncRemoteDeletes,
+        saveConfigToFile(new SyncConfig(updated.localDirs, remotePaths, links, updated.syncLocalDeletes, updated.syncRemoteDeletes,
                 updated.maxDownloadParallelism, updated.minFreeSpacePercent));
     }
 
@@ -154,7 +154,7 @@ public class SyncConfigHandler implements HttpHandler {
                     remotePaths.add(getRemotePath(link));
                     syncLocalDeletes.add(newSyncLocalDeletes);
                     syncRemoteDeletes.add(newSyncRemoteDeletes);
-                    saveConfigToFile(new SyncConfig(links, localDirs, remotePaths, syncLocalDeletes, syncRemoteDeletes,
+                    saveConfigToFile(new SyncConfig(localDirs, remotePaths, links, syncLocalDeletes, syncRemoteDeletes,
                             updated.maxDownloadParallelism, updated.minFreeSpacePercent));
                     // run sync client now
                     syncer.start();
@@ -184,7 +184,7 @@ public class SyncConfigHandler implements HttpHandler {
                 List<Boolean> syncRemoteDeletes = updated.syncRemoteDeletes;
                 syncRemoteDeletes.remove(toRemove);
 
-                saveConfigToFile(new SyncConfig(links, localDirs, remotePaths, syncLocalDeletes, syncRemoteDeletes,
+                saveConfigToFile(new SyncConfig(localDirs, remotePaths, links, syncLocalDeletes, syncRemoteDeletes,
                         updated.maxDownloadParallelism, updated.minFreeSpacePercent));
                 SyncRunner.StatusHolder status = syncer.getStatusHolder();
                 status.setStatus("Removed sync of " + removedLocal);
