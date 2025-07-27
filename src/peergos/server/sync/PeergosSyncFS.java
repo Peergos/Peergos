@@ -183,16 +183,16 @@ public class PeergosSyncFS implements SyncFilesystem {
     }
 
     @Override
-    public void setBytes(Path p,
-                         long fileOffset,
-                         AsyncReader data,
-                         long size,
-                         Optional<HashTree> hash,
-                         Optional<LocalDateTime> modificationTime,
-                         Optional<Thumbnail> thumbnail,
-                         ResumeUploadProps props,
-                         Supplier<Boolean> isCancelled,
-                         Consumer<String> progress) throws IOException {
+    public Optional<LocalDateTime> setBytes(Path p,
+                                            long fileOffset,
+                                            AsyncReader data,
+                                            long size,
+                                            Optional<HashTree> hash,
+                                            Optional<LocalDateTime> modificationTime,
+                                            Optional<Thumbnail> thumbnail,
+                                            ResumeUploadProps props,
+                                            Supplier<Boolean> isCancelled,
+                                            Consumer<String> progress) throws IOException {
         Optional<FileWrapper> existing = context.getByPath(root.resolve(p)).join();
         String filename = p.getFileName().toString();
         if (existing.isEmpty() && fileOffset == 0) {
@@ -227,6 +227,7 @@ public class PeergosSyncFS implements SyncFilesystem {
                     progress.accept("Uploaded " + (total/1024/1024) + " / " + (size / 1024/1024) + " MiB of " + filename);
             }).join();
         }
+        return modificationTime;
     }
 
     @Override

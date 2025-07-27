@@ -46,16 +46,31 @@ public interface SyncFilesystem {
 
     void truncate(Path p, long size) throws IOException;
 
-    void setBytes(Path p,
-                  long fileOffset,
-                  AsyncReader data,
-                  long size,
-                  Optional<HashTree> hash,
-                  Optional<LocalDateTime> modificationTime,
-                  Optional<Thumbnail> thumbnail,
-                  ResumeUploadProps props,
-                  Supplier<Boolean> isCancelled,
-                  Consumer<String> progress) throws IOException;
+    /**
+     *
+     * @param p
+     * @param fileOffset
+     * @param data
+     * @param size
+     * @param hash
+     * @param modificationTime
+     * @param thumbnail
+     * @param props
+     * @param isCancelled
+     * @param progress
+     * @return The actual modification time the filesystem returns after write
+     * @throws IOException
+     */
+    Optional<LocalDateTime> setBytes(Path p,
+                                     long fileOffset,
+                                     AsyncReader data,
+                                     long size,
+                                     Optional<HashTree> hash,
+                                     Optional<LocalDateTime> modificationTime,
+                                     Optional<Thumbnail> thumbnail,
+                                     ResumeUploadProps props,
+                                     Supplier<Boolean> isCancelled,
+                                     Consumer<String> progress) throws IOException;
 
     AsyncReader getBytes(Path p, long fileOffset) throws IOException;
 

@@ -15,6 +15,7 @@ import peergos.shared.user.Snapshot;
 import peergos.shared.user.fs.HashTree;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
@@ -199,6 +200,37 @@ public class SyncTests {
         Assert.assertNull(syncedState.byPath(fileRelPath));
 
         Assert.assertTrue(syncedState.getInProgressCopies().isEmpty());
+    }
+
+    @Test
+    public void androidModTime() throws Exception {
+        Path base1 = Files.createTempDirectory("peergos-sync");
+        Path base2 = Files.createTempDirectory("peergos-sync");
+
+        LocalFileSystem localFs = new LocalFileSystem(base1, Main.initCrypto().hasher);
+        LocalFileSystem remoteFs = new LocalFileSystem(base2, Main.initCrypto().hasher);
+        SyncState syncedState = new JdbcTreeState(":memory:");
+
+        DirectorySync.syncDir(localFs, remoteFs, true, true, null, null, syncedState, 32, 5, crypto, () -> false, DirectorySync::log);
+
+        byte[] data = new byte[6 * 1024];
+        new Random(42).nextBytes(data);
+        String filename = "file.bin";
+        Files.write(base2.resolve(filename), data, StandardOpenOption.CREATE);
+
+        DirectorySync.syncDir(localFs, remoteFs, true, true, null, null, syncedState, 32, 5, crypto, () -> false, DirectorySync::log);
+        Assert.assertNotNull(syncedState.byPath(filename));
+
+        // simulate Android (base1) not being able to set mod time, and a modification on original source (base2)
+        boolean modTimeSet = base1.resolve(filename).toFile().setLastModified(System.currentTimeMillis() + 10_000);
+        Files.write(base2.resolve(filename), "add to end".getBytes(StandardCharsets.UTF_8), StandardOpenOption.APPEND);
+
+        // check stability
+        List<String> ops = new ArrayList<>();
+        DirectorySync.syncDir(localFs, remoteFs, true, true, null, null, syncedState, 32, 5, crypto, () -> false, ops::add);
+        Assert.assertNotNull(syncedState.byPath(filename));
+        Set<String> all = syncedState.allFilePaths();
+        Assert.assertEquals(1, all.size());
     }
 
     @Test

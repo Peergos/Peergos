@@ -132,16 +132,16 @@ public class LocalFileSystem implements SyncFilesystem {
     }
 
     @Override
-    public void setBytes(Path p,
-                         long fileOffset,
-                         AsyncReader fin,
-                         long size,
-                         Optional<HashTree> hash,
-                         Optional<LocalDateTime> modificationTime,
-                         Optional<Thumbnail> thumbnail,
-                         ResumeUploadProps props,
-                         Supplier<Boolean> isCancelled,
-                         Consumer<String> progress) throws IOException {
+    public Optional<LocalDateTime> setBytes(Path p,
+                                            long fileOffset,
+                                            AsyncReader fin,
+                                            long size,
+                                            Optional<HashTree> hash,
+                                            Optional<LocalDateTime> modificationTime,
+                                            Optional<Thumbnail> thumbnail,
+                                            ResumeUploadProps props,
+                                            Supplier<Boolean> isCancelled,
+                                            Consumer<String> progress) throws IOException {
         try (RandomAccessFile raf = new RandomAccessFile(root.resolve(p).toFile(), "rw")) {
             raf.seek(fileOffset);
             byte[] buf = new byte[4096];
@@ -155,9 +155,13 @@ public class LocalFileSystem implements SyncFilesystem {
             }
             if (modificationTime.isPresent()) {
                 long time = modificationTime.get().toInstant(ZoneOffset.UTC).toEpochMilli() / 1000 * 1000;
-                if (time >= 0)
+                if (time >= 0) {
                     root.resolve(p).toFile().setLastModified(time);
+                    return modificationTime;
+                } else
+                    return Optional.empty();
             }
+            return modificationTime;
         }
     }
 

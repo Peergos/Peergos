@@ -6,6 +6,8 @@ import peergos.shared.user.fs.*;
 import peergos.shared.util.ArrayOps;
 import peergos.shared.util.Pair;
 
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.*;
 import java.util.stream.Collectors;
 import java.util.stream.LongStream;
@@ -25,6 +27,10 @@ public class FileState implements Cborable {
         this.modificationTime = modificationTime;
         this.size = size;
         this.hashTree = hashTree;
+    }
+
+    public FileState withModtime(Optional<LocalDateTime> modtime) {
+        return new FileState(relPath, modtime.map(t -> t.toInstant(ZoneOffset.UTC).toEpochMilli() / 1000 * 1000).orElse(modificationTime), size, hashTree);
     }
 
     public String prettyPrint() {
