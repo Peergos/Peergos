@@ -32,7 +32,7 @@ import java.security.cert.*;
 public class UserService {
 	private static final Logger LOG = Logging.LOG();
 
-    public static final Version CURRENT_VERSION = Version.parse("1.8.0");
+    public static final Version CURRENT_VERSION = Version.parse("1.9.0");
     public static final String UI_URL = "/";
 
     private static void initTLS() {
