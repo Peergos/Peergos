@@ -67,5 +67,30 @@ public class SqliteBlockMetadataTest {
                 List.of(BatId.inline(Bat.random(crypto.random)), BatId.inline(Bat.random(crypto.random))));
         store.put(cid3, null, meta3);
         Assert.assertTrue(store.list().filter(v -> v.cid.equals(cid3)).findFirst().get().version == null);
+
+        List<Cid> all = new ArrayList<>();
+        store.applyToAll(all::add);
+        Assert.assertTrue(all.size() == 3);
+    }
+
+    @Ignore
+    @Test
+    public void pagination() throws Exception {
+        Path dir = Files.createTempDirectory("peergos-block-metadata");
+        File storeFile = dir.resolve("metadata.sql" + System.currentTimeMillis()).toFile();
+        String sqlFilePath = storeFile.getPath();
+        Connection memory = Sqlite.build(sqlFilePath);
+        Connection instance = new Sqlite.UncloseableConnection(memory);
+        BlockMetadataStore store = new JdbcBlockMetadataStore(() -> instance, new SqliteCommands());
+
+        for (int i=0; i < 5 * JdbcBlockMetadataStore.PAGE_LIMIT/2; i++) {
+            Cid cid = randomCid();
+            BlockMetadata meta = new BlockMetadata(10240, randomCids(20), Collections.emptyList());
+            store.put(cid, "alpha", meta);
+        }
+
+        List<Cid> all = new ArrayList<>();
+        store.applyToAll(all::add);
+        Assert.assertTrue(all.size() == 5 * JdbcBlockMetadataStore.PAGE_LIMIT/2);
     }
 }

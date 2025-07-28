@@ -17,7 +17,9 @@ public class JdbcBlockMetadataStore implements BlockMetadataStore {
     private static final Logger LOG = Logging.LOG();
     private static final String GET_INFO = "SELECT * FROM blockmetadata WHERE cid = ?;";
     private static final String REMOVE = "DELETE FROM blockmetadata where cid = ?;";
-    private static final String LIST = "SELECT cid, version FROM blockmetadata;";
+    public static final int PAGE_LIMIT = 10_000;
+    private static final String LIST_PAGINATED = "SELECT cid, version FROM blockmetadata ORDER BY cid LIMIT " + PAGE_LIMIT + " OFFSET ?;";
+    private static final String LIST_ALL = "SELECT cid, version FROM blockmetadata;";
     private static final String SIZE = "SELECT COUNT(*) FROM blockmetadata;";
     private Supplier<Connection> conn;
     private final SqlSupplier commands;
@@ -135,22 +137,31 @@ public class JdbcBlockMetadataStore implements BlockMetadataStore {
 
     @Override
     public void applyToAll(Consumer<Cid> action) {
-        try (Connection conn = getConnection();
-             PreparedStatement stmt = conn.prepareStatement(LIST)) {
-            ResultSet rs = stmt.executeQuery();
-            while (rs.next()) {
-                action.accept(Cid.cast(rs.getBytes("cid")));
+        long offset = 0;
+        while (true) {
+            try (Connection conn = getConnection();
+                 PreparedStatement stmt = conn.prepareStatement(LIST_PAGINATED)) {
+                stmt.setLong(1, offset);
+                ResultSet rs = stmt.executeQuery();
+                int added = 0;
+                while (rs.next()) {
+                    action.accept(Cid.cast(rs.getBytes("cid")));
+                    added++;
+                }
+                if (added < PAGE_LIMIT)
+                    break;
+                offset += added;
+            } catch (SQLException sqe) {
+                LOG.log(Level.WARNING, sqe.getMessage(), sqe);
+                throw new RuntimeException(sqe);
             }
-        } catch (SQLException sqe) {
-            LOG.log(Level.WARNING, sqe.getMessage(), sqe);
-            throw new RuntimeException(sqe);
         }
     }
 
     @Override
     public Stream<BlockVersion> list() {
         try (Connection conn = getConnection();
-             PreparedStatement stmt = conn.prepareStatement(LIST)) {
+             PreparedStatement stmt = conn.prepareStatement(LIST_ALL)) {
             ResultSet rs = stmt.executeQuery();
             List<BlockVersion> res = new ArrayList<>();
             while (rs.next()) {
@@ -166,7 +177,7 @@ public class JdbcBlockMetadataStore implements BlockMetadataStore {
     @Override
     public void listCbor(Consumer<List<BlockVersion>> results) {
         try (Connection conn = getConnection();
-             PreparedStatement stmt = conn.prepareStatement(LIST)) {
+             PreparedStatement stmt = conn.prepareStatement(LIST_ALL)) {
             ResultSet rs = stmt.executeQuery();
             List<BlockVersion> res = new ArrayList<>();
             while (rs.next()) {
