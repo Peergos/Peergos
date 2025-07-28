@@ -92,5 +92,7 @@ public class SqliteBlockMetadataTest {
         List<Cid> all = new ArrayList<>();
         store.applyToAll(all::add);
         Assert.assertTrue(all.size() == 5 * JdbcBlockMetadataStore.PAGE_LIMIT/2);
+        HashSet<Cid> cidSet = new HashSet<>(all);
+        Assert.assertTrue(cidSet.size() == 5 * JdbcBlockMetadataStore.PAGE_LIMIT/2);
     }
 }

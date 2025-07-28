@@ -17,8 +17,9 @@ public class JdbcBlockMetadataStore implements BlockMetadataStore {
     private static final Logger LOG = Logging.LOG();
     private static final String GET_INFO = "SELECT * FROM blockmetadata WHERE cid = ?;";
     private static final String REMOVE = "DELETE FROM blockmetadata where cid = ?;";
-    public static final int PAGE_LIMIT = 10_000;
-    private static final String LIST_PAGINATED = "SELECT cid, version FROM blockmetadata ORDER BY cid LIMIT " + PAGE_LIMIT + " OFFSET ?;";
+    public static final int PAGE_LIMIT = 100_000;
+    private static final String LIST_PAGINATED_FIRST = "SELECT cid, version FROM blockmetadata ORDER BY cid LIMIT " + PAGE_LIMIT + ";";
+    private static final String LIST_PAGINATED = "SELECT cid, version FROM blockmetadata WHERE cid > ? ORDER BY cid LIMIT " + PAGE_LIMIT + ";";
     private static final String LIST_ALL = "SELECT cid, version FROM blockmetadata;";
     private static final String SIZE = "SELECT COUNT(*) FROM blockmetadata;";
     private Supplier<Connection> conn;
@@ -137,20 +138,22 @@ public class JdbcBlockMetadataStore implements BlockMetadataStore {
 
     @Override
     public void applyToAll(Consumer<Cid> action) {
-        long offset = 0;
+        Cid prevLast = null;
         while (true) {
             try (Connection conn = getConnection();
-                 PreparedStatement stmt = conn.prepareStatement(LIST_PAGINATED)) {
-                stmt.setLong(1, offset);
+                 PreparedStatement stmt = conn.prepareStatement(prevLast == null ? LIST_PAGINATED_FIRST : LIST_PAGINATED)) {
+                if (prevLast != null)
+                    stmt.setBytes(1, prevLast.toBytes());
                 ResultSet rs = stmt.executeQuery();
                 int added = 0;
                 while (rs.next()) {
-                    action.accept(Cid.cast(rs.getBytes("cid")));
+                    Cid cid = Cid.cast(rs.getBytes("cid"));
+                    action.accept(cid);
                     added++;
+                    prevLast = cid;
                 }
-                if (added < PAGE_LIMIT)
+                if (added == 0)
                     break;
-                offset += added;
             } catch (SQLException sqe) {
                 LOG.log(Level.WARNING, sqe.getMessage(), sqe);
                 throw new RuntimeException(sqe);
