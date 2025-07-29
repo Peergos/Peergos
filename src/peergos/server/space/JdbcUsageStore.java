@@ -123,7 +123,7 @@ public class JdbcUsageStore implements UsageStore {
             if (count != 1)
                 throw new IllegalStateException("Didn't update one record!");
         } catch (SQLException sqe) {
-            LOG.log(Level.WARNING, sqe.getMessage(), sqe);
+            LOG.log(Level.WARNING, sqe.getMessage() + " Username: " + username + " writerId: " + writerId, sqe);
             throw new RuntimeException(sqe);
         }
     }
