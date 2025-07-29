@@ -261,7 +261,7 @@ public class Builder {
             if (useS3) {
                 if (enableGC)
                     throw new IllegalStateException("GC should be run separately when using S3!");
-                TransactionalIpfs p2pBlockRetriever = new TransactionalIpfs(http, transactions, authoriser, http.id().join(), linkHost, hasher);
+                TransactionalIpfs p2pBlockRetriever = new TransactionalIpfs(http, transactions, authoriser, ipfs.id().join(), linkHost, hasher);
                 S3Config config = S3Config.build(a, Optional.empty());
                 BlockStoreProperties props = buildS3Properties(a);
 
