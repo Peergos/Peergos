@@ -9,6 +9,7 @@ import peergos.shared.crypto.asymmetric.curve25519.Curve25519PublicKey;
 import peergos.shared.crypto.asymmetric.curve25519.Curve25519SecretKey;
 import peergos.shared.crypto.symmetric.TweetNaClKey;
 import peergos.shared.util.ArrayOps;
+import peergos.shared.util.Futures;
 
 import java.util.Arrays;
 import java.util.SortedMap;
@@ -40,7 +41,7 @@ public class HybridCurve25519MLKEMSecretKey implements SecretBoxingKey {
     @Override
     public CompletableFuture<byte[]> decryptMessage(byte[] hybridCipher, PublicBoxingKey from) {
         if (!(from instanceof HybridCurve25519MLKEMPublicKey))
-            throw new IllegalStateException("Didn't provide a HybridCurve25519MLKEMPublicKey!");
+            return Futures.errored(new IllegalStateException("Didn't provide a HybridCurve25519MLKEMPublicKey!"));
         HybridCipherText hybrid = HybridCipherText.fromCbor(CborObject.fromByteArray(hybridCipher));
         return curve25519.decryptMessage(hybrid.curve25519Ciphertext, ((HybridCurve25519MLKEMPublicKey) from).curve25519)
                 .thenCompose(curve25519SharedSecret -> mlkem.decapsulate(hybrid.mlkemCipherText)

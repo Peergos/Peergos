@@ -2375,8 +2375,11 @@ public class UserContext {
         return getSharingFolder().thenCompose(sharing ->
                 getFollowerRoots(false).thenCompose(followerRoots -> getPendingOutgoingFollowRequests()
                         .thenCompose(pendingOut -> Futures.combineAllInOrder(all.stream()
-                                .map(b -> b.followRequest.decrypt(boxer.secretBoxingKey, b.dummySource, FollowRequest::fromCbor).thenApply(decrypted -> new FollowRequestWithCipherText(decrypted, b)))
-                                .collect(Collectors.toList())).thenCompose(withDecrypted -> {
+                                        .map(b -> b.followRequest.decrypt(boxer.secretBoxingKey, b.dummySource, FollowRequest::fromCbor)
+                                                .thenApply(decrypted -> Optional.of(new FollowRequestWithCipherText(decrypted, b)))
+                                                .exceptionally(t -> Optional.empty()))
+                                        .collect(Collectors.toList()))
+                                .thenApply(opts -> opts.stream().flatMap(Optional::stream).collect(Collectors.toList())).thenCompose(withDecrypted -> {
 
                             List<FollowRequestWithCipherText> replies = withDecrypted.stream()
                                     .filter(p -> pendingOut.pendingOutgoingFollowRequests.contains(p.req.entry.get().ownerName))
