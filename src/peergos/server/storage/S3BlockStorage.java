@@ -972,13 +972,13 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
             S3AdminRequests.ListObjectVersionsReply result;
             do {
                 result = S3AdminRequests.listObjectVersions(folder + prefix, 1_000, keyMarker, versionIdMarker,
-                        ZonedDateTime.now(), host, region, accessKeyId, secretKey, url -> {
+                        ZonedDateTime.now(), host, region, accessKeyId, secretKey, url -> getWithBackoff(() -> {
                             try {
                                 return HttpUtil.get(url);
                             } catch (IOException e) {
                                 throw new RuntimeException(e);
                             }
-                        }, S3AdminRequests.builder::get, useHttps, hasher);
+                        }), S3AdminRequests.builder::get, useHttps, hasher);
 
                 List<BlockVersion> versions = result.versions.stream()
                         .filter(omv -> !omv.key.endsWith("/"))
