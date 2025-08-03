@@ -44,7 +44,8 @@ public interface HostDirEnumerator {
             if (kids != null) {
                 for (File kid : kids) {
                     if (kid.isDirectory() && ! kid.isHidden()) {
-                        res.add(kid.getAbsolutePath());
+                        if (kid.canWrite())
+                            res.add(kid.getAbsolutePath());
                         recurse(kid, res, maxDepth - 1);
                     }
                 }
