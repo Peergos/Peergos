@@ -53,7 +53,7 @@ public class GCTests {
     public void fullGC() throws Exception {
         Path dir = Files.createTempDirectory("peergos-gc-test");
         SqliteCommands cmds = new SqliteCommands();
-        BlockMetadataStore metadb = new JdbcBlockMetadataStore(getDb(dir.resolve("metadata.sqlite")), cmds);
+        RequestCountingBlockMetadataStore metadb = new RequestCountingBlockMetadataStore(new JdbcBlockMetadataStore(getDb(dir.resolve("metadata.sqlite")), cmds));
 
         WriteOnlyStorage storage = new WriteOnlyStorage(metadb);
         JdbcIpnsAndSocial pointers = new JdbcIpnsAndSocial(getDb(dir.resolve("mutable.sqlite")), cmds);
@@ -82,6 +82,11 @@ public class GCTests {
             throw new RuntimeException("Should not get here");
         } catch (IllegalStateException expected) {}
         storage.storage.put(toRemove, true);
+
+        metadb.resetRequestCount();
+        gc.collect(s -> Futures.of(true));
+        long gcMetadbGets = metadb.getRequestCount();
+        Assert.assertTrue(gcMetadbGets < 2000);
     }
 
     public void verifyAllReachableBlocksArePresent(JdbcIpnsAndSocial pointers,
@@ -364,6 +369,64 @@ public class GCTests {
             {
                 throw new IllegalStateException("couldn't find hash algorithm");
             }
+        }
+    }
+
+    static class RequestCountingBlockMetadataStore implements BlockMetadataStore {
+        private final BlockMetadataStore target;
+        private final AtomicLong count = new AtomicLong(0);
+
+        public RequestCountingBlockMetadataStore(BlockMetadataStore target) {
+            this.target = target;
+        }
+
+        public long getRequestCount() {
+            return count.get();
+        }
+
+        public void resetRequestCount() {
+            count.set(0);
+        }
+
+        @Override
+        public Optional<BlockMetadata> get(Cid block) {
+            count.incrementAndGet();
+            return target.get(block);
+        }
+
+        @Override
+        public void put(Cid block, String version, BlockMetadata meta) {
+            target.put(block, version, meta);
+        }
+
+        @Override
+        public void remove(Cid block) {
+            target.remove(block);
+        }
+
+        @Override
+        public long size() {
+            return target.size();
+        }
+
+        @Override
+        public void applyToAll(Consumer<Cid> consumer) {
+            target.applyToAll(consumer);
+        }
+
+        @Override
+        public Stream<BlockVersion> list() {
+            return target.list();
+        }
+
+        @Override
+        public void listCbor(Consumer<List<BlockVersion>> res) {
+            target.listCbor(res);
+        }
+
+        @Override
+        public void compact() {
+            target.compact();
         }
     }
 }
