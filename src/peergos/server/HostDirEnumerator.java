@@ -19,12 +19,11 @@ public interface HostDirEnumerator {
     class Java implements HostDirEnumerator {
         @Override
         public CompletableFuture<List<String>> getHostDirs(String prefix, int mathDepthFromPrefix) {
-            Set<String> roots = Stream.concat(
-                            Stream.of(System.getProperty("user.home")),
-                            Arrays.stream(File.listRoots())
-                                    .map(f -> f.toPath().toString()))
+            Set<String> roots = Arrays.stream(File.listRoots())
+                    .map(f -> f.toPath().toString())
                     .collect(Collectors.toSet());
             List<String> res = new ArrayList<>();
+            boolean includeAll = prefix.equals("/");
             for (String root : roots) {
                 if (root.startsWith(prefix)) {
                     File dir = new File(root);
@@ -32,8 +31,7 @@ public interface HostDirEnumerator {
                 } else if (prefix.startsWith(root)) {
                     File dir = new File(prefix);
                     recurse(dir, res, mathDepthFromPrefix - Paths.get(prefix).getNameCount());
-                }
-                if (res.isEmpty() && ! root.startsWith(prefix))
+                } else if (includeAll)
                     recurse(new File(root), res, mathDepthFromPrefix - Paths.get(root).getNameCount());
             }
             return Futures.of(res);
