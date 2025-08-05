@@ -299,7 +299,7 @@ public class SqliteBlockReachability {
 
     public static void main(String[] a) throws IOException {
         // This is a benchmark to test baseline speed of a blockstore GC
-        String filename = "temp.sql";
+        String filename = System.nanoTime() + "temp.sql";
         Path file = Path.of(filename);
         SqliteBlockReachability reachabilityDb = createReachabilityDb(file);
         List<BlockVersion> versions = new ArrayList<>();
@@ -321,6 +321,9 @@ public class SqliteBlockReachability {
         int batchSize = 10_000;
         for (int i = 0; i < count / batchSize; i++) {
             reachabilityDb.addBlocks(versions.subList(i * batchSize, (i+1)* batchSize));
+            long size = reachabilityDb.size();
+            if (size != (i +1) * batchSize)
+                throw new IllegalStateException("Incorrect size: " + size + ", expected " + (i+1)*batchSize);
         }
         long t1 = System.nanoTime();
         System.out.println("Load duration " + (t1-t0)/1_000_000_000 + "s, batch size = " + batchSize);
@@ -347,7 +350,7 @@ public class SqliteBlockReachability {
 
         long size = reachabilityDb.size();
         if (size != count)
-            throw new IllegalStateException("Missing rows!");
+            throw new IllegalStateException("Missing rows! " + size + ", expected " + count);
 
         // Now double the size with unreachable blocks
         for (int i = 0; i < count; i++) {
