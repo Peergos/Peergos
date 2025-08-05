@@ -42,6 +42,8 @@ public class SqliteBlockReachability {
     private static final String BLOCK_INDEX = "SELECT idx FROM reachability WHERE hash=?";
     private static final String BLOCK_BY_INDEX = "SELECT hash FROM reachability WHERE idx=?";
     private static final String LINKS = "SELECT child FROM links WHERE parent=?";
+    private static final String DELETE_LINKS = "DELETE FROM links WHERE parent=?";
+    private static final String DELETE_BLOCK = "DELETE FROM reachability WHERE hash=?";
     private static final String EMPTY_LINKS = "SELECT parent FROM emptylinks WHERE parent=?";
 
     private final Supplier<Connection> conn;
@@ -161,6 +163,19 @@ public class SqliteBlockReachability {
         }
     }
 
+    public void compact() {
+        String vacuum = cmds.vacuumCommand();
+        if (vacuum.isEmpty())
+            return;
+        try (Connection conn = getConnection();
+             PreparedStatement stmt = conn.prepareStatement(vacuum)) {
+            stmt.executeUpdate();
+        } catch (SQLException sqe) {
+            LOG.log(Level.WARNING, sqe.getMessage(), sqe);
+            throw new RuntimeException(sqe);
+        }
+    }
+
     private long getBlockIndex(Cid block) {
         try (Connection conn = getConnection();
              PreparedStatement query = conn.prepareStatement(BLOCK_INDEX)) {
@@ -258,9 +273,17 @@ public class SqliteBlockReachability {
     }
 
     public void removeBlock(Cid block) {
-        // remove links
-        // remove cid
-        System.out.println("Removed " + block);
+        long index = getBlockIndex(block);
+        try (Connection conn = getConnection();
+             PreparedStatement delete = conn.prepareStatement(DELETE_BLOCK);
+             PreparedStatement deleteLinks = conn.prepareStatement(DELETE_LINKS)) {
+            deleteLinks.setLong(1, index);
+            deleteLinks.executeUpdate();
+            delete.setBytes(1, block.toBytes());
+            delete.executeUpdate();
+        } catch (SQLException sqe) {
+            LOG.log(Level.WARNING, sqe.getMessage(), sqe);
+        }
     }
 
     public static SqliteBlockReachability createReachabilityDb(Path dbFile) {

@@ -86,7 +86,8 @@ public class GCTests {
         Cid root = generateTree(42, 1000, blocks -> blocks
                         .forEach(b -> storage.storage.put(b, true)),
                 (b, kids) -> metadb.put(b, null, new BlockMetadata(10, kids, Collections.emptyList())));
-        pointers.setPointer(writer, Optional.empty(), signer.signMessage(new PointerUpdate(MaybeMultihash.empty(), MaybeMultihash.of(root), Optional.of(1L)).serialize()).join()).join();
+        byte[] signedCas = signer.signMessage(new PointerUpdate(MaybeMultihash.empty(), MaybeMultihash.of(root), Optional.of(1L)).serialize()).join();
+        pointers.setPointer(writer, Optional.empty(), signedCas).join();
 
         verifyAllReachableBlocksArePresent(pointers, metadb, storage);
 
@@ -105,8 +106,11 @@ public class GCTests {
         verifyAllReachableBlocksArePresent(pointers, metadb, storage);
         Assert.assertTrue(gcMetadbGets < 1000);
 
-        SqliteBlockReachability rdb = SqliteBlockReachability.createReachabilityDb(dir.resolve("reachability.sqlite"));
+        Path dbFile = dir.resolve("reachability.sqlite");
+        Assert.assertTrue(Files.exists(dbFile));
+        SqliteBlockReachability rdb = SqliteBlockReachability.createReachabilityDb(dbFile);
         Optional<List<Cid>> links = rdb.getLinks(toRemove);
+        Assert.assertEquals(1999, rdb.size());
         Assert.assertTrue(links.isPresent());
 
         metadb.resetRequestCount();
@@ -114,6 +118,18 @@ public class GCTests {
         long gcMetadbGets2 = metadb.getRequestCount();
         verifyAllReachableBlocksArePresent(pointers, metadb, storage);
         Assert.assertTrue(gcMetadbGets2 == 0);
+
+        // test size is stable afte repeated GCs
+        long bigSize = Files.size(dbFile);
+        gc.collect(s -> Futures.of(true));
+        gc.collect(s -> Futures.of(true));
+        Assert.assertEquals(bigSize, Files.size(dbFile));
+
+        // Remove root so everything is GC'd and test db file size decreases
+        boolean setPointer = pointers.setPointer(writer, Optional.of(signedCas), signer.signMessage(new PointerUpdate(MaybeMultihash.of(root), MaybeMultihash.empty(), Optional.of(2L)).serialize()).join()).join();
+        gc.collect(s -> Futures.of(true));
+        long emptySize = Files.size(dbFile);
+        Assert.assertTrue(emptySize < 32*1024);
     }
 
     public void verifyAllReachableBlocksArePresent(JdbcIpnsAndSocial pointers,

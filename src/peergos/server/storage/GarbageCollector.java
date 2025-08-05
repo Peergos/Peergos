@@ -278,6 +278,7 @@ public class GarbageCollector {
         long deletedRawBlocks = deleted.right;
         long t7 = System.nanoTime();
         metadata.compact();
+        reachability.compact();
         long t8 = System.nanoTime();
         System.out.println("Deleting blocks took " + (t7-t6)/1_000_000_000 + "s");
         System.out.println("GC complete. Freed " + deletedCborBlocks + " cbor blocks and " + deletedRawBlocks +
