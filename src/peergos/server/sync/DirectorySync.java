@@ -102,7 +102,7 @@ public class DirectorySync {
                     minFreeSpacePercent, oneRun, root -> new LocalFileSystem(Paths.get(root), crypto.hasher),
                     peergosDir, new SyncRunner.StatusHolder(), m -> log(m), e -> log(e.getMessage()), network, crypto);
         } catch (Exception e) {
-            LOG.log(Level.SEVERE, e, e::getMessage);
+            LOG.log(Level.SEVERE, e, e == null ? () -> "" : e::getMessage);
             throw new RuntimeException(e);
         }
     }
