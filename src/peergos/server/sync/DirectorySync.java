@@ -100,7 +100,7 @@ public class DirectorySync {
             Path peergosDir = args.getPeergosDir();
             return syncDirs(links, localDirs, syncLocalDeletes, syncRemoteDeletes, maxDownloadParallelism,
                     minFreeSpacePercent, oneRun, root -> new LocalFileSystem(Paths.get(root), crypto.hasher),
-                    peergosDir, new SyncRunner.StatusHolder(), m -> log(m), e -> log(e.getMessage()), network, crypto);
+                    peergosDir, new SyncRunner.StatusHolder(), m -> log(m), e -> {if (e != null) log(e.getMessage());}, network, crypto);
         } catch (Exception e) {
             LOG.log(Level.SEVERE, e, e == null ? () -> "" : e::getMessage);
             throw new RuntimeException(e);
