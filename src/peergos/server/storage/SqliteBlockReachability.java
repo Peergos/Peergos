@@ -236,7 +236,7 @@ public class SqliteBlockReachability {
         }
     }
 
-    public Optional<List<Cid>> getLinks(Cid block) {
+    public synchronized Optional<List<Cid>> getLinks(Cid block) {
         long index;
         try {
             index = getBlockIndex(block);
