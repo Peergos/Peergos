@@ -50,6 +50,22 @@ public class GCTests {
     }
 
     @Test
+    public void linksInDb() throws Exception {
+        Path dir = Files.createTempDirectory("peergos-gc-test");
+        SqliteBlockReachability rdb = SqliteBlockReachability.createReachabilityDb(dir.resolve("reachability.sqlite"));
+        Cid block = new Cid(1, Cid.Codec.DagCbor, Multihash.Type.sha2_256, crypto.random.randomBytes(32));
+        List<Cid> links = new ArrayList<>();
+        for (int i=0; i<10; i++)
+            links.add(new Cid(1, Cid.Codec.DagCbor, Multihash.Type.sha2_256, crypto.random.randomBytes(32)));
+        rdb.addBlocks(Stream.concat(Stream.of(block), links.stream()).map(c -> new BlockVersion(c, null, true)).toList());
+
+        rdb.setLinks(block, links);
+
+        Optional<List<Cid>> fromDb = rdb.getLinks(block);
+        Assert.assertEquals(fromDb.get(), links);
+    }
+
+    @Test
     public void fullGC() throws Exception {
         Path dir = Files.createTempDirectory("peergos-gc-test");
         SqliteCommands cmds = new SqliteCommands();
@@ -86,7 +102,18 @@ public class GCTests {
         metadb.resetRequestCount();
         gc.collect(s -> Futures.of(true));
         long gcMetadbGets = metadb.getRequestCount();
-        Assert.assertTrue(gcMetadbGets < 2000);
+        verifyAllReachableBlocksArePresent(pointers, metadb, storage);
+        Assert.assertTrue(gcMetadbGets < 1000);
+
+        SqliteBlockReachability rdb = SqliteBlockReachability.createReachabilityDb(dir.resolve("reachability.sqlite"));
+        Optional<List<Cid>> links = rdb.getLinks(toRemove);
+        Assert.assertTrue(links.isPresent());
+
+        metadb.resetRequestCount();
+        gc.collect(s -> Futures.of(true));
+        long gcMetadbGets2 = metadb.getRequestCount();
+        verifyAllReachableBlocksArePresent(pointers, metadb, storage);
+        Assert.assertTrue(gcMetadbGets2 == 0);
     }
 
     public void verifyAllReachableBlocksArePresent(JdbcIpnsAndSocial pointers,
