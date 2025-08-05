@@ -160,6 +160,7 @@ public class MultiNodeNetworkTests {
             int peergosPort = TestPorts.getPort();
             int proxyTargetPort = TestPorts.getPort();
             Args normalNode = UserTests.buildArgs()
+                    .with(Main.PEERGOS_PATH, Files.createTempDirectory("peergos-mnnt-" + System.nanoTime()).toString())
                     .with("useIPFS", "true")
                     .with("enable-gc", "true")
                     .with("port", "" + peergosPort)
