@@ -855,6 +855,18 @@ public class NetworkAccess {
                                                                               Hasher hasher,
                                                                               ProgressConsumer<Long> monitor,
                                                                               double spaceIncreaseFactor) {
+        return downloadFragments(owner, hashes, bats, dhtClient, hasher, monitor, spaceIncreaseFactor, 1);
+    }
+
+    private static CompletableFuture<List<FragmentWithHash>> downloadFragments(PublicKeyHash owner,
+                                                                               List<Cid> hashes,
+                                                                               List<BatWithId> bats,
+                                                                               ContentAddressedStorage dhtClient,
+                                                                               Hasher hasher,
+                                                                               ProgressConsumer<Long> monitor,
+                                                                               double spaceIncreaseFactor,
+                                                                               int retriesLeft) {
+
         List<CompletableFuture<Optional<FragmentWithHash>>> futures = IntStream.range(0, hashes.size()).mapToObj(i -> i)
                 .parallel()
                 .map(i -> {
@@ -873,6 +885,16 @@ public class NetworkAccess {
                 }).collect(Collectors.toList());
 
         return Futures.combineAllInOrder(futures)
-                .thenApply(optList -> optList.stream().filter(Optional::isPresent).map(Optional::get).collect(Collectors.toList()));
+                .thenCompose(optList -> {
+                    if (optList.stream().anyMatch(Optional::isEmpty)) {
+                        if (retriesLeft > 0)
+                            return downloadFragments(owner, hashes, bats, dhtClient, hasher, monitor, spaceIncreaseFactor, retriesLeft - 1);
+                        throw new IllegalStateException("Couldn't retrieve blocks!");
+                    }
+                    return Futures.of(optList.stream()
+                            .filter(Optional::isPresent)
+                            .map(Optional::get)
+                            .collect(Collectors.toList()));
+                });
     }
 }
