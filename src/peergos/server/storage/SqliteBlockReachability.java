@@ -43,8 +43,9 @@ public class SqliteBlockReachability {
     private static final String BLOCK_BY_INDEX = "SELECT hash FROM reachability WHERE idx=?";
     private static final String LINKS = "SELECT child FROM links WHERE parent=?";
     private static final String DELETE_LINKS = "DELETE FROM links WHERE parent=?";
+    private static final String DELETE_EMPTY_LINKS = "DELETE FROM emptylinks WHERE parent=?";
     private static final String DELETE_BLOCK = "DELETE FROM reachability WHERE hash=?";
-    private static final String EMPTY_LINKS = "SELECT parent FROM emptylinks WHERE parent=?";
+    private static final String EMPTY_LINKS = "SELECT COUNT(*) FROM emptylinks WHERE parent=?";
 
     private final Supplier<Connection> conn;
     private final SqlSupplier cmds;
@@ -131,7 +132,7 @@ public class SqliteBlockReachability {
         }
     }
 
-    public long size() {
+    public synchronized long size() {
         try (Connection conn = getConnection();
              PreparedStatement query = conn.prepareStatement(COUNT)) {
             ResultSet res = query.executeQuery();
@@ -143,7 +144,7 @@ public class SqliteBlockReachability {
         }
     }
 
-    public void getUnreachable(Consumer<List<BlockVersion>> toDelete) {
+    public synchronized void getUnreachable(Consumer<List<BlockVersion>> toDelete) {
         try (Connection conn = getConnection();
              PreparedStatement select = conn.prepareStatement(UNREACHABLE)) {
             ResultSet res = select.executeQuery();
@@ -181,7 +182,8 @@ public class SqliteBlockReachability {
              PreparedStatement query = conn.prepareStatement(BLOCK_INDEX)) {
             query.setBytes(1, block.toBytes());
             ResultSet res = query.executeQuery();
-            res.next();
+            if (!res.next())
+                throw new IllegalStateException("Block not present: " + block);
             return res.getLong(1);
         } catch (SQLException sqe) {
             LOG.log(Level.WARNING, sqe.getMessage(), sqe);
@@ -194,7 +196,8 @@ public class SqliteBlockReachability {
              PreparedStatement query = conn.prepareStatement(BLOCK_BY_INDEX)) {
             query.setLong(1, index);
             ResultSet res = query.executeQuery();
-            res.next();
+            if (! res.next())
+                throw new IllegalStateException("Could get block for index " + index);
             return Cid.cast(res.getBytes(1));
         } catch (SQLException sqe) {
             LOG.log(Level.WARNING, sqe.getMessage(), sqe);
@@ -227,9 +230,10 @@ public class SqliteBlockReachability {
                 insert.addBatch();
             }
             int[] changed = insert.executeBatch();
-            conn.commit();
-            if (IntStream.of(changed).sum() < links.size())
-                throw new IllegalStateException("Couldn't insert links!");
+            if (IntStream.of(changed).sum() < links.size()) {
+                conn.rollback();
+            } else
+                conn.commit();
         } catch (SQLException sqe) {
             LOG.log(Level.WARNING, sqe.getMessage(), sqe);
             throw new RuntimeException(sqe);
@@ -241,14 +245,14 @@ public class SqliteBlockReachability {
         try {
             index = getBlockIndex(block);
         } catch (Exception e) {
-            e.printStackTrace();
             return Optional.empty();
         }
         try (Connection conn = getConnection();
              PreparedStatement query = conn.prepareStatement(EMPTY_LINKS)) {
             query.setLong(1, index);
             ResultSet res = query.executeQuery();
-            if (res.next())
+            res.next();
+            if (res.getLong(1) > 0)
                 return Optional.of(Collections.emptyList());
         } catch (SQLException sqe) {
             LOG.log(Level.WARNING, sqe.getMessage(), sqe);
@@ -272,13 +276,16 @@ public class SqliteBlockReachability {
         }
     }
 
-    public void removeBlock(Cid block) {
+    public synchronized void removeBlock(Cid block) {
         long index = getBlockIndex(block);
         try (Connection conn = getConnection();
              PreparedStatement delete = conn.prepareStatement(DELETE_BLOCK);
-             PreparedStatement deleteLinks = conn.prepareStatement(DELETE_LINKS)) {
+             PreparedStatement deleteLinks = conn.prepareStatement(DELETE_LINKS);
+             PreparedStatement deleteEmptyLinks = conn.prepareStatement(DELETE_EMPTY_LINKS)) {
             deleteLinks.setLong(1, index);
             deleteLinks.executeUpdate();
+            deleteEmptyLinks.setLong(1, index);
+            deleteEmptyLinks.executeUpdate();
             delete.setBytes(1, block.toBytes());
             delete.executeUpdate();
         } catch (SQLException sqe) {

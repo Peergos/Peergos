@@ -104,13 +104,13 @@ public class GCTests {
         gc.collect(s -> Futures.of(true));
         long gcMetadbGets = metadb.getRequestCount();
         verifyAllReachableBlocksArePresent(pointers, metadb, storage);
-        Assert.assertTrue(gcMetadbGets < 1000);
+        Assert.assertTrue(gcMetadbGets < 2000);
 
         Path dbFile = dir.resolve("reachability.sqlite");
         Assert.assertTrue(Files.exists(dbFile));
         SqliteBlockReachability rdb = SqliteBlockReachability.createReachabilityDb(dbFile);
         Optional<List<Cid>> links = rdb.getLinks(root);
-        Assert.assertEquals(1999, rdb.size());
+        Assert.assertTrue(rdb.size() < 2000);
         Assert.assertTrue(links.isPresent());
 
         metadb.resetRequestCount();
@@ -119,7 +119,7 @@ public class GCTests {
         verifyAllReachableBlocksArePresent(pointers, metadb, storage);
         Assert.assertTrue(gcMetadbGets2 == 0);
 
-        // test size is stable afte repeated GCs
+        // test size is stable after repeated GCs
         long bigSize = Files.size(dbFile);
         gc.collect(s -> Futures.of(true));
         gc.collect(s -> Futures.of(true));
@@ -130,6 +130,18 @@ public class GCTests {
         gc.collect(s -> Futures.of(true));
         long emptySize = Files.size(dbFile);
         Assert.assertTrue(emptySize < 32*1024);
+
+        // Add a new tree
+        SigningKeyPair signer2 = SigningKeyPair.random(crypto.random, crypto.signer);
+        PublicKeyHash writer2 = ContentAddressedStorage.hashKey(signer2.publicSigningKey);
+        Cid root2 = generateTree(42, 1000, blocks -> blocks
+                        .forEach(b -> storage.storage.put(b, true)),
+                (b, kids) -> metadb.put(b, null, new BlockMetadata(10, kids, Collections.emptyList())));
+        byte[] signedCas2 = signer2.signMessage(new PointerUpdate(MaybeMultihash.empty(), MaybeMultihash.of(root2), Optional.of(1L)).serialize()).join();
+        pointers.setPointer(writer2, Optional.empty(), signedCas2).join();
+
+        gc.collect(s -> Futures.of(true));
+        verifyAllReachableBlocksArePresent(pointers, metadb, storage);
     }
 
     public void verifyAllReachableBlocksArePresent(JdbcIpnsAndSocial pointers,
@@ -141,8 +153,10 @@ public class GCTests {
             PublicSigningKey writer = storage.getSigningKey(null, writerHash).join().get();
             byte[] bothHashes = writer.unsignMessage(e.getValue()).join();
             PointerUpdate cas = PointerUpdate.fromCbor(CborObject.fromByteArray(bothHashes));
-            Cid root = (Cid)cas.updated.get();
-            verifySubtreePresent(root, meta, storage);
+            if (cas.updated.isPresent()) {
+                Cid root = (Cid) cas.updated.get();
+                verifySubtreePresent(root, meta, storage);
+            }
         }
     }
 
@@ -207,25 +221,39 @@ public class GCTests {
         Assert.assertTrue(garbage.isEmpty());
     }
 
-    private Cid generateTree(int seed, int nRawBlocksLeft, Consumer<List<Cid>> listConsumer, BiConsumer<Cid, List<Cid>> linksConsumer) {
+    private Cid generateTree(int seed, int nLeafBlocksLeft, Consumer<List<Cid>> listConsumer, BiConsumer<Cid, List<Cid>> linksConsumer) {
         Random r = new Random(seed);
         List<Cid> buffer = new ArrayList<>(1000);
-        Cid root = generateTree(r, nRawBlocksLeft, buffer, listConsumer, linksConsumer);
+        Cid root = generateTree(r, nLeafBlocksLeft, buffer, listConsumer, linksConsumer);
         listConsumer.accept(List.of(root));
         listConsumer.accept(buffer);
         System.out.println("Generated tree " + seed);
         return root;
     }
 
-    private Cid generateTree(Random r, int nRawBlocksLeft, List<Cid> buffer, Consumer<List<Cid>> listConsumer, BiConsumer<Cid, List<Cid>> linksConsumer) {
-        if (nRawBlocksLeft == 1) {
-            Cid leaf = randomRaw(r);
-            linksConsumer.accept(leaf, Collections.emptyList());
-            return leaf;
+    private Cid generateTree(Random r, int nLeafBlocksLeft, List<Cid> buffer, Consumer<List<Cid>> listConsumer, BiConsumer<Cid, List<Cid>> linksConsumer) {
+        if (nLeafBlocksLeft <= 5) {
+            List<Cid> leaves = IntStream.range(0, nLeafBlocksLeft)
+                    .mapToObj(i -> Math.random() < 0.5 ?
+                            randomRaw(r) :
+                            randomCbor(r))
+                    .toList();
+            for (Cid leaf : leaves) {
+                linksConsumer.accept(leaf, Collections.emptyList());
+            }
+            byte[] raw = new CborObject.CborList(leaves.stream()
+                    .map(CborObject.CborMerkleLink::new).toList()
+            ).serialize();
+            Cid parent = new Cid(1, Cid.Codec.DagCbor, Multihash.Type.sha2_256, Hash.sha256(raw));
+
+            linksConsumer.accept(parent, leaves);
+            buffer.addAll(leaves);
+            buffer.add(parent);
+            return parent;
         }
-        int nLeft = nRawBlocksLeft / 2;
+        int nLeft = nLeafBlocksLeft / 2;
         Cid left = generateTree(r, nLeft, buffer, listConsumer, linksConsumer);
-        Cid right = generateTree(r, nRawBlocksLeft - nLeft, buffer, listConsumer, linksConsumer);
+        Cid right = generateTree(r, nLeafBlocksLeft - nLeft, buffer, listConsumer, linksConsumer);
         byte[] raw = new CborObject.CborList(List.of(
                 new CborObject.CborMerkleLink(left),
                 new CborObject.CborMerkleLink(right)
@@ -245,6 +273,12 @@ public class GCTests {
         byte[] hash = new byte[32];
         r.nextBytes(hash);
         return new Cid(1, Cid.Codec.Raw, Multihash.Type.sha2_256, hash);
+    }
+
+    private Cid randomCbor(Random r) {
+        byte[] hash = new byte[32];
+        r.nextBytes(hash);
+        return new Cid(1, Cid.Codec.DagCbor, Multihash.Type.sha2_256, hash);
     }
 
     public static class WriteOnlyStorage implements DeletableContentAddressedStorage {

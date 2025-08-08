@@ -889,7 +889,7 @@ public class NetworkAccess {
                     if (optList.stream().anyMatch(Optional::isEmpty)) {
                         if (retriesLeft > 0)
                             return downloadFragments(owner, hashes, bats, dhtClient, hasher, monitor, spaceIncreaseFactor, retriesLeft - 1);
-                        throw new IllegalStateException("Couldn't retrieve blocks!");
+                        throw new IllegalStateException("Couldn't retrieve blocks! " + hashes);
                     }
                     return Futures.of(optList.stream()
                             .filter(Optional::isPresent)
