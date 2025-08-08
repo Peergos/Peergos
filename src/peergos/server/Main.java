@@ -57,6 +57,8 @@ import java.util.logging.*;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+import static peergos.server.net.SyncConfigHandler.SYNC_CONFIG_FILENAME;
+
 public class Main extends Builder {
     public static final String PEERGOS_PATH = "PEERGOS_PATH";
     public static final Path DEFAULT_PEERGOS_DIR_PATH =
@@ -620,8 +622,14 @@ public class Main extends Builder {
 
                     OfflineBatCache offlineBats = new OfflineBatCache(batCave, new JdbcBatCave(Builder.getDBConnector(a, "bat-cache-sql-file", dbConnector), commands));
 
+                    Path peergosDir = a.getPeergosDir();
+                    Path jsonSyncConfig = peergosDir.resolve(SYNC_CONFIG_FILENAME);
+                    SyncConfig syncConfig = jsonSyncConfig.toFile().exists() ?
+                            SyncConfig.fromJson((Map<String, Object>) JSONParser.parse(Files.readString(jsonSyncConfig))) :
+                            SyncConfig.fromArgs(a);
+
                     SyncRunner.ThreadBased syncer = new SyncRunner.ThreadBased(a, withoutS3, pointerCache, offlineCorenode, crypto);
-                    SyncProperties sync = new SyncProperties(SyncConfig.fromArgs(a), a.getPeergosDir(), syncer, Either.a(new HostDirEnumerator.Java()));
+                    SyncProperties sync = new SyncProperties(syncConfig, peergosDir, syncer, Either.a(new HostDirEnumerator.Java()));
                     UserService server = new UserService(withoutS3, offlineBats, crypto, offlineCorenode, offlineAccounts,
                             httpSocial, pointerCache, admin, httpUsage, serverMessager, null, Optional.of(sync));
 
