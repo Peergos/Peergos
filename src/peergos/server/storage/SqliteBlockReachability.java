@@ -39,12 +39,12 @@ public class SqliteBlockReachability {
     private static final String INSERT_EMPTY_LINKS_SUFFIX = "INTO emptylinks (parent) VALUES(?)";
     private static final String UNREACHABLE = "SELECT hash, version FROM reachability WHERE reachable = false";
     private static final String COUNT = "SELECT COUNT(*) FROM reachability";
-    private static final String BLOCK_INDEX = "SELECT idx FROM reachability WHERE hash=?";
+    private static final String BLOCK_INDEX = "SELECT idx FROM reachability WHERE hash=? AND latest=true";
     private static final String BLOCK_BY_INDEX = "SELECT hash FROM reachability WHERE idx=?";
     private static final String LINKS = "SELECT child FROM links WHERE parent=?";
     private static final String DELETE_LINKS = "DELETE FROM links WHERE parent=?";
     private static final String DELETE_EMPTY_LINKS = "DELETE FROM emptylinks WHERE parent=?";
-    private static final String DELETE_BLOCK = "DELETE FROM reachability WHERE hash=?";
+    private static final String DELETE_BLOCK = "DELETE FROM reachability WHERE hash=? AND version=?";
     private static final String EMPTY_LINKS = "SELECT COUNT(*) FROM emptylinks WHERE parent=?";
 
     private final Supplier<Connection> conn;
@@ -276,8 +276,8 @@ public class SqliteBlockReachability {
         }
     }
 
-    public synchronized void removeBlock(Cid block) {
-        long index = getBlockIndex(block);
+    public synchronized void removeBlock(BlockVersion block) {
+        long index = getBlockIndex(block.cid);
         try (Connection conn = getConnection();
              PreparedStatement delete = conn.prepareStatement(DELETE_BLOCK);
              PreparedStatement deleteLinks = conn.prepareStatement(DELETE_LINKS);
@@ -286,7 +286,8 @@ public class SqliteBlockReachability {
             deleteLinks.executeUpdate();
             deleteEmptyLinks.setLong(1, index);
             deleteEmptyLinks.executeUpdate();
-            delete.setBytes(1, block.toBytes());
+            delete.setBytes(1, block.cid.toBytes());
+            delete.setString(2, block.version);
             delete.executeUpdate();
         } catch (SQLException sqe) {
             LOG.log(Level.WARNING, sqe.getMessage(), sqe);

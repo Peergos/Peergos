@@ -329,7 +329,7 @@ public class GarbageCollector {
         long deletedRawBlocks = toDelete.size() - deletedCborBlocks;
         for (BlockVersion block : toDelete) {
             metadata.remove(block.cid);
-            reachability.removeBlock(block.cid);
+            reachability.removeBlock(block);
         }
         getWithBackoff(() -> {storage.bulkDelete(toDelete); return true;});
 
@@ -369,8 +369,14 @@ public class GarbageCollector {
                     .orElseGet(() -> metadata.get(block).map(m -> m.links)
                             .orElseGet(() -> getWithBackoff(() -> storage.getLinks(block).join())));
 
-            if (fromRdb.isEmpty() && ! block.isRaw())
-                reachability.setLinks(block, newLinks);
+            if (fromRdb.isEmpty() && ! block.isRaw()) {
+                try {
+                    reachability.setLinks(block, newLinks);
+                } catch (Exception e) {
+                    // Can hit this for new blocks that are not in the block
+                    // list in the db and thus don't have an index
+                }
+            }
             queue.addAll(newLinks);
             if (queue.size() > 1000) {
                 reachability.setReachable(queue, totalReachable);
