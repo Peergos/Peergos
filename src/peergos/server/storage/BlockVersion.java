@@ -27,4 +27,11 @@ public class BlockVersion {
     public int hashCode() {
         return Objects.hash(cid, version);
     }
+
+    @Override
+    public String toString() {
+        if (version == null)
+            return cid.toString();
+        return cid.toString() + ":" + version;
+    }
 }

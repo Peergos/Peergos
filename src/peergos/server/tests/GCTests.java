@@ -7,31 +7,21 @@ import peergos.server.corenode.JdbcIpnsAndSocial;
 import peergos.server.space.JdbcUsageStore;
 import peergos.server.sql.*;
 import peergos.server.storage.*;
-import peergos.server.storage.auth.Want;
 import peergos.server.util.*;
 import peergos.shared.Crypto;
 import peergos.shared.MaybeMultihash;
 import peergos.shared.cbor.*;
-import peergos.shared.corenode.CoreNode;
 import peergos.shared.crypto.SigningKeyPair;
 import peergos.shared.crypto.asymmetric.PublicSigningKey;
 import peergos.shared.crypto.hash.PublicKeyHash;
 import peergos.shared.io.ipfs.*;
 import peergos.shared.mutable.PointerUpdate;
 import peergos.shared.storage.*;
-import peergos.shared.storage.auth.BatWithId;
-import peergos.shared.user.fs.EncryptedCapability;
-import peergos.shared.user.fs.SecretLink;
-import peergos.shared.util.EfficientHashMap;
 import peergos.shared.util.Futures;
-import peergos.shared.util.ProgressConsumer;
 
 import java.io.*;
 import java.nio.file.*;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.sql.*;
-import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.*;
@@ -47,6 +37,80 @@ public class GCTests {
         Connection db = Sqlite.build(sqlFilePath);
         Connection instance = new Sqlite.UncloseableConnection(db);
         return () -> instance;
+    }
+
+    @Test
+    public void linksInDb() throws Exception {
+        Path dir = Files.createTempDirectory("peergos-gc-test");
+        SqliteBlockReachability rdb = SqliteBlockReachability.createReachabilityDb(dir.resolve("reachability.sqlite"));
+        Cid block = new Cid(1, Cid.Codec.DagCbor, Multihash.Type.sha2_256, crypto.random.randomBytes(32));
+        List<Cid> links = new ArrayList<>();
+        for (int i=0; i<10; i++)
+            links.add(new Cid(1, Cid.Codec.DagCbor, Multihash.Type.sha2_256, crypto.random.randomBytes(32)));
+        rdb.addBlocks(Stream.concat(Stream.of(block), links.stream()).map(c -> new BlockVersion(c, null, true)).toList());
+
+        rdb.setLinks(block, links);
+
+        Optional<List<Cid>> fromDb = rdb.getLinks(block);
+        Assert.assertEquals(fromDb.get(), links);
+    }
+
+    @Test
+    public void versionedGC() throws Exception {
+        Path dir = Files.createTempDirectory("peergos-gc-test");
+        SqliteCommands cmds = new SqliteCommands();
+        RequestCountingBlockMetadataStore metadb = new RequestCountingBlockMetadataStore(new JdbcBlockMetadataStore(getDb(dir.resolve("metadata.sqlite")), cmds));
+
+        VersionedWriteOnlyStorage storage = new VersionedWriteOnlyStorage(metadb);
+        JdbcIpnsAndSocial pointers = new JdbcIpnsAndSocial(getDb(dir.resolve("mutable.sqlite")), cmds);
+        JdbcUsageStore usage = new JdbcUsageStore(getDb(dir.resolve("usage.sqlite")), cmds);
+
+        GarbageCollector gc = new GarbageCollector(storage, pointers, usage, dir, (x, y) -> Futures.of(true), true);
+        gc.collect(s -> Futures.of(true));
+        Path dbFile = dir.resolve("reachability.sqlite");
+        Assert.assertTrue(Files.exists(dbFile));
+        SqliteBlockReachability rdb = SqliteBlockReachability.createReachabilityDb(dbFile);
+
+        verifyAllReachableBlocksArePresent(pointers, metadb, storage);
+
+        // write a 2 block tree, gc and verify again
+        SigningKeyPair signer = SigningKeyPair.random(crypto.random, crypto.signer);
+        PublicKeyHash writer = ContentAddressedStorage.hashKey(signer.publicSigningKey);
+        Random r = new Random(42);
+        Cid leaf = randomRaw(r);
+        byte[] raw = new CborObject.CborList(Stream.of(leaf)
+                .map(CborObject.CborMerkleLink::new).toList()
+        ).serialize();
+        Cid root = new Cid(1, Cid.Codec.DagCbor, Multihash.Type.sha2_256, Hash.sha256(raw));
+        storage.add(leaf);
+        BlockVersion rootV1 = storage.add(root);
+        metadb.put(root, rootV1.version, raw);
+        byte[] signedCas = signer.signMessage(new PointerUpdate(MaybeMultihash.empty(), MaybeMultihash.of(root), Optional.of(1L)).serialize()).join();
+        pointers.setPointer(writer, Optional.empty(), signedCas).join();
+
+        verifyAllReachableBlocksArePresent(pointers, metadb, storage);
+        Assert.assertEquals(2, storage.storage.size());
+        List<BlockVersion> versions1 = new ArrayList<>();
+        storage.getAllBlockHashVersions(versions1::addAll);
+        Assert.assertEquals(2, versions1.size());
+
+        // add a new version of the leaf block, and check it is kept and the original is deleted
+        BlockVersion leafV2 = storage.add(leaf);
+        gc.collect(s -> Futures.of(true));
+        Assert.assertEquals(2, storage.storage.size());
+        List<BlockVersion> versions2 = new ArrayList<>();
+        storage.getAllBlockHashVersions(versions2::addAll);
+        Assert.assertEquals(2, versions2.size());
+        Assert.assertTrue(versions2.contains(leafV2));
+
+        // now add a new version of the root
+        BlockVersion rootV2 = storage.add(root);
+        gc.collect(s -> Futures.of(true));
+        Assert.assertEquals(2, storage.storage.size());
+        List<BlockVersion> versions3 = new ArrayList<>();
+        storage.getAllBlockHashVersions(versions3::addAll);
+        Assert.assertEquals(2, versions3.size());
+        Assert.assertTrue(versions3.contains(rootV2));
     }
 
     @Test
@@ -70,7 +134,8 @@ public class GCTests {
         Cid root = generateTree(42, 1000, blocks -> blocks
                         .forEach(b -> storage.storage.put(b, true)),
                 (b, kids) -> metadb.put(b, null, new BlockMetadata(10, kids, Collections.emptyList())));
-        pointers.setPointer(writer, Optional.empty(), signer.signMessage(new PointerUpdate(MaybeMultihash.empty(), MaybeMultihash.of(root), Optional.of(1L)).serialize()).join()).join();
+        byte[] signedCas = signer.signMessage(new PointerUpdate(MaybeMultihash.empty(), MaybeMultihash.of(root), Optional.of(1L)).serialize()).join();
+        pointers.setPointer(writer, Optional.empty(), signedCas).join();
 
         verifyAllReachableBlocksArePresent(pointers, metadb, storage);
 
@@ -86,7 +151,45 @@ public class GCTests {
         metadb.resetRequestCount();
         gc.collect(s -> Futures.of(true));
         long gcMetadbGets = metadb.getRequestCount();
+        verifyAllReachableBlocksArePresent(pointers, metadb, storage);
         Assert.assertTrue(gcMetadbGets < 2000);
+
+        Path dbFile = dir.resolve("reachability.sqlite");
+        Assert.assertTrue(Files.exists(dbFile));
+        SqliteBlockReachability rdb = SqliteBlockReachability.createReachabilityDb(dbFile);
+        Optional<List<Cid>> links = rdb.getLinks(root);
+        Assert.assertTrue(rdb.size() < 2000);
+        Assert.assertTrue(links.isPresent());
+
+        metadb.resetRequestCount();
+        gc.collect(s -> Futures.of(true));
+        long gcMetadbGets2 = metadb.getRequestCount();
+        verifyAllReachableBlocksArePresent(pointers, metadb, storage);
+        Assert.assertTrue(gcMetadbGets2 == 0);
+
+        // test size is stable after repeated GCs
+        long bigSize = Files.size(dbFile);
+        gc.collect(s -> Futures.of(true));
+        gc.collect(s -> Futures.of(true));
+        Assert.assertEquals(bigSize, Files.size(dbFile));
+
+        // Remove root so everything is GC'd and test db file size decreases
+        boolean setPointer = pointers.setPointer(writer, Optional.of(signedCas), signer.signMessage(new PointerUpdate(MaybeMultihash.of(root), MaybeMultihash.empty(), Optional.of(2L)).serialize()).join()).join();
+        gc.collect(s -> Futures.of(true));
+        long emptySize = Files.size(dbFile);
+        Assert.assertTrue(emptySize < 32*1024);
+
+        // Add a new tree
+        SigningKeyPair signer2 = SigningKeyPair.random(crypto.random, crypto.signer);
+        PublicKeyHash writer2 = ContentAddressedStorage.hashKey(signer2.publicSigningKey);
+        Cid root2 = generateTree(42, 1000, blocks -> blocks
+                        .forEach(b -> storage.storage.put(b, true)),
+                (b, kids) -> metadb.put(b, null, new BlockMetadata(10, kids, Collections.emptyList())));
+        byte[] signedCas2 = signer2.signMessage(new PointerUpdate(MaybeMultihash.empty(), MaybeMultihash.of(root2), Optional.of(1L)).serialize()).join();
+        pointers.setPointer(writer2, Optional.empty(), signedCas2).join();
+
+        gc.collect(s -> Futures.of(true));
+        verifyAllReachableBlocksArePresent(pointers, metadb, storage);
     }
 
     public void verifyAllReachableBlocksArePresent(JdbcIpnsAndSocial pointers,
@@ -98,8 +201,10 @@ public class GCTests {
             PublicSigningKey writer = storage.getSigningKey(null, writerHash).join().get();
             byte[] bothHashes = writer.unsignMessage(e.getValue()).join();
             PointerUpdate cas = PointerUpdate.fromCbor(CborObject.fromByteArray(bothHashes));
-            Cid root = (Cid)cas.updated.get();
-            verifySubtreePresent(root, meta, storage);
+            if (cas.updated.isPresent()) {
+                Cid root = (Cid) cas.updated.get();
+                verifySubtreePresent(root, meta, storage);
+            }
         }
     }
 
@@ -108,6 +213,8 @@ public class GCTests {
                                      DeletableContentAddressedStorage storage) {
         if (! storage.hasBlock(block))
             throw new IllegalStateException("Absent block " + block);
+        if (block.isRaw())
+            return;
         BlockMetadata m = meta.get(block).get();
         for (Cid link : m.links) {
             verifySubtreePresent(link, meta, storage);
@@ -164,25 +271,39 @@ public class GCTests {
         Assert.assertTrue(garbage.isEmpty());
     }
 
-    private Cid generateTree(int seed, int nRawBlocksLeft, Consumer<List<Cid>> listConsumer, BiConsumer<Cid, List<Cid>> linksConsumer) {
+    private Cid generateTree(int seed, int nLeafBlocksLeft, Consumer<List<Cid>> listConsumer, BiConsumer<Cid, List<Cid>> linksConsumer) {
         Random r = new Random(seed);
         List<Cid> buffer = new ArrayList<>(1000);
-        Cid root = generateTree(r, nRawBlocksLeft, buffer, listConsumer, linksConsumer);
+        Cid root = generateTree(r, nLeafBlocksLeft, buffer, listConsumer, linksConsumer);
         listConsumer.accept(List.of(root));
         listConsumer.accept(buffer);
         System.out.println("Generated tree " + seed);
         return root;
     }
 
-    private Cid generateTree(Random r, int nRawBlocksLeft, List<Cid> buffer, Consumer<List<Cid>> listConsumer, BiConsumer<Cid, List<Cid>> linksConsumer) {
-        if (nRawBlocksLeft == 1) {
-            Cid leaf = randomRaw(r);
-            linksConsumer.accept(leaf, Collections.emptyList());
-            return leaf;
+    private Cid generateTree(Random r, int nLeafBlocksLeft, List<Cid> buffer, Consumer<List<Cid>> listConsumer, BiConsumer<Cid, List<Cid>> linksConsumer) {
+        if (nLeafBlocksLeft <= 5) {
+            List<Cid> leaves = IntStream.range(0, nLeafBlocksLeft)
+                    .mapToObj(i -> Math.random() < 0.5 ?
+                            randomRaw(r) :
+                            randomCbor(r))
+                    .toList();
+            for (Cid leaf : leaves) {
+                linksConsumer.accept(leaf, Collections.emptyList());
+            }
+            byte[] raw = new CborObject.CborList(leaves.stream()
+                    .map(CborObject.CborMerkleLink::new).toList()
+            ).serialize();
+            Cid parent = new Cid(1, Cid.Codec.DagCbor, Multihash.Type.sha2_256, Hash.sha256(raw));
+
+            linksConsumer.accept(parent, leaves);
+            buffer.addAll(leaves);
+            buffer.add(parent);
+            return parent;
         }
-        int nLeft = nRawBlocksLeft / 2;
+        int nLeft = nLeafBlocksLeft / 2;
         Cid left = generateTree(r, nLeft, buffer, listConsumer, linksConsumer);
-        Cid right = generateTree(r, nRawBlocksLeft - nLeft, buffer, listConsumer, linksConsumer);
+        Cid right = generateTree(r, nLeafBlocksLeft - nLeft, buffer, listConsumer, linksConsumer);
         byte[] raw = new CborObject.CborList(List.of(
                 new CborObject.CborMerkleLink(left),
                 new CborObject.CborMerkleLink(right)
@@ -204,229 +325,9 @@ public class GCTests {
         return new Cid(1, Cid.Codec.Raw, Multihash.Type.sha2_256, hash);
     }
 
-    public static class WriteOnlyStorage implements DeletableContentAddressedStorage {
-        private Map<Cid, Boolean> storage = new EfficientHashMap<>();
-        private final BlockMetadataStore metadb;
-
-        public WriteOnlyStorage(BlockMetadataStore metadb) {
-            this.metadb = metadb;
-        }
-
-        public Optional<BlockMetadataStore> getBlockMetadataStore() {
-            return Optional.of(metadb);
-        }
-
-        @Override
-        public Stream<Cid> getAllBlockHashes(boolean useBlockstore) {
-            return storage.keySet().stream();
-        }
-
-        @Override
-        public void getAllBlockHashVersions(Consumer<List<BlockVersion>> res) {
-            List<BlockVersion> batch = new ArrayList<>();
-            for (Cid cid : storage.keySet()) {
-                batch.add(new BlockVersion(cid, "hey", true));
-                if (batch.size() == 1000) {
-                    res.accept(batch);
-                    batch.clear();
-                }
-            }
-            res.accept(batch);
-        }
-
-        @Override
-        public List<Cid> getOpenTransactionBlocks() {
-            return List.of();
-        }
-
-        @Override
-        public void clearOldTransactions(long cutoffMillis) {
-
-        }
-
-        @Override
-        public boolean hasBlock(Cid hash) {
-            return storage.containsKey(hash);
-        }
-
-        @Override
-        public void delete(Cid block) {
-            storage.remove(block);
-        }
-
-        @Override
-        public void setPki(CoreNode pki) {
-
-        }
-
-        @Override
-        public CompletableFuture<Optional<CborObject>> get(List<Multihash> peerIds, Cid hash, String auth, boolean persistBlock) {
-            throw new IllegalStateException("Not implemented!");
-        }
-
-        @Override
-        public CompletableFuture<Optional<byte[]>> getRaw(List<Multihash> peerIds, Cid hash, String auth, boolean persistBlock) {
-            throw new IllegalStateException("Not implemented!");
-        }
-
-        @Override
-        public List<List<Cid>> bulkGetLinks(List<Multihash> peerIds, List<Want> wants) {
-            throw new IllegalStateException("Not implemented!");
-        }
-
-        @Override
-        public CompletableFuture<String> linkHost(PublicKeyHash owner) {
-            throw new IllegalStateException("Not implemented!");
-        }
-
-        @Override
-        public ContentAddressedStorage directToOrigin() {
-            return this;
-        }
-
-        @Override
-        public Optional<BlockCache> getBlockCache() {
-            throw new IllegalStateException("Not implemented!");
-        }
-
-        @Override
-        public CompletableFuture<Cid> id() {
-            return Futures.of(new Cid(1, Cid.Codec.DagCbor, Multihash.Type.sha2_256, new byte[32]));
-        }
-
-        @Override
-        public CompletableFuture<List<Cid>> ids() {
-            throw new IllegalStateException("Not implemented!");
-        }
-
-        @Override
-        public CompletableFuture<TransactionId> startTransaction(PublicKeyHash owner) {
-            throw new IllegalStateException("Not implemented!");
-        }
-
-        @Override
-        public CompletableFuture<Boolean> closeTransaction(PublicKeyHash owner, TransactionId tid) {
-            throw new IllegalStateException("Not implemented!");
-        }
-
-        @Override
-        public CompletableFuture<List<Cid>> put(PublicKeyHash owner, PublicKeyHash writer, List<byte[]> signedHashes, List<byte[]> blocks, TransactionId tid) {
-            return Futures.of(blocks.stream().map(b -> hashToCid(b, false)).toList());
-        }
-
-        @Override
-        public CompletableFuture<Optional<CborObject>> get(PublicKeyHash owner, Cid hash, Optional<BatWithId> bat) {
-            throw new IllegalStateException("Not implemented!");
-        }
-
-        @Override
-        public CompletableFuture<List<Cid>> putRaw(PublicKeyHash owner, PublicKeyHash writer, List<byte[]> signedHashes, List<byte[]> blocks, TransactionId tid, ProgressConsumer<Long> progressCounter) {
-            return Futures.of(blocks.stream().map(b -> hashToCid(b, true)).toList());
-        }
-
-        @Override
-        public CompletableFuture<Optional<byte[]>> getRaw(PublicKeyHash owner, Cid hash, Optional<BatWithId> bat) {
-            throw new IllegalStateException("Not implemented!");
-        }
-
-        @Override
-        public CompletableFuture<List<byte[]>> getChampLookup(PublicKeyHash owner, Cid root, List<ChunkMirrorCap> caps, Optional<Cid> committedRoot) {
-            throw new IllegalStateException("Not implemented!");
-        }
-
-        @Override
-        public CompletableFuture<Optional<Integer>> getSize(Multihash block) {
-            throw new IllegalStateException("Not implemented!");
-        }
-
-        @Override
-        public CompletableFuture<IpnsEntry> getIpnsEntry(Multihash signer) {
-            throw new IllegalStateException("Not implemented!");
-        }
-
-        @Override
-        public CompletableFuture<EncryptedCapability> getSecretLink(SecretLink link) {
-            throw new IllegalStateException("Not implemented!");
-        }
-
-        @Override
-        public CompletableFuture<LinkCounts> getLinkCounts(String owner, LocalDateTime after, BatWithId mirrorBat) {
-            throw new IllegalStateException("Not implemented!");
-        }
-
-        public static Cid hashToCid(byte[] input, boolean isRaw) {
-            byte[] hash = hash(input);
-            return new Cid(1, isRaw ? Cid.Codec.Raw : Cid.Codec.DagCbor, Multihash.Type.sha2_256, hash);
-        }
-
-        public static byte[] hash(byte[] input)
-        {
-            try {
-                MessageDigest md = MessageDigest.getInstance("SHA-256");
-                md.update(input);
-                return md.digest();
-            } catch (NoSuchAlgorithmException e)
-            {
-                throw new IllegalStateException("couldn't find hash algorithm");
-            }
-        }
-    }
-
-    static class RequestCountingBlockMetadataStore implements BlockMetadataStore {
-        private final BlockMetadataStore target;
-        private final AtomicLong count = new AtomicLong(0);
-
-        public RequestCountingBlockMetadataStore(BlockMetadataStore target) {
-            this.target = target;
-        }
-
-        public long getRequestCount() {
-            return count.get();
-        }
-
-        public void resetRequestCount() {
-            count.set(0);
-        }
-
-        @Override
-        public Optional<BlockMetadata> get(Cid block) {
-            count.incrementAndGet();
-            return target.get(block);
-        }
-
-        @Override
-        public void put(Cid block, String version, BlockMetadata meta) {
-            target.put(block, version, meta);
-        }
-
-        @Override
-        public void remove(Cid block) {
-            target.remove(block);
-        }
-
-        @Override
-        public long size() {
-            return target.size();
-        }
-
-        @Override
-        public void applyToAll(Consumer<Cid> consumer) {
-            target.applyToAll(consumer);
-        }
-
-        @Override
-        public Stream<BlockVersion> list() {
-            return target.list();
-        }
-
-        @Override
-        public void listCbor(Consumer<List<BlockVersion>> res) {
-            target.listCbor(res);
-        }
-
-        @Override
-        public void compact() {
-            target.compact();
-        }
+    private Cid randomCbor(Random r) {
+        byte[] hash = new byte[32];
+        r.nextBytes(hash);
+        return new Cid(1, Cid.Codec.DagCbor, Multihash.Type.sha2_256, hash);
     }
 }

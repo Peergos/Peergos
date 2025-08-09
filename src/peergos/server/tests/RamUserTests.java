@@ -583,7 +583,7 @@ public class RamUserTests extends UserTests {
     @Test
     public void testReuseOfAsyncReader() throws Exception {
 
-        String username = "test";
+        String username = generateUsername();
         String password = "test01";
         UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
         FileWrapper userRoot = context.getUserRoot().join();
@@ -623,7 +623,7 @@ public class RamUserTests extends UserTests {
     @Test
     public void testReuseOfAsyncReaderSerialRead() throws Exception {
 
-        String username = "test";
+        String username = generateUsername();
         String password = "test01";
         UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
         FileWrapper userRoot = context.getUserRoot().join();

@@ -17,16 +17,36 @@ import java.util.stream.*;
 public class SqliteBlockReachability {
     private static final Logger LOG = peergos.server.util.Logging.LOG();
     private static final String CREATE_TABLE = "CREATE TABLE IF NOT EXISTS reachability (" +
+            "idx integer primary key,"+
             "hash bytes not null, " +
             "version text, " +
             "latest boolean not null," +
             "reachable boolean not null); " +
-                "CREATE UNIQUE INDEX IF NOT EXISTS hash_reachable_index ON reachability (hash, version);";
+                "CREATE UNIQUE INDEX IF NOT EXISTS hash_reachable_index ON reachability (hash, version);" +
+            "CREATE TABLE IF NOT EXISTS links (" +
+            "parent integer references reachability(idx) not null," +
+            "child integer references reachability(idx) not null" +
+            ");" +
+            "CREATE UNIQUE INDEX IF NOT EXISTS links_index ON links (parent, child);" +
+            "CREATE TABLE IF NOT EXISTS emptylinks (" +
+            "parent integer references reachability(idx) not null primary key" +
+            ");";
 
+    private static final String CLEAR_REACHABLE = "UPDATE reachability SET reachable=false";
     private static final String SET_REACHABLE = "UPDATE reachability SET reachable=true WHERE hash = ? AND latest = true";
     private static final String INSERT_SUFFIX = "INTO reachability (hash, version, latest, reachable) VALUES(?, ?, ?, false)";
+    private static final String NOT_LATEST = "update reachability set latest=false WHERE hash=? AND version!=?";
+    private static final String INSERT_LINK_SUFFIX = "INTO links (parent, child) VALUES(?, ?)";
+    private static final String INSERT_EMPTY_LINKS_SUFFIX = "INTO emptylinks (parent) VALUES(?)";
     private static final String UNREACHABLE = "SELECT hash, version FROM reachability WHERE reachable = false";
     private static final String COUNT = "SELECT COUNT(*) FROM reachability";
+    private static final String BLOCK_INDEX = "SELECT idx FROM reachability WHERE hash=? AND latest=true";
+    private static final String BLOCK_BY_INDEX = "SELECT hash FROM reachability WHERE idx=?";
+    private static final String LINKS = "SELECT child FROM links WHERE parent=?";
+    private static final String DELETE_LINKS = "DELETE FROM links WHERE parent=?";
+    private static final String DELETE_EMPTY_LINKS = "DELETE FROM emptylinks WHERE parent=?";
+    private static final String DELETE_BLOCK = "DELETE FROM reachability WHERE hash=? AND version=?";
+    private static final String EMPTY_LINKS = "SELECT COUNT(*) FROM emptylinks WHERE parent=?";
 
     private final Supplier<Connection> conn;
     private final SqlSupplier cmds;
@@ -68,8 +88,21 @@ public class SqliteBlockReachability {
 
     public synchronized void addBlocks(List<BlockVersion> versions) {
         try (Connection conn = getNonCommittingConnection();
-             PreparedStatement insert = conn.prepareStatement(cmds.insertOrIgnoreCommand("INSERT ", INSERT_SUFFIX))) {
+             PreparedStatement insert = conn.prepareStatement(cmds.insertOrIgnoreCommand("INSERT ", INSERT_SUFFIX));
+             PreparedStatement oldlatest = conn.prepareStatement(NOT_LATEST)) {
             List<BlockVersion> distinct = versions.stream().distinct().collect(Collectors.toList());
+            List<BlockVersion> latestVersions = distinct.stream()
+                    .filter(v -> v.isLatest && v.version != null)
+                    .toList();
+            for (BlockVersion latest : latestVersions) {
+                oldlatest.setBytes(1, latest.cid.toBytes());
+                oldlatest.setString(2, latest.version);
+                oldlatest.addBatch();
+            }
+            if (! latestVersions.isEmpty()) {
+                int[] changed = oldlatest.executeBatch();
+                conn.commit();
+            }
             for (BlockVersion version : distinct) {
                 insert.setBytes(1, version.cid.toBytes());
                 insert.setString(2, version.version);
@@ -78,10 +111,18 @@ public class SqliteBlockReachability {
             }
             int[] changed = insert.executeBatch();
             conn.commit();
-            if (IntStream.of(changed).sum() < distinct.size())
-                throw new IllegalStateException("Couldn't insert blocks!");
         } catch (SQLException sqe) {
             LOG.log(Level.WARNING, sqe.getMessage(), sqe);
+        }
+    }
+
+    public synchronized void clearReachable() {
+        try (Connection conn = getConnection();
+             PreparedStatement update = conn.prepareStatement(CLEAR_REACHABLE)) {
+            update.executeUpdate();
+        } catch (SQLException sqe) {
+            LOG.log(Level.WARNING, sqe.getMessage(), sqe);
+            throw new RuntimeException(sqe);
         }
     }
 
@@ -105,7 +146,7 @@ public class SqliteBlockReachability {
         }
     }
 
-    public long size() {
+    public synchronized long size() {
         try (Connection conn = getConnection();
              PreparedStatement query = conn.prepareStatement(COUNT)) {
             ResultSet res = query.executeQuery();
@@ -117,7 +158,7 @@ public class SqliteBlockReachability {
         }
     }
 
-    public void getUnreachable(Consumer<List<BlockVersion>> toDelete) {
+    public synchronized void getUnreachable(Consumer<List<BlockVersion>> toDelete) {
         try (Connection conn = getConnection();
              PreparedStatement select = conn.prepareStatement(UNREACHABLE)) {
             ResultSet res = select.executeQuery();
@@ -137,22 +178,150 @@ public class SqliteBlockReachability {
         }
     }
 
+    public void compact() {
+        String vacuum = cmds.vacuumCommand();
+        if (vacuum.isEmpty())
+            return;
+        try (Connection conn = getConnection();
+             PreparedStatement stmt = conn.prepareStatement(vacuum)) {
+            stmt.executeUpdate();
+        } catch (SQLException sqe) {
+            LOG.log(Level.WARNING, sqe.getMessage(), sqe);
+            throw new RuntimeException(sqe);
+        }
+    }
+
+    private long getBlockIndex(Cid block) {
+        try (Connection conn = getConnection();
+             PreparedStatement query = conn.prepareStatement(BLOCK_INDEX)) {
+            query.setBytes(1, block.toBytes());
+            ResultSet res = query.executeQuery();
+            if (!res.next())
+                throw new IllegalStateException("Block not present: " + block);
+            return res.getLong(1);
+        } catch (SQLException sqe) {
+            LOG.log(Level.WARNING, sqe.getMessage(), sqe);
+            throw new RuntimeException(sqe);
+        }
+    }
+
+    private Cid getBlock(long index) {
+        try (Connection conn = getConnection();
+             PreparedStatement query = conn.prepareStatement(BLOCK_BY_INDEX)) {
+            query.setLong(1, index);
+            ResultSet res = query.executeQuery();
+            if (! res.next())
+                throw new IllegalStateException("Could get block for index " + index);
+            return Cid.cast(res.getBytes(1));
+        } catch (SQLException sqe) {
+            LOG.log(Level.WARNING, sqe.getMessage(), sqe);
+            throw new RuntimeException(sqe);
+        }
+    }
+
+    public synchronized void setLinks(Cid block, List<Cid> links) {
+        long parentIndex = getBlockIndex(block);
+        if (links.isEmpty()) {
+            try (Connection conn = getConnection();
+                 PreparedStatement insert = conn.prepareStatement(cmds.insertOrIgnoreCommand("INSERT ", INSERT_EMPTY_LINKS_SUFFIX))) {
+                insert.setLong(1, parentIndex);
+                int updated = insert.executeUpdate();
+                if (updated != 1)
+                    throw new IllegalStateException("Couldn't insert links!");
+            } catch (SQLException sqe) {
+                LOG.log(Level.WARNING, sqe.getMessage(), sqe);
+            }
+            return;
+        }
+        List<Long> linkIndices = links.stream()
+                .map(this::getBlockIndex)
+                .toList();
+        try (Connection conn = getNonCommittingConnection();
+             PreparedStatement insert = conn.prepareStatement(cmds.insertOrIgnoreCommand("INSERT ", INSERT_LINK_SUFFIX))) {
+            for (Long linkIndex : linkIndices) {
+                insert.setLong(1, parentIndex);
+                insert.setLong(2, linkIndex);
+                insert.addBatch();
+            }
+            int[] changed = insert.executeBatch();
+            if (IntStream.of(changed).sum() < links.size()) {
+                conn.rollback();
+            } else
+                conn.commit();
+        } catch (SQLException sqe) {
+            LOG.log(Level.WARNING, sqe.getMessage(), sqe);
+            throw new RuntimeException(sqe);
+        }
+    }
+
+    public synchronized Optional<List<Cid>> getLinks(Cid block) {
+        long index;
+        try {
+            index = getBlockIndex(block);
+        } catch (Exception e) {
+            return Optional.empty();
+        }
+        try (Connection conn = getConnection();
+             PreparedStatement query = conn.prepareStatement(EMPTY_LINKS)) {
+            query.setLong(1, index);
+            ResultSet res = query.executeQuery();
+            res.next();
+            if (res.getLong(1) > 0)
+                return Optional.of(Collections.emptyList());
+        } catch (SQLException sqe) {
+            LOG.log(Level.WARNING, sqe.getMessage(), sqe);
+            throw new RuntimeException(sqe);
+        }
+
+        try (Connection conn = getConnection();
+             PreparedStatement query = conn.prepareStatement(LINKS)) {
+            query.setLong(1, index);
+            ResultSet res = query.executeQuery();
+            List<Cid> links = new ArrayList<>();
+            while (res.next()) {
+                links.add(getBlock(res.getLong(1)));
+            }
+            if (links.isEmpty())
+                return Optional.empty();
+            return Optional.of(links);
+        } catch (SQLException sqe) {
+            LOG.log(Level.WARNING, sqe.getMessage(), sqe);
+            throw new RuntimeException(sqe);
+        }
+    }
+
+    public synchronized void removeBlock(BlockVersion block) {
+        long index = getBlockIndex(block.cid);
+        try (Connection conn = getConnection();
+             PreparedStatement delete = conn.prepareStatement(DELETE_BLOCK);
+             PreparedStatement deleteLinks = conn.prepareStatement(DELETE_LINKS);
+             PreparedStatement deleteEmptyLinks = conn.prepareStatement(DELETE_EMPTY_LINKS)) {
+            deleteLinks.setLong(1, index);
+            deleteLinks.executeUpdate();
+            deleteEmptyLinks.setLong(1, index);
+            deleteEmptyLinks.executeUpdate();
+            delete.setBytes(1, block.cid.toBytes());
+            delete.setString(2, block.version);
+            delete.executeUpdate();
+        } catch (SQLException sqe) {
+            LOG.log(Level.WARNING, sqe.getMessage(), sqe);
+        }
+    }
+
     public static SqliteBlockReachability createReachabilityDb(Path dbFile) {
         try {
-            if (Files.exists(dbFile))
-                Files.delete(dbFile);
-            Connection memory = Sqlite.build(dbFile.toString());
+            Connection file = Sqlite.build(dbFile.toString());
             // We need a connection that ignores close
-            Connection instance = new Sqlite.UncloseableConnection(memory);
+            Connection instance = new Sqlite.UncloseableConnection(file);
             return new SqliteBlockReachability(() -> instance, new SqliteCommands());
-        } catch (SQLException | IOException e) {
+        } catch (SQLException e) {
             throw new RuntimeException(e);
         }
     }
 
     public static void main(String[] a) throws IOException {
         // This is a benchmark to test baseline speed of a blockstore GC
-        String filename = "temp.sql";
+        String filename = System.nanoTime() + "temp.sql";
         Path file = Path.of(filename);
         SqliteBlockReachability reachabilityDb = createReachabilityDb(file);
         List<BlockVersion> versions = new ArrayList<>();
@@ -174,6 +343,9 @@ public class SqliteBlockReachability {
         int batchSize = 10_000;
         for (int i = 0; i < count / batchSize; i++) {
             reachabilityDb.addBlocks(versions.subList(i * batchSize, (i+1)* batchSize));
+            long size = reachabilityDb.size();
+            if (size != (i +1) * batchSize)
+                throw new IllegalStateException("Incorrect size: " + size + ", expected " + (i+1)*batchSize);
         }
         long t1 = System.nanoTime();
         System.out.println("Load duration " + (t1-t0)/1_000_000_000 + "s, batch size = " + batchSize);
@@ -200,7 +372,7 @@ public class SqliteBlockReachability {
 
         long size = reachabilityDb.size();
         if (size != count)
-            throw new IllegalStateException("Missing rows!");
+            throw new IllegalStateException("Missing rows! " + size + ", expected " + count);
 
         // Now double the size with unreachable blocks
         for (int i = 0; i < count; i++) {

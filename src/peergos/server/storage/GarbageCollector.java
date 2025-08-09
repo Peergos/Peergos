@@ -13,9 +13,7 @@ import peergos.shared.mutable.*;
 import peergos.shared.storage.*;
 import peergos.shared.util.*;
 
-import java.io.*;
 import java.nio.file.*;
-import java.time.*;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.*;
@@ -212,9 +210,9 @@ public class GarbageCollector {
         // TODO: do GC in O(1) RAM with a bloom filter?: mark into bloom. Then list and check bloom to delete.
         storage.clearOldTransactions(System.currentTimeMillis() - 24*3600*1000L);
         long t0 = System.nanoTime();
-        Path reachabilityDbFile = reachabilityDbDir.resolve("reachability-" + LocalDate.now() + "-"
-                + new Random().nextInt(100_000)+".sql");
+        Path reachabilityDbFile = reachabilityDbDir.resolve("reachability.sqlite");
         SqliteBlockReachability reachability = SqliteBlockReachability.createReachabilityDb(reachabilityDbFile);
+        reachability.clearReachable();
         // Versions are only relevant for versioned S3 buckets, otherwise version is null
         // For S3, clients write raw blocks directly, we need to get their version directly from S3
         listBlocks(reachability, listFromBlockstore, storage, metadata);
@@ -271,7 +269,7 @@ public class GarbageCollector {
         AtomicLong progressCounter = new AtomicLong(0);
         List<ForkJoinTask<Pair<Long, Long>>> futures = new ArrayList<>();
         reachability.getUnreachable(toDel -> futures.add(pool.submit(() ->
-                deleteUnreachableBlocks(toDel, progressCounter, delCount.get(), storage, metadata))));
+                deleteUnreachableBlocks(toDel, progressCounter, delCount.get(), storage, metadata, reachability))));
         Pair<Long, Long> deleted = futures.stream()
                 .map(ForkJoinTask::join)
                 .reduce((a, b) -> new Pair<>(a.left + b.left, a.right + b.right))
@@ -280,10 +278,8 @@ public class GarbageCollector {
         long deletedRawBlocks = deleted.right;
         long t7 = System.nanoTime();
         metadata.compact();
+        reachability.compact();
         long t8 = System.nanoTime();
-        try {
-            Files.delete(reachabilityDbFile);
-        } catch (IOException e) {}
         System.out.println("Deleting blocks took " + (t7-t6)/1_000_000_000 + "s");
         System.out.println("GC complete. Freed " + deletedCborBlocks + " cbor blocks and " + deletedRawBlocks +
                 " raw blocks, total duration: " + (t7-t0)/1_000_000_000 + "s, metadata.compact took " + (t8-t7)/1_000_000_000 + "s");
@@ -325,13 +321,15 @@ public class GarbageCollector {
                                                             AtomicLong progress,
                                                             long totalBlocksToDelete,
                                                             DeletableContentAddressedStorage storage,
-                                                            BlockMetadataStore metadata) {
+                                                            BlockMetadataStore metadata,
+                                                            SqliteBlockReachability reachability) {
         if (toDelete.isEmpty())
             return new Pair<>(0L, 0L);
         long deletedCborBlocks = toDelete.stream().filter(v -> ! v.cid.isRaw()).count();
         long deletedRawBlocks = toDelete.size() - deletedCborBlocks;
         for (BlockVersion block : toDelete) {
             metadata.remove(block.cid);
+            reachability.removeBlock(block);
         }
         getWithBackoff(() -> {storage.bulkDelete(toDelete); return true;});
 
@@ -364,14 +362,27 @@ public class GarbageCollector {
             queue.add(block);
 
         try {
-            List<Cid> links = metadata.get(block).map(m -> m.links)
-                    .orElseGet(() -> getWithBackoff(() -> storage.getLinks(block).join()));
-            queue.addAll(links);
+            Optional<List<Cid>> fromRdb = block.isRaw() ?
+                    Optional.of(Collections.emptyList()) :
+                    reachability.getLinks(block);
+            List<Cid> newLinks = fromRdb
+                    .orElseGet(() -> metadata.get(block).map(m -> m.links)
+                            .orElseGet(() -> getWithBackoff(() -> storage.getLinks(block).join())));
+
+            if (fromRdb.isEmpty() && ! block.isRaw()) {
+                try {
+                    reachability.setLinks(block, newLinks);
+                } catch (Exception e) {
+                    // Can hit this for new blocks that are not in the block
+                    // list in the db and thus don't have an index
+                }
+            }
+            queue.addAll(newLinks);
             if (queue.size() > 1000) {
                 reachability.setReachable(queue, totalReachable);
                 queue.clear();
             }
-            for (Cid link : links) {
+            for (Cid link : newLinks) {
                 markReachable(storage, false, queue, link, reachability, metadata, username, totalReachable);
             }
         } catch (Exception e) {
