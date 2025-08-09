@@ -35,7 +35,7 @@ public class SqliteBlockReachability {
     private static final String CLEAR_REACHABLE = "UPDATE reachability SET reachable=false";
     private static final String SET_REACHABLE = "UPDATE reachability SET reachable=true WHERE hash = ? AND latest = true";
     private static final String INSERT_SUFFIX = "INTO reachability (hash, version, latest, reachable) VALUES(?, ?, ?, false)";
-    private static final String NOT_LATEST = "update reachability set latest=false WHERE hash=?";
+    private static final String NOT_LATEST = "update reachability set latest=false WHERE hash=? AND version!=?";
     private static final String INSERT_LINK_SUFFIX = "INTO links (parent, child) VALUES(?, ?)";
     private static final String INSERT_EMPTY_LINKS_SUFFIX = "INTO emptylinks (parent) VALUES(?)";
     private static final String UNREACHABLE = "SELECT hash, version FROM reachability WHERE reachable = false";
@@ -96,6 +96,7 @@ public class SqliteBlockReachability {
                     .toList();
             for (BlockVersion latest : latestVersions) {
                 oldlatest.setBytes(1, latest.cid.toBytes());
+                oldlatest.setString(2, latest.version);
                 oldlatest.addBatch();
             }
             if (! latestVersions.isEmpty()) {
