@@ -59,6 +59,56 @@ public class JdbcUsageStore implements UsageStore {
         // TODO can we remove this method?
     }
 
+    public void removeUser(String username) {
+        try (Connection conn = getConnection(true, true);
+             PreparedStatement getUser = conn.prepareStatement("SELECT id FROM users WHERE name = ?;");
+             PreparedStatement deleteUserUsage = conn.prepareStatement("DELETE from userusage where user_id=?;");
+             PreparedStatement deletePendingUsage = conn.prepareStatement("DELETE from pendingusage where user_id=?;");
+             PreparedStatement getWriterIds = conn.prepareStatement("SELECT writers.id FROM writers " +
+                     "INNER JOIN ownedkeys ON writers.id=ownedkeys.owned_id " +
+                     "INNER JOIN writerusage ON ownedkeys.parent_id=writerusage.writer_id " +
+                     "INNER JOIN users ON writerusage.user_id=users.id WHERE users.name=?;");
+             PreparedStatement deleteOwnedKeys = conn.prepareStatement("DELETE from ownedkeys WHERE owned_id=?;");
+             PreparedStatement deleteWriters = conn.prepareStatement("DELETE FROM writers WHERE id=?;");
+             PreparedStatement deleteWriterUsage = conn.prepareStatement("DELETE from writerusage where user_id=?;");
+             PreparedStatement deleteUser = conn.prepareStatement("DELETE from users WHERE id=?;")
+        ) {
+            getUser.setString(1, username);
+            ResultSet uidRes = getUser.executeQuery();
+            if (!uidRes.next())
+                return;
+            long uid = uidRes.getLong(1);
+
+            getWriterIds.setString(1, username);
+            Set<Long> ownedIds = new HashSet<>();
+            ResultSet resultSet = getWriterIds.executeQuery();
+            while (resultSet.next())
+                ownedIds.add(resultSet.getLong(1));
+
+            deleteUserUsage.setLong(1, uid);
+            deleteUserUsage.executeUpdate();
+
+            deletePendingUsage.setLong(1, uid);
+            deletePendingUsage.executeUpdate();
+
+            for (long ownedId : ownedIds) {
+                deleteOwnedKeys.setLong(1, ownedId);
+                deleteOwnedKeys.executeUpdate();
+                deleteWriters.setLong(1, ownedId);
+                deleteWriters.executeUpdate();
+            }
+
+            deleteWriterUsage.setLong(1, uid);
+            deleteWriterUsage.executeUpdate();
+
+            deleteUser.setLong(1, uid);
+            deleteUser.executeUpdate();
+        } catch (SQLException sqe) {
+            LOG.log(Level.WARNING, sqe.getMessage(), sqe);
+            throw new RuntimeException(sqe);
+        }
+    }
+
     @Override
     public void addUserIfAbsent(String username) {
         try (Connection conn = getConnection(true, false);

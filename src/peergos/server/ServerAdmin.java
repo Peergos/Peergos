@@ -4,6 +4,8 @@ import peergos.server.corenode.IpfsCoreNode;
 import peergos.server.corenode.JdbcIpnsAndSocial;
 import peergos.server.corenode.UserRepository;
 import peergos.server.crypto.hash.ScryptJava;
+import peergos.server.space.JdbcUsageStore;
+import peergos.server.space.UsageStore;
 import peergos.server.sql.SqlSupplier;
 import peergos.server.storage.DeletableContentAddressedStorage;
 import peergos.server.storage.JdbcServerIdentityStore;
@@ -99,6 +101,10 @@ public class ServerAdmin {
                     }
                     PublicKeyHash id = idOpt.get();
                     deleteOwnedKeys(id, pointers, rawPointers, storage, crypto);
+                    // Now delete all usage roots
+                    Supplier<Connection> usageDb = Builder.getDBConnector(a, "space-usage-sql-file", dbConnectionPool);
+                    JdbcUsageStore usageStore = new JdbcUsageStore(usageDb, sqlCommands);
+                    usageStore.removeUser(username);
                     System.out.println("Finished deleting user " + username);
                     return true;
                 } catch (SQLException sqe) {

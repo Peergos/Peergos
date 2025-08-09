@@ -41,5 +41,11 @@ public class JdbcUsageStoreTests {
         store.confirmUsage(username, owner, usageDelta, false);
         Map<String, Long> allUsage = store.getAllUsage();
         Assert.assertTrue(allUsage.get(username) == usageDelta);
+
+        // Now delete the user
+        Assert.assertFalse(store.getAllWriters().isEmpty());
+        store.removeUser(username);
+        Set<PublicKeyHash> empty = store.getAllWriters();
+        Assert.assertTrue(empty.isEmpty());
     }
 }
