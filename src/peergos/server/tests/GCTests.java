@@ -102,6 +102,15 @@ public class GCTests {
         storage.getAllBlockHashVersions(versions2::addAll);
         Assert.assertEquals(2, versions2.size());
         Assert.assertTrue(versions2.contains(leafV2));
+
+        // now add a new version of the root
+        BlockVersion rootV2 = storage.add(root);
+        gc.collect(s -> Futures.of(true));
+        Assert.assertEquals(2, storage.storage.size());
+        List<BlockVersion> versions3 = new ArrayList<>();
+        storage.getAllBlockHashVersions(versions3::addAll);
+        Assert.assertEquals(2, versions3.size());
+        Assert.assertTrue(versions3.contains(rootV2));
     }
 
     @Test
