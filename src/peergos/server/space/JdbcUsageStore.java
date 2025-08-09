@@ -94,12 +94,15 @@ public class JdbcUsageStore implements UsageStore {
             for (long ownedId : ownedIds) {
                 deleteOwnedKeys.setLong(1, ownedId);
                 deleteOwnedKeys.executeUpdate();
-                deleteWriters.setLong(1, ownedId);
-                deleteWriters.executeUpdate();
             }
 
             deleteWriterUsage.setLong(1, uid);
             deleteWriterUsage.executeUpdate();
+
+            for (long ownedId : ownedIds) {
+                deleteWriters.setLong(1, ownedId);
+                deleteWriters.executeUpdate();
+            }
 
             deleteUser.setLong(1, uid);
             deleteUser.executeUpdate();
