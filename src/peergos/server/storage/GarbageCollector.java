@@ -265,6 +265,7 @@ public class GarbageCollector {
         deleteConfirm.apply(delCount.get(), nBlocks).join();
 
         int deleteParallelism = 4;
+        long t7 = System.nanoTime();
         ForkJoinPool pool = Threads.newPool(deleteParallelism, "GC-delete-");
         AtomicLong progressCounter = new AtomicLong(0);
         List<ForkJoinTask<Pair<Long, Long>>> futures = new ArrayList<>();
@@ -276,13 +277,13 @@ public class GarbageCollector {
                 .orElse(new Pair<>(0L, 0L));
         long deletedCborBlocks = deleted.left;
         long deletedRawBlocks = deleted.right;
-        long t7 = System.nanoTime();
+        long t8 = System.nanoTime();
         metadata.compact();
         reachability.compact();
-        long t8 = System.nanoTime();
-        System.out.println("Deleting blocks took " + (t7-t6)/1_000_000_000 + "s");
+        long t9 = System.nanoTime();
+        System.out.println("Deleting blocks took " + (t8-t7)/1_000_000_000 + "s");
         System.out.println("GC complete. Freed " + deletedCborBlocks + " cbor blocks and " + deletedRawBlocks +
-                " raw blocks, total duration: " + (t7-t0)/1_000_000_000 + "s, metadata.compact took " + (t8-t7)/1_000_000_000 + "s");
+                " raw blocks, total duration: " + (t8-t7+t6-t0)/1_000_000_000 + "s, metadata.compact took " + (t9-t8)/1_000_000_000 + "s");
     }
 
     private static boolean markReachable(PublicKeyHash writerHash,
