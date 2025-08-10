@@ -355,7 +355,12 @@ public class SqliteBlockReachability {
     }
 
     public synchronized void removeBlock(BlockVersion block) {
-        long index = getBlockVersionIndex(block);
+        long index;
+        try {
+            index = getBlockVersionIndex(block);
+        } catch (Exception e) {
+            return;
+        }
         try (Connection conn = getConnection();
              PreparedStatement delete = conn.prepareStatement(DELETE_BLOCK);
              PreparedStatement deleteLinks = conn.prepareStatement(DELETE_LINKS);
