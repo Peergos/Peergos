@@ -35,6 +35,7 @@ public class SqliteBlockReachability {
     private static final String CLEAR_REACHABLE = "UPDATE reachability SET reachable=false";
     private static final String SET_REACHABLE = "UPDATE reachability SET reachable=true WHERE hash = ? AND latest = true";
     private static final String INSERT_SUFFIX = "INTO reachability (hash, version, latest, reachable) VALUES(?, ?, ?, false)";
+    private static final String EXISTING_VERSION = "SELECT count(*) FROM reachability WHERE hash=? AND version=?";
     private static final String NOT_LATEST = "update reachability set latest=false WHERE hash=? AND version!=?";
     private static final String INSERT_LINK_SUFFIX = "INTO links (parent, child) VALUES(?, ?)";
     private static final String INSERT_EMPTY_LINKS_SUFFIX = "INTO emptylinks (parent) VALUES(?)";
@@ -93,36 +94,43 @@ public class SqliteBlockReachability {
 
     public synchronized void addBlocks(List<BlockVersion> versions) {
         try (Connection conn = getNonCommittingConnection();
-             PreparedStatement insert = conn.prepareStatement(cmds.insertOrIgnoreCommand("INSERT ", INSERT_SUFFIX));
              PreparedStatement oldlatest = conn.prepareStatement(NOT_LATEST);
+             PreparedStatement insert = conn.prepareStatement(cmds.insertOrIgnoreCommand("INSERT ", INSERT_SUFFIX));
              PreparedStatement linkParents = conn.prepareStatement(UPDATE_LINK_PARENTS);
              PreparedStatement linkKids = conn.prepareStatement(UPDATE_LINK_KIDS);
              PreparedStatement oldBlockIndices = conn.prepareStatement(OLD_BLOCK_INDEX);
              PreparedStatement blockIndex = conn.prepareStatement(BLOCK_INDEX);
              PreparedStatement updateOldEmptyLinkIndices = conn.prepareStatement(UPDATE_OLD_EMPTY_LINKS);
         ) {
-            List<BlockVersion> distinct = versions.stream().distinct().collect(Collectors.toList());
-            List<BlockVersion> latestVersions = distinct.stream()
-                    .filter(v -> v.isLatest && v.version != null)
-                    .toList();
-            for (BlockVersion latest : latestVersions) {
-                oldlatest.setBytes(1, latest.cid.toBytes());
-                oldlatest.setString(2, latest.version);
-                oldlatest.addBatch();
-            }
-            if (! latestVersions.isEmpty()) {
-                int[] changed = oldlatest.executeBatch();
-                conn.commit();
-            }
+            List<BlockVersion> distinct = versions.stream()
+                    .distinct()
+                    .collect(Collectors.toList());
+
             for (BlockVersion version : distinct) {
                 insert.setBytes(1, version.cid.toBytes());
                 insert.setString(2, version.version);
                 insert.setBoolean(3, version.isLatest);
                 insert.addBatch();
             }
-            int[] changed = insert.executeBatch();
+            int[] inserted = insert.executeBatch();
             conn.commit();
-            for (BlockVersion latest : latestVersions) {
+            List<BlockVersion> newVersions = new ArrayList<>();
+            for (int i=0; i < inserted.length; i++)
+                if (inserted[i] == 1)
+                    newVersions.add(distinct.get(i));
+            Set<BlockVersion> newLatestVersions = newVersions.stream()
+                    .filter(v -> v.isLatest && v.version != null)
+                    .collect(Collectors.toSet());
+            if (! newLatestVersions.isEmpty()) {
+                for (BlockVersion latest : newLatestVersions) {
+                    oldlatest.setBytes(1, latest.cid.toBytes());
+                    oldlatest.setString(2, latest.version);
+                    oldlatest.addBatch();
+                }
+                int[] changed = oldlatest.executeBatch();
+                conn.commit();
+            }
+            for (BlockVersion latest : newLatestVersions) {
                 blockIndex.setBytes(1, latest.cid.toBytes());
                 ResultSet latestIdRes = blockIndex.executeQuery();
                 if (!latestIdRes.next())
