@@ -41,8 +41,13 @@ public class SqliteBlockReachability {
     private static final String UNREACHABLE = "SELECT hash, version FROM reachability WHERE reachable = false";
     private static final String COUNT = "SELECT COUNT(*) FROM reachability";
     private static final String BLOCK_INDEX = "SELECT idx FROM reachability WHERE hash=? AND latest=true";
+    private static final String BLOCK_VERSION_INDEX = "SELECT idx FROM reachability WHERE hash=? AND VERSION=?";
+    private static final String OLD_BLOCK_INDEX = "SELECT idx FROM reachability WHERE hash=? AND latest=false";
     private static final String BLOCK_BY_INDEX = "SELECT hash FROM reachability WHERE idx=?";
     private static final String LINKS = "SELECT child FROM links WHERE parent=?";
+    private static final String UPDATE_LINK_PARENTS = "UPDATE links SET parent=? WHERE parent=?";
+    private static final String UPDATE_LINK_KIDS = "UPDATE links SET child=? WHERE child=?";
+    private static final String UPDATE_OLD_EMPTY_LINKS = "UPDATE emptylinks SET parent=? WHERE parent=?";
     private static final String DELETE_LINKS = "DELETE FROM links WHERE parent=?";
     private static final String DELETE_EMPTY_LINKS = "DELETE FROM emptylinks WHERE parent=?";
     private static final String DELETE_BLOCK = "DELETE FROM reachability WHERE hash=? AND version=?";
@@ -89,7 +94,13 @@ public class SqliteBlockReachability {
     public synchronized void addBlocks(List<BlockVersion> versions) {
         try (Connection conn = getNonCommittingConnection();
              PreparedStatement insert = conn.prepareStatement(cmds.insertOrIgnoreCommand("INSERT ", INSERT_SUFFIX));
-             PreparedStatement oldlatest = conn.prepareStatement(NOT_LATEST)) {
+             PreparedStatement oldlatest = conn.prepareStatement(NOT_LATEST);
+             PreparedStatement linkParents = conn.prepareStatement(UPDATE_LINK_PARENTS);
+             PreparedStatement linkKids = conn.prepareStatement(UPDATE_LINK_KIDS);
+             PreparedStatement oldBlockIndices = conn.prepareStatement(OLD_BLOCK_INDEX);
+             PreparedStatement blockIndex = conn.prepareStatement(BLOCK_INDEX);
+             PreparedStatement updateOldEmptyLinkIndices = conn.prepareStatement(UPDATE_OLD_EMPTY_LINKS);
+        ) {
             List<BlockVersion> distinct = versions.stream().distinct().collect(Collectors.toList());
             List<BlockVersion> latestVersions = distinct.stream()
                     .filter(v -> v.isLatest && v.version != null)
@@ -111,6 +122,44 @@ public class SqliteBlockReachability {
             }
             int[] changed = insert.executeBatch();
             conn.commit();
+            for (BlockVersion latest : latestVersions) {
+                blockIndex.setBytes(1, latest.cid.toBytes());
+                ResultSet latestIdRes = blockIndex.executeQuery();
+                if (!latestIdRes.next())
+                    throw new IllegalStateException("Latest block not present: " + latest.cid);
+                long latestId = latestIdRes.getLong(1);
+
+                oldBlockIndices.setBytes(1, latest.cid.toBytes());
+                ResultSet res = oldBlockIndices.executeQuery();
+                Set<Long> oldVersionIndices = new HashSet<>();
+                while (res.next())
+                    oldVersionIndices.add(res.getLong(1));
+
+                if (!oldVersionIndices.isEmpty()) {
+                    // update all links that use old indices
+                    for (long old : oldVersionIndices) {
+                        linkParents.setLong(1, latestId);
+                        linkParents.setLong(2, old);
+                        linkParents.addBatch();
+                    }
+                    int[] changedLinkParents = linkParents.executeBatch();
+                    conn.commit();
+                    for (long old : oldVersionIndices) {
+                        linkKids.setLong(1, latestId);
+                        linkKids.setLong(2, old);
+                        linkKids.addBatch();
+                    }
+                    int[] changedLinkKids = linkKids.executeBatch();
+                    conn.commit();
+                    for (long old : oldVersionIndices) {
+                        updateOldEmptyLinkIndices.setLong(1, latestId);
+                        updateOldEmptyLinkIndices.setLong(2, old);
+                        updateOldEmptyLinkIndices.addBatch();
+                    }
+                    int[] changedEmptyLinks = updateOldEmptyLinkIndices.executeBatch();
+                    conn.commit();
+                }
+            }
         } catch (SQLException sqe) {
             LOG.log(Level.WARNING, sqe.getMessage(), sqe);
         }
@@ -205,6 +254,21 @@ public class SqliteBlockReachability {
         }
     }
 
+    private long getBlockVersionIndex(BlockVersion block) {
+        try (Connection conn = getConnection();
+             PreparedStatement query = conn.prepareStatement(BLOCK_VERSION_INDEX)) {
+            query.setBytes(1, block.cid.toBytes());
+            query.setString(2, block.version);
+            ResultSet res = query.executeQuery();
+            if (!res.next())
+                throw new IllegalStateException("Block version not present: " + block);
+            return res.getLong(1);
+        } catch (SQLException sqe) {
+            LOG.log(Level.WARNING, sqe.getMessage(), sqe);
+            throw new RuntimeException(sqe);
+        }
+    }
+
     private Cid getBlock(long index) {
         try (Connection conn = getConnection();
              PreparedStatement query = conn.prepareStatement(BLOCK_BY_INDEX)) {
@@ -291,7 +355,7 @@ public class SqliteBlockReachability {
     }
 
     public synchronized void removeBlock(BlockVersion block) {
-        long index = getBlockIndex(block.cid);
+        long index = getBlockVersionIndex(block);
         try (Connection conn = getConnection();
              PreparedStatement delete = conn.prepareStatement(DELETE_BLOCK);
              PreparedStatement deleteLinks = conn.prepareStatement(DELETE_LINKS);

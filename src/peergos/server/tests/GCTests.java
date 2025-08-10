@@ -93,6 +93,10 @@ public class GCTests {
         List<BlockVersion> versions1 = new ArrayList<>();
         storage.getAllBlockHashVersions(versions1::addAll);
         Assert.assertEquals(2, versions1.size());
+        gc.collect(s -> Futures.of(true));
+        Optional<List<Cid>> links = rdb.getLinks(root);
+        Assert.assertTrue(links.isPresent());
+        Assert.assertTrue(links.get().contains(leaf));
 
         // add a new version of the leaf block, and check it is kept and the original is deleted
         BlockVersion leafV2 = storage.add(leaf);
@@ -102,6 +106,9 @@ public class GCTests {
         storage.getAllBlockHashVersions(versions2::addAll);
         Assert.assertEquals(2, versions2.size());
         Assert.assertTrue(versions2.contains(leafV2));
+        Optional<List<Cid>> links2 = rdb.getLinks(root);
+        Assert.assertTrue(links2.isPresent());
+        Assert.assertTrue(links2.get().contains(leaf));
 
         // now add a new version of the root
         BlockVersion rootV2 = storage.add(root);
@@ -111,6 +118,16 @@ public class GCTests {
         storage.getAllBlockHashVersions(versions3::addAll);
         Assert.assertEquals(2, versions3.size());
         Assert.assertTrue(versions3.contains(rootV2));
+        Optional<List<Cid>> links3 = rdb.getLinks(root);
+        Assert.assertTrue(links3.isPresent());
+        Assert.assertTrue(links3.get().contains(leaf));
+
+        gc.collect(s -> Futures.of(true));
+        Assert.assertEquals(2, storage.storage.size());
+        List<BlockVersion> versions4 = new ArrayList<>();
+        storage.getAllBlockHashVersions(versions4::addAll);
+        Assert.assertEquals(2, versions4.size());
+        Assert.assertTrue(versions4.contains(rootV2));
     }
 
     @Test

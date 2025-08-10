@@ -261,7 +261,7 @@ public class GarbageCollector {
         snapshotSaver.apply(allPointers.entrySet().stream()).join();
 
         AtomicLong delCount = new AtomicLong(0);
-        reachability.getUnreachable(del ->  delCount.addAndGet(del.size()));
+        reachability.getUnreachable(del -> delCount.addAndGet(del.size()));
         deleteConfirm.apply(delCount.get(), nBlocks).join();
 
         int deleteParallelism = 4;
