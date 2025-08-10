@@ -87,7 +87,7 @@ public abstract class UserTests {
                     "-admin-usernames", "peergos",
                     "-logToConsole", "true",
                     "-enable-gc", "true",
-                    "-gc.period.millis", "10000",
+                    "-gc.period.millis", "30000",
                     "max-users", "10000",
                     "max-daily-signups", "20000",
                     Main.PEERGOS_PATH, peergosDir.toString(),
