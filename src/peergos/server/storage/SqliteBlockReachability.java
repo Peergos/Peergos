@@ -35,11 +35,11 @@ public class SqliteBlockReachability {
     private static final String CLEAR_REACHABLE = "UPDATE reachability SET reachable=false";
     private static final String SET_REACHABLE = "UPDATE reachability SET reachable=true WHERE hash = ? AND latest = true";
     private static final String INSERT_SUFFIX = "INTO reachability (hash, version, latest, reachable) VALUES(?, ?, ?, false)";
-    private static final String EXISTING_VERSION = "SELECT count(*) FROM reachability WHERE hash=? AND version=?";
     private static final String NOT_LATEST = "update reachability set latest=false WHERE hash=? AND version!=?";
     private static final String INSERT_LINK_SUFFIX = "INTO links (parent, child) VALUES(?, ?)";
     private static final String INSERT_EMPTY_LINKS_SUFFIX = "INTO emptylinks (parent) VALUES(?)";
     private static final String UNREACHABLE = "SELECT hash, version FROM reachability WHERE reachable = false";
+    private static final String APPLY_TO_ALL_VERSIONS = "SELECT hash, version FROM reachability";
     private static final String COUNT = "SELECT COUNT(*) FROM reachability";
     private static final String BLOCK_INDEX = "SELECT idx FROM reachability WHERE hash=? AND latest=true";
     private static final String BLOCK_VERSION_INDEX = "SELECT idx FROM reachability WHERE hash=? AND VERSION=?";
@@ -93,6 +93,8 @@ public class SqliteBlockReachability {
     }
 
     public synchronized void addBlocks(List<BlockVersion> versions) {
+        if (versions.isEmpty())
+            return;
         try (Connection conn = getNonCommittingConnection();
              PreparedStatement oldlatest = conn.prepareStatement(NOT_LATEST);
              PreparedStatement insert = conn.prepareStatement(cmds.insertOrIgnoreCommand("INSERT ", INSERT_SUFFIX));
@@ -170,6 +172,25 @@ public class SqliteBlockReachability {
             }
         } catch (SQLException sqe) {
             LOG.log(Level.WARNING, sqe.getMessage(), sqe);
+        }
+    }
+
+    public synchronized void applyToAllVersions(Consumer<List<BlockVersion>> out) {
+        try (Connection conn = getConnection();
+             PreparedStatement update = conn.prepareStatement(APPLY_TO_ALL_VERSIONS)) {
+            ResultSet res = update.executeQuery();
+            ArrayList<BlockVersion> buf = new ArrayList<>();
+            while (res.next()) {
+                buf.add(new BlockVersion(Cid.cast(res.getBytes(1)), res.getString(2), false));
+                if (buf.size() == 1000) {
+                    out.accept(buf);
+                    buf.clear();
+                }
+            }
+            out.accept(buf);
+        } catch (SQLException sqe) {
+            LOG.log(Level.WARNING, sqe.getMessage(), sqe);
+            throw new RuntimeException(sqe);
         }
     }
 

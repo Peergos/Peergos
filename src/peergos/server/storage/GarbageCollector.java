@@ -80,15 +80,22 @@ public class GarbageCollector {
     }
 
     private static void listBlocks(SqliteBlockReachability reachability,
+                                   CidVersionInfiniFilter inRdb,
                                    boolean listFromBlockstore,
                                    DeletableContentAddressedStorage storage,
                                    BlockMetadataStore metadata) {
         // the reachability store dedupes on cid + version to guarantee no duplicates which would result in data loss
         if (listFromBlockstore)
-            storage.getAllBlockHashVersions(reachability::addBlocks);
+            storage.getAllBlockHashVersions(versions -> reachability.addBlocks(versions.stream()
+                    .filter(v ->  !inRdb.has(v))
+                    .toList()));
         else {
-            storage.getAllRawBlockVersions(reachability::addBlocks);
-            metadata.listCbor(reachability::addBlocks);
+            storage.getAllRawBlockVersions(versions -> reachability.addBlocks(versions.stream()
+                    .filter(v ->  !inRdb.has(v))
+                    .toList()));
+            metadata.listCbor(versions -> reachability.addBlocks(versions.stream()
+                    .filter(v ->  !inRdb.has(v))
+                    .toList()));
         }
     }
 
@@ -213,9 +220,14 @@ public class GarbageCollector {
         Path reachabilityDbFile = reachabilityDbDir.resolve("reachability.sqlite");
         SqliteBlockReachability reachability = SqliteBlockReachability.createReachabilityDb(reachabilityDbFile);
         reachability.clearReachable();
+        // First build a bloom (infini) filter of the block versions in RDB
+        // then use this to efficiently filter the blockstore listing
+        long nMetaBlocks = metadata.size();
+        CidVersionInfiniFilter inRdb = CidVersionInfiniFilter.build(nMetaBlocks, 0.0001);
+        reachability.applyToAllVersions(versions -> versions.forEach(inRdb::add));
         // Versions are only relevant for versioned S3 buckets, otherwise version is null
         // For S3, clients write raw blocks directly, we need to get their version directly from S3
-        listBlocks(reachability, listFromBlockstore, storage, metadata);
+        listBlocks(reachability, inRdb, listFromBlockstore, storage, metadata);
         long t1 = System.nanoTime();
         long nBlocks = reachability.size();
         System.out.println("Listing " + nBlocks + " blocks took " + (t1-t0)/1_000_000_000 + "s");
