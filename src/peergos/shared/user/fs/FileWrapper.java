@@ -481,7 +481,7 @@ public class FileWrapper {
                                                              String name,
                                                              NetworkAccess network) {
         if (capTrie.isPresent())
-            return capTrie.get().getByPath("/" + name, version.merge(this.version), network.hasher, network);
+            return capTrie.get().getByPath("/" + name, version.mergeAndOverwriteWith(this.version), network.hasher, network);
         return pointer.fileAccess.getChild(name, pointer.capability, version, network.hasher, network)
                 .thenCompose(rcOpt -> {
                     if (rcOpt.isEmpty())

@@ -104,6 +104,11 @@ public class MultiUserTests {
     }
 
     @Test
+    public void copyDirToFriend() {
+        PeergosNetworkUtils.copyDirToFriend(network, random);
+    }
+
+    @Test
     public void copySubDirFromFriend() {
         PeergosNetworkUtils.copySubdirFromFriend(network, random);
     }

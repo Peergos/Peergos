@@ -131,6 +131,53 @@ public class PeergosNetworkUtils {
         Assert.assertTrue(receivedChildren.stream().map(FileWrapper::getName).collect(Collectors.toSet()).equals(Set.of(filename, subdirName)));
     }
 
+    public static void copyDirToFriend(NetworkAccess network, Random random) {
+
+        String sharerUsername = generateUsername(random);
+        String sharerPassword = generatePassword();
+        UserContext sharerUser = ensureSignedUp(sharerUsername, sharerPassword, network, crypto);
+
+        //sign up some users on shareeNode
+        String shareeUsername = generateUsername(random);
+        String shareePassword = generatePassword();
+        UserContext shareeUser = ensureSignedUp(shareeUsername, shareePassword, network, crypto);
+
+        // friend sharer with others
+        friendBetweenGroups(Arrays.asList(sharerUser), Arrays.asList(shareeUser));
+
+        // upload a file to "a"'s space
+        FileWrapper u1Root = sharerUser.getUserRoot().join();
+        String folderName = "folder";
+        u1Root.mkdir(folderName, network, false, u1Root.mirrorBatId(), crypto).join();
+
+        // share folder
+        Set<String> shareeNames = new HashSet();
+        shareeNames.add(shareeUser.username);
+        Path sharedPath = PathUtil.get(sharerUser.username, folderName);
+        sharerUser.shareWriteAccessWith(sharedPath, shareeNames).join();
+
+        Optional<FileWrapper> sharedFolder = shareeUser.getByPath(sharerUser.username + "/" + folderName).join();
+        Assert.assertTrue("shared folder present", sharedFolder.isPresent());
+        Assert.assertTrue("Folder is writable only", sharedFolder.get().isWritable());
+
+        // sharee uploads a folder to the shared dir
+        Optional<FileWrapper> destFolder = shareeUser.getByPath(sharedPath).join();
+        byte[] fileData = new byte[20*1024*1024];
+        List<FileWrapper.FileUploadProperties> files = List.of(new FileWrapper.FileUploadProperties("afile.txt",
+                () -> AsyncReader.build(fileData), 0, fileData.length, Optional.empty(), Optional.empty(), false, false, x -> {}));
+        String subdirName = "subdir";
+        Stream<FileWrapper.FolderUploadProperties> upload = Stream.of(
+                new FileWrapper.FolderUploadProperties(List.of(subdirName), files),
+                new FileWrapper.FolderUploadProperties(List.of(subdirName, "nested"), files)
+        );
+        destFolder.get().uploadSubtree(upload,
+                Optional.empty(), network, crypto, shareeUser.getTransactionService(), x -> Futures.of(false), () -> true).join();
+
+        // check sharer can see folder
+        Optional<FileWrapper> foundFolder = sharerUser.getByPath(sharedPath.resolve(subdirName)).join();
+        Assert.assertTrue("Folder accessible", foundFolder.isPresent());
+    }
+
     public static void copySubdirFromFriend(NetworkAccess network, Random random) {
 
         String sharerUsername = generateUsername(random);
