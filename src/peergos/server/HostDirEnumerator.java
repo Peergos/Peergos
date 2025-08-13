@@ -37,6 +37,15 @@ public interface HostDirEnumerator {
             return Futures.of(res);
         }
 
+        private static Set<String> excludedPaths = Set.of(
+                "/dev",
+                "/proc",
+                "/tmp",
+                "/run",
+                "/usr",
+                "/var"
+        );
+
         private void recurse(File dir, List<String> res, int maxDepth) {
             if (maxDepth <= 0)
                 return;
@@ -44,8 +53,12 @@ public interface HostDirEnumerator {
             if (kids != null) {
                 for (File kid : kids) {
                     if (kid.isDirectory() && ! kid.isHidden()) {
-                        if (kid.canWrite())
-                            res.add(kid.getAbsolutePath());
+                        String absolutePath = kid.getAbsolutePath();
+                        if (excludedPaths.contains(absolutePath))
+                            continue;
+                        if (kid.canWrite()) {
+                            res.add(absolutePath);
+                        }
                         recurse(kid, res, maxDepth - 1);
                     }
                 }
