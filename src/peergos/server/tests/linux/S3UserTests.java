@@ -125,7 +125,7 @@ public class S3UserTests extends UserTests {
 
     @Test
     public void uploadFolderToFriend() {
-        PeergosNetworkUtils.copyDirToFriend(network, new Random(7));
+        PeergosNetworkUtils.uploadDirToFriend(network, new Random(7));
     }
 
     @AfterClass
