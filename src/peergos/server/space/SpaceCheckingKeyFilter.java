@@ -128,10 +128,12 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
         Set<PublicKeyHash> writers = store.getAllWriters();
         List<Multihash> us = List.of(dht.id().join().bareMultihash());
         for (PublicKeyHash writerKey : writers) {
-            WriterUsage writerUsage = store.getUsage(writerKey);
-            Logging.LOG().info("Checking for updates from user: " + writerUsage.owner + ", writer key: " + writerKey);
-
+            WriterUsage tmpUsage = null;
             try {
+                tmpUsage = store.getUsage(writerKey);
+                WriterUsage writerUsage = tmpUsage;
+                Logging.LOG().info("Checking for updates from user: " + writerUsage.owner + ", writer key: " + writerKey);
+
                 PublicKeyHash owner = writerKey; //NB: owner is a dummy value
                 MaybeMultihash rootHash = mutable.getPointerTarget(owner, writerKey, dht).join().updated;
                 boolean isChanged = ! writerUsage.target().equals(rootHash);
@@ -156,7 +158,7 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
                     Logging.LOG().info("Updated space used by " + writerKey + " to " + updatedSize);
                 }
             } catch (Throwable t) {
-                Logging.LOG().log(Level.WARNING, "Failed calculating usage for " + writerUsage.owner, t);
+                Logging.LOG().log(Level.WARNING, "Failed calculating usage for " + (tmpUsage == null ? writerKey : tmpUsage.owner), t);
             }
         }
         long t2 = System.currentTimeMillis();
