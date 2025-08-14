@@ -123,6 +123,11 @@ public class S3UserTests extends UserTests {
         PeergosNetworkUtils.grantWriteToFileAndDeleteParent(network, new Random(1));
     }
 
+    @Test
+    public void uploadFolderToFriend() {
+        PeergosNetworkUtils.copyDirToFriend(network, new Random(7));
+    }
+
     @AfterClass
     public static void cleanup() {
         try {Thread.sleep(2000);}catch (InterruptedException e) {}
