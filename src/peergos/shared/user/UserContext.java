@@ -168,10 +168,11 @@ public class UserContext {
                         progressCallback.accept("Logging in");
                         return login(username, userWithRoot, mfa, cacheMfaLoginData, pair, network, crypto, progressCallback);
                     });
-                }).thenCompose(ctx -> ctx.isPostQuantum() ? Futures.of(ctx) : ctx.ensurePostQuantum(password, mfa, progressCallback)
-                        .thenCompose(updated -> updated ?
-                                signIn(username, password, mfa, false, network, crypto, t -> {}):
-                                Futures.of(ctx)))
+                })
+//                .thenCompose(ctx -> ctx.isPostQuantum() ? Futures.of(ctx) : ctx.ensurePostQuantum(password, mfa, progressCallback)
+//                        .thenCompose(updated -> updated ?
+//                                signIn(username, password, mfa, false, network, crypto, t -> {}):
+//                                Futures.of(ctx)))
                 .exceptionally(Futures::logAndThrow);
     }
 
