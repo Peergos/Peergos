@@ -44,70 +44,11 @@ public class BrowserLegacyToPQTest extends UserTests {
         UserService service = Main.PKI_INIT.main(args).localApi;
         // use actual http messager
         ServerMessager.HTTP serverMessager = new ServerMessager.HTTP(new JavaPoster(new URI("http://localhost:" + args.getArg("port")).toURL(), false));
-        NetworkAccess orig = NetworkAccess.buildBuffered(service.storage, service.bats, service.coreNode, service.account, service.mutable,
+        NetworkAccess network = NetworkAccess.buildBuffered(service.storage, service.bats, service.coreNode, service.account, service.mutable,
                 5_000, service.social, service.controller, service.usage, serverMessager, crypto.hasher, Arrays.asList("peergos"), false);
-        OnlineState onlineState = new OnlineState(() -> orig.dhtClient.id()
-                .thenApply(x -> true)
-                .exceptionally(t -> false));
-        NetworkAccess network = orig
-                .withStorage(s -> new UnauthedCachingStorage(s, new RamCache(), crypto.hasher))
-                .withAccountCache(a -> new OfflineAccountStore(orig.account, new RamAccountCache(), onlineState));
         return Arrays.asList(new Object[][] {
                 {network, service}
         });
-    }
-
-    public static class RamAccountCache implements LoginCache {
-        private final Map<String, LoginData> cache = new HashMap<>();
-
-        @Override
-        public CompletableFuture<Boolean> setLoginData(LoginData login) {
-            cache.put(login.username, login);
-            return Futures.of(true);
-        }
-
-        @Override
-        public CompletableFuture<Boolean> removeLoginData(String username) {
-            cache.remove(username);
-            return Futures.of(true);
-        }
-
-        @Override
-        public CompletableFuture<UserStaticData> getEntryData(String username, PublicSigningKey authorisedReader) {
-            return Futures.of(cache.get(username).entryPoints);
-        }
-    }
-
-    public static class RamCache implements BlockCache {
-        @Override
-        public CompletableFuture<Boolean> put(Cid hash, byte[] data) {
-            return CompletableFuture.supplyAsync(() -> true);
-        }
-
-        @Override
-        public CompletableFuture<Optional<byte[]>> get(Cid hash) {
-            return CompletableFuture.supplyAsync(Optional::empty);
-        }
-
-        @Override
-        public boolean hasBlock(Cid hash) {
-            return false;
-        }
-
-        @Override
-        public CompletableFuture<Boolean> clear() {
-            return Futures.of(true);
-        }
-
-        @Override
-        public long getMaxSize() {
-            return 0;
-        }
-
-        @Override
-        public void setMaxSize(long maxSizeBytes) {
-
-        }
     }
 
     @Override
