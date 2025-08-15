@@ -209,7 +209,7 @@ public class PeergosNetworkUtils {
 
         // sharee uploads a folder to the shared dir
         Optional<FileWrapper> destFolder = shareeUser.getByPath(sharedPath).join();
-        byte[] fileData = new byte[20*1024*1024];
+        byte[] fileData = new byte[70*1024*1024];
         byte[] smallFileData = new byte[20*1024];
         List<FileWrapper.FileUploadProperties> files = List.of(
                 new FileWrapper.FileUploadProperties("asmallfile1.txt",
