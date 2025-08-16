@@ -9,6 +9,7 @@ import peergos.server.Main;
 import peergos.server.UserService;
 import peergos.server.util.Args;
 import peergos.server.util.JavaPoster;
+import peergos.shared.Crypto;
 import peergos.shared.NetworkAccess;
 import peergos.shared.OnlineState;
 import peergos.shared.corenode.OfflineCorenode;
@@ -18,20 +19,29 @@ import peergos.shared.crypto.asymmetric.curve25519.Curve25519PublicKey;
 import peergos.shared.crypto.asymmetric.mlkem.HybridCurve25519MLKEMPublicKey;
 import peergos.shared.crypto.asymmetric.mlkem.HybridCurve25519MLKEMSecretKey;
 import peergos.shared.crypto.hash.PublicKeyHash;
+import peergos.shared.login.LoginCache;
+import peergos.shared.login.OfflineAccountStore;
+import peergos.shared.storage.UnauthedCachingStorage;
 import peergos.shared.user.*;
+import peergos.shared.util.Futures;
 import peergos.shared.util.Pair;
 
 import java.net.URI;
 import java.nio.file.Path;
 import java.time.LocalDate;
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
 
 @RunWith(Parameterized.class)
-public class BrowserLegacyToPQTest extends UserTests {
-    private static Args args = buildArgs().with("useIPFS", "false");
+public class BrowserLegacyToPQTest {
+    private static Args args = UserTests.buildArgs().with("useIPFS", "false");
+    protected final NetworkAccess network;
+    protected final UserService service;
+    protected static final Crypto crypto = Main.initCrypto();
 
     public BrowserLegacyToPQTest(NetworkAccess network, UserService service) {
-        super(network, service);
+        this.network = network;
+        this.service = service;
     }
 
     @Parameterized.Parameters()
@@ -39,14 +49,40 @@ public class BrowserLegacyToPQTest extends UserTests {
         UserService service = Main.PKI_INIT.main(args).localApi;
         // use actual http messager
         ServerMessager.HTTP serverMessager = new ServerMessager.HTTP(new JavaPoster(new URI("http://localhost:" + args.getArg("port")).toURL(), false));
-        NetworkAccess network = NetworkAccess.buildBuffered(service.storage, service.bats, service.coreNode, service.account, service.mutable,
+        NetworkAccess orig = NetworkAccess.buildBuffered(service.storage, service.bats, service.coreNode, service.account, service.mutable,
                 5_000, service.social, service.controller, service.usage, serverMessager, crypto.hasher, Arrays.asList("peergos"), false);
+        OnlineState onlineState = new OnlineState(() -> orig.dhtClient.id()
+                .thenApply(x -> true)
+                .exceptionally(t -> false));
+        NetworkAccess network = orig
+//                .withStorage(s -> new UnauthedCachingStorage(s, new RamCache(), crypto.hasher))
+                .withAccountCache(a -> new OfflineAccountStore(orig.account, new RamAccountCache(), onlineState));
         return Arrays.asList(new Object[][] {
                 {network, service}
         });
     }
 
-    @Override
+    public static class RamAccountCache implements LoginCache {
+        private final Map<String, LoginData> cache = new HashMap<>();
+
+        @Override
+        public CompletableFuture<Boolean> setLoginData(LoginData login) {
+            cache.put(login.username, login);
+            return Futures.of(true);
+        }
+
+        @Override
+        public CompletableFuture<Boolean> removeLoginData(String username) {
+            cache.remove(username);
+            return Futures.of(true);
+        }
+
+        @Override
+        public CompletableFuture<UserStaticData> getEntryData(String username, PublicSigningKey authorisedReader) {
+            return Futures.of(cache.get(username).entryPoints);
+        }
+    }
+
     public Args getArgs() {
         return args;
     }
@@ -56,12 +92,12 @@ public class BrowserLegacyToPQTest extends UserTests {
         try {Thread.sleep(2000);}catch (InterruptedException e) {}
         Path peergosDir = args.fromPeergosDir("", "");
         System.out.println("Deleting " + peergosDir);
-        deleteFiles(peergosDir.toFile());
+        UserTests.deleteFiles(peergosDir.toFile());
     }
 
     @Test
     public void legacyToV2ToPQ() throws Exception {
-        String username = generateUsername();
+        String username = UserTests.generateUsername();
         String password = "password";
         List<String> progress = new ArrayList<>();
         UserContext v1 = UserContext.signUpGeneral(username, password, "", Optional.empty(), id -> {},
@@ -105,7 +141,7 @@ public class BrowserLegacyToPQTest extends UserTests {
 
     @Test
     public void legacyDirectToPQ() throws Exception {
-        String username = generateUsername();
+        String username = UserTests.generateUsername();
         String password = "password";
         List<String> progress = new ArrayList<>();
         UserContext v1 = UserContext.signUpGeneral(username, password, "", Optional.empty(), id -> {},

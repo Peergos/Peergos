@@ -115,7 +115,7 @@ public abstract class UserTests {
         service.gc.collect(e -> Futures.of(true));
     }
 
-    protected String generateUsername() {
+    public static String generateUsername() {
         return "test" + Math.abs(random.nextInt() % 1_000_000);
     }
 
