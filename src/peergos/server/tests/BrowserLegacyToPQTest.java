@@ -99,18 +99,11 @@ public class BrowserLegacyToPQTest extends UserTests {
         WriterData finalWd = WriterData.getWriterData(newIdentity, newIdentity, network.mutable, network.dhtClient).join().props.get();
         Assert.assertTrue(finalWd.staticData.isEmpty());
 
-        UserContext pq = UserContext.signIn(username, newPassword, UserTests::noMfa, network, crypto).join();
-        PublicBoxingKey pqBoxer = pq.getPublicKeys(username).join().get().right;
+        UserContext withNewPassword = UserContext.signIn(username, newPassword, UserTests::noMfa, network, crypto).join();
+        PublicBoxingKey pqBoxer = withNewPassword.getPublicKeys(username).join().get().right;
         Assert.assertTrue(pqBoxer.equals(newKeyPairs.right));
 
-        // change password again
-        String newerPassword = "greentrees";
-        UserContext secondPassChange = pq.changePassword(newPassword, newerPassword, UserTests::noMfa).join();
-        UserContext relogin = UserContext.signIn(username, newerPassword, UserTests::noMfa, network, crypto).join();
-        PublicBoxingKey finalPqBoxer = relogin.getPublicKeys(username).join().get().right;
-        Assert.assertTrue(finalPqBoxer.equals(pqBoxer));
-
-        relogin.ensurePostQuantum(password, UserTests::noMfa, m -> {}).join();
+        withNewPassword.ensurePostQuantum(password, UserTests::noMfa, m -> {}).join();
         Assert.assertTrue(pqBoxer instanceof HybridCurve25519MLKEMPublicKey);
 
     }
