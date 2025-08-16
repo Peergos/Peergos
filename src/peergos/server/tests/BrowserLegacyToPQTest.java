@@ -94,11 +94,13 @@ public class BrowserLegacyToPQTest extends UserTests {
         Assert.assertTrue(finalWd.staticData.isEmpty());
 
         UserContext withNewPassword = UserContext.signIn(username, newPassword, UserTests::noMfa, network, crypto).join();
-        PublicBoxingKey pqBoxer = withNewPassword.getPublicKeys(username).join().get().right;
-        Assert.assertTrue(pqBoxer.equals(newKeyPairs.right));
+        PublicBoxingKey newBoxer2 = withNewPassword.getPublicKeys(username).join().get().right;
+        Assert.assertTrue(newBoxer2.equals(newKeyPairs.right));
+        Assert.assertTrue(newBoxer2.equals(newBoxer));
 
-        withNewPassword.ensurePostQuantum(password, UserTests::noMfa, m -> {}).join();
-        Assert.assertTrue(pqBoxer instanceof HybridCurve25519MLKEMPublicKey);
+        withNewPassword.ensurePostQuantum(newPassword, UserTests::noMfa, m -> {}).join();
+        UserContext pq = UserContext.signIn(username, newPassword, UserTests::noMfa, network, crypto).join();
+        Assert.assertEquals(pq.signer.publicKeyHash, withNewPassword.signer.publicKeyHash);
     }
 
     @Test
