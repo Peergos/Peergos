@@ -57,7 +57,7 @@ public class UserContext {
     @JsProperty
     public final String username;
     public final SigningPrivateKeyAndPublicHash signer;
-    private final BoxingKeyPair boxer;
+    public final BoxingKeyPair boxer;
     @JsProperty
     private final SymmetricKey rootKey;
 

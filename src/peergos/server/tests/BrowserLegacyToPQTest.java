@@ -16,20 +16,15 @@ import peergos.shared.crypto.asymmetric.PublicBoxingKey;
 import peergos.shared.crypto.asymmetric.PublicSigningKey;
 import peergos.shared.crypto.asymmetric.curve25519.Curve25519PublicKey;
 import peergos.shared.crypto.asymmetric.mlkem.HybridCurve25519MLKEMPublicKey;
+import peergos.shared.crypto.asymmetric.mlkem.HybridCurve25519MLKEMSecretKey;
 import peergos.shared.crypto.hash.PublicKeyHash;
-import peergos.shared.io.ipfs.Cid;
-import peergos.shared.login.LoginCache;
-import peergos.shared.login.OfflineAccountStore;
-import peergos.shared.storage.*;
 import peergos.shared.user.*;
-import peergos.shared.util.Futures;
 import peergos.shared.util.Pair;
 
 import java.net.URI;
 import java.nio.file.Path;
 import java.time.LocalDate;
 import java.util.*;
-import java.util.concurrent.CompletableFuture;
 
 @RunWith(Parameterized.class)
 public class BrowserLegacyToPQTest extends UserTests {
@@ -65,16 +60,16 @@ public class BrowserLegacyToPQTest extends UserTests {
     }
 
     @Test
-    public void legacyToPQ() throws Exception {
+    public void legacyToV2ToPQ() throws Exception {
         String username = generateUsername();
         String password = "password";
         List<String> progress = new ArrayList<>();
-        UserContext userContext = UserContext.signUpGeneral(username, password, "", Optional.empty(), id -> {},
+        UserContext v1 = UserContext.signUpGeneral(username, password, "", Optional.empty(), id -> {},
                 Optional.empty(), LocalDate.now().plusMonths(2),
                 network, crypto, SecretGenerationAlgorithm.getLegacy(crypto.random), progress::add).join();
         SecretGenerationAlgorithm originalAlg = WriterData.fromCbor(UserContext.getWriterDataCbor(network, username).join().right).generationAlgorithm.get();
         Assert.assertTrue("legacy accounts generate boxer", originalAlg.generateBoxerAndIdentity());
-        Pair<PublicKeyHash, PublicBoxingKey> keyPairs = userContext.getPublicKeys(username).join().get();
+        Pair<PublicKeyHash, PublicBoxingKey> keyPairs = v1.getPublicKeys(username).join().get();
         PublicBoxingKey initialBoxer = keyPairs.right;
         PublicKeyHash initialIdentity = keyPairs.left;
         WriterData initialWd = WriterData.getWriterData(initialIdentity, initialIdentity, network.mutable, network.dhtClient).join().props.get();
@@ -82,7 +77,7 @@ public class BrowserLegacyToPQTest extends UserTests {
         Assert.assertTrue(initialBoxer instanceof Curve25519PublicKey);
 
         String newPassword = "newPassword";
-        userContext.changePassword(password, newPassword, UserTests::noMfa).get();
+        v1.changePassword(password, newPassword, UserTests::noMfa).get();
         MultiUserTests.checkUserValidity(network, username);
 
         List<String> progress2 = new ArrayList<>();
@@ -93,7 +88,6 @@ public class BrowserLegacyToPQTest extends UserTests {
         PublicKeyHash newIdentity = newKeyPairs.left;
 //        Assert.assertTrue(! newBoxer.equals(initialBoxer));
         Assert.assertTrue(! newIdentity.equals(initialIdentity));
-
         SecretGenerationAlgorithm alg = WriterData.fromCbor(UserContext.getWriterDataCbor(network, username).join().right).generationAlgorithm.get();
         Assert.assertTrue("password change upgrades legacy accounts", ! alg.generateBoxerAndIdentity());
         WriterData finalWd = WriterData.getWriterData(newIdentity, newIdentity, network.mutable, network.dhtClient).join().props.get();
@@ -105,6 +99,46 @@ public class BrowserLegacyToPQTest extends UserTests {
 
         withNewPassword.ensurePostQuantum(password, UserTests::noMfa, m -> {}).join();
         Assert.assertTrue(pqBoxer instanceof HybridCurve25519MLKEMPublicKey);
+    }
 
+    @Test
+    public void legacyDirectToPQ() throws Exception {
+        String username = generateUsername();
+        String password = "password";
+        List<String> progress = new ArrayList<>();
+        UserContext v1 = UserContext.signUpGeneral(username, password, "", Optional.empty(), id -> {},
+                Optional.empty(), LocalDate.now().plusMonths(2),
+                network, crypto, SecretGenerationAlgorithm.getLegacy(crypto.random), progress::add).join();
+        SecretGenerationAlgorithm originalAlg = WriterData.fromCbor(UserContext.getWriterDataCbor(network, username).join().right).generationAlgorithm.get();
+        Assert.assertTrue("legacy accounts generate boxer", originalAlg.generateBoxerAndIdentity());
+        Pair<PublicKeyHash, PublicBoxingKey> keyPairs = v1.getPublicKeys(username).join().get();
+        PublicBoxingKey initialBoxer = keyPairs.right;
+        PublicKeyHash initialIdentity = keyPairs.left;
+        WriterData initialWd = WriterData.getWriterData(initialIdentity, initialIdentity, network.mutable, network.dhtClient).join().props.get();
+        Assert.assertTrue(initialWd.staticData.isPresent());
+        Assert.assertTrue(initialBoxer instanceof Curve25519PublicKey);
+
+        MultiUserTests.checkUserValidity(network, username);
+
+        List<String> progress2 = new ArrayList<>();
+
+        v1.ensurePostQuantum(password, UserTests::noMfa, m -> {}).join();
+        UserContext pq = UserContext.signIn(username, password, UserTests::noMfa, false, network, crypto, progress2::add).join();
+        SecretGenerationAlgorithm alg = WriterData.fromCbor(UserContext.getWriterDataCbor(network, username).join().right).generationAlgorithm.get();
+//        Assert.assertTrue("password change upgrades legacy accounts", ! alg.generateBoxerAndIdentity());
+        Pair<PublicKeyHash, PublicBoxingKey> newKeyPairs = pq.getPublicKeys(username).join().get();
+        PublicBoxingKey newBoxer = newKeyPairs.right;
+        Assert.assertTrue(newBoxer instanceof HybridCurve25519MLKEMPublicKey);
+        PublicKeyHash newIdentity = newKeyPairs.left;
+        Assert.assertTrue(pq.boxer.secretBoxingKey instanceof HybridCurve25519MLKEMSecretKey);
+        Assert.assertTrue(newBoxer instanceof HybridCurve25519MLKEMPublicKey);
+
+        WriterData finalWd = WriterData.getWriterData(newIdentity, newIdentity, network.mutable, network.dhtClient).join().props.get();
+//        Assert.assertTrue(finalWd.staticData.isEmpty());
+
+        // check a fresh login has same keys
+        UserContext pq2 = UserContext.signIn(username, password, UserTests::noMfa, false, network, crypto, progress2::add).join();
+        Assert.assertArrayEquals(pq2.boxer.serialize(), pq.boxer.serialize());
+        Assert.assertArrayEquals(pq2.signer.serialize(), pq.signer.serialize());
     }
 }
