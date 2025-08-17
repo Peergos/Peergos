@@ -27,8 +27,8 @@ public class LoginUpdate {
         Crypto crypto = JavaCrypto.init();
         String signerHex = args.getArg("signer");
         SigningKeyPair identity = SigningKeyPair.fromByteArray(ArrayOps.hexToBytes(signerHex));
-        String homeCapHex = args.getArg("home-cap");
-        AbsoluteCapability home = WritableAbsoluteCapability.fromCbor(CborObject.fromByteArray(ArrayOps.hexToBytes(homeCapHex)));
+        String homeCapLink = args.getArg("home-cap");
+        AbsoluteCapability home = WritableAbsoluteCapability.fromLink(homeCapLink);
         String boxerHex = args.getArg("boxer");
         BoxingKeyPair boxer = BoxingKeyPair.fromCbor(CborObject.fromByteArray(ArrayOps.hexToBytes(boxerHex)));
         NetworkAccess network = Builder.buildJavaNetworkAccess(new URL("https://peergos.net"), true, Optional.of("Peergos-" + UserService.CURRENT_VERSION + "-login")).get();
