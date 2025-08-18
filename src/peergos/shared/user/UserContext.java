@@ -370,16 +370,16 @@ public class UserContext {
         if (boxer.publicBoxingKey instanceof HybridCurve25519MLKEMPublicKey)
             return Futures.of(false);
         progressCallback.accept("Upgrading account to post-quantum encryption..");
-        return getSocialState().thenCompose(social -> {
-            if (! social.pendingIncoming.isEmpty())
+        return getFollowRequests().thenCompose(followReqs -> {
+            if (! followReqs.isEmpty())
                 return Futures.of(false);
-            return getWriterDataCbor(network, username).thenCompose(pair -> {
-                SecretGenerationAlgorithm algorithm = WriterData.fromCbor(pair.right).generationAlgorithm
+            return WriterData.getWriterData(this.signer.publicKeyHash, this.signer.publicKeyHash, network.mutable, network.dhtClient).thenCompose(cwd -> {
+                SecretGenerationAlgorithm algorithm = cwd.props.flatMap(wd -> wd.generationAlgorithm)
                         .orElseThrow(() -> new IllegalStateException("No login algorithm specified in user data!"));
 
                 return UserUtil.generateUser(username, password, crypto, algorithm)
                         .thenCompose(generatedCredentials -> {
-                            WriterData userData = WriterData.fromCbor(pair.right);
+                            WriterData userData = cwd.props.get();
                             boolean legacyAccount = userData.staticData.isPresent();
                             SymmetricKey loginRoot = generatedCredentials.getRoot();
                             PublicSigningKey loginPub = generatedCredentials.getUser().publicSigningKey;
