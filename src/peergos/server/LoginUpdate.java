@@ -2,20 +2,25 @@ package peergos.server;
 
 import peergos.server.util.Args;
 import peergos.shared.Crypto;
+import peergos.shared.MaybeMultihash;
 import peergos.shared.NetworkAccess;
 import peergos.shared.cbor.CborObject;
+import peergos.shared.corenode.OpLog;
 import peergos.shared.crypto.BoxingKeyPair;
 import peergos.shared.crypto.SigningKeyPair;
 import peergos.shared.crypto.SigningPrivateKeyAndPublicHash;
 import peergos.shared.crypto.asymmetric.PublicSigningKey;
 import peergos.shared.crypto.hash.PublicKeyHash;
 import peergos.shared.crypto.symmetric.SymmetricKey;
+import peergos.shared.io.ipfs.Cid;
+import peergos.shared.mutable.PointerUpdate;
 import peergos.shared.storage.ContentAddressedStorage;
 import peergos.shared.storage.TransactionId;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.AbsoluteCapability;
 import peergos.shared.user.fs.WritableAbsoluteCapability;
 import peergos.shared.util.ArrayOps;
+import peergos.shared.util.Pair;
 
 import java.net.URL;
 import java.util.List;
@@ -39,13 +44,12 @@ public class LoginUpdate {
         if (! idHash.equals(remoteId))
             throw new IllegalStateException("Supplied identity doesn't match remote! " + idHash + " != " + remoteId);
 
+        PointerUpdate currentPointer = network.mutable.getPointerTarget(idHash, idHash, network.dhtClient).join();
         WriterData wd = WriterData.getWriterData(idHash, idHash, network.mutable, network.dhtClient).join().props.get();
 
         byte[] boxerSha256 = crypto.hasher.sha256(boxer.publicBoxingKey.serialize()).join();
         byte[] signedBoxerSha256 = identity.secret.signMessage(boxerSha256).join();
         PublicKeyHash boxerHash = network.dhtClient.putBoxingKey(idHash, signedBoxerSha256, boxer.publicBoxingKey, new TransactionId("12345")).join();
-        if (! boxerHash.equals(wd.followRequestReceiver.get()))
-            throw new IllegalStateException("Supplied social keypair doesn't match remote! " + boxerHash + " != " + wd.followRequestReceiver.get());
 
         SigningPrivateKeyAndPublicHash signer = new SigningPrivateKeyAndPublicHash(idHash, identity.secret);
         SecretGenerationAlgorithm alg = wd.generationAlgorithm.get();
@@ -56,10 +60,28 @@ public class LoginUpdate {
         EntryPoint entryPoint = new EntryPoint(home, username);
         PublicSigningKey idPub = network.dhtClient.getSigningKey(idHash, idHash).join().get();
         SigningKeyPair idPair = new SigningKeyPair(idPub, identity.secret);
-        UserStaticData entryPoints = new UserStaticData(List.of(entryPoint), rootKey, Optional.of(idPair), Optional.of(boxer));
         SigningKeyPair loginSigner = loginAuth.getUser();
-        LoginData login = new LoginData(username, entryPoints, loginSigner.publicSigningKey, Optional.empty());
-        network.account.setLoginData(login, signer).join();
+        UserStaticData entryPoints = new UserStaticData(List.of(entryPoint), rootKey, Optional.of(idPair), Optional.of(boxer));
+
+        if (! boxerHash.equals(wd.followRequestReceiver.get())) {
+            System.out.println("Supplied social keypair doesn't match remote: " + boxerHash + " != " + wd.followRequestReceiver.get());
+            System.out.println("Updating to supplied social keypair and updating login data...");
+            byte[] signedBoxerHash = identity.secret.signMessage(boxerSha256).join();
+            PublicKeyHash kh = network.dhtClient.putBoxingKey(identity.publicKeyHash, signedBoxerHash, boxer.publicBoxingKey, new TransactionId("12345")).join();
+            WriterData updatedWd = wd.withBoxer(Optional.of(kh));
+            byte[] rawWd = updatedWd.serialize();
+            Cid blockHash = crypto.hasher.hash(rawWd, false).join();
+            byte[] signedHash = identity.secret.signMessage(blockHash.getHash()).join();
+            OpLog.BlockWrite blockWrite = new OpLog.BlockWrite(identity.publicKeyHash, signedHash, rawWd, false, Optional.empty());
+            PointerUpdate pointerCas = new PointerUpdate(currentPointer.updated, MaybeMultihash.of(blockHash), PointerUpdate.increment(currentPointer.sequence));
+            byte[] signedPointer = identity.secret.signMessage(pointerCas.serialize()).join();
+            OpLog.PointerWrite pointerWrite = new OpLog.PointerWrite(identity.publicKeyHash, signedPointer);
+            LoginData newLoginData = new LoginData(username, entryPoints, loginSigner.publicSigningKey, Optional.of(new Pair<>(blockWrite, pointerWrite)));
+            network.account.setLoginData(newLoginData, identity).join();
+        } else {
+            LoginData login = new LoginData(username, entryPoints, loginSigner.publicSigningKey, Optional.empty());
+            network.account.setLoginData(login, signer).join();
+        }
         System.out.println("Completed update");
     }
 }
