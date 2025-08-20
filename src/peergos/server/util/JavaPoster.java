@@ -91,7 +91,7 @@ public class JavaPoster implements HttpPoster {
                 res.complete(resp);
             }
         } catch (HttpTimeoutException e) {
-            res.completeExceptionally(new SocketTimeoutException("Socket timeout on: " + url));
+            res.completeExceptionally(new SocketTimeoutException("Socket timeout on: " + dht.toString() + url));
         } catch (InterruptedException ex) {
             res.completeExceptionally(new RuntimeException(ex));
         } catch (IOException e) {
