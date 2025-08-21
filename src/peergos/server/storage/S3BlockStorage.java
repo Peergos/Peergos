@@ -481,12 +481,6 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
             failedBlockGets.inc();
 
             if (peerIds.stream().map(Multihash::bareMultihash).anyMatch(peerIds::contains)) {
-                Optional<byte[]> buffered = blockBuffer.get(hash).join();
-                if (buffered.isPresent()) {
-                    if (enforceAuth && ! authoriser.allowRead(hash, buffered.get(), id, auth).join())
-                        throw new IllegalStateException("Unauthorised!");
-                    return Futures.of(Optional.of(new Pair<>(buffered.get(), null)));
-                }
                 // This is the owner's home server, we should have the block!
                 throw new IllegalStateException("Missing block " + hash);
             }
