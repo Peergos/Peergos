@@ -116,6 +116,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
 
     private final Cid id, p2pGetId;
     private final List<Cid> ids;
+    private final List<Multihash> peerIds;
     private final String region, bucket, folder, regionEndpoint, host;
     private final boolean useHttps;
     private final String accessKeyId, secretKey;
@@ -146,6 +147,9 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                           DeletableContentAddressedStorage p2pFallback,
                           DeletableContentAddressedStorage bloomTarget) {
         this.ids = ids;
+        this.peerIds = ids.stream()
+                .map(Cid::bareMultihash)
+                .collect(Collectors.toList());
         this.id = ids.get(ids.size() - 1);
         this.p2pGetId = p2pFallback.id().join();
         this.region = config.region;
@@ -157,7 +161,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         this.accessKeyId = config.accessKey;
         this.secretKey = config.secretKey;
         LOG.info("Using S3 Block Storage at " + config.regionEndpoint + ", bucket " + config.bucket
-                + ", path: " + config.path + ", p2p-get peerid: " + p2pGetId);
+                + ", path: " + config.path + ", peerids: "+peerIds+", p2p-get peerid: " + p2pGetId);
         this.props = props;
         this.linkHost = linkHost;
         this.transactions = transactions;
@@ -476,7 +480,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
             }
             failedBlockGets.inc();
 
-            if (peerIds.stream().allMatch(p -> ids.contains(p))) {
+            if (peerIds.stream().anyMatch(peerIds::contains)) {
                 // This is the owner's home server, we should have the block!
                 throw new IllegalStateException("Missing block " + hash);
             }
