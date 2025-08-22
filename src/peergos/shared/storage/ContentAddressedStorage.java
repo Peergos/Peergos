@@ -497,6 +497,8 @@ public interface ContentAddressedStorage {
                                                      String format,
                                                      TransactionId tid,
                                                      ProgressConsumer<Long> progressConsumer) {
+            if (signatures.stream().anyMatch(s -> s.length == 0))
+                throw new IllegalStateException("Empty signature in block write!");
             // Do up to 10 fragments per query (50 pre-auth max/ 5 browser upload connections), unless we are talking
             // to IPFS directly or there are fewer than 10 blocks. Then upload one per query because IPFS doesn't
             // support more than one, and to maximise use of browsers 5 connections.

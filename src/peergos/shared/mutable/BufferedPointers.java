@@ -65,7 +65,7 @@ public class BufferedPointers implements MutablePointers {
     }
 
     public Map<PublicKeyHash, SigningPrivateKeyAndPublicHash> getSigners() {
-        return writers;
+        return new HashMap<>(writers);
     }
 
     public PointerUpdate addWrite(SigningPrivateKeyAndPublicHash w,

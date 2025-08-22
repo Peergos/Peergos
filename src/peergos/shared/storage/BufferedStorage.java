@@ -242,7 +242,7 @@ public class BufferedStorage extends DelegatingStorage {
 
     public CompletableFuture<Boolean> signBlocks(Map<PublicKeyHash, SigningPrivateKeyAndPublicHash> writers) {
         synchronized (storage) {
-            return Futures.combineAll(storage.entrySet().stream()
+            return Futures.combineAllInOrder(storage.entrySet().stream()
                             .map(e -> {
                                 OpLog.BlockWrite block = e.getValue();
                                 return (block.signature.length > 0 ?
@@ -252,9 +252,15 @@ public class BufferedStorage extends DelegatingStorage {
                                                 sig,
                                                 block.block, block.isRaw, block.progressMonitor)));
                             }).collect(Collectors.toList()))
-                    .thenApply(pairs -> pairs.stream()
-                            .collect(Collectors.toMap(p -> p.left, p -> p.right)))
-                    .thenAccept(all -> storage.putAll(all))
+                    .thenAccept(all -> {
+                        if (all.size() != storage.size())
+                            throw new IllegalStateException("Not all blocks were signed!");
+                        if (all.stream().map(p ->p.right).anyMatch(bw -> bw.signature.length == 0))
+                            throw new IllegalStateException("Blocks with empty signature!");
+                        for (Pair<Cid, OpLog.BlockWrite> p : all) {
+                            storage.put(p.left, p.right);
+                        }
+                    })
                     .thenApply(x -> true);
         }
     }

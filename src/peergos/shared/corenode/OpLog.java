@@ -268,6 +268,19 @@ public class OpLog implements Cborable, Account, MutablePointers, ContentAddress
                     "], " + (isRaw ? "raw" : "cbor") +
                     '}';
         }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (o == null || getClass() != o.getClass()) return false;
+            BlockWrite that = (BlockWrite) o;
+            return isRaw == that.isRaw && Objects.equals(writer, that.writer) && Objects.deepEquals(signature, that.signature) && Objects.deepEquals(block, that.block) && Objects.equals(progressMonitor, that.progressMonitor);
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(writer, Arrays.hashCode(signature), Arrays.hashCode(block), isRaw, progressMonitor);
+        }
     }
 
     public static final class PointerWrite implements Cborable {
