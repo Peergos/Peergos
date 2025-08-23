@@ -480,7 +480,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
             }
             failedBlockGets.inc();
 
-            if (peerIds.stream().map(Multihash::bareMultihash).anyMatch(peerIds::contains)) {
+            if (peerIds.stream().map(Multihash::bareMultihash).anyMatch(this.peerIds::contains)) {
                 // This is the owner's home server, we should have the block!
                 throw new IllegalStateException("Missing block " + hash);
             }
