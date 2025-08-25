@@ -75,8 +75,11 @@ public class LocalFileSystem implements SyncFilesystem {
     public void delete(Path p) {
         p = root.resolve(p);
         try {
-            if (Files.isDirectory(p) && Files.list(p).anyMatch(f -> true))
-                throw new IllegalStateException("Trying to delete non empty directory: " + p);
+            if (Files.isDirectory(p))
+                try (Stream<Path> stream = Files.list(p)) {
+                    if (stream.anyMatch(f -> true))
+                        throw new IllegalStateException("Trying to delete non empty directory: " + p);
+            }
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
@@ -211,20 +214,22 @@ public class LocalFileSystem implements SyncFilesystem {
     }
 
     private void applyToSubtree(Path start, Consumer<FileProps> file, Consumer<FileProps> dir) throws IOException {
-        Files.list(start).forEach(c -> {
-            String relPath = root.relativize(start.resolve(c.getFileName())).normalize().toString();
-            String canonicalRelPath = hasBackSlashes ? relPath.replaceAll("\\\\", "/") : relPath;
-            FileProps props = new FileProps(canonicalRelPath, c.toFile().lastModified() / 1000 * 1000, c.toFile().length(), Optional.empty());
-            if (Files.isRegularFile(c)) {
-                file.accept(props);
-            } else if (Files.isDirectory(c)) {
-                dir.accept(props);
-                try {
-                    applyToSubtree(start.resolve(c.getFileName()), file, dir);
-                } catch (IOException e) {
-                    throw new RuntimeException(e);
+        try (Stream<Path> stream = Files.list(start)) {
+            stream.forEach(c -> {
+                String relPath = root.relativize(start.resolve(c.getFileName())).normalize().toString();
+                String canonicalRelPath = hasBackSlashes ? relPath.replaceAll("\\\\", "/") : relPath;
+                FileProps props = new FileProps(canonicalRelPath, c.toFile().lastModified() / 1000 * 1000, c.toFile().length(), Optional.empty());
+                if (Files.isRegularFile(c)) {
+                    file.accept(props);
+                } else if (Files.isDirectory(c)) {
+                    dir.accept(props);
+                    try {
+                        applyToSubtree(start.resolve(c.getFileName()), file, dir);
+                    } catch (IOException e) {
+                        throw new RuntimeException(e);
+                    }
                 }
-            }
-        });
+            });
+        }
     }
 }
