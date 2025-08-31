@@ -177,7 +177,7 @@ public class BufferedNetworkAccess extends NetworkAccess {
         // Condense pointers and do a mini GC to remove superfluous work
         List<Cid> roots = pointerBuffer.getRoots();
         if (roots.isEmpty())
-            throw new IllegalStateException("Where are the pointers?");
+            return Futures.of(true);
         blockBuffer.gc(roots);
         Map<PublicKeyHash, SigningPrivateKeyAndPublicHash> writers = pointerBuffer.getSigners();
         List<Pair<BufferedPointers.WriterUpdate, Optional<CommittedWriterData>>> writes = blockBuffer.getAllWriterData(writerUpdates);
@@ -193,6 +193,7 @@ public class BufferedNetworkAccess extends NetworkAccess {
                                                     Throwable cause = Exceptions.getRootCause(t);
                                                     if (cause instanceof PointerCasException) {
                                                         PointerCasException cas = (PointerCasException) cause;
+                                                        System.out.println("Handling pointer CAS exception on writer " + u.left.writer);
                                                         MaybeMultihash actualExisting = cas.existing;
                                                         return WriterData.getWriterData(owner, (Cid) u.left.prevHash.get(), Optional.empty(), blockBuffer)
                                                                 .thenCompose(original -> WriterData.getWriterData(owner, (Cid) u.left.currentHash.get(), Optional.empty(), blockBuffer)

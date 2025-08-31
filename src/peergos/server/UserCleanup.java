@@ -22,7 +22,7 @@ public class UserCleanup {
 
     public static void main(String[] args) throws Exception {
         Crypto crypto = Main.initCrypto();
-        NetworkAccess network = Builder.buildJavaNetworkAccess(new URL("https://peergos.net"), true, Optional.empty()).get();
+        NetworkAccess network = Builder.buildJavaNetworkAccess(new URL("https://peergos.net"), true, Optional.empty(), Optional.empty()).get();
         String username = args[0];
         String password = args[1];
         UserContext context = UserContext.signIn(username, password, Main::getMfaResponseCLI, network, crypto).get();

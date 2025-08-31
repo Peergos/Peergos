@@ -33,7 +33,7 @@ public class SmallFileBenchmark {
     private static NetworkAccess buildHttpNetworkAccess(boolean useIpfs, Random r) throws Exception {
         Args args = UserTests.buildArgs().with("useIPFS", "" + useIpfs);
         Main.PKI_INIT.main(args);
-        NetworkAccess base = Builder.buildJavaNetworkAccess(new URL("http://localhost:" + args.getInt("port")), false, Optional.empty()).get();
+        NetworkAccess base = Builder.buildJavaNetworkAccess(new URL("http://localhost:" + args.getInt("port")), false, Optional.empty(), Optional.empty()).get();
         int delayMillis = 50;
         return base.withStorage(s -> new DelayingStorage(s, delayMillis, delayMillis));
     }

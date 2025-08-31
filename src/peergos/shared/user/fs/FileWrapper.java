@@ -999,6 +999,7 @@ public class FileWrapper {
         }
         return Futures.reduceAll(groupedChildren, identity, (id, group) -> Futures.reduceAll(group, id,
                         (p, f) -> {
+                            System.out.println("Reduce start: " + p.left.toString());
                             // don't bother with file upload transactions as single chunk uploads are atomic anyway
                             // (nothing to resume or cleanup later in case of failure)
                             AsyncReader fileData = f.fileData.get();
@@ -1009,6 +1010,7 @@ public class FileWrapper {
                                                 crypto.random.randomBytes(32), Optional.empty(), Optional.of(Bat.random(crypto.random)), mirrorBat)
                                         .thenApply(pair -> new Pair<>(pair.left, Stream.concat(p.right.stream(), pair.right.stream()).collect(Collectors.toList())))
                                         .thenCompose(r -> {
+                                            System.out.println("Uploaded small file pre parent add: " + r.left.toString());
                                             fileData.close();
                                             if (! network.isFull())
                                                 return Futures.of(r);
@@ -1054,6 +1056,8 @@ public class FileWrapper {
                                                                         });
                                                             }).thenApply(pair -> new Pair<>(pair.left, Stream.concat(p.right.stream(), pair.right.stream()).collect(Collectors.toList())));
                                                 toClose.add(txn);
+                                                if (r.isA())
+                                                    System.out.println("Upload large file: " + r.a().toString());
                                                 return fileData.reset().thenCompose(reset -> parent.uploadFileSection(r.a(), c, f.filename, fileData, Optional.empty(), false,
                                                                 0, f.length, f.hash, f.modifiedTime, Optional.of(txn.baseKey), Optional.of(txn.dataKey), Optional.of(txn.writeKey),f.skipExisting, f.overwriteExisting, true,
                                                                 network, crypto, isCancelled, f.monitor, txn.firstMapKey(), Optional.of(txn.streamSecret()), txn.firstBat, mirrorBat))
@@ -1085,8 +1089,13 @@ public class FileWrapper {
             return Futures.of(new Pair<>(in, childLinks));
         return parent.getUpdated(in, network)
                 .thenCompose(latest -> latest.addChildPointers(in, c, childLinks, network.disableCommits(), crypto))
-                .thenCompose(res -> Futures.reduceAll(toClose, res, (v, f) -> transactions.close(v, c, f), (a, b) -> b))
-                .thenApply(s -> {network.enableCommits(); return s;})
+                .thenCompose(res -> {
+                    System.out.println("Added to parent: " + res.toString());
+                    return Futures.reduceAll(toClose, res, (v, f) -> transactions.close(v, c, f), (a, b) -> b);
+                })
+                .thenApply(s -> {
+                    System.out.println("Closed "+toClose.size()+" txns: " + s.toString());
+                    network.enableCommits(); return s;})
                 .thenCompose(s -> network.isFull() ?
                         network.commit(parent.owner(), commitWatcher).thenApply(x -> s) :
                         Futures.of(s))

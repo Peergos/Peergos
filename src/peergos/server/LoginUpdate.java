@@ -37,7 +37,7 @@ public class LoginUpdate {
         AbsoluteCapability home = WritableAbsoluteCapability.fromLink(homeCapLink);
         String boxerHex = args.getArg("boxer");
         BoxingKeyPair boxer = BoxingKeyPair.fromCbor(CborObject.fromByteArray(ArrayOps.hexToBytes(boxerHex)));
-        NetworkAccess network = Builder.buildJavaNetworkAccess(new URL("https://peergos.net"), true, Optional.of("Peergos-" + UserService.CURRENT_VERSION + "-login")).get();
+        NetworkAccess network = Builder.buildJavaNetworkAccess(new URL("https://peergos.net"), true, Optional.of("Peergos-" + UserService.CURRENT_VERSION + "-login"), Optional.empty()).get();
         String username = args.getArg("username");
         PublicKeyHash remoteId = network.coreNode.getPublicKeyHash(username).join().get();
         PublicKeyHash idHash = identity.publicKeyHash;

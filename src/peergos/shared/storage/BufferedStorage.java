@@ -21,7 +21,7 @@ import java.util.stream.*;
 
 public class BufferedStorage extends DelegatingStorage {
 
-    private Map<Cid, OpLog.BlockWrite> storage = new LinkedHashMap<>();
+    private final Map<Cid, OpLog.BlockWrite> storage = new LinkedHashMap<>();
     private final ContentAddressedStorage target;
     private final Hasher hasher;
 
@@ -196,6 +196,7 @@ public class BufferedStorage extends DelegatingStorage {
 
     private synchronized Cid put(Cid cid, OpLog.BlockWrite block) {
         synchronized (storage) {
+            System.out.println("Added " + cid + "["+block.block.length+"]");
             storage.put(cid, block);
             if (cid.isRaw())
                 block.progressMonitor.ifPresent(m -> m.accept((long)block.block.length));
@@ -242,13 +243,20 @@ public class BufferedStorage extends DelegatingStorage {
 
     public CompletableFuture<Boolean> signBlocks(Map<PublicKeyHash, SigningPrivateKeyAndPublicHash> writers) {
         synchronized (storage) {
-            return Futures.combineAllInOrder(storage.entrySet().stream()
-                            .map(e -> {
-                                OpLog.BlockWrite block = e.getValue();
+            List<Pair<Cid, OpLog.BlockWrite>> writes = storage.entrySet()
+                    .stream()
+                    .map(e -> new Pair<>(e.getKey(), e.getValue()))
+                    .collect(Collectors.toList());
+            if (writes.size() != storage.size())
+                throw new IllegalStateException("Missing hashes!");
+            System.out.println("Keys to sign: " + writes.size() + " out of " + storage.size());
+            return Futures.combineAllInOrder(writes.stream()
+                            .map(w -> {
+                                OpLog.BlockWrite block = w.right;
                                 return (block.signature.length > 0 ?
                                         Futures.of(block.signature) :
-                                        writers.get(block.writer).secret.signMessage(e.getKey().getHash()))
-                                        .thenApply(sig -> new Pair<>(e.getKey(), new OpLog.BlockWrite(block.writer,
+                                        writers.get(block.writer).secret.signMessage(w.left.getHash()))
+                                        .thenApply(sig -> new Pair<>(w.left, new OpLog.BlockWrite(block.writer,
                                                 sig,
                                                 block.block, block.isRaw, block.progressMonitor)));
                             }).collect(Collectors.toList()))

@@ -54,7 +54,7 @@ public class S3UserTests extends UserTests {
 
     private static NetworkAccess getNetwork() {
         try {
-            return Builder.buildJavaNetworkAccess(new URL("http://localhost:" + argsToCleanUp.get(argsToCleanUp.size() - 1).getInt("port")), false, Optional.empty()).join();
+            return Builder.buildJavaNetworkAccess(new URL("http://localhost:" + argsToCleanUp.get(argsToCleanUp.size() - 1).getInt("port")), false, Optional.empty(), Optional.empty()).join();
         } catch (MalformedURLException e) {
             throw new RuntimeException(e);
         }
@@ -115,7 +115,7 @@ public class S3UserTests extends UserTests {
 
     private static NetworkAccess buildApi(Args args) throws Exception {
         URL local = new URL("http://localhost:" + args.getInt("port"));
-        return Builder.buildNonCachingJavaNetworkAccess(local, false, 1_000, Optional.empty(), Optional.empty()).get();
+        return Builder.buildNonCachingJavaNetworkAccess(local, false, 1_000, Optional.empty(), Optional.empty(), Optional.empty()).get();
     }
 
     @Test

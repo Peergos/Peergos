@@ -37,7 +37,7 @@ public class IpfsUserTests extends UserTests {
         UserService service = Main.PKI_INIT.main(args).localApi;
         return Arrays.asList(new Object[][] {
                 {
-                        Builder.buildJavaNetworkAccess(new URL("http://localhost:" + args.getInt("port")), false, Optional.empty()).join(),
+                        Builder.buildJavaNetworkAccess(new URL("http://localhost:" + args.getInt("port")), false, Optional.empty(), Optional.empty()).join(),
                         service
                 }
         });

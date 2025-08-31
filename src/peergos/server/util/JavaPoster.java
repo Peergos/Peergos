@@ -21,18 +21,24 @@ public class JavaPoster implements HttpPoster {
     private final HttpClient client;
     private final Optional<String> userAgent;
 
-    public JavaPoster(URL dht, boolean isPublicServer, Optional<String> basicAuth, Optional<String> userAgent) {
+    public JavaPoster(URL dht, boolean isPublicServer, Optional<String> basicAuth, Optional<String> userAgent, Optional<ProxySelector> proxy) {
         this.dht = dht;
         this.useGet = isPublicServer;
         this.basicAuth = basicAuth;
         this.userAgent = userAgent;
-        client = HttpClient.newBuilder()
-                .connectTimeout(Duration.ofMillis(1_000))
-                .build();
+        if (proxy.isEmpty())
+            client = HttpClient.newBuilder()
+                    .connectTimeout(Duration.ofMillis(1_000))
+                    .build();
+        else
+            client = HttpClient.newBuilder()
+                    .proxy(proxy.get())
+                    .connectTimeout(Duration.ofMillis(1_000))
+                    .build();
     }
 
     public JavaPoster(URL dht, boolean isPublicServer) {
-        this(dht, isPublicServer, Optional.empty(), Optional.empty());
+        this(dht, isPublicServer, Optional.empty(), Optional.empty(), Optional.empty());
     }
 
     public URL buildURL(String method) throws IOException {

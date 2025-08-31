@@ -6,6 +6,7 @@ import peergos.server.cli.CLI;
 import peergos.server.crypto.hash.ScryptJava;
 import peergos.server.login.*;
 import peergos.server.messages.*;
+import peergos.server.net.ProxyChooser;
 import peergos.server.net.SyncConfigHandler;
 import peergos.server.space.*;
 import peergos.server.sql.*;
@@ -46,6 +47,7 @@ import peergos.shared.util.*;
 import java.awt.*;
 import java.io.*;
 import java.net.*;
+import java.net.Proxy;
 import java.nio.file.*;
 import java.sql.*;
 import java.time.*;
@@ -80,6 +82,9 @@ public class Main extends Builder {
 
     public static final Command.Arg ARG_ANNOUNCE_ADDRESSES = new Command.Arg("ipfs-announce-addresses",
             "Comma separated list of extra announce multi-addresses. e.g. a public NAT address with port forwarding: /ip4/$IP/tcp/4001", false);
+    public static final Command.Arg ARG_HTTP_PROXY = new Command.Arg("http_proxy", "Use a http proxy for all requests, format host:port", false);
+    public static final Command.Arg ARG_SOCKS_PROXY = new Command.Arg("socks_proxy", "Use a socks5 proxy for all requests, format host:port", false);
+
 
     public static final Command.Arg LISTEN_HOST = new Command.Arg("listen-host", "The hostname/interface to listen on", true, "localhost");
 
@@ -223,7 +228,7 @@ public class Main extends Builder {
             Optional<String> basicAuth = args.getOptionalArg("basic-auth")
                     .map(a -> "Basic " + Base64.getEncoder().encodeToString(a.getBytes()));
             NetworkAccess network = Builder.buildJavaNetworkAccess(new URL("http://localhost:" + webPort),
-                    false, basicAuth, Optional.empty()).get();
+                    false, basicAuth, Optional.empty(), Optional.empty()).get();
             String pkiFilePassword = args.getArg("pki.keyfile.password");
             SecretSigningKey pkiSecret =
                     SecretSigningKey.fromCbor(CborObject.fromByteArray(PasswordProtected.decryptWithPassword(
@@ -453,7 +458,9 @@ public class Main extends Builder {
                     new Command.Arg("local-dirs", "The directories to sync to and from Peergos (comma separated)", true),
                     new Command.Arg("max-parallelism", "The maximum parallelism to download files with", false, "32"),
                     new Command.Arg("block-cache-size-bytes", "The size of the local block cache, e.g. 5g", false, "1g"),
-                    new Command.Arg("run-once", "Only sync the directory once", false)
+                    new Command.Arg("run-once", "Only sync the directory once", false),
+                    ARG_HTTP_PROXY,
+                    ARG_SOCKS_PROXY
             ).collect(Collectors.toList())
     );
 
@@ -461,7 +468,9 @@ public class Main extends Builder {
             "Setup a peergos folder for syncing and get required arguments for 'sync dir' command",
             DirectorySync::init,
             Stream.of(
-                    new Command.Arg("peergos-url", "Peergos service address", false, "https://peergos.net")
+                    new Command.Arg("peergos-url", "Peergos service address", false, "https://peergos.net"),
+                    ARG_HTTP_PROXY,
+                    ARG_SOCKS_PROXY
             ).collect(Collectors.toList())
     );
 
@@ -506,7 +515,9 @@ public class Main extends Builder {
             Stream.of(
                     new Command.Arg("username", "Peergos username", false),
                     new Command.Arg("PEERGOS_PASSWORD", "Peergos password", false),
-                    new Command.Arg("peergos-url", "Address of the Peergos server", false)
+                    new Command.Arg("peergos-url", "Address of the Peergos server", false),
+                    ARG_HTTP_PROXY,
+                    ARG_SOCKS_PROXY
             ).collect(Collectors.toList())
     );
 
@@ -525,7 +536,7 @@ public class Main extends Builder {
                     Crypto crypto = Main.initCrypto();
                     String peergosUrl = a.getArg("peergos-url");
                     URL api = new URL(peergosUrl);
-                    NetworkAccess network = Builder.buildJavaNetworkAccess(api, peergosUrl.startsWith("https"), Optional.empty()).join();
+                    NetworkAccess network = Builder.buildJavaNetworkAccess(api, peergosUrl.startsWith("https"), Optional.empty(), Optional.empty()).join();
                     LinkIdentity.link(a, network, crypto);
                     return true;
                 } catch (Exception e) {
@@ -549,7 +560,7 @@ public class Main extends Builder {
                     Main.initCrypto();
                     String peergosUrl = a.getArg("peergos-url");
                     URL api = new URL(peergosUrl);
-                    NetworkAccess network = Builder.buildJavaNetworkAccess(api, peergosUrl.startsWith("https"), Optional.empty()).join();
+                    NetworkAccess network = Builder.buildJavaNetworkAccess(api, peergosUrl.startsWith("https"), Optional.empty(), Optional.empty()).join();
                     LinkIdentity.verify(a, network);
                     return true;
                 } catch (Exception e) {
@@ -588,7 +599,12 @@ public class Main extends Builder {
                     PublicSigningKey.addProvider(PublicSigningKey.Type.Ed25519, crypto.signer);
                     ThumbnailGenerator.setInstance(new JavaImageThumbnailer());
                     URL target = new URL(a.getArg("peergos-url", "https://peergos.net"));
-                    JavaPoster poster = new JavaPoster(target, ! target.getHost().equals("localhost"), Optional.empty(), Optional.of("Peergos-" + UserService.CURRENT_VERSION + "-proxy"));
+                    Optional<ProxySelector> proxy = ProxyChooser.build(a);
+                    JavaPoster poster = new JavaPoster(target,
+                            ! target.getHost().equals("localhost"),
+                            Optional.empty(),
+                            Optional.of("Peergos-" + UserService.CURRENT_VERSION + "-proxy"),
+                            proxy);
                     ScryptJava hasher = new ScryptJava();
                     ContentAddressedStorage localDht = NetworkAccess.buildLocalDht(poster, true, hasher);
                     CoreNode core = NetworkAccess.buildDirectCorenode(poster);
@@ -648,6 +664,8 @@ public class Main extends Builder {
             },
             Arrays.asList(
                     new Command.Arg("peergos-url", "Address of the Peergos server", false, "https://peergos.net"),
+                    ARG_HTTP_PROXY,
+                    ARG_SOCKS_PROXY,
                     new Command.Arg("port", "Localhost server port", true, "7777"),
                     new Command.Arg("mutable-pointers-cache", "The filename for the mutable pointers cache", true, "pointer-cache.sqlite"),
                     new Command.Arg("account-cache-sql-file", "The filename for the account cache", true, "account-cache.sqlite"),
@@ -955,7 +973,7 @@ public class Main extends Builder {
         try {
             URL api = new URL(peergosUrl);
             NetworkAccess network = Builder.buildJavaNetworkAccess(api,
-                    ! peergosUrl.startsWith("http://localhost"), Optional.empty(), Optional.of("Peergos-" + UserService.CURRENT_VERSION + "-gateway")).join();
+                    ! peergosUrl.startsWith("http://localhost"), Optional.empty(), Optional.of("Peergos-" + UserService.CURRENT_VERSION + "-gateway"), Optional.empty()).join();
             PublicGateway gateway = new PublicGateway(domainSuffix, crypto, network);
 
             String domain = a.getArg("listen-host");
@@ -988,7 +1006,7 @@ public class Main extends Builder {
         try {
             String peergosUrl = a.getArg("peergos-url");
             URL api = new URL(peergosUrl);
-            NetworkAccess network = buildJavaNetworkAccess(api, peergosUrl.startsWith("https"), Optional.of("Peergos-" + UserService.CURRENT_VERSION + "-fuse")).join();
+            NetworkAccess network = buildJavaNetworkAccess(api, peergosUrl.startsWith("https"), Optional.of("Peergos-" + UserService.CURRENT_VERSION + "-fuse"), Optional.empty()).join();
 
             Crypto crypto = initCrypto();
             PublicSigningKey.addProvider(PublicSigningKey.Type.Ed25519, crypto.signer);
@@ -1042,7 +1060,7 @@ public class Main extends Builder {
         String peergosUrl = a.getArg("peergos-url");
         try {
             URL api = new URL(peergosUrl);
-            NetworkAccess network = buildJavaNetworkAccess(api, ! peergosUrl.startsWith("http://localhost"), Optional.of("Peergos-" + UserService.CURRENT_VERSION + "-migrate")).join();
+            NetworkAccess network = buildJavaNetworkAccess(api, ! peergosUrl.startsWith("http://localhost"), Optional.of("Peergos-" + UserService.CURRENT_VERSION + "-migrate"), Optional.empty()).join();
             Console console = System.console();
             String username = console.readLine("Enter username to migrate to this server: ");
             String password = new String(console.readPassword("Enter password for " + username + ": "));
@@ -1085,7 +1103,8 @@ public class Main extends Builder {
                     // Check if proxy is already running and stop it if the version is different
                     int port = args.getInt("port", 7777);
                     URI api = new URI("http://localhost:" + port);
-                    JavaPoster poster = new JavaPoster(api.toURL(), false, Optional.empty(), Optional.empty());
+                    Optional<ProxySelector> proxy = ProxyChooser.build(args);
+                    JavaPoster poster = new JavaPoster(api.toURL(), false, Optional.empty(), Optional.empty(), proxy);
                     ScryptJava hasher = new ScryptJava();
                     ContentAddressedStorage localDht = NetworkAccess.buildLocalDht(poster, true, hasher);
                     boolean alreadyRunning = false;
