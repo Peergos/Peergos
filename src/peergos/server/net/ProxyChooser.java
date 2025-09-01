@@ -18,7 +18,7 @@ public class ProxyChooser extends ProxySelector {
     public List<Proxy> select(URI uri) {
         if (uri.getHost().equalsIgnoreCase("localhost"))
             return List.of(Proxy.NO_PROXY);
-        if (proxies.isEmpty()) {
+        if (! proxies.isEmpty()) {
             return proxies;
         }
         return List.of(Proxy.NO_PROXY);
@@ -26,6 +26,11 @@ public class ProxyChooser extends ProxySelector {
 
     @Override
     public void connectFailed(URI uri, SocketAddress socketAddress, IOException e) {}
+
+    @Override
+    public String toString() {
+        return proxies.toString();
+    }
 
     public static InetSocketAddress parseAddress(String addr) {
         String host = addr.substring(0, addr.indexOf(":"));

@@ -600,6 +600,8 @@ public class Main extends Builder {
                     ThumbnailGenerator.setInstance(new JavaImageThumbnailer());
                     URL target = new URL(a.getArg("peergos-url", "https://peergos.net"));
                     Optional<ProxySelector> proxy = ProxyChooser.build(a);
+                    if (proxy.isPresent())
+                        System.out.println("Using http proxy " + proxy.get());
                     JavaPoster poster = new JavaPoster(target,
                             ! target.getHost().equals("localhost"),
                             Optional.empty(),

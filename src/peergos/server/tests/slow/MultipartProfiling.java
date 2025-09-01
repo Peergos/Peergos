@@ -1,4 +1,6 @@
 package peergos.server.tests.slow;
+import java.net.http.HttpClient;
+import java.time.Duration;
 import java.util.logging.*;
 
 import peergos.server.util.Logging;
@@ -72,12 +74,15 @@ public class MultipartProfiling {
     }
 
     private void profile(int size, int count) throws IOException {
-        Multipart sender = new Multipart("http://localhost:" + port + "/multipart", "UTF-8");
+        HttpClient client = HttpClient.newBuilder()
+                .connectTimeout(Duration.ofMillis(1_000))
+                .build();
+        Multipart sender = new Multipart(client, "http://localhost:" + port + "/multipart", "UTF-8", Collections.emptyMap(), 0);
         byte[] data = randomArray(size);
         for (int i = 0; i < count; i++)
             sender.addFilePart("file", new NamedStreamable.ByteArrayWrapper(data));
 
-        String res = sender.finish();
+        String res = new String(sender.finish().join());
 
         List<byte[]> result = received.poll();
 

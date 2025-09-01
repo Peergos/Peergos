@@ -1,5 +1,6 @@
 package peergos.server.util;
 
+import peergos.server.net.Multipart;
 import peergos.shared.io.ipfs.api.*;
 import peergos.shared.storage.PointerCasException;
 import peergos.shared.user.*;
@@ -106,7 +107,7 @@ public class JavaPoster implements HttpPoster {
         return res;
     }
 
-    private void handleError(String url, CompletableFuture<byte[]> res, HttpResponse<InputStream> response, Exception e) {
+    public static void handleError(String url, CompletableFuture<byte[]> res, HttpResponse<InputStream> response, Exception e) {
         if (response != null){
             HttpHeaders responseHeaders = response.headers();
             Optional<String> trailer = responseHeaders.firstValue("Trailer");
@@ -131,13 +132,13 @@ public class JavaPoster implements HttpPoster {
             if (basicAuth.isPresent())
                 headers.put("Authorization", basicAuth.get());
             userAgent.ifPresent(agent -> headers.put("User-Agent", agent));
-            Multipart mPost = new Multipart(buildURL(url).toString(), "UTF-8", headers, timeoutMillis);
+            Multipart mPost = new Multipart(client, buildURL(url).toString(), "UTF-8", headers, timeoutMillis);
             int i = 0;
             for (byte[] file : files) {
                 String fieldName = "file" + i++;
                 mPost.addFilePart(fieldName, new NamedStreamable.ByteArrayWrapper(Optional.of(fieldName), file));
             }
-            return CompletableFuture.completedFuture(mPost.finish().getBytes());
+            return mPost.finish();
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
@@ -150,39 +151,48 @@ public class JavaPoster implements HttpPoster {
 
     @Override
     public CompletableFuture<byte[]> put(String url, byte[] body, Map<String, String> headers) {
-        HttpURLConnection conn = null;
-        try {
-            conn = (HttpURLConnection) buildURL(url).openConnection();
-            conn.setRequestMethod("PUT");
-            for (Map.Entry<String, String> e : headers.entrySet()) {
-                conn.setRequestProperty(e.getKey(), e.getValue());
-            }
-            if (basicAuth.isPresent())
-                conn.setRequestProperty("Authorization", basicAuth.get());
-            conn.setDoOutput(true);
-            OutputStream out = conn.getOutputStream();
-            out.write(body);
-            out.flush();
-            out.close();
-
-            InputStream in = conn.getInputStream();
-            return Futures.of(Serialize.readFully(in));
-        } catch (IOException e) {
-            CompletableFuture<byte[]> res = new CompletableFuture<>();
-            if (conn != null) {
-                try {
-                    InputStream err = conn.getErrorStream();
-                    res.completeExceptionally(new IOException("HTTP " + conn.getResponseCode() + ": " + conn.getResponseMessage()));
-                } catch (IOException f) {
-                    res.completeExceptionally(f);
+        CompletableFuture<byte[]> res = new CompletableFuture<>();
+        CompletableFuture.runAsync(() -> {
+            HttpResponse<InputStream> response = null;
+            try {
+                URI uri = URI.create(buildURL(url).toString());
+                HttpRequest.Builder requestBuilder = HttpRequest.newBuilder().uri(uri);
+                userAgent.ifPresent(agent -> requestBuilder.setHeader("User-Agent", agent));
+                requestBuilder.PUT(HttpRequest.BodyPublishers.ofByteArray(body));
+                requestBuilder.timeout(Duration.ofMillis(15000));
+                for (Map.Entry<String, String> e : headers.entrySet()) {
+                    requestBuilder.setHeader(e.getKey(), e.getValue());
                 }
-            } else
-                res.completeExceptionally(e);
-            return res;
-        } finally {
-            if (conn != null)
-                conn.disconnect();
-        }
+                if (basicAuth.isPresent())
+                    requestBuilder.setHeader("Authorization", basicAuth.get());
+
+                HttpRequest request = requestBuilder.build();
+                response = client.send(request, HttpResponse.BodyHandlers.ofInputStream());
+                HttpHeaders responseHeaders = response.headers();
+                Optional<String> contentEncodingOpt = responseHeaders.firstValue("content-encoding");
+                boolean isGzipped = contentEncodingOpt.isPresent() && "gzip".equals(contentEncodingOpt.get());
+                DataInputStream din = new DataInputStream(isGzipped ?
+                        new GZIPInputStream(response.body()) :
+                        response.body());
+                byte[] resp = Serialize.readFully(din);
+                din.close();
+                int statusCode = response.statusCode();
+                if (statusCode != 200) {
+                    handleError(url, res, response, new IOException(resp.length == 0 ?
+                            "Unexpected Error. Status code: " + statusCode
+                            : new String(resp)));
+                } else {
+                    res.complete(resp);
+                }
+            } catch (HttpTimeoutException e) {
+                res.completeExceptionally(new SocketTimeoutException("Socket timeout on: " + dht.toString() + url));
+            } catch (InterruptedException ex) {
+                res.completeExceptionally(new RuntimeException(ex));
+            } catch (IOException e) {
+                handleError(url, res, response, e);
+            }
+        }, ForkJoinPool.commonPool());
+        return res;
     }
 
     @Override
@@ -203,38 +213,48 @@ public class JavaPoster implements HttpPoster {
     }
 
     private CompletableFuture<byte[]> publicGet(String url, Map<String, String> headers) {
-        return CompletableFuture.supplyAsync(() -> {
-            HttpURLConnection conn = null;
+        CompletableFuture<byte[]> res = new CompletableFuture<>();
+        CompletableFuture.runAsync(() -> {
+            HttpResponse<InputStream> response = null;
             try {
-                conn = (HttpURLConnection) buildURL(url).openConnection();
-                conn.setReadTimeout(15000);
-                conn.setDoInput(true);
+                URI uri = URI.create(buildURL(url).toString());
+                HttpRequest.Builder requestBuilder = HttpRequest.newBuilder().uri(uri);
+                userAgent.ifPresent(agent -> requestBuilder.setHeader("User-Agent", agent));
+                requestBuilder.GET();
+                requestBuilder.timeout(Duration.ofMillis(15000));
                 for (Map.Entry<String, String> e : headers.entrySet()) {
-                    conn.setRequestProperty(e.getKey(), e.getValue());
+                    requestBuilder.setHeader(e.getKey(), e.getValue());
                 }
                 if (basicAuth.isPresent())
-                    conn.setRequestProperty("Authorization", basicAuth.get());
-                HttpURLConnection connFinal = conn;
-                userAgent.ifPresent(agent -> connFinal.setRequestProperty("User-Agent", agent));
+                    requestBuilder.setHeader("Authorization", basicAuth.get());
 
-                String contentEncoding = conn.getContentEncoding();
-                boolean isGzipped = "gzip".equals(contentEncoding);
-                DataInputStream din = new DataInputStream(isGzipped ? new GZIPInputStream(conn.getInputStream()) : conn.getInputStream());
-                return Serialize.readFully(din);
-            } catch (SocketTimeoutException e) {
-                throw new RuntimeException("Timeout retrieving: " + url, e);
+                HttpRequest request = requestBuilder.build();
+                response = client.send(request, HttpResponse.BodyHandlers.ofInputStream());
+                HttpHeaders responseHeaders = response.headers();
+                Optional<String> contentEncodingOpt = responseHeaders.firstValue("content-encoding");
+                boolean isGzipped = contentEncodingOpt.isPresent() && "gzip".equals(contentEncodingOpt.get());
+                DataInputStream din = new DataInputStream(isGzipped ?
+                        new GZIPInputStream(response.body()) :
+                        response.body());
+                byte[] resp = Serialize.readFully(din);
+                din.close();
+                int statusCode = response.statusCode();
+                if (statusCode != 200) {
+                    handleError(url, res, response, new IOException(resp.length == 0 ?
+                            "Unexpected Error. Status code: " + statusCode
+                            : new String(resp)));
+                } else {
+                    res.complete(resp);
+                }
+            } catch (HttpTimeoutException e) {
+                res.completeExceptionally(new SocketTimeoutException("Socket timeout on: " + dht.toString() + url));
+            } catch (InterruptedException ex) {
+                res.completeExceptionally(new RuntimeException(ex));
             } catch (IOException e) {
-                String trailer = conn.getHeaderField("Trailer");
-                if (trailer != null)
-                    try {
-                        throw new IllegalStateException(URLDecoder.decode(trailer, "UTF-8"));
-                    } catch (UnsupportedEncodingException f) {}
-                throw new RuntimeException(e);
-            } finally {
-                if (conn != null)
-                    conn.disconnect();
+                handleError(url, res, response, e);
             }
         }, ForkJoinPool.commonPool());
+        return res;
     }
 
     @Override

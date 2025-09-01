@@ -1,40 +1,50 @@
-package peergos.shared.io.ipfs.api;
+package peergos.server.net;
 
+import peergos.server.util.JavaPoster;
+import peergos.shared.io.ipfs.api.NamedStreamable;
 import peergos.shared.util.*;
 
 import java.io.*;
 import java.net.*;
+import java.net.http.*;
+import java.nio.channels.Channels;
+import java.nio.channels.Pipe;
+import java.time.Duration;
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ForkJoinPool;
+import java.util.zip.GZIPInputStream;
 
 public class Multipart {
-    private final String boundary;
     private static final String LINE_FEED = "\r\n";
-    private HttpURLConnection httpConn;
+    private final String boundary;
+    private final HttpClient client;
+    private final HttpRequest request;
     private String charset;
     private OutputStream out;
     private PrintWriter writer;
 
-    public Multipart(String requestURL, String charset) throws IOException {
-        this(requestURL, charset, Collections.emptyMap(), 0);
-    }
-    public Multipart(String requestURL, String charset, Map<String, String> headers, int readTimeoutMillis) throws IOException {
+    public Multipart(HttpClient client, String requestURL, String charset, Map<String, String> headers, int readTimeoutMillis) throws IOException {
         this.charset = charset;
+        this.client = client;
+        this.boundary = createBoundary();
 
-        boundary = createBoundary();
-
-        URL url = new URL(requestURL);
-        httpConn = (HttpURLConnection) url.openConnection();
-        httpConn.setUseCaches(false);
-        httpConn.setDoOutput(true);
-        httpConn.setDoInput(true);
-        if (readTimeoutMillis > 0)
-            httpConn.setReadTimeout(readTimeoutMillis);
+        URI uri = URI.create(new URL(requestURL).toString());
+        HttpRequest.Builder requestBuilder = HttpRequest.newBuilder().uri(uri);
+        requestBuilder.setHeader("User-Agent", "Java Peergos Client");
+        requestBuilder.setHeader("Content-Type", "multipart/form-data; boundary=" + boundary);
+        requestBuilder.timeout(Duration.ofMillis(readTimeoutMillis));
         for (Map.Entry<String, String> e : headers.entrySet()) {
-            httpConn.setRequestProperty(e.getKey(), e.getValue());
+            requestBuilder.setHeader(e.getKey(), e.getValue());
         }
-        httpConn.setRequestProperty("Content-Type", "multipart/form-data; boundary=" + boundary);
-        httpConn.setRequestProperty("User-Agent", "Java IPFS Client");
-        out = httpConn.getOutputStream();
+
+        Pipe pipe = Pipe.open();
+
+        requestBuilder.POST(HttpRequest.BodyPublishers.ofInputStream(() -> Channels.newInputStream(pipe.source())));
+
+        request = requestBuilder.build();
+
+        out = Channels.newOutputStream(pipe.sink());
         writer = new PrintWriter(new OutputStreamWriter(out, charset), true);
     }
 
@@ -118,43 +128,39 @@ public class Multipart {
         writer.flush();
     }
 
-    public String finish() throws IOException {
+    public CompletableFuture<byte[]> finish() throws IOException {
         StringBuilder b = new StringBuilder();
 
         writer.append("--" + boundary + "--").append(LINE_FEED);
         writer.close();
 
-        int status = httpConn.getResponseCode();
-        if (status == HttpURLConnection.HTTP_OK) {
-            BufferedReader reader = new BufferedReader(new InputStreamReader(
-                    httpConn.getInputStream()));
-            String line;
-            while ((line = reader.readLine()) != null) {
-                b.append(line);
-            }
-            reader.close();
-            httpConn.disconnect();
-        } else if (status == HttpURLConnection.HTTP_NO_CONTENT) {
-            httpConn.disconnect();
-            return "";
-        } else {
+        CompletableFuture<byte[]> res = new CompletableFuture<>();
+        CompletableFuture.runAsync(() -> {
+            HttpResponse<InputStream> response = null;
             try {
-                BufferedReader reader = new BufferedReader(new InputStreamReader(
-                        httpConn.getInputStream()));
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    b.append(line);
+                response = client.send(request, HttpResponse.BodyHandlers.ofInputStream());
+                HttpHeaders responseHeaders = response.headers();
+                Optional<String> contentEncodingOpt = responseHeaders.firstValue("content-encoding");
+                boolean isGzipped = contentEncodingOpt.isPresent() && "gzip".equals(contentEncodingOpt.get());
+                DataInputStream din = new DataInputStream(isGzipped ?
+                        new GZIPInputStream(response.body()) :
+                        response.body());
+                byte[] resp = Serialize.readFully(din);
+                din.close();
+                int statusCode = response.statusCode();
+                if (statusCode == 200) {
+                    res.complete(resp);
+                } else if (statusCode == HttpURLConnection.HTTP_NO_CONTENT) {
+                    res.complete(new byte[0]);
                 }
-                reader.close();
-            } catch (Throwable t) {}
-            InputStream errorStream = httpConn.getErrorStream();
-            if (errorStream != null) {
-                String errBody = new String(Serialize.readFully(errorStream));
-                b.append(errBody);
+            } catch (HttpTimeoutException e) {
+                res.completeExceptionally(new SocketTimeoutException("Socket timeout on: " + request.uri()));
+            } catch (InterruptedException ex) {
+                res.completeExceptionally(new RuntimeException(ex));
+            } catch (IOException e) {
+                JavaPoster.handleError(request.uri().toString(), res, response, e);
             }
-            throw new IOException("Server returned status: " + status + " with body: "+b.toString() + " and Trailer header: "+httpConn.getHeaderFields().get("Trailer"));
-        }
-
-        return b.toString();
+        }, ForkJoinPool.commonPool());
+        return res;
     }
 }

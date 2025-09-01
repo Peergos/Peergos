@@ -7,6 +7,8 @@ import peergos.shared.io.ipfs.api.*;
 
 import java.io.*;
 import java.net.*;
+import java.net.http.HttpClient;
+import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.stream.*;
@@ -75,11 +77,14 @@ public class MultipartTests {
     }
 
     private void test(List<byte[]> input) throws IOException {
-        Multipart sender = new Multipart("http://localhost:" + port + "/multipart", "UTF-8");
+        HttpClient client = HttpClient.newBuilder()
+                .connectTimeout(Duration.ofMillis(1_000))
+                .build();
+        Multipart sender = new Multipart(client, "http://localhost:" + port + "/multipart", "UTF-8", Collections.emptyMap(), 0);
         for (byte[] in : input)
             sender.addFilePart("file", new NamedStreamable.ByteArrayWrapper(in));
 
-        String res = sender.finish();
+        String res = new String(sender.finish().join());
 
         List<byte[]> result = received.poll();
 
