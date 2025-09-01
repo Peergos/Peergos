@@ -130,8 +130,6 @@ public class Multipart {
     }
 
     public CompletableFuture<byte[]> finish() throws IOException {
-        StringBuilder b = new StringBuilder();
-
         writer.append("--" + boundary + "--").append(LINE_FEED);
         writer.close();
 
@@ -160,6 +158,8 @@ public class Multipart {
                 res.completeExceptionally(new RuntimeException(ex));
             } catch (IOException e) {
                 JavaPoster.handleError(request.uri().toString(), res, response, e);
+            } catch (Exception e) {
+                res.completeExceptionally(e);
             }
         }, ForkJoinPool.commonPool());
         return res;

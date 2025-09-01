@@ -103,6 +103,8 @@ public class JavaPoster implements HttpPoster {
             res.completeExceptionally(new RuntimeException(ex));
         } catch (IOException e) {
             handleError(url, res, response, e);
+        } catch (Exception e) {
+            res.completeExceptionally(e);
         }
         return res;
     }
@@ -190,6 +192,8 @@ public class JavaPoster implements HttpPoster {
                 res.completeExceptionally(new RuntimeException(ex));
             } catch (IOException e) {
                 handleError(url, res, response, e);
+            } catch (Exception e) {
+                res.completeExceptionally(e);
             }
         }, ForkJoinPool.commonPool());
         return res;
@@ -252,6 +256,8 @@ public class JavaPoster implements HttpPoster {
                 res.completeExceptionally(new RuntimeException(ex));
             } catch (IOException e) {
                 handleError(url, res, response, e);
+            } catch (Exception e) {
+                res.completeExceptionally(e);
             }
         }, ForkJoinPool.commonPool());
         return res;
