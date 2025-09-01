@@ -33,7 +33,8 @@ public class Multipart {
         HttpRequest.Builder requestBuilder = HttpRequest.newBuilder().uri(uri);
         requestBuilder.setHeader("User-Agent", "Java Peergos Client");
         requestBuilder.setHeader("Content-Type", "multipart/form-data; boundary=" + boundary);
-        requestBuilder.timeout(Duration.ofMillis(readTimeoutMillis));
+        if (readTimeoutMillis > 0)
+            requestBuilder.timeout(Duration.ofMillis(readTimeoutMillis));
         for (Map.Entry<String, String> e : headers.entrySet()) {
             requestBuilder.setHeader(e.getKey(), e.getValue());
         }
