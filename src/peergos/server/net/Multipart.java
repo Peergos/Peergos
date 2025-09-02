@@ -18,15 +18,13 @@ import java.util.zip.GZIPInputStream;
 public class Multipart {
     private static final String LINE_FEED = "\r\n";
     private final String boundary;
-    private final HttpClient client;
-    private final HttpRequest request;
+    private final CompletableFuture<byte[]> res;
     private String charset;
     private OutputStream out;
     private PrintWriter writer;
 
     public Multipart(HttpClient client, String requestURL, String charset, Map<String, String> headers, int readTimeoutMillis) throws IOException {
         this.charset = charset;
-        this.client = client;
         this.boundary = createBoundary();
 
         URI uri = URI.create(new URL(requestURL).toString());
@@ -43,10 +41,37 @@ public class Multipart {
 
         requestBuilder.POST(HttpRequest.BodyPublishers.ofInputStream(() -> Channels.newInputStream(pipe.source())));
 
-        request = requestBuilder.build();
+        HttpRequest request = requestBuilder.build();
 
         out = Channels.newOutputStream(pipe.sink());
         writer = new PrintWriter(new OutputStreamWriter(out, charset), true);
+        res = new CompletableFuture<>();
+        CompletableFuture.runAsync(() -> {
+            HttpResponse<InputStream> response = null;
+            try {
+                response = client.sendAsync(request, HttpResponse.BodyHandlers.ofInputStream()).join();
+                HttpHeaders responseHeaders = response.headers();
+                Optional<String> contentEncodingOpt = responseHeaders.firstValue("content-encoding");
+                boolean isGzipped = contentEncodingOpt.isPresent() && "gzip".equals(contentEncodingOpt.get());
+                DataInputStream din = new DataInputStream(isGzipped ?
+                        new GZIPInputStream(response.body()) :
+                        response.body());
+                byte[] resp = Serialize.readFully(din);
+                din.close();
+                int statusCode = response.statusCode();
+                if (statusCode == 200) {
+                    res.complete(resp);
+                } else if (statusCode == HttpURLConnection.HTTP_NO_CONTENT) {
+                    res.complete(new byte[0]);
+                }
+            } catch (HttpTimeoutException e) {
+                res.completeExceptionally(new SocketTimeoutException("Socket timeout on: " + request.uri()));
+            } catch (IOException e) {
+                JavaPoster.handleError(request.uri().toString(), res, response, e);
+            } catch (Exception e) {
+                res.completeExceptionally(e);
+            }
+        }, ForkJoinPool.commonPool());
     }
 
     public static String createBoundary() {
@@ -133,35 +158,6 @@ public class Multipart {
         writer.append("--" + boundary + "--").append(LINE_FEED);
         writer.close();
 
-        CompletableFuture<byte[]> res = new CompletableFuture<>();
-        CompletableFuture.runAsync(() -> {
-            HttpResponse<InputStream> response = null;
-            try {
-                response = client.send(request, HttpResponse.BodyHandlers.ofInputStream());
-                HttpHeaders responseHeaders = response.headers();
-                Optional<String> contentEncodingOpt = responseHeaders.firstValue("content-encoding");
-                boolean isGzipped = contentEncodingOpt.isPresent() && "gzip".equals(contentEncodingOpt.get());
-                DataInputStream din = new DataInputStream(isGzipped ?
-                        new GZIPInputStream(response.body()) :
-                        response.body());
-                byte[] resp = Serialize.readFully(din);
-                din.close();
-                int statusCode = response.statusCode();
-                if (statusCode == 200) {
-                    res.complete(resp);
-                } else if (statusCode == HttpURLConnection.HTTP_NO_CONTENT) {
-                    res.complete(new byte[0]);
-                }
-            } catch (HttpTimeoutException e) {
-                res.completeExceptionally(new SocketTimeoutException("Socket timeout on: " + request.uri()));
-            } catch (InterruptedException ex) {
-                res.completeExceptionally(new RuntimeException(ex));
-            } catch (IOException e) {
-                JavaPoster.handleError(request.uri().toString(), res, response, e);
-            } catch (Exception e) {
-                res.completeExceptionally(e);
-            }
-        }, ForkJoinPool.commonPool());
         return res;
     }
 }
