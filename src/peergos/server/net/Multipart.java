@@ -2,6 +2,7 @@ package peergos.server.net;
 
 import peergos.server.util.JavaPoster;
 import peergos.shared.io.ipfs.api.NamedStreamable;
+import peergos.shared.storage.StorageQuotaExceededException;
 import peergos.shared.util.*;
 
 import java.io.*;
@@ -14,7 +15,6 @@ import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
-import java.util.concurrent.ForkJoinPool;
 import java.util.zip.GZIPInputStream;
 
 public class Multipart {
@@ -66,6 +66,13 @@ public class Multipart {
                     res.complete(resp);
                 } else if (statusCode == HttpURLConnection.HTTP_NO_CONTENT) {
                     res.complete(new byte[0]);
+                } else {
+                    List<String> trailers = responseHeaders.map().get("trailer");
+                    String trailer = String.join("", trailers);
+                    if (trailer.contains("Storage+quota+reached"))
+                        res.completeExceptionally(new StorageQuotaExceededException(trailer));
+                    else
+                        res.completeExceptionally(new IOException(trailer));
                 }
             } catch (HttpTimeoutException e) {
                 res.completeExceptionally(new SocketTimeoutException("Socket timeout on: " + request.uri()));

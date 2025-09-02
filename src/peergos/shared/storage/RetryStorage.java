@@ -56,7 +56,8 @@ public class RetryStorage implements ContentAddressedStorage {
         try {
             f.get()
                     .thenAccept(res::complete)
-                    .exceptionally(e -> {
+                    .exceptionally(g -> {
+                        Throwable e = Exceptions.getRootCause(g);
                         if (retriesLeft == 1) {
                             res.completeExceptionally(e);
                         } else if (e instanceof StorageQuotaExceededException) {
