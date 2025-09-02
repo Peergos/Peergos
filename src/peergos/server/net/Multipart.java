@@ -12,11 +12,14 @@ import java.nio.channels.Pipe;
 import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
+import java.util.concurrent.Executors;
 import java.util.concurrent.ForkJoinPool;
 import java.util.zip.GZIPInputStream;
 
 public class Multipart {
     private static final String LINE_FEED = "\r\n";
+    private final Executor ioPool = Executors.newCachedThreadPool();
     private final String boundary;
     private final CompletableFuture<byte[]> res;
     private String charset;
@@ -71,7 +74,7 @@ public class Multipart {
             } catch (Exception e) {
                 res.completeExceptionally(e);
             }
-        }, ForkJoinPool.commonPool());
+        }, ioPool);
     }
 
     public static String createBoundary() {
