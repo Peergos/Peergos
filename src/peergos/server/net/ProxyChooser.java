@@ -48,15 +48,6 @@ public class ProxyChooser extends ProxySelector {
                                 Optional.empty(),
                         Proxy.Type.HTTP
                 ));
-        boolean useSocksProxy = a.hasArg("socks_proxy");
-        if (useSocksProxy && useHttpProxy)
-            throw new IllegalStateException("Cannot use socks proxy at same time as http proxy!");
-        Optional<ProxySelector> socksProxy = ! useSocksProxy ?
-                Optional.empty() :
-                Optional.of(new ProxyChooser(
-                        Optional.of(parseAddress(a.getArg("socks_proxy"))),
-                        Proxy.Type.SOCKS
-                ));
-        return httpProxy.isPresent() ? httpProxy : socksProxy;
+        return httpProxy;
     }
 }

@@ -83,8 +83,6 @@ public class Main extends Builder {
     public static final Command.Arg ARG_ANNOUNCE_ADDRESSES = new Command.Arg("ipfs-announce-addresses",
             "Comma separated list of extra announce multi-addresses. e.g. a public NAT address with port forwarding: /ip4/$IP/tcp/4001", false);
     public static final Command.Arg ARG_HTTP_PROXY = new Command.Arg("http_proxy", "Use a http proxy for all requests, format host:port", false);
-    public static final Command.Arg ARG_SOCKS_PROXY = new Command.Arg("socks_proxy", "Use a socks5 proxy for all requests, format host:port", false);
-
 
     public static final Command.Arg LISTEN_HOST = new Command.Arg("listen-host", "The hostname/interface to listen on", true, "localhost");
 
@@ -459,8 +457,7 @@ public class Main extends Builder {
                     new Command.Arg("max-parallelism", "The maximum parallelism to download files with", false, "32"),
                     new Command.Arg("block-cache-size-bytes", "The size of the local block cache, e.g. 5g", false, "1g"),
                     new Command.Arg("run-once", "Only sync the directory once", false),
-                    ARG_HTTP_PROXY,
-                    ARG_SOCKS_PROXY
+                    ARG_HTTP_PROXY
             ).collect(Collectors.toList())
     );
 
@@ -469,8 +466,7 @@ public class Main extends Builder {
             DirectorySync::init,
             Stream.of(
                     new Command.Arg("peergos-url", "Peergos service address", false, "https://peergos.net"),
-                    ARG_HTTP_PROXY,
-                    ARG_SOCKS_PROXY
+                    ARG_HTTP_PROXY
             ).collect(Collectors.toList())
     );
 
@@ -516,8 +512,7 @@ public class Main extends Builder {
                     new Command.Arg("username", "Peergos username", false),
                     new Command.Arg("PEERGOS_PASSWORD", "Peergos password", false),
                     new Command.Arg("peergos-url", "Address of the Peergos server", false),
-                    ARG_HTTP_PROXY,
-                    ARG_SOCKS_PROXY
+                    ARG_HTTP_PROXY
             ).collect(Collectors.toList())
     );
 
@@ -667,7 +662,6 @@ public class Main extends Builder {
             Arrays.asList(
                     new Command.Arg("peergos-url", "Address of the Peergos server", false, "https://peergos.net"),
                     ARG_HTTP_PROXY,
-                    ARG_SOCKS_PROXY,
                     new Command.Arg("port", "Localhost server port", true, "7777"),
                     new Command.Arg("mutable-pointers-cache", "The filename for the mutable pointers cache", true, "pointer-cache.sqlite"),
                     new Command.Arg("account-cache-sql-file", "The filename for the account cache", true, "account-cache.sqlite"),
