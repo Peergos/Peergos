@@ -76,7 +76,7 @@ public class JavaPoster implements HttpPoster {
             if (timeoutMillis >= 0)
                 requestBuilder.timeout(Duration.ofMillis(timeoutMillis));
             for (Map.Entry<String, String> e : headers.entrySet()) {
-                if (! e.getKey().equals("Host"))
+                if (! e.getKey().equals("Host") && ! e.getKey().equals("Content-length"))
                     requestBuilder.setHeader(e.getKey(), e.getValue());
             }
             if (basicAuth.isPresent())
@@ -164,7 +164,7 @@ public class JavaPoster implements HttpPoster {
                 requestBuilder.PUT(HttpRequest.BodyPublishers.ofByteArray(body));
                 requestBuilder.timeout(Duration.ofMillis(15000));
                 for (Map.Entry<String, String> e : headers.entrySet()) {
-                    if (! e.getKey().equals("Host"))
+                    if (! e.getKey().equals("Host") && ! e.getKey().equals("Content-length"))
                         requestBuilder.setHeader(e.getKey(), e.getValue());
                 }
                 if (basicAuth.isPresent())
@@ -229,7 +229,7 @@ public class JavaPoster implements HttpPoster {
                 requestBuilder.GET();
                 requestBuilder.timeout(Duration.ofMillis(15000));
                 for (Map.Entry<String, String> e : headers.entrySet()) {
-                    if (! e.getKey().equals("Host"))
+                    if (! e.getKey().equals("Host") && ! e.getKey().equals("Content-length"))
                         requestBuilder.setHeader(e.getKey(), e.getValue());
                 }
                 if (basicAuth.isPresent())
