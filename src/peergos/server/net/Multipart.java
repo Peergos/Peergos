@@ -80,6 +80,8 @@ public class Multipart {
                 JavaPoster.handleError(request.uri().toString(), res, response, e);
             } catch (Exception e) {
                 res.completeExceptionally(e);
+            } finally {
+                writer.close();
             }
         }, ioPool);
     }
