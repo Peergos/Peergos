@@ -261,6 +261,7 @@ public class GarbageCollector {
                 .map(e -> markPool.submit(() -> markReachable(e.getKey(), e.getValue(), reachability, storage, usage, fromUsage, metadata, totalReachable)))
                 .collect(Collectors.toList());
         long rootsProcessed = marked.stream().filter(ForkJoinTask::join).count();
+        markPool.shutdown();
 
         long t5 = System.nanoTime();
         System.out.println("Marking " + (totalReachable.get() - reachableAfterUsage) + " reachable from "+rootsProcessed+" pointers took " + (t5-t4)/1_000_000_000 + "s");
@@ -287,6 +288,7 @@ public class GarbageCollector {
                 .map(ForkJoinTask::join)
                 .reduce((a, b) -> new Pair<>(a.left + b.left, a.right + b.right))
                 .orElse(new Pair<>(0L, 0L));
+        pool.shutdown();
         long deletedCborBlocks = deleted.left;
         long deletedRawBlocks = deleted.right;
         long t8 = System.nanoTime();
