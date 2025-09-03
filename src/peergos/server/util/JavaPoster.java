@@ -163,7 +163,8 @@ public class JavaPoster implements HttpPoster {
                 requestBuilder.PUT(HttpRequest.BodyPublishers.ofByteArray(body));
                 requestBuilder.timeout(Duration.ofMillis(15000));
                 for (Map.Entry<String, String> e : headers.entrySet()) {
-                    requestBuilder.setHeader(e.getKey(), e.getValue());
+                    if (! e.getKey().equals("Host"))
+                        requestBuilder.setHeader(e.getKey(), e.getValue());
                 }
                 if (basicAuth.isPresent())
                     requestBuilder.setHeader("Authorization", basicAuth.get());
