@@ -12,6 +12,7 @@ import org.jline.utils.*;
 
 import peergos.server.*;
 import peergos.server.crypto.hash.ScryptJava;
+import peergos.server.net.ProxyChooser;
 import peergos.server.simulation.*;
 import peergos.server.simulation.FileSystem;
 import peergos.server.user.*;
@@ -315,11 +316,7 @@ public class CLI implements Runnable {
     }
 
     private static AsyncReader reader(File f) {
-        try {
-            return new FileAsyncReader(f);
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
+        return new FileAsyncReader(f);
     }
 
     public interface ProgressCreator {
@@ -761,7 +758,8 @@ public class CLI implements Runnable {
                 args.getArg("username") :
                 reader.readLine("Enter username" + PROMPT).trim();
 
-        NetworkAccess network = Builder.buildJavaNetworkAccess(serverURL, address.startsWith("https"), Optional.of("Peergos-" + UserService.CURRENT_VERSION + "-shell")).join();
+        Optional<ProxySelector> proxy = ProxyChooser.build(args);
+        NetworkAccess network = Builder.buildJavaNetworkAccess(serverURL, address.startsWith("https"), Optional.of("Peergos-" + UserService.CURRENT_VERSION + "-shell"), proxy).join();
         Consumer<String> progressConsumer =  msg -> {
             writer.println(msg);
             writer.flush();

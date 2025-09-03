@@ -1,41 +1,89 @@
-package peergos.shared.io.ipfs.api;
+package peergos.server.net;
 
+import peergos.server.util.JavaPoster;
+import peergos.shared.io.ipfs.api.NamedStreamable;
+import peergos.shared.storage.StorageQuotaExceededException;
 import peergos.shared.util.*;
 
 import java.io.*;
 import java.net.*;
+import java.net.http.*;
+import java.nio.channels.Channels;
+import java.nio.channels.Pipe;
+import java.time.Duration;
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
+import java.util.concurrent.Executors;
+import java.util.zip.GZIPInputStream;
 
 public class Multipart {
-    private final String boundary;
     private static final String LINE_FEED = "\r\n";
-    private HttpURLConnection httpConn;
+    private static final Executor ioPool = Executors.newCachedThreadPool();
+    private final String boundary;
+    private final CompletableFuture<byte[]> res;
     private String charset;
     private OutputStream out;
     private PrintWriter writer;
 
-    public Multipart(String requestURL, String charset) throws IOException {
-        this(requestURL, charset, Collections.emptyMap(), 0);
-    }
-    public Multipart(String requestURL, String charset, Map<String, String> headers, int readTimeoutMillis) throws IOException {
+    public Multipart(HttpClient client, String requestURL, String charset, Map<String, String> headers, int readTimeoutMillis) throws IOException {
         this.charset = charset;
+        this.boundary = createBoundary();
 
-        boundary = createBoundary();
-
-        URL url = new URL(requestURL);
-        httpConn = (HttpURLConnection) url.openConnection();
-        httpConn.setUseCaches(false);
-        httpConn.setDoOutput(true);
-        httpConn.setDoInput(true);
+        URI uri = URI.create(new URL(requestURL).toString());
+        HttpRequest.Builder requestBuilder = HttpRequest.newBuilder().uri(uri);
+        requestBuilder.setHeader("User-Agent", "Java Peergos Client");
+        requestBuilder.setHeader("Content-Type", "multipart/form-data; boundary=" + boundary);
         if (readTimeoutMillis > 0)
-            httpConn.setReadTimeout(readTimeoutMillis);
+            requestBuilder.timeout(Duration.ofMillis(readTimeoutMillis));
         for (Map.Entry<String, String> e : headers.entrySet()) {
-            httpConn.setRequestProperty(e.getKey(), e.getValue());
+            requestBuilder.setHeader(e.getKey(), e.getValue());
         }
-        httpConn.setRequestProperty("Content-Type", "multipart/form-data; boundary=" + boundary);
-        httpConn.setRequestProperty("User-Agent", "Java IPFS Client");
-        out = httpConn.getOutputStream();
+
+        Pipe pipe = Pipe.open();
+
+        requestBuilder.POST(HttpRequest.BodyPublishers.ofInputStream(() -> Channels.newInputStream(pipe.source())));
+
+        HttpRequest request = requestBuilder.build();
+
+        out = Channels.newOutputStream(pipe.sink());
         writer = new PrintWriter(new OutputStreamWriter(out, charset), true);
+        res = new CompletableFuture<>();
+        CompletableFuture.runAsync(() -> {
+            HttpResponse<InputStream> response = null;
+            try {
+                response = client.sendAsync(request, HttpResponse.BodyHandlers.ofInputStream()).join();
+                HttpHeaders responseHeaders = response.headers();
+                Optional<String> contentEncodingOpt = responseHeaders.firstValue("content-encoding");
+                boolean isGzipped = contentEncodingOpt.isPresent() && "gzip".equals(contentEncodingOpt.get());
+                DataInputStream din = new DataInputStream(isGzipped ?
+                        new GZIPInputStream(response.body()) :
+                        response.body());
+                byte[] resp = Serialize.readFully(din);
+                din.close();
+                int statusCode = response.statusCode();
+                if (statusCode == 200) {
+                    res.complete(resp);
+                } else if (statusCode == HttpURLConnection.HTTP_NO_CONTENT) {
+                    res.complete(new byte[0]);
+                } else {
+                    List<String> trailers = responseHeaders.map().get("trailer");
+                    String trailer = String.join("", trailers);
+                    if (trailer.contains("Storage+quota+reached"))
+                        res.completeExceptionally(new StorageQuotaExceededException(trailer));
+                    else
+                        res.completeExceptionally(new IOException(trailer));
+                }
+            } catch (HttpTimeoutException e) {
+                res.completeExceptionally(new SocketTimeoutException("Socket timeout on: " + request.uri()));
+            } catch (IOException e) {
+                JavaPoster.handleError(request.uri().toString(), res, response, e);
+            } catch (Exception e) {
+                res.completeExceptionally(e);
+            } finally {
+                writer.close();
+            }
+        }, ioPool);
     }
 
     public static String createBoundary() {
@@ -118,43 +166,10 @@ public class Multipart {
         writer.flush();
     }
 
-    public String finish() throws IOException {
-        StringBuilder b = new StringBuilder();
-
+    public CompletableFuture<byte[]> finish() throws IOException {
         writer.append("--" + boundary + "--").append(LINE_FEED);
         writer.close();
 
-        int status = httpConn.getResponseCode();
-        if (status == HttpURLConnection.HTTP_OK) {
-            BufferedReader reader = new BufferedReader(new InputStreamReader(
-                    httpConn.getInputStream()));
-            String line;
-            while ((line = reader.readLine()) != null) {
-                b.append(line);
-            }
-            reader.close();
-            httpConn.disconnect();
-        } else if (status == HttpURLConnection.HTTP_NO_CONTENT) {
-            httpConn.disconnect();
-            return "";
-        } else {
-            try {
-                BufferedReader reader = new BufferedReader(new InputStreamReader(
-                        httpConn.getInputStream()));
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    b.append(line);
-                }
-                reader.close();
-            } catch (Throwable t) {}
-            InputStream errorStream = httpConn.getErrorStream();
-            if (errorStream != null) {
-                String errBody = new String(Serialize.readFully(errorStream));
-                b.append(errBody);
-            }
-            throw new IOException("Server returned status: " + status + " with body: "+b.toString() + " and Trailer header: "+httpConn.getHeaderFields().get("Trailer"));
-        }
-
-        return b.toString();
+        return res;
     }
 }

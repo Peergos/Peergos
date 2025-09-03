@@ -55,7 +55,7 @@ public class ChatBenchmark {
     private static Pair<UserService, NetworkAccess> buildHttpNetworkAccess(boolean useIpfs, Random r) throws Exception {
         Args args = UserTests.buildArgs().with("useIPFS", "" + useIpfs);
         UserService service = Main.PKI_INIT.main(args).localApi;
-        NetworkAccess net = Builder.buildJavaNetworkAccess(new URL("http://localhost:" + args.getInt("port")), false, Optional.empty()).join();
+        NetworkAccess net = Builder.buildJavaNetworkAccess(new URL("http://localhost:" + args.getInt("port")), false, Optional.empty(), Optional.empty()).join();
         int delayMillis = 50;
         NetworkAccess delayed = net.withStorage(s -> new DelayingStorage(s, delayMillis, delayMillis));
         return new Pair<>(service, delayed);

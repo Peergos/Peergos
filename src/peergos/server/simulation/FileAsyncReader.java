@@ -10,8 +10,12 @@ public class FileAsyncReader implements AsyncReader {
 
     private final RandomAccessFile file;
 
-    public FileAsyncReader(File f) throws FileNotFoundException {
-        this.file = new RandomAccessFile(f, "r");
+    public FileAsyncReader(File f) {
+        try {
+            this.file = new RandomAccessFile(f, "r");
+        } catch (FileNotFoundException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     @Override

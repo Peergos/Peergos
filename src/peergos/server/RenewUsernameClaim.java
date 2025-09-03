@@ -12,7 +12,7 @@ public class RenewUsernameClaim {
 
     public static void main(String[] args) throws Exception {
         Crypto crypto = Main.initCrypto();
-        NetworkAccess network = Builder.buildJavaNetworkAccess(new URL("https://peergos.net"), true, Optional.empty()).get();
+        NetworkAccess network = Builder.buildJavaNetworkAccess(new URL("https://peergos.net"), true, Optional.empty(), Optional.empty()).get();
         String username = args[0];
         Console console = System.console();
         String password = new String(console.readPassword("Enter password for " + username + ":"));

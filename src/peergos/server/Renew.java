@@ -12,7 +12,7 @@ public class Renew {
 
     public static void main(String[] args) throws Exception {
         Crypto crypto = Main.initCrypto();
-        NetworkAccess network = Builder.buildJavaNetworkAccess(new URL("https://peergos.net"), true, Optional.empty()).get();
+        NetworkAccess network = Builder.buildJavaNetworkAccess(new URL("https://peergos.net"), true, Optional.empty(), Optional.empty()).get();
         String username = args[0];
         LocalDate expiry = LocalDate.parse(args[1]);
         Console console = System.console();
