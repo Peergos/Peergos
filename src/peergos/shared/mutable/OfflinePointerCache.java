@@ -14,7 +14,6 @@ public class OfflinePointerCache implements MutablePointers {
     private final MutablePointers target;
     private final PointerCache cache;
     private final OnlineState online;
-    private final LRUCache<PublicKeyHash, byte[]> ramCache = new LRUCache<>(10);
 
     public OfflinePointerCache(MutablePointers target, PointerCache cache, OnlineState online) {
         this.target = target;
@@ -25,10 +24,8 @@ public class OfflinePointerCache implements MutablePointers {
     @Override
     public CompletableFuture<Boolean> setPointer(PublicKeyHash owner, PublicKeyHash writer, byte[] writerSignedBtreeRootHash) {
         return target.setPointer(owner, writer, writerSignedBtreeRootHash).thenApply(res -> {
-            if (res) {
-                ramCache.put(writer, writerSignedBtreeRootHash);
+            if (res)
                 cache.put(owner, writer, writerSignedBtreeRootHash);
-            }
             return res;
         });
     }
@@ -41,25 +38,18 @@ public class OfflinePointerCache implements MutablePointers {
                         // race the cache with the server after 1s
                         target.getPointer(owner, writer)
                                 .thenAccept(pointer -> {
-                                    pointer.ifPresent(p -> {
-                                        ramCache.put(writer, p);
-                                        cache.put(owner, writer, p);
-                                    });
+                                    pointer.ifPresent(p -> cache.put(owner, writer, p));
                                     res.complete(pointer);
                                 }).exceptionally(t -> {
                                     res.completeExceptionally(t);
                                     return null;
                                 });
                         executor.schedule(() -> {
-                            byte[] fromRam = ramCache.get(writer);
-                            if (fromRam != null)
-                                res.complete(Optional.of(fromRam));
-                            else
-                                cache.get(owner, writer).thenAccept(cached -> {
-                                    if (cached.isPresent()) {
-                                        res.complete(cached);
-                                    }
-                                });
+                            cache.get(owner, writer).thenAccept(cached -> {
+                                if (cached.isPresent()) {
+                                    res.complete(cached);
+                                }
+                            });
                             return true;
                         }, 1_000, TimeUnit.MILLISECONDS);
                         return res;
