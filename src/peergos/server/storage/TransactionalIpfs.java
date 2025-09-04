@@ -73,7 +73,7 @@ public class TransactionalIpfs extends DelegatingDeletableStorage {
 
     @Override
     public CompletableFuture<Optional<CborObject>> get(PublicKeyHash owner, Cid hash, Optional<BatWithId> bat) {
-        List<Multihash> providers = hasBlock(hash) ? Collections.emptyList() : pki.getStorageProviders(owner);
+        List<Multihash> providers = hasBlock(hash) ? List.of(id) : pki.getStorageProviders(owner);
         return get(providers, hash, bat, id, hasher, true);
     }
 
