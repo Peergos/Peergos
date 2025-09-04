@@ -308,7 +308,7 @@ public class UserPublicKeyLink implements Cborable {
             return CompletableFuture.completedFuture(false);
         if (!from.claim.username.equals(username))
             return CompletableFuture.completedFuture(false);
-        if (from.claim.storageProviders.size() > 1)
+        if (from.claim.storageProviders.size() != 1)
             return CompletableFuture.completedFuture(false);
         return ipfs.getSigningKey(from.owner, from.owner).thenCompose(ownerKeyOpt -> {
             if (!ownerKeyOpt.isPresent())

@@ -416,6 +416,8 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
         public CompletableFuture<Optional<CborObject>> get(List<Multihash> peerIds, Cid hash, String auth, boolean persistBlock) {
             if (hash.isIdentity())
                 return CompletableFuture.completedFuture(Optional.of(CborObject.fromByteArray(hash.getHash())));
+            if (peerIds.isEmpty())
+                throw new IllegalStateException("Empty peer list for block "+hash+"!");
             return poster.get(apiPrefix + BLOCK_GET + "?stream-channels=true&arg=" + hash
                             + (peerIds.isEmpty() ? "" : "&peers=" + peerIds.stream().map(p -> p.bareMultihash().toBase58()).collect(Collectors.joining(",")))
                             + "&auth=" + auth
@@ -427,6 +429,8 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
         public CompletableFuture<Optional<byte[]>> getRaw(List<Multihash> peerIds, Cid hash, String auth, boolean persistBlock) {
             if (hash.isIdentity())
                 return CompletableFuture.completedFuture(Optional.of(hash.getHash()));
+            if (peerIds.isEmpty())
+                throw new IllegalStateException("Empty peer list for block "+hash+"!");
             return poster.get(apiPrefix + BLOCK_GET + "?stream-channels=true&arg=" + hash
                             + (peerIds.isEmpty() ? "" : "&peers=" + peerIds.stream().map(p -> p.bareMultihash().toBase58()).collect(Collectors.joining(",")))
                             + "&auth=" + auth
