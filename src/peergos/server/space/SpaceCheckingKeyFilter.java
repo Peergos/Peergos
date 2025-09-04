@@ -383,7 +383,11 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
                     + usage.totalUsage() + " out of " + quota + " bytes. Rejecting write of size " + (size + pending) + ". \n" +
                     "Please delete some files or request more space.");
         }
-        usageStore.addPendingUsage(writerUsage.owner, writer, size);
+        try {
+            usageStore.addPendingUsage(writerUsage.owner, writer, size);
+        } catch (Exception e) {
+            throw new IllegalStateException("Couldn't update pending usage for user " + writerUsage.owner, e);
+        }
         return true;
     }
 }
