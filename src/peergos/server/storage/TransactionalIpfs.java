@@ -139,7 +139,7 @@ public class TransactionalIpfs extends DelegatingDeletableStorage {
 
     @Override
     public CompletableFuture<BlockMetadata> getBlockMetadata(Cid block) {
-        return getRaw(Collections.emptyList(), block, "", false, true)
+        return getRaw(List.of(id), block, "", false, true)
                 .thenApply(data -> BlockMetadataStore.extractMetadata(block, data.get()));
     }
 
