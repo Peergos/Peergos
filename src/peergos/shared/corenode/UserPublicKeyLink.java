@@ -263,6 +263,16 @@ public class UserPublicKeyLink implements Cborable {
         for (int i=0; i < chain.size()-1; i++)
             validities.add(validLink(chain.get(i), chain.get(i + 1).owner, username, ipfs));
 
+        // last claim must have storage providers, earlier ones must be empty
+        for (int i=0; i < chain.size(); i++) {
+            if (i == chain.size() - 1) {
+                if (chain.get(i).claim.storageProviders.size() != 1)
+                    throw new IllegalStateException("More than 1 storage providers in claim for " + username);
+            } else {
+                if (! chain.get(i).claim.storageProviders.isEmpty())
+                    throw new IllegalStateException("Non empty storage providers in old claim for " + username);
+            }
+        }
         BiFunction<Boolean, CompletableFuture<Boolean>, CompletableFuture<Boolean>> composer = (b, valid) -> valid.thenApply(res -> res && b);
         return Futures.reduceAll(validities,
                 true,
@@ -308,7 +318,7 @@ public class UserPublicKeyLink implements Cborable {
             return CompletableFuture.completedFuture(false);
         if (!from.claim.username.equals(username))
             return CompletableFuture.completedFuture(false);
-        if (from.claim.storageProviders.size() != 1)
+        if (from.claim.storageProviders.size() > 1)
             return CompletableFuture.completedFuture(false);
         return ipfs.getSigningKey(from.owner, from.owner).thenCompose(ownerKeyOpt -> {
             if (!ownerKeyOpt.isPresent())
