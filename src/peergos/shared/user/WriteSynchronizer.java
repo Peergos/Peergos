@@ -110,7 +110,7 @@ public class WriteSynchronizer {
                                                           ComplexMutation transformer,
                                                           Supplier<Boolean> commitWatcher) {
         return pending.computeIfAbsent(new Pair<>(owner, writer.publicKeyHash), p -> new AsyncLock<>(getWriterData(owner, p.right)))
-                .runWithLock(current -> transformer.apply(current,
+                .runWithLock(current -> transformer.apply(current.retainOnly(writer.publicKeyHash),
                                         committerBuilder.buildCommitter((aOwner, signer, wd, existing, tid) -> (wd.isPresent() ?
                                                 wd.get().commit(aOwner, signer, existing.hash, existing.sequence, mutable, dht, hasher, tid) :
                                                 WriterData.commitDeletion(aOwner, signer, existing.hash, existing.sequence, mutable))
