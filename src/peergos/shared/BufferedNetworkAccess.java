@@ -177,7 +177,7 @@ public class BufferedNetworkAccess extends NetworkAccess {
         // Condense pointers and do a mini GC to remove superfluous work
         List<Cid> roots = pointerBuffer.getRoots();
         if (roots.isEmpty())
-            throw new IllegalStateException("Where are the pointers?");
+            return Futures.of(true);
         blockBuffer.gc(roots);
         Map<PublicKeyHash, SigningPrivateKeyAndPublicHash> writers = pointerBuffer.getSigners();
         List<Pair<BufferedPointers.WriterUpdate, Optional<CommittedWriterData>>> writes = blockBuffer.getAllWriterData(writerUpdates);

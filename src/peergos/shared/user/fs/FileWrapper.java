@@ -134,9 +134,9 @@ public class FileWrapper {
     public CompletableFuture<FileWrapper> getUpdated(Snapshot version, NetworkAccess network) {
         return version.withWriter(owner(), writer(), network).thenCompose(v -> {
             if (this.version.get(writer()).equals(v.get(writer()))) {
-                return CompletableFuture.completedFuture(this.withVersion(this.version.retainOnly(writer())));
+                return CompletableFuture.completedFuture(this);
             }
-            return network.getFile(v.retainOnly(writer()), pointer.capability, entryWriter, ownername)
+            return network.getFile(v, pointer.capability, entryWriter, ownername)
                     .thenApply(Optional::get)
                     .thenApply(f -> f.withTrieNodeOpt(capTrie));
         });
@@ -957,7 +957,7 @@ public class FileWrapper {
                         (s, c) -> {
                             return getUpdated(s, network).thenCompose(us -> Futures.reduceAll(directories, us,
                                             (dir, children) -> dir.getOrMkdirs(children.relativePath, false, mirror, network, crypto, dir.version, c)
-                                                    .thenCompose(p -> uploadFolder(PathUtil.get(path).resolve(children.path()), p.right.withVersion(p.right.version.retainOnly(p.right.writer())),
+                                                    .thenCompose(p -> uploadFolder(PathUtil.get(path).resolve(children.path()), p.right,
                                                             children, mirrorBat, txns, resumeFile, commitWatcher, isCancelled, network, crypto, c)
                                                             .thenCompose(v -> dir.getUpdated(v, network))),
                                             (a, b) -> b))
@@ -1792,7 +1792,6 @@ public class FileWrapper {
             return Futures.errored(new IllegalStateException("Illegal directory name: " + newFolderName));
         }
         Snapshot fullVersion = this.version.mergeAndOverwriteWith(version);
-        System.out.println("get or mkdir full version " + fullVersion);
         return getChild(fullVersion, newFolderName, network).thenCompose(childOpt -> {
             if (childOpt.isPresent()) {
                 return Futures.of(new Pair<>(fullVersion, childOpt.get()));
@@ -1800,10 +1799,8 @@ public class FileWrapper {
             return pointer.fileAccess.mkdir(fullVersion, committer, newFolderName, network, writableFilePointer(), getChildsEntryWriter(),
                     requestedBaseReadKey, requestedBaseWriteKey, desiredMapKey, desiredBat, isSystemFolder, mirrorBat, crypto).thenCompose(x -> {
                 setModified();
-                System.out.println("version x " + x);
                 return getUpdated(x, network).thenCompose(us -> us.getChild(newFolderName, crypto.hasher, network))
                         .thenApply(child -> {
-                            System.out.println("mkdir child version " + child.get().version);
                             return new Pair<>(x, child.get());
                         });
             });
