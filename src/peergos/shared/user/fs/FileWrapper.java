@@ -1010,7 +1010,6 @@ public class FileWrapper {
                                                 crypto.random.randomBytes(32), Optional.empty(), Optional.of(Bat.random(crypto.random)), mirrorBat)
                                         .thenApply(pair -> new Pair<>(pair.left, Stream.concat(p.right.stream(), pair.right.stream()).collect(Collectors.toList())))
                                         .thenCompose(r -> {
-                                            System.out.println("Uploaded small file pre parent add: " + r.left.toString());
                                             fileData.close();
                                             if (! network.isFull())
                                                 return Futures.of(r);
