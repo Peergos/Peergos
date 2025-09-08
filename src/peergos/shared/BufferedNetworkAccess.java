@@ -177,58 +177,58 @@ public class BufferedNetworkAccess extends NetworkAccess {
         // Condense pointers and do a mini GC to remove superfluous work
         List<Cid> roots = pointerBuffer.getRoots();
         if (roots.isEmpty())
-            throw new IllegalStateException("Where are the pointers?");
+            return Futures.of(true);
         blockBuffer.gc(roots);
         Map<PublicKeyHash, SigningPrivateKeyAndPublicHash> writers = pointerBuffer.getSigners();
         List<Pair<BufferedPointers.WriterUpdate, Optional<CommittedWriterData>>> writes = blockBuffer.getAllWriterData(writerUpdates);
         CompletableFuture<Boolean> res = new CompletableFuture<>();
         blockBuffer.signBlocks(writers)
-                .thenCompose(b -> blockBuffer.target().startTransaction(owner))
-                .thenCompose(tid -> Futures.reduceAll(writes.stream(), true, (a,u) ->
-                                 blockBuffer.commit(owner, u.left.writer, tid)
-                                        .thenCompose(b -> Futures.asyncExceptionally(
-                                                        () -> pointerBuffer.commit(owner, writers.get(u.left.writer),
-                                                                new PointerUpdate(u.left.prevHash, u.left.currentHash, u.left.currentSequence)),
-                                                t -> {
-                                                    Throwable cause = Exceptions.getRootCause(t);
-                                                    if (cause instanceof PointerCasException) {
-                                                        PointerCasException cas = (PointerCasException) cause;
-                                                        MaybeMultihash actualExisting = cas.existing;
-                                                        return WriterData.getWriterData(owner, (Cid) u.left.prevHash.get(), Optional.empty(), blockBuffer)
-                                                                .thenCompose(original -> WriterData.getWriterData(owner, (Cid) u.left.currentHash.get(), Optional.empty(), blockBuffer)
-                                                                        .thenCompose(updated -> WriterData.getWriterData(owner, (Cid) actualExisting.get(), Optional.empty(), blockBuffer)
-                                                                                .thenCompose(remote -> ChampUtil.merge(owner, writers.get(u.left.writer),
-                                                                                        MaybeMultihash.of(original.props.get().tree.get()),
-                                                                                        MaybeMultihash.of(updated.props.get().tree.get()),
-                                                                                        MaybeMultihash.of(remote.props.get().tree.get()),
-                                                                                        Optional.empty(), tid, ChampWrapper.BIT_WIDTH,
-                                                                                        ChampWrapper.MAX_HASH_COLLISIONS_PER_LEVEL, x -> Futures.of(x.data),
-                                                                                                c -> (CborObject.CborMerkleLink)c, blockBuffer, hasher)
-                                                                                        .thenApply(p -> remote.props.get().withChamp(p.right)))))
-                                                                .thenCompose(newWD -> {
-                                                                    // 1. write the new writer data for the merged champs
-                                                                    // 2. flush the blocks
-                                                                    // 3. commit the new pointer
-                                                                    Optional<Long> seq = cas.sequence;
-                                                                    return blockBuffer.put(owner, writers.get(u.left.writer), newWD.serialize(), hasher, tid)
-                                                                            .thenCompose(mergedRoot -> blockBuffer.signBlocks(writers)
-                                                                                    .thenCompose(signed -> blockBuffer.commit(owner, u.left.writer, tid))
-                                                                                    .thenCompose(x -> pointerBuffer.commit(owner, writers.get(u.left.writer),
-                                                                                            new PointerUpdate(actualExisting, MaybeMultihash.of(mergedRoot), seq.map(s -> s + 1)))));
-                                                                });
-                                                    }
-                                                    return Futures.errored(t);
-                                                }
+                .thenCompose(signed -> blockBuffer.target().startTransaction(owner)
+                        .thenCompose(tid -> Futures.reduceAll(writes.stream(), true, (a,u) ->
+                                        blockBuffer.commit(owner, u.left.writer, tid, signed)
+                                                .thenCompose(b -> Futures.asyncExceptionally(
+                                                                () -> pointerBuffer.commit(owner, writers.get(u.left.writer),
+                                                                        new PointerUpdate(u.left.prevHash, u.left.currentHash, u.left.currentSequence)),
+                                                                t -> {
+                                                                    Throwable cause = Exceptions.getRootCause(t);
+                                                                    if (cause instanceof PointerCasException) {
+                                                                        PointerCasException cas = (PointerCasException) cause;
+                                                                        MaybeMultihash actualExisting = cas.existing;
+                                                                        return WriterData.getWriterData(owner, (Cid) u.left.prevHash.get(), Optional.empty(), blockBuffer)
+                                                                                .thenCompose(original -> WriterData.getWriterData(owner, (Cid) u.left.currentHash.get(), Optional.empty(), blockBuffer)
+                                                                                        .thenCompose(updated -> WriterData.getWriterData(owner, (Cid) actualExisting.get(), Optional.empty(), blockBuffer)
+                                                                                                .thenCompose(remote -> ChampUtil.merge(owner, writers.get(u.left.writer),
+                                                                                                                MaybeMultihash.of(original.props.get().tree.get()),
+                                                                                                                MaybeMultihash.of(updated.props.get().tree.get()),
+                                                                                                                MaybeMultihash.of(remote.props.get().tree.get()),
+                                                                                                                Optional.empty(), tid, ChampWrapper.BIT_WIDTH,
+                                                                                                                ChampWrapper.MAX_HASH_COLLISIONS_PER_LEVEL, x -> Futures.of(x.data),
+                                                                                                                c -> (CborObject.CborMerkleLink)c, blockBuffer, hasher)
+                                                                                                        .thenApply(p -> remote.props.get().withChamp(p.right)))))
+                                                                                .thenCompose(newWD -> {
+                                                                                    // 1. write the new writer data for the merged champs
+                                                                                    // 2. flush the blocks
+                                                                                    // 3. commit the new pointer
+                                                                                    Optional<Long> seq = cas.sequence;
+                                                                                    return blockBuffer.put(owner, writers.get(u.left.writer), newWD.serialize(), hasher, tid)
+                                                                                            .thenCompose(mergedRoot -> blockBuffer.signBlocks(writers)
+                                                                                                    .thenCompose(signedMore -> blockBuffer.commit(owner, u.left.writer, tid, signedMore))
+                                                                                                    .thenCompose(x -> pointerBuffer.commit(owner, writers.get(u.left.writer),
+                                                                                                            new PointerUpdate(actualExisting, MaybeMultihash.of(mergedRoot), seq.map(s -> s + 1)))));
+                                                                                });
+                                                                    }
+                                                                    return Futures.errored(t);
+                                                                }
                                                         )
-                                                .thenCompose(x -> u.right
-                                                        .map(cwd -> synchronizer.updateWriterState(owner, u.left.writer, new Snapshot(u.left.writer, cwd)))
-                                                        .orElse(Futures.of(true)))), (x,y) -> x && y)
-                        .thenCompose(x -> blockBuffer.target().closeTransaction(owner, tid))
-                        .thenApply(x -> {
-                            pointerBuffer.clear();
-                            blockBuffer.clear();
-                            return commitWatcher.get();
-                        })).thenApply(res::complete)
+                                                        .thenCompose(x -> u.right
+                                                                .map(cwd -> synchronizer.updateWriterState(owner, u.left.writer, new Snapshot(u.left.writer, cwd)))
+                                                                .orElse(Futures.of(true)))), (x,y) -> x && y)
+                                .thenCompose(x -> blockBuffer.target().closeTransaction(owner, tid))
+                                .thenApply(x -> {
+                                    pointerBuffer.clear();
+                                    blockBuffer.clear();
+                                    return commitWatcher.get();
+                                }))).thenApply(res::complete)
                 .exceptionally(t -> {
                     pointerBuffer.clear();
                     blockBuffer.clear();

@@ -47,6 +47,10 @@ public class Snapshot implements Cborable {
         return new Snapshot(merge);
     }
 
+    public Snapshot retainOnly(PublicKeyHash writer) {
+        return new Snapshot(writer, versions.get(writer));
+    }
+
     public boolean contains(PublicKeyHash writer) {
         return versions.containsKey(writer);
     }

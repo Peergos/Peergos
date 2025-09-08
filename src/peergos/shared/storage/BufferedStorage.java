@@ -21,7 +21,7 @@ import java.util.stream.*;
 
 public class BufferedStorage extends DelegatingStorage {
 
-    private Map<Cid, OpLog.BlockWrite> storage = new LinkedHashMap<>();
+    private final Map<Cid, OpLog.BlockWrite> storage = new LinkedHashMap<>();
     private final ContentAddressedStorage target;
     private final Hasher hasher;
 
@@ -240,28 +240,28 @@ public class BufferedStorage extends DelegatingStorage {
                 .thenApply(hashes -> hashes.get(0));
     }
 
-    public CompletableFuture<Boolean> signBlocks(Map<PublicKeyHash, SigningPrivateKeyAndPublicHash> writers) {
+    public CompletableFuture<Map<Cid, OpLog.BlockWrite>> signBlocks(Map<PublicKeyHash, SigningPrivateKeyAndPublicHash> writers) {
         synchronized (storage) {
-            return Futures.combineAllInOrder(storage.entrySet().stream()
-                            .map(e -> {
-                                OpLog.BlockWrite block = e.getValue();
+            List<Pair<Cid, OpLog.BlockWrite>> writes = storage.entrySet()
+                    .stream()
+                    .map(e -> new Pair<>(e.getKey(), e.getValue()))
+                    .collect(Collectors.toList());
+            return Futures.combineAllInOrder(writes.stream()
+                            .map(w -> {
+                                OpLog.BlockWrite block = w.right;
                                 return (block.signature.length > 0 ?
                                         Futures.of(block.signature) :
-                                        writers.get(block.writer).secret.signMessage(e.getKey().getHash()))
-                                        .thenApply(sig -> new Pair<>(e.getKey(), new OpLog.BlockWrite(block.writer,
+                                        writers.get(block.writer).secret.signMessage(w.left.getHash()))
+                                        .thenApply(sig -> new Pair<>(w.left, new OpLog.BlockWrite(block.writer,
                                                 sig,
                                                 block.block, block.isRaw, block.progressMonitor)));
                             }).collect(Collectors.toList()))
-                    .thenAccept(all -> {
-                        if (all.size() != storage.size())
-                            throw new IllegalStateException("Not all blocks were signed!");
+                    .thenApply(all -> {
                         if (all.stream().map(p ->p.right).anyMatch(bw -> bw.signature.length == 0))
                             throw new IllegalStateException("Blocks with empty signature!");
-                        for (Pair<Cid, OpLog.BlockWrite> p : all) {
-                            storage.put(p.left, p.right);
-                        }
-                    })
-                    .thenApply(x -> true);
+                        return all.stream()
+                                .collect(Collectors.toMap(p -> p.left, p -> p.right));
+                    });
         }
     }
 
@@ -313,13 +313,14 @@ public class BufferedStorage extends DelegatingStorage {
      * @return
      */
     public CompletableFuture<Boolean> commit(PublicKeyHash owner,
-                                                          PublicKeyHash writer,
-                                                          TransactionId tid) {
+                                             PublicKeyHash writer,
+                                             TransactionId tid,
+                                             Map<Cid, OpLog.BlockWrite> signed) {
         // write blocks in batches of up to 50 all in 1 transaction
         List<OpLog.BlockWrite> forWriter = new ArrayList<>();
         Set<Cid> toRemove = new HashSet<>();
         synchronized (storage) {
-            for (Map.Entry<Cid, OpLog.BlockWrite> e : storage.entrySet()) {
+            for (Map.Entry<Cid, OpLog.BlockWrite> e : signed.entrySet()) {
                 if (!Objects.equals(e.getValue().writer, writer))
                     continue;
                 forWriter.add(e.getValue());

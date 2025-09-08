@@ -189,8 +189,10 @@ public class OpLog implements Cborable, Account, MutablePointers, ContentAddress
         // Assume we are using ed25519 for now
         byte[] hash = Arrays.copyOfRange(signedHash, ED25519_SIGNATURE_SIZE, signedHash.length);
         Cid h = new Cid(1, isRaw ? Cid.Codec.Raw : Cid.Codec.DagCbor, Multihash.Type.sha2_256, hash);
-        storage.put(h, block);
-        operations.add(Either.b(new BlockWrite(writer, signedHash, block, isRaw, Optional.empty())));
+        if (! storage.containsKey(h)) {
+            storage.put(h, block);
+            operations.add(Either.b(new BlockWrite(writer, signedHash, block, isRaw, Optional.empty())));
+        }
         return Futures.of(h);
     }
 

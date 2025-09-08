@@ -133,8 +133,9 @@ public class FileWrapper {
 
     public CompletableFuture<FileWrapper> getUpdated(Snapshot version, NetworkAccess network) {
         return version.withWriter(owner(), writer(), network).thenCompose(v -> {
-            if (this.version.get(writer()).equals(v.get(writer())))
+            if (this.version.get(writer()).equals(v.get(writer()))) {
                 return CompletableFuture.completedFuture(this);
+            }
             return network.getFile(v, pointer.capability, entryWriter, ownername)
                     .thenApply(Optional::get)
                     .thenApply(f -> f.withTrieNodeOpt(capTrie));
@@ -955,11 +956,11 @@ public class FileWrapper {
                 network.synchronizer.applyComplexUpdate(owner(), signingPair(),
                         (s, c) -> {
                             return getUpdated(s, network).thenCompose(us -> Futures.reduceAll(directories, us,
-                                    (dir, children) -> dir.getOrMkdirs(children.relativePath, false, mirror, network, crypto, dir.version, c)
-                                            .thenCompose(p -> uploadFolder(PathUtil.get(path).resolve(children.path()), p.right,
-                                                    children, mirrorBat, txns, resumeFile, commitWatcher, isCancelled, network, crypto, c)
-                                                    .thenCompose(v -> dir.getUpdated(v, network))),
-                                    (a, b) -> b))
+                                            (dir, children) -> dir.getOrMkdirs(children.relativePath, false, mirror, network, crypto, dir.version, c)
+                                                    .thenCompose(p -> uploadFolder(PathUtil.get(path).resolve(children.path()), p.right,
+                                                            children, mirrorBat, txns, resumeFile, commitWatcher, isCancelled, network, crypto, c)
+                                                            .thenCompose(v -> dir.getUpdated(v, network))),
+                                            (a, b) -> b))
                                     .thenApply(d -> d.version);
                         },
                         commitWatcher
@@ -1765,7 +1766,7 @@ public class FileWrapper {
                                                                       Crypto crypto,
                                                                       Snapshot version,
                                                                       Committer committer) {
-        return Futures.reduceAll(subPath, new Pair<>(version, this),
+        return Futures.reduceAll(subPath, new Pair<>(version, this.withVersion(version)),
                 (p, name) -> p.right.getOrMkdir(name, Optional.empty(), Optional.empty(), Optional.empty(),
                                 Optional.empty(), isSystemFolder, p.right.mirrorBatId().or(() -> mirrorBat), network, crypto, p.left, committer),
                 (a, b) -> b);
