@@ -1799,9 +1799,7 @@ public class FileWrapper {
                     requestedBaseReadKey, requestedBaseWriteKey, desiredMapKey, desiredBat, isSystemFolder, mirrorBat, crypto).thenCompose(x -> {
                 setModified();
                 return getUpdated(x, network).thenCompose(us -> us.getChild(newFolderName, crypto.hasher, network))
-                        .thenApply(child -> {
-                            return new Pair<>(x, child.get());
-                        });
+                        .thenApply(child -> new Pair<>(x, child.get()));
             });
         });
     }
