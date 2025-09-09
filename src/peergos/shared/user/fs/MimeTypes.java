@@ -276,6 +276,8 @@ public class MimeTypes {
                 String extension = filename.substring(filename.lastIndexOf(".") + 1);
                 if (TEXT_MIMETYPES.containsKey(extension))
                     return "text/" + TEXT_MIMETYPES.get(extension);
+                if (extension.equals("c9r") || extension.equals("c9s"))
+                    return "application/vnd.cryptomator.encrypted";
             }
             try {
                 String prefix = new String(start).trim().toLowerCase();
