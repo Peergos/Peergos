@@ -29,6 +29,8 @@ public class StandaloneWebauthnDemo {
         List<Authenticator> users = new ArrayList<>();
         List<byte[]> registerChallenges = new ArrayList<>();
         List<byte[]> loginChallenges = new ArrayList<>();
+        String domain = args.length == 0 ? "localhost" : args[0];
+        String origin = domain.equals("localhost") ? "http://localhost:9999" : "https://" + domain;
 
         HttpServer server = HttpServer.create(new InetSocketAddress("localhost", 9999), 10);
         server.setExecutor(Executors.newFixedThreadPool(10));
@@ -130,7 +132,7 @@ public class StandaloneWebauthnDemo {
             Set<String> transports = null /* set transports */;
             try {
                 Authenticator registered = register(webAuthnManager, registerChallenges.get(registerChallenges.size() - 1),
-                        attestationObject, clientDataJSON, clientExtensionJSON, transports);
+                        attestationObject, clientDataJSON, clientExtensionJSON, transports, origin, domain);
                 users.add(registered);
                 byte[] res = "{\"status\":\"success\"}".getBytes();
                 httpExchange.getResponseHeaders().set("Content-Type", "text/json");
@@ -251,10 +253,12 @@ public class StandaloneWebauthnDemo {
                                           byte[] attestationObject,
                                           byte[] clientDataJSON,
                                           String clientExtensionJSON,
-                                          Set<String> transports) {
+                                          Set<String> transports,
+                                          String originString,
+                                          String domain) {
         // Server properties
-        Origin origin = new Origin("http://localhost:9999");
-        String rpId = "localhost";
+        Origin origin = new Origin(originString);
+        String rpId = domain;
 
         Challenge challenge = () -> rawChallenge;
         byte[] tokenBindingId = null /* set tokenBindingId */;
