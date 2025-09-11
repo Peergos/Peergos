@@ -170,7 +170,7 @@ public class StandaloneWebauthnDemo {
             try {
                 login(webAuthnManager, loginChallenges.get(loginChallenges.size() - 1),
                         user.getAttestedCredentialData().getCredentialId(), "peergosuser".getBytes(), user,
-                        authenticatorData, clientDataJSON, signature);
+                        authenticatorData, clientDataJSON, signature, origin, domain);
                 byte[] res = "{\"status\":\"success\"}".getBytes();
                 httpExchange.getResponseHeaders().set("Content-Type", "text/json");
                 httpExchange.sendResponseHeaders(200, res.length);
@@ -195,13 +195,15 @@ public class StandaloneWebauthnDemo {
                               Authenticator user,
                               byte[] authenticatorData,
                               byte[] clientDataJSON,
-                              byte[] signature) {
+                              byte[] signature,
+                              String originString,
+                              String host) {
         // Client properties
         String clientExtensionJSON = null /* set clientExtensionJSON */;
 
         // Server properties
-        Origin origin = new Origin("http://localhost:9999");
-        String rpId = "localhost";
+        Origin origin = new Origin(originString);
+        String rpId = host;
         Challenge challenge = () -> rawChallenge;
         byte[] tokenBindingId = null /* set tokenBindingId */;
         ServerProperty serverProperty = new ServerProperty(origin, rpId, challenge, tokenBindingId);
