@@ -9,7 +9,7 @@ import com.webauthn4j.data.*;
 import com.webauthn4j.data.client.*;
 import com.webauthn4j.data.client.challenge.*;
 import com.webauthn4j.server.*;
-import com.webauthn4j.validator.exception.*;
+import com.webauthn4j.verifier.exception.*;
 import peergos.shared.io.ipfs.api.*;
 import peergos.shared.util.*;
 
@@ -236,7 +236,7 @@ public class StandaloneWebauthnDemo {
         }
         try {
             webAuthnManager.validate(authenticationData, authenticationParameters);
-        } catch (ValidationException e) {
+        } catch (VerificationException e) {
             // If you would like to handle WebAuthn data validation error, please catch ValidationException
             throw e;
         }
@@ -275,7 +275,7 @@ public class StandaloneWebauthnDemo {
         }
         try {
             webAuthnManager.validate(registrationData, registrationParameters);
-        } catch (ValidationException e) {
+        } catch (VerificationException e) {
             // If you would like to handle WebAuthn data validation error, please catch ValidationException
             throw e;
         }
