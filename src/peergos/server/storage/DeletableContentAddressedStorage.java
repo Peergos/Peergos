@@ -341,7 +341,7 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
 
         @Override
         public Stream<Cid> getAllBlockHashes(boolean useBlockstore) {
-            String jsonStream = new String(poster.get(apiPrefix + REFS_LOCAL + "?use-block-store=" + useBlockstore).join());
+            String jsonStream = new String(poster.postUnzip(apiPrefix + REFS_LOCAL + "?use-block-store=" + useBlockstore, new byte[0], -1).join());
             return JSONParser.parseStream(jsonStream).stream()
                     .map(m -> (String) (((Map) m).get("Ref")))
                     .map(Cid::decode);
@@ -365,7 +365,7 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
             json.put("cids", blocks.stream()
                     .map(v -> v.cid.toString())
                     .collect(Collectors.toList()));
-            poster.post(apiPrefix + BLOCK_RM_BULK, JSONParser.toString(json).getBytes(), true);
+            poster.postUnzip(apiPrefix + BLOCK_RM_BULK, JSONParser.toString(json).getBytes(), -1);
         }
 
         @Override
