@@ -67,9 +67,9 @@ public class Webauthn {
                 AttestedCredentialData credData = cborConverter.readValue(((CborObject.CborMap) cbor).getByteArray("d"), AttestedCredentialData.class);
                 byte[] s = ((CborObject.CborMap) cbor).getByteArray("s");
                 CborObject cb = CborObject.fromByteArray(s);
-                AttestationStatement statement = cb instanceof CborObject.CborMap && ((CborObject.CborMap) cb).keySet().isEmpty() ?
-                        new NoneAttestationStatement() :
-                        cborConverter.readValue(s, AttestationStatement.class);
+                if (! (cb instanceof CborObject.CborMap && ((CborObject.CborMap) cb).keySet().isEmpty()))
+                    throw new IllegalStateException("Unsupported Webauthn Attestation type");
+                AttestationStatement statement = new NoneAttestationStatement();
                 long signCount = ((CborObject.CborMap) cbor).getLong("c");
                 return new Verifier(credData, statement, signCount);
             } catch (Exception e) {
