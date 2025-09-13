@@ -671,7 +671,7 @@ public class Main extends Builder {
             Collections.emptyList()
     );
 
-    private static boolean isLanIP(String host) {
+    public static boolean isLanIP(String host) {
         try {
             if (host.contains(":"))
                 host = host.substring(0, host.indexOf(":"));

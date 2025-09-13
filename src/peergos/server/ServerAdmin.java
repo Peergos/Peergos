@@ -1,9 +1,11 @@
 package peergos.server;
 
+import com.webauthn4j.data.client.Origin;
 import peergos.server.corenode.IpfsCoreNode;
 import peergos.server.corenode.JdbcIpnsAndSocial;
 import peergos.server.corenode.UserRepository;
 import peergos.server.crypto.hash.ScryptJava;
+import peergos.server.login.JdbcAccount;
 import peergos.server.space.JdbcUsageStore;
 import peergos.server.space.UsageStore;
 import peergos.server.sql.SqlSupplier;
@@ -16,14 +18,17 @@ import peergos.shared.Crypto;
 import peergos.shared.corenode.CoreNode;
 import peergos.shared.corenode.HTTPCoreNode;
 import peergos.shared.crypto.hash.PublicKeyHash;
+import peergos.shared.login.mfa.MultiFactorAuthMethod;
 import peergos.shared.mutable.MutablePointers;
 import peergos.shared.storage.ContentAddressedStorage;
 import peergos.shared.user.CommittedWriterData;
 import peergos.shared.user.WriterData;
+import peergos.shared.util.ArrayOps;
 
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
 import java.util.function.Supplier;
 
 public class ServerAdmin {
@@ -57,6 +62,72 @@ public class ServerAdmin {
         }
         rawPointers.removePointer(w);
     }
+
+    public static final Command<Boolean> MFA_DELETE = new Command<>("delete",
+            "Delete a multi-factor auth option for a local user.",
+            a -> {
+                Builder.disableLog();
+                IpfsCoreNode.disableLog();
+                ScryptJava.disableLog();
+                HTTPCoreNode.disableLog();
+
+                String username = a.getArg("username");
+                byte[] credentialID = ArrayOps.hexToBytes(a.getArg("credential-id"));
+                SqlSupplier sqlCommands = Builder.getSqlCommands(a);
+                Supplier<Connection> dbConnectionPool = Builder.getDBConnector(a, "serverids-file");
+
+                String listeningHost = a.getArg(Main.LISTEN_HOST.name);
+                Optional<String> tlsHostname = a.hasArg("tls.keyfile.password") ? Optional.of(listeningHost) : Optional.empty();
+                Optional<String> publicHostname = tlsHostname.isPresent() ? tlsHostname : a.getOptionalArg("public-domain");
+                int webPort = a.getInt("port");
+                Origin origin = new Origin(publicHostname.map(host -> (Main.isLanIP(host) ? "http://" : "https://") + host).orElse("http://localhost:" + webPort));
+                String rpId = publicHostname.orElse("localhost");
+                JdbcAccount rawAccount = new JdbcAccount(Builder.getDBConnector(a, "account-sql-file", dbConnectionPool), sqlCommands, origin, rpId);
+                rawAccount.deleteMfa(username, credentialID);
+                System.out.println("Deleted multifactor auth for user " + username + " with credential id " + ArrayOps.bytesToHex(credentialID));
+
+                return true;
+            },
+            Arrays.asList(
+                    ARG_USERNAME,
+                    new Command.Arg("log-to-file", "Whether to log to a file", true, "false"),
+                    new Command.Arg("print-log-location", "Whether to print log location", true, "false")
+            )
+    );
+
+    public static final Command<Boolean> MFA = new Command<>("mfa",
+            "List multi-factor auth options for a local user.",
+            a -> {
+                Builder.disableLog();
+                IpfsCoreNode.disableLog();
+                ScryptJava.disableLog();
+                HTTPCoreNode.disableLog();
+
+                String username = a.getArg("username");
+                SqlSupplier sqlCommands = Builder.getSqlCommands(a);
+                Supplier<Connection> dbConnectionPool = Builder.getDBConnector(a, "serverids-file");
+
+                String listeningHost = a.getArg(Main.LISTEN_HOST.name);
+                Optional<String> tlsHostname = a.hasArg("tls.keyfile.password") ? Optional.of(listeningHost) : Optional.empty();
+                Optional<String> publicHostname = tlsHostname.isPresent() ? tlsHostname : a.getOptionalArg("public-domain");
+                int webPort = a.getInt("port");
+                Origin origin = new Origin(publicHostname.map(host -> (Main.isLanIP(host) ? "http://" : "https://") + host).orElse("http://localhost:" + webPort));
+                String rpId = publicHostname.orElse("localhost");
+                JdbcAccount rawAccount = new JdbcAccount(Builder.getDBConnector(a, "account-sql-file", dbConnectionPool), sqlCommands, origin, rpId);
+                List<MultiFactorAuthMethod> mfas = rawAccount.getSecondAuthMethods(username).join();
+                System.out.println("Listing multifactor auth options for " + username);
+                mfas.forEach(mfa -> {
+                    System.out.println(mfa.name + ", credentialID: " + ArrayOps.bytesToHex(mfa.credentialId) + ", enabled: " + mfa.enabled + ", type: " + mfa.type.name());
+                });
+                return true;
+            },
+            Arrays.asList(
+                    ARG_USERNAME,
+                    new Command.Arg("log-to-file", "Whether to log to a file", true, "false"),
+                    new Command.Arg("print-log-location", "Whether to print log location", true, "false")
+            ),
+            Arrays.asList(MFA_DELETE)
+    );
 
     public static final Command<Boolean> DELETE = new Command<>("delete",
             "Delete a user from this server and remove their space quota.",
@@ -125,6 +196,6 @@ public class ServerAdmin {
                 return null;
             },
             Arrays.asList(),
-            Arrays.asList(DELETE)
+            Arrays.asList(MFA, DELETE)
     );
 }
