@@ -120,6 +120,10 @@ public class DirectorySync {
         return new PeergosSyncFS(context, path);
     }
 
+    public static Path getSyncStateDbPath(Path peergosDir, String linkPath, String localDir) {
+        return peergosDir.resolve("dir-sync-state-v3-" + ArrayOps.bytesToHex(Hash.sha256(linkPath + "///" + localDir)) + ".sqlite");
+    }
+
     public static boolean syncDirs(List<String> links,
                                    List<String> localDirs, //could be paths or URIs
                                    List<Boolean> syncLocalDeletes,
@@ -144,7 +148,7 @@ public class DirectorySync {
                 .collect(Collectors.toList());
 
         List<SyncState> syncedStates = IntStream.range(0, linkPaths.size())
-                .mapToObj(i -> new JdbcTreeState(peergosDir.resolve("dir-sync-state-v3-" + ArrayOps.bytesToHex(Hash.sha256(linkPaths.get(i) + "///" + localDirs.get(i))) + ".sqlite").toString()))
+                .mapToObj(i -> new JdbcTreeState(getSyncStateDbPath(peergosDir, linkPaths.get(i), localDirs.get(i)).toString()))
                 .collect(Collectors.toList());
         if (links.size() != localDirs.size())
             throw new IllegalArgumentException("Mismatched number of local dirs and links");

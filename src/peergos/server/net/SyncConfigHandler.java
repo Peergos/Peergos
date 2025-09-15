@@ -4,6 +4,7 @@ import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 import peergos.server.HostDirChooser;
 import peergos.server.HostDirEnumerator;
+import peergos.server.sync.DirectorySync;
 import peergos.server.sync.SyncConfig;
 import peergos.server.sync.SyncRunner;
 import peergos.server.util.Args;
@@ -23,6 +24,7 @@ import peergos.shared.util.Either;
 import peergos.shared.util.Futures;
 import peergos.shared.util.Serialize;
 
+import java.io.File;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
@@ -174,7 +176,7 @@ public class SyncConfigHandler implements HttpHandler {
                 }
                 if (toRemove == links.size())
                     throw new IllegalArgumentException("Unknown label");
-                links.remove(toRemove);
+                String linkPath = links.remove(toRemove);
                 List<String> localDirs = updated.localDirs;
                 String removedLocal = localDirs.remove(toRemove);
                 List<String> remotePaths = updated.remotePaths;
@@ -186,9 +188,16 @@ public class SyncConfigHandler implements HttpHandler {
 
                 saveConfigToFile(new SyncConfig(localDirs, remotePaths, links, syncLocalDeletes, syncRemoteDeletes,
                         updated.maxDownloadParallelism, updated.minFreeSpacePercent));
+                // clear sync state db as well
+                File syncDb = DirectorySync.getSyncStateDbPath(peergosDir, linkPath, removedLocal).toFile();
+                if (syncDb.exists())
+                    syncDb.delete();
                 SyncRunner.StatusHolder status = syncer.getStatusHolder();
                 status.setStatus("Removed sync of " + removedLocal);
                 status.cancel();
+                // clear sync state db again if it was recreated by an in progress sync
+                if (syncDb.exists())
+                    syncDb.delete();
                 exchange.sendResponseHeaders(200, 0);
                 exchange.close();
             } else if (action.equals("get-pairs")) {
