@@ -279,7 +279,7 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
     }
 
     default CompletableFuture<BlockMetadata> getBlockMetadata(Cid block) {
-        return getRaw(Collections.emptyList(), block, "", true)
+        return getRaw(Arrays.asList(id().join()), block, "", true)
                 .thenApply(rawOpt -> BlockMetadataStore.extractMetadata(block, rawOpt.get()));
     }
 

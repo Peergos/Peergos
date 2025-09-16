@@ -124,7 +124,7 @@ public class TransactionalIpfs extends DelegatingDeletableStorage {
     public CompletableFuture<List<Cid>> getLinks(Cid root) {
         if (root.isRaw())
             return CompletableFuture.completedFuture(Collections.emptyList());
-        return getRaw(Collections.emptyList(), root, "", false, true)
+        return getRaw(Arrays.asList(id), root, "", false, true)
                 .thenApply(opt -> opt.map(CborObject::fromByteArray))
                 .thenApply(opt -> opt
                         .map(cbor -> cbor.links().stream().map(c -> (Cid) c).collect(Collectors.toList()))

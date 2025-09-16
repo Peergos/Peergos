@@ -184,7 +184,7 @@ public class GarbageCollector {
         Optional<BlockMetadata> meta = metadata.get((Cid) cid);
         if (meta.isEmpty() && fixMetadata) {
             // retrieving the block should add it to the metadata store
-            Optional<byte[]> block = storage.getRaw(Collections.emptyList(), (Cid) cid, "", false, true).join();
+            Optional<byte[]> block = storage.getRaw(Arrays.asList(storage.id().join()), (Cid) cid, "", false, true).join();
             meta = metadata.get((Cid) cid);
             if (meta.isPresent())
                 System.out.println("Fixed block metadata for " + cid);
