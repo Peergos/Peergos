@@ -543,6 +543,34 @@ public class UserContext {
                 crypto.hasher, progressCallback);
     }
 
+    @JsMethod
+    public CompletableFuture<String> getMigrationId() {
+        return network.coreNode.getHomeServer(username)
+                .thenApply(home -> username + "@" + home.orElseThrow(() -> new IllegalStateException("No home server!")));
+    }
+
+    @JsMethod
+    public CompletableFuture<Boolean> isHome() {
+        return network.coreNode.getHomeServer(username)
+                .thenCompose(home -> network.dhtClient.id()
+                        .thenApply(thisServer -> thisServer.bareMultihash().equals(home.get().bareMultihash())));
+    }
+
+    @JsMethod
+    public CompletableFuture<UserSnapshot> migrateToThisServer(String password,
+                                                               Function<MultiFactorAuthRequest, CompletableFuture<MultiFactorAuthResponse>> mfa) {
+        return signIn(username, password, mfa, network, crypto)
+                .thenCompose(x -> network.coreNode.getChain(username))
+                .thenCompose(existing -> getSpaceUsage().thenCompose(usage ->
+                        network.dhtClient.id().thenCompose(thisServer -> {
+                            Multihash originalNodeId = existing.get(existing.size() - 1)
+                                    .claim.storageProviders.stream().findFirst().get();
+                            Cid newStorageNodeId = thisServer;
+                            return Migrate.buildMigrationChain(existing, newStorageNodeId, signer.secret)
+                                    .thenCompose(newChain -> network.coreNode.migrateUser(username, newChain, originalNodeId, mirrorBat, LocalDateTime.now(), usage));
+                        })));
+    }
+
     private static CompletableFuture<Boolean> retryUntilPositiveQuota(NetworkAccess network,
                                                                           SigningPrivateKeyAndPublicHash identity,
                                                                           Supplier<CompletableFuture<PaymentProperties>> retry,

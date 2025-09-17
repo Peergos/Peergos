@@ -47,7 +47,6 @@ import peergos.shared.util.*;
 import java.awt.*;
 import java.io.*;
 import java.net.*;
-import java.net.Proxy;
 import java.nio.file.*;
 import java.sql.*;
 import java.time.*;
@@ -1070,7 +1069,7 @@ public class Main extends Builder {
                 return false;
             }
             System.out.println("Migrating user from node " + currentStorageNodeId + " to " + newStorageNodeId);
-            List<UserPublicKeyLink> newChain = Migrate.buildMigrationChain(existing, newStorageNodeId, user.signer.secret);
+            List<UserPublicKeyLink> newChain = Migrate.buildMigrationChain(existing, newStorageNodeId, user.signer.secret).join();
             user.ensureMirrorId().join().get();
             Optional<BatWithId> current = user.getMirrorBat().join();
             long usage = user.getSpaceUsage().join();

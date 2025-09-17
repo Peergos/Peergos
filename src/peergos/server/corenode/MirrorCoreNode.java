@@ -546,8 +546,10 @@ public class MirrorCoreNode implements CoreNode {
             // pick up the new pki data locally
             update();
 
+            List<BatWithId> localMirrorBats = batCave.getUserBats(username, new byte[0]).join();
             res.mirrorBats.forEach(b -> {
-                batCave.addBat(username, b.id(), b.bat, new byte[0]);
+                if (! localMirrorBats.contains(b))
+                    batCave.addBat(username, b.id(), b.bat, new byte[0]);
             });
             res.login.ifPresent(rawAccount::setLoginData);
 
