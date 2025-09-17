@@ -35,6 +35,10 @@ public class LocalDate implements Comparable<LocalDate>{
         this.month = (short) month;
         this.day = (short) dayOfMonth;
     }
+
+    public LocalDate plusDays(int days) {
+        return ofEpochDay(toEpochDay() + days);
+    }
     
     public static LocalDate of(int year, int month, int dayOfMonth) {
     	return new LocalDate(year, month, dayOfMonth);
