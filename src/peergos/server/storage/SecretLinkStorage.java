@@ -63,7 +63,8 @@ public class SecretLinkStorage extends DelegatingDeletableStorage {
         WriterData wd = WriterData.getWriterData(owner, owner, pointers, target).join().props.get();
         if (wd.secretLinks.isEmpty())
             throw new IllegalStateException("No secret link published!");
-        Optional<BatWithId> mirrorBat = batstore.getUserBats(username, new byte[0]).join().stream().findFirst();
+        List<BatWithId> mirrorBats = batstore.getUserBats(username, new byte[0]).join();
+        Optional<BatWithId> mirrorBat = mirrorBats.isEmpty() ? Optional.empty() : Optional.of(mirrorBats.get(mirrorBats.size() - 1));
         SecretLinkChamp champ = SecretLinkChamp.build(owner, (Cid) wd.secretLinks.get(), mirrorBat, this, hasher).join();
         Optional<SecretLinkTarget> res = champ.get(owner, link.label).join();
         if (res.isEmpty())
