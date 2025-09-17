@@ -152,14 +152,13 @@ public class ServerAdmin {
                             Builder.getDBConnector(a, "mutable-pointers-file", dbConnectionPool));
 
                     MutablePointers pointers = UserRepository.build(storage, rawPointers);
-                    CoreNode core = Builder.buildCorenode(a, storage, null, rawPointers, pointers, null,
-                            null, null, null, null, null, null, crypto);
-                    core.initialize();
-                    storage.setPki(core);
-
                     QuotaAdmin quota = Builder.buildSpaceQuotas(a, storage,
                             Builder.getDBConnector(a, "space-requests-sql-file", dbConnectionPool),
                             Builder.getDBConnector(a, "quotas-sql-file", dbConnectionPool), false, false);
+                    CoreNode core = Builder.buildCorenode(a, storage, null, rawPointers, pointers, null,
+                            null, null, quota, null, null, null, null, crypto);
+                    core.initialize();
+                    storage.setPki(core);
 
                     // set quota to 0
                     quota.removeQuota(username);

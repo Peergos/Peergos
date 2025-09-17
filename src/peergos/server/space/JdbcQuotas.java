@@ -81,7 +81,7 @@ public class JdbcQuotas {
             if (rs.next())
                 return rs.getLong(QUOTA_SIZE);
 
-            throw new IllegalStateException("No quota listed for user!");
+            throw new IllegalStateException("No space quota for " + username);
         } catch (SQLException sqe) {
             LOG.log(Level.WARNING, sqe.getMessage(), sqe);
             throw new IllegalStateException(sqe);

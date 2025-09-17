@@ -4,6 +4,7 @@ import peergos.server.*;
 import peergos.server.login.*;
 import peergos.server.space.*;
 import peergos.server.storage.*;
+import peergos.server.storage.admin.QuotaAdmin;
 import peergos.server.util.*;
 import peergos.shared.*;
 import peergos.shared.cbor.*;
@@ -45,6 +46,7 @@ public class MirrorCoreNode implements CoreNode {
     private final TransactionStore transactions;
     private final JdbcIpnsAndSocial localSocial;
     private final UsageStore usageStore;
+    private final QuotaAdmin quotas;
     private final LinkRetrievalCounter linkCounts;
     private final PublicKeyHash pkiOwnerIdentity;
     private final Multihash ourNodeId, pkiPeerId;
@@ -66,6 +68,7 @@ public class MirrorCoreNode implements CoreNode {
                           TransactionStore transactions,
                           JdbcIpnsAndSocial localSocial,
                           UsageStore usageStore,
+                          QuotaAdmin quotas,
                           LinkRetrievalCounter linkCounts,
                           Multihash pkiPeerId,
                           PublicKeyHash pkiOwnerIdentity,
@@ -82,6 +85,7 @@ public class MirrorCoreNode implements CoreNode {
         this.transactions = transactions;
         this.localSocial = localSocial;
         this.usageStore = usageStore;
+        this.quotas = quotas;
         this.linkCounts = linkCounts;
         this.pkiPeerId = pkiPeerId;
         this.pkiOwnerIdentity = pkiOwnerIdentity;
@@ -523,6 +527,9 @@ public class MirrorCoreNode implements CoreNode {
         }
 
         if (migrationTargetNode.equals(ourNodeId)) {
+            long quota = quotas.getQuota(username);
+            if (quota < currentUsage)
+                throw new IllegalStateException("Not enough space quota on this server to migrate here!");
             // We are copying data to this node
             // Make sure we have the mirror bat stored in out batStore first
             if (mirrorBat.isPresent()) {

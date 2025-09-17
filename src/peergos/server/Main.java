@@ -768,7 +768,7 @@ public class Main extends Builder {
             DeletableContentAddressedStorage localStorage = new SecretLinkStorage(localStorageForLinks, localPointers, linkCounts, allowNonLocalLinks, userQuotas, batStore, hasher);
 
             CoreNode core = buildCorenode(a, localStorage, transactions, rawPointers, localPointers, proxingMutable,
-                    rawSocial, usageStore, rawAccount, batStore, account, linkCounts, crypto);
+                    rawSocial, usageStore, userQuotas, rawAccount, batStore, account, linkCounts, crypto);
             localStorage.setPki(core);
             userQuotas.setPki(core);
 
