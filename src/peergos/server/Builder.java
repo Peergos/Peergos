@@ -384,6 +384,7 @@ public class Builder {
                                          MutablePointersProxy proxingMutable,
                                          JdbcIpnsAndSocial localSocial,
                                          UsageStore usageStore,
+                                         QuotaAdmin quotas,
                                          JdbcAccount rawAccount,
                                          BatCave bats,
                                          Account account,
@@ -397,7 +398,7 @@ public class Builder {
         return isPkiNode ?
                 buildPkiCorenode(localPointers, account, bats, localStorage, crypto, a) :
                 new MirrorCoreNode(new HTTPCoreNode(buildP2pHttpProxy(a), pkiServerId), rawAccount, bats, account, proxingMutable,
-                        localStorage, rawPointers, localPointers, transactions, localSocial, usageStore, linkCounts, pkiServerId, peergosId,
+                        localStorage, rawPointers, localPointers, transactions, localSocial, usageStore, quotas, linkCounts, pkiServerId, peergosId,
                         a.fromPeergosDir("pki-mirror-state-path","pki-state.cbor"), crypto);
     }
 

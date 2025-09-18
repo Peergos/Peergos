@@ -118,11 +118,11 @@ public class ServerMessages extends Builder {
             UsageStore usageStore = new JdbcUsageStore(getDBConnector(a, "space-usage-sql-file", dbConnectionPool), cmds);
             JdbcAccount account = new JdbcAccount(getDBConnector(a, "account-sql-file", dbConnectionPool),
                     cmds, new com.webauthn4j.data.client.Origin("http://localhost:8000"), "localhost");
-            CoreNode core = buildCorenode(a, localStorage, transactions, rawPointers, localPointers, proxingMutable,
-                    rawSocial, usageStore, account, null, new AccountWithStorage(localStorage, localPointers, account), null, crypto);
             QuotaAdmin quotas = buildSpaceQuotas(a, localStorage,
                     getDBConnector(a, "space-requests-sql-file", dbConnectionPool),
                     getDBConnector(a, "quotas-sql-file", dbConnectionPool), false, true);
+            CoreNode core = buildCorenode(a, localStorage, transactions, rawPointers, localPointers, proxingMutable,
+                    rawSocial, usageStore, quotas, account, null, new AccountWithStorage(localStorage, localPointers, account), null, crypto);
             quotas.setPki(core);
             return quotas;
         } catch (SQLException e) {
