@@ -44,7 +44,8 @@ public class AccountWithStorage implements Account {
                                                                                           PublicSigningKey authorisedReader,
                                                                                           byte[] auth,
                                                                                           Optional<MultiFactorAuthResponse> mfa,
-                                                                                          boolean cacheMfaLoginData) {
+                                                                                          boolean cacheMfaLoginData,
+                                                                                          boolean forceProxy) {
         return target.getEntryData(username, authorisedReader, mfa);
     }
 

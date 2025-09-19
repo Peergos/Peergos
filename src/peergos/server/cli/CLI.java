@@ -787,7 +787,7 @@ public class CLI implements Runnable {
                     args.getArg("PEERGOS_PASSWORD") :
                     reader.readLine("Enter password for '" + username + "'" + PROMPT, PASSWORD_MASK);
             UserContext userContext = UserContext.signIn(username, password,
-                    methods -> mfa(methods, writer, reader), false, network, CRYPTO, progressConsumer).join();
+                    methods -> mfa(methods, writer, reader), false, false, network, CRYPTO, progressConsumer).join();
             return new CLIContext(terminal, userContext, serverURL.toString(), username);
         }
     }

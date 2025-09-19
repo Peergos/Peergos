@@ -35,11 +35,12 @@ public class OfflineAccountStore implements Account {
                                                                                           PublicSigningKey authorisedReader,
                                                                                           byte[] auth,
                                                                                           Optional<MultiFactorAuthResponse>  mfa,
-                                                                                          boolean cacheMfaLoginData) {
+                                                                                          boolean cacheMfaLoginData,
+                                                                                          boolean forceProxy) {
         return Futures.asyncExceptionally(() -> {
                     if (online.isOnline()) {
                         CompletableFuture<Either<UserStaticData, MultiFactorAuthRequest>> res = new CompletableFuture<>();
-                        target.getLoginData(username, authorisedReader, auth, mfa, cacheMfaLoginData)
+                        target.getLoginData(username, authorisedReader, auth, mfa, cacheMfaLoginData, forceProxy)
                                 .thenAccept(login -> {
                                     if (login.isA() && (mfa.isEmpty() || cacheMfaLoginData))
                                         local.setLoginData(new LoginData(username, login.a(), authorisedReader, Optional.empty()));

@@ -389,6 +389,21 @@ public class IpfsCoreNode implements CoreNode {
         return Futures.of(new PaymentProperties(0));
     }
 
+    @Override
+    public CompletableFuture<Boolean> startMirror(String username, BatWithId mirrorBat, byte[] auth, ProofOfWork proof) {
+        throw new IllegalStateException("Unsupported operation!");
+    }
+
+    @Override
+    public CompletableFuture<Either<PaymentProperties, RequiredDifficulty>> startPaidMirror(String username, byte[] auth, ProofOfWork proof) {
+        throw new IllegalStateException("Unsupported operation!");
+    }
+
+    @Override
+    public CompletableFuture<PaymentProperties> completePaidMirror(String username, BatWithId mirrorBat, byte[] signedSpaceRequest, ProofOfWork proof) {
+        throw new IllegalStateException("Unsupported operation!");
+    }
+
     private Optional<RequiredDifficulty> enforceRateLimit(ProofOfWork proof, List<UserPublicKeyLink> updatedChain) {
         byte[] hash = hasher.sha256(ArrayOps.concat(proof.prefix, new CborObject.CborList(updatedChain).serialize())).join();
         difficultyGenerator.updateTime(System.currentTimeMillis());

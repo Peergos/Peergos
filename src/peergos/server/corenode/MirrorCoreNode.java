@@ -52,6 +52,7 @@ public class MirrorCoreNode implements CoreNode {
     private final Multihash ourNodeId, pkiPeerId;
     private final Hasher hasher;
     private final Crypto crypto;
+    private final ForkJoinPool mirrorPool = Threads.newPool(1, "Mirror-");
 
     private volatile CorenodeState state;
     private final Path statePath;
@@ -125,8 +126,30 @@ public class MirrorCoreNode implements CoreNode {
             if (changed)
                 saveState();
             initialized = true;
+            mirrorPool.submit(() -> mirrorExternalUsers());
         } catch (Throwable t) {
             Logging.LOG().log(Level.SEVERE, "Couldn't update mirror pki state: " + t.getMessage(), t);
+        }
+    }
+
+    private void mirrorExternalUsers() {
+        while (true) {
+            try {
+                List<String> localQuotaUsernames = quotas.getLocalUsernames();
+                List<Multihash> ourPeerIds = ipfs.ids().join().stream().map(c -> c.bareMultihash()).toList();
+                List<String> externalUsersToMirror = localQuotaUsernames.stream().filter(n -> getHomeServer(n).join()
+                        .map(home -> !ourPeerIds.contains(home.bareMultihash())).orElse(false)).toList();
+                for (String username : externalUsersToMirror) {
+                    List<BatWithId> localMirrorBats = batCave.getUserBats(username, new byte[0]).join();
+                    if (localMirrorBats.isEmpty())
+                        continue;
+                    Mirror.mirrorUser(username, Optional.empty(), Optional.of(localMirrorBats.get(localMirrorBats.size() - 1)), this, p2pMutable, null, ipfs, rawPointers, rawAccount, transactions, linkCounts, hasher);
+                }
+            } catch (Exception e) {
+                LOG.log(Level.WARNING, "Error mirroring user", e);
+            } finally {
+                Threads.sleep(30_000);
+            }
         }
     }
 
@@ -412,6 +435,41 @@ public class MirrorCoreNode implements CoreNode {
                 LOG.log(Level.WARNING, "Failed to update local PKI during completePaidSignup", t);
             }
         }).start();
+        return Futures.of(new PaymentProperties(0));
+    }
+
+    @Override
+    public CompletableFuture<Boolean> startMirror(String username, BatWithId mirrorBat, byte[] auth, ProofOfWork proof) {
+        // verify auth
+        PublicKeyHash identityHash = getPublicKeyHash(username).join().get();
+        TimeLimited.isAllowedTime(auth, 10*60, ipfs, identityHash);
+
+        // double check mirror bat and add to db
+        if (! BatId.sha256(mirrorBat.bat, hasher).join().equals(mirrorBat.id()))
+            throw new IllegalStateException("Invalid BAT id for BAT");
+        List<BatWithId> localMirrorBats = batCave.getUserBats(username, new byte[0]).join();
+        if (! localMirrorBats.contains(mirrorBat))
+            batCave.addBat(username, mirrorBat.id(), mirrorBat.bat, new byte[0]);
+
+        return Futures.of(true);
+    }
+
+    @Override
+    public CompletableFuture<Either<PaymentProperties, RequiredDifficulty>> startPaidMirror(String username, byte[] auth, ProofOfWork proof) {
+        // verify auth
+        PublicKeyHash identityHash = getPublicKeyHash(username).join().get();
+        TimeLimited.isAllowedTime(auth, 10*60, ipfs, identityHash);
+        return Futures.of(Either.a(new PaymentProperties(0)));
+    }
+
+    @Override
+    public CompletableFuture<PaymentProperties> completePaidMirror(String username, BatWithId mirrorBat, byte[] signedSpaceRequest, ProofOfWork proof) {
+        // double check mirror bat and add to db
+        if (! BatId.sha256(mirrorBat.bat, hasher).join().equals(mirrorBat.id()))
+            throw new IllegalStateException("Invalid BAT id for BAT");
+        List<BatWithId> localMirrorBats = batCave.getUserBats(username, new byte[0]).join();
+        if (! localMirrorBats.contains(mirrorBat))
+            batCave.addBat(username, mirrorBat.id(), mirrorBat.bat, new byte[0]);
         return Futures.of(new PaymentProperties(0));
     }
 

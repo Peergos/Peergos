@@ -437,7 +437,7 @@ public abstract class UserTests {
         Assert.assertTrue(initialWd.staticData.isPresent());
 
         List<String> progress = new ArrayList<>();
-        UserContext login = UserContext.signIn(username, password, UserTests::noMfa, false, network, crypto, progress::add).join();
+        UserContext login = UserContext.signIn(username, password, UserTests::noMfa, false, false, network, crypto, progress::add).join();
         WriterData afterPqUpgrade = WriterData.getWriterData(login.signer.publicKeyHash, login.signer.publicKeyHash, network.mutable, network.dhtClient).join().props.get();
         Pair<PublicKeyHash, PublicBoxingKey> pqKeys = login.getPublicKeys(username).join().get();
         Assert.assertTrue(afterPqUpgrade.staticData.isPresent());
@@ -449,7 +449,7 @@ public abstract class UserTests {
         MultiUserTests.checkUserValidity(network, username);
 
         List<String> progress2 = new ArrayList<>();
-        UserContext changedPassword = UserContext.signIn(username, newPassword, UserTests::noMfa, false, network, crypto, progress2::add).join();
+        UserContext changedPassword = UserContext.signIn(username, newPassword, UserTests::noMfa, false, false, network, crypto, progress2::add).join();
         Pair<PublicKeyHash, PublicBoxingKey> newKeyPairs = changedPassword.getPublicKeys(username).join().get();
         PublicBoxingKey newBoxer = newKeyPairs.right;
         PublicKeyHash newIdentity = newKeyPairs.left;
@@ -491,7 +491,7 @@ public abstract class UserTests {
 
         List<String> progress2 = new ArrayList<>();
         // changing password also upgrade to PQ
-        UserContext changedPassword = UserContext.signIn(username, newPassword, UserTests::noMfa, false, network, crypto, progress2::add).join();
+        UserContext changedPassword = UserContext.signIn(username, newPassword, UserTests::noMfa, false, false, network, crypto, progress2::add).join();
         Pair<PublicKeyHash, PublicBoxingKey> newKeyPairs = changedPassword.getPublicKeys(username).join().get();
         PublicBoxingKey newBoxer = newKeyPairs.right;
         PublicKeyHash newIdentity = newKeyPairs.left;

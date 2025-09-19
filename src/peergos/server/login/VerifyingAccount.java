@@ -37,8 +37,9 @@ public class VerifyingAccount implements Account {
                                                                                           PublicSigningKey authorisedReader,
                                                                                           byte[] auth,
                                                                                           Optional<MultiFactorAuthResponse>  mfa,
-                                                                                          boolean cacheMfaLoginData) {
-        return target.getLoginData(username, authorisedReader, auth, mfa, cacheMfaLoginData).thenApply(res -> {
+                                                                                          boolean cacheMfaLoginData,
+                                                                                          boolean forceProxy) {
+        return target.getLoginData(username, authorisedReader, auth, mfa, cacheMfaLoginData, forceProxy).thenApply(res -> {
             TimeLimited.isAllowedTime(auth, 24*3600, authorisedReader);
             return res;
         });

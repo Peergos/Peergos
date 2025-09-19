@@ -217,6 +217,83 @@ public class HTTPCoreNode implements CoreNode {
     }
 
     @Override
+    public CompletableFuture<Boolean> startMirror(String username, BatWithId mirrorBat, byte[] auth, ProofOfWork proof) {
+        try {
+            ByteArrayOutputStream bout = new ByteArrayOutputStream();
+            DataOutputStream dout = new DataOutputStream(bout);
+
+            Serialize.serialize(username, dout);
+            Serialize.serialize(mirrorBat.serialize(), dout);
+            Serialize.serialize(auth, dout);
+            Serialize.serialize(proof.serialize(), dout);
+            dout.flush();
+
+            return poster.postUnzip(urlPrefix + Constants.CORE_URL + "mirror", bout.toByteArray())
+                    .thenApply(res -> {
+                        DataInputStream din = new DataInputStream(new ByteArrayInputStream(res));
+                        try {
+                            return din.readBoolean();
+                        } catch (IOException e) {
+                            throw new RuntimeException(e);
+                        }
+                    });
+        } catch (IOException ioe) {
+            LOG.log(Level.WARNING, ioe.getMessage(), ioe);
+            return Futures.errored(ioe);
+        }
+    }
+
+    @Override
+    public CompletableFuture<Either<PaymentProperties, RequiredDifficulty>> startPaidMirror(String username, byte[] auth, ProofOfWork proof) {
+        try {
+            ByteArrayOutputStream bout = new ByteArrayOutputStream();
+            DataOutputStream dout = new DataOutputStream(bout);
+
+            Serialize.serialize(username, dout);
+            Serialize.serialize(auth, dout);
+            Serialize.serialize(proof.serialize(), dout);
+            dout.flush();
+
+            return poster.postUnzip(urlPrefix + Constants.CORE_URL + "startPaidMirror", bout.toByteArray())
+                    .thenApply(res -> {
+                        DataInputStream din = new DataInputStream(new ByteArrayInputStream(res));
+                        try {
+                            boolean success = din.readBoolean();
+                            if (success) {
+                                return Either.a(PaymentProperties.fromCbor(CborObject.fromByteArray(Serialize.deserializeByteArray(din, 1024))));
+                            }
+                            return Either.b(new RequiredDifficulty(din.readInt()));
+                        } catch (IOException e) {
+                            throw new RuntimeException(e);
+                        }
+                    });
+        } catch (IOException ioe) {
+            LOG.log(Level.WARNING, ioe.getMessage(), ioe);
+            return Futures.errored(ioe);
+        }
+    }
+
+    @Override
+    public CompletableFuture<PaymentProperties> completePaidMirror(String username, BatWithId mirrorBat, byte[] signedSpaceRequest, ProofOfWork proof) {
+        try {
+            ByteArrayOutputStream bout = new ByteArrayOutputStream();
+            DataOutputStream dout = new DataOutputStream(bout);
+
+            Serialize.serialize(username, dout);
+            Serialize.serialize(mirrorBat.serialize(), dout);
+            Serialize.serialize(proof.serialize(), dout);
+            Serialize.serialize(signedSpaceRequest, dout);
+            dout.flush();
+
+            return poster.postUnzip(urlPrefix + Constants.CORE_URL + "completePaidMirror", bout.toByteArray())
+                    .thenApply(res -> PaymentProperties.fromCbor(CborObject.fromByteArray(res)));
+        } catch (IOException ioe) {
+            LOG.log(Level.WARNING, ioe.getMessage(), ioe);
+            return Futures.errored(ioe);
+        }
+    }
+
+    @Override
     public CompletableFuture<Optional<RequiredDifficulty>> updateChain(String username,
                                                                        List<UserPublicKeyLink> chain,
                                                                        ProofOfWork proof,

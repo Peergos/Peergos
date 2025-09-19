@@ -69,7 +69,8 @@ public class OpLog implements Cborable, Account, MutablePointers, ContentAddress
                                                                                                        PublicSigningKey authorisedReader,
                                                                                                        byte[] auth,
                                                                                                        Optional<MultiFactorAuthResponse> mfa,
-                                                                                                       boolean cacheMfaLoginData) {
+                                                                                                       boolean cacheMfaLoginData,
+                                                                                                       boolean forceProxy) {
         if (loginData == null)
             throw new IllegalStateException("No login data present!");
         if (! loginData.left.username.equals(username))

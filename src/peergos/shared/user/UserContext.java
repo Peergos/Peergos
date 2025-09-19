@@ -1,6 +1,7 @@
 package peergos.shared.user;
 
 import java.io.*;
+import java.nio.charset.StandardCharsets;
 import java.util.logging.*;
 
 import peergos.shared.crypto.asymmetric.mlkem.HybridCurve25519MLKEMPublicKey;
@@ -140,7 +141,7 @@ public class UserContext {
                                                         Function<MultiFactorAuthRequest, CompletableFuture<MultiFactorAuthResponse>> mfa,
                                                         NetworkAccess network,
                                                         Crypto crypto) {
-        return signIn(username, password, mfa, false, network, crypto, t -> {});
+        return signIn(username, password, mfa, false, false, network, crypto, t -> {});
     }
 
     @JsMethod
@@ -148,6 +149,7 @@ public class UserContext {
                                                         String password,
                                                         Function<MultiFactorAuthRequest, CompletableFuture<MultiFactorAuthResponse>> mfa,
                                                         boolean cacheMfaLoginData,
+                                                        boolean forceProxy,
                                                         NetworkAccess network,
                                                         Crypto crypto,
                                                         Consumer<String> progressCallback) {
@@ -166,11 +168,11 @@ public class UserContext {
             return UserUtil.generateUser(username, password, crypto, algorithm)
                     .thenCompose(userWithRoot -> {
                         progressCallback.accept("Logging in");
-                        return login(username, userWithRoot, mfa, cacheMfaLoginData, pair, network, crypto, progressCallback);
+                        return login(username, userWithRoot, mfa, cacheMfaLoginData, forceProxy, pair, network, crypto, progressCallback);
                     });
                 }).thenCompose(ctx -> ctx.isPostQuantum() ? Futures.of(ctx) : ctx.ensurePostQuantum(password, mfa, progressCallback)
                         .thenCompose(updated -> updated ?
-                                signIn(username, password, mfa, false, network, crypto, t -> {}):
+                                signIn(username, password, mfa, false, forceProxy, network, crypto, t -> {}):
                                 Futures.of(ctx)))
                 .exceptionally(Futures::logAndThrow);
     }
@@ -183,7 +185,7 @@ public class UserContext {
                                                         Consumer<String> progressCallback) {
         progressCallback.accept("Logging in");
         return getWriterDataCbor(network, username)
-                .thenCompose(pair -> login(username, userWithRoot, mfa, false, pair, network, crypto, progressCallback))
+                .thenCompose(pair -> login(username, userWithRoot, mfa, false, false, pair, network, crypto, progressCallback))
                 .exceptionally(Futures::logAndThrow);
     }
 
@@ -216,16 +218,17 @@ public class UserContext {
                                                                   SecretSigningKey loginSecret,
                                                                   Function<MultiFactorAuthRequest, CompletableFuture<MultiFactorAuthResponse>> mfa,
                                                                   boolean cacheMfaLoginData,
+                                                                  boolean forceProxy,
                                                                   NetworkAccess network) {
         return TimeLimitedClient.signNow(loginSecret)
-                .thenCompose(signedTime -> network.account.getLoginData(username, loginPub, signedTime, Optional.empty(), cacheMfaLoginData))
+                .thenCompose(signedTime -> network.account.getLoginData(username, loginPub, signedTime, Optional.empty(), cacheMfaLoginData, forceProxy))
                 .thenCompose(res -> {
                     if (res.isA())
                         return Futures.of(res.a());
                     MultiFactorAuthRequest authReq = res.b();
                     return mfa.apply(authReq)
                             .thenCompose(authResp -> TimeLimitedClient.signNow(loginSecret)
-                                    .thenCompose(signedTime -> network.account.getLoginData(username, loginPub, signedTime, Optional.of(authResp), cacheMfaLoginData)))
+                                    .thenCompose(signedTime -> network.account.getLoginData(username, loginPub, signedTime, Optional.of(authResp), cacheMfaLoginData, forceProxy)))
                             .thenApply(login -> {
                                 if (login.isB())
                                     throw new IllegalStateException("Server rejected second factor auth");
@@ -238,6 +241,7 @@ public class UserContext {
                                                         UserWithRoot generatedCredentials,
                                                         Function<MultiFactorAuthRequest, CompletableFuture<MultiFactorAuthResponse>> mfa,
                                                         boolean cacheMfaLoginData,
+                                                        boolean forceProxy,
                                                         Pair<PointerUpdate, CborObject> pair,
                                                         NetworkAccess network,
                                                         Crypto crypto,
@@ -250,7 +254,7 @@ public class UserContext {
             SecretSigningKey loginSecret = generatedCredentials.getUser().secretSigningKey;
             return (legacyAccount ?
                     Futures.of(userData.staticData.get()) :
-                    getLoginData(username, loginPub, loginSecret, mfa, cacheMfaLoginData, network)).thenCompose(entryData -> {
+                    getLoginData(username, loginPub, loginSecret, mfa, cacheMfaLoginData, forceProxy, network)).thenCompose(entryData -> {
                 UserStaticData.EntryPoints staticData;
                 try {
                     staticData = entryData.getData(loginRoot);
@@ -386,7 +390,7 @@ public class UserContext {
                             SecretSigningKey loginSecret = generatedCredentials.getUser().secretSigningKey;
                             return (legacyAccount ?
                                     Futures.of(userData.staticData.get()) :
-                                    getLoginData(username, loginPub, loginSecret, mfa, false, network))
+                                    getLoginData(username, loginPub, loginSecret, mfa, false, false, network))
                                     .thenCompose(entryData -> BoxingKeyPair.randomHybrid(crypto)
                                             .thenCompose(newBoxer -> writeSynchronizer.applyComplexUpdate(signer.publicKeyHash, signer,
                                                     (s, c) -> IpfsTransaction.call(signer.publicKeyHash,
@@ -540,6 +544,53 @@ public class UserContext {
                                                                 retryUntilPositiveQuota(initialNetwork, identity,
                                                                         () -> initialNetwork.coreNode.completePaidSignup(username, chain.get(0), opLog, signedSpaceReq, proof), 1_000, 5).thenApply(z -> Optional.<RequiredDifficulty>empty())))) :
                         proof -> initialNetwork.coreNode.signup(username, chain.get(0), opLog, proof, token),
+                crypto.hasher, progressCallback);
+    }
+
+    private static CompletableFuture<Boolean> startMirror(String username,
+                                                          Function<ProofOfWork, CompletableFuture<Optional<RequiredDifficulty>>> startMirror,
+                                                          Hasher hasher,
+                                                          Consumer<String> progressCallback) {
+        byte[] data = username.getBytes(StandardCharsets.UTF_8);
+        return time(() -> hasher.generateProofOfWork(ProofOfWork.MIN_DIFFICULTY, data), "Proof of work")
+                .thenCompose(startMirror)
+                .thenCompose(diff -> {
+                    if (diff.isPresent()) {
+                        progressCallback.accept("The server is currently under load, retrying...");
+                        return time(() -> hasher.generateProofOfWork(diff.get().requiredDifficulty, data), "Proof of work")
+                                .thenCompose(startMirror)
+                                .thenApply(d -> {
+                                    if (d.isPresent())
+                                        throw new IllegalStateException("Server is under load please try again later");
+                                    return true;
+                                });
+                    }
+                    return Futures.of(true);
+                });
+    }
+
+    @JsMethod
+    public CompletableFuture<Boolean> mirrorOnThisServer(
+            Optional<Function<PaymentProperties, CompletableFuture<Plan>>> addCard,
+            Consumer<String> progressCallback) {
+        BatWithId mirrorBat = this.mirrorBat.orElseThrow(() -> new IllegalStateException("You need a mirror bat!"));
+        return startMirror(username,
+                addCard.isPresent() ?
+                        proof -> TimeLimitedClient.signNow(signer.secret)
+                                .thenCompose(signedTime -> network.coreNode.startPaidMirror(username, signedTime, proof))
+                                .thenCompose(toPayOrRetry -> toPayOrRetry.isB() ?
+                                        Futures.of(Optional.of(toPayOrRetry.b())) :
+                                        addCard.get().apply(toPayOrRetry.a())
+                                                .thenCompose(s -> signSpaceRequest(username, signer, s.desiredQuota, s.annual))
+                                                .thenCompose(signedSpaceReq -> network.coreNode.completePaidMirror(username, mirrorBat, signedSpaceReq, proof)
+                                                        .thenCompose(paid -> paid.error.isPresent() ?
+                                                                Futures.<Optional<RequiredDifficulty>>errored(new RuntimeException(paid.error.get())) :
+                                                                retryUntilPositiveQuota(network, signer,
+                                                                        () -> network.coreNode.completePaidMirror(username, mirrorBat, signedSpaceReq, proof), 1_000, 5)
+                                                                        .thenApply(z -> Optional.<RequiredDifficulty>empty())))) :
+                        proof -> TimeLimitedClient.signNow(signer.secret)
+                                .thenCompose(signedTime -> network.coreNode.startMirror(username, mirrorBat, signedTime, proof))
+                                .thenApply(x -> Optional.<RequiredDifficulty>empty()),
                 crypto.hasher, progressCallback);
     }
 
@@ -1253,7 +1304,7 @@ public class UserContext {
                                 PublicKeyHash existingOwner = ContentAddressedStorage.hashKey(existingLogin.getUser().publicSigningKey);
                                 if (! isLegacy) {
                                     // identity doesn't change here, just need to update the secret UserStaticData
-                                    return getLoginData(username, existingLogin.getUser().publicSigningKey, existingLoginSecret, mfa, false, network).thenCompose(usd -> {
+                                    return getLoginData(username, existingLogin.getUser().publicSigningKey, existingLoginSecret, mfa, false, false, network).thenCompose(usd -> {
                                         UserStaticData.EntryPoints entry = usd.getData(existingLogin.getRoot());
                                         UserStaticData updatedEntry = new UserStaticData(entry.entries, updatedLogin.getRoot(), entry.identity, entry.boxer);
                                         // need to commit new login algorithm too in the same call

@@ -35,7 +35,8 @@ public interface Account {
                                                                                    PublicSigningKey authorisedReader,
                                                                                    byte[] auth,
                                                                                    Optional<MultiFactorAuthResponse>  mfa,
-                                                                                   boolean cacheMfaLoginData);
+                                                                                   boolean cacheMfaLoginData,
+                                                                                   boolean forceProxy);
 
     /** Auth signed by identity
      *
