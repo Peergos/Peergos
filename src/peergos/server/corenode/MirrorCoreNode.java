@@ -140,6 +140,9 @@ public class MirrorCoreNode implements CoreNode {
                 List<String> externalUsersToMirror = localQuotaUsernames.stream().filter(n -> getHomeServer(n).join()
                         .map(home -> !ourPeerIds.contains(home.bareMultihash())).orElse(false)).toList();
                 for (String username : externalUsersToMirror) {
+                    long quota = quotas.getQuota(username);
+                    if (quota <= 1024*1024)
+                        continue;
                     List<BatWithId> localMirrorBats = batCave.getUserBats(username, new byte[0]).join();
                     if (localMirrorBats.isEmpty())
                         continue;
