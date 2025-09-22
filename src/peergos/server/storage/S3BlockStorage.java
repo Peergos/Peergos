@@ -582,7 +582,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                 .stream()
                 .filter(h -> !h.isIdentity())
                 .collect(Collectors.toList());
-        List<Cid> existingLinks = existing.map(c -> getLinks(c).join().stream()
+        List<Cid> existingLinks = existing.map(c -> getLinks(c, peerIds).join().stream()
                         .filter(h -> !h.isIdentity())
                         .collect(Collectors.toList()))
                 .orElse(Collections.emptyList());
@@ -829,7 +829,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<List<Cid>> getLinks(Cid root) {
+    public CompletableFuture<List<Cid>> getLinks(Cid root, List<Multihash> peerids) {
         if (root.isRaw())
             return CompletableFuture.completedFuture(Collections.emptyList());
         Optional<BlockMetadata> meta = blockMetadata.get(root);

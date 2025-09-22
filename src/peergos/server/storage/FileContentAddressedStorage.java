@@ -201,10 +201,10 @@ public class FileContentAddressedStorage implements DeletableContentAddressedSto
     }
 
     @Override
-    public CompletableFuture<List<Cid>> getLinks(Cid root) {
+    public CompletableFuture<List<Cid>> getLinks(Cid root, List<Multihash> peerids) {
         if (root.codec == Cid.Codec.Raw)
             return CompletableFuture.completedFuture(Collections.emptyList());
-        return getRaw(Collections.emptyList(), root, "", false, false)
+        return getRaw(peerids, root, "", false, false)
                 .thenApply(opt -> opt.map(CborObject::fromByteArray))
                 .thenApply(opt -> opt
                         .map(cbor -> cbor.links().stream().map(c -> (Cid) c).collect(Collectors.toList()))

@@ -179,10 +179,10 @@ public class RAMStorage implements DeletableContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<List<Cid>> getLinks(Cid root) {
+    public CompletableFuture<List<Cid>> getLinks(Cid root, List<Multihash> peerids) {
         if (root.codec == Cid.Codec.Raw)
             return CompletableFuture.completedFuture(Collections.emptyList());
-        return get(Collections.emptyList(), root, "", false).thenApply(opt -> opt
+        return get(peerids, root, "", false).thenApply(opt -> opt
                 .map(cbor -> cbor.links().stream().map(c -> (Cid)c).collect(Collectors.toList()))
                 .orElse(Collections.emptyList())
         );

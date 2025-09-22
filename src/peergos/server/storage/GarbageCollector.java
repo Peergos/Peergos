@@ -382,7 +382,7 @@ public class GarbageCollector {
                     reachability.getLinks(block);
             List<Cid> newLinks = fromRdb
                     .orElseGet(() -> metadata.get(block).map(m -> m.links)
-                            .orElseGet(() -> getWithBackoff(() -> storage.getLinks(block).join())));
+                            .orElseGet(() -> getWithBackoff(() -> storage.getLinks(block, Arrays.asList(storage.id().join())).join())));
 
             if (fromRdb.isEmpty() && ! block.isRaw()) {
                 try {
