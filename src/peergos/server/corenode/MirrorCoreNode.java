@@ -136,9 +136,22 @@ public class MirrorCoreNode implements CoreNode {
         while (true) {
             try {
                 List<String> localQuotaUsernames = quotas.getLocalUsernames();
-                List<Multihash> ourPeerIds = ipfs.ids().join().stream().map(c -> c.bareMultihash()).toList();
-                List<String> externalUsersToMirror = localQuotaUsernames.stream().filter(n -> getHomeServer(n).join()
-                        .map(home -> !ourPeerIds.contains(home.bareMultihash())).orElse(false)).toList();
+                List<Multihash> ourPeerIds = ipfs.ids().join()
+                        .stream()
+                        .map(Cid::bareMultihash)
+                        .toList();
+                List<String> externalUsersToMirror = localQuotaUsernames.stream()
+                        .filter(n -> {
+                            if (! state.chains.containsKey(n))
+                                return false;
+                            List<UserPublicKeyLink> chain = state.chains.get(n);
+                            if (chain.isEmpty())
+                                return false;
+                            List<Multihash> homes = chain.get(chain.size() - 1).claim.storageProviders;
+                            if (homes.isEmpty())
+                                return false;
+                            return !ourPeerIds.contains(homes.get(0).bareMultihash());
+                        }).toList();
                 for (String username : externalUsersToMirror) {
                     long quota = quotas.getQuota(username);
                     if (quota <= 1024*1024)
@@ -158,6 +171,8 @@ public class MirrorCoreNode implements CoreNode {
                         LOG.log(Level.WARNING, "Error mirroring user " + username, e);
                     }
                 }
+            } catch (Exception e) {
+                LOG.log(Level.WARNING, "Error mirroring users", e);
             } finally {
                 Threads.sleep(60_000);
             }
