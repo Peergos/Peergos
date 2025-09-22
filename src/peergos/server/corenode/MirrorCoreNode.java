@@ -146,12 +146,20 @@ public class MirrorCoreNode implements CoreNode {
                     List<BatWithId> localMirrorBats = batCave.getUserBats(username, new byte[0]).join();
                     if (localMirrorBats.isEmpty())
                         continue;
-                    Mirror.mirrorUser(username, Optional.empty(), Optional.of(localMirrorBats.get(localMirrorBats.size() - 1)), this, p2pMutable, null, ipfs, rawPointers, rawAccount, transactions, linkCounts, hasher);
+                    LOG.info("Mirroring " + username + " data locally..");
+                    try {
+                        long t0 = System.currentTimeMillis();
+                        PublicKeyHash owner = getPublicKeyHash(username).join().get();
+                        Map<PublicKeyHash, byte[]> pointers = Mirror.mirrorUser(username, Optional.empty(), Optional.of(localMirrorBats.get(localMirrorBats.size() - 1)), this, p2pMutable, null, ipfs, rawPointers, rawAccount, transactions, linkCounts, hasher);
+                        SpaceCheckingKeyFilter.processCorenodeEvent(username, owner, pointers.keySet(), usageStore, ipfs, p2pMutable, hasher);
+                        long t1 = System.currentTimeMillis();
+                        LOG.info("Finished mirroring " + username + " data in " + (t1 - t0) / 1_000 + "s");
+                    } catch (Exception e) {
+                        LOG.log(Level.WARNING, "Error mirroring user", e);
+                    }
                 }
-            } catch (Exception e) {
-                LOG.log(Level.WARNING, "Error mirroring user", e);
             } finally {
-                Threads.sleep(30_000);
+                Threads.sleep(60_000);
             }
         }
     }
