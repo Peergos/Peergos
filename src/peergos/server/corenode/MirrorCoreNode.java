@@ -155,7 +155,7 @@ public class MirrorCoreNode implements CoreNode {
                         long t1 = System.currentTimeMillis();
                         LOG.info("Finished mirroring " + username + " data in " + (t1 - t0) / 1_000 + "s");
                     } catch (Exception e) {
-                        LOG.log(Level.WARNING, "Error mirroring user", e);
+                        LOG.log(Level.WARNING, "Error mirroring user " + username, e);
                     }
                 }
             } finally {

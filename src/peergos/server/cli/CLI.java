@@ -435,7 +435,7 @@ public class CLI implements Runnable {
 
     public String space(ParsedCommand cmd) {
         UserContext uc = cliContext.userContext;
-        long spaceUsed = uc.getSpaceUsage().join();
+        long spaceUsed = uc.getSpaceUsage(false).join();
         long spaceMB = spaceUsed / 1024 / 1024;
         return "Total space used: " + spaceMB + " MiB.";
     }

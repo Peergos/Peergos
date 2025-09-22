@@ -252,7 +252,7 @@ public class PeergosFS extends FuseStubFS implements AutoCloseable {
         ensureNotClosed();
         long driveSize = context.getQuota().join();
         long blocksize = 128*1024;
-        long used = context.getSpaceUsage().join();
+        long used = context.getSpaceUsage(false).join();
         long free = driveSize - used;
         statvfs.f_bsize.set(blocksize);
         statvfs.f_frsize.set(blocksize);

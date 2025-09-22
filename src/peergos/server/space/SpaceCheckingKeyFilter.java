@@ -335,7 +335,7 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
     }
 
     @Override
-    public CompletableFuture<Long> getUsage(PublicKeyHash owner, byte[] signedTime) {
+    public CompletableFuture<Long> getUsage(PublicKeyHash owner, byte[] signedTime, boolean local) {
         TimeLimited.isAllowedTime(signedTime, 300, dht, owner);
         WriterUsage writerUsage = usageStore.getUsage(owner);
         if (writerUsage == null)

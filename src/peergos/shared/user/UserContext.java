@@ -612,7 +612,7 @@ public class UserContext {
                                                                Function<MultiFactorAuthRequest, CompletableFuture<MultiFactorAuthResponse>> mfa) {
         return signIn(username, password, mfa, network, crypto)
                 .thenCompose(x -> network.coreNode.getChain(username))
-                .thenCompose(existing -> getSpaceUsage().thenCompose(usage ->
+                .thenCompose(existing -> getSpaceUsage(false).thenCompose(usage ->
                         network.dhtClient.id().thenCompose(thisServer -> {
                             Multihash originalNodeId = existing.get(existing.size() - 1)
                                     .claim.storageProviders.stream().findFirst().get();
@@ -1129,9 +1129,9 @@ public class UserContext {
      * @return The total amount of space used by this account in bytes
      */
     @JsMethod
-    public CompletableFuture<Long> getSpaceUsage() {
+    public CompletableFuture<Long> getSpaceUsage(boolean localUsage) {
         return TimeLimitedClient.signNow(signer.secret)
-                .thenCompose(signedTime -> network.spaceUsage.getUsage(signer.publicKeyHash, signedTime));
+                .thenCompose(signedTime -> network.spaceUsage.getUsage(signer.publicKeyHash, signedTime, localUsage));
     }
 
     /**

@@ -1072,7 +1072,7 @@ public class Main extends Builder {
             List<UserPublicKeyLink> newChain = Migrate.buildMigrationChain(existing, newStorageNodeId, user.signer.secret).join();
             user.ensureMirrorId().join().get();
             Optional<BatWithId> current = user.getMirrorBat().join();
-            long usage = user.getSpaceUsage().join();
+            long usage = user.getSpaceUsage(false).join();
             user.network.coreNode.migrateUser(username, newChain, currentStorageNodeId, current, LocalDateTime.MIN, usage).join();
             List<UserPublicKeyLink> updatedChain = user.network.coreNode.getChain(username).join();
             if (!updatedChain.get(updatedChain.size() - 1).claim.storageProviders.contains(newStorageNodeId))

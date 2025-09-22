@@ -340,7 +340,7 @@ public class RamUserTests extends UserTests {
         String password = "terriblepassword";
         UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
         FileWrapper userRoot = context.getUserRoot().join();
-        long initialUsage = context.getSpaceUsage().join();
+        long initialUsage = context.getSpaceUsage(false).join();
         int size = 100*1024*1024;
         byte[] data = new byte[size];
         int bufferSize = 20*1024*1024;
@@ -357,17 +357,17 @@ public class RamUserTests extends UserTests {
             context.getUserRoot().join().uploadFileJS("anotherfile", thrower, 0, size, false,
                     context.mirrorBatId(), network, crypto, x -> {}, txns, f -> Futures.of(false)).join();
         } catch (Exception e) {}
-        long usageAfterFail = context.getSpaceUsage().join();
+        long usageAfterFail = context.getSpaceUsage(false).join();
         while (usageAfterFail <= throwAtIndex) { // give server a chance to recalculate usage
             Thread.sleep(2_000);
-            usageAfterFail = context.getSpaceUsage().join();
+            usageAfterFail = context.getSpaceUsage(false).join();
         }
         Assert.assertTrue(usageAfterFail > throwAtIndex);
         context.cleanPartialUploads(t -> true).join();
-        long usageAfterCleanup = context.getSpaceUsage().join();
+        long usageAfterCleanup = context.getSpaceUsage(false).join();
         while (usageAfterCleanup >= initialUsage + 5000) {
             Thread.sleep(1_000);
-            usageAfterCleanup = context.getSpaceUsage().join();
+            usageAfterCleanup = context.getSpaceUsage(false).join();
         }
         Assert.assertTrue(usageAfterCleanup < initialUsage + 5000); // TODO: investigate why 5000 more (open transactions in db referencing blocks?)
     }
@@ -387,7 +387,7 @@ public class RamUserTests extends UserTests {
 
         userRoot = context.getUserRoot().join();
 
-        long initialUsage = context.getSpaceUsage().join();
+        long initialUsage = context.getSpaceUsage(false).join();
         int size = 100*1024*1024;
         byte[] data = new byte[size];
         int bufferSize = 20*1024*1024;
@@ -400,10 +400,10 @@ public class RamUserTests extends UserTests {
             FileWrapper.FolderUploadProperties dirUploads = new FileWrapper.FolderUploadProperties(Arrays.asList(subdir), Arrays.asList(fileUpload));
             userRoot.uploadSubtree(Stream.of(dirUploads), context.mirrorBatId(), network, crypto, txns, f -> Futures.of(false), () -> true).join();
         } catch (Exception e) {}
-        long usageAfterFail = context.getSpaceUsage().join();
+        long usageAfterFail = context.getSpaceUsage(false).join();
         if (usageAfterFail <= throwAtIndex) { // give server a chance to recalculate usage
             Thread.sleep(2_000);
-            usageAfterFail = context.getSpaceUsage().join();
+            usageAfterFail = context.getSpaceUsage(false).join();
         }
         Assert.assertTrue(usageAfterFail > throwAtIndex);
 
@@ -411,16 +411,16 @@ public class RamUserTests extends UserTests {
         FileWrapper sub = context.getByPath(subdirPath).join().get();
 
         sub.remove(context.getUserRoot().get(), subdirPath, context).join();
-        long usageAfterDelete = context.getSpaceUsage().join();
+        long usageAfterDelete = context.getSpaceUsage(false).join();
         while (usageAfterDelete >= throwAtIndex) { // give server a chance to recalculate usage
             Thread.sleep(2_000);
-            usageAfterDelete = context.getSpaceUsage().join();
+            usageAfterDelete = context.getSpaceUsage(false).join();
         }
         Assert.assertTrue(usageAfterDelete < initialUsage);
 
         // clean the partial upload
         context.cleanPartialUploads(t -> true).join();
-        long usageAfterCleanup = context.getSpaceUsage().join();
+        long usageAfterCleanup = context.getSpaceUsage(false).join();
         Assert.assertTrue(usageAfterCleanup < usageAfterDelete);
     }
 
