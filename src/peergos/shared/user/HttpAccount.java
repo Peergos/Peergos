@@ -63,8 +63,9 @@ public class HttpAccount implements AccountProxy {
                                                                                           PublicSigningKey authorisedReader,
                                                                                           byte[] auth,
                                                                                           Optional<MultiFactorAuthResponse>  mfa,
-                                                                                          boolean cacheMfaLoginData) {
-        return getLoginData(directUrlPrefix, direct, username, authorisedReader, auth,  mfa);
+                                                                                          boolean cacheMfaLoginData,
+                                                                                          boolean forceProxy) {
+        return getLoginData(directUrlPrefix, direct, username, authorisedReader, auth, mfa, forceProxy);
     }
 
     @Override
@@ -72,8 +73,8 @@ public class HttpAccount implements AccountProxy {
                                                                                           String username,
                                                                                           PublicSigningKey authorisedReader,
                                                                                           byte[] auth,
-                                                                                          Optional<MultiFactorAuthResponse>  mfa) {
-        return getLoginData(getProxyUrlPrefix(targetServerId), p2p, username, authorisedReader, auth, mfa);
+                                                                                          Optional<MultiFactorAuthResponse> mfa) {
+        return getLoginData(getProxyUrlPrefix(targetServerId), p2p, username, authorisedReader, auth, mfa, true);
     }
 
     private CompletableFuture<Either<UserStaticData, MultiFactorAuthRequest>> getLoginData(String urlPrefix,
@@ -81,10 +82,12 @@ public class HttpAccount implements AccountProxy {
                                                                                            String username,
                                                                                            PublicSigningKey authorisedReader,
                                                                                            byte[] auth,
-                                                                                           Optional<MultiFactorAuthResponse>  mfa) {
+                                                                                           Optional<MultiFactorAuthResponse> mfa,
+                                                                                           boolean forceProxy) {
         return poster.get(urlPrefix + Constants.LOGIN_URL + "getLogin?username=" + username
                         + "&author=" + ArrayOps.bytesToHex(authorisedReader.serialize())
                         + "&auth=" + ArrayOps.bytesToHex(auth)
+                        + "&proxy=" + forceProxy
                         + mfa.map(mfaCode -> "&mfa=" + ArrayOps.bytesToHex(mfaCode.serialize())).orElse(""))
                 .thenApply(res -> LoginResponse.fromCbor(CborObject.fromByteArray(res)).resp);
     }

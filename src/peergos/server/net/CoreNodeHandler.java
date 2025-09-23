@@ -72,6 +72,18 @@ public class CoreNodeHandler implements HttpHandler
                     AggregatedMetrics.PAID_SIGNUP_COMPLETE.inc();
                     completePaidSignup(din, dout);
                     break;
+                case "mirror":
+                    AggregatedMetrics.MIRROR.inc();
+                    mirror(din, dout);
+                    break;
+                case "startPaidMirror":
+                    AggregatedMetrics.PAID_MIRROR_START.inc();
+                    startPaidMirror(din, dout, exchange);
+                    break;
+                case "completePaidMirror":
+                    AggregatedMetrics.PAID_MIRROR_COMPLETE.inc();
+                    completePaidMirror(din, dout);
+                    break;
                 case "updateChain":
                     AggregatedMetrics.UPDATE_PUBLIC_KEY_CHAIN.inc();
                     updateChain(din, dout);
@@ -157,6 +169,41 @@ public class CoreNodeHandler implements HttpHandler
         ProofOfWork proof = ProofOfWork.fromCbor(CborObject.fromByteArray(Serialize.deserializeByteArray(din, 100)));
         byte[] signedSpaceRequest = Serialize.deserializeByteArray(din, 64 * 1024);
         PaymentProperties res = coreNode.completePaidSignup(username, chain, ops, signedSpaceRequest, proof).get();
+        dout.write(res.serialize());
+    }
+
+    void mirror(DataInputStream din, DataOutputStream dout) throws Exception
+    {
+        String username = CoreNodeUtils.deserializeString(din);
+        byte[] raw = Serialize.deserializeByteArray(din, 100);
+        BatWithId mirrorBat = BatWithId.fromCbor(CborObject.fromByteArray(raw));
+        byte[] auth = Serialize.deserializeByteArray(din, 4096);
+        ProofOfWork proof = ProofOfWork.fromCbor(CborObject.fromByteArray(Serialize.deserializeByteArray(din, 100)));
+        boolean res = coreNode.startMirror(username, mirrorBat, auth, proof).get();
+        dout.writeBoolean(res);
+    }
+
+    void startPaidMirror(DataInputStream din, DataOutputStream dout, HttpExchange exchange) throws Exception
+    {
+        String username = CoreNodeUtils.deserializeString(din);
+        byte[] auth = Serialize.deserializeByteArray(din, 4096);
+        ProofOfWork proof = ProofOfWork.fromCbor(CborObject.fromByteArray(Serialize.deserializeByteArray(din, 100)));
+        Either<PaymentProperties, RequiredDifficulty> res = coreNode.startPaidMirror(username, auth, proof).get();
+        dout.writeBoolean(res.isA());
+        if (res.isA())
+            Serialize.serialize(res.a().serialize(), dout);
+        else
+            dout.writeInt(res.b().requiredDifficulty);
+    }
+
+    void completePaidMirror(DataInputStream din, DataOutputStream dout) throws Exception
+    {
+        String username = CoreNodeUtils.deserializeString(din);
+        byte[] raw = Serialize.deserializeByteArray(din, 100);
+        BatWithId mirrorBat = BatWithId.fromCbor(CborObject.fromByteArray(raw));
+        ProofOfWork proof = ProofOfWork.fromCbor(CborObject.fromByteArray(Serialize.deserializeByteArray(din, 100)));
+        byte[] signedSpaceRequest = Serialize.deserializeByteArray(din, 64 * 1024);
+        PaymentProperties res = coreNode.completePaidMirror(username, mirrorBat, signedSpaceRequest, proof).get();
         dout.write(res.serialize());
     }
 

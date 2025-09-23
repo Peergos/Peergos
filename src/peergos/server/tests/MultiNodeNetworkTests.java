@@ -202,7 +202,7 @@ public class MultiNodeNetworkTests {
 
         for (NetworkAccess node: nodes) {
             long usage = node.spaceUsage.getUsage(context.signer.publicKeyHash,
-                    TimeLimitedClient.signNow(context.signer.secret).join()).join();
+                    TimeLimitedClient.signNow(context.signer.secret).join(), false).join();
             byte[] signedTime = TimeLimitedClient.signNow(context.signer.secret).join();
             long quota = node.spaceUsage.getQuota(context.signer.publicKeyHash, signedTime).join();
             Assert.assertTrue(usage >0 && quota > 0);
@@ -262,7 +262,7 @@ public class MultiNodeNetworkTests {
         List<BatWithId> batsViaNewNode = node2.batCave.getUserBats(username, userViaNewServer.signer).join();
         Assert.assertTrue(bats.equals(batsViaNewNode));
         Optional<BatWithId> mirrorBat = Optional.of(bats.get(bats.size() - 1));
-        long usageVia1 = user.getSpaceUsage().join();
+        long usageVia1 = user.getSpaceUsage(false).join();
         userViaNewServer.network.coreNode.migrateUser(username, newChain, originalNodeId, mirrorBat, LocalDateTime.now(), usageVia1).join();
 
         List<UserPublicKeyLink> chain = userViaNewServer.network.coreNode.getChain(username).join();
@@ -271,7 +271,7 @@ public class MultiNodeNetworkTests {
 
         // test a fresh login on the new storage node
         UserContext postMigration = ensureSignedUp(username, password, node2.clear(), crypto);
-        long usageVia2 = postMigration.getSpaceUsage().join();
+        long usageVia2 = postMigration.getSpaceUsage(false).join();
         // Note we currently don't remove the old pointer after changing password,
         // so there is a 5kib reduction after migration per password change
         Assert.assertTrue("Usage after migrate: " + usageVia2 + ", usage before: " + usageVia1,

@@ -218,8 +218,8 @@ public class DelegatingDeletableStorage implements DeletableContentAddressedStor
     }
 
     @Override
-    public CompletableFuture<List<Cid>> getLinks(Cid root) {
-        return target.getLinks(root);
+    public CompletableFuture<List<Cid>> getLinks(Cid root, List<Multihash> peerids) {
+        return target.getLinks(root, peerids);
     }
 
     @Override

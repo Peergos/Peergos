@@ -37,11 +37,12 @@ public class ProxyingAccount implements Account {
                                                                                           PublicSigningKey authorisedReader,
                                                                                           byte[] auth,
                                                                                           Optional<MultiFactorAuthResponse>  mfa,
-                                                                                          boolean cacheMfaLoginData) {
+                                                                                          boolean cacheMfaLoginData,
+                                                                                          boolean forceProxy) {
         return core.getPublicKeyHash(username).thenCompose(idOpt -> Proxy.redirectCall(core,
                 serverIds,
                 idOpt.get(),
-                () -> local.getLoginData(username, authorisedReader, auth, mfa, false),
+                () -> local.getLoginData(username, authorisedReader, auth, mfa, false, forceProxy),
                 target -> p2p.getLoginData(target, username, authorisedReader, auth, mfa)));
     }
 

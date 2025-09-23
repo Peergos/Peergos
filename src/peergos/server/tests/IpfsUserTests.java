@@ -78,7 +78,7 @@ public class IpfsUserTests extends UserTests {
         transactionStore.clearOldTransactions(System.currentTimeMillis());
         gc();
         long sizeBefore = getBlockstoreSize();
-        long usageBefore = context.getSpaceUsage().join();
+        long usageBefore = context.getSpaceUsage(false).join();
         int filesize = 10 * 1024 * 1024;
         String filename = "file.bin";
         context.getUserRoot().join().uploadOrReplaceFile(filename, AsyncReader.build(new byte[filesize]),
@@ -86,7 +86,7 @@ public class IpfsUserTests extends UserTests {
         long sizeWithFile = getBlockstoreSize();
         Assert.assertTrue(sizeWithFile > sizeBefore + filesize);
         Threads.sleep(2_000); // Allow time for server to update usage
-        long usageWithFile = context.getSpaceUsage().join();
+        long usageWithFile = context.getSpaceUsage(false).join();
         Assert.assertTrue(usageWithFile > usageBefore + filesize);
 
         Path filePath = PathUtil.get(username, filename);
@@ -95,7 +95,7 @@ public class IpfsUserTests extends UserTests {
         transactionStore.clearOldTransactions(System.currentTimeMillis());
         List<Cid> open = transactionStore.getOpenTransactionBlocks();
         Assert.assertTrue(open.isEmpty());
-        long usageAfter = context.getSpaceUsage().join();
+        long usageAfter = context.getSpaceUsage(false).join();
         Assert.assertTrue(usageAfter == usageBefore);
         gc();
         long sizeAfterDelete = getBlockstoreSize();

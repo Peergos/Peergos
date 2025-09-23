@@ -76,6 +76,10 @@ public class AggregatedMetrics {
     public static final Counter PAID_SIGNUP_START  = build("core_node_signup_paid_start", "Total start paid signup calls.");
     public static final Counter PAID_SIGNUP_COMPLETE  = build("core_node_signup_paid_complete", "Total complete paid signup calls.");
     public static final Counter PAID_SIGNUP_SUCCESS  = build("core_node_signup_paid_success", "Total successful paid signup calls.");
+    public static final Counter MIRROR  = build("core_node_mirror", "Total mirror calls.");
+    public static final Counter PAID_MIRROR_START  = build("core_node_mirror_paid_start", "Total start paid mirror calls.");
+    public static final Counter PAID_MIRROR_COMPLETE  = build("core_node_mirror_paid_complete", "Total complete paid mirror calls.");
+    public static final Counter PAID_MIRROR_SUCCESS  = build("core_node_mirror_paid_success", "Total successful paid mirror calls.");
     public static final Counter MIGRATE_USER  = build("core_node_migrate_user", "Total migrate-user calls.");
 
     private static Set<String> runningExporters = new HashSet<>();

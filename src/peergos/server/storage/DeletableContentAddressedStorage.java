@@ -164,7 +164,7 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
                 .filter(h -> !h.isIdentity())
                 .map(m -> (Cid) m)
                 .collect(Collectors.toList());
-        List<Cid> existingLinks = existing.map(h -> getLinks(h).join()
+        List<Cid> existingLinks = existing.map(h -> getLinks(h, Arrays.asList(ourNodeId)).join()
                         .stream()
                         .filter(c -> ! c.isIdentity())
                         .collect(Collectors.toList()))
@@ -220,7 +220,7 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
                 List<Cid> newLinks = addedLinks.get(i);
                 List<Cid> existingLinks = i >= removed.size() ?
                         Collections.emptyList() :
-                        getLinks(removed.get(i)).join().stream()
+                        getLinks(removed.get(i), Arrays.asList(ourNodeId)).join().stream()
                                 .filter(c -> !c.isIdentity())
                                 .collect(Collectors.toList());
                 bulkMirror(owner, peerIds, existingLinks, newLinks, mirrorBat, ourNodeId, newBlockProcessor, tid, hasher);
@@ -248,20 +248,20 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
      * @param root The hash of the object whose links we want
      * @return A list of the multihashes referenced with ipld links in this object
      */
-    default CompletableFuture<List<Cid>> getLinks(Cid root) {
+    default CompletableFuture<List<Cid>> getLinks(Cid root, List<Multihash> peerids) {
         if (root.isRaw())
             return CompletableFuture.completedFuture(Collections.emptyList());
-        return get(Collections.emptyList(), root, "", true).thenApply(opt -> opt
+        return get(peerids, root, "", true).thenApply(opt -> opt
                 .map(cbor -> cbor.links().stream().map(c -> (Cid) c).collect(Collectors.toList()))
                 .orElse(Collections.emptyList())
         );
     }
 
-    default CompletableFuture<Long> getRecursiveBlockSize(Cid block) {
-        return getLinks(block).thenCompose(links -> {
+    default CompletableFuture<Long> getRecursiveBlockSize(Cid block, List<Multihash> peerids) {
+        return getLinks(block, peerids).thenCompose(links -> {
             List<CompletableFuture<Long>> subtrees = links.stream()
                     .filter(m -> ! m.isIdentity())
-                    .map(c -> Futures.runAsync(() -> getRecursiveBlockSize(c)))
+                    .map(c -> Futures.runAsync(() -> getRecursiveBlockSize(c, peerids)))
                     .collect(Collectors.toList());
             return getSize(block)
                     .thenCompose(sizeOpt -> {
@@ -274,7 +274,7 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
 
     default CompletableFuture<Long> getChangeInContainedSize(Optional<Cid> original, Cid updated) {
         if (! original.isPresent())
-            return getRecursiveBlockSize(updated);
+            return getRecursiveBlockSize(updated, Arrays.asList(id().join()));
         return getChangeInContainedSize(original.get(), updated);
     }
 
@@ -312,7 +312,7 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
 
     private CompletableFuture<Long> getAllRecursiveSizes(List<Cid> roots) {
         List<CompletableFuture<Long>> allSizes = roots.stream()
-                .map(c -> Futures.runAsync(() -> getRecursiveBlockSize(c), usagePool))
+                .map(c -> Futures.runAsync(() -> getRecursiveBlockSize(c, Arrays.asList(id().join())), usagePool))
                 .collect(Collectors.toList());
         return Futures.reduceAll(allSizes,
                 0L,

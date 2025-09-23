@@ -26,7 +26,7 @@ public class UserCleanup {
         String username = args[0];
         String password = args[1];
         UserContext context = UserContext.signIn(username, password, Main::getMfaResponseCLI, network, crypto).get();
-        long usage = context.getSpaceUsage().join();
+        long usage = context.getSpaceUsage(false).join();
 //        checkRawUsage(context);
         clearUnreachableChampNodes(context);
     }
@@ -160,7 +160,7 @@ public class UserCleanup {
 
     public static void checkRawUsage(UserContext c) {
         PublicKeyHash owner = c.signer.publicKeyHash;
-        long serverCalculatedUsage = c.getSpaceUsage().join();
+        long serverCalculatedUsage = c.getSpaceUsage(false).join();
         Optional<BatWithId> mirror = c.getMirrorBat().join();
         Set<PublicKeyHash> writers = DeletableContentAddressedStorage.getOwnedKeysRecursive(owner, owner, c.network.mutable,
                 (h, s) -> ContentAddressedStorage.getWriterData(owner, h, s, c.network.dhtClient), c.network.dhtClient, c.crypto.hasher).join();

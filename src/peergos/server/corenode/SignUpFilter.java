@@ -14,6 +14,7 @@ import peergos.shared.storage.*;
 import peergos.shared.user.*;
 
 import java.io.*;
+import java.nio.charset.StandardCharsets;
 import java.time.*;
 import java.util.*;
 import java.util.concurrent.*;
@@ -28,6 +29,7 @@ public class SignUpFilter implements CoreNode {
     private final HttpSpaceUsage space;
     private final Hasher hasher;
     private final DifficultyGenerator startPaidRateLimiter;
+    private final DifficultyGenerator startPaidMirrorRateLimiter;
     private final int maxPaidSignupsPerDay;
     private final boolean isPki;
 
@@ -45,6 +47,7 @@ public class SignUpFilter implements CoreNode {
         this.hasher = hasher;
         this.maxPaidSignupsPerDay = maxPaidSignupsPerDay;
         startPaidRateLimiter = new DifficultyGenerator(System.currentTimeMillis(), maxPaidSignupsPerDay);
+        startPaidMirrorRateLimiter = new DifficultyGenerator(System.currentTimeMillis(), maxPaidSignupsPerDay);
         this.isPki = isPki;
     }
 
@@ -126,6 +129,75 @@ public class SignUpFilter implements CoreNode {
             LOG.info("Successful Paid signup!");
             AggregatedMetrics.PAID_SIGNUP_SUCCESS.inc();
             return target.completePaidSignup(username, chain, setupOperations, signedSpaceRequest, proof);
+        } else if (result.hasError()) {
+            LOG.info("Payment error during Paid signup! username=" + username);
+            // payment failed, set desired quota to 0 to prevent future payment attempts
+            quotaStore.removeDesiredQuota(username);
+        }
+        return Futures.of(result);
+    }
+
+    @Override
+    public CompletableFuture<Boolean> startMirror(String username, BatWithId mirrorBat, byte[] auth, ProofOfWork proof) {
+        long quota = quotaStore.getQuota(username);
+        if (quota <= 1024*1024)
+            throw new IllegalStateException("Not enough space quota!");
+        return target.startMirror(username, mirrorBat, auth, proof);
+    }
+
+    @Override
+    public CompletableFuture<Either<PaymentProperties, RequiredDifficulty>> startPaidMirror(String username,
+                                                                                            byte[] auth,
+                                                                                            ProofOfWork proof) {
+        if (maxPaidSignupsPerDay == 0)
+            return Futures.of(Either.b(new RequiredDifficulty(ProofOfWork.MAX_DIFFICULTY)));
+
+        // Apply rate limiting based on IP, failures, etc.
+        // Check proof of work is sufficient, unless it is a password change
+        byte[] data = username.getBytes(StandardCharsets.UTF_8);
+        byte[] hash = hasher.sha256(ArrayOps.concat(proof.prefix, data)).join();
+        startPaidMirrorRateLimiter.updateTime(System.currentTimeMillis());
+        int requiredDifficulty = startPaidMirrorRateLimiter.currentDifficulty();
+        if (! ProofOfWork.satisfiesDifficulty(requiredDifficulty, hash)) {
+            LOG.log(Level.INFO, "Rejected start paid mirror request with insufficient proof of work for difficulty: " +
+                    requiredDifficulty + " and username " + username);
+            return Futures.of(Either.b(new RequiredDifficulty(requiredDifficulty)));
+        }
+
+        // check auth signature
+        target.startPaidMirror(username, auth, proof).join();
+
+        // create user and get payment url
+        return Futures.of(Either.a(quotaStore.createPaidUser(username)));
+    }
+
+    @Override
+    public CompletableFuture<PaymentProperties> completePaidMirror(String username,
+                                                                   BatWithId mirrorBat,
+                                                                   byte[] signedSpaceRequest,
+                                                                   ProofOfWork proof) {
+        // take payment, and if successful, finalise account creation
+        quotaStore.getQuota(username); // This will throw if the user doesn't exist in quota store
+        PublicKeyHash owner = target.getPublicKeyHash(username).join().get();
+        PaymentProperties result = quotaStore.requestQuota(owner, signedSpaceRequest, 0).join();
+        long quota = quotaStore.getQuota(username);
+        if (quota == 0 && ! result.hasError()) {// try again if no card showed up yet
+            for (int i = 0; i < 3; i++) {
+                LOG.info("Paid mirror: no cards available, sleeping for 3s...");
+                try {Thread.sleep(3_000);} catch (InterruptedException e) {}
+                result = quotaStore.requestQuota(owner, signedSpaceRequest,0).join();
+                quota = quotaStore.getQuota(username);
+                if (quota > 0 || result.hasError())
+                    break;
+            }
+        }
+        LOG.info("Paid mirror: quota="+quota + ", username=" + username);
+        if (quota >= result.desiredQuota && quota > 1024*1024) {// 1 MiB is the deletion quota
+            LOG.info("Successful Paid mirror!");
+            AggregatedMetrics.PAID_MIRROR_SUCCESS.inc();
+
+            // start mirror
+            target.completePaidMirror(username, mirrorBat, signedSpaceRequest, proof);
         } else if (result.hasError()) {
             LOG.info("Payment error during Paid signup! username=" + username);
             // payment failed, set desired quota to 0 to prevent future payment attempts

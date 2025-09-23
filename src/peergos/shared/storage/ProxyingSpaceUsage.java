@@ -25,21 +25,19 @@ public class ProxyingSpaceUsage implements SpaceUsage {
     }
 
     @Override
-    public CompletableFuture<Long> getUsage(PublicKeyHash targetUser, byte[] signedTime) {
+    public CompletableFuture<Long> getUsage(PublicKeyHash targetUser, byte[] signedTime, boolean localUsage) {
+        if (localUsage)
+            return local.getUsage(targetUser, signedTime, localUsage);
         return Proxy.redirectCall(core,
                 serverIds,
                 targetUser,
-                () -> local.getUsage(targetUser, signedTime),
+                () -> local.getUsage(targetUser, signedTime, localUsage),
                 targetServer -> p2p.getUsage(targetServer, targetUser, signedTime));
     }
 
     @Override
     public CompletableFuture<PaymentProperties> getPaymentProperties(PublicKeyHash owner, boolean newClientSecret, byte[] signedTime) {
-        return Proxy.redirectCall(core,
-                serverIds,
-                owner,
-                () -> local.getPaymentProperties(owner, newClientSecret, signedTime),
-                targetServer -> p2p.getPaymentProperties(targetServer, owner, newClientSecret, signedTime));
+        return local.getPaymentProperties(owner, newClientSecret, signedTime);
     }
 
     @Override
@@ -53,10 +51,6 @@ public class ProxyingSpaceUsage implements SpaceUsage {
 
     @Override
     public CompletableFuture<PaymentProperties> requestQuota(PublicKeyHash owner, byte[] signedRequest, long usage) {
-        return Proxy.redirectCall(core,
-                serverIds,
-                owner,
-                () -> local.requestQuota(owner, signedRequest, usage),
-                targetServer -> p2p.requestSpace(targetServer, owner, signedRequest));
+        return local.requestQuota(owner, signedRequest, usage);
     }
 }

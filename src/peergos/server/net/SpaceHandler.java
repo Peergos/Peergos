@@ -56,7 +56,10 @@ public class SpaceHandler implements HttpHandler {
                 }
                 case "usage": {
                     byte[] signedTime = ArrayOps.hexToBytes(last.apply("auth"));
-                    long usage = spaceUsage.getUsage(owner, signedTime).join();
+                    boolean localUsage = params.containsKey("local") ?
+                            Boolean.parseBoolean(last.apply("local")) :
+                            false;
+                    long usage = spaceUsage.getUsage(owner, signedTime, localUsage).join();
                     result = new CborObject.CborLong(usage);
                     break;
                 }

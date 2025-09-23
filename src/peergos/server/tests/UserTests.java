@@ -437,7 +437,7 @@ public abstract class UserTests {
         Assert.assertTrue(initialWd.staticData.isPresent());
 
         List<String> progress = new ArrayList<>();
-        UserContext login = UserContext.signIn(username, password, UserTests::noMfa, false, network, crypto, progress::add).join();
+        UserContext login = UserContext.signIn(username, password, UserTests::noMfa, false, false, network, crypto, progress::add).join();
         WriterData afterPqUpgrade = WriterData.getWriterData(login.signer.publicKeyHash, login.signer.publicKeyHash, network.mutable, network.dhtClient).join().props.get();
         Pair<PublicKeyHash, PublicBoxingKey> pqKeys = login.getPublicKeys(username).join().get();
         Assert.assertTrue(afterPqUpgrade.staticData.isPresent());
@@ -449,7 +449,7 @@ public abstract class UserTests {
         MultiUserTests.checkUserValidity(network, username);
 
         List<String> progress2 = new ArrayList<>();
-        UserContext changedPassword = UserContext.signIn(username, newPassword, UserTests::noMfa, false, network, crypto, progress2::add).join();
+        UserContext changedPassword = UserContext.signIn(username, newPassword, UserTests::noMfa, false, false, network, crypto, progress2::add).join();
         Pair<PublicKeyHash, PublicBoxingKey> newKeyPairs = changedPassword.getPublicKeys(username).join().get();
         PublicBoxingKey newBoxer = newKeyPairs.right;
         PublicKeyHash newIdentity = newKeyPairs.left;
@@ -491,7 +491,7 @@ public abstract class UserTests {
 
         List<String> progress2 = new ArrayList<>();
         // changing password also upgrade to PQ
-        UserContext changedPassword = UserContext.signIn(username, newPassword, UserTests::noMfa, false, network, crypto, progress2::add).join();
+        UserContext changedPassword = UserContext.signIn(username, newPassword, UserTests::noMfa, false, false, network, crypto, progress2::add).join();
         Pair<PublicKeyHash, PublicBoxingKey> newKeyPairs = changedPassword.getPublicKeys(username).join().get();
         PublicBoxingKey newBoxer = newKeyPairs.right;
         PublicKeyHash newIdentity = newKeyPairs.left;
@@ -1420,10 +1420,10 @@ public abstract class UserTests {
         checkFileContents(data5, file, context);
 
         // check used space
-        long totalSpaceUsed = context.getSpaceUsage().get();
+        long totalSpaceUsed = context.getSpaceUsage(false).get();
         while (totalSpaceUsed < 10*1024*1024) {
             Thread.sleep(1_000);
-            totalSpaceUsed = context.getSpaceUsage().get();
+            totalSpaceUsed = context.getSpaceUsage(false).get();
         }
         Assert.assertTrue("Correct used space", totalSpaceUsed > 10*1024*1024);
 
@@ -2071,7 +2071,7 @@ public abstract class UserTests {
         Assert.assertTrue(network.instanceAdmin.acceptingSignups().join().free);
         UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
         long quota = context.getQuota().join();
-        long usage = context.getSpaceUsage().join();
+        long usage = context.getSpaceUsage(false).join();
         Assert.assertTrue("non zero quota", quota > 0);
         Assert.assertTrue("non zero space usage", usage > 0);
 
@@ -2104,7 +2104,7 @@ public abstract class UserTests {
         String username = generateUsername();
         String password = "password";
         UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
-        long initialUsage = context.getSpaceUsage().join();
+        long initialUsage = context.getSpaceUsage(false).join();
 
         UserCleanup.checkRawUsage(context);
         String filename = "test.bin";
@@ -2124,7 +2124,7 @@ public abstract class UserTests {
         try {Thread.sleep(2000);} catch (InterruptedException e) {}
         UserCleanup.checkRawUsage(context);
 
-        long finalUsage = context.getSpaceUsage().join();
+        long finalUsage = context.getSpaceUsage(false).join();
         long diff = finalUsage - initialUsage;
         Assert.assertTrue(diff == 0);
     }

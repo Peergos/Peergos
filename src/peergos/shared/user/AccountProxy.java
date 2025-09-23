@@ -19,7 +19,7 @@ public interface AccountProxy extends Account {
                                                                                    String username,
                                                                                    PublicSigningKey authorisedReader,
                                                                                    byte[] auth,
-                                                                                   Optional<MultiFactorAuthResponse>  mfa);
+                                                                                   Optional<MultiFactorAuthResponse> mfa);
 
     CompletableFuture<List<MultiFactorAuthMethod>> getSecondAuthMethods(Multihash targetServerId, String username, byte[] auth);
 

@@ -34,6 +34,20 @@ public interface CoreNode {
                                                             byte[] signedSpaceRequest,
                                                             ProofOfWork proof);
 
+    CompletableFuture<Boolean> startMirror(String username,
+                                           BatWithId mirrorBat,
+                                           byte[] auth,
+                                           ProofOfWork proof);
+
+    CompletableFuture<Either<PaymentProperties, RequiredDifficulty>> startPaidMirror(String username,
+                                                                                     byte[] auth,
+                                                                                     ProofOfWork proof);
+
+    CompletableFuture<PaymentProperties> completePaidMirror(String username,
+                                                            BatWithId mirrorBat,
+                                                            byte[] signedSpaceRequest,
+                                                            ProofOfWork proof);
+
     /**
      *
      * @param username

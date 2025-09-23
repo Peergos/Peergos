@@ -68,6 +68,36 @@ public class CorenodeEventPropagator implements CoreNode {
     }
 
     @Override
+    public CompletableFuture<Boolean> startMirror(String username, BatWithId mirrorBat, byte[] auth, ProofOfWork proof) {
+        return target.startMirror(username, mirrorBat, auth, proof);
+    }
+
+    @Override
+    public CompletableFuture<Either<PaymentProperties, RequiredDifficulty>> startPaidMirror(String username, byte[] auth, ProofOfWork proof) {
+        return target.startPaidMirror(username, auth, proof).thenApply(props -> {
+            if (props.isA() && ! props.a().hasError()) {
+                for (Function<? super CorenodeEvent, CompletableFuture<Boolean>> listener : listeners) {
+                    listener.apply(new CorenodeEvent(username, getPublicKeyHash(username).join().get()));
+                }
+            }
+            return props;
+        });
+    }
+
+    @Override
+    public CompletableFuture<PaymentProperties> completePaidMirror(String username, BatWithId mirrorBat, byte[] signedSpaceRequest, ProofOfWork proof) {
+        return target.completePaidMirror(username, mirrorBat, signedSpaceRequest, proof)
+                .thenApply(props -> {
+                    if (! props.hasError()) {
+                        for (Function<? super CorenodeEvent, CompletableFuture<Boolean>> listener : listeners) {
+                            listener.apply(new CorenodeEvent(username, getPublicKeyHash(username).join().get()));
+                        }
+                    }
+                    return props;
+                });
+    }
+
+    @Override
     public CompletableFuture<Optional<RequiredDifficulty>> updateChain(String username,
                                                                        List<UserPublicKeyLink> chain,
                                                                        ProofOfWork proof,

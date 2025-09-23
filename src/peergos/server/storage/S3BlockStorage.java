@@ -582,7 +582,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                 .stream()
                 .filter(h -> !h.isIdentity())
                 .collect(Collectors.toList());
-        List<Cid> existingLinks = existing.map(c -> getLinks(c).join().stream()
+        List<Cid> existingLinks = existing.map(c -> getLinks(c, peerIds).join().stream()
                         .filter(h -> !h.isIdentity())
                         .collect(Collectors.toList()))
                 .orElse(Collections.emptyList());
@@ -829,7 +829,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<List<Cid>> getLinks(Cid root) {
+    public CompletableFuture<List<Cid>> getLinks(Cid root, List<Multihash> peerids) {
         if (root.isRaw())
             return CompletableFuture.completedFuture(Collections.emptyList());
         Optional<BlockMetadata> meta = blockMetadata.get(root);
@@ -846,7 +846,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         Optional<BlockMetadata> cached = blockMetadata.get(h);
         if (cached.isPresent())
             return Futures.of(cached.get());
-        Optional<Pair<byte[], String>> data = getRaw(Collections.emptyList(), h, h.isRaw() ?
+        Optional<Pair<byte[], String>> data = getRaw(peerIds, h, h.isRaw() ?
                 Optional.of(new Pair<>(0, Bat.MAX_RAW_BLOCK_PREFIX_SIZE - 1)) :
                 Optional.empty(), "", false, Optional.empty(), false).join();
         if (data.isEmpty())

@@ -139,7 +139,7 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
                 boolean isChanged = ! writerUsage.target().equals(rootHash);
                 if (isChanged) {
                     Logging.LOG().info("Root hash changed from " + writerUsage.target() + " to " + rootHash);
-                    long updatedSize = dht.getRecursiveBlockSize((Cid)rootHash.get()).get();
+                    long updatedSize = dht.getRecursiveBlockSize((Cid)rootHash.get(), us).get();
                     long deltaUsage = updatedSize - writerUsage.directRetainedStorage();
                     store.confirmUsage(writerUsage.owner, writerKey, deltaUsage, false);
                     Set<PublicKeyHash> directOwnedKeys = DeletableContentAddressedStorage.getDirectOwnedKeys(owner, writerKey, mutable,
@@ -335,7 +335,7 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
     }
 
     @Override
-    public CompletableFuture<Long> getUsage(PublicKeyHash owner, byte[] signedTime) {
+    public CompletableFuture<Long> getUsage(PublicKeyHash owner, byte[] signedTime, boolean local) {
         TimeLimited.isAllowedTime(signedTime, 300, dht, owner);
         WriterUsage writerUsage = usageStore.getUsage(owner);
         if (writerUsage == null)

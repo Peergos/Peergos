@@ -72,7 +72,7 @@ public class MetadataCachingStorage extends DelegatingDeletableStorage {
     }
 
     @Override
-    public CompletableFuture<List<Cid>> getLinks(Cid block) {
+    public CompletableFuture<List<Cid>> getLinks(Cid block, List<Multihash> peerids) {
         if (block.isRaw())
             return Futures.of(Collections.emptyList());
         if (block.isIdentity())
