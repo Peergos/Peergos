@@ -603,8 +603,9 @@ public class UserContext {
     @JsMethod
     public CompletableFuture<Boolean> isHome() {
         return network.coreNode.getHomeServer(username)
-                .thenCompose(home -> network.dhtClient.id()
-                        .thenApply(thisServer -> thisServer.bareMultihash().equals(home.get().bareMultihash())));
+                .thenCompose(home -> network.dhtClient.ids()
+                        .thenApply(thisServersIds -> thisServersIds.stream()
+                                .anyMatch(c -> c.bareMultihash().equals(home.get().bareMultihash()))));
     }
 
     @JsMethod
