@@ -20,8 +20,8 @@ public class JdbcBlockMetadataStore implements BlockMetadataStore {
     private static final String REMOVE = "DELETE FROM blockmetadata where cid = ?;";
     public static final int PAGE_LIMIT = 100_000;
     private static final String LIST_PAGINATED_FIRST = "SELECT cid, version FROM blockmetadata ORDER BY cid LIMIT " + PAGE_LIMIT + ";";
-    private static final String LIST_SIZE_PAGINATED_FIRST = "SELECT cid. size FROM blockmetadata ORDER BY cid LIMIT " + PAGE_LIMIT + ";";
     private static final String LIST_PAGINATED = "SELECT cid, version FROM blockmetadata WHERE cid > ? ORDER BY cid LIMIT " + PAGE_LIMIT + ";";
+    private static final String LIST_SIZE_PAGINATED_FIRST = "SELECT cid, size FROM blockmetadata ORDER BY cid LIMIT " + PAGE_LIMIT + ";";
     private static final String LIST_SIZE_PAGINATED = "SELECT cid, size FROM blockmetadata WHERE cid > ? ORDER BY cid LIMIT " + PAGE_LIMIT + ";";
     private static final String LIST_ALL = "SELECT cid, version FROM blockmetadata;";
     private static final String SIZE = "SELECT COUNT(*) FROM blockmetadata;";
