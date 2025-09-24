@@ -35,6 +35,11 @@ public class RamBlockMetadataStore implements BlockMetadataStore {
     }
 
     @Override
+    public void applyToAllSizes(BiConsumer<Cid, Long> action) {
+        store.entrySet().stream().forEach(e -> action.accept(e.getKey(), (long) e.getValue().size));
+    }
+
+    @Override
     public Stream<BlockVersion> list() {
         return store.keySet().stream().map(c -> new BlockVersion(c, null, true));
     }

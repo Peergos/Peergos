@@ -5,6 +5,7 @@ import peergos.server.util.*;
 import peergos.shared.cbor.*;
 import peergos.shared.storage.auth.*;
 import peergos.shared.io.ipfs.Cid;
+import peergos.shared.util.Pair;
 
 import java.sql.*;
 import java.util.*;
@@ -19,7 +20,9 @@ public class JdbcBlockMetadataStore implements BlockMetadataStore {
     private static final String REMOVE = "DELETE FROM blockmetadata where cid = ?;";
     public static final int PAGE_LIMIT = 100_000;
     private static final String LIST_PAGINATED_FIRST = "SELECT cid, version FROM blockmetadata ORDER BY cid LIMIT " + PAGE_LIMIT + ";";
+    private static final String LIST_SIZE_PAGINATED_FIRST = "SELECT cid. size FROM blockmetadata ORDER BY cid LIMIT " + PAGE_LIMIT + ";";
     private static final String LIST_PAGINATED = "SELECT cid, version FROM blockmetadata WHERE cid > ? ORDER BY cid LIMIT " + PAGE_LIMIT + ";";
+    private static final String LIST_SIZE_PAGINATED = "SELECT cid, size FROM blockmetadata WHERE cid > ? ORDER BY cid LIMIT " + PAGE_LIMIT + ";";
     private static final String LIST_ALL = "SELECT cid, version FROM blockmetadata;";
     private static final String SIZE = "SELECT COUNT(*) FROM blockmetadata;";
     private Supplier<Connection> conn;
@@ -149,6 +152,32 @@ public class JdbcBlockMetadataStore implements BlockMetadataStore {
                 while (rs.next()) {
                     Cid cid = Cid.cast(rs.getBytes("cid"));
                     action.accept(cid);
+                    added++;
+                    prevLast = cid;
+                }
+                if (added == 0)
+                    break;
+            } catch (SQLException sqe) {
+                LOG.log(Level.WARNING, sqe.getMessage(), sqe);
+                throw new RuntimeException(sqe);
+            }
+        }
+    }
+
+    @Override
+    public void applyToAllSizes(BiConsumer<Cid, Long> action) {
+        Cid prevLast = null;
+        while (true) {
+            try (Connection conn = getConnection();
+                 PreparedStatement stmt = conn.prepareStatement(prevLast == null ? LIST_SIZE_PAGINATED_FIRST : LIST_SIZE_PAGINATED)) {
+                if (prevLast != null)
+                    stmt.setBytes(1, prevLast.toBytes());
+                ResultSet rs = stmt.executeQuery();
+                int added = 0;
+                while (rs.next()) {
+                    Cid cid = Cid.cast(rs.getBytes("cid"));
+                    long size = rs.getLong("size");
+                    action.accept(cid, size);
                     added++;
                     prevLast = cid;
                 }

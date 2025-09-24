@@ -8,6 +8,7 @@ import peergos.shared.io.ipfs.Cid;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.stream.Stream;
 
@@ -51,6 +52,11 @@ class RequestCountingBlockMetadataStore implements BlockMetadataStore {
     @Override
     public void applyToAll(Consumer<Cid> consumer) {
         target.applyToAll(consumer);
+    }
+
+    @Override
+    public void applyToAllSizes(BiConsumer<Cid, Long> action) {
+        target.applyToAllSizes(action);
     }
 
     @Override

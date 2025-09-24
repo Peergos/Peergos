@@ -3,6 +3,7 @@ package peergos.server.storage;
 import peergos.shared.cbor.*;
 import peergos.shared.storage.auth.*;
 import peergos.shared.io.ipfs.Cid;
+import peergos.shared.util.Pair;
 
 import java.util.*;
 import java.util.function.*;
@@ -19,6 +20,8 @@ public interface BlockMetadataStore {
     long size();
 
     void applyToAll(Consumer<Cid> consumer);
+
+    void applyToAllSizes(BiConsumer<Cid, Long> action);
 
     Stream<BlockVersion> list();
 

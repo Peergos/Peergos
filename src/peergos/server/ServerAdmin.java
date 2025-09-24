@@ -29,6 +29,7 @@ import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Supplier;
 
 public class ServerAdmin {
@@ -188,6 +189,45 @@ public class ServerAdmin {
             )
     );
 
+    public static final Command<Boolean> STATS = new Command<>("stats",
+            "Print statistics for storage",
+            a -> {
+                Builder.disableLog();
+                IpfsCoreNode.disableLog();
+                ScryptJava.disableLog();
+                HTTPCoreNode.disableLog();
+
+                BlockMetadataStore meta = Builder.buildBlockMetadata(a);
+
+                AtomicLong cborSize = new AtomicLong(0);
+                AtomicLong cborCount = new AtomicLong(0);
+                AtomicLong rawSize = new AtomicLong(0);
+                AtomicLong rawCount = new AtomicLong(0);
+                meta.applyToAllSizes((c, s) -> {
+                    if (c.isRaw()) {
+                        rawCount.incrementAndGet();
+                        rawSize.addAndGet(s);
+                    } else {
+                        cborCount.incrementAndGet();
+                        cborSize.addAndGet(s);
+                    }
+                });
+
+                System.out.println("Cbor blocks: " + cborCount.get() + ", raw blocks: " + rawCount.get() +
+                        ", cbor size: " + cborSize.get() + ", raw size: " + rawSize.get());
+                return true;
+            },
+            Arrays.asList(),
+            Arrays.asList()
+    );
+
+    public static final Command<Boolean> STORAGE = new Command<>("storage",
+            "Operations on storage",
+            a -> true,
+            Arrays.asList(),
+            Arrays.asList(STATS)
+    );
+
     public static final Command<Boolean> SERVER_ADMIN = new Command<>("admin",
             "Manage users on this server",
             args -> {
@@ -195,6 +235,6 @@ public class ServerAdmin {
                 return null;
             },
             Arrays.asList(),
-            Arrays.asList(MFA, DELETE)
+            Arrays.asList(STORAGE, MFA, DELETE)
     );
 }
