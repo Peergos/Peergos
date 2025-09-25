@@ -22,6 +22,7 @@ public class IpfsUserTests extends UserTests {
 
     private static Args args = buildArgs()
             .with("useIPFS", "true")
+            .with("async-bootstrap", "true")
             .with("enable-gc", "true")
 //            .with("gc.period.millis", "10000")
             .with("collect-metrics", "true")

@@ -47,7 +47,9 @@ public class FuseTests {
     public static void init() throws Exception {
         if (isWindows() || isMacos())
             return;
-        Args args = UserTests.buildArgs().with("useIPFS", "false");
+        Args args = UserTests.buildArgs()
+                .with("async-bootstrap", "true")
+                .with("useIPFS", "false");
         setWebPort(args.getInt("port"));
         LOG.info("Using web-port " + WEB_PORT);
         System.out.flush();

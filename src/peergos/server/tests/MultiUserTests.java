@@ -31,7 +31,9 @@ import static peergos.server.tests.PeergosNetworkUtils.getUserContextsForNode;
 
 public class MultiUserTests {
 
-    private static Args args = UserTests.buildArgs().with("enable-gc", "false").with("log-to-console", "true");
+    private static Args args = UserTests.buildArgs()
+            .with("enable-gc", "false")
+            .with("log-to-console", "true");
     private static UserService service;
     private Random random = new Random();
     private final NetworkAccess network;
