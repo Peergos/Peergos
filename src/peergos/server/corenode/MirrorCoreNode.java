@@ -114,8 +114,8 @@ public class MirrorCoreNode implements CoreNode {
                 TransactionId tid = transactions.startTransaction(pkiOwnerIdentity);
                 try {
                     MaybeMultihash currentTree = IpfsCoreNode.getTreeRoot(pkiStorageProviders, remote.pkiKeyTarget, ipfs);
-                    ipfs.mirror(pkiOwnerIdentity, pkiStorageProviders, Optional.empty(), currentTree.toOptional().map(m -> (Cid)m),
-                            Optional.empty(), ipfs.id().join(), x -> {}, tid, hasher).join();
+                    ipfs.mirror("peergos", pkiOwnerIdentity, remote.pkiKey, pkiStorageProviders, Optional.empty(), currentTree.toOptional().map(m -> (Cid)m),
+                            Optional.empty(), ipfs.id().join(), (x, y) -> {}, tid, hasher).join();
                 } finally {
                     transactions.closeTransaction(pkiOwnerIdentity, tid);
                 }
@@ -648,7 +648,7 @@ public class MirrorCoreNode implements CoreNode {
             for (Map.Entry<PublicKeyHash, byte[]> e : res.pointerState.entrySet()) {
                 byte[] existingVal = mirrored.get(e.getKey());
                 if (! Arrays.equals(existingVal, e.getValue())) {
-                    Mirror.mirrorMerkleTree(owner, e.getKey(), storageProviders, e.getValue(), mirrorBat, ipfs, rawPointers, transactions, hasher);
+                    Mirror.mirrorMerkleTree(username, owner, e.getKey(), storageProviders, e.getValue(), mirrorBat, ipfs, rawPointers, transactions, hasher);
                 }
             }
 

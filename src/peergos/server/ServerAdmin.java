@@ -147,8 +147,10 @@ public class ServerAdmin {
                     JdbcServerIdentityStore ids = JdbcServerIdentityStore.build(dbConnectionPool, sqlCommands, crypto);
                     JdbcBatCave batStore = new JdbcBatCave(Builder.getDBConnector(a, "bat-store", dbConnectionPool), sqlCommands);
                     BlockRequestAuthoriser blockAuth = Builder.blockAuthoriser(a, batStore, crypto.hasher);
+                    Supplier<Connection> usageDb = Builder.getDBConnector(a, "space-usage-sql-file", dbConnectionPool);
+                    JdbcUsageStore usageStore = new JdbcUsageStore(usageDb, sqlCommands);
                     DeletableContentAddressedStorage storage = Builder.buildLocalStorage(a, meta, null, blockAuth,
-                            ids, crypto.hasher);
+                            ids, usageStore, crypto.hasher);
                     JdbcIpnsAndSocial rawPointers = Builder.buildRawPointers(a,
                             Builder.getDBConnector(a, "mutable-pointers-file", dbConnectionPool));
 
@@ -173,8 +175,6 @@ public class ServerAdmin {
                     PublicKeyHash id = idOpt.get();
                     deleteOwnedKeys(id, pointers, rawPointers, storage, crypto);
                     // Now delete all usage roots
-                    Supplier<Connection> usageDb = Builder.getDBConnector(a, "space-usage-sql-file", dbConnectionPool);
-                    JdbcUsageStore usageStore = new JdbcUsageStore(usageDb, sqlCommands);
                     usageStore.removeUser(username);
                     System.out.println("Finished deleting user " + username);
                     return true;

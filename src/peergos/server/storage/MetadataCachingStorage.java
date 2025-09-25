@@ -1,5 +1,6 @@
 package peergos.server.storage;
 
+import peergos.server.space.UsageStore;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.storage.*;
@@ -18,12 +19,17 @@ public class MetadataCachingStorage extends DelegatingDeletableStorage {
     private static final Logger LOG = Logger.getGlobal();
     private final DeletableContentAddressedStorage target;
     private final BlockMetadataStore metadata;
+    private final UsageStore usage;
     private final Hasher hasher;
 
-    public MetadataCachingStorage(DeletableContentAddressedStorage target, BlockMetadataStore metadata, Hasher hasher) {
+    public MetadataCachingStorage(DeletableContentAddressedStorage target,
+                                  BlockMetadataStore metadata,
+                                  UsageStore usage,
+                                  Hasher hasher) {
         super(target);
         this.target = target;
         this.metadata = metadata;
+        this.usage = usage;
         this.hasher = hasher;
     }
 
@@ -103,9 +109,9 @@ public class MetadataCachingStorage extends DelegatingDeletableStorage {
         return target.get(owner, hash, bat);
     }
 
-    private void writeBlockMetadata(byte[] block, boolean isRaw) {
+    private BlockMetadata writeBlockMetadata(byte[] block, boolean isRaw) {
         Cid cid = hashToCid(block, isRaw, hasher).join();
-        metadata.put(cid, null, block);
+        return metadata.put(cid, null, block);
     }
 
     @Override
@@ -163,15 +169,22 @@ public class MetadataCachingStorage extends DelegatingDeletableStorage {
     }
 
     @Override
-    public CompletableFuture<List<Cid>> mirror(PublicKeyHash owner, List<Multihash> peerIds, Optional<Cid> existing,
+    public CompletableFuture<List<Cid>> mirror(String username, PublicKeyHash owner, PublicKeyHash writer, List<Multihash> peerIds, Optional<Cid> existing,
                                                Optional<Cid> updated, Optional<BatWithId> mirrorBat, Cid ourNodeId,
-                                               Consumer<List<Cid>> newBlockProcessor, TransactionId tid, Hasher hasher) {
-        return target.mirror(owner, peerIds, existing, updated, mirrorBat, ourNodeId, b -> addMetadata(peerIds, b), tid, hasher);
+                                               NewBlocksProcessor newBlockProcessor, TransactionId tid, Hasher hasher) {
+        return target.mirror(username, owner, writer, peerIds, existing, updated, mirrorBat, ourNodeId,
+                (w, bs) -> usage.addPendingUsage(username, w, addMetadata(peerIds, bs)), tid, hasher);
     }
 
-    private void addMetadata(List<Multihash> peerIds, List<Cid> hashes) {
+    private int addMetadata(List<Multihash> peerIds, List<Cid> hashes) {
+        int totalSize = 0;
         for (Cid c : hashes) {
-            getRaw(peerIds, c, "", false);
+            getRaw(peerIds, c, "", true);
+            totalSize += target.getRaw(peerIds, c, "", false)
+                    .thenApply(bopt -> bopt.map(b -> writeBlockMetadata(b, c.isRaw()).size)
+                            .orElse(0))
+                    .join();
         }
+        return totalSize;
     }
 }

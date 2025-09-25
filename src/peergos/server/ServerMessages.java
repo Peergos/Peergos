@@ -109,13 +109,13 @@ public class ServerMessages extends Builder {
             BlockMetadataStore metaDB = buildBlockMetadata(a);
             SqlSupplier cmds = getSqlCommands(a);
             JdbcServerIdentityStore ids = JdbcServerIdentityStore.build(getDBConnector(a, "serverids-file", dbConnectionPool), cmds, crypto);
+            UsageStore usageStore = new JdbcUsageStore(getDBConnector(a, "space-usage-sql-file", dbConnectionPool), cmds);
             DeletableContentAddressedStorage localStorage = buildLocalStorage(a, metaDB, transactions,
-                    blockRequestAuthoriser, ids, hasher);
+                    blockRequestAuthoriser, ids, usageStore, hasher);
             JdbcIpnsAndSocial rawPointers = buildRawPointers(a, getDBConnector(a, "mutable-pointers-file", dbConnectionPool));
             MutablePointers localPointers = UserRepository.build(localStorage, rawPointers);
             MutablePointersProxy proxingMutable = new HttpMutablePointers(buildP2pHttpProxy(a), getPkiServerId(a));
             JdbcIpnsAndSocial rawSocial = new JdbcIpnsAndSocial(getDBConnector(a, "social-sql-file", dbConnectionPool), cmds);
-            UsageStore usageStore = new JdbcUsageStore(getDBConnector(a, "space-usage-sql-file", dbConnectionPool), cmds);
             JdbcAccount account = new JdbcAccount(getDBConnector(a, "account-sql-file", dbConnectionPool),
                     cmds, new com.webauthn4j.data.client.Origin("http://localhost:8000"), "localhost");
             QuotaAdmin quotas = buildSpaceQuotas(a, localStorage,

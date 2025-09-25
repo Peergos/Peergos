@@ -125,6 +125,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
     private final TransactionStore transactions;
     private final BlockRequestAuthoriser authoriser;
     private final BlockMetadataStore blockMetadata;
+    private final UsageStore usage;
     private final BlockCache cborCache;
     private final BlockBuffer blockBuffer;
     private final Hasher hasher;
@@ -141,6 +142,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                           TransactionStore transactions,
                           BlockRequestAuthoriser authoriser,
                           BlockMetadataStore blockMetadata,
+                          UsageStore usage,
                           BlockCache cborCache,
                           BlockBuffer blockBuffer,
                           Hasher hasher,
@@ -167,6 +169,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         this.transactions = transactions;
         this.authoriser = authoriser;
         this.blockMetadata = blockMetadata;
+        this.usage = usage;
         this.cborCache = cborCache;
         this.blockBuffer = blockBuffer;
         this.hasher = hasher;
@@ -554,13 +557,15 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<List<Cid>> mirror(PublicKeyHash owner,
+    public CompletableFuture<List<Cid>> mirror(String username,
+                                               PublicKeyHash owner,
+                                               PublicKeyHash writer,
                                                List<Multihash> peerIds,
                                                Optional<Cid> existing,
                                                Optional<Cid> updated,
                                                Optional<BatWithId> mirrorBat,
                                                Cid ourNodeId,
-                                               Consumer<List<Cid>> newBlockProcessor,
+                                               NewBlocksProcessor newBlockProcessor,
                                                TransactionId tid,
                                                Hasher hasher) {
         if (updated.isEmpty())
@@ -573,8 +578,10 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         Optional<byte[]> newBlock = p2pFallback.getRaw(peerIds, newRoot, mirrorBat, p2pGetId, hasher, false, true).join();
         if (newBlock.isEmpty())
             throw new IllegalStateException("Couldn't retrieve block: " + newRoot);
-        if (! hasBlock(newRoot))
+        if (! hasBlock(newRoot)) {
             getWithBackoff(() -> put(newBlock.get(), newRoot.isRaw(), tid, owner));
+            usage.addPendingUsage(username, writer, newBlock.get().length);
+        }
         if (newRoot.isRaw())
             return Futures.of(Collections.singletonList(newRoot));
 
@@ -592,7 +599,8 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                     Optional.of(existingLinks.get(i)) :
                     Optional.empty();
             Optional<Cid> updatedLink = Optional.of((Cid)newLinks.get(i));
-            mirror(owner, peerIds, existingLink, updatedLink, mirrorBat, ourNodeId, newBlockProcessor, tid, hasher).join();
+            mirror(username, owner, writer, peerIds, existingLink, updatedLink, mirrorBat, ourNodeId,
+                    (w, bs) -> {}, tid, hasher).join();
         }
         return Futures.of(Collections.singletonList(newRoot));
     }
@@ -1086,12 +1094,12 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         TransactionStore transactions = JdbcTransactionStore.build(transactionsDb, sqlCommands);
         BlockRequestAuthoriser authoriser = (c, b, s, auth) -> Futures.of(true);
         BlockMetadataStore meta = Builder.buildBlockMetadata(a);
-        S3BlockStorage s3 = new S3BlockStorage(config, List.of(Cid.decode(a.getArg("ipfs.id"))),
-                BlockStoreProperties.empty(), "localhost:8000", transactions, authoriser, meta,
-                new RamBlockCache(1024, 100), new FileBlockBuffer(a.fromPeergosDir("s3-block-buffer-dir", "block-buffer")), hasher, new RAMStorage(hasher), new RAMStorage(hasher));
-        JdbcIpnsAndSocial rawPointers = new JdbcIpnsAndSocial(database, sqlCommands);
         Supplier<Connection> usageDb = Main.getDBConnector(a, "space-usage-sql-file");
         UsageStore usageStore = new JdbcUsageStore(usageDb, sqlCommands);
+        S3BlockStorage s3 = new S3BlockStorage(config, List.of(Cid.decode(a.getArg("ipfs.id"))),
+                BlockStoreProperties.empty(), "localhost:8000", transactions, authoriser, meta, usageStore,
+                new RamBlockCache(1024, 100), new FileBlockBuffer(a.fromPeergosDir("s3-block-buffer-dir", "block-buffer")), hasher, new RAMStorage(hasher), new RAMStorage(hasher));
+        JdbcIpnsAndSocial rawPointers = new JdbcIpnsAndSocial(database, sqlCommands);
         if (a.hasArg("integrity-check")) {
             if (a.hasArg("username"))
                 GarbageCollector.checkUserIntegrity(a.getArg("username"), s3, meta, rawPointers, usageStore, a.getBoolean("fix-metadata", false));

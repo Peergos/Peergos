@@ -86,10 +86,10 @@ public class DelegatingDeletableStorage implements DeletableContentAddressedStor
     }
 
     @Override
-    public CompletableFuture<List<Cid>> mirror(PublicKeyHash owner, List<Multihash> peerIds, Optional<Cid> existing,
+    public CompletableFuture<List<Cid>> mirror(String username, PublicKeyHash owner, PublicKeyHash writer, List<Multihash> peerIds, Optional<Cid> existing,
                                                Optional<Cid> updated, Optional<BatWithId> mirrorBat, Cid ourNodeId,
-                                               Consumer<List<Cid>> newBlockProcessor, TransactionId tid, Hasher hasher) {
-        return target.mirror(owner, peerIds, existing, updated, mirrorBat, ourNodeId, newBlockProcessor, tid, hasher);
+                                               NewBlocksProcessor newBlockProcessor, TransactionId tid, Hasher hasher) {
+        return target.mirror(username, owner, writer, peerIds, existing, updated, mirrorBat, ourNodeId, newBlockProcessor, tid, hasher);
     }
 
     @Override

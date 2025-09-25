@@ -144,7 +144,7 @@ public class Mirror {
         Set<PublicKeyHash> ownedKeys = DeletableContentAddressedStorage.getOwnedKeysRecursive(owner, owner, p2pPointers,
                 (h, s) -> DeletableContentAddressedStorage.getWriterData(storageProviders,  h, s, true, storage), storage, hasher).join();
         for (PublicKeyHash ownedKey : ownedKeys) {
-            Optional<byte[]> version = mirrorMutableSubspace(owner, ownedKey, storageProviders, mirrorBat, p2pPointers, storage,
+            Optional<byte[]> version = mirrorMutableSubspace(username, owner, ownedKey, storageProviders, mirrorBat, p2pPointers, storage,
                     targetPointers, transactions, hasher);
             if (version.isPresent())
                 versions.put(ownedKey, version.get());
@@ -177,7 +177,8 @@ public class Mirror {
      * @param targetPointers
      * @return the version mirrored
      */
-    public static Optional<byte[]> mirrorMutableSubspace(PublicKeyHash owner,
+    public static Optional<byte[]> mirrorMutableSubspace(String username,
+                                                         PublicKeyHash owner,
                                                          PublicKeyHash writer,
                                                          List<Multihash> peerIds,
                                                          Optional<BatWithId> mirrorBat,
@@ -192,11 +193,12 @@ public class Mirror {
             return updated;
         }
 
-        mirrorMerkleTree(owner, writer, peerIds, updated.get(), mirrorBat, storage, targetPointers, transactions, hasher);
+        mirrorMerkleTree(username, owner, writer, peerIds, updated.get(), mirrorBat, storage, targetPointers, transactions, hasher);
         return updated;
     }
 
-    public static void mirrorMerkleTree(PublicKeyHash owner,
+    public static void mirrorMerkleTree(String username,
+                                        PublicKeyHash owner,
                                         PublicKeyHash writer,
                                         List<Multihash> peerIds,
                                         byte[] newPointer,
@@ -214,9 +216,9 @@ public class Mirror {
         // use a mirror call to distinguish from normal pin calls
         TransactionId tid = transactions.startTransaction(owner);
         try {
-            storage.mirror(owner, peerIds,
+            storage.mirror(username, owner, writer, peerIds,
                     existingTarget.toOptional().map(c -> (Cid)c),
-                    updatedTarget.toOptional().map(c -> (Cid)c), mirrorBat, storage.id().join(), x -> {}, tid, hasher);
+                    updatedTarget.toOptional().map(c -> (Cid)c), mirrorBat, storage.id().join(), (x, y) -> {}, tid, hasher);
             targetPointers.setPointer(writer, existing, newPointer).join();
         } finally {
             transactions.closeTransaction(owner, tid);
