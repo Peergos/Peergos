@@ -877,7 +877,8 @@ public class Main extends Builder {
                     while (true) {
                         try {
                             BatWithId mirrorBat = BatWithId.decode(a.getArg("mirror.bat"));
-                            Mirror.mirrorNode(nodeToMirrorId, mirrorBat, core, p2mMutable, localStorage, rawPointers, transactions, linkCounts, hasher);
+                            Mirror.mirrorNode(nodeToMirrorId, mirrorBat, core, p2mMutable, localStorage, rawPointers,
+                                    transactions, linkCounts, usageStore, hasher);
                             try {
                                 Thread.sleep(60_000);
                             } catch (InterruptedException f) {}
@@ -909,7 +910,7 @@ public class Main extends Builder {
                                     batStore.addBat(username, mirrorId, mirrorBat.get().bat, new byte[0]).join();
                             }
                             Mirror.mirrorUser(username, mirrorLoginDataPair, mirrorBat, core, p2mMutable, p2pAccount, localStorage,
-                                    rawPointers, rawAccount, transactions, linkCounts, hasher);
+                                    rawPointers, rawAccount, transactions, linkCounts, usageStore, hasher);
                             try {
                                 Thread.sleep(60_000);
                             } catch (InterruptedException f) {}
