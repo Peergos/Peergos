@@ -32,6 +32,7 @@ public class S3UserTests extends UserTests {
 
     private static Args pkiArgs = buildArgs()
             .with("useIPFS", "true")
+            .with("async-bootstrap", "true")
             .removeArg(IpfsWrapper.IPFS_BOOTSTRAP_NODES); // no bootstrapping
 
     private static Args withS3(Args in) {
@@ -82,6 +83,7 @@ public class S3UserTests extends UserTests {
         int allowPort = TestPorts.getPort();
         Args ipfsArgs = withS3(buildArgs())
                 .with("useIPFS", "true")
+                .with("async-bootstrap", "true")
                 .with("ipfs-api-address", "/ip4/127.0.0.1/tcp/" + ipfsApiPort)
                 .with("ipfs-gateway-address", "/ip4/127.0.0.1/tcp/" + ipfsGatewayPort)
                 .with("allow-target", "/ip4/127.0.0.1/tcp/" + allowPort)

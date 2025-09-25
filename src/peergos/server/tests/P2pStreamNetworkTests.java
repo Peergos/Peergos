@@ -24,6 +24,7 @@ public class P2pStreamNetworkTests {
     private static Args args = UserTests
             .buildArgs()
             .with("useIPFS", "true")
+            .with("async-bootstrap", "true")
             .removeArg(IpfsWrapper.IPFS_BOOTSTRAP_NODES); // no bootstrapping
 
     private static Random random = new Random(0);

@@ -14,12 +14,13 @@ import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.zip.GZIPInputStream;
 
 public class Multipart {
     private static final String LINE_FEED = "\r\n";
-    private static final Executor ioPool = Executors.newCachedThreadPool();
+    public static final ExecutorService ioPool = Executors.newCachedThreadPool();
     private final String boundary;
     private final CompletableFuture<byte[]> res;
     private String charset;

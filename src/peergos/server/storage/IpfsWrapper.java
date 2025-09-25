@@ -432,7 +432,7 @@ public class IpfsWrapper implements AutoCloseable {
                 Optional.of("/peergos/bitswap"),
                 Optional.empty()
         );
-        ipfsWrapper.embeddedIpfs.start();
+        ipfsWrapper.embeddedIpfs.start(args.getBoolean("async-bootstrap", false));
         io.ipfs.multiaddr.MultiAddress apiAddress = config.addresses.apiAddress;
         InetSocketAddress localAPIAddress = new InetSocketAddress(apiAddress.getHost(), apiAddress.getPort());
 

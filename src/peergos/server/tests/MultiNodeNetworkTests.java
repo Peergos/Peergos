@@ -39,6 +39,7 @@ import static peergos.server.tests.PeergosNetworkUtils.*;
 public class MultiNodeNetworkTests {
     private static Args args = UserTests.buildArgs()
             .with("useIPFS", "true")
+            .with("async-bootstrap", "true")
             .with("enable-gc", "true")
             .with("allow-external-login", "true")
             .removeArg(IpfsWrapper.IPFS_BOOTSTRAP_NODES); // no bootstrapping
@@ -138,6 +139,7 @@ public class MultiNodeNetworkTests {
 
     @BeforeClass
     public static void init() throws Exception {
+        long t0 = System.currentTimeMillis();
         System.getProperties().setProperty("io.netty.eventLoopThreads", "1");
         // start pki node
         ServerProcesses pki = Main.PKI_INIT.main(args);
@@ -151,9 +153,12 @@ public class MultiNodeNetworkTests {
         argsToCleanUp.add(args);
         int bootstrapSwarmPort = args.getInt("ipfs-swarm-port");
         String bootstrapList = Main.getLocalBootstrapAddress(bootstrapSwarmPort, pkiNodeId).toString();
+        long t1 = System.currentTimeMillis();
+        System.out.println("MNNT starting PKI took " + (t1 - t0)/1000 + "s");
 
         // create two other nodes that use the first as a PKI-node
         for (int i = 0; i < 2; i++) {
+            long n0 = System.currentTimeMillis();
             int ipfsApiPort = TestPorts.getPort();System.out.println("node" + (i+1) + " base port: " + ipfsApiPort);
             int ipfsGatewayPort = TestPorts.getPort();
             int ipfsSwarmPort = TestPorts.getPort();
@@ -162,6 +167,7 @@ public class MultiNodeNetworkTests {
             Args normalNode = UserTests.buildArgs()
                     .with(Main.PEERGOS_PATH, Files.createTempDirectory("peergos-mnnt-" + System.nanoTime()).toString())
                     .with("useIPFS", "true")
+                    .with("async-bootstrap", "true")
                     .with("enable-gc", "true")
                     .with("port", "" + peergosPort)
                     .with("pki-node-id", pkiNodeId.toString())
@@ -181,7 +187,11 @@ public class MultiNodeNetworkTests {
             bootstrapList += "," + Main.getLocalBootstrapAddress(ipfsSwarmPort, ourId);
 
             nodes.add(buildApi(normalNode));
+            long n1 = System.currentTimeMillis();
+            System.out.println("MNNT::start peer took " + (n1-n0)/1000 + "s");
         }
+        long t2 = System.currentTimeMillis();
+        System.out.println("MNNT::init took " + (t2-t0)/1000 + "s");
     }
 
     private static NetworkAccess buildApi(Args args) throws Exception {
