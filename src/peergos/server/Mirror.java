@@ -197,6 +197,7 @@ public class Mirror {
             return updated;
         }
 
+        usage.addUserIfAbsent(username);
         usage.addWriter(username, writer);
         mirrorMerkleTree(username, owner, writer, peerIds, updated.get(), mirrorBat, storage, targetPointers, transactions, hasher);
         return updated;
