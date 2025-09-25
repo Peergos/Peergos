@@ -72,7 +72,7 @@ public class IpfsCoreNode implements CoreNode {
     }
 
     @Override
-    public void initialize() {
+    public void initialize(boolean mirrorUsers) {
         PointerUpdate currentPkiPointer = mutable.getPointerTarget(peergosIdentity, signer.publicKeyHash, ipfs).join();
         Optional<Long> currentPkiSequence = currentPkiPointer.sequence;
         MaybeMultihash currentPkiRoot = currentPkiPointer.updated;

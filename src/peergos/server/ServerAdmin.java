@@ -160,7 +160,7 @@ public class ServerAdmin {
                             Builder.getDBConnector(a, "quotas-sql-file", dbConnectionPool), false, false);
                     CoreNode core = Builder.buildCorenode(a, storage, null, rawPointers, pointers, null,
                             null, null, quota, null, null, null, null, crypto);
-                    core.initialize();
+                    core.initialize(false);
                     storage.setPki(core);
 
                     // set quota to 0

@@ -16,7 +16,7 @@ import java.util.concurrent.*;
 public interface CoreNode {
     int MAX_USERNAME_SIZE = 64;
 
-    default void initialize() {}
+    default void initialize(boolean mirrorUsers) {}
 
     CompletableFuture<Optional<RequiredDifficulty>> signup(String username,
                                                            UserPublicKeyLink chain,

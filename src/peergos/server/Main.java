@@ -772,10 +772,11 @@ public class Main extends Builder {
             localStorage.setPki(core);
             userQuotas.setPki(core);
 
+            boolean mirrorUsers = a.getBoolean("mirror-users", true);
             if (a.hasArg("mirror.username")) // mirror pki before starting user mirror
-                core.initialize();
+                core.initialize(mirrorUsers);
             else
-                new Thread(core::initialize).start();
+                new Thread(() -> core.initialize(mirrorUsers)).start();
 
             CoreNode signupFilter = new SignUpFilter(core, userQuotas, nodeIds.get(nodeIds.size() - 1), httpSpaceUsage, hasher,
                     a.getInt("max-daily-paid-signups", isPaidInstance(a) ? 10 : 0), isPki);

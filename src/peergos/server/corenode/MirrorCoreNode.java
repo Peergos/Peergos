@@ -104,7 +104,7 @@ public class MirrorCoreNode implements CoreNode {
     }
 
     @Override
-    public void initialize() {
+    public void initialize(boolean mirrorUsers) {
         try {
             // first mirror pki blocks locally
             if (state.usernames.isEmpty()) {
@@ -126,7 +126,8 @@ public class MirrorCoreNode implements CoreNode {
             if (changed)
                 saveState();
             initialized = true;
-            mirrorPool.submit(() -> mirrorExternalUsers());
+            if (mirrorUsers)
+                mirrorPool.submit(() -> mirrorExternalUsers());
         } catch (Throwable t) {
             Logging.LOG().log(Level.SEVERE, "Couldn't update mirror pki state: " + t.getMessage(), t);
         }
