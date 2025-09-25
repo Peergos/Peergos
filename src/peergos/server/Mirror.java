@@ -2,6 +2,7 @@ package peergos.server;
 
 import peergos.server.corenode.*;
 import peergos.server.login.*;
+import peergos.server.space.UsageStore;
 import peergos.server.storage.*;
 import peergos.server.util.*;
 import peergos.shared.*;
@@ -92,6 +93,7 @@ public class Mirror {
                                   JdbcIpnsAndSocial targetPointers,
                                   TransactionStore transactions,
                                   LinkRetrievalCounter linkCounts,
+                                  UsageStore usage,
                                   Hasher hasher) {
         Logging.LOG().log(Level.INFO, "Mirroring data for node " + nodeId);
         List<String> allUsers = core.getUsernames("").join();
@@ -101,7 +103,7 @@ public class Mirror {
             if (chain.get(chain.size() - 1).claim.storageProviders.contains(nodeId)) {
                 try {
                     mirrorUser(username, Optional.empty(), Optional.of(mirrorBat), core, p2pPointers, null,
-                            storage, targetPointers, null, transactions, linkCounts, hasher);
+                            storage, targetPointers, null, transactions, linkCounts, usage, hasher);
                     userCount++;
                 } catch (Exception e) {
                     Logging.LOG().log(Level.WARNING, "Couldn't mirror user: " + username, e);
@@ -133,6 +135,7 @@ public class Mirror {
                                                         JdbcAccount targetAccount,
                                                         TransactionStore transactions,
                                                         LinkRetrievalCounter linkCounts,
+                                                        UsageStore usage,
                                                         Hasher hasher) {
         Logging.LOG().log(Level.INFO, "Mirroring data for " + username + loginAuth.map(k -> " including login data").orElse(" excluding login data"));
         Optional<PublicKeyHash> identity = core.getPublicKeyHash(username).join();
@@ -144,8 +147,8 @@ public class Mirror {
         Set<PublicKeyHash> ownedKeys = DeletableContentAddressedStorage.getOwnedKeysRecursive(owner, owner, p2pPointers,
                 (h, s) -> DeletableContentAddressedStorage.getWriterData(storageProviders,  h, s, true, storage), storage, hasher).join();
         for (PublicKeyHash ownedKey : ownedKeys) {
-            Optional<byte[]> version = mirrorMutableSubspace(owner, ownedKey, storageProviders, mirrorBat, p2pPointers, storage,
-                    targetPointers, transactions, hasher);
+            Optional<byte[]> version = mirrorMutableSubspace(username, owner, ownedKey, storageProviders, mirrorBat, p2pPointers, storage,
+                    targetPointers, transactions, usage, hasher);
             if (version.isPresent())
                 versions.put(ownedKey, version.get());
         }
@@ -177,7 +180,8 @@ public class Mirror {
      * @param targetPointers
      * @return the version mirrored
      */
-    public static Optional<byte[]> mirrorMutableSubspace(PublicKeyHash owner,
+    public static Optional<byte[]> mirrorMutableSubspace(String username,
+                                                         PublicKeyHash owner,
                                                          PublicKeyHash writer,
                                                          List<Multihash> peerIds,
                                                          Optional<BatWithId> mirrorBat,
@@ -185,6 +189,7 @@ public class Mirror {
                                                          DeletableContentAddressedStorage storage,
                                                          JdbcIpnsAndSocial targetPointers,
                                                          TransactionStore transactions,
+                                                         UsageStore usage,
                                                          Hasher hasher) {
         Optional<byte[]> updated = p2pPointers.getPointer(owner, writer).join();
         if (! updated.isPresent()) {
@@ -192,11 +197,14 @@ public class Mirror {
             return updated;
         }
 
-        mirrorMerkleTree(owner, writer, peerIds, updated.get(), mirrorBat, storage, targetPointers, transactions, hasher);
+        usage.addUserIfAbsent(username);
+        usage.addWriter(username, writer);
+        mirrorMerkleTree(username, owner, writer, peerIds, updated.get(), mirrorBat, storage, targetPointers, transactions, hasher);
         return updated;
     }
 
-    public static void mirrorMerkleTree(PublicKeyHash owner,
+    public static void mirrorMerkleTree(String username,
+                                        PublicKeyHash owner,
                                         PublicKeyHash writer,
                                         List<Multihash> peerIds,
                                         byte[] newPointer,
@@ -214,9 +222,9 @@ public class Mirror {
         // use a mirror call to distinguish from normal pin calls
         TransactionId tid = transactions.startTransaction(owner);
         try {
-            storage.mirror(owner, peerIds,
+            storage.mirror(username, owner, writer, peerIds,
                     existingTarget.toOptional().map(c -> (Cid)c),
-                    updatedTarget.toOptional().map(c -> (Cid)c), mirrorBat, storage.id().join(), x -> {}, tid, hasher);
+                    updatedTarget.toOptional().map(c -> (Cid)c), mirrorBat, storage.id().join(), (x, y) -> {}, tid, hasher);
             targetPointers.setPointer(writer, existing, newPointer).join();
         } finally {
             transactions.closeTransaction(owner, tid);

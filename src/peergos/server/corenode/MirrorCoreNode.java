@@ -114,8 +114,8 @@ public class MirrorCoreNode implements CoreNode {
                 TransactionId tid = transactions.startTransaction(pkiOwnerIdentity);
                 try {
                     MaybeMultihash currentTree = IpfsCoreNode.getTreeRoot(pkiStorageProviders, remote.pkiKeyTarget, ipfs);
-                    ipfs.mirror(pkiOwnerIdentity, pkiStorageProviders, Optional.empty(), currentTree.toOptional().map(m -> (Cid)m),
-                            Optional.empty(), ipfs.id().join(), x -> {}, tid, hasher).join();
+                    ipfs.mirror("peergos", pkiOwnerIdentity, remote.pkiKey, pkiStorageProviders, Optional.empty(), currentTree.toOptional().map(m -> (Cid)m),
+                            Optional.empty(), ipfs.id().join(), (x, y) -> {}, tid, hasher).join();
                 } finally {
                     transactions.closeTransaction(pkiOwnerIdentity, tid);
                 }
@@ -163,7 +163,9 @@ public class MirrorCoreNode implements CoreNode {
                     try {
                         long t0 = System.currentTimeMillis();
                         PublicKeyHash owner = getPublicKeyHash(username).join().get();
-                        Map<PublicKeyHash, byte[]> pointers = Mirror.mirrorUser(username, Optional.empty(), Optional.of(localMirrorBats.get(localMirrorBats.size() - 1)), this, p2pMutable, null, ipfs, rawPointers, rawAccount, transactions, linkCounts, hasher);
+                        Map<PublicKeyHash, byte[]> pointers = Mirror.mirrorUser(username, Optional.empty(),
+                                Optional.of(localMirrorBats.get(localMirrorBats.size() - 1)), this, p2pMutable,
+                                null, ipfs, rawPointers, rawAccount, transactions, linkCounts, usageStore, hasher);
                         SpaceCheckingKeyFilter.processCorenodeEvent(username, owner, pointers.keySet(), usageStore, ipfs, p2pMutable, hasher);
                         long t1 = System.currentTimeMillis();
                         LOG.info("Finished mirroring " + username + " data in " + (t1 - t0) / 1_000 + "s");
@@ -627,9 +629,11 @@ public class MirrorCoreNode implements CoreNode {
             }
             List<Multihash> storageProviders = getStorageProviders(owner);
             // Mirror all the data locally
-            Mirror.mirrorUser(username, Optional.empty(), mirrorBat, this, p2pMutable, null, ipfs, rawPointers, rawAccount, transactions, linkCounts, hasher);
-            Map<PublicKeyHash, byte[]> mirrored = Mirror.mirrorUser(username, Optional.empty(), mirrorBat, this, p2pMutable,
-                    null, ipfs, rawPointers, rawAccount, transactions, linkCounts, hasher);
+            Mirror.mirrorUser(username, Optional.empty(), mirrorBat, this, p2pMutable, null,
+                    ipfs, rawPointers, rawAccount, transactions, linkCounts, usageStore, hasher);
+            Map<PublicKeyHash, byte[]> mirrored = Mirror.mirrorUser(username, Optional.empty(), mirrorBat,
+                    this, p2pMutable, null, ipfs, rawPointers, rawAccount, transactions, linkCounts,
+                    usageStore, hasher);
 
             // Proxy call to their current storage server
             LocalDateTime localLatestLinkCountTime = linkCounts.getLatestModificationTime(username).orElse(LocalDateTime.MIN);
@@ -648,7 +652,7 @@ public class MirrorCoreNode implements CoreNode {
             for (Map.Entry<PublicKeyHash, byte[]> e : res.pointerState.entrySet()) {
                 byte[] existingVal = mirrored.get(e.getKey());
                 if (! Arrays.equals(existingVal, e.getValue())) {
-                    Mirror.mirrorMerkleTree(owner, e.getKey(), storageProviders, e.getValue(), mirrorBat, ipfs, rawPointers, transactions, hasher);
+                    Mirror.mirrorMerkleTree(username, owner, e.getKey(), storageProviders, e.getValue(), mirrorBat, ipfs, rawPointers, transactions, hasher);
                 }
             }
 

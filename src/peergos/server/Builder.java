@@ -223,6 +223,7 @@ public class Builder {
                                                                      TransactionStore transactions,
                                                                      BlockRequestAuthoriser authoriser,
                                                                      ServerIdentityStore ids,
+                                                                     UsageStore usage,
                                                                      Hasher hasher) throws SQLException {
         boolean useIPFS = a.getBoolean("useIPFS");
         boolean enableGC = a.getBoolean("enable-gc", false);
@@ -242,17 +243,17 @@ public class Builder {
                 FileBlockCache cborCache = new FileBlockCache(a.fromPeergosDir("block-cache-dir", "block-cache"), 1024 * 1024 * 1024L);
                 FileBlockBuffer blockBuffer = new FileBlockBuffer(a.fromPeergosDir("s3-block-buffer-dir", "block-buffer"));
                 S3BlockStorage s3 = new S3BlockStorage(config, ipfs.ids().join(), props, linkHost, transactions, authoriser,
-                        meta, cborCache, blockBuffer, hasher, p2pBlockRetriever, ipfs);
+                        meta, usage, cborCache, blockBuffer, hasher, p2pBlockRetriever, ipfs);
                 s3.updateMetadataStoreIfEmpty();
                 return new LocalIpnsStorage(s3, ids);
             } else if (enableGC) {
                 TransactionalIpfs txns = new TransactionalIpfs(ipfs, transactions, authoriser, ipfs.id().join(), linkHost, hasher);
-                MetadataCachingStorage metabs = new MetadataCachingStorage(txns, meta, hasher);
+                MetadataCachingStorage metabs = new MetadataCachingStorage(txns, meta, usage, hasher);
                 metabs.updateMetadataStoreIfEmpty();
                 return new LocalIpnsStorage(metabs, ids);
             } else {
                 AuthedStorage target = new AuthedStorage(ipfs, authoriser, linkHost, hasher);
-                MetadataCachingStorage metabs = new MetadataCachingStorage(target, meta, hasher);
+                MetadataCachingStorage metabs = new MetadataCachingStorage(target, meta, usage, hasher);
                 metabs.updateMetadataStoreIfEmpty();
                 return new LocalIpnsStorage(metabs, ids);
             }
@@ -271,12 +272,12 @@ public class Builder {
                 FileBlockCache cborCache = new FileBlockCache(a.fromPeergosDir("block-cache-dir", "block-cache"), 10 * 1024 * 1024 * 1024L);
                 FileBlockBuffer blockBuffer = new FileBlockBuffer(a.fromPeergosDir("s3-block-buffer-dir", "block-buffer"));
                 S3BlockStorage s3 = new S3BlockStorage(config, ipfs.ids().join(), props, linkHost, transactions, authoriser,
-                        meta, cborCache, blockBuffer, hasher, p2pBlockRetriever, bloomTarget);
+                        meta, usage, cborCache, blockBuffer, hasher, p2pBlockRetriever, bloomTarget);
                 s3.updateMetadataStoreIfEmpty();
                 return new LocalIpnsStorage(s3, ids);
             } else {
                 FileContentAddressedStorage fileBacked = new FileContentAddressedStorage(blockstorePath(a), transactions, authoriser, hasher);
-                MetadataCachingStorage metabs = new MetadataCachingStorage(fileBacked, meta, hasher);
+                MetadataCachingStorage metabs = new MetadataCachingStorage(fileBacked, meta, usage, hasher);
                 metabs.updateMetadataStoreIfEmpty();
                 return new LocalIpnsStorage(metabs, ids);
             }
