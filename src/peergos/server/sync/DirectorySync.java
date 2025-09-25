@@ -334,17 +334,23 @@ public class DirectorySync {
         long t4 = System.currentTimeMillis();
         LOG.accept("Found " + remoteState.filesCount() + " remote files in " + (t4-t3)/1_000 + "s");
 
-        TreeSet<String> allChangedPaths = new TreeSet<>(localState.allFilePaths());
-        Set<String> all = remoteState.allFilePaths();
+        TreeSet<String> allPaths = new TreeSet<>(localState.allFilePaths());
+        allPaths.addAll(remoteState.allFilePaths());
+        TreeSet<String> allChangedPaths = new TreeSet<>();
 
         // remove identical paths
-        for (String path : all) {
+        for (String path : allPaths) {
             FileState local = localState.byPath(path);
             FileState remote = remoteState.byPath(path);
             FileState synced = syncedVersions.byPath(path);
             if (Objects.equals(local, remote)) {
                 if (synced == null)
                     syncedVersions.add(local);
+                // already synced
+                if (! syncLocalDeletes && syncedVersions.hasLocalDelete(path))
+                    syncedVersions.removeLocalDelete(path);
+                if (! syncRemoteDeletes && syncedVersions.hasRemoteDelete(path))
+                    syncedVersions.removeRemoteDelete(path);
             } else if (synced != null && remote != null && local != null &&
                     remote.hashTree.rootHash.equals(local.hashTree.rootHash) &&
                     (synced.equalsIgnoreModtime(local) || synced.equalsIgnoreModtime(remote))) {
@@ -623,6 +629,7 @@ public class DirectorySync {
                     doneFiles.add(toMove.relPath);
                     syncedVersions.add(remote);
                     progress.doneFile();
+                    progress.doneFile();
                 } else {
                     if ((freeSpace - remote.size) * 100 / totalSpace < minPercentFree && (freeSpace - remote.size < 5L * 1024*1024*1024))
                         throw new IllegalStateException("Not enough local free space to sync and keep " + minPercentFree + "% free or 5 GB free");
@@ -659,6 +666,7 @@ public class DirectorySync {
                     syncedVersions.remove(toMove.relPath);
                     doneFiles.add(toMove.relPath);
                     syncedVersions.add(local);
+                    progress.doneFile();
                     progress.doneFile();
                 } else {
                     LOG.accept("Sync Remote: Copying " + local.relPath + " " + progress);
