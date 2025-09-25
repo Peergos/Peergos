@@ -13,15 +13,16 @@ public class UsageCLI extends Builder {
             "Show usage for a user(s) on this server",
             a -> {
                 SqlSupplier sqlCommands = getSqlCommands(a);
-                Supplier<Connection> usageDb = getDBConnector(a, "space-usage-sql-file");
-                JdbcUsageStore usage = new JdbcUsageStore(usageDb, sqlCommands);
+                Supplier<Connection> usageConn = getDBConnector(a, "space-usage-sql-file");
+                JdbcUsageStore usageDb = new JdbcUsageStore(usageConn, sqlCommands);
 
                 if (a.hasArg("username")) {
                     String name = a.getArg("username");
-                    printUsage(name, usage.getUsage(name).totalUsage());
+                    UserUsage usage = usageDb.getUsage(name);
+                    printFullUsage(name, usage.totalUsage(), usage.expectedUsage() - usage.totalUsage());
                     return true;
                 }
-                usage.getAllUsage()
+                usageDb.getAllUsage()
                         .entrySet()
                         .stream()
                         .sorted(Comparator.comparingLong(Map.Entry::getValue))
@@ -33,6 +34,10 @@ public class UsageCLI extends Builder {
                     new Command.Arg("space-usage-sql-file", "The filename for the space usage datastore", true, "quotas.sql")
             )
     );
+
+    private static void printFullUsage(String name, long usage, long pendingUsage) {
+        System.out.println(name + " " + formatUsage(usage) + " pending: " + formatUsage(pendingUsage));
+    }
 
     private static void printUsage(String name, long usage) {
         System.out.println(name + " " + formatUsage(usage));
