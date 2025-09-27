@@ -200,7 +200,7 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
                 .collect(Collectors.toList());
 
         List<List<Cid>> addedLinks = RetryStorage.runWithRetry(3, () -> Futures.of(bulkGetLinks(peerIds, ourNodeId, added, mirrorBat, hasher))).join();
-        newBlockProcessor.process(writer, updated);
+        newBlockProcessor.process(writer, added);
         if (removed.isEmpty()) {
             List<Cid> allCbor = addedLinks.stream()
                     .flatMap(Collection::stream)
