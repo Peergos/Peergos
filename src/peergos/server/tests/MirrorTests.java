@@ -34,7 +34,7 @@ public class MirrorTests {
         // Build a 10 deep binary tree
         TestMirrorStorage s = new TestMirrorStorage(crypto.hasher);
 
-        int depth = 10;
+        int depth = 11;
         int branches = 2;
         List<byte[]> leaves = IntStream.range(0, (int) Math.pow(2, depth - 1)).mapToObj(i -> randomBlock()).toList();
         TransactionId tid = s.startTransaction(null).join();
@@ -58,7 +58,9 @@ public class MirrorTests {
                 Optional.of(root), Optional.empty(), null, p, tid, crypto.hasher).join();
         Assert.assertEquals((1 << depth) - 1, count.get());
         // Ths is necessary for mirror to be fast in a p2p setting when getLinks retrieves the blocks
-        Assert.assertEquals(depth, s.highLatencyCalls.get());
+        // Leaves are retrieved 1 at a time as they are large (up to 1 Mib).
+        // Minus 2 for the leaf layer and the root
+        Assert.assertEquals(depth - 2 + leaves.size(), s.highLatencyCalls.get());
     }
 
     public static class TestMirrorStorage extends RAMStorage {
