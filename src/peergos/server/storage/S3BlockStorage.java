@@ -602,7 +602,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
     @Override
     public CompletableFuture<List<byte[]>> getChampLookup(PublicKeyHash owner, Cid root, List<ChunkMirrorCap> caps, Optional<Cid> committedRoot) {
         if (! hasBlock(root))
-            return Futures.errored(new IllegalStateException("Champ root not present locally: " + root));
+            return Futures.errored(new IllegalStateException("Champ root not present locally: " + root + " for owner: " + owner));
         return getChampLookup(owner, root, caps, committedRoot, hasher);
     }
 

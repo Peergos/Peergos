@@ -34,9 +34,11 @@ public class MirrorTests {
         // Build a 10 deep binary tree
         TestMirrorStorage s = new TestMirrorStorage(crypto.hasher);
 
-        int depth = 11;
-        int branches = 2;
-        List<byte[]> leaves = IntStream.range(0, (int) Math.pow(2, depth - 1)).mapToObj(i -> randomBlock()).toList();
+        int depth = 8;
+        int branches = 3;
+        List<byte[]> leaves = IntStream.range(0, (int) Math.pow(branches, depth - 1))
+                .mapToObj(i -> randomBlock())
+                .toList();
         TransactionId tid = s.startTransaction(null).join();
         List<Cid> leafCids = leaves.stream()
                 .map(b -> s.putRaw(null, null, null, b, tid, x -> {}).join())
@@ -56,7 +58,8 @@ public class MirrorTests {
         NewBlocksProcessor p = (w, bs) -> count.addAndGet(bs.size());
         s.mirror("a", null, null, Collections.emptyList(), Optional.empty(),
                 Optional.of(root), Optional.empty(), null, p, tid, crypto.hasher).join();
-        Assert.assertEquals((1 << depth) - 1, count.get());
+        int nBlocks = ((int) Math.pow(branches, depth) - 1) / (branches - 1);
+        Assert.assertEquals(nBlocks, count.get());
         // Ths is necessary for mirror to be fast in a p2p setting when getLinks retrieves the blocks
         // Leaves are retrieved 1 at a time as they are large (up to 1 Mib).
         // Minus 2 for the leaf layer and the root
