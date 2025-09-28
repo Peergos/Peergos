@@ -158,6 +158,7 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
         Optional<byte[]> newVal = RetryStorage.runWithRetry(3, () -> getRaw(peerIds, newRoot, mirrorBat, ourNodeId, hasher, false, true)).join();
         if (newVal.isEmpty())
             throw new IllegalStateException("Couldn't retrieve block: " + newRoot);
+        newBlockProcessor.process(writer, List.of(newRoot));
         if (isRaw)
             return Futures.of(Collections.singletonList(newRoot));
 
