@@ -158,6 +158,7 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
         Optional<byte[]> newVal = RetryStorage.runWithRetry(3, () -> getRaw(peerIds, newRoot, mirrorBat, ourNodeId, hasher, false, true)).join();
         if (newVal.isEmpty())
             throw new IllegalStateException("Couldn't retrieve block: " + newRoot);
+        newBlockProcessor.process(writer, List.of(newRoot));
         if (isRaw)
             return Futures.of(Collections.singletonList(newRoot));
 
@@ -200,7 +201,7 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
                 .collect(Collectors.toList());
 
         List<List<Cid>> addedLinks = RetryStorage.runWithRetry(3, () -> Futures.of(bulkGetLinks(peerIds, ourNodeId, added, mirrorBat, hasher))).join();
-        newBlockProcessor.process(writer, updated);
+        newBlockProcessor.process(writer, added);
         if (removed.isEmpty()) {
             List<Cid> allCbor = addedLinks.stream()
                     .flatMap(Collection::stream)

@@ -175,7 +175,7 @@ public class RAMStorage implements DeletableContentAddressedStorage {
 
     @Override
     public List<List<Cid>> bulkGetLinks(List<Multihash> peerIds, List<Want> wants) {
-        throw new IllegalStateException("Unimplemented!");
+        return wants.stream().map(w -> getLinks(w.cid, peerIds).join()).toList();
     }
 
     @Override

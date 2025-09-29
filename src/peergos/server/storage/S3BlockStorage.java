@@ -163,7 +163,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         this.accessKeyId = config.accessKey;
         this.secretKey = config.secretKey;
         LOG.info("Using S3 Block Storage at " + config.regionEndpoint + ", bucket " + config.bucket
-                + ", path: " + config.path + ", peerids: "+peerIds+", p2p-get peerid: " + p2pGetId);
+                + ", path: " + config.path + ", peerids: "+peerIds+", p2p-get peerid: " + p2pGetId.bareMultihash());
         this.props = props;
         this.linkHost = linkHost;
         this.transactions = transactions;
@@ -585,30 +585,24 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         if (newRoot.isRaw())
             return Futures.of(Collections.singletonList(newRoot));
 
-        List<Multihash> newLinks = CborObject.fromByteArray(newBlock.get()).links()
+        List<Cid> newLinks = CborObject.fromByteArray(newBlock.get()).links()
                 .stream()
                 .filter(h -> !h.isIdentity())
+                .map(c -> (Cid)c)
                 .collect(Collectors.toList());
         List<Cid> existingLinks = existing.map(c -> getLinks(c, peerIds).join().stream()
                         .filter(h -> !h.isIdentity())
                         .collect(Collectors.toList()))
                 .orElse(Collections.emptyList());
 
-        for (int i=0; i < newLinks.size(); i++) {
-            Optional<Cid> existingLink = i < existingLinks.size() ?
-                    Optional.of(existingLinks.get(i)) :
-                    Optional.empty();
-            Optional<Cid> updatedLink = Optional.of((Cid)newLinks.get(i));
-            mirror(username, owner, writer, peerIds, existingLink, updatedLink, mirrorBat, ourNodeId,
-                    (w, bs) -> {}, tid, hasher).join();
-        }
-        return Futures.of(Collections.singletonList(newRoot));
+        return bulkMirror(owner, writer, peerIds, existingLinks, newLinks, mirrorBat, ourNodeId,
+                (w, bs) -> usage.addPendingUsage(username, writer, bs.size()), tid, hasher);
     }
 
     @Override
     public CompletableFuture<List<byte[]>> getChampLookup(PublicKeyHash owner, Cid root, List<ChunkMirrorCap> caps, Optional<Cid> committedRoot) {
         if (! hasBlock(root))
-            return Futures.errored(new IllegalStateException("Champ root not present locally: " + root));
+            return Futures.errored(new IllegalStateException("Champ root not present locally: " + root + " for owner: " + owner));
         return getChampLookup(owner, root, caps, committedRoot, hasher);
     }
 
@@ -833,7 +827,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
 
     @Override
     public List<List<Cid>> bulkGetLinks(List<Multihash> peerIds, List<Want> wants) {
-        throw new IllegalStateException("Unimplemented!");
+        return p2pFallback.bulkGetLinks(peerIds, wants);
     }
 
     @Override
