@@ -133,7 +133,7 @@ public class TransactionalIpfs extends DelegatingDeletableStorage {
     }
 
     @Override
-    public List<List<Cid>> bulkGetLinks(List<Multihash> peerIds, List<Want> wants) {
+    public List<BlockProps> bulkGetLinks(List<Multihash> peerIds, List<Want> wants) {
         return target.bulkGetLinks(peerIds, wants);
     }
 

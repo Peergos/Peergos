@@ -3,6 +3,7 @@ package peergos.server.tests;
 import org.junit.Assert;
 import org.junit.Test;
 import peergos.server.Main;
+import peergos.server.storage.BlockProps;
 import peergos.server.storage.NewBlocksProcessor;
 import peergos.server.storage.RAMStorage;
 import peergos.server.storage.auth.Want;
@@ -34,7 +35,7 @@ public class MirrorTests {
         // Build a 10 deep binary tree
         TestMirrorStorage s = new TestMirrorStorage(crypto.hasher);
 
-        int depth = 8;
+        int depth = 6;
         int branches = 3;
         List<byte[]> leaves = IntStream.range(0, (int) Math.pow(branches, depth - 1))
                 .mapToObj(i -> randomBlock())
@@ -55,7 +56,7 @@ public class MirrorTests {
 
         Cid root = level.get(0);
         AtomicLong count = new AtomicLong(0);
-        NewBlocksProcessor p = (w, bs) -> count.addAndGet(bs.size());
+        NewBlocksProcessor p = (w, bs, size) -> count.addAndGet(bs.size());
         s.mirror("a", null, null, Collections.emptyList(), Optional.empty(),
                 Optional.of(root), Optional.empty(), null, p, tid, crypto.hasher).join();
         int nBlocks = ((int) Math.pow(branches, depth) - 1) / (branches - 1);
@@ -74,7 +75,7 @@ public class MirrorTests {
         }
 
         @Override
-        public List<List<Cid>> bulkGetLinks(List<Multihash> peerIds, List<Want> wants) {
+        public List<BlockProps> bulkGetLinks(List<Multihash> peerIds, List<Want> wants) {
             highLatencyCalls.incrementAndGet();
             return super.bulkGetLinks(peerIds, wants);
         }

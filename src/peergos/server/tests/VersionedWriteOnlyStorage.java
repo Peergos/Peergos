@@ -1,6 +1,7 @@
 package peergos.server.tests;
 
 import peergos.server.storage.BlockMetadataStore;
+import peergos.server.storage.BlockProps;
 import peergos.server.storage.BlockVersion;
 import peergos.server.storage.DeletableContentAddressedStorage;
 import peergos.server.storage.auth.Want;
@@ -118,7 +119,7 @@ public class VersionedWriteOnlyStorage implements DeletableContentAddressedStora
     }
 
     @Override
-    public List<List<Cid>> bulkGetLinks(List<Multihash> peerIds, List<Want> wants) {
+    public List<BlockProps> bulkGetLinks(List<Multihash> peerIds, List<Want> wants) {
         throw new IllegalStateException("Not implemented!");
     }
 

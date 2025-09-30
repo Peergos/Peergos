@@ -158,7 +158,7 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
         Optional<byte[]> newVal = RetryStorage.runWithRetry(3, () -> getRaw(peerIds, newRoot, mirrorBat, ourNodeId, hasher, false, true)).join();
         if (newVal.isEmpty())
             throw new IllegalStateException("Couldn't retrieve block: " + newRoot);
-        newBlockProcessor.process(writer, List.of(newRoot));
+        newBlockProcessor.process(writer, List.of(newRoot), newVal.get().length);
         if (isRaw)
             return Futures.of(Collections.singletonList(newRoot));
 
@@ -200,19 +200,21 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
                 .filter(c -> ! c.isIdentity())
                 .collect(Collectors.toList());
 
-        List<List<Cid>> addedLinks = RetryStorage.runWithRetry(3, () -> Futures.of(bulkGetLinks(peerIds, ourNodeId, added, mirrorBat, hasher))).join();
-        newBlockProcessor.process(writer, added);
+        List<BlockProps> addedLinks = RetryStorage.runWithRetry(3, () -> Futures.of(bulkGetLinks(peerIds, ourNodeId, added, mirrorBat, hasher))).join();
+        newBlockProcessor.process(writer, added, addedLinks.stream().mapToInt(p -> p.size).sum());
         if (removed.isEmpty()) {
             List<Cid> allCbor = addedLinks.stream()
+                    .map(p -> p.links)
                     .flatMap(Collection::stream)
                     .filter(c -> !c.isIdentity() && !c.isRaw())
                     .collect(Collectors.toList());
             for (int i=0; i < allCbor.size();) {
-                int end = Math.min(allCbor.size(), i + 1000);
+                int end = Math.min(allCbor.size(), i + 100);
                 bulkMirror(owner, writer, peerIds, Collections.emptyList(), allCbor.subList(i, end), mirrorBat, ourNodeId, newBlockProcessor, tid, hasher);
                 i = end;
             }
             List<Cid> allRaw = addedLinks.stream()
+                    .map(p -> p.links)
                     .flatMap(Collection::stream)
                     .filter(c -> !c.isIdentity() && c.isRaw())
                     .collect(Collectors.toList());
@@ -221,7 +223,7 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
             }
         } else {
             for (int i = 0; i < added.size(); i++) {
-                List<Cid> newLinks = addedLinks.get(i);
+                List<Cid> newLinks = addedLinks.get(i).links;
                 List<Cid> existingLinks = i >= removed.size() ?
                         Collections.emptyList() :
                         getLinks(removed.get(i), Arrays.asList(ourNodeId)).join().stream()
@@ -233,9 +235,9 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
         return Futures.of(updated);
     }
 
-    List<List<Cid>> bulkGetLinks(List<Multihash> peerIds, List<Want> wants);
+    List<BlockProps> bulkGetLinks(List<Multihash> peerIds, List<Want> wants);
 
-    default List<List<Cid>> bulkGetLinks(List<Multihash> peerIds,
+    default List<BlockProps> bulkGetLinks(List<Multihash> peerIds,
                                          Cid ourId,
                                          List<Cid> blocks,
                                          Optional<BatWithId> mirrorBat,
@@ -373,7 +375,7 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
         }
 
         @Override
-        public List<List<Cid>> bulkGetLinks(List<Multihash> peerIds, List<Want> wants) {
+        public List<BlockProps> bulkGetLinks(List<Multihash> peerIds, List<Want> wants) {
             if (wants.isEmpty())
                 return Collections.emptyList();
             Map<String, Object> json = new HashMap<>();
@@ -385,9 +387,9 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
                     .map(Multihash::toBase58)
                     .collect(Collectors.joining(","));
             return poster.post(apiPrefix + BLOCK_STAT_BULK + "?peers=" + peers, JSONParser.toString(json).getBytes(), true, -1)
-                    .thenApply(raw -> ((List<List<String>>) JSONParser.parse(new String(raw)))
+                    .thenApply(raw -> ((List<Map<String, Object>>) JSONParser.parse(new String(raw)))
                             .stream()
-                            .map(links -> links.stream().map(Cid::decode).collect(Collectors.toList()))
+                            .map(BlockProps::fromJSON)
                             .collect(Collectors.toList()))
                     .join();
         }

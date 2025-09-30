@@ -596,7 +596,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                 .orElse(Collections.emptyList());
 
         return bulkMirror(owner, writer, peerIds, existingLinks, newLinks, mirrorBat, ourNodeId,
-                (w, bs) -> usage.addPendingUsage(username, writer, bs.size()), tid, hasher);
+                (w, bs, size) -> usage.addPendingUsage(username, writer, size), tid, hasher);
     }
 
     @Override
@@ -826,7 +826,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
     }
 
     @Override
-    public List<List<Cid>> bulkGetLinks(List<Multihash> peerIds, List<Want> wants) {
+    public List<BlockProps> bulkGetLinks(List<Multihash> peerIds, List<Want> wants) {
         return p2pFallback.bulkGetLinks(peerIds, wants);
     }
 

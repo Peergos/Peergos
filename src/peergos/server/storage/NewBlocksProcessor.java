@@ -7,5 +7,5 @@ import java.util.List;
 
 public interface NewBlocksProcessor {
 
-    void process(PublicKeyHash writer, List<Cid> blocks);
+    void process(PublicKeyHash writer, List<Cid> blocks, int totalSize);
 }

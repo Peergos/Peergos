@@ -173,7 +173,7 @@ public class MetadataCachingStorage extends DelegatingDeletableStorage {
                                                Optional<Cid> updated, Optional<BatWithId> mirrorBat, Cid ourNodeId,
                                                NewBlocksProcessor newBlockProcessor, TransactionId tid, Hasher hasher) {
         return target.mirror(username, owner, writer, peerIds, existing, updated, mirrorBat, ourNodeId,
-                (w, bs) -> usage.addPendingUsage(username, w, addMetadata(peerIds, bs, mirrorBat, hasher)), tid, hasher);
+                (w, bs, size) -> usage.addPendingUsage(username, w, addMetadata(peerIds, bs, mirrorBat, hasher)), tid, hasher);
     }
 
     private int addMetadata(List<Multihash> peerIds, List<Cid> hashes, Optional<BatWithId> mirrorBat, Hasher h) {

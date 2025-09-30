@@ -115,7 +115,7 @@ public class MirrorCoreNode implements CoreNode {
                 try {
                     MaybeMultihash currentTree = IpfsCoreNode.getTreeRoot(pkiStorageProviders, remote.pkiKeyTarget, ipfs);
                     ipfs.mirror("peergos", pkiOwnerIdentity, remote.pkiKey, pkiStorageProviders, Optional.empty(), currentTree.toOptional().map(m -> (Cid)m),
-                            Optional.empty(), ipfs.id().join(), (x, y) -> {}, tid, hasher).join();
+                            Optional.empty(), ipfs.id().join(), (x, y, z) -> {}, tid, hasher).join();
                 } finally {
                     transactions.closeTransaction(pkiOwnerIdentity, tid);
                 }

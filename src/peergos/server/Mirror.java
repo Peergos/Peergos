@@ -224,7 +224,7 @@ public class Mirror {
         try {
             storage.mirror(username, owner, writer, peerIds,
                     existingTarget.toOptional().map(c -> (Cid)c),
-                    updatedTarget.toOptional().map(c -> (Cid)c), mirrorBat, storage.id().join(), (x, y) -> {}, tid, hasher);
+                    updatedTarget.toOptional().map(c -> (Cid)c), mirrorBat, storage.id().join(), (x, y, z) -> {}, tid, hasher);
             targetPointers.setPointer(writer, existing, newPointer).join();
         } finally {
             transactions.closeTransaction(owner, tid);
