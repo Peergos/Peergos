@@ -125,7 +125,7 @@ public interface SqlSupplier {
                 "CREATE TABLE IF NOT EXISTS pendingusage (" +
                 "user_id INTEGER REFERENCES users(id)," +
                 "writer_id INTEGER REFERENCES writers(id) PRIMARY KEY," +
-                "pending_bytes INTEGER NOT NULL" +
+                "pending_bytes BIGINT NOT NULL" +
                 ");" +
                 "CREATE TABLE IF NOT EXISTS writerusage (" +
                 "writer_id INTEGER REFERENCES writers(id)," +
