@@ -666,7 +666,8 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         Optional<byte[]> buffered = blockBuffer.get((Cid) hash).join();
         if (buffered.isPresent())
             return Futures.of(Optional.of(buffered.get().length));
-        return getWithBackoff(() -> getSizeWithoutRetry(hash));
+        return getBlockMetadata((Cid)hash)
+                .thenApply(m -> Optional.of(m.size));
     }
 
     @Override
