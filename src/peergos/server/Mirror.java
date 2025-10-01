@@ -3,6 +3,7 @@ package peergos.server;
 import peergos.server.corenode.*;
 import peergos.server.login.*;
 import peergos.server.space.UsageStore;
+import peergos.server.space.UserUsage;
 import peergos.server.storage.*;
 import peergos.server.util.*;
 import peergos.shared.*;
@@ -199,7 +200,7 @@ public class Mirror {
 
         usage.addUserIfAbsent(username);
         usage.addWriter(username, writer);
-        mirrorMerkleTree(username, owner, writer, peerIds, updated.get(), mirrorBat, storage, targetPointers, transactions, hasher);
+        mirrorMerkleTree(username, owner, writer, peerIds, updated.get(), mirrorBat, storage, targetPointers, transactions, usage, hasher);
         return updated;
     }
 
@@ -212,6 +213,7 @@ public class Mirror {
                                         DeletableContentAddressedStorage storage,
                                         JdbcIpnsAndSocial targetPointers,
                                         TransactionStore transactions,
+                                        UsageStore usagedb,
                                         Hasher hasher) {
         Optional<byte[]> existing = targetPointers.getPointer(writer).join();
         // First pin the new root, then commit updated pointer
@@ -222,6 +224,10 @@ public class Mirror {
         // use a mirror call to distinguish from normal pin calls
         TransactionId tid = transactions.startTransaction(owner);
         try {
+            // zero pending usage
+            UserUsage usage = usagedb.getUsage(username);
+            if (usage.getPending(writer) != 0)
+                usagedb.resetPendingUsage(username, writer);
             storage.mirror(username, owner, writer, peerIds,
                     existingTarget.toOptional().map(c -> (Cid)c),
                     updatedTarget.toOptional().map(c -> (Cid)c), mirrorBat, storage.id().join(), (x, y, z) -> {}, tid, hasher);

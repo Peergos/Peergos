@@ -181,6 +181,23 @@ public class JdbcUsageStore implements UsageStore {
         }
     }
 
+    @Override
+    public void resetPendingUsage(String username, PublicKeyHash writer) {
+        int writerId = getWriterId(writer);
+        try (Connection conn = getConnection(true, false);
+             PreparedStatement insert = conn.prepareStatement("UPDATE pendingusage SET pending_bytes = ? " +
+                     "WHERE writer_id = ?;")) {
+            insert.setLong(1, 0);
+            insert.setInt(2, writerId);
+            int count = insert.executeUpdate();
+            if (count != 1)
+                throw new IllegalStateException("Didn't update one record!");
+        } catch (SQLException sqe) {
+            LOG.log(Level.WARNING, sqe.getMessage() + " Username: " + username + " writerId: " + writerId, sqe);
+            throw new RuntimeException(sqe);
+        }
+    }
+
     public Map<String, Long> getAllUsage() {
         try (Connection conn = getConnection();
              PreparedStatement search = conn.prepareStatement("SELECT u.name, uu.total_bytes " +

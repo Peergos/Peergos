@@ -12,4 +12,5 @@ public interface UserUsageStore extends WriterUsageStore {
 
     void addPendingUsage(String username, PublicKeyHash writer, int size);
 
+    void resetPendingUsage(String username, PublicKeyHash writer);
 }

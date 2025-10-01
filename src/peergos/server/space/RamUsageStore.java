@@ -97,6 +97,11 @@ public class RamUsageStore implements UsageStore {
     }
 
     @Override
+    public void resetPendingUsage(String username, PublicKeyHash writer) {
+        state.usage.get(username).clearPending(writer);
+    }
+
+    @Override
     public void initialized() {
         this.initializedFully = true;
     }

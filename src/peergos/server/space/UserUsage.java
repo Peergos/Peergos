@@ -40,7 +40,7 @@ public class UserUsage implements Cborable {
         pending.remove(writer);
     }
 
-    protected synchronized long getPending(PublicKeyHash writer) {
+    public synchronized long getPending(PublicKeyHash writer) {
         return pending.getOrDefault(writer, 0L);
     }
 

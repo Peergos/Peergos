@@ -653,7 +653,8 @@ public class MirrorCoreNode implements CoreNode {
             for (Map.Entry<PublicKeyHash, byte[]> e : res.pointerState.entrySet()) {
                 byte[] existingVal = mirrored.get(e.getKey());
                 if (! Arrays.equals(existingVal, e.getValue())) {
-                    Mirror.mirrorMerkleTree(username, owner, e.getKey(), storageProviders, e.getValue(), mirrorBat, ipfs, rawPointers, transactions, hasher);
+                    Mirror.mirrorMerkleTree(username, owner, e.getKey(), storageProviders, e.getValue(), mirrorBat,
+                            ipfs, rawPointers, transactions, usageStore, hasher);
                 }
             }
 
