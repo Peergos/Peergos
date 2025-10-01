@@ -552,7 +552,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
             String code = msg.substring(startIndex + 6, endIndex).trim();
             return RETRY_S3_CODES.contains(code);
         } else {
-            return false;
+            return e instanceof ConnectException;
         }
     }
 
