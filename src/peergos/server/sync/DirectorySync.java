@@ -188,6 +188,13 @@ public class DirectorySync {
                 break;
             Threads.sleep(30_000);
         }
+        for (SyncState state : syncedStates) {
+            try {
+                state.close();
+            } catch (IOException e) {
+                DirectorySync.LOG.log(Level.WARNING, e, e::getMessage);
+            }
+        }
         return true;
     }
 

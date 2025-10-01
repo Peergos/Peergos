@@ -3,6 +3,7 @@ package peergos.server.sync;
 import peergos.shared.user.Snapshot;
 import peergos.shared.user.fs.RootHash;
 
+import java.io.IOException;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -134,4 +135,7 @@ class RamTreeState implements SyncState {
     public synchronized List<CopyOp> getInProgressCopies() {
         return inProgress;
     }
+
+    @Override
+    public void close() throws IOException {}
 }

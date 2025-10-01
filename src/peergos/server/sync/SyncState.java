@@ -3,10 +3,11 @@ package peergos.server.sync;
 import peergos.shared.user.Snapshot;
 import peergos.shared.user.fs.RootHash;
 
+import java.io.Closeable;
 import java.util.List;
 import java.util.Set;
 
-public interface SyncState {
+public interface SyncState extends Closeable {
 
     boolean hasCompletedSync();
 

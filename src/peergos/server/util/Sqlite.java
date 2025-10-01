@@ -2,6 +2,7 @@ package peergos.server.util;
 
 import org.sqlite.*;
 
+import java.io.IOException;
 import java.sql.*;
 import java.util.*;
 import java.util.concurrent.*;
@@ -29,6 +30,10 @@ public class Sqlite {
 
         public UncloseableConnection(Connection target) {
             this.target = target;
+        }
+
+        public void closeTarget() throws SQLException {
+            target.close();
         }
 
         @Override

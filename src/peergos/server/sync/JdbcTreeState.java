@@ -10,6 +10,7 @@ import peergos.shared.user.fs.HashTree;
 import peergos.shared.user.fs.ResumeUploadProps;
 import peergos.shared.user.fs.RootHash;
 
+import java.io.IOException;
 import java.nio.file.Paths;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -45,19 +46,28 @@ public class JdbcTreeState implements SyncState {
     private static final String REMOVE_COPY_OP = "DELETE FROM copyops2 WHERE source=? AND target=? AND start=? AND end=?";
     private static final String LIST_COPY_OPS = "SELECT islocal, source, target, start, end, sourcestate, targetstate, props FROM copyops2;";
 
-    private final Supplier<Connection> conn;
+    private final Supplier<Sqlite.UncloseableConnection> conn;
     private final SqlSupplier cmds = new SqliteCommands();
 
     public JdbcTreeState(String sqlFile) {
         try {
-            Connection memory = Sqlite.build(sqlFile);
+            Connection db = Sqlite.build(sqlFile);
             // We need a connection that ignores close
-            Connection instance = new Sqlite.UncloseableConnection(memory);
+            Sqlite.UncloseableConnection instance = new Sqlite.UncloseableConnection(db);
             this.conn = () -> instance;
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
         init();
+    }
+
+    @Override
+    public void close() throws IOException {
+        try {
+            conn.get().closeTarget();
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     private Connection getConnection() {
