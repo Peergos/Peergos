@@ -670,6 +670,16 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                 .thenApply(m -> Optional.of(m.size));
     }
 
+    private CompletableFuture<Optional<Integer>> getSizeOnly(Multihash hash) {
+        Optional<BlockMetadata> meta = blockMetadata.get((Cid) hash);
+        if (meta.isPresent())
+            return Futures.of(Optional.of(meta.get().size));
+        Optional<byte[]> buffered = blockBuffer.get((Cid) hash).join();
+        if (buffered.isPresent())
+            return Futures.of(Optional.of(buffered.get().length));
+        return getWithBackoff(() -> getSizeWithoutRetry(hash));
+    }
+
     @Override
     public CompletableFuture<IpnsEntry> getIpnsEntry(Multihash signer) {
         return bloomTarget.getIpnsEntry(signer);
@@ -858,7 +868,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         String version = data.get().right;
         if (h.isRaw()) {
             // we should avoid this by populating the metadata store, as it means two S3 calls, a ranged GET and a HEAD
-            int size = getSize(h).join().get();
+            int size = getSizeOnly(h).join().get();
             BlockMetadata meta = new BlockMetadata(size, Collections.emptyList(), Bat.getRawBlockBats(bloc));
             blockMetadata.put(h, version, meta);
             return Futures.of(meta);
