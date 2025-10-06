@@ -343,7 +343,7 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
         UserUsage usage = usageStore.getUsage(writerUsage.owner);
         if (usage == null)
             return Futures.errored(new IllegalStateException("No usage present for user: " + writerUsage.owner));
-        return CompletableFuture.completedFuture(usage.totalUsage());
+        return CompletableFuture.completedFuture(local ? usage.expectedUsage() : usage.totalUsage());
     }
 
     @Override
