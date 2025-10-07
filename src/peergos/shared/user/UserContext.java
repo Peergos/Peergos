@@ -570,6 +570,39 @@ public class UserContext {
     }
 
     @JsMethod
+    public CompletableFuture<Boolean> mirrorLoginData(
+            String password,
+            Function<MultiFactorAuthRequest, CompletableFuture<MultiFactorAuthResponse>> mfa,
+            Consumer<String> progressCallback) {
+        return Futures.asyncExceptionally(() -> getWriterDataCbor(network, username),
+                e ->  {
+                    if (e.getMessage().contains("hash not present"))
+                        return Futures.errored(new IllegalStateException("User has been deleted. Did you mean a different username?"));
+                    else if (e.getMessage().contains("No public-key for user"))
+                        return Futures.errored(new IllegalStateException("Unknown username. Did you enter it correctly?"));
+                    else
+                        return Futures.errored(e);
+                }).thenCompose(pair -> {
+            SecretGenerationAlgorithm algorithm = WriterData.fromCbor(pair.right).generationAlgorithm
+                    .orElseThrow(() -> new IllegalStateException("No login algorithm specified in user data!"));
+            progressCallback.accept("Generating keys");
+            return UserUtil.generateUser(username, password, crypto, algorithm)
+                    .thenCompose(generatedCredentials -> {
+                        progressCallback.accept("Retrieving login data");
+                        WriterData userData = WriterData.fromCbor(pair.right);
+                        boolean legacyAccount = userData.staticData.isPresent();
+                        if (legacyAccount)
+                            throw new IllegalStateException("Legacy accounts do not have login data, change your password to upgrade your account.");
+                        PublicSigningKey loginPub = generatedCredentials.getUser().publicSigningKey;
+                        SecretSigningKey loginSecret = generatedCredentials.getUser().secretSigningKey;
+                        return getLoginData(username, loginPub, loginSecret, mfa, false, false, network)
+                                .thenCompose(userStaticData -> network.account.setLoginData(
+                                        new LoginData(username, userStaticData, loginPub, Optional.empty()), signer));
+                    });
+        });
+    }
+
+    @JsMethod
     public CompletableFuture<Boolean> mirrorOnThisServer(
             Optional<Function<PaymentProperties, CompletableFuture<Plan>>> addCard,
             Consumer<String> progressCallback) {
