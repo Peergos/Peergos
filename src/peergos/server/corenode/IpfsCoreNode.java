@@ -331,7 +331,7 @@ public class IpfsCoreNode implements CoreNode {
         if (ops.loginData != null) {
             if (! ops.loginData.left.username.equals(username))
                 throw new IllegalStateException("Invalid signup data!");
-            account.setLoginData(ops.loginData.left, ops.loginData.right).join();
+            account.setLoginData(ops.loginData.left, ops.loginData.right, false).join();
         }
         if (ops.mirrorBat.isPresent()) {
             Pair<BatWithId, byte[]> p = ops.mirrorBat.get();

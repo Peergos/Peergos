@@ -16,11 +16,13 @@ public interface Account {
      * @param auth
      * @return
      */
-    CompletableFuture<Boolean> setLoginData(LoginData login, byte[] auth);
+    CompletableFuture<Boolean> setLoginData(LoginData login, byte[] auth, boolean forceLocal);
 
-    default CompletableFuture<Boolean> setLoginData(LoginData login, SigningPrivateKeyAndPublicHash identity) {
+    default CompletableFuture<Boolean> setLoginData(LoginData login,
+                                                    SigningPrivateKeyAndPublicHash identity,
+                                                    boolean forceLocal) {
         return identity.secret.signatureOnly(login.serialize())
-                .thenCompose(auth -> setLoginData(login, auth));
+                .thenCompose(auth -> setLoginData(login, auth, forceLocal));
     }
 
     /** Auth signed by login keypair

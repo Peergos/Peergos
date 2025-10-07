@@ -59,7 +59,7 @@ public class OpLog implements Cborable, Account, MutablePointers, ContentAddress
     }
 
     @Override
-    public synchronized CompletableFuture<Boolean> setLoginData(LoginData login, byte[] auth) {
+    public synchronized CompletableFuture<Boolean> setLoginData(LoginData login, byte[] auth, boolean forceLocal) {
         loginData = new Pair<>(login, auth);
         return Futures.of(true);
     }

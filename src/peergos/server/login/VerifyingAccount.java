@@ -25,11 +25,11 @@ public class VerifyingAccount implements Account {
     }
 
     @Override
-    public CompletableFuture<Boolean> setLoginData(LoginData login, byte[] auth) {
+    public CompletableFuture<Boolean> setLoginData(LoginData login, byte[] auth, boolean forceLocal) {
         PublicKeyHash identityHash = core.getPublicKeyHash(login.username).join().get();
         PublicSigningKey identity = storage.getSigningKey(identityHash, identityHash).join().get();
         identity.unsignMessage(ArrayOps.concat(auth, login.serialize()));
-        return target.setLoginData(login, auth);
+        return target.setLoginData(login, auth, forceLocal);
     }
 
     @Override

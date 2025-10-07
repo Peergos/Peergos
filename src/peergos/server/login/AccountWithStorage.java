@@ -26,7 +26,7 @@ public class AccountWithStorage implements Account {
     }
 
     @Override
-    public CompletableFuture<Boolean> setLoginData(LoginData login, byte[] auth) {
+    public CompletableFuture<Boolean> setLoginData(LoginData login, byte[] auth, boolean forceLocal) {
         if (login.identityUpdate.isPresent()) {
             Pair<OpLog.BlockWrite, OpLog.PointerWrite> pair = login.identityUpdate.get();
             OpLog.BlockWrite block = pair.left;

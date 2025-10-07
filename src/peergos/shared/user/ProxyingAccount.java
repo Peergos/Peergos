@@ -24,12 +24,14 @@ public class ProxyingAccount implements Account {
     }
 
     @Override
-    public CompletableFuture<Boolean> setLoginData(LoginData login, byte[] auth) {
-        return core.getPublicKeyHash(login.username).thenCompose(idOpt -> Proxy.redirectCall(core,
-                serverIds,
-                idOpt.get(),
-                () -> local.setLoginData(login, auth),
-                target -> p2p.setLoginData(target, login, auth)));
+    public CompletableFuture<Boolean> setLoginData(LoginData login, byte[] auth, boolean forceLocal) {
+        return core.getPublicKeyHash(login.username).thenCompose(idOpt -> forceLocal ?
+                local.setLoginData(login, auth, true) :
+                Proxy.redirectCall(core,
+                        serverIds,
+                        idOpt.get(),
+                        () -> local.setLoginData(login, auth, false),
+                        target -> p2p.setLoginData(target, login, auth)));
     }
 
     @Override

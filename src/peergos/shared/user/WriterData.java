@@ -285,7 +285,7 @@ public class WriterData implements Cborable {
                                 Optional<SigningKeyPair> identity = Optional.of(staticData.identity.orElse(newIdentity));
                                 return new UserStaticData(staticData.entries, newKey, identity, boxer);
                             });
-                    return network.account.setLoginData(new LoginData(username, newEntryPoints.get(), newLogin, Optional.empty()), oldSigner)
+                    return network.account.setLoginData(new LoginData(username, newEntryPoints.get(), newLogin, Optional.empty()), oldSigner, false)
                             .thenCompose(b -> network.hasher.sha256(followRequestReceiver.serialize())
                                     .thenCompose(boxerHash -> oldSigner.secret.signMessage(boxerHash)
                                             .thenCompose(signedBoxer -> network.dhtClient.putBoxingKey(oldSigner.publicKeyHash,

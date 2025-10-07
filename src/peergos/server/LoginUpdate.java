@@ -77,10 +77,10 @@ public class LoginUpdate {
             byte[] signedPointer = identity.secret.signMessage(pointerCas.serialize()).join();
             OpLog.PointerWrite pointerWrite = new OpLog.PointerWrite(identity.publicKeyHash, signedPointer);
             LoginData newLoginData = new LoginData(username, entryPoints, loginSigner.publicSigningKey, Optional.of(new Pair<>(blockWrite, pointerWrite)));
-            network.account.setLoginData(newLoginData, identity).join();
+            network.account.setLoginData(newLoginData, identity, false).join();
         } else {
             LoginData login = new LoginData(username, entryPoints, loginSigner.publicSigningKey, Optional.empty());
-            network.account.setLoginData(login, signer).join();
+            network.account.setLoginData(login, signer, false).join();
         }
         System.out.println("Completed update");
     }

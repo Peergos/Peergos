@@ -35,8 +35,8 @@ public class LocalOnlyAccount implements Account {
     }
 
     @Override
-    public CompletableFuture<Boolean> setLoginData(LoginData login, byte[] auth) {
-        return target.setLoginData(login, auth);
+    public CompletableFuture<Boolean> setLoginData(LoginData login, byte[] auth, boolean forceLocal) {
+        return target.setLoginData(login, auth, forceLocal);
     }
 
     private boolean hasQuota(String username) {

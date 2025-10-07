@@ -19,7 +19,7 @@ public class NonWriteThroughAccount implements Account {
     }
 
     @Override
-    public CompletableFuture<Boolean> setLoginData(LoginData login, byte[] auth) {
+    public CompletableFuture<Boolean> setLoginData(LoginData login, byte[] auth, boolean forceLocal) {
         modifications.put(login.username, login);
         return Futures.of(true);
     }

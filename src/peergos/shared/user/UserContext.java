@@ -597,7 +597,7 @@ public class UserContext {
                         SecretSigningKey loginSecret = generatedCredentials.getUser().secretSigningKey;
                         return getLoginData(username, loginPub, loginSecret, mfa, false, false, network)
                                 .thenCompose(userStaticData -> network.account.setLoginData(
-                                        new LoginData(username, userStaticData, loginPub, Optional.empty()), signer));
+                                        new LoginData(username, userStaticData, loginPub, Optional.empty()), signer, true));
                     });
         });
     }
@@ -1355,7 +1355,7 @@ public class UserContext {
                                                                     .thenCompose(signedCas -> {
                                                                         OpLog.PointerWrite pointerWrite = new OpLog.PointerWrite(signer.publicKeyHash, signedCas);
                                                                         LoginData updatedLoginData = new LoginData(username, updatedEntry, newLoginPublicKey, Optional.of(new Pair<>(blockWrite, pointerWrite)));
-                                                                        return network.account.setLoginData(updatedLoginData, signer)
+                                                                        return network.account.setLoginData(updatedLoginData, signer, false)
                                                                                 .thenCompose(b -> UserContext.login(username, newIdBlock, entry,
                                                                                         signer, entry.boxer.get(), updatedLogin.getRoot(), new Pair<>(pointerCas, newIdBlock.toCbor()), network.clear(), crypto, p -> {}));
                                                                     });
@@ -2400,7 +2400,7 @@ public class UserContext {
         WriterData wd = cwd.props.get();
         if (wd.staticData.isEmpty()) {
             UserStaticData updated = new UserStaticData(current.getData(rootKey).addEntryPoint(entry), rootKey);
-            return network.account.setLoginData(new LoginData(entry.ownerName, updated, loginPublic, Optional.empty()), owner)
+            return network.account.setLoginData(new LoginData(entry.ownerName, updated, loginPublic, Optional.empty()), owner, false)
                     .thenApply(b -> version);
         } else {
             // legacy account
@@ -2424,7 +2424,7 @@ public class UserContext {
         WriterData wd = cwd.props.get();
         if (wd.staticData.isEmpty()) {
             UserStaticData updated = new UserStaticData(current.getData(rootKey).withBoxer(newBoxer), rootKey);
-            return network.account.setLoginData(new LoginData(username, updated, loginPublic, Optional.empty()), owner)
+            return network.account.setLoginData(new LoginData(username, updated, loginPublic, Optional.empty()), owner, false)
                     .thenCompose(x -> crypto.hasher.sha256(newBoxer.publicBoxingKey.serialize())
                             .thenCompose(boxerHash -> owner.secret.signMessage(boxerHash)
                                     .thenCompose(signedBoxerHash -> network.dhtClient.putBoxingKey(owner.publicKeyHash, signedBoxerHash, newBoxer.publicBoxingKey, tid)
