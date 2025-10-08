@@ -284,6 +284,7 @@ public class DirectorySync {
             // Do an incremental sync of only files to make progress quicker
             // We don't need to prehash entire dirs here,
             // because we are not trying to detect moves/renames
+            SyncProgress progress = new SyncProgress(localFS.filesCount() - syncedVersions.filesCount());
 
             localFS.applyToSubtree(file -> {
                 if (file.size > 1024*1024) { // avoid doing many small files in non bulk uploads
@@ -293,7 +294,7 @@ public class DirectorySync {
                     Path p = PathUtil.get(file.relPath);
                     if (! remoteFS.exists(p)) {
                         try {
-                            LOG.accept("REMOTE: Uploading " + file.relPath);
+                            LOG.accept("REMOTE: Uploading " + file.relPath + " " + progress);
                             HashTree hashTree = localFS.hashFile(p, Optional.empty(), file.relPath, syncedVersions);
                             LocalDateTime modified = LocalDateTime.ofInstant(Instant.ofEpochSecond(file.modifiedTime / 1000, 0), ZoneOffset.UTC);
                             CopyOp op = new CopyOp(false, localFS.resolve(file.relPath),
@@ -304,6 +305,7 @@ public class DirectorySync {
                                     Optional.of(modified), localFS.getThumbnail(p), op.props, isCancelled, LOG);
                             syncedVersions.finishCopies(List.of(op));
                             syncedVersions.add(new FileState(file.relPath, file.modifiedTime, file.size, hashTree));
+                            progress.doneFile();
                         } catch (IOException e) {
                             throw new RuntimeException(e);
                         }
@@ -312,7 +314,8 @@ public class DirectorySync {
                         HashTree localHash = localFS.hashFile(p, Optional.empty(), file.relPath, syncedVersions);
                         if (localHash.equals(remoteHash)) {
                             syncedVersions.add(new FileState(file.relPath, file.modifiedTime, file.size, localHash));
-                            LOG.accept("Skipping identical remote file in initial sync: " + file.relPath);
+                            progress.doneFile();
+                            LOG.accept("Skipping identical remote file in initial sync: " + file.relPath + " " + progress);
                         }
                     }
                 }

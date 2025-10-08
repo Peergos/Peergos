@@ -306,6 +306,11 @@ public class PeergosSyncFS implements SyncFilesystem {
     }
 
     @Override
+    public long filesCount() throws IOException {
+        throw new IllegalStateException("Unimplemented file count.");
+    }
+
+    @Override
     public Optional<PublicKeyHash> applyToSubtree(Consumer<FileProps> onFile, Consumer<FileProps> onDir) {
         return applyToSubtree(root, onFile, onDir);
     }

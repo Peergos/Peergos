@@ -89,6 +89,8 @@ public interface SyncFilesystem {
      */
     Optional<PublicKeyHash> applyToSubtree(Consumer<FileProps> file, Consumer<FileProps> dir) throws IOException;
 
+    long filesCount() throws IOException;
+
     class FileProps {
         public final String relPath;
         public final long modifiedTime;

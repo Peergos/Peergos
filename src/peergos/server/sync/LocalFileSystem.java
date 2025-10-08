@@ -18,6 +18,7 @@ import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
@@ -205,6 +206,18 @@ public class LocalFileSystem implements SyncFilesystem {
     @Override
     public HashTree hashFile(Path p, Optional<FileWrapper> meta, String relPath, SyncState syncedVersions) {
         return ScryptJava.hashFile(root.resolve(p), hasher);
+    }
+
+    @Override
+    public long filesCount() throws IOException {
+        AtomicLong count = new AtomicLong(0);
+        try (Stream<Path> stream = Files.list(root)) {
+            stream.forEach(p -> {
+                if (Files.isRegularFile(p))
+                    count.incrementAndGet();
+            });
+        }
+        return count.get();
     }
 
     @Override
