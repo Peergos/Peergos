@@ -606,7 +606,7 @@ public abstract class UserTests {
         SigningPrivateKeyAndPublicHash writer = fileV2.signingPair();
         network.synchronizer.applyComplexUpdate(owner, writer,
                 (v, c) -> fileV2.overwriteSection(v, c, AsyncReader.build(section1),
-                        1024, 1024 + section1.length, network, crypto, x -> {})).join();
+                        1024, 1024 + section1.length, Optional.empty(), network, crypto, x -> {})).join();
         byte[] data1 = Arrays.copyOfRange(data, 0, data.length);
         System.arraycopy(section1, 0, data1, 1024, section1.length);
         checkFileContents(data1, context.getByPath(filePath).join().get(), context);
@@ -614,7 +614,7 @@ public abstract class UserTests {
         try {
             network.synchronizer.applyComplexUpdate(owner, writer,
                     (v, c) -> fileV1.overwriteSection(v, c, AsyncReader.build(section2),
-                            1024, 1024 + section2.length, network, crypto, x -> {})).join();
+                            1024, 1024 + section2.length, Optional.empty(), network, crypto, x -> {})).join();
             throw new RuntimeException("Concurrentmodification should have failed!");
         } catch (CompletionException c) {
             if (!(c.getCause() instanceof CasException))

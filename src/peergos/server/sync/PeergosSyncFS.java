@@ -227,7 +227,7 @@ public class PeergosSyncFS implements SyncFilesystem {
 
             long end = fileOffset + size;
             AtomicLong done = new AtomicLong(0);
-            f.overwriteSectionJS(data, (int) (fileOffset >>> 32), (int) fileOffset, (int) (end >>> 32), (int) end, context.network, context.crypto, x -> {
+            f.overwriteSectionJS(data, (int) (fileOffset >>> 32), (int) fileOffset, (int) (end >>> 32), (int) end, modificationTime, context.network, context.crypto, x -> {
                 long total = done.addAndGet(x);
                 if (total >= 1024*1024)
                     progress.accept("Uploaded " + (total/1024/1024) + " / " + (size / 1024/1024) + " MiB of " + filename);

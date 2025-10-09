@@ -652,7 +652,7 @@ public class UserContext {
                                     .claim.storageProviders.stream().findFirst().get();
                             Cid newStorageNodeId = thisServer;
                             return Migrate.buildMigrationChain(existing, newStorageNodeId, signer.secret)
-                                    .thenCompose(newChain -> network.coreNode.migrateUser(username, newChain, originalNodeId, mirrorBat, LocalDateTime.now(), usage));
+                                    .thenCompose(newChain -> network.coreNode.migrateUser(username, newChain, originalNodeId, mirrorBat, LocalDateTime.now(ZoneOffset.UTC), usage));
                         })));
     }
 

@@ -604,7 +604,7 @@ public class FileWrapper {
                                         entryWriter, props.withSize(startOfLastChunk), network).thenCompose(resized ->
                                         getUpdated(resized, network).thenCompose(f -> f.clean(resized, committer, network, crypto)
                                                 .thenCompose(p -> p.left.overwriteSection(p.right, committer,
-                                                AsyncReader.build(lastChunk), startOfLastChunk, newSize, network, crypto, x -> {})))));
+                                                AsyncReader.build(lastChunk), startOfLastChunk, newSize, Optional.empty(), network, crypto, x -> {})))));
                             });
                         }))
                 );
@@ -758,8 +758,8 @@ public class FileWrapper {
                                 calculateMimeType(fileData, length, filename)
                                         .thenCompose(mimeType -> fileData.reset().thenCompose(resetData -> resumeUpload(new FileUploadTransaction(System.currentTimeMillis(),
                                                 filename, filename, new FileProperties(filename,
-                                                false, false, mimeType, length, modificationTime.orElseGet(LocalDateTime::now),
-                                                modificationTime.orElseGet(LocalDateTime::now), false, thumbnail, props.map(p -> p.streamSecret), hash.map(t -> t.branch(0))),
+                                                false, false, mimeType, length, modificationTime.orElseGet(() -> LocalDateTime.now(ZoneOffset.UTC)),
+                                                modificationTime.orElseGet(() -> LocalDateTime.now(ZoneOffset.UTC)), false, thumbnail, props.map(p -> p.streamSecret), hash.map(t -> t.branch(0))),
                                                 signingPair(), new Location(owner(), writer(), props.get().firstChunkMapKey),
                                                 props.map(p -> p.firstChunkBat), length, props.get().baseKey, props.get().dataKey,
                                                 props.get().writeKey, props.get().streamSecret), resetData, isCancelled, monitor, current, committer, network, crypto))) :
@@ -857,7 +857,7 @@ public class FileWrapper {
         long size = getSize();
         return clean(s, committer, network, crypto)
                 .thenCompose(u -> u.left.overwriteSection(u.right, committer, fileData,
-                        0L, newSize, network, crypto, monitor))
+                        0L, newSize, Optional.empty(), network, crypto, monitor))
                 .thenCompose(v -> newSize >= size ?
                         Futures.of(v) :
                         getUpdated(v, network)
@@ -880,13 +880,14 @@ public class FileWrapper {
                                                              int startLow,
                                                              int endHigh,
                                                              int endLow,
+                                                             Optional<LocalDateTime> modified,
                                                              NetworkAccess network,
                                                              Crypto crypto,
                                                              ProgressConsumer<Long> monitor) {
         return network.synchronizer.applyComplexUpdate(owner(), signingPair(),
                 (s, committer) -> overwriteSection(s, committer, fileData,
                         LongUtil.intsToLong(startHigh, startLow),
-                        LongUtil.intsToLong(endHigh, endLow), network, crypto, monitor))
+                        LongUtil.intsToLong(endHigh, endLow), modified, network, crypto, monitor))
                 .thenCompose(v -> getUpdated(v, network));
     }
 
@@ -1018,7 +1019,7 @@ public class FileWrapper {
 
                             network.enableCommits();
                             List<FileUploadTransaction> toClose = new ArrayList<>();
-                            LocalDateTime now = LocalDateTime.now();
+                            LocalDateTime now = LocalDateTime.now(ZoneOffset.UTC);
                             return calculateMimeType(fileData, f.length, f.filename).thenCompose(mimeType -> {
                                 FileProperties props = new FileProperties(f.filename,
                                         false, false, mimeType, f.length,
@@ -1103,6 +1104,7 @@ public class FileWrapper {
                                                         AsyncReader fileData,
                                                         long inputStartIndex,
                                                         long endIndex,
+                                                        Optional<LocalDateTime> modified,
                                                         NetworkAccess network,
                                                         Crypto crypto,
                                                         ProgressConsumer<Long> monitor) {
@@ -1197,7 +1199,7 @@ public class FileWrapper {
                                                 FileProperties newProps = new FileProperties(props.name, false,
                                                         props.isLink, props.mimeType,
                                                         endIndex > currentSize ? endIndex : currentSize,
-                                                        LocalDateTime.now(), props.created, props.isHidden,
+                                                        modified.orElseGet(() -> LocalDateTime.now(ZoneOffset.UTC)), props.created, props.isHidden,
                                                         props.thumbnail, props.streamSecret, Optional.empty());
 
                                                 Optional<BatId> mirrorBat = mirrorBatId();
@@ -1458,7 +1460,7 @@ public class FileWrapper {
                                             SymmetricKey dirParentKey = dirAccess.getParentKey(rootRKey);
                                             Location parentLocation = getLocation();
                                             Optional<Bat> parentBat = writableFilePointer().bat;
-                                            LocalDateTime timestamp = modificationTime.orElseGet(LocalDateTime::now);
+                                            LocalDateTime timestamp = modificationTime.orElseGet(() -> LocalDateTime.now(ZoneOffset.UTC));
                                             return fileData.reset()
                                                     .thenCompose(reset -> calculateMimeType(reset, endIndex, filename)).thenCompose(mimeType -> fileData.reset()
                                                     .thenCompose(resetReader -> {
@@ -1516,7 +1518,7 @@ public class FileWrapper {
                         .thenCompose(mimeType -> fileData.reset()
                                 .thenCompose(resetAgain ->
                                     generateThumbnailAndUpdate(snapshot, committer, fileWriteCap, filename, resetAgain,
-                                            network, isHidden, mimeType, fileSize, LocalDateTime.now(), createdDateTime, streamSecret, true, x -> {}))));
+                                            network, isHidden, mimeType, fileSize, LocalDateTime.now(ZoneOffset.UTC), createdDateTime, streamSecret, true, x -> {}))));
     }
 
     private CompletableFuture<Snapshot> generateThumbnailAndUpdate(Snapshot base,
@@ -1635,7 +1637,7 @@ public class FileWrapper {
                                               Committer committer,
                                               ProgressConsumer<Long> progress) {
         long size = getSize();
-        return overwriteSection(version, committer, AsyncReader.build(fileData), size, size + fileData.length, network, crypto, progress);
+        return overwriteSection(version, committer, AsyncReader.build(fileData), size, size + fileData.length, Optional.empty(), network, crypto, progress);
     }
 
     /**
@@ -1669,7 +1671,7 @@ public class FileWrapper {
                 .thenCompose(state ->
                         existingChild.clean(state, committer, network, crypto)
                                 .thenCompose(pair -> pair.left.overwriteSection(pair.right, committer, fileData,
-                        inputStartIndex, endIndex, network, crypto, monitor)));
+                        inputStartIndex, endIndex, Optional.empty(), network, crypto, monitor)));
     }
 
     static boolean isLegalName(String name) {

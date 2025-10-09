@@ -107,7 +107,7 @@ public class FileBackedMessageStore implements MessageStore {
         byte[] raw = buf.toByteArray();
         return messages.clean(initialVersion, committer, network, crypto)
                 .thenCompose(p -> p.left.overwriteSection(p.right, committer, AsyncReader.build(raw), p.left.getSize(),
-                        p.left.getSize() + raw.length, network, crypto, x -> {}).thenCompose(s2 -> {
+                        p.left.getSize() + raw.length, Optional.empty(), network, crypto, x -> {}).thenCompose(s2 -> {
                     long size = p.left.getSize();
                     boolean newChunk = (raw.length + size)/Chunk.MAX_SIZE > size/Chunk.MAX_SIZE;
                     if (! newChunk)
@@ -130,7 +130,7 @@ public class FileBackedMessageStore implements MessageStore {
                     byte[] twoLongs = bout.toByteArray();
                     return indexFile.overwriteSection(s2, committer,
                                     AsyncReader.build(twoLongs), indexFile.getSize(),
-                            indexFile.getSize() + twoLongs.length, network, crypto, x -> {});
+                            indexFile.getSize() + twoLongs.length, Optional.empty(), network, crypto, x -> {});
 
                 }));
     }

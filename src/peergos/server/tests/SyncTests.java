@@ -19,6 +19,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.time.LocalDateTime;
 import java.util.*;
 
 public class SyncTests {
@@ -27,6 +28,7 @@ public class SyncTests {
 
     @Test
     public void rename() throws Exception {
+        LocalDateTime.now();
         for (int filesize : List.of(1024, 6 * 1024 * 1024)) {
             rename("file.bin", "newfile.bin", true, true, filesize);
             rename("file.bin", "newfile.bin", false, false, filesize);
