@@ -622,7 +622,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
     }
 
     private CompletableFuture<Boolean> confirmDeleteBlocks(long count, long total) {
-        System.out.println("Delete " + count + " blocks out of " + total + " (Y/N)");
+        System.out.println("Delete " + count + " blocks out of " + total + ", " + (count * 100 / total) + "% (Y/N)");
         String confirm = System.console().readLine();
         if (confirm.equals("Y"))
             return Futures.of(true);
