@@ -101,7 +101,7 @@ public interface BlockRequestAuthoriser {
 
         LocalDateTime timestamp = auth.timestamp();
         LocalDateTime expiry = timestamp.plusSeconds(auth.expirySeconds);
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime now = LocalDateTime.now(ZoneOffset.UTC);
         // INVALID AUTH: Expired: 2022-04-19T08:05:34Z is before now: 2022-04-19T13:00:34.679482Z
         if (expiry.isBefore(now))
             return "Expired: " + expiry + " is before now: " + now;

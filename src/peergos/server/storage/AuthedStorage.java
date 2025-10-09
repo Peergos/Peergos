@@ -76,7 +76,7 @@ public class AuthedStorage extends DelegatingDeletableStorage {
                                                                                  Cid ourId,
                                                                                  Hasher h,
                                                                                  DeletableContentAddressedStorage target) {
-        if (t.getMessage().startsWith("Unauthorised")) {
+        if (t.getMessage().contains("Unauthorised")) {
             if (! bat.get().id().isInline() && target.hasBlock(hash)) {
                 // we are dealing with a mirror bat that we likely don't have locally, we can check the hash to verify it
                 return target.getRaw(peerIds, hash, bat, ourId, h, false, false)
