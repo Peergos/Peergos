@@ -363,6 +363,10 @@ public class OpLog implements Cborable, Account, MutablePointers, ContentAddress
         return new OpLog(ops, null, mirrorBat);
     }
 
+    public static OpLog empty() {
+        return new OpLog(Collections.emptyList(), null, Optional.empty());
+    }
+
     @Override
     public Optional<BlockCache> getBlockCache() {
         return Optional.empty();

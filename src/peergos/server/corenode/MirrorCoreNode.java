@@ -454,7 +454,7 @@ public class MirrorCoreNode implements CoreNode {
         long t0 = System.currentTimeMillis();
         IpfsCoreNode.applyOpLog(username, chain.owner, setupOperations, ipfs, localPointers, account, batCave);
         long t1 = System.currentTimeMillis();
-        writeTarget.completePaidSignup(username, chain, setupOperations, signedSpaceRequest, proof).join();
+        writeTarget.completePaidSignup(username, chain, OpLog.empty(), new byte[0], proof).join();
         long t2 = System.currentTimeMillis();
         LOG.info("Complete Paid signup timing - oplog: " + (t1-t0) + "ms, pki confirmation: " + (t2-t1) + "ms");
         new Thread(() -> {
