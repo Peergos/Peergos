@@ -457,6 +457,9 @@ public class MirrorCoreNode implements CoreNode {
         writeTarget.completePaidSignup(username, chain, OpLog.empty(), new byte[0], proof).join();
         long t2 = System.currentTimeMillis();
         LOG.info("Complete Paid signup timing - oplog: " + (t1-t0) + "ms, pki confirmation: " + (t2-t1) + "ms");
+        state.usernames.add(username);
+        state.reverseLookup.put(chain.owner, username);
+        state.chains.put(username, List.of(chain));
         new Thread(() -> {
             try {
                 update();
