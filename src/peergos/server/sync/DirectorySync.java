@@ -32,6 +32,7 @@ import peergos.shared.util.*;
 import java.io.*;
 import java.net.ProxySelector;
 import java.net.URL;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.Instant;
@@ -49,6 +50,7 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
+import java.util.stream.Stream;
 
 public class DirectorySync {
     private static final Logger LOG = Logging.LOG();
@@ -147,8 +149,29 @@ public class DirectorySync {
                 .map(link -> UserContext.fromSecretLinksV2(Arrays.asList(link), Arrays.asList(() -> Futures.of("")), network, crypto).join().getEntryPath().join())
                 .collect(Collectors.toList());
 
-        List<SyncState> syncedStates = IntStream.range(0, linkPaths.size())
-                .mapToObj(i -> new JdbcTreeState(getSyncStateDbPath(peergosDir, linkPaths.get(i), localDirs.get(i)).toString()))
+        List<Path> syncDbPaths = IntStream.range(0, linkPaths.size())
+                .mapToObj(i -> getSyncStateDbPath(peergosDir, linkPaths.get(i), localDirs.get(i)))
+                .collect(Collectors.toList());
+
+        // delete any old sync dbs that are no longer referenced
+        try (Stream<Path> kids = Files.list(peergosDir)) {
+            kids
+                    .filter(p -> p.getFileName().endsWith(".sqlite"))
+                    .filter(p -> p.getFileName().startsWith("dir-sync-state-v3-"))
+                    .filter(p -> ! syncDbPaths.contains(p))
+                    .forEach(p -> {
+                        try {
+                            Files.delete(p);
+                        } catch (IOException e) {
+                            e.printStackTrace();
+                        }
+                    });
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+
+        List<SyncState> syncedStates = syncDbPaths.stream()
+                .map(p -> new JdbcTreeState(p.toString()))
                 .collect(Collectors.toList());
         if (links.size() != localDirs.size())
             throw new IllegalArgumentException("Mismatched number of local dirs and links");
