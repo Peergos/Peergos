@@ -98,7 +98,7 @@ public interface SyncRunner {
                         Path peergosDir = args.getPeergosDir();
                         Path jsonSyncConfig = peergosDir.resolve(SYNC_CONFIG_FILENAME);
                         Path oldSyncConfig = peergosDir.resolve(OLD_SYNC_CONFIG_FILENAME);
-                        SyncConfig syncConfig = jsonSyncConfig.toFile().exists() ?
+                        SyncConfig syncConfig = Files.exists(jsonSyncConfig) ?
                                 SyncConfig.fromJson((Map<String, Object>) JSONParser.parse(Files.readString(jsonSyncConfig))) :
                                 SyncConfig.fromArgs(Args.parse(new String[]{"-run-once", "true"}, Optional.of(oldSyncConfig), false));
                         if (! syncConfig.links.isEmpty()) {
