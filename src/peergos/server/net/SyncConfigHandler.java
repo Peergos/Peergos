@@ -73,9 +73,8 @@ public class SyncConfigHandler implements HttpHandler {
     }
 
     private synchronized void saveConfigToFile(SyncConfig config) {
-        byte[] bytes = org.peergos.util.JSONParser.toString(config.toJson()).getBytes(StandardCharsets.UTF_8);
         try {
-            Files.write(peergosDir.resolve(SYNC_CONFIG_FILENAME), bytes);
+            Files.writeString(peergosDir.resolve(SYNC_CONFIG_FILENAME), org.peergos.util.JSONParser.toString(config.toJson()));
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
