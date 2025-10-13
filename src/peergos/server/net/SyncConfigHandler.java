@@ -175,7 +175,7 @@ public class SyncConfigHandler implements HttpHandler {
                 }
                 if (toRemove == links.size())
                     throw new IllegalArgumentException("Unknown label");
-                String linkPath = links.remove(toRemove);
+                String link = links.remove(toRemove);
                 List<String> localDirs = updated.localDirs;
                 String removedLocal = localDirs.remove(toRemove);
                 List<String> remotePaths = updated.remotePaths;
@@ -188,15 +188,17 @@ public class SyncConfigHandler implements HttpHandler {
                 saveConfigToFile(new SyncConfig(localDirs, remotePaths, links, syncLocalDeletes, syncRemoteDeletes,
                         updated.maxDownloadParallelism, updated.minFreeSpacePercent));
                 // clear sync state db as well
-                File syncDb = DirectorySync.getSyncStateDbPath(peergosDir, linkPath, removedLocal).toFile();
-                if (syncDb.exists())
-                    syncDb.delete();
+                String linkPath = UserContext.fromSecretLinksV2(Arrays.asList(link), Arrays.asList(() -> Futures.of("")), network, crypto).join().getEntryPath().join();
+                Path syncDb = DirectorySync.getSyncStateDbPath(peergosDir, linkPath, removedLocal);
+                LOG.info("Deleting " + syncDb);
+                if (Files.exists(syncDb))
+                    Files.delete(syncDb);
                 SyncRunner.StatusHolder status = syncer.getStatusHolder();
                 status.setStatus("Removed sync of " + removedLocal);
                 status.cancel();
                 // clear sync state db again if it was recreated by an in progress sync
-                if (syncDb.exists())
-                    syncDb.delete();
+                if (Files.exists(syncDb))
+                    Files.delete(syncDb);
                 exchange.sendResponseHeaders(200, 0);
                 exchange.close();
             } else if (action.equals("get-pairs")) {
