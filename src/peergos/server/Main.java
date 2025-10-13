@@ -636,7 +636,7 @@ public class Main extends Builder {
 
                     Path peergosDir = a.getPeergosDir();
                     Path jsonSyncConfig = peergosDir.resolve(SYNC_CONFIG_FILENAME);
-                    SyncConfig syncConfig = jsonSyncConfig.toFile().exists() ?
+                    SyncConfig syncConfig = Files.exists(jsonSyncConfig) ?
                             SyncConfig.fromJson((Map<String, Object>) JSONParser.parse(Files.readString(jsonSyncConfig))) :
                             SyncConfig.fromArgs(a);
 

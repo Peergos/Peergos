@@ -12,6 +12,7 @@ import peergos.shared.storage.ContentAddressedStorage;
 import peergos.shared.user.MutableTreeImpl;
 import peergos.shared.user.WriteSynchronizer;
 
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -23,6 +24,7 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
+import java.util.stream.Stream;
 
 import static peergos.server.net.SyncConfigHandler.OLD_SYNC_CONFIG_FILENAME;
 import static peergos.server.net.SyncConfigHandler.SYNC_CONFIG_FILENAME;
@@ -122,6 +124,22 @@ public interface SyncRunner {
                                     maxDownloadParallelism, minFreeSpacePercent, true,
                                     root -> new LocalFileSystem(Paths.get(root), crypto.hasher),
                                     peergosDir, status, statusUpdater, errorUpdater, network.clear(), crypto);
+                        } else {
+                            // delete stale async state dbs
+                            try (Stream<Path> kids = Files.list(peergosDir)) {
+                                kids
+                                        .filter(p -> p.getFileName().endsWith(".sqlite"))
+                                        .filter(p -> p.getFileName().startsWith("dir-sync-state-v3-"))
+                                        .forEach(p -> {
+                                            try {
+                                                Files.delete(p);
+                                            } catch (IOException e) {
+                                                e.printStackTrace();
+                                            }
+                                        });
+                            } catch (IOException e) {
+                                e.printStackTrace();
+                            }
                         }
                     } catch (Exception e) {
                         LOG.log(Level.WARNING, e.getMessage(), e);
