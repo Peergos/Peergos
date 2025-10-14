@@ -170,9 +170,9 @@ public class DirectorySync {
             e.printStackTrace();
         }
 
-        List<SyncState> syncedStates = syncDbPaths.stream()
-                .map(p -> new JdbcTreeState(p.toString()))
-                .collect(Collectors.toList());
+        List<Supplier<SyncState>> syncedStates = syncDbPaths.stream()
+                .<Supplier<SyncState>>map(p -> () -> new JdbcTreeState(p.toString()))
+                .toList();
         if (links.size() != localDirs.size())
             throw new IllegalArgumentException("Mismatched number of local dirs and links");
 
@@ -180,6 +180,7 @@ public class DirectorySync {
             LOG.accept("Syncing " + links.size() + " pairs of directories: " + IntStream.range(0, links.size()).mapToObj(i -> Arrays.asList(localDirs.get(i), linkPaths.get(i))).collect(Collectors.toList()));
             boolean errored = false;
             for (int i=0; i < links.size(); i++) {
+                SyncState syncedState = null;
                 try {
                     if (status.isCancelled()) {
                         status.resume();
@@ -187,7 +188,7 @@ public class DirectorySync {
                     }
                     Path localDir = Paths.get(localDirs.get(i));
                     Path remoteDir = PathUtil.get(linkPaths.get(i));
-                    SyncState syncedState = syncedStates.get(i);
+                    syncedState = syncedStates.get(i).get();
                     log("Syncing " + localDir + " to+from " + remoteDir);
                     long t0 = System.currentTimeMillis();
                     String username = remoteDir.getName(0).toString();
@@ -203,6 +204,13 @@ public class DirectorySync {
                     ERROR.accept(e);
                     e.printStackTrace();
                     DirectorySync.LOG.log(Level.WARNING, e, e::getMessage);
+                } finally {
+                    if (syncedState != null)
+                        try {
+                            syncedState.close();
+                        } catch (IOException e) {
+                            DirectorySync.LOG.log(Level.WARNING, e, e::getMessage);
+                        }
                 }
             }
             if (!errored)
@@ -210,13 +218,6 @@ public class DirectorySync {
             if (oneRun)
                 break;
             Threads.sleep(30_000);
-        }
-        for (SyncState state : syncedStates) {
-            try {
-                state.close();
-            } catch (IOException e) {
-                DirectorySync.LOG.log(Level.WARNING, e, e::getMessage);
-            }
         }
         return true;
     }
