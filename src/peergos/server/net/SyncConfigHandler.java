@@ -220,7 +220,7 @@ public class SyncConfigHandler implements HttpHandler {
                 if (hostPaths.isB())
                     throw new IllegalStateException("Use direct dir chooser");
                 String prefix = last.apply("prefix");
-                List<String> json = hostPaths.a().getHostDirs(prefix, 5).join();
+                List<String> json = hostPaths.a().getHostDirs(prefix, 2).join();
                 Collections.sort(json);
                 byte[] res = JSONParser.toString(json).getBytes(StandardCharsets.UTF_8);
                 exchange.sendResponseHeaders(200, res.length);

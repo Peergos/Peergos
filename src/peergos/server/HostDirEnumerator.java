@@ -30,7 +30,7 @@ public interface HostDirEnumerator {
                     recurse(dir, res, mathDepthFromPrefix - Paths.get(root).getNameCount());
                 } else if (prefix.startsWith(root)) {
                     File dir = new File(prefix);
-                    recurse(dir, res, mathDepthFromPrefix - Paths.get(prefix).getNameCount());
+                    recurse(dir, res, mathDepthFromPrefix);
                 } else if (includeAll)
                     recurse(new File(root), res, mathDepthFromPrefix - Paths.get(root).getNameCount());
             }
