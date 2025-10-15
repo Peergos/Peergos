@@ -28,6 +28,7 @@ import java.io.File;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.FileSystemException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
@@ -191,14 +192,21 @@ public class SyncConfigHandler implements HttpHandler {
                 String linkPath = UserContext.fromSecretLinksV2(Arrays.asList(link), Arrays.asList(() -> Futures.of("")), network, crypto).join().getEntryPath().join();
                 Path syncDb = DirectorySync.getSyncStateDbPath(peergosDir, linkPath, removedLocal);
                 LOG.info("Deleting " + syncDb);
-                if (Files.exists(syncDb))
-                    Files.delete(syncDb);
+                if (Files.exists(syncDb)) {
+                    try {
+                        Files.delete(syncDb);
+                    } catch (FileSystemException e) {
+                        LOG.info("Error deleting " + syncDb);
+                    }
+                }
                 SyncRunner.StatusHolder status = syncer.getStatusHolder();
                 status.setStatus("Removed sync of " + removedLocal);
                 status.cancel();
                 // clear sync state db again if it was recreated by an in progress sync
-                if (Files.exists(syncDb))
+                if (Files.exists(syncDb)) {
                     Files.delete(syncDb);
+                    LOG.info("Deleted " + syncDb);
+                }
                 exchange.sendResponseHeaders(200, 0);
                 exchange.close();
             } else if (action.equals("get-pairs")) {
