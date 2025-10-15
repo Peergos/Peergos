@@ -3,6 +3,7 @@ package peergos.server.util;
 import peergos.server.net.Multipart;
 import peergos.shared.io.ipfs.api.*;
 import peergos.shared.storage.PointerCasException;
+import peergos.shared.storage.RateLimitException;
 import peergos.shared.user.*;
 import peergos.shared.util.*;
 
@@ -122,7 +123,9 @@ public class JavaPoster implements HttpPoster {
                     e :
                     trailer.get().startsWith("PointerCAS:") ?
                             PointerCasException.fromString(trailer.get()) :
-                            new RuntimeException(trailer.get());
+                            trailer.get().contains("Queue+full") ?
+                                    new RateLimitException() :
+                                    new RuntimeException(trailer.get());
             res.completeExceptionally(rese);
         } else
             res.completeExceptionally(e);
