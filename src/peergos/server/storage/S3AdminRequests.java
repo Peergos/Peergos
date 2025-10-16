@@ -20,6 +20,7 @@ public class S3AdminRequests {
                                      String host,
                                      String key,
                                      String contentSha256,
+                                     Optional<String> storageClass,
                                      Optional<Integer> expiresSeconds,
                                      boolean allowPublicReads,
                                      boolean useAuthHeader,
@@ -28,7 +29,7 @@ public class S3AdminRequests {
                                      String accessKeyId,
                                      String region,
                                      ZonedDateTime timestamp) {
-        return new S3Request(verb, host, key, contentSha256, expiresSeconds, allowPublicReads, useAuthHeader, extraQueryParameters,
+        return new S3Request(verb, host, key, contentSha256, storageClass, expiresSeconds, allowPublicReads, useAuthHeader, extraQueryParameters,
                 extraHeaders, accessKeyId, region, asAwsDate(normaliseDate(timestamp)));
     }
     public static String asAwsTime(ZonedDateTime timestamp) {
@@ -57,12 +58,13 @@ public class S3AdminRequests {
                                                                 String datetime,
                                                                 String host,
                                                                 String region,
+                                                                Optional<String> storageClass,
                                                                 String accessKeyId,
                                                                 String s3SecretKey,
                                                                 boolean useHttps,
                                                                 Hasher h) {
         Map<String, String> extraQueryParameters = versionId.map(s -> Map.of("versionId", s)).orElse(Collections.emptyMap());
-        S3Request policy = new S3Request("DELETE", host, key, S3Request.UNSIGNED, Optional.empty(), false, true,
+        S3Request policy = new S3Request("DELETE", host, key, S3Request.UNSIGNED, storageClass, Optional.empty(), false, true,
                 extraQueryParameters, Collections.emptyMap(), accessKeyId, region, datetime);
         return S3Request.preSignRequest(policy, key, host, s3SecretKey, useHttps, h);
     }
@@ -160,6 +162,7 @@ public class S3AdminRequests {
                                                               ZonedDateTime now,
                                                               String host,
                                                               String region,
+                                                              Optional<String> storageClass,
                                                               String accessKeyId,
                                                               String s3SecretKey,
                                                               boolean useHttps,
@@ -172,7 +175,7 @@ public class S3AdminRequests {
         continuationToken.ifPresent(t -> extraQueryParameters.put("continuation-token", t));
 
         Instant normalised = normaliseDate(now);
-        S3Request policy = new S3Request("GET", host, "", S3Request.UNSIGNED, Optional.empty(), false, true,
+        S3Request policy = new S3Request("GET", host, "", S3Request.UNSIGNED, storageClass, Optional.empty(), false, true,
                 extraQueryParameters, Collections.emptyMap(), accessKeyId, region, asAwsDate(normalised));
         return S3Request.preSignRequest(policy, "", host, s3SecretKey, useHttps, h);
     }
@@ -184,6 +187,7 @@ public class S3AdminRequests {
                                                                       ZonedDateTime now,
                                                                       String host,
                                                                       String region,
+                                                                      Optional<String> storageClass,
                                                                       String accessKeyId,
                                                                       String s3SecretKey,
                                                                       boolean useHttps,
@@ -197,7 +201,7 @@ public class S3AdminRequests {
         versionIdMarker.ifPresent(t -> extraQueryParameters.put("version-id-marker", t));
 
         Instant normalised = normaliseDate(now);
-        S3Request policy = new S3Request("GET", host, "", S3Request.UNSIGNED, Optional.empty(), false, true,
+        S3Request policy = new S3Request("GET", host, "", S3Request.UNSIGNED, storageClass, Optional.empty(), false, true,
                 extraQueryParameters, Collections.emptyMap(), accessKeyId, region, asAwsDate(normalised));
         return S3Request.preSignRequest(policy, "", host, s3SecretKey, useHttps, h);
     }
@@ -209,6 +213,7 @@ public class S3AdminRequests {
                                                              ZonedDateTime now,
                                                              String host,
                                                              String region,
+                                                             Optional<String> storageClass,
                                                              String accessKeyId,
                                                              String s3SecretKey,
                                                              Function<PresignedUrl, byte[]> getter,
@@ -216,7 +221,7 @@ public class S3AdminRequests {
                                                              boolean useHttps,
                                                              Hasher h) {
         PresignedUrl listReq = preSignListVersions(prefix, maxKeys, keyMarker, versionIdMarker, now, host, region,
-                accessKeyId, s3SecretKey, useHttps, h).join();
+                storageClass, accessKeyId, s3SecretKey, useHttps, h).join();
         try {
             Document xml = builder.get().parse(new ByteArrayInputStream(getter.apply(listReq)));
             List<ObjectMetadataVersion> res = new ArrayList<>();
@@ -297,13 +302,14 @@ public class S3AdminRequests {
                                                ZonedDateTime now,
                                                String host,
                                                String region,
+                                               Optional<String> storageClass,
                                                String accessKeyId,
                                                String s3SecretKey,
                                                Function<PresignedUrl, byte[]> getter,
                                                Supplier<DocumentBuilder> builder,
                                                boolean useHttps,
                                                Hasher h) {
-        PresignedUrl listReq = preSignList(prefix, maxKeys, continuationToken, now, host, region, accessKeyId, s3SecretKey, useHttps, h).join();
+        PresignedUrl listReq = preSignList(prefix, maxKeys, continuationToken, now, host, region, storageClass, accessKeyId, s3SecretKey, useHttps, h).join();
         try {
             Document xml = builder.get().parse(new ByteArrayInputStream(getter.apply(listReq)));
             List<ObjectMetadata> res = new ArrayList<>();
@@ -358,6 +364,7 @@ public class S3AdminRequests {
                                              ZonedDateTime now,
                                              String host,
                                              String region,
+                                             Optional<String> storageClass,
                                              String accessKeyId,
                                              String s3SecretKey,
                                              Function<byte[], String> sha256,
@@ -391,7 +398,7 @@ public class S3AdminRequests {
         extraQueryParameters.put("delete", "true");
         Instant normalised = normaliseDate(now);
         String key = "";
-        S3Request policy = new S3Request("POST", host, key, contentSha256, Optional.empty(), false, true,
+        S3Request policy = new S3Request("POST", host, key, contentSha256, storageClass, Optional.empty(), false, true,
                 extraQueryParameters, extraHeaders, accessKeyId, region, asAwsDate(normalised));
         PresignedUrl reqUrl = S3Request.preSignRequest(policy, key, host, s3SecretKey, useHttps, h).join();
         byte[] respBytes = poster.apply(reqUrl, body);
