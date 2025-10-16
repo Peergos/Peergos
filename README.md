@@ -420,7 +420,9 @@ put local_path remote_path
 
 Sync
 -----
-There is a bi-directional sync client that will let you sync a native directory with a peergos directory (or several pairs of directories). To set this up first run:
+There is a bi-directional sync client that will let you sync a native directory with a peergos directory (or several pairs of directories). The recommended way to setup syncs is to use the desktop/mobile app, and go to the sync icon in the left side bar. If for some reason you must use the CLI then continue reading. 
+
+To set this up first run:
 ```
 >> java -jar Peergos.jar sync init -peergos-url https://peergos.net
 ```
