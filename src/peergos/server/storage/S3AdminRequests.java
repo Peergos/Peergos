@@ -65,7 +65,7 @@ public class S3AdminRequests {
                                                                 Hasher h) {
         Map<String, String> extraQueryParameters = versionId.map(s -> Map.of("versionId", s)).orElse(Collections.emptyMap());
         S3Request policy = new S3Request("DELETE", host, key, S3Request.UNSIGNED, storageClass, Optional.empty(), false, true,
-                extraQueryParameters, Collections.emptyMap(), accessKeyId, region, datetime);
+                extraQueryParameters, new HashMap<>(), accessKeyId, region, datetime);
         return S3Request.preSignRequest(policy, key, host, s3SecretKey, useHttps, h);
     }
 
@@ -202,7 +202,7 @@ public class S3AdminRequests {
 
         Instant normalised = normaliseDate(now);
         S3Request policy = new S3Request("GET", host, "", S3Request.UNSIGNED, storageClass, Optional.empty(), false, true,
-                extraQueryParameters, Collections.emptyMap(), accessKeyId, region, asAwsDate(normalised));
+                extraQueryParameters, new HashMap<>(), accessKeyId, region, asAwsDate(normalised));
         return S3Request.preSignRequest(policy, "", host, s3SecretKey, useHttps, h);
     }
 
