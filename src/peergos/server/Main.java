@@ -881,12 +881,13 @@ public class Main extends Builder {
                             Mirror.mirrorNode(nodeToMirrorId, mirrorBat, core, p2mMutable, localStorage, rawPointers,
                                     transactions, linkCounts, usageStore, hasher);
                             try {
-                                Thread.sleep(60_000);
+                                int periodSeconds = a.getInt("server-mirror-period-seconds", 86400);
+                                Thread.sleep(periodSeconds * 1_000L);
                             } catch (InterruptedException f) {}
                         } catch (Exception e) {
                             e.printStackTrace();
                             try {
-                                Thread.sleep(5_000);
+                                Thread.sleep(30_000);
                             } catch (InterruptedException f) {}
                         }
                     }

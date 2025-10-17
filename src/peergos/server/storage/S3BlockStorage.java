@@ -533,8 +533,6 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
     }
 
     public boolean hasBlockWithoutBackoff(Cid hash) {
-        if (noReads)
-            throw new IllegalStateException("Reads from Glacier are disabled!");
         try {
             PresignedUrl headUrl = S3Request.preSignHead(folder + hashToKey(hash), Optional.of(60),
                     S3AdminRequests.asAwsDate(ZonedDateTime.now()), host, region, accessKeyId, secretKey, useHttps, hasher).join();
