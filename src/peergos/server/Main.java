@@ -84,6 +84,7 @@ public class Main extends Builder {
     public static final Command.Arg ARG_HTTP_PROXY = new Command.Arg("http_proxy", "Use a http proxy for all requests, format host:port", false);
 
     public static final Command.Arg LISTEN_HOST = new Command.Arg("listen-host", "The hostname/interface to listen on", true, "localhost");
+    public static final Command.Arg QUOTA_UPLOAD_LIMIT_SECONDS = new Command.Arg("quota-upload-limit-seconds", "The minimum time period during which a user is allowed to upload their total quota, in seconds. Faster uploads will be rejected.", false, "86400");
 
     public static Command<IpfsWrapper> IPFS = new Command<>("ipfs",
             "Configure and start IPFS daemon",
@@ -784,7 +785,7 @@ public class Main extends Builder {
             if (a.getBoolean("update-usage", true))
                 SpaceCheckingKeyFilter.update(usageStore, userQuotas, core, localPointers, localStorage, hasher);
             SpaceCheckingKeyFilter spaceChecker = new SpaceCheckingKeyFilter(core, localPointers, localStorage,
-                    hasher, userQuotas, usageStore);
+                    hasher, userQuotas, usageStore, a.getLong(QUOTA_UPLOAD_LIMIT_SECONDS.name, 3600));
             CorenodeEventPropagator corePropagator = new CorenodeEventPropagator(signupFilter);
             corePropagator.addListener(spaceChecker::accept);
             MutableEventPropagator localMutable = new MutableEventPropagator(localPointers);
