@@ -6,6 +6,7 @@ import java.util.*;
 
 public class S3Config {
     public final String path, bucket, region, accessKey, secretKey, regionEndpoint;
+    public final Optional<String> storageClass;
 
     /**
      *
@@ -16,13 +17,14 @@ public class S3Config {
      * @param secretKey The S3 secret key
      * @param regionEndpoint The location of the S3 endpoint e.g. us-east-1.linodeobjects.com
      */
-    public S3Config(String path, String bucket, String region, String accessKey, String secretKey, String regionEndpoint) {
+    public S3Config(String path, String bucket, String region, String accessKey, String secretKey, String regionEndpoint, Optional<String> storageClass) {
         this.path = path;
         this.bucket = bucket;
         this.region = region;
         this.accessKey = accessKey;
         this.secretKey = secretKey;
         this.regionEndpoint = regionEndpoint;
+        this.storageClass = storageClass;
     }
 
     public String getHost() {
@@ -40,7 +42,9 @@ public class S3Config {
         String accessKey = a.getArg(prefix.orElse("") + "s3.accessKey", "");
         String secretKey = a.getArg(prefix.orElse("") + "s3.secretKey", "");
         String regionEndpoint = a.getArg(prefix.orElse("") + "s3.region.endpoint", bucket + ".amazonaws.com");
-        return new S3Config(path, bucket, region, accessKey, secretKey, regionEndpoint);
+        boolean glacier = a.getBoolean("use-glacier", false);
+        Optional<String> storageClass = glacier ? Optional.of("GLACIER") : Optional.empty();
+        return new S3Config(path, bucket, region, accessKey, secretKey, regionEndpoint, storageClass);
     }
 
     public static Optional<String> getPublicReadUrl(Args a) {

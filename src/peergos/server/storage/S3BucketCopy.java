@@ -30,7 +30,7 @@ public class S3BucketCopy {
         while (true) {
             try {
                 result = S3AdminRequests.listObjects(startPrefix, 1_000, continuationToken,
-                        ZonedDateTime.now(), config.getHost(), config.region, config.accessKey, config.secretKey, url -> {
+                        ZonedDateTime.now(), config.getHost(), config.region, config.storageClass, config.accessKey, config.secretKey, url -> {
                             try {
                                 return HttpUtil.get(url);
                             } catch (IOException e) {
@@ -73,7 +73,7 @@ public class S3BucketCopy {
                                    S3Config config,
                                    Hasher h) {
         PresignedUrl copyUrl = S3Request.preSignCopy(sourceBucket, key, key, S3AdminRequests.asAwsDate(ZonedDateTime.now()), config.getHost(),
-                Collections.emptyMap(), config.region, config.accessKey, config.secretKey, true, h).join();
+                config.storageClass, Collections.emptyMap(), config.region, config.accessKey, config.secretKey, true, h).join();
         try {
             System.out.println("Copying s3://"+sourceBucket + "/" + key + " to s3://" + config.bucket);
             String res = new String(HttpUtil.putWithVersion(copyUrl, new byte[0]).left);
@@ -98,7 +98,7 @@ public class S3BucketCopy {
             extraHeaders.put("Content-Type", "application/octet-stream");
             boolean hashContent = true;
             String contentHash = hashContent ? ArrayOps.bytesToHex(DirectS3BlockStore.keyToHash(key).getHash()) : "UNSIGNED-PAYLOAD";
-            HttpUtil.putWithVersion(S3Request.preSignPut(key, res.length, contentHash, false,
+            HttpUtil.putWithVersion(S3Request.preSignPut(key, res.length, contentHash, target.storageClass, false,
                     S3AdminRequests.asAwsDate(ZonedDateTime.now()), target.getHost(), extraHeaders, target.region, target.accessKey, target.secretKey,  true,h).join(), res);
         } catch (IOException e) {
             System.err.println(e.getMessage());

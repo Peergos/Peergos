@@ -27,7 +27,7 @@ public class S3BucketStats {
             S3AdminRequests.ListObjectsReply result;
             do {
                 result = S3AdminRequests.listObjects(startPrefix, 1_000, continuationToken,
-                        ZonedDateTime.now(), config.getHost(), config.region, config.accessKey, config.secretKey, url -> {
+                        ZonedDateTime.now(), config.getHost(), config.region, config.storageClass, config.accessKey, config.secretKey, url -> {
                             try {
                                 return HttpUtil.get(url);
                             } catch (IOException e) {

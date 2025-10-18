@@ -33,7 +33,7 @@ public class S3DeleteOld {
             S3AdminRequests.ListObjectVersionsReply result;
             do {
                 result = S3AdminRequests.listObjectVersions(startPrefix, 1_000, keyMarker, versionIdMarker,
-                        ZonedDateTime.now(), config.getHost(), config.region, config.accessKey, config.secretKey, url -> {
+                        ZonedDateTime.now(), config.getHost(), config.region, config.storageClass, config.accessKey, config.secretKey, url -> {
                             try {
                                 return HttpUtil.get(url);
                             } catch (IOException e) {
@@ -107,7 +107,7 @@ public class S3DeleteOld {
     public static void delete(Pair<String, String> version, S3Config config, Hasher hasher) {
         try {
             PresignedUrl delUrl = S3AdminRequests.preSignDelete(version.left, Optional.ofNullable(version.right),
-                    S3AdminRequests.asAwsDate(ZonedDateTime.now()), config.getHost(), config.region, config.accessKey,
+                    S3AdminRequests.asAwsDate(ZonedDateTime.now()), config.getHost(), config.region, config.storageClass, config.accessKey,
                     config.secretKey, true, hasher).join();
             HttpUtil.delete(delUrl);
         } catch (Exception e) {
@@ -117,7 +117,7 @@ public class S3DeleteOld {
 
     public static void bulkDelete(List<Pair<String, String>> keyVersions, S3Config config, Hasher hasher) {
         try {
-            S3AdminRequests.bulkDelete(keyVersions, ZonedDateTime.now(), config.getHost(), config.region, config.accessKey, config.secretKey,
+            S3AdminRequests.bulkDelete(keyVersions, ZonedDateTime.now(), config.getHost(), config.region, config.storageClass, config.accessKey, config.secretKey,
                     b -> ArrayOps.bytesToHex(Hash.sha256(b)),
                     b -> Base64.encodeBase64String(Hash.sha256(b)),
                     (url, body) -> {

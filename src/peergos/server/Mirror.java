@@ -103,6 +103,7 @@ public class Mirror {
             List<UserPublicKeyLink> chain = core.getChain(username).join();
             if (chain.get(chain.size() - 1).claim.storageProviders.contains(nodeId)) {
                 try {
+                    Logging.LOG().log(Level.INFO, "Mirroring " + username);
                     mirrorUser(username, Optional.empty(), Optional.of(mirrorBat), core, p2pPointers, null,
                             storage, targetPointers, null, transactions, linkCounts, usage, hasher);
                     userCount++;

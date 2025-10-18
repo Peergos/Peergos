@@ -27,7 +27,7 @@ public class S3CanonicaliseVersionedBucket {
             long processedObjects = 0;
             do {
                 result = S3AdminRequests.listObjectVersions(prefix, 1_000, keyMarker, versionIdMarker,
-                        ZonedDateTime.now(), config.getHost(), config.region, config.accessKey, config.secretKey, url -> {
+                        ZonedDateTime.now(), config.getHost(), config.region, config.storageClass, config.accessKey, config.secretKey, url -> {
                             try {
                                 return HttpUtil.get(url);
                             } catch (IOException e) {

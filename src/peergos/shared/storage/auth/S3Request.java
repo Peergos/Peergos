@@ -29,6 +29,7 @@ public class S3Request {
     public final String verb, host;
     public final String key;
     public final String contentSha256;
+    public final Optional<String> storageClass;
     public final Optional<Integer> expiresSeconds;
     public final boolean allowPublicReads;
     public final boolean useAuthHeader;
@@ -42,6 +43,7 @@ public class S3Request {
                      String host,
                      String key,
                      String contentSha256,
+                     Optional<String> storageClass,
                      Optional<Integer> expiresSeconds,
                      boolean allowPublicReads,
                      boolean useAuthHeader,
@@ -56,6 +58,7 @@ public class S3Request {
         this.host = host;
         this.key = key;
         this.contentSha256 = contentSha256;
+        this.storageClass = storageClass;
         this.expiresSeconds = expiresSeconds;
         this.allowPublicReads = allowPublicReads;
         this.useAuthHeader = useAuthHeader;
@@ -65,11 +68,14 @@ public class S3Request {
         this.region = region;
         this.shortDate = datetime.substring(0, 8);
         this.datetime = datetime;
+        if (storageClass.isPresent())
+            extraHeaders.put("x-amz-storage-class", storageClass.get());
     }
 
     public static CompletableFuture<PresignedUrl> preSignPut(String key,
                                                              int size,
                                                              String contentSha256,
+                                                             Optional<String> storageClass,
                                                              boolean allowPublicReads,
                                                              String datetime,
                                                              String host,
@@ -80,7 +86,7 @@ public class S3Request {
                                                              boolean useHttps,
                                                              Hasher h) {
         extraHeaders.put("Content-Length", "" + size);
-        S3Request policy = new S3Request("PUT", host, key, contentSha256, Optional.empty(), allowPublicReads, true,
+        S3Request policy = new S3Request("PUT", host, key, contentSha256, storageClass, Optional.empty(), allowPublicReads, true,
                 Collections.emptyMap(), extraHeaders, accessKeyId, region, datetime);
         return preSignRequest(policy, key, host, s3SecretKey, useHttps, h);
     }
@@ -90,6 +96,7 @@ public class S3Request {
                                                               String targetKey,
                                                               String datetime,
                                                               String host,
+                                                              Optional<String> storageClass,
                                                               Map<String, String> extraHeaders,
                                                               String region,
                                                               String accessKeyId,
@@ -99,7 +106,7 @@ public class S3Request {
         Map<String, String> extras = new TreeMap<>();
         extras.putAll(extraHeaders);
         extras.put("x-amz-copy-source", "/" + sourceBucket + "/" + sourceKey);
-        S3Request policy = new S3Request("PUT", host, targetKey, UNSIGNED, Optional.empty(), false, true,
+        S3Request policy = new S3Request("PUT", host, targetKey, UNSIGNED, storageClass, Optional.empty(), false, true,
                 Collections.emptyMap(), extras, accessKeyId, region, datetime);
         return preSignRequest(policy, targetKey, host, s3SecretKey, useHttps, h);
     }
@@ -144,7 +151,7 @@ public class S3Request {
         Map<String, String> extraHeaders = range
                 .map(p -> Stream.of(p).collect(Collectors.toMap(r -> "Range", r -> "bytes="+r.left+"-"+r.right)))
                 .orElse(Collections.emptyMap());
-        S3Request policy = new S3Request(verb, host, key, UNSIGNED, expiresSeconds, false, false,
+        S3Request policy = new S3Request(verb, host, key, UNSIGNED, Optional.empty(), expiresSeconds, false, false,
                 Collections.emptyMap(), extraHeaders, accessKeyId, region, datetime);
         return preSignRequest(policy, key, host, s3SecretKey, useHttps, h);
     }
