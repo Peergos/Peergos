@@ -22,6 +22,7 @@ public class QuotaTests {
 
     private static Args args = UserTests.buildArgs()
             .with("useIPFS", "false")
+            .with("quota-upload-limit-seconds", "1")
             .with("default-quota", Long.toString(2 * 1024 * 1024));
 
     private static int RANDOM_SEED = 666;
