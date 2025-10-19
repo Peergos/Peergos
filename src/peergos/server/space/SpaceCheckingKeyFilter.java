@@ -38,19 +38,23 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
     private final UsageStore usageStore;
     private final AtomicBoolean isRunning = new AtomicBoolean(true);
     private final BlockingQueue<MutableEvent> mutableQueue = new ArrayBlockingQueue<>(1000);
+    private final long quotaUploadLimitSeconds;
+    private final Map<String, SlidingWindowCounter> writeLimiter = new ConcurrentHashMap<>();
 
     public SpaceCheckingKeyFilter(CoreNode core,
                                   MutablePointers mutable,
                                   DeletableContentAddressedStorage dht,
                                   Hasher hasher,
                                   QuotaAdmin quotaAdmin,
-                                  UsageStore usageStore) {
+                                  UsageStore usageStore,
+                                  long quotaUploadLimitSeconds) {
         this.core = core;
         this.mutable = mutable;
         this.dht = dht;
         this.hasher = hasher;
         this.quotaAdmin = quotaAdmin;
         this.usageStore = usageStore;
+        this.quotaUploadLimitSeconds = quotaUploadLimitSeconds;
         new Thread(() -> {
             while (isRunning.get()) {
                 try {
@@ -383,6 +387,13 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
                     + usage.totalUsage() + " out of " + quota + " bytes. Rejecting write of size " + (size + pending) + ". \n" +
                     "Please delete some files or request more space.");
         }
+        SlidingWindowCounter writeLimit = writeLimiter.get(writerUsage.owner);
+        if (writeLimit == null) {
+            writeLimit = new SlidingWindowCounter(quotaUploadLimitSeconds, quota, () -> System.currentTimeMillis() / 1000);
+            writeLimiter.put(writerUsage.owner, writeLimit);
+        }
+        if (! writeLimit.allowRequest(size))
+            throw new IllegalStateException("Upload bandwidth exceeded please try again tomorrow");
         try {
             usageStore.addPendingUsage(writerUsage.owner, writer, size);
         } catch (Exception e) {
