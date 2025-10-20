@@ -144,6 +144,7 @@ public class Main extends Builder {
                     new Command.Arg("link-counts-sql-file", "The filename for the secret link counts datastore", true, "link-counts.sql"),
                     new Command.Arg("server-messages-sql-file", "The filename for the server messages datastore", true, "server-messages.sql"),
                     ARG_TRANSACTIONS_SQL_FILE,
+                    QUOTA_UPLOAD_LIMIT_SECONDS,
                     ServerIdentity.ARG_SERVERIDS_SQL_FILE,
                     new Command.Arg("enable-gc", "Enable the blockstore garbage collector", false, "true"),
                     new Command.Arg("gc.period.millis", "Garbage collect frequency in millis (default 12h)", false, "43200000"),
