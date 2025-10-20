@@ -43,6 +43,8 @@ public interface CoreNode {
                                                                                      byte[] auth,
                                                                                      ProofOfWork proof);
 
+    CompletableFuture<List<UserSnapshot>> getSnapshots(String prefix, BatWithId instanceBat, LocalDateTime lastLinkCountsUpdate);
+
     CompletableFuture<PaymentProperties> completePaidMirror(String username,
                                                             BatWithId mirrorBat,
                                                             byte[] signedSpaceRequest,

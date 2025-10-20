@@ -50,6 +50,7 @@ public class MirrorCoreNode implements CoreNode {
     private final LinkRetrievalCounter linkCounts;
     private final PublicKeyHash pkiOwnerIdentity;
     private final Multihash ourNodeId, pkiPeerId;
+    private final Optional<BatWithId> instanceBat;
     private final Hasher hasher;
     private final Crypto crypto;
     private final ForkJoinPool mirrorPool = Threads.newPool(1, "Mirror-");
@@ -74,6 +75,7 @@ public class MirrorCoreNode implements CoreNode {
                           Multihash pkiPeerId,
                           PublicKeyHash pkiOwnerIdentity,
                           Path statePath,
+                          Optional<BatWithId> instanceBat,
                           Crypto crypto) {
         this.writeTarget = writeTarget;
         this.rawAccount = rawAccount;
@@ -92,6 +94,7 @@ public class MirrorCoreNode implements CoreNode {
         this.pkiOwnerIdentity = pkiOwnerIdentity;
         this.statePath = statePath;
         this.ourNodeId = ipfs.id().join();
+        this.instanceBat = instanceBat;
         this.hasher = crypto.hasher;
         this.crypto = crypto;
         try {
@@ -531,11 +534,12 @@ public class MirrorCoreNode implements CoreNode {
     }
 
     private UserSnapshot update(UserSnapshot in) {
-        return new UserSnapshot(in.pointerState.entrySet().stream()
-                .flatMap(e -> rawPointers.getPointer(e.getKey()).join()
-                        .map(v -> new Pair<>(e.getKey(), v))
-                        .stream())
-                .collect(Collectors.toMap(p -> p.left, p -> p.right)),
+        return new UserSnapshot(in.username,
+                in.pointerState.entrySet().stream()
+                        .flatMap(e -> rawPointers.getPointer(e.getKey()).join()
+                                .map(v -> new Pair<>(e.getKey(), v))
+                                .stream())
+                        .collect(Collectors.toMap(p -> p.left, p -> p.right)),
                 in.pendingFollowReqs,
                 in.mirrorBats,
                 in.login,
@@ -586,6 +590,32 @@ public class MirrorCoreNode implements CoreNode {
     }
 
     @Override
+    public CompletableFuture<List<UserSnapshot>> getSnapshots(String prefix, BatWithId suppliedBat, LocalDateTime latestLinkCountUpdate) {
+        if (instanceBat.isEmpty())
+            throw new IllegalStateException("This server does not have an instance bat.");
+        // defend against timing attacks checking bat
+        byte[] salt = crypto.random.randomBytes(8);
+        byte[] supplied = hasher.sha256(ArrayOps.concat(suppliedBat.serialize(), salt)).join();
+        byte[] expected = hasher.sha256(ArrayOps.concat(instanceBat.get().serialize(), salt)).join();
+        if (! Arrays.equals(supplied, expected))
+            throw new IllegalStateException("Unauthorized!");
+        List<String> localUsernames = quotas.getLocalUsernames();
+        return Futures.of(localUsernames.stream()
+                .filter(n -> n.startsWith(prefix))
+                .map(n -> {
+                    List<UserPublicKeyLink> chain = state.chains.get(n);
+                    PublicKeyHash owner = chain.get(chain.size() - 1).owner;
+                    return getUserSnapshot(owner, List.of(ourNodeId), p2pMutable, ipfs, hasher)
+                    .thenApply(pointers -> new UserSnapshot(n, pointers,
+                            localSocial.getAndParseFollowRequests(owner),
+                            batCave.getUserBats(n, new byte[0]).join(),
+                            rawAccount.getLoginData(n), linkCounts.getUpdatedCounts(n, latestLinkCountUpdate)));
+                })
+                .map(CompletableFuture::join)
+                .toList());
+    }
+
+    @Override
     public CompletableFuture<UserSnapshot> migrateUser(String username,
                                                        List<UserPublicKeyLink> newChain,
                                                        Multihash currentStorageId,
@@ -607,7 +637,8 @@ public class MirrorCoreNode implements CoreNode {
             ProofOfWork work = ProofOfWork.empty();
             LinkCounts updated = linkCounts.getUpdatedCounts(username, latestLinkCountUpdate);
             UserSnapshot snapshot = getUserSnapshot(owner, currentLast.claim.storageProviders, p2pMutable, ipfs, hasher)
-                    .thenApply(pointers -> new UserSnapshot(pointers,
+                    .thenApply(pointers -> new UserSnapshot(username,
+                            pointers,
                             localSocial.getAndParseFollowRequests(owner),
                             batCave.getUserBats(username, new byte[0]).join(),
                             rawAccount.getLoginData(username), updated)).join();

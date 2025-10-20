@@ -11,17 +11,20 @@ import java.util.stream.*;
 
 public class UserSnapshot implements Cborable {
 
+    public final String username;
     public final Map<PublicKeyHash, byte[]> pointerState;
     public final List<BlindFollowRequest> pendingFollowReqs;
     public final List<BatWithId> mirrorBats;
     public final Optional<LoginData> login;
     public final LinkCounts linkCounts;
 
-    public UserSnapshot(Map<PublicKeyHash, byte[]> pointerState,
+    public UserSnapshot(String username,
+                        Map<PublicKeyHash, byte[]> pointerState,
                         List<BlindFollowRequest> pendingFollowReqs,
                         List<BatWithId> mirrorBats,
                         Optional<LoginData> login,
                         LinkCounts linkCounts) {
+        this.username = username;
         this.pointerState = pointerState;
         this.pendingFollowReqs = pendingFollowReqs;
         this.mirrorBats = mirrorBats;
@@ -32,6 +35,7 @@ public class UserSnapshot implements Cborable {
     @Override
     public CborObject toCbor() {
         SortedMap<String, Cborable> state = new TreeMap<>();
+        state.put("n", new CborObject.CborString(username));
         state.put("f", new CborObject.CborList(pendingFollowReqs));
         TreeMap<CborObject, Cborable> pointerMap = pointerState.entrySet()
                 .stream()
@@ -52,17 +56,14 @@ public class UserSnapshot implements Cborable {
         if (! (cbor instanceof CborObject.CborMap))
             throw new IllegalStateException("Invalid cbor for FileProperties! " + cbor);
         CborObject.CborMap m = (CborObject.CborMap) cbor;
+        String username = m.getString("n");
         List<BlindFollowRequest> pendingFollowReqs = m.getList("f", BlindFollowRequest::fromCbor);
         Map<PublicKeyHash, byte[]> pointerState = ((CborObject.CborList)m.get("p"))
                 .getMap(PublicKeyHash::fromCbor, c -> ((CborObject.CborByteArray)c).value);
         List<BatWithId> mirrorBats = m.getList("b", BatWithId::fromCbor);
         Optional<LoginData> login = m.getOptional("l", LoginData::fromCbor);
         LinkCounts lc = m.get("lc", LinkCounts::fromCbor);
-        return new UserSnapshot(pointerState, pendingFollowReqs, mirrorBats, login, lc);
-    }
 
-    public static UserSnapshot empty() {
-        return new UserSnapshot(Collections.emptyMap(), Collections.emptyList(), Collections.emptyList(),
-                Optional.empty(), new LinkCounts(Collections.emptyMap()));
+        return new UserSnapshot(username, pointerState, pendingFollowReqs, mirrorBats, login, lc);
     }
 }

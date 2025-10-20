@@ -35,6 +35,14 @@ public class RamLinkRetrievalCounter implements LinkRetrievalCounter {
     }
 
     @Override
+    public Optional<LocalDateTime> getLatestModificationTime() {
+        return counts.entrySet().stream()
+                .map(e -> e.getValue().right)
+                .sorted((a, b) -> -a.compareTo(b))
+                .findFirst();
+    }
+
+    @Override
     public void setCounts(String owner, LinkCounts counts) {
         counts.counts.forEach((k, v) -> {
             this.counts.put(new Pair<>(owner, k), v);

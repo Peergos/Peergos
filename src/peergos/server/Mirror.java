@@ -87,29 +87,45 @@ public class Mirror {
     );
 
     public static void mirrorNode(Multihash nodeId,
-                                  BatWithId mirrorBat,
+                                  BatWithId instanceBat,
                                   CoreNode core,
+                                  HttpPoster p2pPoster,
                                   MutablePointers p2pPointers,
                                   DeletableContentAddressedStorage storage,
                                   JdbcIpnsAndSocial targetPointers,
+                                  JdbcAccount targetAccount,
+                                  BatCave batStorage,
                                   TransactionStore transactions,
                                   LinkRetrievalCounter linkCounts,
                                   UsageStore usage,
                                   Hasher hasher) {
         Logging.LOG().log(Level.INFO, "Mirroring data for node " + nodeId);
-        List<String> allUsers = core.getUsernames("").join();
+        Optional<LocalDateTime> latest = linkCounts.getLatestModificationTime();
+        HTTPCoreNode sourceNode = new HTTPCoreNode(p2pPoster, nodeId);
+        List<UserSnapshot> snapshots = sourceNode.getSnapshots("", instanceBat, latest.orElse(LocalDateTime.MIN)).join();
         int userCount = 0;
-        for (String username : allUsers) {
-            List<UserPublicKeyLink> chain = core.getChain(username).join();
-            if (chain.get(chain.size() - 1).claim.storageProviders.contains(nodeId)) {
-                try {
-                    Logging.LOG().log(Level.INFO, "Mirroring " + username);
-                    mirrorUser(username, Optional.empty(), Optional.of(mirrorBat), core, p2pPointers, null,
-                            storage, targetPointers, null, transactions, linkCounts, usage, hasher);
-                    userCount++;
-                } catch (Exception e) {
-                    Logging.LOG().log(Level.WARNING, "Couldn't mirror user: " + username, e);
+        for (UserSnapshot snapshot : snapshots) {
+            try {
+                String username = snapshot.username;
+                Logging.LOG().log(Level.INFO, "Mirroring " + username);
+                PublicKeyHash owner = core.getPublicKeyHash(username).join().get();
+                snapshot.login.ifPresent(login -> targetAccount.setLoginData(login).join());
+                linkCounts.setCounts(username, snapshot.linkCounts);
+                List<BatWithId> localMirrorBats = batStorage.getUserBats(username, new byte[0]).join();
+                for (BatWithId mirrorBat : snapshot.mirrorBats) {
+                    if (! localMirrorBats.contains(mirrorBat))
+                        batStorage.addBat(username, mirrorBat.id(), mirrorBat.bat, new byte[0]);
                 }
+                for (Map.Entry<PublicKeyHash, byte[]> pointer : snapshot.pointerState.entrySet()) {
+                    PublicKeyHash writer = pointer.getKey();
+                    byte[] value = pointer.getValue();
+                    usage.addUserIfAbsent(username);
+                    usage.addWriter(username, writer);
+                    mirrorMerkleTree(username, owner, writer, List.of(nodeId), value, Optional.of(instanceBat), storage, targetPointers, transactions, usage, hasher);
+                }
+                userCount++;
+            } catch (Exception e) {
+                Logging.LOG().log(Level.WARNING, "Couldn't mirror user: " + snapshot.username, e);
             }
         }
         Logging.LOG().log(Level.INFO, "Finished mirroring data for node " + nodeId + ", with " + userCount + " users.");
