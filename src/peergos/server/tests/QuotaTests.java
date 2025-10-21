@@ -105,6 +105,7 @@ public class QuotaTests {
                 network, crypto, () -> false, x -> {}).join();
         Path filePath = PathUtil.get(username, filename);
         FileWrapper file = context.getByPath(filePath).join().get();
+        Thread.sleep(2_000);
         file.remove(home, filePath, context).join();
     }
 
@@ -129,6 +130,7 @@ public class QuotaTests {
                     network, crypto, () -> false, x -> {}).get();
             Assert.fail();
         } catch (Exception e) {}
+        Thread.sleep(2_000);
         file.remove(home, filePath, context).get();
     }
 }
