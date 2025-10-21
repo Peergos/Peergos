@@ -13,6 +13,8 @@ public interface LinkRetrievalCounter {
 
     Optional<LocalDateTime> getLatestModificationTime(String owner);
 
+    Optional<LocalDateTime> getLatestModificationTime();
+
     void setCounts(String owner, LinkCounts counts);
 
     LinkCounts getUpdatedCounts(String owner, LocalDateTime after);

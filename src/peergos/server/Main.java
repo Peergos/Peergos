@@ -879,9 +879,10 @@ public class Main extends Builder {
                 new Thread(() -> {
                     while (true) {
                         try {
-                            BatWithId mirrorBat = BatWithId.decode(a.getArg("mirror.bat"));
-                            Mirror.mirrorNode(nodeToMirrorId, mirrorBat, core, p2mMutable, localStorage, rawPointers,
-                                    transactions, linkCounts, usageStore, hasher);
+                            BatWithId instanceBat = a.getOptionalArg("mirror-instance-bat").map(BatWithId::decode)
+                                    .orElseThrow(() -> new IllegalStateException("No target instance bat supplied"));
+                            Mirror.mirrorNode(nodeToMirrorId, instanceBat, core, p2pHttpProxy, p2mMutable, localStorage, rawPointers,
+                                    rawAccount, batStore, transactions, linkCounts, usageStore, hasher);
                             try {
                                 int periodSeconds = a.getInt("server-mirror-period-seconds", 86400);
                                 Thread.sleep(periodSeconds * 1_000L);

@@ -207,6 +207,11 @@ public class SignUpFilter implements CoreNode {
     }
 
     @Override
+    public CompletableFuture<List<UserSnapshot>> getSnapshots(String prefix, BatWithId instanceBat, LocalDateTime lastLinkCountsUpdate) {
+        return target.getSnapshots(prefix, instanceBat, lastLinkCountsUpdate);
+    }
+
+    @Override
     public CompletableFuture<List<UserPublicKeyLink>> getChain(String username) {
         return target.getChain(username);
     }

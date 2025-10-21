@@ -403,6 +403,11 @@ public class IpfsCoreNode implements CoreNode {
         throw new IllegalStateException("Unsupported operation!");
     }
 
+    @Override
+    public CompletableFuture<List<UserSnapshot>> getSnapshots(String prefix, BatWithId instanceBat, LocalDateTime lastLinkCountsUpdate) {
+        throw new IllegalStateException("Unimplemented!");
+    }
+
     private Optional<RequiredDifficulty> enforceRateLimit(ProofOfWork proof, List<UserPublicKeyLink> updatedChain) {
         byte[] hash = hasher.sha256(ArrayOps.concat(proof.prefix, new CborObject.CborList(updatedChain).serialize())).join();
         difficultyGenerator.updateTime(System.currentTimeMillis());

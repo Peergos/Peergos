@@ -396,11 +396,12 @@ public class Builder {
         Multihash pkiServerId = getPkiServerId(a);
         // build a mirroring proxying corenode, unless we are the pki node
         boolean isPkiNode = nodeId.bareMultihash().equals(pkiServerId);
+        Optional<BatWithId> instanceBat = a.getOptionalArg("instance-bat").map(BatWithId::decode);
         return isPkiNode ?
                 buildPkiCorenode(localPointers, account, bats, localStorage, crypto, a) :
                 new MirrorCoreNode(new HTTPCoreNode(buildP2pHttpProxy(a), pkiServerId), rawAccount, bats, account, proxingMutable,
                         localStorage, rawPointers, localPointers, transactions, localSocial, usageStore, quotas, linkCounts, pkiServerId, peergosId,
-                        a.fromPeergosDir("pki-mirror-state-path","pki-state.cbor"), crypto);
+                        a.fromPeergosDir("pki-mirror-state-path","pki-state.cbor"), instanceBat, crypto);
     }
 
     public static JdbcIpnsAndSocial buildRawPointers(Args a, Supplier<Connection> dbConnectionPool) {

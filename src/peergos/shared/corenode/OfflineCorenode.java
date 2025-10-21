@@ -67,6 +67,11 @@ public class OfflineCorenode implements CoreNode {
     }
 
     @Override
+    public CompletableFuture<List<UserSnapshot>> getSnapshots(String prefix, BatWithId instanceBat, LocalDateTime lastLinkCountsUpdate) {
+        throw new IllegalStateException("Unsupported operation!");
+    }
+
+    @Override
     public CompletableFuture<List<UserPublicKeyLink>> getChain(String username) {
         return Futures.asyncExceptionally(
                 () -> {

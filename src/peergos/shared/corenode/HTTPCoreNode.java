@@ -294,6 +294,26 @@ public class HTTPCoreNode implements CoreNode {
     }
 
     @Override
+    public CompletableFuture<List<UserSnapshot>> getSnapshots(String prefix, BatWithId instanceBat, LocalDateTime lastLinkCountsUpdate) {
+        try {
+            ByteArrayOutputStream bout = new ByteArrayOutputStream();
+            DataOutputStream dout = new DataOutputStream(bout);
+
+            Serialize.serialize(prefix, dout);
+            Serialize.serialize(instanceBat.serialize(), dout);
+            dout.writeLong(lastLinkCountsUpdate.toEpochSecond(ZoneOffset.UTC));
+            dout.flush();
+
+            return poster.postUnzip(urlPrefix + Constants.CORE_URL + "getUserSnapshots", bout.toByteArray())
+                    .thenApply(res -> ((CborObject.CborList)CborObject.fromByteArray(res))
+                            .map(UserSnapshot::fromCbor));
+        } catch (IOException ioe) {
+            LOG.log(Level.WARNING, ioe.getMessage(), ioe);
+            return Futures.errored(ioe);
+        }
+    }
+
+    @Override
     public CompletableFuture<Optional<RequiredDifficulty>> updateChain(String username,
                                                                        List<UserPublicKeyLink> chain,
                                                                        ProofOfWork proof,

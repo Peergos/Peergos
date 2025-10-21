@@ -84,6 +84,10 @@ public class CoreNodeHandler implements HttpHandler
                     AggregatedMetrics.PAID_MIRROR_COMPLETE.inc();
                     completePaidMirror(din, dout);
                     break;
+                case "getUserSnapshots":
+                    AggregatedMetrics.GET_USER_SNAPSHOTS.inc();
+                    getUserSnapshots(din, dout);
+                    break;
                 case "updateChain":
                     AggregatedMetrics.UPDATE_PUBLIC_KEY_CHAIN.inc();
                     updateChain(din, dout);
@@ -205,6 +209,16 @@ public class CoreNodeHandler implements HttpHandler
         byte[] signedSpaceRequest = Serialize.deserializeByteArray(din, 64 * 1024);
         PaymentProperties res = coreNode.completePaidMirror(username, mirrorBat, signedSpaceRequest, proof).get();
         dout.write(res.serialize());
+    }
+
+    void getUserSnapshots(DataInputStream din, DataOutputStream dout) throws Exception
+    {
+        String prefix = CoreNodeUtils.deserializeString(din);
+        byte[] raw = Serialize.deserializeByteArray(din, 100);
+        BatWithId instanceBat = BatWithId.fromCbor(CborObject.fromByteArray(raw));
+        LocalDateTime lastLinkCountsUpdate = LocalDateTime.ofEpochSecond(din.readLong(), 0, ZoneOffset.UTC);
+        List<UserSnapshot> res = coreNode.getSnapshots(prefix, instanceBat, lastLinkCountsUpdate).get();
+        dout.write(new CborObject.CborList(res).serialize());
     }
 
     void updateChain(DataInputStream din, DataOutputStream dout) throws Exception

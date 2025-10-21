@@ -98,6 +98,11 @@ public class CorenodeEventPropagator implements CoreNode {
     }
 
     @Override
+    public CompletableFuture<List<UserSnapshot>> getSnapshots(String prefix, BatWithId instanceBat, LocalDateTime lastLinkCountsUpdate) {
+        return target.getSnapshots(prefix, instanceBat, lastLinkCountsUpdate);
+    }
+
+    @Override
     public CompletableFuture<Optional<RequiredDifficulty>> updateChain(String username,
                                                                        List<UserPublicKeyLink> chain,
                                                                        ProofOfWork proof,

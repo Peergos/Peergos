@@ -17,6 +17,7 @@ public class JdbcLinkRetrievalcounter implements LinkRetrievalCounter {
 
     private static final String GET = "SELECT count FROM linkcounts WHERE username = ? AND label = ?;";
     private static final String LATEST = "SELECT MAX(modified) FROM linkcounts WHERE username = ?;";
+    private static final String LATEST_ALL = "SELECT MAX(modified) FROM linkcounts;";
     private static final String AFTER = "SELECT label, count, modified FROM linkcounts WHERE username = ? AND modified > ?;";
 
     private Supplier<Connection> conn;
@@ -93,6 +94,21 @@ public class JdbcLinkRetrievalcounter implements LinkRetrievalCounter {
         try (Connection conn = getConnection();
              PreparedStatement stmt = conn.prepareStatement(LATEST)) {
             stmt.setString(1, owner);
+            ResultSet rs = stmt.executeQuery();
+            if (rs.next()) {
+                return Optional.of(LocalDateTime.ofEpochSecond(rs.getLong(1), 0, ZoneOffset.UTC));
+            }
+            return Optional.empty();
+        } catch (SQLException sqe) {
+            LOG.log(Level.WARNING, sqe.getMessage(), sqe);
+            throw new RuntimeException(sqe);
+        }
+    }
+
+    @Override
+    public Optional<LocalDateTime> getLatestModificationTime() {
+        try (Connection conn = getConnection();
+             PreparedStatement stmt = conn.prepareStatement(LATEST_ALL)) {
             ResultSet rs = stmt.executeQuery();
             if (rs.next()) {
                 return Optional.of(LocalDateTime.ofEpochSecond(rs.getLong(1), 0, ZoneOffset.UTC));
