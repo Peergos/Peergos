@@ -614,7 +614,7 @@ public class MirrorCoreNode implements CoreNode {
                 .map(n -> {
                     List<UserPublicKeyLink> chain = state.chains.get(n);
                     PublicKeyHash owner = chain.get(chain.size() - 1).owner;
-                    return getUserSnapshot(owner, List.of(ourNodeId), p2pMutable, ipfs, hasher)
+                    return getUserSnapshot(owner, List.of(ourNodeId), localPointers, ipfs, hasher)
                     .thenApply(pointers -> new UserSnapshot(n, pointers,
                             localSocial.getAndParseFollowRequests(owner),
                             batCave.getUserBats(n, new byte[0]).join(),
