@@ -32,7 +32,7 @@ import java.util.logging.*;
 import java.util.stream.*;
 
 public class MirrorCoreNode implements CoreNode {
-
+    public static final int MAX_SNAPSHOTS = 10;
     private static final Logger LOG = Logging.LOG();
 
     private final CoreNode writeTarget;
@@ -609,7 +609,8 @@ public class MirrorCoreNode implements CoreNode {
         LOG.info("GetSnapshots got " + localUsernames.size() + " local usernames.");
         Set<Multihash> ourIds = ipfs.ids().join().stream().map(Cid::bareMultihash).collect(Collectors.toSet());
         return Futures.of(localUsernames.stream()
-                .filter(n -> n.startsWith(prefix) && isHome(n, ourIds))
+                .filter(n -> n.compareTo(prefix) > 0 && isHome(n, ourIds))
+                .limit(MAX_SNAPSHOTS)
                 .parallel()
                 .map(n -> {
                     List<UserPublicKeyLink> chain = state.chains.get(n);
