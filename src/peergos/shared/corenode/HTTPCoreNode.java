@@ -304,7 +304,7 @@ public class HTTPCoreNode implements CoreNode {
             dout.writeLong(lastLinkCountsUpdate.toEpochSecond(ZoneOffset.UTC));
             dout.flush();
 
-            return poster.postUnzip(urlPrefix + Constants.CORE_URL + "getUserSnapshots", bout.toByteArray())
+            return poster.postUnzip(urlPrefix + Constants.CORE_URL + "getUserSnapshots", bout.toByteArray(), -1)
                     .thenApply(res -> ((CborObject.CborList)CborObject.fromByteArray(res))
                             .map(UserSnapshot::fromCbor));
         } catch (IOException ioe) {
