@@ -600,8 +600,10 @@ public class MirrorCoreNode implements CoreNode {
         if (! Arrays.equals(supplied, expected))
             throw new IllegalStateException("Unauthorized!");
         List<String> localUsernames = quotas.getLocalUsernames();
+        LOG.info("GetSnapshots got " + localUsernames.size() + " local usernames.");
         return Futures.of(localUsernames.stream()
                 .filter(n -> n.startsWith(prefix) && state.chains.containsKey(n))
+                .parallel()
                 .map(n -> {
                     List<UserPublicKeyLink> chain = state.chains.get(n);
                     PublicKeyHash owner = chain.get(chain.size() - 1).owner;
