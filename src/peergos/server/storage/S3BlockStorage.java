@@ -309,7 +309,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
 
         for (BlockMirrorCap block : blocks) {
             String s3Key = hashToKey(block.hash);
-            res.add(S3Request.preSignGet(folder + s3Key, Optional.of(600), Optional.empty(), S3AdminRequests.asAwsDate(ZonedDateTime.now()), host, region, accessKeyId, secretKey, useHttps, hasher).join());
+            res.add(S3Request.preSignGet(folder + s3Key, Optional.of(600), Optional.empty(), S3AdminRequests.asAwsDate(ZonedDateTime.now()), host, region, storageClass, accessKeyId, secretKey, useHttps, hasher).join());
         }
         for (CompletableFuture<Boolean> fut : auths) {
             fut.join(); // Any invalids BATs will cause this to throw
@@ -367,16 +367,12 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
 
     @Override
     public CompletableFuture<Optional<CborObject>> get(PublicKeyHash owner, Cid object, Optional<BatWithId> bat) {
-        if (noReads)
-            throw new IllegalStateException("Reads from Glacier are disabled!");
         return getRaw(pki.getStorageProviders(owner), object, bat, id, hasher, true)
                 .thenApply(opt -> opt.map(CborObject::fromByteArray));
     }
 
     @Override
     public CompletableFuture<Optional<CborObject>> get(List<Multihash> peerIds, Cid hash, String auth, boolean persistBlock) {
-        if (noReads)
-            throw new IllegalStateException("Reads from Glacier are disabled!");
         if (hash.isRaw())
             throw new IllegalStateException("Need to call getRaw if cid is not cbor!");
         return getRaw(peerIds, hash, auth, persistBlock).thenApply(opt -> opt.map(CborObject::fromByteArray));
@@ -384,15 +380,16 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
 
     @Override
     public CompletableFuture<Optional<byte[]>> getRaw(PublicKeyHash owner, Cid object, Optional<BatWithId> bat) {
-        if (noReads)
-            throw new IllegalStateException("Reads from Glacier are disabled!");
         return getRaw(pki.getStorageProviders(owner), object, bat, id, hasher, true);
     }
 
     @Override
     public CompletableFuture<Optional<byte[]>> getRaw(List<Multihash> peerIds, Cid hash, Optional<BatWithId> bat, Cid ourId, Hasher h, boolean persistBlock) {
-        if (noReads)
-            throw new IllegalStateException("Reads from Glacier are disabled!");
+        if (noReads) {
+            if (peerIds.stream().anyMatch(p -> ids.stream().anyMatch(us -> us.bareMultihash().equals(p.bareMultihash()))))
+                throw new IllegalStateException("Reads from Glacier are disabled!");
+            return p2pFallback.getRaw(peerIds, hash, bat, ourId, h, persistBlock);
+        }
         if (bat.isEmpty())
             return getRaw(peerIds, hash, "", persistBlock);
         return bat.get().bat.generateAuth(hash, ourId, 300, S3Request.currentDatetime(), bat.get().id, h)
@@ -403,20 +400,26 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
 
     @Override
     public CompletableFuture<Optional<byte[]>> getRaw(List<Multihash> peerIds,
-                                               Cid hash,
-                                               String auth,
-                                               boolean doAuth,
-                                               boolean persistBlock) {
-        if (noReads)
-            throw new IllegalStateException("Reads from Glacier are disabled!");
+                                                      Cid hash,
+                                                      String auth,
+                                                      boolean doAuth,
+                                                      boolean persistBlock) {
+        if (noReads) {
+            if (peerIds.stream().anyMatch(p -> ids.stream().anyMatch(us -> us.bareMultihash().equals(p.bareMultihash()))))
+                throw new IllegalStateException("Reads from Glacier are disabled!");
+            return p2pFallback.getRaw(peerIds, hash, auth, doAuth, persistBlock);
+        }
         return getRaw(peerIds, hash, Optional.empty(), auth, doAuth, Optional.empty(), persistBlock)
                 .thenApply(p -> p.map(v -> v.left));
     }
 
     @Override
     public CompletableFuture<Optional<byte[]>> getRaw(List<Multihash> peerIds, Cid hash, String auth, boolean persistBlock) {
-        if (noReads)
-            throw new IllegalStateException("Reads from Glacier are disabled!");
+        if (noReads) {
+            if (peerIds.stream().anyMatch(p -> ids.stream().anyMatch(us -> us.bareMultihash().equals(p.bareMultihash()))))
+                throw new IllegalStateException("Reads from Glacier are disabled!");
+            return p2pFallback.getRaw(peerIds, hash, auth, persistBlock);
+        }
         return getRaw(peerIds, hash, Optional.empty(), auth, true, Optional.empty(), persistBlock)
                 .thenApply(p -> p.map(v -> v.left));
     }
@@ -472,7 +475,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                                                                                    boolean persistP2pBlock) {
         String path = folder + hashToKey(hash);
         PresignedUrl getUrl = S3Request.preSignGet(path, Optional.of(600), range,
-                S3AdminRequests.asAwsDate(ZonedDateTime.now()), host, region, accessKeyId, secretKey, useHttps, hasher).join();
+                S3AdminRequests.asAwsDate(ZonedDateTime.now()), host, region, storageClass, accessKeyId, secretKey, useHttps, hasher).join();
         Histogram.Timer readTimer = hash.isRaw() ?
                 RawReadTimerLog.labels("read").startTimer() :
                 CborReadTimerLog.labels("read").startTimer();
@@ -535,7 +538,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
     public boolean hasBlockWithoutBackoff(Cid hash) {
         try {
             PresignedUrl headUrl = S3Request.preSignHead(folder + hashToKey(hash), Optional.of(60),
-                    S3AdminRequests.asAwsDate(ZonedDateTime.now()), host, region, accessKeyId, secretKey, useHttps, hasher).join();
+                    S3AdminRequests.asAwsDate(ZonedDateTime.now()), host, region, storageClass, accessKeyId, secretKey, useHttps, hasher).join();
             Map<String, List<String>> headRes = HttpUtil.head(headUrl);
             blockHeads.inc();
             return true;
@@ -715,7 +718,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         Histogram.Timer readTimer = HeadTimerLog.labels("size").startTimer();
         try {
             PresignedUrl headUrl = S3Request.preSignHead(folder + hashToKey(hash), Optional.of(60),
-                    S3AdminRequests.asAwsDate(ZonedDateTime.now()), host, region, accessKeyId, secretKey, useHttps, hasher).join();
+                    S3AdminRequests.asAwsDate(ZonedDateTime.now()), host, region, storageClass, accessKeyId, secretKey, useHttps, hasher).join();
             Map<String, List<String>> headRes = HttpUtil.head(headUrl);
             blockHeads.inc();
             blockSize.inc();
@@ -745,7 +748,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
     public boolean contains(Multihash hash) {
         try {
             PresignedUrl headUrl = S3Request.preSignHead(folder + hashToKey(hash), Optional.of(60),
-                    S3AdminRequests.asAwsDate(ZonedDateTime.now()), host, region, accessKeyId, secretKey, useHttps, hasher).join();
+                    S3AdminRequests.asAwsDate(ZonedDateTime.now()), host, region, storageClass, accessKeyId, secretKey, useHttps, hasher).join();
             Map<String, List<String>> headRes = HttpUtil.head(headUrl);
             blockHeads.inc();
             return true;

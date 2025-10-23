@@ -80,28 +80,32 @@ public class IpfsWrapper implements AutoCloseable {
 
     public static class S3ConfigParams {
         public final String s3Path, s3Bucket, s3Region, s3AccessKey, s3SecretKey, s3RegionEndpoint;
+        public final boolean useGlacier;
 
         private S3ConfigParams(String s3Path,
-                              String s3Bucket,
-                              String s3Region,
-                              String s3AccessKey,
-                              String s3SecretKey,
-                              String s3RegionEndpoint) {
+                               String s3Bucket,
+                               String s3Region,
+                               String s3AccessKey,
+                               String s3SecretKey,
+                               String s3RegionEndpoint,
+                               boolean useGlacier) {
             this.s3Path = s3Path;
             this.s3Bucket = s3Bucket;
             this.s3Region = s3Region;
             this.s3AccessKey = s3AccessKey;
             this.s3SecretKey = s3SecretKey;
             this.s3RegionEndpoint = s3RegionEndpoint;
+            this.useGlacier = useGlacier;
         }
         public static S3ConfigParams build(Optional<String> s3Path,
             Optional<String> s3Bucket,
             Optional<String> s3Region,
             Optional<String> s3AccessKey,
             Optional<String> s3SecretKey,
-            Optional<String> s3RegionEndpoint) {
+            Optional<String> s3RegionEndpoint,
+            Optional<String> useGlacier) {
             S3ConfigParams params = new S3ConfigParams(s3Path.orElse(""), s3Bucket.orElse(""), s3Region.orElse(""),
-                        s3AccessKey.orElse(""), s3SecretKey.orElse(""), s3RegionEndpoint.orElse(""));
+                        s3AccessKey.orElse(""), s3SecretKey.orElse(""), s3RegionEndpoint.orElse(""), Boolean.parseBoolean(useGlacier.orElse("false")));
             return params;
         }
     }
@@ -183,7 +187,7 @@ public class IpfsWrapper implements AutoCloseable {
             Optional.of(
                 S3ConfigParams.build(args.getOptionalArg("s3.path") , args.getOptionalArg("s3.bucket"),
                 args.getOptionalArg("s3.region"), args.getOptionalArg("s3.accessKey"), args.getOptionalArg("s3.secretKey"),
-                args.getOptionalArg("s3.region.endpoint"))
+                args.getOptionalArg("s3.region.endpoint"), args.getOptionalArg("use-glacier"))
             ) : Optional.empty();
         Optional<IdentitySection> peergosIdentity = Optional.empty();
         if (args.hasArg("ipfs.identity.priv-key") && args.hasArg("ipfs.identity.peerid")) {

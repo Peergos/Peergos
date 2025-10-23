@@ -90,7 +90,7 @@ public class S3BucketCopy {
                                                 Hasher h) {
         PresignedUrl getUrl = S3Request.preSignGet(key, Optional.of(600), Optional.empty(),
                 S3AdminRequests.asAwsDate(ZonedDateTime.now()), source.getHost(),
-                source.region, source.accessKey, source.secretKey, true, h).join();
+                source.region, source.storageClass, source.accessKey, source.secretKey, true, h).join();
         try {
             System.out.println("Copying s3://"+source.getHost() + "/" + source.bucket + "/" + key + " to s3://" + target.getHost() + "/" + target.bucket);
             byte[] res = HttpUtil.get(getUrl);

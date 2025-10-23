@@ -156,7 +156,7 @@ class S3Exploration {
 
             // test copying over to reset modified time
             PresignedUrl getaUrl = S3Request.preSignGet(s3Key, Optional.of(600), Optional.of(new Pair<>(0, Bat.MAX_RAW_BLOCK_PREFIX_SIZE - 1)),
-                    S3AdminRequests.asAwsDate(ZonedDateTime.now()), host, region, accessKey, secretKey, useHttps, h).join();
+                    S3AdminRequests.asAwsDate(ZonedDateTime.now()), host, region, Optional.empty(), accessKey, secretKey, useHttps, h).join();
             byte[] prefix = get(new URI(getaUrl.base).toURL(), getaUrl.fields);
             Assert.assertTrue(prefix.length == Bat.MAX_RAW_BLOCK_PREFIX_SIZE);
             String tempKey = s3Key + "Z";
@@ -223,20 +223,20 @@ class S3Exploration {
             throw new IllegalStateException("Incorrect listing!");
 
         // test an authed HEAD
-        PresignedUrl headUrl = S3Request.preSignHead(s3Key, Optional.of(600), S3AdminRequests.asAwsDate(ZonedDateTime.now()), host, region, accessKey, secretKey, useHttps, h).join();
+        PresignedUrl headUrl = S3Request.preSignHead(s3Key, Optional.of(600), S3AdminRequests.asAwsDate(ZonedDateTime.now()), host, region, Optional.empty(), accessKey, secretKey, useHttps, h).join();
         Map<String, List<String>> headRes = HttpUtil.head(headUrl);
         int size = Integer.parseInt(headRes.get("Content-Length").get(0));
         if (size != payload.length)
             throw new IllegalStateException("Incorrect size: " + size);
 
         // test an authed read
-        PresignedUrl getUrl = S3Request.preSignGet(s3Key, Optional.of(600), Optional.empty(), S3AdminRequests.asAwsDate(ZonedDateTime.now()), host, region, accessKey, secretKey, useHttps, h).join();
+        PresignedUrl getUrl = S3Request.preSignGet(s3Key, Optional.of(600), Optional.empty(), S3AdminRequests.asAwsDate(ZonedDateTime.now()), host, region, Optional.empty(), accessKey, secretKey, useHttps, h).join();
         byte[] authReadBytes = get(new URI(getUrl.base).toURL(), getUrl.fields);
         if (! Arrays.equals(authReadBytes, payload))
             throw new IllegalStateException("Incorrect contents: " + new String(authReadBytes));
 
         // test an authed read which has expired
-        PresignedUrl failGetUrl = S3Request.preSignGet(s3Key, Optional.of(600), Optional.empty(), S3AdminRequests.asAwsDate(ZonedDateTime.now().minusMinutes(11)), host, region, accessKey, secretKey, useHttps, h).join();
+        PresignedUrl failGetUrl = S3Request.preSignGet(s3Key, Optional.of(600), Optional.empty(), S3AdminRequests.asAwsDate(ZonedDateTime.now().minusMinutes(11)), host, region, Optional.empty(), accessKey, secretKey, useHttps, h).join();
         String failReadRes = new String(get(new URI(failGetUrl.base).toURL(), failGetUrl.fields));
         System.out.println(failReadRes);
 

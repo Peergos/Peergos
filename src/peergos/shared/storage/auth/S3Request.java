@@ -117,11 +117,12 @@ public class S3Request {
                                                              String datetime,
                                                              String host,
                                                              String region,
+                                                             Optional<String> storageClass,
                                                              String accessKeyId,
                                                              String s3SecretKey,
                                                              boolean useHttps,
                                                              Hasher h) {
-        return preSignNulliPotent("GET", key, expirySeconds, range, datetime, host, region, accessKeyId, s3SecretKey, useHttps, h);
+        return preSignNulliPotent("GET", key, expirySeconds, range, datetime, host, region, storageClass, accessKeyId, s3SecretKey, useHttps, h);
     }
 
     public static CompletableFuture<PresignedUrl> preSignHead(String key,
@@ -129,11 +130,12 @@ public class S3Request {
                                                               String datetime,
                                                               String host,
                                                               String region,
+                                                              Optional<String> storageClass,
                                                               String accessKeyId,
                                                               String s3SecretKey,
                                                               boolean useHttps,
                                                               Hasher h) {
-        return preSignNulliPotent("HEAD", key, expirySeconds, Optional.empty(), datetime, host, region, accessKeyId, s3SecretKey, useHttps, h);
+        return preSignNulliPotent("HEAD", key, expirySeconds, Optional.empty(), datetime, host, region, storageClass, accessKeyId, s3SecretKey, useHttps, h);
     }
 
     private static CompletableFuture<PresignedUrl> preSignNulliPotent(String verb,
@@ -143,6 +145,7 @@ public class S3Request {
                                                                       String datetime,
                                                                       String host,
                                                                       String region,
+                                                                      Optional<String> storageClass,
                                                                       String accessKeyId,
                                                                       String s3SecretKey,
                                                                       boolean useHttps,
@@ -151,7 +154,7 @@ public class S3Request {
         Map<String, String> extraHeaders = range
                 .map(p -> Stream.of(p).collect(Collectors.toMap(r -> "Range", r -> "bytes="+r.left+"-"+r.right)))
                 .orElse(Collections.emptyMap());
-        S3Request policy = new S3Request(verb, host, key, UNSIGNED, Optional.empty(), expiresSeconds, false, false,
+        S3Request policy = new S3Request(verb, host, key, UNSIGNED, storageClass, expiresSeconds, false, false,
                 Collections.emptyMap(), extraHeaders, accessKeyId, region, datetime);
         return preSignRequest(policy, key, host, s3SecretKey, useHttps, h);
     }
