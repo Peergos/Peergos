@@ -589,6 +589,12 @@ public class MirrorCoreNode implements CoreNode {
         return getUserSnapshotRecursive(peerIds, owner, owner, Collections.emptyMap(), mutable, dht, hasher);
     }
 
+    private boolean isHome(String username, Set<Multihash> ourIds) {
+        List<UserPublicKeyLink> chain = state.chains.get(username);
+        return chain != null &&
+                chain.get(chain.size() - 1).claim.storageProviders.stream().anyMatch(ourIds::contains);
+    }
+
     @Override
     public CompletableFuture<List<UserSnapshot>> getSnapshots(String prefix, BatWithId suppliedBat, LocalDateTime latestLinkCountUpdate) {
         if (instanceBat.isEmpty())
@@ -601,8 +607,9 @@ public class MirrorCoreNode implements CoreNode {
             throw new IllegalStateException("Unauthorized!");
         List<String> localUsernames = quotas.getLocalUsernames();
         LOG.info("GetSnapshots got " + localUsernames.size() + " local usernames.");
+        Set<Multihash> ourIds = ipfs.ids().join().stream().map(Cid::bareMultihash).collect(Collectors.toSet());
         return Futures.of(localUsernames.stream()
-                .filter(n -> n.startsWith(prefix) && state.chains.containsKey(n))
+                .filter(n -> n.startsWith(prefix) && isHome(n, ourIds))
                 .parallel()
                 .map(n -> {
                     List<UserPublicKeyLink> chain = state.chains.get(n);
