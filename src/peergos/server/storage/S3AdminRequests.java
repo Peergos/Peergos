@@ -176,7 +176,7 @@ public class S3AdminRequests {
 
         Instant normalised = normaliseDate(now);
         S3Request policy = new S3Request("GET", host, "", S3Request.UNSIGNED, storageClass, Optional.empty(), false, true,
-                extraQueryParameters, Collections.emptyMap(), accessKeyId, region, asAwsDate(normalised));
+                extraQueryParameters, new HashMap<>(), accessKeyId, region, asAwsDate(normalised));
         return S3Request.preSignRequest(policy, "", host, s3SecretKey, useHttps, h);
     }
 
