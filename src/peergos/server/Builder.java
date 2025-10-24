@@ -400,8 +400,10 @@ public class Builder {
         if (isPkiNode)
             return buildPkiCorenode(localPointers, account, bats, localStorage, crypto, a);
         HTTPCoreNode toPki = new HTTPCoreNode(buildP2pHttpProxy(a), pkiServerId);
-        if (! a.getBoolean("mirror-pki", true))
+        if (! a.getBoolean("mirror-pki", true)) {
+            LOG.info("Not mirroring PKI");
             return toPki;
+        }
         return new MirrorCoreNode(toPki, rawAccount, bats, account, proxingMutable,
                         localStorage, rawPointers, localPointers, transactions, localSocial, usageStore, quotas, linkCounts, pkiServerId, peergosId,
                         a.fromPeergosDir("pki-mirror-state-path","pki-state.cbor"), instanceBat, crypto);
