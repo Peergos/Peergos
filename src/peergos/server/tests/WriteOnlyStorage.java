@@ -1,9 +1,6 @@
 package peergos.server.tests;
 
-import peergos.server.storage.BlockMetadataStore;
-import peergos.server.storage.BlockProps;
-import peergos.server.storage.BlockVersion;
-import peergos.server.storage.DeletableContentAddressedStorage;
+import peergos.server.storage.*;
 import peergos.server.storage.auth.Want;
 import peergos.shared.cbor.CborObject;
 import peergos.shared.corenode.CoreNode;
@@ -95,7 +92,7 @@ public class WriteOnlyStorage implements DeletableContentAddressedStorage {
     }
 
     @Override
-    public List<BlockProps> bulkGetLinks(List<Multihash> peerIds, List<Want> wants) {
+    public List<BlockMetadata> bulkGetLinks(List<Multihash> peerIds, List<Want> wants) {
         throw new IllegalStateException("Not implemented!");
     }
 

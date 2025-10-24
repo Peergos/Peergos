@@ -3,11 +3,10 @@ package peergos.server.tests;
 import org.junit.Assert;
 import org.junit.Test;
 import peergos.server.Main;
-import peergos.server.storage.BlockProps;
+import peergos.server.storage.BlockMetadata;
 import peergos.server.storage.NewBlocksProcessor;
 import peergos.server.storage.RAMStorage;
 import peergos.server.storage.auth.Want;
-import peergos.server.util.Threads;
 import peergos.shared.Crypto;
 import peergos.shared.cbor.CborObject;
 import peergos.shared.crypto.hash.Hasher;
@@ -75,7 +74,7 @@ public class MirrorTests {
         }
 
         @Override
-        public List<BlockProps> bulkGetLinks(List<Multihash> peerIds, List<Want> wants) {
+        public List<BlockMetadata> bulkGetLinks(List<Multihash> peerIds, List<Want> wants) {
             highLatencyCalls.incrementAndGet();
             return super.bulkGetLinks(peerIds, wants);
         }

@@ -864,8 +864,14 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
     }
 
     @Override
-    public List<BlockProps> bulkGetLinks(List<Multihash> peerIds, List<Want> wants) {
-        return p2pFallback.bulkGetLinks(peerIds, wants);
+    public List<BlockMetadata> bulkGetLinks(List<Multihash> peerIds, List<Want> wants) {
+        List<BlockMetadata> meta = p2pFallback.bulkGetLinks(peerIds, wants);
+        if (meta.size() != wants.size())
+            throw new IllegalStateException("Incorrect number of block metadata returned!");
+        for (int i=0; i < wants.size(); i++) {
+            blockMetadata.put(wants.get(i).cid, null, meta.get(i));
+        }
+        return meta;
     }
 
     @Override

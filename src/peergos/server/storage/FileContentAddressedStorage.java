@@ -196,7 +196,7 @@ public class FileContentAddressedStorage implements DeletableContentAddressedSto
     }
 
     @Override
-    public List<BlockProps> bulkGetLinks(List<Multihash> peerIds, List<Want> wants) {
+    public List<BlockMetadata> bulkGetLinks(List<Multihash> peerIds, List<Want> wants) {
         throw new IllegalStateException("Unimplemented!");
     }
 

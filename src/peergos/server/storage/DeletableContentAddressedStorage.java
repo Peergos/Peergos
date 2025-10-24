@@ -200,7 +200,7 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
                 .filter(c -> ! c.isIdentity())
                 .collect(Collectors.toList());
 
-        List<BlockProps> addedLinks = RetryStorage.runWithRetry(3, () -> Futures.of(bulkGetLinks(peerIds, ourNodeId, added, mirrorBat, hasher))).join();
+        List<BlockMetadata> addedLinks = RetryStorage.runWithRetry(3, () -> Futures.of(bulkGetLinks(peerIds, ourNodeId, added, mirrorBat, hasher))).join();
         newBlockProcessor.process(writer, added, addedLinks.stream().mapToInt(p -> p.size).sum());
         if (removed.isEmpty()) {
             List<Cid> allCbor = addedLinks.stream()
@@ -235,13 +235,13 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
         return Futures.of(updated);
     }
 
-    List<BlockProps> bulkGetLinks(List<Multihash> peerIds, List<Want> wants);
+    List<BlockMetadata> bulkGetLinks(List<Multihash> peerIds, List<Want> wants);
 
-    default List<BlockProps> bulkGetLinks(List<Multihash> peerIds,
-                                         Cid ourId,
-                                         List<Cid> blocks,
-                                         Optional<BatWithId> mirrorBat,
-                                         Hasher h) {
+    default List<BlockMetadata> bulkGetLinks(List<Multihash> peerIds,
+                                             Cid ourId,
+                                             List<Cid> blocks,
+                                             Optional<BatWithId> mirrorBat,
+                                             Hasher h) {
         List<Want> wants = blocks.stream()
                 .map(c -> new Want(c, mirrorBat.map(b -> b.bat.generateAuth(c, ourId, 300, S3Request.currentDatetime(), b.id, h)
                         .thenApply(BlockAuth::encode).join())))
@@ -375,7 +375,7 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
         }
 
         @Override
-        public List<BlockProps> bulkGetLinks(List<Multihash> peerIds, List<Want> wants) {
+        public List<BlockMetadata> bulkGetLinks(List<Multihash> peerIds, List<Want> wants) {
             if (wants.isEmpty())
                 return Collections.emptyList();
             Map<String, Object> json = new HashMap<>();
@@ -389,7 +389,7 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
             return poster.post(apiPrefix + BLOCK_STAT_BULK + "?peers=" + peers, JSONParser.toString(json).getBytes(), true, -1)
                     .thenApply(raw -> ((List<Map<String, Object>>) JSONParser.parse(new String(raw)))
                             .stream()
-                            .map(BlockProps::fromJSON)
+                            .map(BlockMetadata::fromJSON)
                             .collect(Collectors.toList()))
                     .join();
         }
