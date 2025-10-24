@@ -151,9 +151,9 @@ public class S3Request {
                                                                       boolean useHttps,
                                                                       Hasher h) {
 
-        Map<String, String> extraHeaders = range
+        Map<String, String> extraHeaders = new HashMap<>(range
                 .map(p -> Stream.of(p).collect(Collectors.toMap(r -> "Range", r -> "bytes="+r.left+"-"+r.right)))
-                .orElse(Collections.emptyMap());
+                .orElse(Collections.emptyMap()));
         S3Request policy = new S3Request(verb, host, key, UNSIGNED, storageClass, expiresSeconds, false, false,
                 new HashMap<>(), extraHeaders, accessKeyId, region, datetime);
         return preSignRequest(policy, key, host, s3SecretKey, useHttps, h);
