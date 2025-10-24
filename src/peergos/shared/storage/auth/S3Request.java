@@ -155,7 +155,7 @@ public class S3Request {
                 .map(p -> Stream.of(p).collect(Collectors.toMap(r -> "Range", r -> "bytes="+r.left+"-"+r.right)))
                 .orElse(Collections.emptyMap());
         S3Request policy = new S3Request(verb, host, key, UNSIGNED, storageClass, expiresSeconds, false, false,
-                Collections.emptyMap(), extraHeaders, accessKeyId, region, datetime);
+                new HashMap<>(), extraHeaders, accessKeyId, region, datetime);
         return preSignRequest(policy, key, host, s3SecretKey, useHttps, h);
     }
 
