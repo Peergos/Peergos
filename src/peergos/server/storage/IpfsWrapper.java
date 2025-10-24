@@ -500,6 +500,7 @@ public class IpfsWrapper implements AutoCloseable {
             blockChildMap.put("regionEndpoint", s3Params.s3RegionEndpoint);
             blockChildMap.put("accessKey", s3Params.s3AccessKey);
             blockChildMap.put("secretKey", s3Params.s3SecretKey);
+            blockChildMap.put("use-glacier", Boolean.toString(s3Params.useGlacier));
             blockChildMap.put("type", "s3ds");
         } else {
             blockChildMap.put("path", "blocks");
