@@ -869,7 +869,8 @@ public class Main extends Builder {
 //                int pkiNodeSwarmPort = a.getInt("pki.node.swarm.port");
 //                InetAddress pkiNodeIpAddress = InetAddress.getByName(a.getArg("pki.node.ipaddress"));
 //                ipfsWrapper.connectToNode(new InetSocketAddress(pkiNodeIpAddress, pkiNodeSwarmPort), pkiServerNodeId);
-                ((MirrorCoreNode) core).start();
+                if (core instanceof MirrorCoreNode)
+                    ((MirrorCoreNode) core).start();
             }
             if (a.getBoolean("update-usage", true))
                 spaceChecker.calculateUsage();
