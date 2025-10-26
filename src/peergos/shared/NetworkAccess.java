@@ -702,6 +702,7 @@ public class NetworkAccess {
                                                         return res;
                                                     });
                                         }
+                                        cache.put(cacheKey, Optional.empty());
                                         return CompletableFuture.completedFuture(Optional.empty());
                                     }));
                 });
