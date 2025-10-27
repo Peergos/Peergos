@@ -18,6 +18,8 @@ import java.util.*;
 import java.util.concurrent.*;
 import java.util.stream.*;
 
+import static peergos.shared.storage.ContentAddressedStorage.HTTP.BLOCK_GET;
+
 public interface ContentAddressedStorageProxy {
 
     CompletableFuture<String> linkHost(Multihash targetServerId, PublicKeyHash owner);
@@ -31,6 +33,10 @@ public interface ContentAddressedStorageProxy {
     CompletableFuture<EncryptedCapability> getSecretLink(Multihash targetServerId, SecretLink link);
 
     CompletableFuture<LinkCounts> getLinkCounts(Multihash targetServerId, String owner, LocalDateTime after, BatWithId mirrorBat);
+
+    CompletableFuture<Optional<CborObject>> get(Multihash targetServerId, PublicKeyHash owner, Cid hash, Optional<BatWithId> bat);
+
+    CompletableFuture<Optional<byte[]>> getRaw(Multihash targetServerId, PublicKeyHash owner, Cid hash, Optional<BatWithId> bat);
 
     CompletableFuture<List<Cid>> put(Multihash targetServerId,
                                      PublicKeyHash owner,
@@ -140,6 +146,31 @@ public interface ContentAddressedStorageProxy {
                     + "&owner=" + owner)
                     .thenApply(CborObject::fromByteArray)
                     .thenApply(LinkCounts::fromCbor);
+        }
+
+        @Override
+        public CompletableFuture<Optional<CborObject>> get(Multihash targetServerId,
+                                                           PublicKeyHash owner,
+                                                           Cid hash,
+                                                           Optional<BatWithId> bat) {
+            return poster.get(getProxyUrlPrefix(targetServerId) + apiPrefix +
+                            BLOCK_GET + "?stream-channels=true&arg="
+                            + hash
+                            + "&owner=" + encode(owner.toString())
+                            + bat.map(b -> "&bat=" + b.encode()).orElse(""))
+                    .thenApply(raw -> raw.length == 0 ? Optional.empty() : Optional.of(CborObject.fromByteArray(raw)));
+        }
+
+        @Override
+        public CompletableFuture<Optional<byte[]>> getRaw(Multihash targetServerId,
+                                                          PublicKeyHash owner,
+                                                          Cid hash,
+                                                          Optional<BatWithId> bat) {
+            return poster.get(getProxyUrlPrefix(targetServerId) + apiPrefix +
+                            BLOCK_GET + "?stream-channels=true&arg=" + hash
+                            + "&owner=" + encode(owner.toString())
+                            + bat.map(b -> "&bat=" + b.encode()).orElse(""))
+                    .thenApply(raw -> raw.length == 0 ? Optional.empty() : Optional.of(raw));
         }
 
         @Override

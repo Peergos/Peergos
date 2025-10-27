@@ -726,12 +726,20 @@ public interface ContentAddressedStorage {
 
         @Override
         public CompletableFuture<Optional<CborObject>> get(PublicKeyHash owner, Cid object, Optional<BatWithId> bat) {
-            return local.get(owner, object, bat);
+            return Proxy.redirectCall(core,
+                    ourNodeIds,
+                    owner,
+                    () -> local.get(owner, object, bat),
+                    target -> p2p.get(target, owner, object, bat));
         }
 
         @Override
         public CompletableFuture<Optional<byte[]>> getRaw(PublicKeyHash owner, Cid object, Optional<BatWithId> bat) {
-            return local.getRaw(owner, object, bat);
+            return Proxy.redirectCall(core,
+                    ourNodeIds,
+                    owner,
+                    () -> local.getRaw(owner, object, bat),
+                    target -> p2p.getRaw(target, owner, object, bat));
         }
 
         @Override
