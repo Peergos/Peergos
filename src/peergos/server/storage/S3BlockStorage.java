@@ -629,7 +629,10 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                 .orElse(Collections.emptyList());
 
         return bulkMirror(owner, writer, peerIds, existingLinks, newLinks, mirrorBat, ourNodeId,
-                (peers, o, c, b) -> checkAndAddBlock(c, p2pHttpFallback.getRaw(peers.get(0), owner, c, mirrorBat).join().get()),
+                (peers, o, cs, b) -> cs.stream()
+                        .parallel()
+                        .map(c -> checkAndAddBlock(c, p2pHttpFallback.getRaw(peers.get(0), owner, c, mirrorBat).join().get()))
+                        .toList(),
                 (w, bs, size) -> usage.addPendingUsage(username, writer, size), tid, hasher);
     }
 

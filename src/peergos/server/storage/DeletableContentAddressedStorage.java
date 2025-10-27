@@ -174,7 +174,7 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
                 .orElse(Collections.emptyList());
 
         return bulkMirror(owner, writer, peerIds, existingLinks, newLinks, mirrorBat, ourNodeId,
-                (peers, o, c, b) -> bulkGetLinks(peerIds, ourNodeId, List.of(c), mirrorBat, hasher).get(0),
+                (peers, o, cs, b) -> bulkGetLinks(peerIds, ourNodeId, cs, mirrorBat, hasher),
                 newBlockProcessor, tid, hasher);
     }
 
@@ -203,8 +203,7 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
                 .filter(c -> ! c.isIdentity())
                 .collect(Collectors.toList());
 
-        List<BlockMetadata> addedLinks = added.stream().parallel().map(c -> retriever.get(peerIds, owner, c, mirrorBat))
-                .toList();
+        List<BlockMetadata> addedLinks = retriever.bulkGet(peerIds, owner, added, mirrorBat);
         newBlockProcessor.process(writer, added, addedLinks.stream().mapToInt(p -> p.size).sum());
         if (removed.isEmpty()) {
             List<Cid> allCbor = addedLinks.stream()

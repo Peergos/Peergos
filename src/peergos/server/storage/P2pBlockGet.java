@@ -10,5 +10,5 @@ import java.util.Optional;
 
 public interface P2pBlockGet {
 
-    BlockMetadata get(List<Multihash> peerid, PublicKeyHash owner, Cid block, Optional<BatWithId> mirrorBat);
+    List<BlockMetadata> bulkGet(List<Multihash> peerid, PublicKeyHash owner, List<Cid> blocks, Optional<BatWithId> mirrorBat);
 }
