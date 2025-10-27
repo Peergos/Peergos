@@ -436,6 +436,8 @@ public interface ContentAddressedStorage {
             if (! isPeergosServer) {
                 return getChampLookup(owner, root, caps, committedRoot, hasher);
             }
+            if (caps.isEmpty())
+                return Futures.of(Collections.emptyList());
             CborObject.CborList capsCbor = new CborObject.CborList(caps.stream()
                     .map(ChunkMirrorCap::toCbor)
                     .collect(Collectors.toList()));
