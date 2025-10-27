@@ -864,6 +864,34 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
     }
 
     @Override
+    public List<BlockMetadata> bulkGetLinks(List<Multihash> peerIds,
+                                            Cid ourId,
+                                            List<Cid> blocks,
+                                            Optional<BatWithId> mirrorBat,
+                                            Hasher h) {
+        List<Optional<byte[]>> rawOpts = blocks.stream()
+                .parallel()
+                .map(b -> p2pFallback.getRaw(peerIds, b, mirrorBat, ourId, h, false, true).join())
+                .toList();
+        if (rawOpts.size() != blocks.size())
+            throw new IllegalStateException("Incorrect number of blocks returned!");
+        List<byte[]> raw = rawOpts.stream().map(Optional::get).toList();
+        List<Pair<Cid, byte[]>> hashed = new ArrayList<>();
+        for (int i=0; i < blocks.size(); i++) {
+            Cid c = blocks.get(i);
+            byte[] bytes = raw.get(i);
+            Cid res = h.hash(bytes, c.isRaw()).join();
+            if (! res.equals(c))
+                throw new IllegalStateException("Received block with incorrect hash!");
+            hashed.add(new Pair<>(c, bytes));
+        }
+        List<Cid> added = hashed.stream().map(p -> put(p.left, p.right)).toList();
+        return hashed.stream()
+                .map(p -> blockMetadata.get(p.left).get())
+                .toList();
+    }
+
+    @Override
     public List<BlockMetadata> bulkGetLinks(List<Multihash> peerIds, List<Want> wants) {
         List<BlockMetadata> meta = p2pFallback.bulkGetLinks(peerIds, wants);
         if (meta.size() != wants.size())
