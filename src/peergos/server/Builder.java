@@ -229,6 +229,7 @@ public class Builder {
         boolean enableGC = a.getBoolean("enable-gc", false);
         boolean useS3 = S3Config.useS3(a);
         JavaPoster ipfsApi = buildIpfsApi(a);
+        JavaPoster p2pHttpProxy = buildP2pHttpProxy(a);
         DeletableContentAddressedStorage.HTTP http = new DeletableContentAddressedStorage.HTTP(ipfsApi, false, hasher);
         List<PeerId> ourIds = ids.getIdentities();
         MultiIdStorage ipfs = new MultiIdStorage(http, ourIds);
@@ -243,7 +244,7 @@ public class Builder {
                 FileBlockCache cborCache = new FileBlockCache(a.fromPeergosDir("block-cache-dir", "block-cache"), 1024 * 1024 * 1024L);
                 FileBlockBuffer blockBuffer = new FileBlockBuffer(a.fromPeergosDir("s3-block-buffer-dir", "block-buffer"));
                 S3BlockStorage s3 = new S3BlockStorage(config, ipfs.ids().join(), props, linkHost, transactions, authoriser,
-                        meta, usage, cborCache, blockBuffer, hasher, p2pBlockRetriever, ipfs);
+                        meta, usage, cborCache, blockBuffer, hasher, p2pBlockRetriever, new ContentAddressedStorageProxy.HTTP(p2pHttpProxy), ipfs);
                 s3.updateMetadataStoreIfEmpty();
                 return new LocalIpnsStorage(s3, ids);
             } else if (enableGC) {
@@ -272,7 +273,7 @@ public class Builder {
                 FileBlockCache cborCache = new FileBlockCache(a.fromPeergosDir("block-cache-dir", "block-cache"), 10 * 1024 * 1024 * 1024L);
                 FileBlockBuffer blockBuffer = new FileBlockBuffer(a.fromPeergosDir("s3-block-buffer-dir", "block-buffer"));
                 S3BlockStorage s3 = new S3BlockStorage(config, ipfs.ids().join(), props, linkHost, transactions, authoriser,
-                        meta, usage, cborCache, blockBuffer, hasher, p2pBlockRetriever, bloomTarget);
+                        meta, usage, cborCache, blockBuffer, hasher, p2pBlockRetriever, new ContentAddressedStorageProxy.HTTP(p2pHttpProxy), bloomTarget);
                 s3.updateMetadataStoreIfEmpty();
                 return new LocalIpnsStorage(s3, ids);
             } else {

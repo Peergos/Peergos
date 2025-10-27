@@ -132,6 +132,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
     private final BlockBuffer blockBuffer;
     private final Hasher hasher;
     private final DeletableContentAddressedStorage p2pFallback, bloomTarget;
+    private final ContentAddressedStorageProxy p2pHttpFallback;
 
     private final LinkedBlockingQueue<Cid> bloomAdds = new LinkedBlockingQueue<>();
     private final LinkedBlockingQueue<Cid> blocksToFlush = new LinkedBlockingQueue<>();
@@ -149,6 +150,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                           BlockBuffer blockBuffer,
                           Hasher hasher,
                           DeletableContentAddressedStorage p2pFallback,
+                          ContentAddressedStorageProxy p2pHttpFallback,
                           DeletableContentAddressedStorage bloomTarget) {
         this.ids = ids;
         this.peerIds = ids.stream()
@@ -178,6 +180,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         this.blockBuffer = blockBuffer;
         this.hasher = hasher;
         this.p2pFallback = p2pFallback;
+        this.p2pHttpFallback = p2pHttpFallback;
         this.bloomTarget = bloomTarget;
         startBloomThread();
         startFlusherThread();
@@ -579,6 +582,13 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         }
     }
 
+    private BlockMetadata checkAndAddBlock(Cid expected, byte[] raw) {
+        Cid res = hasher.hash(raw, expected.isRaw()).join();
+        if (! res.equals(expected))
+            throw new IllegalStateException("Received block with incorrect hash!");
+        return put(expected, raw).right;
+    }
+
     @Override
     public CompletableFuture<List<Cid>> mirror(String username,
                                                PublicKeyHash owner,
@@ -598,7 +608,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
             return Futures.of(Collections.singletonList(newRoot));
 
         // This call will not verify the auth as we might not have the mirror bat present locally
-        Optional<byte[]> newBlock = p2pFallback.getRaw(peerIds, newRoot, mirrorBat, p2pGetId, hasher, false, true).join();
+        Optional<byte[]> newBlock = p2pHttpFallback.getRaw(peerIds.get(0), owner, newRoot, mirrorBat).join();
         if (newBlock.isEmpty())
             throw new IllegalStateException("Couldn't retrieve block: " + newRoot);
         if (! hasBlock(newRoot)) {
@@ -619,6 +629,10 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                 .orElse(Collections.emptyList());
 
         return bulkMirror(owner, writer, peerIds, existingLinks, newLinks, mirrorBat, ourNodeId,
+                (peers, o, cs, b) -> cs.stream()
+                        .parallel()
+                        .map(c -> checkAndAddBlock(c, p2pHttpFallback.getRaw(peers.get(0), owner, c, mirrorBat).join().get()))
+                        .toList(),
                 (w, bs, size) -> usage.addPendingUsage(username, writer, size), tid, hasher);
     }
 
@@ -828,10 +842,10 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         Multihash hash = new Multihash(Multihash.Type.sha2_256, Hash.sha256(data));
         Cid cid = new Cid(1, isRaw ? Cid.Codec.Raw : Cid.Codec.DagCbor, hash.type, hash.getHash());
         transactions.addBlock(cid, tid, owner);
-        return put(cid, data);
+        return put(cid, data).left;
     }
 
-    public Cid put(Cid cid, byte[] data) {
+    public Pair<Cid, BlockMetadata> put(Cid cid, byte[] data) {
         Histogram.Timer writeTimer = writeTimerLog.labels("write").startTimer();
         String key = hashToKey(cid);
         try {
@@ -843,13 +857,13 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
             PresignedUrl putUrl = S3Request.preSignPut(s3Key, data.length, contentHash, storageClass, false,
                     S3AdminRequests.asAwsDate(ZonedDateTime.now()), host, extraHeaders, region, accessKeyId, secretKey, useHttps, hasher).join();
             String version = HttpUtil.putWithVersion(putUrl, data).right;
-            blockMetadata.put(cid, version, data);
+            BlockMetadata meta = blockMetadata.put(cid, version, data);
             bloomAdds.add(cid);
             blockPuts.inc();
             blockPutBytes.labels("size").observe(data.length);
             if (! cid.isRaw())
                 cborCache.put(cid, data);
-            return cid;
+            return new Pair<>(cid, meta);
         } catch (IOException e) {
             boolean rateLimited = isRateLimitedException(e);
             if (rateLimited) {
@@ -885,10 +899,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                 throw new IllegalStateException("Received block with incorrect hash!");
             hashed.add(new Pair<>(c, bytes));
         }
-        List<Cid> added = hashed.stream().map(p -> put(p.left, p.right)).toList();
-        return hashed.stream()
-                .map(p -> blockMetadata.get(p.left).get())
-                .toList();
+        return hashed.stream().map(p -> put(p.left, p.right).right).toList();
     }
 
     @Override
@@ -1164,7 +1175,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         UsageStore usageStore = new JdbcUsageStore(usageDb, sqlCommands);
         S3BlockStorage s3 = new S3BlockStorage(config, List.of(Cid.decode(a.getArg("ipfs.id"))),
                 BlockStoreProperties.empty(), "localhost:8000", transactions, authoriser, meta, usageStore,
-                new RamBlockCache(1024, 100), new FileBlockBuffer(a.fromPeergosDir("s3-block-buffer-dir", "block-buffer")), hasher, new RAMStorage(hasher), new RAMStorage(hasher));
+                new RamBlockCache(1024, 100), new FileBlockBuffer(a.fromPeergosDir("s3-block-buffer-dir", "block-buffer")), hasher, new RAMStorage(hasher), null, new RAMStorage(hasher));
         JdbcIpnsAndSocial rawPointers = new JdbcIpnsAndSocial(database, sqlCommands);
         if (a.hasArg("integrity-check")) {
             if (a.hasArg("username"))

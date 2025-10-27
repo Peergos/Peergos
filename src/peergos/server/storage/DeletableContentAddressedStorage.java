@@ -173,7 +173,9 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
                         .collect(Collectors.toList()))
                 .orElse(Collections.emptyList());
 
-        return bulkMirror(owner, writer, peerIds, existingLinks, newLinks, mirrorBat, ourNodeId, newBlockProcessor, tid, hasher);
+        return bulkMirror(owner, writer, peerIds, existingLinks, newLinks, mirrorBat, ourNodeId,
+                (peers, o, cs, b) -> bulkGetLinks(peerIds, ourNodeId, cs, mirrorBat, hasher),
+                newBlockProcessor, tid, hasher);
     }
 
     default CompletableFuture<List<Cid>> bulkMirror(PublicKeyHash owner,
@@ -183,6 +185,7 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
                                                     List<Cid> updated,
                                                     Optional<BatWithId> mirrorBat,
                                                     Cid ourNodeId,
+                                                    P2pBlockGet retriever,
                                                     NewBlocksProcessor newBlockProcessor,
                                                     TransactionId tid,
                                                     Hasher hasher) {
@@ -200,7 +203,7 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
                 .filter(c -> ! c.isIdentity())
                 .collect(Collectors.toList());
 
-        List<BlockMetadata> addedLinks = RetryStorage.runWithRetry(3, () -> Futures.of(bulkGetLinks(peerIds, ourNodeId, added, mirrorBat, hasher))).join();
+        List<BlockMetadata> addedLinks = retriever.bulkGet(peerIds, owner, added, mirrorBat);
         newBlockProcessor.process(writer, added, addedLinks.stream().mapToInt(p -> p.size).sum());
         if (removed.isEmpty()) {
             List<Cid> allCbor = addedLinks.stream()
@@ -210,7 +213,7 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
                     .collect(Collectors.toList());
             for (int i=0; i < allCbor.size();) {
                 int end = Math.min(allCbor.size(), i + 100);
-                bulkMirror(owner, writer, peerIds, Collections.emptyList(), allCbor.subList(i, end), mirrorBat, ourNodeId, newBlockProcessor, tid, hasher);
+                bulkMirror(owner, writer, peerIds, Collections.emptyList(), allCbor.subList(i, end), mirrorBat, ourNodeId, retriever, newBlockProcessor, tid, hasher);
                 i = end;
             }
             List<Cid> allRaw = addedLinks.stream()
@@ -219,7 +222,7 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
                     .filter(c -> !c.isIdentity() && c.isRaw())
                     .collect(Collectors.toList());
             for (int i=0; i < allRaw.size();i++) {
-                bulkMirror(owner, writer, peerIds, Collections.emptyList(), allRaw.subList(i, i+1), mirrorBat, ourNodeId, newBlockProcessor, tid, hasher);
+                bulkMirror(owner, writer, peerIds, Collections.emptyList(), allRaw.subList(i, i+1), mirrorBat, ourNodeId, retriever, newBlockProcessor, tid, hasher);
             }
         } else {
             for (int i = 0; i < added.size(); i++) {
@@ -229,7 +232,7 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
                         getLinks(removed.get(i), Arrays.asList(ourNodeId)).join().stream()
                                 .filter(c -> !c.isIdentity())
                                 .collect(Collectors.toList());
-                bulkMirror(owner, writer, peerIds, existingLinks, newLinks, mirrorBat, ourNodeId, newBlockProcessor, tid, hasher);
+                bulkMirror(owner, writer, peerIds, existingLinks, newLinks, mirrorBat, ourNodeId, retriever, newBlockProcessor, tid, hasher);
             }
         }
         return Futures.of(updated);
