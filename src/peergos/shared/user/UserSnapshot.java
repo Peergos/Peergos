@@ -66,4 +66,9 @@ public class UserSnapshot implements Cborable {
 
         return new UserSnapshot(username, pointerState, pendingFollowReqs, mirrorBats, login, lc);
     }
+
+    @Override
+    public String toString() {
+        return username + "("+pointerState.size()+")";
+    }
 }

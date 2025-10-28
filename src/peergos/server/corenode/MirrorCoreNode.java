@@ -605,7 +605,7 @@ public class MirrorCoreNode implements CoreNode {
         byte[] expected = hasher.sha256(ArrayOps.concat(instanceBat.get().serialize(), salt)).join();
         if (! Arrays.equals(supplied, expected))
             throw new IllegalStateException("Unauthorized!");
-        List<String> localUsernames = quotas.getLocalUsernames();
+        List<String> localUsernames = quotas.getLocalUsernames().stream().sorted().toList();
         LOG.info("GetSnapshots("+prefix+") got " + localUsernames.size() + " local usernames.");
         Set<Multihash> ourIds = ipfs.ids().join().stream().map(Cid::bareMultihash).collect(Collectors.toSet());
         return Futures.of(localUsernames.stream()
