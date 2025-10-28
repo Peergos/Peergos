@@ -105,6 +105,7 @@ public class Mirror {
         int userCount = 0;
         String cursor = "";
         while (true) {
+            Logging.LOG().log(Level.INFO, "Mirroring from cursor " + cursor);
             List<UserSnapshot> snapshots = sourceNode.getSnapshots(cursor, instanceBat, latest.orElse(LocalDateTime.MIN)).join();
             for (UserSnapshot snapshot : snapshots) {
                 try {
