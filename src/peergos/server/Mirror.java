@@ -106,34 +106,39 @@ public class Mirror {
         String cursor = "";
         while (true) {
             Logging.LOG().log(Level.INFO, "Mirroring from cursor " + cursor);
-            List<UserSnapshot> snapshots = sourceNode.getSnapshots(cursor, instanceBat, latest.orElse(LocalDateTime.MIN)).join();
-            for (UserSnapshot snapshot : snapshots) {
-                try {
-                    String username = snapshot.username;
-                    Logging.LOG().log(Level.INFO, "Mirroring " + username);
-                    PublicKeyHash owner = core.getPublicKeyHash(username).join().get();
-                    snapshot.login.ifPresent(login -> targetAccount.setLoginData(login).join());
-                    linkCounts.setCounts(username, snapshot.linkCounts);
-                    List<BatWithId> localMirrorBats = batStorage.getUserBats(username, new byte[0]).join();
-                    for (BatWithId mirrorBat : snapshot.mirrorBats) {
-                        if (!localMirrorBats.contains(mirrorBat))
-                            batStorage.addBat(username, mirrorBat.id(), mirrorBat.bat, new byte[0]);
+            try {
+                List<UserSnapshot> snapshots = sourceNode.getSnapshots(cursor, instanceBat, latest.orElse(LocalDateTime.MIN)).join();
+                for (UserSnapshot snapshot : snapshots) {
+                    try {
+                        String username = snapshot.username;
+                        Logging.LOG().log(Level.INFO, "Mirroring " + username);
+                        PublicKeyHash owner = core.getPublicKeyHash(username).join().get();
+                        snapshot.login.ifPresent(login -> targetAccount.setLoginData(login).join());
+                        linkCounts.setCounts(username, snapshot.linkCounts);
+                        List<BatWithId> localMirrorBats = batStorage.getUserBats(username, new byte[0]).join();
+                        for (BatWithId mirrorBat : snapshot.mirrorBats) {
+                            if (!localMirrorBats.contains(mirrorBat))
+                                batStorage.addBat(username, mirrorBat.id(), mirrorBat.bat, new byte[0]);
+                        }
+                        for (Map.Entry<PublicKeyHash, byte[]> pointer : snapshot.pointerState.entrySet()) {
+                            PublicKeyHash writer = pointer.getKey();
+                            byte[] value = pointer.getValue();
+                            usage.addUserIfAbsent(username);
+                            usage.addWriter(username, writer);
+                            mirrorMerkleTree(username, owner, writer, List.of(nodeId), value, Optional.of(instanceBat), storage, targetPointers, transactions, usage, hasher);
+                        }
+                        userCount++;
+                    } catch (Exception e) {
+                        Logging.LOG().log(Level.WARNING, "Couldn't mirror user: " + snapshot.username, e);
                     }
-                    for (Map.Entry<PublicKeyHash, byte[]> pointer : snapshot.pointerState.entrySet()) {
-                        PublicKeyHash writer = pointer.getKey();
-                        byte[] value = pointer.getValue();
-                        usage.addUserIfAbsent(username);
-                        usage.addWriter(username, writer);
-                        mirrorMerkleTree(username, owner, writer, List.of(nodeId), value, Optional.of(instanceBat), storage, targetPointers, transactions, usage, hasher);
-                    }
-                    userCount++;
-                } catch (Exception e) {
-                    Logging.LOG().log(Level.WARNING, "Couldn't mirror user: " + snapshot.username, e);
                 }
+                cursor = snapshots.get(snapshots.size() - 1).username;
+                if (snapshots.size() < MirrorCoreNode.MAX_SNAPSHOTS)
+                    break;
+            } catch (Exception e) {
+                e.printStackTrace();
+                Threads.sleep(10_000);
             }
-            cursor = snapshots.get(snapshots.size() - 1).username;
-            if (snapshots.size() < MirrorCoreNode.MAX_SNAPSHOTS)
-                break;
         }
         Logging.LOG().log(Level.INFO, "Finished mirroring data for node " + nodeId + ", with " + userCount + " users.");
     }
