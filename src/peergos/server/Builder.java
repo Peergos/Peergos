@@ -220,6 +220,7 @@ public class Builder {
 
     public static DeletableContentAddressedStorage buildLocalStorage(Args a,
                                                                      BlockMetadataStore meta,
+                                                                     JdbcBatCave bats,
                                                                      TransactionStore transactions,
                                                                      BlockRequestAuthoriser authoriser,
                                                                      ServerIdentityStore ids,
@@ -244,7 +245,12 @@ public class Builder {
                 FileBlockCache cborCache = new FileBlockCache(a.fromPeergosDir("block-cache-dir", "block-cache"), 1024 * 1024 * 1024L);
                 FileBlockBuffer blockBuffer = new FileBlockBuffer(a.fromPeergosDir("s3-block-buffer-dir", "block-buffer"));
                 S3BlockStorage s3 = new S3BlockStorage(config, ipfs.ids().join(), props, linkHost, transactions, authoriser,
-                        meta, usage, cborCache, blockBuffer, hasher, p2pBlockRetriever, new ContentAddressedStorageProxy.HTTP(p2pHttpProxy), ipfs);
+                        bats, meta, usage, cborCache, blockBuffer,
+                        a.getLong(Main.GLOBAL_DOWNLOAD_BANDWIDTH_LIMIT.name),
+                        a.getLong(Main.GLOBAL_S3_READ_REQUESTS_LIMIT.name),
+                        a.getLong(Main.USER_DOWNLOAD_BANDWIDTH_LIMIT.name),
+                        a.getLong(Main.USER_S3_READ_REQUESTS_LIMIT.name),
+                        hasher, p2pBlockRetriever, new ContentAddressedStorageProxy.HTTP(p2pHttpProxy), ipfs);
                 s3.updateMetadataStoreIfEmpty();
                 return new LocalIpnsStorage(s3, ids);
             } else if (enableGC) {
@@ -273,7 +279,13 @@ public class Builder {
                 FileBlockCache cborCache = new FileBlockCache(a.fromPeergosDir("block-cache-dir", "block-cache"), 10 * 1024 * 1024 * 1024L);
                 FileBlockBuffer blockBuffer = new FileBlockBuffer(a.fromPeergosDir("s3-block-buffer-dir", "block-buffer"));
                 S3BlockStorage s3 = new S3BlockStorage(config, ipfs.ids().join(), props, linkHost, transactions, authoriser,
-                        meta, usage, cborCache, blockBuffer, hasher, p2pBlockRetriever, new ContentAddressedStorageProxy.HTTP(p2pHttpProxy), bloomTarget);
+                        bats, meta, usage, cborCache, blockBuffer,
+                        a.getLong(Main.GLOBAL_DOWNLOAD_BANDWIDTH_LIMIT.name),
+                        a.getLong(Main.GLOBAL_S3_READ_REQUESTS_LIMIT.name),
+                        a.getLong(Main.USER_DOWNLOAD_BANDWIDTH_LIMIT.name),
+                        a.getLong(Main.USER_S3_READ_REQUESTS_LIMIT.name),
+                        hasher, p2pBlockRetriever,
+                        new ContentAddressedStorageProxy.HTTP(p2pHttpProxy), bloomTarget);
                 s3.updateMetadataStoreIfEmpty();
                 return new LocalIpnsStorage(s3, ids);
             } else {

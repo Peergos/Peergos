@@ -247,6 +247,10 @@ public class DirectS3BlockStore implements ContentAddressedStorage {
                         return Arrays.asList(res);
                     }).thenAccept(allResults::complete)
                     .exceptionally(t -> {
+                        if (t.getMessage() != null && t.getMessage().contains("exceeded")) {
+                            allResults.completeExceptionally(t);
+                            return null;
+                        }
                         NetworkAccess.downloadFragments(owner, hashes, bats, this, h, monitor, spaceIncreaseFactor)
                                 .thenAccept(allResults::complete)
                                 .exceptionally(e -> {
