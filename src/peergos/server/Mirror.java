@@ -112,7 +112,7 @@ public class Mirror {
                     try {
                         String username = snapshot.username;
                         Logging.LOG().log(Level.INFO, "Mirroring " + username);
-                        PublicKeyHash owner = core.getPublicKeyHash(username).join().get();
+                        PublicKeyHash owner = snapshot.owner;
                         snapshot.login.ifPresent(login -> targetAccount.setLoginData(login).join());
                         linkCounts.setCounts(username, snapshot.linkCounts);
                         List<BatWithId> localMirrorBats = batStorage.getUserBats(username, new byte[0]).join();

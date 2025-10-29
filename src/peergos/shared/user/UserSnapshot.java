@@ -12,6 +12,7 @@ import java.util.stream.*;
 public class UserSnapshot implements Cborable {
 
     public final String username;
+    public final PublicKeyHash owner;
     public final Map<PublicKeyHash, byte[]> pointerState;
     public final List<BlindFollowRequest> pendingFollowReqs;
     public final List<BatWithId> mirrorBats;
@@ -19,12 +20,14 @@ public class UserSnapshot implements Cborable {
     public final LinkCounts linkCounts;
 
     public UserSnapshot(String username,
+                        PublicKeyHash owner,
                         Map<PublicKeyHash, byte[]> pointerState,
                         List<BlindFollowRequest> pendingFollowReqs,
                         List<BatWithId> mirrorBats,
                         Optional<LoginData> login,
                         LinkCounts linkCounts) {
         this.username = username;
+        this.owner = owner;
         this.pointerState = pointerState;
         this.pendingFollowReqs = pendingFollowReqs;
         this.mirrorBats = mirrorBats;
@@ -36,6 +39,7 @@ public class UserSnapshot implements Cborable {
     public CborObject toCbor() {
         SortedMap<String, Cborable> state = new TreeMap<>();
         state.put("n", new CborObject.CborString(username));
+        state.put("o", owner.toCbor());
         state.put("f", new CborObject.CborList(pendingFollowReqs));
         TreeMap<CborObject, Cborable> pointerMap = pointerState.entrySet()
                 .stream()
@@ -57,6 +61,7 @@ public class UserSnapshot implements Cborable {
             throw new IllegalStateException("Invalid cbor for FileProperties! " + cbor);
         CborObject.CborMap m = (CborObject.CborMap) cbor;
         String username = m.getString("n");
+        PublicKeyHash owner = m.get("o", PublicKeyHash::fromCbor);
         List<BlindFollowRequest> pendingFollowReqs = m.getList("f", BlindFollowRequest::fromCbor);
         Map<PublicKeyHash, byte[]> pointerState = ((CborObject.CborList)m.get("p"))
                 .getMap(PublicKeyHash::fromCbor, c -> ((CborObject.CborByteArray)c).value);
@@ -64,7 +69,7 @@ public class UserSnapshot implements Cborable {
         Optional<LoginData> login = m.getOptional("l", LoginData::fromCbor);
         LinkCounts lc = m.get("lc", LinkCounts::fromCbor);
 
-        return new UserSnapshot(username, pointerState, pendingFollowReqs, mirrorBats, login, lc);
+        return new UserSnapshot(username, owner, pointerState, pendingFollowReqs, mirrorBats, login, lc);
     }
 
     @Override
