@@ -535,6 +535,7 @@ public class MirrorCoreNode implements CoreNode {
 
     private UserSnapshot update(UserSnapshot in) {
         return new UserSnapshot(in.username,
+                in.owner,
                 in.pointerState.entrySet().stream()
                         .flatMap(e -> rawPointers.getPointer(e.getKey()).join()
                                 .map(v -> new Pair<>(e.getKey(), v))
@@ -616,7 +617,7 @@ public class MirrorCoreNode implements CoreNode {
                     List<UserPublicKeyLink> chain = state.chains.get(n);
                     PublicKeyHash owner = chain.get(chain.size() - 1).owner;
                     return getUserSnapshot(owner, List.of(ourNodeId), localPointers, ipfs, hasher)
-                    .thenApply(pointers -> new UserSnapshot(n, pointers,
+                    .thenApply(pointers -> new UserSnapshot(n, owner, pointers,
                             localSocial.getAndParseFollowRequests(owner),
                             batCave.getUserBats(n, new byte[0]).join(),
                             rawAccount.getLoginData(n), linkCounts.getUpdatedCounts(n, latestLinkCountUpdate)));
@@ -648,6 +649,7 @@ public class MirrorCoreNode implements CoreNode {
             LinkCounts updated = linkCounts.getUpdatedCounts(username, latestLinkCountUpdate);
             UserSnapshot snapshot = getUserSnapshot(owner, currentLast.claim.storageProviders, p2pMutable, ipfs, hasher)
                     .thenApply(pointers -> new UserSnapshot(username,
+                            currentLast.owner,
                             pointers,
                             localSocial.getAndParseFollowRequests(owner),
                             batCave.getUserBats(username, new byte[0]).join(),
