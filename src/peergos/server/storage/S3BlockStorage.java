@@ -136,6 +136,12 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
 
     private final LinkedBlockingQueue<Cid> bloomAdds = new LinkedBlockingQueue<>();
     private final LinkedBlockingQueue<Cid> blocksToFlush = new LinkedBlockingQueue<>();
+    private final ConcurrentHashMap<PublicKeyHash, SlidingWindowCounter> userReadReqRateLimits = new ConcurrentHashMap();
+    private final ConcurrentHashMap<PublicKeyHash, SlidingWindowCounter> userReadSizeRateLimits = new ConcurrentHashMap();
+    private final SlidingWindowCounter globalReadReqCount;
+    private final SlidingWindowCounter globalReadBandwidth;
+    private final long maxUserBandwidthPerMinute, maxUserReadRequestsPerMinute;
+    private final JdbcBatCave bats;
     private CoreNode pki;
 
     public S3BlockStorage(S3Config config,
@@ -144,10 +150,15 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                           String linkHost,
                           TransactionStore transactions,
                           BlockRequestAuthoriser authoriser,
+                          JdbcBatCave bats,
                           BlockMetadataStore blockMetadata,
                           UsageStore usage,
                           BlockCache cborCache,
                           BlockBuffer blockBuffer,
+                          long maxReadBandwidthPerSecond,
+                          long maxReadReqsPerSecond,
+                          long maxUserBandwidthPerSecond,
+                          long maxUserReadRequestsPerSecond,
                           Hasher hasher,
                           DeletableContentAddressedStorage p2pFallback,
                           ContentAddressedStorageProxy p2pHttpFallback,
@@ -174,6 +185,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         this.linkHost = linkHost;
         this.transactions = transactions;
         this.authoriser = authoriser;
+        this.bats = bats;
         this.blockMetadata = blockMetadata;
         this.usage = usage;
         this.cborCache = cborCache;
@@ -182,6 +194,10 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         this.p2pFallback = p2pFallback;
         this.p2pHttpFallback = p2pHttpFallback;
         this.bloomTarget = bloomTarget;
+        globalReadReqCount = new SlidingWindowCounter(60*60, 60*60 * maxReadReqsPerSecond);
+        globalReadBandwidth = new SlidingWindowCounter(60*60, 60*60 * maxReadBandwidthPerSecond);
+        this.maxUserBandwidthPerMinute = 60 * maxUserBandwidthPerSecond;
+        this.maxUserReadRequestsPerMinute = 60 * maxUserReadRequestsPerSecond;
         startBloomThread();
         startFlusherThread();
         new Thread(() -> blockBuffer.applyToAll(c -> {
@@ -286,6 +302,28 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         return Futures.of(linkHost);
     }
 
+    private void enforceGlobalRequestRateLimit() {
+        if (! globalReadReqCount.allowRequest(1))
+            throw new MajorRateLimitException("Rate Limit: Server S3 request limit exceeded. Please try again later");
+    }
+
+    private void enforceGlobalBandwidthLimit(long readSize) {
+        if (! globalReadBandwidth.allowRequest(readSize))
+            throw new MajorRateLimitException("Rate Limit: Server bandwidth limit exceeded. Please try again later");
+    }
+
+    private void enforceUserRequestRateLimits(PublicKeyHash owner, long readRequests) {
+        if (! userReadReqRateLimits.computeIfAbsent(owner, o -> new SlidingWindowCounter(60, maxUserReadRequestsPerMinute))
+                .allowRequest(readRequests))
+            throw new MajorRateLimitException("Rate Limit: User request limit exceeded. Please try again later.");
+    }
+
+    private void enforceUserBandwidthRateLimits(PublicKeyHash owner, long readSize) {
+        if (! userReadSizeRateLimits.computeIfAbsent(owner, o -> new SlidingWindowCounter(60, maxUserBandwidthPerMinute))
+                .allowRequest(readSize))
+            throw new MajorRateLimitException("Rate Limit: User bandwidth limit exceeded. Please try again later.");
+    }
+
     @Override
     public CompletableFuture<List<PresignedUrl>> authReads(List<BlockMirrorCap> blocks) {
         if (noReads)
@@ -298,7 +336,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
             return Futures.errored(new IllegalStateException("Can only auth read for raw blocks, not cbor!"));
 
         // verify all BATs in parallel
-        List<CompletableFuture<Boolean>> auths = blocks.stream()
+        List<CompletableFuture<BlockMetadata>> auths = blocks.stream()
                 .parallel()
                 .map(b -> getBlockMetadata(b.hash)
                         .thenApply(meta -> {
@@ -306,7 +344,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                                     .thenApply(BlockAuth::encode).join()).orElse("");
                             if (!authoriser.allowRead(b.hash, meta.batids, id, auth).join())
                                 throw new IllegalStateException("Unauthorised!");
-                            return true;
+                            return meta;
                         }))
                 .collect(Collectors.toList());
 
@@ -314,8 +352,24 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
             String s3Key = hashToKey(block.hash);
             res.add(S3Request.preSignGet(folder + s3Key, Optional.of(600), Optional.empty(), S3AdminRequests.asAwsDate(ZonedDateTime.now()), host, region, storageClass, accessKeyId, secretKey, useHttps, hasher).join());
         }
-        for (CompletableFuture<Boolean> fut : auths) {
-            fut.join(); // Any invalids BATs will cause this to throw
+        long byteCount = 0;
+        long reqCount = 0;
+        for (CompletableFuture<BlockMetadata> fut : auths) {
+            BlockMetadata m = fut.join();// Any invalids BATs will cause this to throw
+            byteCount += m.size;
+            reqCount++;
+        }
+        Optional<BatId> mirrorBat = auths.stream()
+                .flatMap(f -> f.join().batids.stream().filter(b -> !b.isInline()))
+                .findFirst();
+        if (mirrorBat.isPresent()) {
+            String username = bats.getOwner(mirrorBat.get());
+            PublicKeyHash owner = pki.getPublicKeyHash(username).join().get();
+            // check rate limits
+            enforceGlobalRequestRateLimit();
+            enforceGlobalBandwidthLimit(byteCount);
+            enforceUserRequestRateLimits(owner, reqCount);
+            enforceUserBandwidthRateLimits(owner, byteCount);
         }
         for (int i=0; i < blocks.size(); i++)
             blockGetAuths.inc();
@@ -370,7 +424,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
 
     @Override
     public CompletableFuture<Optional<CborObject>> get(PublicKeyHash owner, Cid object, Optional<BatWithId> bat) {
-        return getRaw(pki.getStorageProviders(owner), object, bat, id, hasher, true)
+        return getRaw(Optional.of(owner), pki.getStorageProviders(owner), object, bat, id, hasher, true)
                 .thenApply(opt -> opt.map(CborObject::fromByteArray));
     }
 
@@ -383,11 +437,15 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
 
     @Override
     public CompletableFuture<Optional<byte[]>> getRaw(PublicKeyHash owner, Cid object, Optional<BatWithId> bat) {
-        return getRaw(pki.getStorageProviders(owner), object, bat, id, hasher, true);
+        return getRaw(Optional.of(owner), pki.getStorageProviders(owner), object, bat, id, hasher, true);
     }
 
     @Override
     public CompletableFuture<Optional<byte[]>> getRaw(List<Multihash> peerIds, Cid hash, Optional<BatWithId> bat, Cid ourId, Hasher h, boolean persistBlock) {
+        return getRaw(Optional.empty(), peerIds, hash, bat, ourId, h, persistBlock);
+    }
+
+    public CompletableFuture<Optional<byte[]>> getRaw(Optional<PublicKeyHash> owner, List<Multihash> peerIds, Cid hash, Optional<BatWithId> bat, Cid ourId, Hasher h, boolean persistBlock) {
         if (noReads) {
             if (peerIds.stream().anyMatch(p -> ids.stream().anyMatch(us -> us.bareMultihash().equals(p.bareMultihash()))))
                 throw new IllegalStateException("Reads from Glacier are disabled!");
@@ -397,7 +455,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
             return getRaw(peerIds, hash, "", persistBlock);
         return bat.get().bat.generateAuth(hash, ourId, 300, S3Request.currentDatetime(), bat.get().id, h)
                 .thenApply(BlockAuth::encode)
-                .thenCompose(auth -> getRaw(peerIds, hash, Optional.empty(), auth, true, bat, persistBlock))
+                .thenCompose(auth -> getRaw(owner, peerIds, hash, Optional.empty(), auth, true, bat, persistBlock))
                 .thenApply(p -> p.map(v -> v.left));
     }
 
@@ -412,7 +470,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                 throw new IllegalStateException("Reads from Glacier are disabled!");
             return p2pFallback.getRaw(peerIds, hash, auth, doAuth, persistBlock);
         }
-        return getRaw(peerIds, hash, Optional.empty(), auth, doAuth, Optional.empty(), persistBlock)
+        return getRaw(Optional.empty(), peerIds, hash, Optional.empty(), auth, doAuth, Optional.empty(), persistBlock)
                 .thenApply(p -> p.map(v -> v.left));
     }
 
@@ -423,7 +481,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                 throw new IllegalStateException("Reads from Glacier are disabled!");
             return p2pFallback.getRaw(peerIds, hash, auth, persistBlock);
         }
-        return getRaw(peerIds, hash, Optional.empty(), auth, true, Optional.empty(), persistBlock)
+        return getRaw(Optional.empty(), peerIds, hash, Optional.empty(), auth, true, Optional.empty(), persistBlock)
                 .thenApply(p -> p.map(v -> v.left));
     }
 
@@ -436,7 +494,8 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
      * @param bat
      * @return
      */
-    private CompletableFuture<Optional<Pair<byte[], String>>> getRaw(List<Multihash> peerIds,
+    private CompletableFuture<Optional<Pair<byte[], String>>> getRaw(Optional<PublicKeyHash> owner,
+                                                                     List<Multihash> peerIds,
                                                                      Cid hash,
                                                                      Optional<Pair<Integer, Integer>> range,
                                                                      String auth,
@@ -459,7 +518,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                     throw new IllegalStateException("Unauthorised!");
                 return Futures.of(Optional.of(new Pair<>(buffered.get(), null)));
         }
-        return getWithBackoff(() -> getRawWithoutBackoff(peerIds, hash, range, auth, enforceAuth, bat, persistP2pBlock))
+        return getWithBackoff(() -> getRawWithoutBackoff(owner, peerIds, hash, range, auth, enforceAuth, bat, persistP2pBlock))
                 .thenApply(res -> {
                     if (hash.isRaw())
                         return res;
@@ -469,13 +528,18 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                 });
     }
 
-    private CompletableFuture<Optional<Pair<byte[], String>>> getRawWithoutBackoff(List<Multihash> peerIds,
+    private CompletableFuture<Optional<Pair<byte[], String>>> getRawWithoutBackoff(Optional<PublicKeyHash> owner,
+                                                                                   List<Multihash> peerIds,
                                                                                    Cid hash,
                                                                                    Optional<Pair<Integer, Integer>> range,
                                                                                    String auth,
                                                                                    boolean enforceAuth,
                                                                                    Optional<BatWithId> bat,
                                                                                    boolean persistP2pBlock) {
+        enforceGlobalRequestRateLimit();
+        if (owner.isPresent()) {
+            enforceUserRequestRateLimits(owner.get(), 1);
+        }
         String path = folder + hashToKey(hash);
         PresignedUrl getUrl = S3Request.preSignGet(path, Optional.of(600), range,
                 S3AdminRequests.asAwsDate(ZonedDateTime.now()), host, region, storageClass, accessKeyId, secretKey, useHttps, hasher).join();
@@ -485,6 +549,10 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         try {
             Pair<byte[], String> blockAndVersion = HttpUtil.getWithVersion(getUrl);
             blockGets.inc();
+            if (owner.isPresent()) {
+                enforceUserBandwidthRateLimits(owner.get(), blockAndVersion.left.length);
+            }
+            enforceGlobalBandwidthLimit(blockAndVersion.left.length);
             // validate auth, unless this is an internal query
             if (enforceAuth && ! authoriser.allowRead(hash, blockAndVersion.left, id, auth).join())
                 throw new IllegalStateException("Unauthorised!");
@@ -932,7 +1000,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         Optional<BlockMetadata> cached = blockMetadata.get(h);
         if (cached.isPresent())
             return Futures.of(cached.get());
-        Optional<Pair<byte[], String>> data = getRaw(peerIds, h, h.isRaw() ?
+        Optional<Pair<byte[], String>> data = getRaw(Optional.empty(), peerIds, h, h.isRaw() ?
                 Optional.of(new Pair<>(0, Bat.MAX_RAW_BLOCK_PREFIX_SIZE - 1)) :
                 Optional.empty(), "", false, Optional.empty(), false).join();
         if (data.isEmpty())
@@ -1175,8 +1243,10 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         Supplier<Connection> usageDb = Main.getDBConnector(a, "space-usage-sql-file");
         UsageStore usageStore = new JdbcUsageStore(usageDb, sqlCommands);
         S3BlockStorage s3 = new S3BlockStorage(config, List.of(Cid.decode(a.getArg("ipfs.id"))),
-                BlockStoreProperties.empty(), "localhost:8000", transactions, authoriser, meta, usageStore,
-                new RamBlockCache(1024, 100), new FileBlockBuffer(a.fromPeergosDir("s3-block-buffer-dir", "block-buffer")), hasher, new RAMStorage(hasher), null, new RAMStorage(hasher));
+                BlockStoreProperties.empty(), "localhost:8000", transactions, authoriser, null, meta, usageStore,
+                new RamBlockCache(1024, 100),
+                new FileBlockBuffer(a.fromPeergosDir("s3-block-buffer-dir", "block-buffer")),
+                Long.MAX_VALUE, Long.MAX_VALUE, Long.MAX_VALUE, Long.MAX_VALUE, hasher, new RAMStorage(hasher), null, new RAMStorage(hasher));
         JdbcIpnsAndSocial rawPointers = new JdbcIpnsAndSocial(database, sqlCommands);
         if (a.hasArg("integrity-check")) {
             if (a.hasArg("username"))

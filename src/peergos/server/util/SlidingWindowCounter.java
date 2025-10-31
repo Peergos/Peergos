@@ -22,6 +22,11 @@ public class SlidingWindowCounter {
         this.currentWindowTotal = 0;
     }
 
+    public SlidingWindowCounter(long windowSizeInSeconds,
+                                long maxRequestsPerWindow) {
+        this(windowSizeInSeconds, maxRequestsPerWindow, () -> System.nanoTime() / 1_000_000_000);
+    }
+
     public synchronized boolean allowRequest(long increment) {
         long now = clock.get();
         long timePassedInWindow = now - currentWindowStart;

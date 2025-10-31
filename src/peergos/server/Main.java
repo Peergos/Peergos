@@ -85,6 +85,10 @@ public class Main extends Builder {
 
     public static final Command.Arg LISTEN_HOST = new Command.Arg("listen-host", "The hostname/interface to listen on", true, "localhost");
     public static final Command.Arg QUOTA_UPLOAD_LIMIT_SECONDS = new Command.Arg("quota-upload-limit-seconds", "The minimum time period during which a user is allowed to upload their total quota, in seconds. Faster uploads will be rejected.", false, "86400");
+    public static final Command.Arg GLOBAL_DOWNLOAD_BANDWIDTH_LIMIT = new Command.Arg("global-download-bandwidth-limit", "The maximum amount of data allowed to be downloaded from this server in bytes per second.", false, "1000000000");
+    public static final Command.Arg USER_DOWNLOAD_BANDWIDTH_LIMIT = new Command.Arg("user-download-bandwidth-limit", "The maximum amount of data allowed to be downloaded per user in bytes per second.", false, "100000000");
+    public static final Command.Arg GLOBAL_S3_READ_REQUESTS_LIMIT = new Command.Arg("global-s3-read-requests-limit", "The maximum number of S3 read requests allowed from this server per second.", false, "100000");
+    public static final Command.Arg USER_S3_READ_REQUESTS_LIMIT = new Command.Arg("user-s3-read-requests-limit", "The maximum number of S3 read requests allowed from this server per user per second.", false, "1000");
 
     public static Command<IpfsWrapper> IPFS = new Command<>("ipfs",
             "Configure and start IPFS daemon",
@@ -145,6 +149,10 @@ public class Main extends Builder {
                     new Command.Arg("server-messages-sql-file", "The filename for the server messages datastore", true, "server-messages.sql"),
                     ARG_TRANSACTIONS_SQL_FILE,
                     QUOTA_UPLOAD_LIMIT_SECONDS,
+                    GLOBAL_DOWNLOAD_BANDWIDTH_LIMIT,
+                    GLOBAL_S3_READ_REQUESTS_LIMIT,
+                    USER_DOWNLOAD_BANDWIDTH_LIMIT,
+                    USER_S3_READ_REQUESTS_LIMIT,
                     ServerIdentity.ARG_SERVERIDS_SQL_FILE,
                     new Command.Arg("enable-gc", "Enable the blockstore garbage collector", false, "true"),
                     new Command.Arg("gc.period.millis", "Garbage collect frequency in millis (default 12h)", false, "43200000"),
@@ -725,7 +733,7 @@ public class Main extends Builder {
 
             Supplier<Connection> usageDb = getDBConnector(a, "space-usage-sql-file", dbConnectionPool);
             UsageStore usageStore = new JdbcUsageStore(usageDb, sqlCommands);
-            DeletableContentAddressedStorage localStorageForLinks = buildLocalStorage(a, meta, transactions, blockAuth,
+            DeletableContentAddressedStorage localStorageForLinks = buildLocalStorage(a, meta, batStore, transactions, blockAuth,
                     ids, usageStore, crypto.hasher);
             JdbcIpnsAndSocial rawPointers = buildRawPointers(a,
                     getDBConnector(a, "mutable-pointers-file", dbConnectionPool));

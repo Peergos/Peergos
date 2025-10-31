@@ -18,6 +18,7 @@ public class JdbcBatCave implements BatCave, BatCache {
 
     private static final String CREATE = "INSERT INTO bats (username, id, bat) VALUES(?, ?, ?)";
     private static final String GET = "SELECT bat FROM bats WHERE id = ? LIMIT 1;";
+    private static final String GET_OWNER = "SELECT username FROM bats WHERE id = ? LIMIT 1;";
     private static final String GET_USER = "SELECT * FROM bats WHERE username = ?;";
 
     private volatile boolean isClosed;
@@ -47,6 +48,21 @@ public class JdbcBatCave implements BatCave, BatCache {
             commands.createTable(commands.createBatStoreTableCommand(), conn);
         } catch (Exception e) {
             throw new RuntimeException(e);
+        }
+    }
+
+    public String getOwner(BatId id) {
+        try (Connection conn = getConnection();
+             PreparedStatement stmt = conn.prepareStatement(GET_OWNER)) {
+            stmt.setString(1, new String(Base64.getEncoder().encode(id.serialize())));
+            ResultSet rs = stmt.executeQuery();
+            if (rs.next()) {
+                return rs.getString("username");
+            }
+            throw new IllegalStateException("Unknonw bat!");
+        } catch (SQLException sqe) {
+            LOG.log(Level.WARNING, sqe.getMessage(), sqe);
+            throw new RuntimeException(sqe);
         }
     }
 

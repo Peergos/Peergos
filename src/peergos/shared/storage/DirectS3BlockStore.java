@@ -247,6 +247,10 @@ public class DirectS3BlockStore implements ContentAddressedStorage {
                         return Arrays.asList(res);
                     }).thenAccept(allResults::complete)
                     .exceptionally(t -> {
+                        if (t instanceof MajorRateLimitException) {
+                            allResults.completeExceptionally(t);
+                            return null;
+                        }
                         NetworkAccess.downloadFragments(owner, hashes, bats, this, h, monitor, spaceIncreaseFactor)
                                 .thenAccept(allResults::complete)
                                 .exceptionally(e -> {
@@ -299,12 +303,16 @@ public class DirectS3BlockStore implements ContentAddressedStorage {
                     .thenApply(opt -> opt.filter(b -> b.length > 0))
                     .thenAccept(res::complete)
                     .exceptionally(t -> {
-                        fallback.getRaw(owner, hash, bat)
-                                .thenAccept(res::complete)
-                                .exceptionally(e -> {
-                                    res.completeExceptionally(e);
-                                    return null;
-                                });
+                        String msg = t.getMessage();
+                        if (msg != null && msg.contains("exceeded"))
+                            res.completeExceptionally(t);
+                        else
+                            fallback.getRaw(owner, hash, bat)
+                                    .thenAccept(res::complete)
+                                    .exceptionally(e -> {
+                                        res.completeExceptionally(e);
+                                        return null;
+                                    });
                         return null;
                     });
             return res;

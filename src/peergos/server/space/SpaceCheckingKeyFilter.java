@@ -389,7 +389,7 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
         }
         SlidingWindowCounter writeLimit = writeLimiter.get(writerUsage.owner);
         if (writeLimit == null) {
-            writeLimit = new SlidingWindowCounter(quotaUploadLimitSeconds, quota, () -> System.currentTimeMillis() / 1000);
+            writeLimit = new SlidingWindowCounter(quotaUploadLimitSeconds, quota);
             writeLimiter.put(writerUsage.owner, writeLimit);
         }
         if (! writeLimit.allowRequest(size))
