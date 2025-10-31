@@ -50,7 +50,7 @@ public interface ContentAddressedStorage {
 
     Optional<BlockCache> getBlockCache();
 
-    default CompletableFuture<List<PresignedUrl>> authReads(List<BlockMirrorCap> blocks) {
+    default CompletableFuture<List<PresignedUrl>> authReads(PublicKeyHash owner, List<BlockMirrorCap> blocks) {
         return Futures.errored(new IllegalStateException("Unimplemented call!"));
     }
 
@@ -381,10 +381,10 @@ public interface ContentAddressedStorage {
         }
 
         @Override
-        public CompletableFuture<List<PresignedUrl>> authReads(List<BlockMirrorCap> blocks) {
+        public CompletableFuture<List<PresignedUrl>> authReads(PublicKeyHash owner, List<BlockMirrorCap> blocks) {
             if (! isPeergosServer)
                 return Futures.errored(new IllegalStateException("Cannot auth reads when not talking to a Peergos server!"));
-            return poster.postUnzip(apiPrefix + AUTH_READS, new CborObject.CborList(blocks).serialize())
+            return poster.postUnzip(apiPrefix + AUTH_READS + "?owner=" + encode(owner.toString()), new CborObject.CborList(blocks).serialize())
                     .thenApply(raw -> ((CborObject.CborList)CborObject.fromByteArray(raw)).value
                             .stream()
                             .map(PresignedUrl::fromCbor)
@@ -663,8 +663,8 @@ public interface ContentAddressedStorage {
         }
 
         @Override
-        public CompletableFuture<List<PresignedUrl>> authReads(List<BlockMirrorCap> blocks) {
-            return local.authReads(blocks);
+        public CompletableFuture<List<PresignedUrl>> authReads(PublicKeyHash owner, List<BlockMirrorCap> blocks) {
+            return local.authReads(owner, blocks);
         }
 
         @Override

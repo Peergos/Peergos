@@ -325,7 +325,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<List<PresignedUrl>> authReads(List<BlockMirrorCap> blocks) {
+    public CompletableFuture<List<PresignedUrl>> authReads(PublicKeyHash owner, List<BlockMirrorCap> blocks) {
         if (noReads)
             throw new IllegalStateException("Reads from Glacier are disabled!");
         if (blocks.size() > MAX_BLOCK_AUTHS)
@@ -364,12 +364,12 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                 .findFirst();
         if (mirrorBat.isPresent()) {
             String username = bats.getOwner(mirrorBat.get());
-            PublicKeyHash owner = pki.getPublicKeyHash(username).join().get();
+            PublicKeyHash verifiedOwner = pki.getPublicKeyHash(username).join().get();
             // check rate limits
             enforceGlobalRequestRateLimit();
             enforceGlobalBandwidthLimit(byteCount);
-            enforceUserRequestRateLimits(owner, reqCount);
-            enforceUserBandwidthRateLimits(owner, byteCount);
+            enforceUserRequestRateLimits(verifiedOwner, reqCount);
+            enforceUserBandwidthRateLimits(verifiedOwner, byteCount);
         }
         for (int i=0; i < blocks.size(); i++)
             blockGetAuths.inc();

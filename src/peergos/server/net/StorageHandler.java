@@ -109,7 +109,8 @@ public class StorageHandler implements HttpHandler {
                 case AUTH_READS: {
                     CborObject cbor = CborObject.fromByteArray(Serialize.readFully(httpExchange.getRequestBody()));
                     List<BlockMirrorCap> blockCaps = ((CborObject.CborList) cbor).map(BlockMirrorCap::fromCbor);
-                    dht.authReads(blockCaps).thenAccept(res -> {
+                    PublicKeyHash owner = null; // TODO parse once all clients support it
+                    dht.authReads(owner, blockCaps).thenAccept(res -> {
                         replyBytes(httpExchange, new CborObject.CborList(res).serialize(), Optional.empty());
                     }).exceptionally(Futures::logAndThrow).get();
                     break;

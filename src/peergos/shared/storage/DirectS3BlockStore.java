@@ -212,7 +212,7 @@ public class DirectS3BlockStore implements ContentAddressedStorage {
                     .collect(Collectors.toList());
             CompletableFuture<List<PresignedUrl>> auths = nonIdentity.isEmpty() ?
                     Futures.of(Collections.emptyList()) :
-                    fallback.authReads(nonIdentity.stream()
+                    fallback.authReads(owner, nonIdentity.stream()
                             .map(p -> new BlockMirrorCap(p.right,
                                     bats.size() > p.left ?
                                             Optional.of(bats.get(p.left)) :
@@ -278,7 +278,7 @@ public class DirectS3BlockStore implements ContentAddressedStorage {
                     .thenApply(Optional::of)
                     .thenAccept(res::complete)
                     .exceptionally(t -> {
-                        fallback.authReads(Arrays.asList(new BlockMirrorCap(hash, bat)))
+                        fallback.authReads(owner, Arrays.asList(new BlockMirrorCap(hash, bat)))
                                 .thenCompose(preAuthedGet -> direct.get(preAuthedGet.get(0).base))
                                 .thenApply(Optional::of)
                                 .thenAccept(res::complete)
@@ -297,7 +297,7 @@ public class DirectS3BlockStore implements ContentAddressedStorage {
         }
         if (authedReads && hash.isRaw()) {
             CompletableFuture<Optional<byte[]>> res = new CompletableFuture<>();
-            fallback.authReads(Arrays.asList(new BlockMirrorCap(hash, bat)))
+            fallback.authReads(owner, Arrays.asList(new BlockMirrorCap(hash, bat)))
                     .thenCompose(preAuthedGet -> direct.get(preAuthedGet.get(0).base, preAuthedGet.get(0).fields))
                     .thenApply(Optional::of)
                     .thenApply(opt -> opt.filter(b -> b.length > 0))

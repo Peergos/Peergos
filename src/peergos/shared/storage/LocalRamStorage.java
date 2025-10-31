@@ -146,7 +146,7 @@ public class LocalRamStorage implements ContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<List<PresignedUrl>> authReads(List<BlockMirrorCap> blocks) {
+    public CompletableFuture<List<PresignedUrl>> authReads(PublicKeyHash owner, List<BlockMirrorCap> blocks) {
         throw new IllegalStateException("Unimplemented!");
     }
 

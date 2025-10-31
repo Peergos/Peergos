@@ -174,8 +174,8 @@ public class RetryStorage implements ContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<List<PresignedUrl>> authReads(List<BlockMirrorCap> blocks) {
-        return runWithRetry(() -> target.authReads(blocks));
+    public CompletableFuture<List<PresignedUrl>> authReads(PublicKeyHash owner, List<BlockMirrorCap> blocks) {
+        return runWithRetry(() -> target.authReads(owner, blocks));
     }
 
     @Override

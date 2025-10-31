@@ -113,8 +113,8 @@ public class DelegatingDeletableStorage implements DeletableContentAddressedStor
     }
 
     @Override
-    public CompletableFuture<List<PresignedUrl>> authReads(List<BlockMirrorCap> blocks) {
-        return target.authReads(blocks);
+    public CompletableFuture<List<PresignedUrl>> authReads(PublicKeyHash owner, List<BlockMirrorCap> blocks) {
+        return target.authReads(owner, blocks);
     }
 
     @Override
