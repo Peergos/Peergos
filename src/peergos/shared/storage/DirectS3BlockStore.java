@@ -247,7 +247,7 @@ public class DirectS3BlockStore implements ContentAddressedStorage {
                         return Arrays.asList(res);
                     }).thenAccept(allResults::complete)
                     .exceptionally(t -> {
-                        if (t.getMessage() != null && t.getMessage().contains("exceeded")) {
+                        if (t instanceof MajorRateLimitException) {
                             allResults.completeExceptionally(t);
                             return null;
                         }
