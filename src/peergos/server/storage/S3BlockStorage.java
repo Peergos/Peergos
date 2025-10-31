@@ -304,24 +304,24 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
 
     private void enforceGlobalRequestRateLimit() {
         if (! globalReadReqCount.allowRequest(1))
-            throw new IllegalStateException("Server S3 request limit exceeded. Please try again later");
+            throw new MajorRateLimitException("Rate Limit: Server S3 request limit exceeded. Please try again later");
     }
 
     private void enforceGlobalBandwidthLimit(long readSize) {
         if (! globalReadBandwidth.allowRequest(readSize))
-            throw new IllegalStateException("Server bandwidth limit exceeded. Please try again later");
+            throw new MajorRateLimitException("Rate Limit: Server bandwidth limit exceeded. Please try again later");
     }
 
     private void enforceUserRequestRateLimits(PublicKeyHash owner, long readRequests) {
         if (! userReadReqRateLimits.computeIfAbsent(owner, o -> new SlidingWindowCounter(60, maxUserReadRequestsPerMinute))
                 .allowRequest(readRequests))
-            throw new IllegalStateException("User request limit exceeded. Please try again later.");
+            throw new MajorRateLimitException("Rate Limit: User request limit exceeded. Please try again later.");
     }
 
     private void enforceUserBandwidthRateLimits(PublicKeyHash owner, long readSize) {
         if (! userReadSizeRateLimits.computeIfAbsent(owner, o -> new SlidingWindowCounter(60, maxUserBandwidthPerMinute))
                 .allowRequest(readSize))
-            throw new IllegalStateException("User bandwidth limit exceeded. Please try again later.");
+            throw new MajorRateLimitException("Rate Limit: User bandwidth limit exceeded. Please try again later.");
     }
 
     @Override

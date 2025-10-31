@@ -66,6 +66,8 @@ public class RetryStorage implements ContentAddressedStorage {
                             res.completeExceptionally(e);
                         } else if (e instanceof ConnectException) {
                             res.completeExceptionally(e);
+                        } else if (e instanceof MajorRateLimitException) {
+                            res.completeExceptionally(e);
                         } else {
                             retryAfter(() -> recurse(retriesLeft - 1, maxAttempts, f)
                                             .thenAccept(res::complete)

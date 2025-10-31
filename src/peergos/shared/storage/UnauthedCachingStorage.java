@@ -77,19 +77,21 @@ public class UnauthedCachingStorage extends DelegatingStorage {
                     CompletableFuture<Optional<byte[]>> pipe = new CompletableFuture<>();
                     putPending(key, pipe);
 
-                    return target.getRaw(owner, key, bat).thenApply(blockOpt -> {
-                        if (blockOpt.isPresent()) {
-                            byte[] value = blockOpt.get();
-                            cache.put(key, value);
-                        }
-                        removePending(key);
-                        pipe.complete(blockOpt);
-                        return blockOpt;
-                    }).exceptionally(t -> {
-                        removePending(key);
-                        pipe.completeExceptionally(t);
-                        return Optional.empty();
-                    });
+                    return Futures.asyncExceptionally(
+                            () -> target.getRaw(owner, key, bat).thenApply(blockOpt -> {
+                                if (blockOpt.isPresent()) {
+                                    byte[] value = blockOpt.get();
+                                    cache.put(key, value);
+                                }
+                                removePending(key);
+                                pipe.complete(blockOpt);
+                                return blockOpt;
+                            }),
+                            t -> {
+                                removePending(key);
+                                pipe.completeExceptionally(t);
+                                return Futures.errored(t);
+                            });
                 });
     }
 
