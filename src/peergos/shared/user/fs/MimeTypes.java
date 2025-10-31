@@ -98,6 +98,7 @@ public class MimeTypes {
     final static Map<String, String> TEXT_MIMETYPES = Stream.of(
                     new Pair<>("md", "md"),
                     new Pair<>("csv", "csv"),
+                    new Pair<>("edn", "x-clojure"),
                     new Pair<>("xml", "xml"),
                     new Pair<>("asp", "asp"),
                     new Pair<>("rt", "richtext"),
