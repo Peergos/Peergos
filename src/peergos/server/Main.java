@@ -1142,8 +1142,12 @@ public class Main extends Builder {
                                 throw e;
                         }
                     }
-                    if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.BROWSE)) {
-                        Desktop.getDesktop().browse(api);
+                    try {
+                        if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.BROWSE)) {
+                            Desktop.getDesktop().browse(api);
+                        }
+                    } catch (Throwable t) {
+                        System.out.println("Please open http://localhost:" + port + " in your browser.");
                     }
                     return null;
                 } catch (URISyntaxException | IOException e) {
