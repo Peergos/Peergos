@@ -1,7 +1,9 @@
 package peergos.server;
 
+import com.luciad.imageio.webp.WebPDecoderOptions;
 import com.webauthn4j.data.client.*;
 import org.eclipse.jetty.server.Server;
+import org.scijava.nativelib.NativeLibraryUtil;
 import peergos.server.cli.CLI;
 import peergos.server.crypto.hash.ScryptJava;
 import peergos.server.login.*;
@@ -1188,6 +1190,11 @@ public class Main extends Builder {
     }
 
     public static void main(String[] args) {
+        try {
+            // Load webp native library for native image inclusion
+            NativeLibraryUtil.loadNativeLibrary(WebPDecoderOptions.class, "webp-imageio");
+        } catch (Throwable t) {}
+
         // Netty uses thread count twice the number of CPUs, this undoes that
         System.getProperties().setProperty("io.netty.eventLoopThreads", "2");
         try {
