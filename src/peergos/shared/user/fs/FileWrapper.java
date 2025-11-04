@@ -1518,7 +1518,7 @@ public class FileWrapper {
                         .thenCompose(mimeType -> fileData.reset()
                                 .thenCompose(resetAgain ->
                                     generateThumbnailAndUpdate(snapshot, committer, fileWriteCap, filename, resetAgain,
-                                            network, isHidden, mimeType, fileSize, LocalDateTime.now(ZoneOffset.UTC), createdDateTime, streamSecret, true, x -> {}))));
+                                            network, isHidden, mimeType, fileSize, getFileProperties().modified, createdDateTime, streamSecret, true, x -> {}))));
     }
 
     private CompletableFuture<Snapshot> generateThumbnailAndUpdate(Snapshot base,
