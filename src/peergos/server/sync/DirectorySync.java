@@ -172,7 +172,7 @@ public class DirectorySync {
 
         List<Supplier<SyncState>> syncedStates = syncDbPaths.stream()
                 .<Supplier<SyncState>>map(p -> () -> new JdbcTreeState(p.toString()))
-                .toList();
+                .collect(Collectors.toList());
         if (links.size() != localDirs.size())
             throw new IllegalArgumentException("Mismatched number of local dirs and links");
 
