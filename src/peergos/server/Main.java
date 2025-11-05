@@ -1192,7 +1192,8 @@ public class Main extends Builder {
     public static void main(String[] args) {
         try {
             // Load webp native library for native image inclusion
-            NativeLibraryUtil.loadNativeLibrary(WebPDecoderOptions.class, "webp-imageio");
+            if ("linux".equalsIgnoreCase(System.getProperty("os.name")))
+                NativeLibraryUtil.loadNativeLibrary(WebPDecoderOptions.class, "webp-imageio");
         } catch (Throwable t) {}
 
         // Netty uses thread count twice the number of CPUs, this undoes that
