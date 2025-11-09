@@ -23,7 +23,7 @@ public class WriterDataTests {
         Crypto crypto = Main.initCrypto();
         Hasher hasher = crypto.hasher;
         DeletableContentAddressedStorage dht = new RAMStorage(hasher);
-        MutablePointers mutable = UserRepository.build(dht, new JdbcIpnsAndSocial(Main.buildEphemeralSqlite(), new SqliteCommands()));
+        MutablePointers mutable = UserRepository.build(dht, new JdbcIpnsAndSocial(Main.buildEphemeralSqlite(), new SqliteCommands()), hasher);
 
         SigningKeyPair pairA = SigningKeyPair.random(crypto.random, crypto.signer);
         PublicKeyHash pubA = ContentAddressedStorage.hashKey(pairA.publicSigningKey);
@@ -42,7 +42,7 @@ public class WriterDataTests {
         CommittedWriterData bCurrentCwd = wdB.commit(pubB, signerB, MaybeMultihash.empty(), Optional.empty(), mutable, dht, hasher, test).join().get(pubB);
         MaybeMultihash bCurrent = bCurrentCwd.hash;
 
-        CommittedWriterData.Retriever retriever = (h, s) -> DeletableContentAddressedStorage.getWriterData(Collections.emptyList(), h, s, false, dht);
+        CommittedWriterData.Retriever retriever = (h, s) -> DeletableContentAddressedStorage.getWriterData(Collections.emptyList(), pubA, h, s, false, dht.id().join(), hasher, dht);
         Set<PublicKeyHash> ownedByA1 = DeletableContentAddressedStorage.getOwnedKeysRecursive(pubA, pubA, mutable, retriever, dht, hasher).join();
         Set<PublicKeyHash> ownedByB1 = DeletableContentAddressedStorage.getOwnedKeysRecursive(pubB, pubB, mutable, retriever, dht, hasher).join();
 

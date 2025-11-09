@@ -106,18 +106,19 @@ public class GarbageCollector {
                                       boolean fixMetadata) {
         Map<PublicKeyHash, byte[]> allPointers = pointers.getAllEntries();
 
-        List<Pair<Multihash, String>> usageRoots = usage.getAllTargets();
+        List<Triple<Multihash, String, PublicKeyHash>> usageRoots = usage.getAllTargets();
         Set<Multihash> done = new HashSet<>();
         System.out.println("Checking integrity from pointer targets...");
         allPointers.forEach((writerHash, signedRawCas) -> {
-            PublicSigningKey writer = getWithBackoff(() -> storage.getSigningKey(null, writerHash).join().get());
+            PublicKeyHash owner = usage.getOwnerKey(writerHash);
+            PublicSigningKey writer = getWithBackoff(() -> storage.getSigningKey(owner, writerHash).join().get());
             byte[] bothHashes = writer.unsignMessage(signedRawCas).join();
             PointerUpdate cas = PointerUpdate.fromCbor(CborObject.fromByteArray(bothHashes));
             MaybeMultihash updated = cas.updated;
             if (updated.isPresent() && !done.contains(updated.get())) {
                 done.add(updated.get());
                 try {
-                    traverseDag(updated.get(), metadata, done, fixMetadata, storage);
+                    traverseDag(owner, updated.get(), metadata, done, fixMetadata, storage);
                 } catch (Exception e) {
                     try {
                         String username = usage.getUsage(writerHash).owner;
@@ -131,12 +132,12 @@ public class GarbageCollector {
         });
         System.out.println("Checking integrity from usage roots...");
 
-        for (Pair<Multihash, String> usageRoot : usageRoots) {
+        for (Triple<Multihash, String, PublicKeyHash> usageRoot : usageRoots) {
             if (! done.contains(usageRoot.left)) {
                 try {
-                    traverseDag(usageRoot.left, metadata, done, fixMetadata, storage);
+                    traverseDag(usageRoot.right, usageRoot.left, metadata, done, fixMetadata, storage);
                 } catch (Exception e) {
-                    String username = usageRoot.right;;
+                    String username = usageRoot.middle;
                     String msg = "Error marking reachable for user: " + username + ", from usage root " + usageRoot.left;
                     System.err.println(msg);
                 }
@@ -154,6 +155,8 @@ public class GarbageCollector {
         Set<PublicKeyHash> writers = usage.getAllWriters(username);
         Set<Multihash> done = new HashSet<>();
         System.out.println("Checking integrity for user " + username);
+        PublicKeyHash owner = usage.getOwnerKey(writers.stream().findAny().get());
+
         Map<PublicKeyHash, byte[]> userPointers = writers.stream()
                 .collect(Collectors.toMap(w -> w, w -> pointers.getPointer(w).join().get()));
         userPointers.forEach((writerHash, signedRawCas) -> {
@@ -164,7 +167,7 @@ public class GarbageCollector {
             if (updated.isPresent() && !done.contains(updated.get())) {
                 done.add(updated.get());
                 try {
-                    traverseDag(updated.get(), metadata, done, fixMetadata, storage);
+                    traverseDag(owner, updated.get(), metadata, done, fixMetadata, storage);
                 } catch (Exception e) {
                     String msg = "Error marking reachable for user: " + username + ", writer " + writerHash + " " + e.getMessage();
                     System.err.println(msg);
@@ -174,7 +177,8 @@ public class GarbageCollector {
         System.out.println("Finished checking block DAG integrity");
     }
 
-    private static void traverseDag(Multihash cid,
+    private static void traverseDag(PublicKeyHash owner,
+                                    Multihash cid,
                                     BlockMetadataStore metadata,
                                     Set<Multihash> done,
                                     boolean fixMetadata,
@@ -184,7 +188,7 @@ public class GarbageCollector {
         Optional<BlockMetadata> meta = metadata.get((Cid) cid);
         if (meta.isEmpty() && fixMetadata) {
             // retrieving the block should add it to the metadata store
-            Optional<byte[]> block = storage.getRaw(Arrays.asList(storage.id().join()), (Cid) cid, "", false, true).join();
+            Optional<byte[]> block = storage.getRaw(Arrays.asList(storage.id().join()), owner, (Cid) cid, "", false, true).join();
             meta = metadata.get((Cid) cid);
             if (meta.isPresent())
                 System.out.println("Fixed block metadata for " + cid);
@@ -193,7 +197,7 @@ public class GarbageCollector {
             throw new IllegalStateException("Absent block! " + cid + ", key: " + DirectS3BlockStore.hashToKey(cid));
         for (Cid link : meta.get().links) {
             done.add(link);
-            traverseDag(link, metadata, done, fixMetadata, storage);
+            traverseDag(owner, link, metadata, done, fixMetadata, storage);
         }
     }
 
@@ -242,13 +246,13 @@ public class GarbageCollector {
         System.out.println("Listing " + allPointers.size() + " pointers took " + (t3-t2)/1_000_000_000 + "s");
 
         // Get the current roots from the usage store which shouldn't be GC'd until usage has been updated
-        List<Pair<Multihash, String>> usageRoots = usage.getAllTargets();
+        List<Triple<Multihash, String, PublicKeyHash>> usageRoots = usage.getAllTargets();
 
         int markParallelism = 10;
         ForkJoinPool markPool = Threads.newPool(markParallelism, "GC-mark-");
         AtomicLong totalReachable = new AtomicLong(0);
         List<ForkJoinTask<Boolean>> usageMarked = usageRoots.stream()
-                .map(r -> markPool.submit(() -> markReachable(storage, (Cid)r.left, r.right, reachability, metadata, totalReachable)))
+                .map(r -> markPool.submit(() -> markReachable(storage, (Cid)r.left, r.middle, reachability, metadata, totalReachable)))
                 .collect(Collectors.toList());
         usageMarked.forEach(f -> f.join());
         long t4 = System.nanoTime();
@@ -380,9 +384,11 @@ public class GarbageCollector {
             Optional<List<Cid>> fromRdb = block.isRaw() ?
                     Optional.of(Collections.emptyList()) :
                     reachability.getLinks(block);
+            // Will be non null once we start partitioning blockstores by owner, and GC'ing within an owner
+            PublicKeyHash owner = null;
             List<Cid> newLinks = fromRdb
                     .orElseGet(() -> metadata.get(block).map(m -> m.links)
-                            .orElseGet(() -> getWithBackoff(() -> storage.getLinks(block, Arrays.asList(storage.id().join())).join())));
+                            .orElseGet(() -> getWithBackoff(() -> storage.getLinks(owner, block, Arrays.asList(storage.id().join())).join())));
 
             if (fromRdb.isEmpty() && ! block.isRaw()) {
                 try {

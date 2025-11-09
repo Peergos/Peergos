@@ -29,7 +29,7 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
 
     ForkJoinPool usagePool = Threads.newPool(100, "Usage-updater-");
 
-    Stream<Cid> getAllBlockHashes(boolean useBlockstore);
+    Stream<Pair<PublicKeyHash, Cid>> getAllBlockHashes(boolean useBlockstore);
 
     void getAllBlockHashVersions(Consumer<List<BlockVersion>> res);
 
@@ -69,19 +69,22 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
      * @param persistBlock
      * @return The data with the requested hash, deserialized into cbor, or Optional.empty() if no object can be found
      */
-    CompletableFuture<Optional<CborObject>> get(List<Multihash> peerIds, Cid hash, String auth, boolean persistBlock);
+    CompletableFuture<Optional<CborObject>> get(List<Multihash> peerIds, PublicKeyHash owner, Cid hash, String auth, boolean persistBlock);
+
+//    TODO? CompletableFuture<Optional<CborObject>> get(List<Multihash> peerIds, PublicKeyHash owner, Cid hash, Optional<BatWithId> bat, boolean persistBlock);
 
     default CompletableFuture<Optional<CborObject>> get(List<Multihash> peerIds,
+                                                        PublicKeyHash owner,
                                                         Cid hash,
                                                         Optional<BatWithId> bat,
                                                         Cid ourId,
                                                         Hasher h,
                                                         boolean persistBlock) {
         if (bat.isEmpty())
-            return get(peerIds, hash, "", persistBlock);
+            return get(peerIds, owner, hash, "", persistBlock);
         return bat.get().bat.generateAuth(hash, ourId, 300, S3Request.currentDatetime(), bat.get().id, h)
                 .thenApply(BlockAuth::encode)
-                .thenCompose(auth -> get(peerIds, hash, auth, persistBlock));
+                .thenCompose(auth -> get(peerIds, owner, hash, auth, persistBlock));
     }
 
     /**
@@ -93,28 +96,32 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
      * @return
      */
     CompletableFuture<Optional<byte[]>> getRaw(List<Multihash> peerIds,
+                                               PublicKeyHash owner,
                                                Cid hash,
                                                String auth,
                                                boolean persistBlock);
 
     default CompletableFuture<Optional<byte[]>> getRaw(List<Multihash> peerIds,
+                                                       PublicKeyHash owner,
                                                        Cid hash,
                                                        String auth,
                                                        boolean doAuth,
                                                        boolean persistBlock) {
-        return getRaw(peerIds, hash, auth, persistBlock);
+        return getRaw(peerIds, owner, hash, auth, persistBlock);
     }
 
     default CompletableFuture<Optional<byte[]>> getRaw(List<Multihash> peerIds,
+                                                       PublicKeyHash owner,
                                                        Cid hash,
                                                        Optional<BatWithId> bat,
                                                        Cid ourId,
                                                        Hasher h,
                                                        boolean persistBlock) {
-        return getRaw(peerIds, hash, bat, ourId, h, true, persistBlock);
+        return getRaw(peerIds, owner, hash, bat, ourId, h, true, persistBlock);
     }
 
     default CompletableFuture<Optional<byte[]>> getRaw(List<Multihash> peerIds,
+                                                       PublicKeyHash owner,
                                                        Cid hash,
                                                        Optional<BatWithId> bat,
                                                        Cid ourId,
@@ -122,10 +129,24 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
                                                        boolean doAuth,
                                                        boolean persistBlock) {
         if (bat.isEmpty())
-            return getRaw(peerIds, hash, "", persistBlock);
+            return getRaw(peerIds, owner, hash, Optional.empty(), ourId, h, persistBlock);
         return bat.get().bat.generateAuth(hash, ourId, 300, S3Request.currentDatetime(), bat.get().id, h)
                 .thenApply(BlockAuth::encode)
-                .thenCompose(auth -> getRaw(peerIds, hash, auth, doAuth, persistBlock));
+                .thenCompose(auth -> getRaw(peerIds, owner, hash, auth, doAuth, persistBlock));
+    }
+
+    default CompletableFuture<List<Cid>> mirror(String username,
+                                               PublicKeyHash owner,
+                                               PublicKeyHash writer,
+                                               List<Multihash> peerIds,
+                                               Optional<Cid> existing,
+                                               Optional<Cid> updated,
+                                               Optional<BatWithId> mirrorBat,
+                                               Cid ourNodeId,
+                                               NewBlocksProcessor newBlockProcessor,
+                                               TransactionId tid,
+                                               Hasher hasher) {
+        return mirror(username, owner, writer, peerIds, existing, updated, mirrorBat, ourNodeId, newBlockProcessor, tid, hasher, this);
     }
 
     /**
@@ -137,17 +158,18 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
      * @param updated
      * @return
      */
-    default CompletableFuture<List<Cid>> mirror(String username,
-                                                PublicKeyHash owner,
-                                                PublicKeyHash writer,
-                                                List<Multihash> peerIds,
-                                                Optional<Cid> existing,
-                                                Optional<Cid> updated,
-                                                Optional<BatWithId> mirrorBat,
-                                                Cid ourNodeId,
-                                                NewBlocksProcessor newBlockProcessor,
-                                                TransactionId tid,
-                                                Hasher hasher) {
+    static CompletableFuture<List<Cid>> mirror(String username,
+                                               PublicKeyHash owner,
+                                               PublicKeyHash writer,
+                                               List<Multihash> peerIds,
+                                               Optional<Cid> existing,
+                                               Optional<Cid> updated,
+                                               Optional<BatWithId> mirrorBat,
+                                               Cid ourNodeId,
+                                               NewBlocksProcessor newBlockProcessor,
+                                               TransactionId tid,
+                                               Hasher hasher,
+                                               DeletableContentAddressedStorage storage) {
         if (updated.isEmpty())
             return Futures.of(Collections.emptyList());
         Cid newRoot = updated.get();
@@ -155,7 +177,7 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
             return Futures.of(Collections.singletonList(newRoot));
         boolean isRaw = newRoot.isRaw();
 
-        Optional<byte[]> newVal = RetryStorage.runWithRetry(3, () -> getRaw(peerIds, newRoot, mirrorBat, ourNodeId, hasher, false, true)).join();
+        Optional<byte[]> newVal = RetryStorage.runWithRetry(3, () -> storage.getRaw(peerIds, owner, newRoot, mirrorBat, ourNodeId, hasher, false, true)).join();
         if (newVal.isEmpty())
             throw new IllegalStateException("Couldn't retrieve block: " + newRoot);
         newBlockProcessor.process(writer, List.of(newRoot), newVal.get().length);
@@ -167,14 +189,14 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
                 .filter(h -> !h.isIdentity())
                 .map(m -> (Cid) m)
                 .collect(Collectors.toList());
-        List<Cid> existingLinks = existing.map(h -> getLinks(h, Arrays.asList(ourNodeId)).join()
+        List<Cid> existingLinks = existing.map(h -> storage.getLinks(owner, h, Arrays.asList(ourNodeId)).join()
                         .stream()
                         .filter(c -> ! c.isIdentity())
                         .collect(Collectors.toList()))
                 .orElse(Collections.emptyList());
 
-        return bulkMirror(owner, writer, peerIds, existingLinks, newLinks, mirrorBat, ourNodeId,
-                (peers, o, cs, b) -> bulkGetLinks(peerIds, ourNodeId, cs, mirrorBat, hasher),
+        return storage.bulkMirror(owner, writer, peerIds, existingLinks, newLinks, mirrorBat, ourNodeId,
+                (peers, o, cs, b) -> storage.bulkGetLinks(peerIds, owner, ourNodeId, cs, mirrorBat, hasher),
                 newBlockProcessor, tid, hasher);
     }
 
@@ -229,7 +251,7 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
                 List<Cid> newLinks = addedLinks.get(i).links;
                 List<Cid> existingLinks = i >= removed.size() ?
                         Collections.emptyList() :
-                        getLinks(removed.get(i), Arrays.asList(ourNodeId)).join().stream()
+                        getLinks(owner, removed.get(i), Arrays.asList(ourNodeId)).join().stream()
                                 .filter(c -> !c.isIdentity())
                                 .collect(Collectors.toList());
                 bulkMirror(owner, writer, peerIds, existingLinks, newLinks, mirrorBat, ourNodeId, retriever, newBlockProcessor, tid, hasher);
@@ -238,9 +260,10 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
         return Futures.of(updated);
     }
 
-    List<BlockMetadata> bulkGetLinks(List<Multihash> peerIds, List<Want> wants);
+    List<BlockMetadata> bulkGetLinks(List<Multihash> peerIds, PublicKeyHash owner, List<Want> wants);
 
     default List<BlockMetadata> bulkGetLinks(List<Multihash> peerIds,
+                                             PublicKeyHash owner,
                                              Cid ourId,
                                              List<Cid> blocks,
                                              Optional<BatWithId> mirrorBat,
@@ -249,7 +272,7 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
                 .map(c -> new Want(c, mirrorBat.map(b -> b.bat.generateAuth(c, ourId, 300, S3Request.currentDatetime(), b.id, h)
                         .thenApply(BlockAuth::encode).join())))
                 .collect(Collectors.toList());
-        return bulkGetLinks(peerIds, wants);
+        return bulkGetLinks(peerIds, owner, wants);
     }
 
     /**
@@ -257,22 +280,22 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
      * @param root The hash of the object whose links we want
      * @return A list of the multihashes referenced with ipld links in this object
      */
-    default CompletableFuture<List<Cid>> getLinks(Cid root, List<Multihash> peerids) {
+    default CompletableFuture<List<Cid>> getLinks(PublicKeyHash owner, Cid root, List<Multihash> peerids) {
         if (root.isRaw())
             return CompletableFuture.completedFuture(Collections.emptyList());
-        return get(peerids, root, "", true).thenApply(opt -> opt
+        return get(peerids, owner, root, "", true).thenApply(opt -> opt
                 .map(cbor -> cbor.links().stream().map(c -> (Cid) c).collect(Collectors.toList()))
                 .orElse(Collections.emptyList())
         );
     }
 
-    default CompletableFuture<Long> getRecursiveBlockSize(Cid block, List<Multihash> peerids) {
-        return getLinks(block, peerids).thenCompose(links -> {
+    default CompletableFuture<Long> getRecursiveBlockSize(PublicKeyHash owner, Cid block, List<Multihash> peerids) {
+        return getLinks(owner, block, peerids).thenCompose(links -> {
             List<CompletableFuture<Long>> subtrees = links.stream()
                     .filter(m -> ! m.isIdentity())
-                    .map(c -> Futures.runAsync(() -> getRecursiveBlockSize(c, peerids)))
+                    .map(c -> Futures.runAsync(() -> getRecursiveBlockSize(owner, c, peerids)))
                     .collect(Collectors.toList());
-            return getSize(block)
+            return getSize(owner, block)
                     .thenCompose(sizeOpt -> {
                         CompletableFuture<Long> reduced = Futures.reduceAll(subtrees,
                                 0L, (t, fut) -> fut.thenApply(x -> x + t), (a, b) -> a + b);
@@ -281,20 +304,20 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
         });
     }
 
-    default CompletableFuture<Long> getChangeInContainedSize(Optional<Cid> original, Cid updated) {
+    default CompletableFuture<Long> getChangeInContainedSize(PublicKeyHash owner, Optional<Cid> original, Cid updated) {
         if (! original.isPresent())
-            return getRecursiveBlockSize(updated, Arrays.asList(id().join()));
-        return getChangeInContainedSize(original.get(), updated);
+            return getRecursiveBlockSize(owner, updated, Arrays.asList(id().join()));
+        return getChangeInContainedSize(owner, original.get(), updated);
     }
 
-    default CompletableFuture<BlockMetadata> getBlockMetadata(Cid block) {
-        return getRaw(Arrays.asList(id().join()), block, "", true)
+    default CompletableFuture<BlockMetadata> getBlockMetadata(PublicKeyHash owner, Cid block) {
+        return getRaw(Arrays.asList(id().join()), owner, block, "", true)
                 .thenApply(rawOpt -> BlockMetadataStore.extractMetadata(block, rawOpt.get()));
     }
 
-    default CompletableFuture<Long> getChangeInContainedSize(Cid original, Cid updated) {
-        return getBlockMetadata(original)
-                .thenCompose(before -> getBlockMetadata(updated).thenCompose(after -> {
+    default CompletableFuture<Long> getChangeInContainedSize(PublicKeyHash owner, Cid original, Cid updated) {
+        return getBlockMetadata(owner, original)
+                .thenCompose(before -> getBlockMetadata(owner, updated).thenCompose(after -> {
                     int objectDelta = after.size - before.size;
                     List<Cid> beforeLinks = before.links.stream().filter(c -> !c.isIdentity()).collect(Collectors.toList());
                     List<Cid> onlyBefore = new ArrayList<>(beforeLinks);
@@ -311,17 +334,17 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
                     List<Cid> extraBefore = onlyBefore.subList(nPairs, onlyBefore.size());
                     List<Cid> extraAfter = onlyAfter.subList(nPairs, onlyAfter.size());
 
-                    CompletableFuture<Long> beforeRes = Futures.runAsync(() -> getAllRecursiveSizes(extraBefore), usagePool);
-                    CompletableFuture<Long> afterRes = Futures.runAsync(() -> getAllRecursiveSizes(extraAfter), usagePool);
-                    CompletableFuture<Long> pairsRes = Futures.runAsync(() -> getSizeDiff(pairs), usagePool);
+                    CompletableFuture<Long> beforeRes = Futures.runAsync(() -> getAllRecursiveSizes(owner, extraBefore), usagePool);
+                    CompletableFuture<Long> afterRes = Futures.runAsync(() -> getAllRecursiveSizes(owner, extraAfter), usagePool);
+                    CompletableFuture<Long> pairsRes = Futures.runAsync(() -> getSizeDiff(owner, pairs), usagePool);
                     return beforeRes.thenCompose(priorSize -> afterRes.thenApply(postSize -> postSize - priorSize + objectDelta))
                             .thenCompose(total -> pairsRes.thenApply(res -> res + total));
                 }));
     }
 
-    private CompletableFuture<Long> getAllRecursiveSizes(List<Cid> roots) {
+    private CompletableFuture<Long> getAllRecursiveSizes(PublicKeyHash owner, List<Cid> roots) {
         List<CompletableFuture<Long>> allSizes = roots.stream()
-                .map(c -> Futures.runAsync(() -> getRecursiveBlockSize(c, Arrays.asList(id().join())), usagePool))
+                .map(c -> Futures.runAsync(() -> getRecursiveBlockSize(owner, c, Arrays.asList(id().join())), usagePool))
                 .collect(Collectors.toList());
         return Futures.reduceAll(allSizes,
                 0L,
@@ -329,9 +352,9 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
                 (a, b) -> a + b);
     }
 
-    private CompletableFuture<Long> getSizeDiff(List<Pair<Cid, Cid>> pairs) {
+    private CompletableFuture<Long> getSizeDiff(PublicKeyHash owner, List<Pair<Cid, Cid>> pairs) {
         List<CompletableFuture<Long>> pairDiffs = pairs.stream()
-                .map(p -> Futures.runAsync(() -> getChangeInContainedSize(p.left, p.right), usagePool))
+                .map(p -> Futures.runAsync(() -> getChangeInContainedSize(owner, p.left, p.right), usagePool))
                 .collect(Collectors.toList());
         return Futures.reduceAll(pairDiffs,
                 0L,
@@ -349,17 +372,17 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
         }
 
         @Override
-        public Stream<Cid> getAllBlockHashes(boolean useBlockstore) {
+        public Stream<Pair<PublicKeyHash, Cid>> getAllBlockHashes(boolean useBlockstore) {
             String jsonStream = new String(poster.postUnzip(apiPrefix + REFS_LOCAL + "?use-block-store=" + useBlockstore, new byte[0], -1).join());
             return JSONParser.parseStream(jsonStream).stream()
                     .map(m -> (String) (((Map) m).get("Ref")))
-                    .map(Cid::decode);
+                    .map(Cid::decode).map(c -> new Pair<>(PublicKeyHash.NULL, c));
         }
 
         @Override
         public void getAllBlockHashVersions(Consumer<List<BlockVersion>> res) {
             res.accept(getAllBlockHashes(false)
-                    .map(c -> new BlockVersion(c, null, true))
+                    .map(p -> new BlockVersion(p.right, null, true))
                     .collect(Collectors.toList()));
         }
 
@@ -378,7 +401,7 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
         }
 
         @Override
-        public List<BlockMetadata> bulkGetLinks(List<Multihash> peerIds, List<Want> wants) {
+        public List<BlockMetadata> bulkGetLinks(List<Multihash> peerIds, PublicKeyHash owner, List<Want> wants) {
             if (wants.isEmpty())
                 return Collections.emptyList();
             Map<String, Object> json = new HashMap<>();
@@ -422,26 +445,28 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
         public void setPki(CoreNode pki) {}
 
         @Override
-        public CompletableFuture<Optional<CborObject>> get(List<Multihash> peerIds, Cid hash, String auth, boolean persistBlock) {
+        public CompletableFuture<Optional<CborObject>> get(List<Multihash> peerIds, PublicKeyHash owner, Cid hash, String auth, boolean persistBlock) {
             if (hash.isIdentity())
                 return CompletableFuture.completedFuture(Optional.of(CborObject.fromByteArray(hash.getHash())));
             if (peerIds.isEmpty())
                 throw new IllegalStateException("Empty peer list for block "+hash+"!");
             return poster.get(apiPrefix + BLOCK_GET + "?stream-channels=true&arg=" + hash
                             + (peerIds.isEmpty() ? "" : "&peers=" + peerIds.stream().map(p -> p.bareMultihash().toBase58()).collect(Collectors.joining(",")))
+                            + "&owner=" + owner
                             + "&auth=" + auth
                             + "&persist=" + persistBlock)
                     .thenApply(raw -> raw.length == 0 ? Optional.empty() : Optional.of(CborObject.fromByteArray(raw)));
         }
 
         @Override
-        public CompletableFuture<Optional<byte[]>> getRaw(List<Multihash> peerIds, Cid hash, String auth, boolean persistBlock) {
+        public CompletableFuture<Optional<byte[]>> getRaw(List<Multihash> peerIds, PublicKeyHash owner, Cid hash, String auth, boolean persistBlock) {
             if (hash.isIdentity())
                 return CompletableFuture.completedFuture(Optional.of(hash.getHash()));
             if (peerIds.isEmpty())
                 throw new IllegalStateException("Empty peer list for block "+hash+"!");
             return poster.get(apiPrefix + BLOCK_GET + "?stream-channels=true&arg=" + hash
                             + (peerIds.isEmpty() ? "" : "&peers=" + peerIds.stream().map(p -> p.bareMultihash().toBase58()).collect(Collectors.joining(",")))
+                            + "&owner=" + owner
                             + "&auth=" + auth
                             + "&persist=" + persistBlock)
                     .thenApply(raw -> raw.length == 0 ? Optional.empty() : Optional.of(raw));
@@ -538,11 +563,14 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
     }
 
     static CompletableFuture<CommittedWriterData> getWriterData(List<Multihash> peerIds,
+                                                                PublicKeyHash owner,
                                                                 Cid hash,
                                                                 Optional<Long> sequence,
                                                                 boolean persistBlock,
+                                                                Cid ourId,
+                                                                Hasher h,
                                                                 DeletableContentAddressedStorage dht) {
-        return dht.get(peerIds, hash, "", persistBlock)
+        return dht.get(peerIds, owner, hash, Optional.empty(), ourId, h, persistBlock)
                 .thenApply(cborOpt -> {
                     if (! cborOpt.isPresent())
                         throw new IllegalStateException("Couldn't retrieve WriterData from dht! " + hash);

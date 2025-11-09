@@ -13,6 +13,7 @@ import peergos.shared.user.fs.EncryptedCapability;
 import peergos.shared.user.fs.SecretLink;
 import peergos.shared.util.EfficientHashMap;
 import peergos.shared.util.Futures;
+import peergos.shared.util.Pair;
 import peergos.shared.util.ProgressConsumer;
 
 import java.security.MessageDigest;
@@ -47,8 +48,8 @@ public class VersionedWriteOnlyStorage implements DeletableContentAddressedStora
     }
 
     @Override
-    public Stream<Cid> getAllBlockHashes(boolean useBlockstore) {
-        return storage.keySet().stream();
+    public Stream<Pair<PublicKeyHash, Cid>> getAllBlockHashes(boolean useBlockstore) {
+        return storage.keySet().stream().map(c -> new Pair<>(PublicKeyHash.NULL, c));
     }
 
     @Override
@@ -106,17 +107,17 @@ public class VersionedWriteOnlyStorage implements DeletableContentAddressedStora
     }
 
     @Override
-    public CompletableFuture<Optional<CborObject>> get(List<Multihash> peerIds, Cid hash, String auth, boolean persistBlock) {
+    public CompletableFuture<Optional<CborObject>> get(List<Multihash> peerIds, PublicKeyHash owner, Cid hash, String auth, boolean persistBlock) {
         throw new IllegalStateException("Not implemented!");
     }
 
     @Override
-    public CompletableFuture<Optional<byte[]>> getRaw(List<Multihash> peerIds, Cid hash, String auth, boolean persistBlock) {
+    public CompletableFuture<Optional<byte[]>> getRaw(List<Multihash> peerIds, PublicKeyHash owner, Cid hash, String auth, boolean persistBlock) {
         throw new IllegalStateException("Not implemented!");
     }
 
     @Override
-    public List<BlockMetadata> bulkGetLinks(List<Multihash> peerIds, List<Want> wants) {
+    public List<BlockMetadata> bulkGetLinks(List<Multihash> peerIds, PublicKeyHash owner, List<Want> wants) {
         throw new IllegalStateException("Not implemented!");
     }
 
@@ -181,7 +182,7 @@ public class VersionedWriteOnlyStorage implements DeletableContentAddressedStora
     }
 
     @Override
-    public CompletableFuture<Optional<Integer>> getSize(Multihash block) {
+    public CompletableFuture<Optional<Integer>> getSize(PublicKeyHash owner, Multihash block) {
         throw new IllegalStateException("Not implemented!");
     }
 

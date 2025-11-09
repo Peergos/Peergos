@@ -373,11 +373,11 @@ public class JdbcUsageStore implements UsageStore {
     }
 
     @Override
-    public List<Pair<Multihash, String>> getAllTargets() {
+    public List<Triple<Multihash, String, PublicKeyHash>> getAllTargets() {
         try (Connection conn = getConnection();
              PreparedStatement get = conn.prepareStatement("SELECT writerusage.target,users.name FROM writerusage " +
                      "INNER JOIN users ON writerusage.user_id=users.id;")) {
-            List<Pair<Multihash, String>> res = new ArrayList<>();
+            List<Triple<Multihash, String, PublicKeyHash>> res = new ArrayList<>();
             ResultSet resultSet = get.executeQuery();
             while (resultSet.next()) {
                 MaybeMultihash target = Optional.ofNullable(resultSet.getBytes(1))
@@ -385,9 +385,41 @@ public class JdbcUsageStore implements UsageStore {
                     .orElse(MaybeMultihash.empty());
                 String username = resultSet.getString(2);
                 if (target.isPresent())
-                    res.add(new Pair<>(target.get(), username));
+                    res.add(new Triple<>(target.get(), username, getOwnerKey(username)));
             }
             return res;
+        } catch (SQLException sqe) {
+            LOG.log(Level.WARNING, sqe.getMessage(), sqe);
+            throw new RuntimeException(sqe);
+        }
+    }
+
+    public PublicKeyHash getOwnerKey(PublicKeyHash writer) {
+        int writerId = getWriterId(writer);
+        try (Connection conn = getConnection();
+             PreparedStatement search = conn.prepareStatement("SELECT parent_id FROM ownedkeys WHERE owned_id = ?;")) {
+            search.setInt(1, writerId);
+            ResultSet resultSet = search.executeQuery();
+            if (! resultSet.next())
+                return writer;
+            return getOwnerKey(getWriter(resultSet.getInt(1)));
+        } catch (SQLException sqe) {
+            LOG.log(Level.WARNING, sqe.getMessage(), sqe);
+            throw new RuntimeException(sqe);
+        }
+    }
+
+    public PublicKeyHash getOwnerKey(String username) {
+        int userId = getUserId(username);
+        try (Connection conn = getConnection();
+             PreparedStatement search = conn.prepareStatement("SELECT w.writer_id FROM writerusage w WHERE w.user_id = ?;")) {
+            search.setInt(1, userId);
+            ResultSet resultSet = search.executeQuery();
+            if (! resultSet.next())
+                throw new IllegalStateException("Couldn't find writer for user!");
+            int writerId = resultSet.getInt(1);
+            PublicKeyHash writer = getWriter(writerId);
+            return getOwnerKey(writer);
         } catch (SQLException sqe) {
             LOG.log(Level.WARNING, sqe.getMessage(), sqe);
             throw new RuntimeException(sqe);

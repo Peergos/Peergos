@@ -6,6 +6,7 @@ import peergos.server.util.*;
 
 import peergos.shared.corenode.*;
 import peergos.shared.crypto.hash.*;
+import peergos.shared.io.ipfs.Cid;
 import peergos.shared.mutable.*;
 import peergos.shared.storage.*;
 import peergos.shared.user.*;
@@ -87,9 +88,11 @@ public class UserBasedBlacklist implements PublicKeyBlackList {
 
     private Set<PublicKeyHash> buildBlackList(Set<String> usernames) {
         Set<PublicKeyHash> res = new HashSet<>();
+        Cid ourId = dht.id().join();
         for (String username : usernames) {
+            PublicKeyHash owner = core.getPublicKeyHash(username).join().get();
             res.addAll(DeletableContentAddressedStorage.getOwnedKeysRecursive(username, core, mutable,
-                    (h, s) -> DeletableContentAddressedStorage.getWriterData(Collections.emptyList(), h, s, false, dht), dht, hasher).join());
+                    (h, s) -> DeletableContentAddressedStorage.getWriterData(Collections.emptyList(), owner, h, s, false, ourId, hasher, dht), dht, hasher).join());
         }
         return res;
     }

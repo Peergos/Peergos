@@ -40,6 +40,7 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
     private final BlockingQueue<MutableEvent> mutableQueue = new ArrayBlockingQueue<>(1000);
     private final long quotaUploadLimitSeconds;
     private final Map<String, SlidingWindowCounter> writeLimiter = new ConcurrentHashMap<>();
+    private final Cid ourId;
 
     public SpaceCheckingKeyFilter(CoreNode core,
                                   MutablePointers mutable,
@@ -55,6 +56,7 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
         this.quotaAdmin = quotaAdmin;
         this.usageStore = usageStore;
         this.quotaUploadLimitSeconds = quotaUploadLimitSeconds;
+        this.ourId = dht.id().join();
         new Thread(() -> {
             while (isRunning.get()) {
                 try {
@@ -119,6 +121,7 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
                               DeletableContentAddressedStorage dht,
                               Hasher hasher) {
         Logging.LOG().info("Checking for updated usage for users...");
+        Cid ourId = dht.id().join();
         List<String> localUsernames = quotas.getLocalUsernames();
         for (String username : localUsernames) {
             store.addUserIfAbsent(username);
@@ -130,7 +133,7 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
         Logging.LOG().info("Checking for updated mutable pointers...");
         long t1 = System.currentTimeMillis();
         Set<PublicKeyHash> writers = store.getAllWriters();
-        List<Multihash> us = List.of(dht.id().join().bareMultihash());
+        List<Multihash> us = List.of(ourId.bareMultihash());
         for (PublicKeyHash writerKey : writers) {
             WriterUsage tmpUsage = null;
             try {
@@ -143,11 +146,11 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
                 boolean isChanged = ! writerUsage.target().equals(rootHash);
                 if (isChanged) {
                     Logging.LOG().info("Root hash changed from " + writerUsage.target() + " to " + rootHash);
-                    long updatedSize = dht.getRecursiveBlockSize((Cid)rootHash.get(), us).get();
+                    long updatedSize = dht.getRecursiveBlockSize(owner, (Cid)rootHash.get(), us).get();
                     long deltaUsage = updatedSize - writerUsage.directRetainedStorage();
                     store.confirmUsage(writerUsage.owner, writerKey, deltaUsage, false);
                     Set<PublicKeyHash> directOwnedKeys = DeletableContentAddressedStorage.getDirectOwnedKeys(owner, writerKey, mutable,
-                            (h, s) -> DeletableContentAddressedStorage.getWriterData(us, h,s, false, dht), dht, hasher).join();
+                            (h, s) -> DeletableContentAddressedStorage.getWriterData(us, owner, h, s, false, ourId, hasher, dht), dht, hasher).join();
                     List<PublicKeyHash> newOwnedKeys = directOwnedKeys.stream()
                             .filter(key -> !writerUsage.ownedKeys().contains(key))
                             .collect(Collectors.toList());
@@ -232,13 +235,14 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
                                                     DeletableContentAddressedStorage dht,
                                                     UsageStore usageStore,
                                                     Hasher hasher) {
-        List<Multihash> us = List.of(dht.id().join().bareMultihash());
+        Cid ourId = dht.id().join();
+        List<Multihash> us = List.of(ourId.bareMultihash());
         PointerUpdate pointerUpdate = dht.getSigningKey(event.owner, event.writer)
                 .thenApply(signer -> PointerUpdate.fromCbor(CborObject.fromByteArray(signer.get()
                         .unsignMessage(event.writerSignedBtreeRootHash).join()))).join();
         Set<PublicKeyHash> updatedOwned =
                 DeletableContentAddressedStorage.getDirectOwnedKeys(event.owner, event.writer, pointerUpdate.updated,
-                        (h, s) -> DeletableContentAddressedStorage.getWriterData(us, h,s, false, dht), dht, hasher).join();
+                        (h, s) -> DeletableContentAddressedStorage.getWriterData(us, event.owner, h, s, false, ourId, hasher, dht), dht, hasher).join();
         WriterUsage current = usageStore.getUsage(event.writer);
         for (PublicKeyHash owned : updatedOwned) {
             usageStore.addWriter(current.owner, owned);
@@ -270,7 +274,8 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
         WriterUsage current = state.getUsage(writer);
         if (current == null)
             throw new IllegalStateException("Unknown writer key hash: " + writer);
-        List<Multihash> us = List.of(dht.id().join().bareMultihash());
+        Cid ourId = dht.id().join();
+        List<Multihash> us = List.of(ourId.bareMultihash());
         if (! newRoot.isPresent()) {
             LOG.info("Removing usage for (" + owner + ", " + writer + ") from " + current.directRetainedStorage());
             state.confirmUsage(current.owner, writer, -current.directRetainedStorage(), false);
@@ -280,7 +285,7 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
                     // subtract data size from orphaned child keys (this assumes the keys form a tree without dupes)
                     Set<PublicKeyHash> updatedOwned =
                             DeletableContentAddressedStorage.getDirectOwnedKeys(owner, writer, existingRoot,
-                                    (h, s) -> DeletableContentAddressedStorage.getWriterData(us, h,s, false, dht),  dht, hasher).join();
+                                    (h, s) -> DeletableContentAddressedStorage.getWriterData(us, owner, h, s, false, ourId, hasher, dht),  dht, hasher).join();
                     processRemovedOwnedKeys(state, owner, updatedOwned, mutable, dht, hasher);
                 } catch (Exception e) {
                     LOG.log(Level.WARNING, e.getMessage(), e);
@@ -292,12 +297,12 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
         try {
             synchronized (current) {
                 long t0 = System.nanoTime();
-                long changeInStorage = dht.getChangeInContainedSize(current.target().toOptional().map(c -> (Cid) c), (Cid) newRoot.get()).get();
+                long changeInStorage = dht.getChangeInContainedSize(owner, current.target().toOptional().map(c -> (Cid) c), (Cid) newRoot.get()).get();
                 long t1 = System.nanoTime();
                 LOG.info("Calculating change in used space for (" + owner + ", " + writer + ") took " + (t1-t0)/1_000_000 + "mS");
                 Set<PublicKeyHash> updatedOwned =
                         DeletableContentAddressedStorage.getDirectOwnedKeys(owner, writer, newRoot,
-                                (h, s) -> DeletableContentAddressedStorage.getWriterData(us, h,s, false, dht), dht, hasher).join();
+                                (h, s) -> DeletableContentAddressedStorage.getWriterData(us, owner, h, s, false, ourId, hasher, dht), dht, hasher).join();
                 for (PublicKeyHash owned : updatedOwned) {
                     state.addWriter(current.owner, owned);
                 }

@@ -292,7 +292,7 @@ public class StorageHandler implements HttpHandler {
                 case BLOCK_STAT: {
                     AggregatedMetrics.STORAGE_BLOCK_STAT.inc();
                     Multihash block = Cid.decode(args.get(0));
-                    dht.getSize(block).thenAccept(sizeOpt -> {
+                    dht.getSize(PublicKeyHash.NULL, block).thenAccept(sizeOpt -> {
                         Map<String, Object> res = new HashMap<>();
                         res.put("Size", sizeOpt.orElse(0));
                         String json = JSONParser.toString(res);

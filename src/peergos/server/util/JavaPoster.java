@@ -112,7 +112,7 @@ public class JavaPoster implements HttpPoster {
     }
 
     public static void handleError(String url, CompletableFuture<byte[]> res, HttpResponse<InputStream> response, Exception e) {
-        if (response != null){
+        if (response != null) {
             HttpHeaders responseHeaders = response.headers();
             Optional<String> trailer = responseHeaders.firstValue("Trailer");
             if (trailer.isPresent())

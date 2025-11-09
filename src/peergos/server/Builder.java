@@ -232,8 +232,9 @@ public class Builder {
         JavaPoster ipfsApi = buildIpfsApi(a);
         JavaPoster p2pHttpProxy = buildP2pHttpProxy(a);
         DeletableContentAddressedStorage.HTTP http = new DeletableContentAddressedStorage.HTTP(ipfsApi, false, hasher);
+        ContentAddressedStorageProxy p2pGets = new ContentAddressedStorageProxy.HTTP(p2pHttpProxy);
         List<PeerId> ourIds = ids.getIdentities();
-        MultiIdStorage ipfs = new MultiIdStorage(http, ourIds);
+        MultiIdStorage ipfs = new MultiIdStorage(new LocalFirstStorage(http, p2pGets, ourIds, hasher), ourIds);
         String linkHost = a.getOptionalArg("public-domain").orElseGet(() -> "localhost:" + a.getInt("port"));
         if (useIPFS) {
             if (useS3) {
@@ -269,7 +270,7 @@ public class Builder {
             if (useS3) {
                 if (enableGC)
                     throw new IllegalStateException("GC should be run separately when using S3!");
-                TransactionalIpfs p2pBlockRetriever = new TransactionalIpfs(http, transactions, authoriser, ipfs.id().join(), linkHost, hasher);
+                TransactionalIpfs p2pBlockRetriever = new TransactionalIpfs(ipfs, transactions, authoriser, ipfs.id().join(), linkHost, hasher);
                 S3Config config = S3Config.build(a, Optional.empty());
                 BlockStoreProperties props = buildS3Properties(a);
 

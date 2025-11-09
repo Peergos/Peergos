@@ -147,7 +147,7 @@ public class RetryStorageTests {
         }
 
         @Override
-        public CompletableFuture<Optional<Integer>> getSize(Multihash block) {
+        public CompletableFuture<Optional<Integer>> getSize(PublicKeyHash owner, Multihash block) {
             if(counter++ % retryLimit != 0) {
                 return CompletableFuture.failedFuture(new Error("failure!"));
             }else {

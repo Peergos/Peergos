@@ -49,7 +49,7 @@ public class ValidateUser {
         List<Multihash> links = block.get().links();
         for (Multihash link : links) {
             if (link instanceof Cid && ((Cid) link).codec == Cid.Codec.Raw)
-                network.dhtClient.getSize(link).join();
+                network.dhtClient.getSize(owner, link).join();
             else
                 validateBlock(owner, link, network);
         }

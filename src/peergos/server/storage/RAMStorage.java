@@ -72,15 +72,15 @@ public class RAMStorage implements DeletableContentAddressedStorage {
     }
 
     @Override
-    public Stream<Cid> getAllBlockHashes(boolean useBlockstore) {
-        return storage.keySet().stream();
+    public Stream<Pair<PublicKeyHash, Cid>> getAllBlockHashes(boolean useBlockstore) {
+        return storage.keySet().stream().map(c -> new Pair<>(PublicKeyHash.NULL, c));
     }
 
 
     @Override
     public void getAllBlockHashVersions(Consumer<List<BlockVersion>> res) {
         res.accept(getAllBlockHashes(false)
-                .map(c -> new BlockVersion(c, null, true))
+                .map(p -> new BlockVersion(p.right, null, true))
                 .collect(Collectors.toList()));
     }
 
@@ -136,7 +136,7 @@ public class RAMStorage implements DeletableContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<Optional<byte[]>> getRaw(List<Multihash> peerIds, Cid object, String auth, boolean persistBlock) {
+    public CompletableFuture<Optional<byte[]>> getRaw(List<Multihash> peerIds, PublicKeyHash owner, Cid object, String auth, boolean persistBlock) {
         return CompletableFuture.completedFuture(storage.containsKey(object) ?
                 Optional.of(storage.get(object)) :
                 Optional.empty());
@@ -144,11 +144,11 @@ public class RAMStorage implements DeletableContentAddressedStorage {
 
     @Override
     public CompletableFuture<Optional<byte[]>> getRaw(PublicKeyHash owner, Cid hash, Optional<BatWithId> bat) {
-        return getRaw(Collections.emptyList(), hash, bat, id().join(), hasher, false);
+        return getRaw(Collections.emptyList(), owner, hash, bat, id().join(), hasher, false);
     }
 
     @Override
-    public CompletableFuture<Optional<CborObject>> get(List<Multihash> peerIds, Cid hash, String auth, boolean persistBlock) {
+    public CompletableFuture<Optional<CborObject>> get(List<Multihash> peerIds, PublicKeyHash owner, Cid hash, String auth, boolean persistBlock) {
         if (hash.codec == Cid.Codec.Raw)
             throw new IllegalStateException("Need to call getRaw if cid is not cbor!");
         return CompletableFuture.completedFuture(getAndParseObject(hash));
@@ -156,7 +156,7 @@ public class RAMStorage implements DeletableContentAddressedStorage {
 
     @Override
     public CompletableFuture<Optional<CborObject>> get(PublicKeyHash owner, Cid hash, Optional<BatWithId> bat) {
-        return get(Collections.emptyList(), hash, bat, id().join(), hasher, false);
+        return get(Collections.emptyList(), owner, hash, bat, id().join(), hasher, false);
     }
 
     private synchronized Optional<CborObject> getAndParseObject(Multihash hash) {
@@ -174,17 +174,17 @@ public class RAMStorage implements DeletableContentAddressedStorage {
     }
 
     @Override
-    public List<BlockMetadata> bulkGetLinks(List<Multihash> peerIds, List<Want> wants) {
+    public List<BlockMetadata> bulkGetLinks(List<Multihash> peerIds, PublicKeyHash owner, List<Want> wants) {
         return wants.stream()
-                .map(w -> getBlockMetadata(w.cid).join())
+                .map(w -> getBlockMetadata(owner, w.cid).join())
                 .toList();
     }
 
     @Override
-    public CompletableFuture<List<Cid>> getLinks(Cid root, List<Multihash> peerids) {
+    public CompletableFuture<List<Cid>> getLinks(PublicKeyHash owner, Cid root, List<Multihash> peerids) {
         if (root.codec == Cid.Codec.Raw)
             return CompletableFuture.completedFuture(Collections.emptyList());
-        return get(peerids, root, "", false).thenApply(opt -> opt
+        return get(peerids, owner, root, "", false).thenApply(opt -> opt
                 .map(cbor -> cbor.links().stream().map(c -> (Cid)c).collect(Collectors.toList()))
                 .orElse(Collections.emptyList())
         );
@@ -196,7 +196,7 @@ public class RAMStorage implements DeletableContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<Optional<Integer>> getSize(Multihash block) {
+    public CompletableFuture<Optional<Integer>> getSize(PublicKeyHash owner, Multihash block) {
         if (!storage.containsKey(block))
             return CompletableFuture.completedFuture(Optional.empty());
         return CompletableFuture.completedFuture(Optional.of(storage.get(block).length));

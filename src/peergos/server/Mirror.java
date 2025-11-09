@@ -173,9 +173,10 @@ public class Mirror {
             return Collections.emptyMap();
         PublicKeyHash owner = identity.get();
         Map<PublicKeyHash, byte[]> versions = new HashMap<>();
+        Cid ourId = storage.id().join();
         List<Multihash> storageProviders = core.getStorageProviders(owner);
         Set<PublicKeyHash> ownedKeys = DeletableContentAddressedStorage.getOwnedKeysRecursive(owner, owner, p2pPointers,
-                (h, s) -> DeletableContentAddressedStorage.getWriterData(storageProviders,  h, s, true, storage), storage, hasher).join();
+                (h, s) -> DeletableContentAddressedStorage.getWriterData(storageProviders, owner, h, s, true, ourId, hasher, storage), storage, hasher).join();
         for (PublicKeyHash ownedKey : ownedKeys) {
             Optional<byte[]> version = mirrorMutableSubspace(username, owner, ownedKey, storageProviders, mirrorBat, p2pPointers, storage,
                     targetPointers, transactions, usage, hasher);

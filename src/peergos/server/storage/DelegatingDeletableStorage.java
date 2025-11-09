@@ -31,12 +31,12 @@ public class DelegatingDeletableStorage implements DeletableContentAddressedStor
     }
 
     @Override
-    public List<BlockMetadata> bulkGetLinks(List<Multihash> peerIds, List<Want> wants) {
-        return target.bulkGetLinks(peerIds, wants);
+    public List<BlockMetadata> bulkGetLinks(List<Multihash> peerIds, PublicKeyHash owner, List<Want> wants) {
+        return target.bulkGetLinks(peerIds, owner, wants);
     }
 
     @Override
-    public Stream<Cid> getAllBlockHashes(boolean useBlockstore) {
+    public Stream<Pair<PublicKeyHash, Cid>> getAllBlockHashes(boolean useBlockstore) {
         return target.getAllBlockHashes(useBlockstore);
     }
 
@@ -76,13 +76,25 @@ public class DelegatingDeletableStorage implements DeletableContentAddressedStor
     }
 
     @Override
-    public CompletableFuture<Optional<CborObject>> get(List<Multihash> peerIds, Cid hash, String auth, boolean persistBlock) {
-        return target.get(peerIds, hash, auth, persistBlock);
+    public CompletableFuture<Optional<CborObject>> get(List<Multihash> peerIds, PublicKeyHash owner, Cid hash, String auth, boolean persistBlock) {
+        return target.get(peerIds, owner, hash, auth, persistBlock);
     }
 
     @Override
-    public CompletableFuture<Optional<byte[]>> getRaw(List<Multihash> peerIds, Cid hash, String auth, boolean persistBlock) {
-        return target.getRaw(peerIds, hash, auth, persistBlock);
+    public CompletableFuture<Optional<byte[]>> getRaw(List<Multihash> peerIds, PublicKeyHash owner, Cid hash, String auth, boolean persistBlock) {
+        return target.getRaw(peerIds, owner, hash, auth, persistBlock);
+    }
+
+    @Override
+    public CompletableFuture<Optional<byte[]>> getRaw(List<Multihash> peerIds,
+                                                      PublicKeyHash owner,
+                                                      Cid hash,
+                                                      Optional<BatWithId> bat,
+                                                      Cid ourId,
+                                                      Hasher h,
+                                                      boolean doAuth,
+                                                      boolean persistBlock) {
+        return target.getRaw(peerIds, owner, hash, bat, ourId, h, doAuth, persistBlock);
     }
 
     @Override
@@ -178,8 +190,8 @@ public class DelegatingDeletableStorage implements DeletableContentAddressedStor
     }
 
     @Override
-    public CompletableFuture<Optional<CborObject>> get(List<Multihash> peerIds, Cid hash, Optional<BatWithId> bat, Cid ourId, Hasher h, boolean persistBlock) {
-        return target.get(peerIds, hash, bat, ourId, h, persistBlock);
+    public CompletableFuture<Optional<CborObject>> get(List<Multihash> peerIds, PublicKeyHash owner, Cid hash, Optional<BatWithId> bat, Cid ourId, Hasher h, boolean persistBlock) {
+        return target.get(peerIds, owner, hash, bat, ourId, h, persistBlock);
     }
 
     @Override
@@ -208,8 +220,8 @@ public class DelegatingDeletableStorage implements DeletableContentAddressedStor
     }
 
     @Override
-    public CompletableFuture<Optional<Integer>> getSize(Multihash block) {
-        return target.getSize(block);
+    public CompletableFuture<Optional<Integer>> getSize(PublicKeyHash owner, Multihash block) {
+        return target.getSize(owner, block);
     }
 
     @Override
@@ -218,13 +230,13 @@ public class DelegatingDeletableStorage implements DeletableContentAddressedStor
     }
 
     @Override
-    public CompletableFuture<List<Cid>> getLinks(Cid root, List<Multihash> peerids) {
-        return target.getLinks(root, peerids);
+    public CompletableFuture<List<Cid>> getLinks(PublicKeyHash owner, Cid root, List<Multihash> peerids) {
+        return target.getLinks(owner, root, peerids);
     }
 
     @Override
-    public CompletableFuture<BlockMetadata> getBlockMetadata(Cid block) {
-        return target.getBlockMetadata(block);
+    public CompletableFuture<BlockMetadata> getBlockMetadata(PublicKeyHash owner, Cid block) {
+        return target.getBlockMetadata(owner, block);
     }
 
     @Override

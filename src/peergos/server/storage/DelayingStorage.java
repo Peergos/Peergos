@@ -124,9 +124,9 @@ public class DelayingStorage implements ContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<Optional<Integer>> getSize(Multihash block) {
+    public CompletableFuture<Optional<Integer>> getSize(PublicKeyHash owner, Multihash block) {
         try {
-            return source.getSize(block);
+            return source.getSize(owner, block);
         } catch (Exception e) {
             throw new RuntimeException(e.getMessage(), e);
         }

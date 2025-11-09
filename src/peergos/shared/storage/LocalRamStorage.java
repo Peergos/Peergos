@@ -116,7 +116,7 @@ public class LocalRamStorage implements ContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<Optional<Integer>> getSize(Multihash block) {
+    public CompletableFuture<Optional<Integer>> getSize(PublicKeyHash owner, Multihash block) {
         throw new IllegalStateException("Unimplemented!");
     }
 

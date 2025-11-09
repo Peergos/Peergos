@@ -214,7 +214,7 @@ public interface ContentAddressedStorage {
      * @param block The hash of the object
      * @return The size in bytes, or Optional.empty() if it cannot be found.
      */
-    CompletableFuture<Optional<Integer>> getSize(Multihash block);
+    CompletableFuture<Optional<Integer>> getSize(PublicKeyHash owner, Multihash block);
 
     CompletableFuture<IpnsEntry> getIpnsEntry(Multihash signer);
 
@@ -499,7 +499,7 @@ public interface ContentAddressedStorage {
                                                      String format,
                                                      TransactionId tid,
                                                      ProgressConsumer<Long> progressConsumer) {
-            if (signatures.stream().anyMatch(s -> s.length == 0))
+            if (isPeergosServer && signatures.stream().anyMatch(s -> s == null || s.length == 0))
                 throw new IllegalStateException("Empty signature in block write!");
             // Do up to 10 fragments per query (50 pre-auth max/ 5 browser upload connections), unless we are talking
             // to IPFS directly or there are fewer than 10 blocks. Then upload one per query because IPFS doesn't
@@ -601,7 +601,7 @@ public interface ContentAddressedStorage {
         }
 
         @Override
-        public CompletableFuture<Optional<Integer>> getSize(Multihash block) {
+        public CompletableFuture<Optional<Integer>> getSize(PublicKeyHash owner, Multihash block) {
             if (block.type == Multihash.Type.id)
                 return Futures.of(Optional.of(block.getHash().length));
             return poster.get(apiPrefix + BLOCK_STAT + "?stream-channels=true&arg=" + block.toString() + "&auth=letmein")
@@ -743,8 +743,8 @@ public interface ContentAddressedStorage {
         }
 
         @Override
-        public CompletableFuture<Optional<Integer>> getSize(Multihash block) {
-            return local.getSize(block);
+        public CompletableFuture<Optional<Integer>> getSize(PublicKeyHash owner, Multihash block) {
+            return local.getSize(owner, block);
         }
 
         @Override

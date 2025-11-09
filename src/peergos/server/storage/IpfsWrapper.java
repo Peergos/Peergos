@@ -420,9 +420,11 @@ public class IpfsWrapper implements AutoCloseable {
         org.peergos.blockstore.metadatadb.BlockMetadataStore meta =
                 new DelegatingBlockMetadataStore(metaDB);
         boolean provideBlocks = args.hasArg("mirror.node.id") || args.hasArg("mirror.username");
+        boolean runBitswap = false;
         ipfsWrapper.embeddedIpfs = EmbeddedIpfs.build(records,
                 EmbeddedIpfs.buildBlockStore(config, ipfsWrapper.ipfsDir, meta, false),
                 provideBlocks,
+                runBitswap,
                 config.addresses.getSwarmAddresses(),
                 config.bootstrap.getBootstrapAddresses(),
                 config.identity,

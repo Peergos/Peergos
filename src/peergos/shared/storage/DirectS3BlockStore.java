@@ -321,8 +321,8 @@ public class DirectS3BlockStore implements ContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<Optional<Integer>> getSize(Multihash block) {
-        return fallback.getSize(block);
+    public CompletableFuture<Optional<Integer>> getSize(PublicKeyHash owner, Multihash block) {
+        return fallback.getSize(owner, block);
     }
 
     @Override
