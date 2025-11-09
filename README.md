@@ -23,7 +23,7 @@ Want to try it out now? Here's a read-only secret link [to a folder](https://pee
 
 Sign-up
 ----
-We run a server at https://peergos.net/. There are a limited number of free accounts available. You can upgrade to a paid account to get more storage. 
+We run a paid server at https://peergos.net/. 
 
 Tech book
 ---------
