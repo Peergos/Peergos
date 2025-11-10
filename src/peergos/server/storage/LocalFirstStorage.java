@@ -46,6 +46,8 @@ public class LocalFirstStorage extends DelegatingDeletableStorage {
                                                       Cid ourId,
                                                       Hasher h,
                                                       boolean persistBlock) {
+        if (hash.isIdentity())
+            return Futures.of(Optional.of(hash.getHash()));
         boolean localBlock = local.hasBlock(hash);
         if (localBlock)
             return local.getRaw(peerIds, owner, hash, bat, ourId, h, persistBlock);
@@ -69,9 +71,13 @@ public class LocalFirstStorage extends DelegatingDeletableStorage {
                                                       Hasher h,
                                                       boolean doAuth,
                                                       boolean persistBlock) {
+        if (hash.isIdentity())
+            return Futures.of(Optional.of(hash.getHash()));
         boolean localBlock = local.hasBlock(hash);
         if (localBlock)
             return local.getRaw(owner, hash, bat);
+        if (peerIds.get(0).equals(ourId))
+            throw new IllegalStateException("We should have this block!");
         return p2pGets.getRaw(peerIds.get(0), owner, hash, bat).thenCompose(res -> {
             if (res.isPresent() && persistBlock) {
                 return (hash.isRaw() ?
@@ -91,6 +97,8 @@ public class LocalFirstStorage extends DelegatingDeletableStorage {
                                                        boolean persistBlock) {
         if (! auth.isEmpty())
             throw new IllegalStateException("Can't retrieve private block!");
+        if (hash.isIdentity())
+            return Futures.of(Optional.of(CborObject.fromByteArray(hash.getHash())));
         boolean localBlock = local.hasBlock(hash);
         if (localBlock)
             return local.get(peerIds, owner, hash, auth, persistBlock);

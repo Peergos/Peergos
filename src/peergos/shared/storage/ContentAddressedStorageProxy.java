@@ -154,7 +154,7 @@ public interface ContentAddressedStorageProxy {
                                                            Cid hash,
                                                            Optional<BatWithId> bat) {
             return poster.get(getProxyUrlPrefix(targetServerId) + apiPrefix +
-                            BLOCK_GET + "?stream-channels=true&arg="
+                            BLOCK_GET + "?arg="
                             + hash
                             + "&owner=" + encode(owner.toString())
                             + bat.map(b -> "&bat=" + b.encode()).orElse(""))
@@ -167,7 +167,7 @@ public interface ContentAddressedStorageProxy {
                                                           Cid hash,
                                                           Optional<BatWithId> bat) {
             return poster.get(getProxyUrlPrefix(targetServerId) + apiPrefix +
-                            BLOCK_GET + "?stream-channels=true&arg=" + hash
+                            BLOCK_GET + "?arg=" + hash
                             + "&owner=" + encode(owner.toString())
                             + bat.map(b -> "&bat=" + b.encode()).orElse(""))
                     .thenApply(raw -> raw.length == 0 ? Optional.empty() : Optional.of(raw));
