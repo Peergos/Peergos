@@ -442,7 +442,18 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
 
     @Override
     public CompletableFuture<Optional<byte[]>> getRaw(List<Multihash> peerIds, PublicKeyHash owner, Cid hash, Optional<BatWithId> bat, Cid ourId, Hasher h, boolean persistBlock) {
-        return getRaw(peerIds, owner, hash, bat, ourId, h, persistBlock);
+        return getRaw(peerIds, owner, hash, bat, ourId, h, true, persistBlock);
+    }
+
+    @Override
+    public CompletableFuture<Optional<byte[]>> getRaw(List<Multihash> peerIds, PublicKeyHash owner, Cid hash, Optional<BatWithId> bat, Cid ourId, Hasher h, boolean doAuth, boolean persistBlock) {
+        if (noReads) {
+            if (peerIds.stream().anyMatch(p -> ids.stream().anyMatch(us -> us.bareMultihash().equals(p.bareMultihash()))))
+                throw new IllegalStateException("Reads from Glacier are disabled!");
+            return p2pFallback.getRaw(peerIds, owner, hash, generateAuth(hash, bat, ourId, h), doAuth, persistBlock);
+        }
+        return getRaw(peerIds, owner, hash, Optional.empty(), generateAuth(hash, bat, ourId, h), doAuth, bat, persistBlock)
+                .thenApply(p -> p.map(v -> v.left));
     }
 
     public CompletableFuture<Optional<byte[]>> getRaw(PublicKeyHash owner, List<Multihash> peerIds, Cid hash, Optional<BatWithId> bat, Cid ourId, Hasher h, boolean persistBlock) {
@@ -451,11 +462,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                 throw new IllegalStateException("Reads from Glacier are disabled!");
             return p2pFallback.getRaw(peerIds, owner, hash, bat, ourId, h, persistBlock);
         }
-        if (bat.isEmpty())
-            return getRaw(peerIds, owner, hash, "", persistBlock);
-        return bat.get().bat.generateAuth(hash, ourId, 300, S3Request.currentDatetime(), bat.get().id, h)
-                .thenApply(BlockAuth::encode)
-                .thenCompose(auth -> getRaw(peerIds, owner, hash, Optional.empty(), auth, true, bat, persistBlock))
+        return getRaw(peerIds, owner, hash, Optional.empty(), generateAuth(hash, bat, ourId, h), true, bat, persistBlock)
                 .thenApply(p -> p.map(v -> v.left));
     }
 

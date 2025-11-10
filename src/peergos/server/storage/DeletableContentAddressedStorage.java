@@ -120,23 +120,22 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
         return getRaw(peerIds, owner, hash, bat, ourId, h, true, persistBlock);
     }
 
-    default CompletableFuture<Optional<byte[]>> getRaw(List<Multihash> peerIds,
-                                                       PublicKeyHash owner,
-                                                       Cid hash,
-                                                       Optional<BatWithId> bat,
-                                                       Cid ourId,
-                                                       Hasher h,
-                                                       boolean doAuth,
-                                                       boolean persistBlock) {
-        if (bat.isEmpty())
-            return getRaw(peerIds, owner, hash, Optional.empty(), ourId, h, persistBlock);
-        return bat.get().bat.generateAuth(hash, ourId, 300, S3Request.currentDatetime(), bat.get().id, h)
-                .thenApply(BlockAuth::encode)
-                .thenCompose(auth -> getRaw(peerIds, owner, hash, auth, doAuth, persistBlock));
+    default String generateAuth(Cid hash, Optional<BatWithId> bat, Cid ourId, Hasher h) {
+        return bat.isEmpty() ? "" : bat.get().bat.generateAuth(hash, ourId, 300, S3Request.currentDatetime(), bat.get().id, h)
+                .thenApply(BlockAuth::encode).join();
     }
 
-    default CompletableFuture<List<Cid>> mirror(String username,
+    CompletableFuture<Optional<byte[]>> getRaw(List<Multihash> peerIds,
                                                PublicKeyHash owner,
+                                               Cid hash,
+                                               Optional<BatWithId> bat,
+                                               Cid ourId,
+                                               Hasher h,
+                                               boolean doAuth,
+                                               boolean persistBlock);
+
+    default CompletableFuture<List<Cid>> mirror(String username,
+                                                PublicKeyHash owner,
                                                PublicKeyHash writer,
                                                List<Multihash> peerIds,
                                                Optional<Cid> existing,
@@ -456,6 +455,27 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
                             + "&auth=" + auth
                             + "&persist=" + persistBlock)
                     .thenApply(raw -> raw.length == 0 ? Optional.empty() : Optional.of(CborObject.fromByteArray(raw)));
+        }
+
+        @Override
+        public CompletableFuture<Optional<byte[]>> getRaw(List<Multihash> peerIds,
+                                                          PublicKeyHash owner,
+                                                          Cid hash,
+                                                          Optional<BatWithId> bat,
+                                                          Cid ourId,
+                                                          Hasher h,
+                                                          boolean doAuth,
+                                                          boolean persistBlock) {
+            if (hash.isIdentity())
+                return CompletableFuture.completedFuture(Optional.of(hash.getHash()));
+            if (peerIds.isEmpty())
+                throw new IllegalStateException("Empty peer list for block "+hash+"!");
+            return poster.get(apiPrefix + BLOCK_GET + "?stream-channels=true&arg=" + hash
+                            + (peerIds.isEmpty() ? "" : "&peers=" + peerIds.stream().map(p -> p.bareMultihash().toBase58()).collect(Collectors.joining(",")))
+                            + "&owner=" + owner
+                            + bat.map(b -> "&bat=" + b.encode()).orElse("")
+                            + "&persist=" + persistBlock)
+                    .thenApply(raw -> raw.length == 0 ? Optional.empty() : Optional.of(raw));
         }
 
         @Override

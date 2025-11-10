@@ -136,6 +136,20 @@ public class RAMStorage implements DeletableContentAddressedStorage {
     }
 
     @Override
+    public CompletableFuture<Optional<byte[]>> getRaw(List<Multihash> peerIds,
+                                                      PublicKeyHash owner,
+                                                      Cid hash,
+                                                      Optional<BatWithId> bat,
+                                                      Cid ourId,
+                                                      Hasher h,
+                                                      boolean doAuth,
+                                                      boolean persistBlock) {
+        return CompletableFuture.completedFuture(storage.containsKey(hash) ?
+                Optional.of(storage.get(hash)) :
+                Optional.empty());
+    }
+
+    @Override
     public CompletableFuture<Optional<byte[]>> getRaw(List<Multihash> peerIds, PublicKeyHash owner, Cid object, String auth, boolean persistBlock) {
         return CompletableFuture.completedFuture(storage.containsKey(object) ?
                 Optional.of(storage.get(object)) :

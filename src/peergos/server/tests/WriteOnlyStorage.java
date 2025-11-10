@@ -4,6 +4,7 @@ import peergos.server.storage.*;
 import peergos.server.storage.auth.Want;
 import peergos.shared.cbor.CborObject;
 import peergos.shared.corenode.CoreNode;
+import peergos.shared.crypto.hash.Hasher;
 import peergos.shared.crypto.hash.PublicKeyHash;
 import peergos.shared.io.ipfs.Cid;
 import peergos.shared.io.ipfs.Multihash;
@@ -84,6 +85,18 @@ public class WriteOnlyStorage implements DeletableContentAddressedStorage {
 
     @Override
     public CompletableFuture<Optional<CborObject>> get(List<Multihash> peerIds, PublicKeyHash owner, Cid hash, String auth, boolean persistBlock) {
+        throw new IllegalStateException("Not implemented!");
+    }
+
+    @Override
+    public CompletableFuture<Optional<byte[]>> getRaw(List<Multihash> peerIds,
+                                                      PublicKeyHash owner,
+                                                      Cid hash,
+                                                      Optional<BatWithId> bat,
+                                                      Cid ourId,
+                                                      Hasher h,
+                                                      boolean doAuth,
+                                                      boolean persistBlock) {
         throw new IllegalStateException("Not implemented!");
     }
 
