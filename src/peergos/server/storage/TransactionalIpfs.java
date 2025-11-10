@@ -95,7 +95,8 @@ public class TransactionalIpfs extends DelegatingDeletableStorage {
                                                        Hasher h,
                                                        boolean persistBlock) {
         if (bat.isEmpty())
-            return target.get(peerIds, owner, hash, bat, ourId, hasher, persistBlock);
+            return getRaw(peerIds, owner, hash, bat, ourId, hasher, true, persistBlock)
+                    .thenApply(opt -> opt.map(CborObject::fromByteArray));
         return Futures.asyncExceptionally(() -> bat.get().bat.generateAuth(hash, ourId, 300, S3Request.currentDatetime(), bat.get().id, h)
                         .thenApply(BlockAuth::encode)
                         .thenCompose(auth -> get(peerIds, owner, hash, auth, persistBlock)),
