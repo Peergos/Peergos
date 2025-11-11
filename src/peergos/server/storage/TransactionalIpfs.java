@@ -151,6 +151,8 @@ public class TransactionalIpfs extends DelegatingDeletableStorage {
                                                       String auth,
                                                       boolean doAuth,
                                                       boolean persistBlock) {
+        if (hash.isIdentity())
+            return Futures.of(Optional.of(hash.getHash()));
         return target.getRaw(peerIds, owner, hash, auth, persistBlock).thenApply(bopt -> {
             if (bopt.isEmpty())
                 return Optional.empty();

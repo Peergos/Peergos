@@ -436,6 +436,17 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
     }
 
     @Override
+    public CompletableFuture<Optional<CborObject>> get(List<Multihash> peerIds,
+                                                       PublicKeyHash owner,
+                                                       Cid hash,
+                                                       Optional<BatWithId> bat,
+                                                       Cid ourId,
+                                                       Hasher h,
+                                                       boolean persistBlock) {
+        return getRaw(peerIds, owner, hash, bat, ourId, h, persistBlock).thenApply(opt -> opt.map(CborObject::fromByteArray));
+    }
+
+    @Override
     public CompletableFuture<Optional<byte[]>> getRaw(PublicKeyHash owner, Cid object, Optional<BatWithId> bat) {
         return getRaw(pki.getStorageProviders(owner), owner, object, bat, id, hasher, true);
     }
@@ -598,9 +609,13 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
             }
 
             nonLocalGets.inc();
-            if (p2pGetId.equals(id))
+            if (p2pGetId.equals(id)) {
+                if (auth.isEmpty())
+                    return p2pFallback.getRaw(peerIds, owner, hash, Optional.empty(), id, hasher, persistP2pBlock)
+                        .thenApply(dopt -> dopt.map(b -> new Pair<>(b, null)));
                 return p2pFallback.getRaw(peerIds, owner, hash, auth, persistP2pBlock)
                         .thenApply(dopt -> dopt.map(b -> new Pair<>(b, null)));
+            }
             // recalculate auth when the fallback node has a different node id
             return p2pFallback.getRaw(peerIds, owner, hash, bat, p2pGetId, hasher, enforceAuth, persistP2pBlock)
                     .thenApply(dopt -> dopt.map(b -> new Pair<>(b, null)));
