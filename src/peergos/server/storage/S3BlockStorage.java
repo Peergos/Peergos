@@ -447,6 +447,8 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
 
     @Override
     public CompletableFuture<Optional<byte[]>> getRaw(List<Multihash> peerIds, PublicKeyHash owner, Cid hash, Optional<BatWithId> bat, Cid ourId, Hasher h, boolean doAuth, boolean persistBlock) {
+        if (hash.isIdentity())
+            return Futures.of(Optional.of(hash.getHash()));
         if (noReads) {
             if (peerIds.stream().anyMatch(p -> ids.stream().anyMatch(us -> us.bareMultihash().equals(p.bareMultihash()))))
                 throw new IllegalStateException("Reads from Glacier are disabled!");
@@ -457,6 +459,8 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
     }
 
     public CompletableFuture<Optional<byte[]>> getRaw(PublicKeyHash owner, List<Multihash> peerIds, Cid hash, Optional<BatWithId> bat, Cid ourId, Hasher h, boolean persistBlock) {
+        if (hash.isIdentity())
+            return Futures.of(Optional.of(hash.getHash()));
         if (noReads) {
             if (peerIds.stream().anyMatch(p -> ids.stream().anyMatch(us -> us.bareMultihash().equals(p.bareMultihash()))))
                 throw new IllegalStateException("Reads from Glacier are disabled!");
@@ -473,6 +477,8 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                                                       String auth,
                                                       boolean doAuth,
                                                       boolean persistBlock) {
+        if (hash.isIdentity())
+            return Futures.of(Optional.of(hash.getHash()));
         if (noReads) {
             if (peerIds.stream().anyMatch(p -> ids.stream().anyMatch(us -> us.bareMultihash().equals(p.bareMultihash()))))
                 throw new IllegalStateException("Reads from Glacier are disabled!");
@@ -484,6 +490,8 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
 
     @Override
     public CompletableFuture<Optional<byte[]>> getRaw(List<Multihash> peerIds, PublicKeyHash owner, Cid hash, String auth, boolean persistBlock) {
+        if (hash.isIdentity())
+            return Futures.of(Optional.of(hash.getHash()));
         if (noReads) {
             if (peerIds.stream().anyMatch(p -> ids.stream().anyMatch(us -> us.bareMultihash().equals(p.bareMultihash()))))
                 throw new IllegalStateException("Reads from Glacier are disabled!");
@@ -510,6 +518,8 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                                                                      boolean enforceAuth,
                                                                      Optional<BatWithId> bat,
                                                                      boolean persistP2pBlock) {
+        if (hash.isIdentity())
+            return Futures.of(Optional.of(new Pair<>(hash.getHash(), null)));
         if (noReads)
             throw new IllegalStateException("Reads from Glacier are disabled!");
         if (! hash.isRaw()) {
