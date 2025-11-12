@@ -252,10 +252,16 @@ public class FileContentAddressedStorage implements DeletableContentAddressedSto
     }
 
     @Override
+    public CompletableFuture<BlockMetadata> getBlockMetadata(PublicKeyHash owner, Cid block) {
+        return getRaw(Arrays.asList(id().join()), owner, block, Optional.empty(), ourId, hasher, true)
+                .thenApply(rawOpt -> BlockMetadataStore.extractMetadata(block, rawOpt.get()));
+    }
+
+    @Override
     public CompletableFuture<List<Cid>> getLinks(PublicKeyHash owner, Cid root, List<Multihash> peerids) {
         if (root.codec == Cid.Codec.Raw)
             return CompletableFuture.completedFuture(Collections.emptyList());
-        return getRaw(peerids, owner, root, "", false, false)
+        return getRaw(peerids, owner, root, Optional.empty(), ourId, hasher, false, false)
                 .thenApply(opt -> opt.map(CborObject::fromByteArray))
                 .thenApply(opt -> opt
                         .map(cbor -> cbor.links().stream().map(c -> (Cid) c).collect(Collectors.toList()))

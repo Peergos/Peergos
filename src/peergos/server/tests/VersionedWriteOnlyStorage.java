@@ -210,6 +210,11 @@ public class VersionedWriteOnlyStorage implements DeletableContentAddressedStora
     }
 
     @Override
+    public CompletableFuture<BlockMetadata> getBlockMetadata(PublicKeyHash owner, Cid block) {
+        throw new IllegalStateException("Not implemented!");
+    }
+
+    @Override
     public CompletableFuture<LinkCounts> getLinkCounts(String owner, LocalDateTime after, BatWithId mirrorBat) {
         throw new IllegalStateException("Not implemented!");
     }

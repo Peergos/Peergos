@@ -195,6 +195,12 @@ public class RAMStorage implements DeletableContentAddressedStorage {
     }
 
     @Override
+    public CompletableFuture<BlockMetadata> getBlockMetadata(PublicKeyHash owner, Cid block) {
+        return getRaw(Arrays.asList(id().join()), owner, block, Optional.empty(), id().join(), hasher, true)
+                .thenApply(rawOpt -> BlockMetadataStore.extractMetadata(block, rawOpt.get()));
+    }
+
+    @Override
     public CompletableFuture<List<Cid>> getLinks(PublicKeyHash owner, Cid root, List<Multihash> peerids) {
         if (root.codec == Cid.Codec.Raw)
             return CompletableFuture.completedFuture(Collections.emptyList());

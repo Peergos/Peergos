@@ -166,6 +166,11 @@ public class WriteOnlyStorage implements DeletableContentAddressedStorage {
     }
 
     @Override
+    public CompletableFuture<BlockMetadata> getBlockMetadata(PublicKeyHash owner, Cid block) {
+        throw new IllegalStateException("Not implemented!");
+    }
+
+    @Override
     public CompletableFuture<List<byte[]>> getChampLookup(PublicKeyHash owner, Cid root, List<ChunkMirrorCap> caps, Optional<Cid> committedRoot) {
         throw new IllegalStateException("Not implemented!");
     }

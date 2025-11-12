@@ -183,7 +183,7 @@ public class TransactionalIpfs extends DelegatingDeletableStorage {
     public CompletableFuture<List<Cid>> getLinks(PublicKeyHash owner, Cid root, List<Multihash> peerids) {
         if (root.isRaw())
             return CompletableFuture.completedFuture(Collections.emptyList());
-        return getRaw(Arrays.asList(id), owner, root, "", false, true)
+        return getRaw(Arrays.asList(id), owner, root, Optional.empty(), id, hasher, false, true)
                 .thenApply(opt -> opt.map(CborObject::fromByteArray))
                 .thenApply(opt -> opt
                         .map(cbor -> cbor.links().stream().map(c -> (Cid) c).collect(Collectors.toList()))
@@ -198,7 +198,7 @@ public class TransactionalIpfs extends DelegatingDeletableStorage {
 
     @Override
     public CompletableFuture<BlockMetadata> getBlockMetadata(PublicKeyHash owner, Cid block) {
-        return getRaw(List.of(id), owner, block, "", false, true)
+        return getRaw(List.of(id), owner, block, Optional.empty(), id, hasher, false, true)
                 .thenApply(data -> BlockMetadataStore.extractMetadata(block, data.get()));
     }
 

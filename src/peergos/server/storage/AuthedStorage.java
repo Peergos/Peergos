@@ -121,7 +121,7 @@ public class AuthedStorage extends DelegatingDeletableStorage {
 
     @Override
     public CompletableFuture<BlockMetadata> getBlockMetadata(PublicKeyHash owner, Cid block) {
-        return getRaw(Arrays.asList(ourNodeId), owner, block, "", false, true)
+        return getRaw(Arrays.asList(ourNodeId), owner, block, Optional.empty(), ourNodeId, h, false, true)
                 .thenApply(rawOpt -> BlockMetadataStore.extractMetadata(block, rawOpt.get()));
     }
 
@@ -151,7 +151,7 @@ public class AuthedStorage extends DelegatingDeletableStorage {
     public CompletableFuture<List<Cid>> getLinks(PublicKeyHash owner, Cid root, List<Multihash> peerids) {
         if (root.codec == Cid.Codec.Raw)
             return CompletableFuture.completedFuture(Collections.emptyList());
-        return getRaw(Arrays.asList(ourNodeId), owner, root, "", false, true)
+        return getRaw(Arrays.asList(ourNodeId), owner, root, Optional.empty(), ourNodeId, h, false, true)
                 .thenApply(opt -> opt.map(CborObject::fromByteArray))
                 .thenApply(opt -> opt
                         .map(cbor -> cbor.links().stream().map(c -> (Cid) c).collect(Collectors.toList()))

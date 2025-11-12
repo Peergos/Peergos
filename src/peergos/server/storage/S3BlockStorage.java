@@ -463,9 +463,17 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         if (noReads) {
             if (peerIds.stream().anyMatch(p -> ids.stream().anyMatch(us -> us.bareMultihash().equals(p.bareMultihash()))))
                 throw new IllegalStateException("Reads from Glacier are disabled!");
-            return p2pFallback.getRaw(peerIds, owner, hash, generateAuth(hash, bat, ourId, h), doAuth, persistBlock);
+            return p2pHttpFallback.getRaw(peerIds.get(0), owner, hash, bat).thenApply(res -> {
+                if (res.isPresent() && persistBlock) {
+                    if (hash.isRaw())
+                        putRaw(owner, owner, new byte[0], res.get(), new TransactionId(""), x -> {});
+                    else
+                        put(owner, owner, new byte[0], res.get(), new TransactionId(""));
+                }
+                return res;
+            });
         }
-        return getRaw(peerIds, owner, hash, Optional.empty(), generateAuth(hash, bat, ourId, h), doAuth, bat, persistBlock)
+        return getRaw(peerIds, owner, hash, Optional.empty(), doAuth, bat, persistBlock)
                 .thenApply(p -> p.map(v -> v.left));
     }
 
@@ -477,7 +485,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                 throw new IllegalStateException("Reads from Glacier are disabled!");
             return p2pFallback.getRaw(peerIds, owner, hash, bat, ourId, h, persistBlock);
         }
-        return getRaw(peerIds, owner, hash, Optional.empty(), generateAuth(hash, bat, ourId, h), true, bat, persistBlock)
+        return getRaw(peerIds, owner, hash, Optional.empty(), true, bat, persistBlock)
                 .thenApply(p -> p.map(v -> v.left));
     }
 
@@ -488,35 +496,18 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                                                       String auth,
                                                       boolean doAuth,
                                                       boolean persistBlock) {
-        if (hash.isIdentity())
-            return Futures.of(Optional.of(hash.getHash()));
-        if (noReads) {
-            if (peerIds.stream().anyMatch(p -> ids.stream().anyMatch(us -> us.bareMultihash().equals(p.bareMultihash()))))
-                throw new IllegalStateException("Reads from Glacier are disabled!");
-            return p2pFallback.getRaw(peerIds, owner, hash, auth, doAuth, persistBlock);
-        }
-        return getRaw(peerIds, owner, hash, Optional.empty(), auth, doAuth, Optional.empty(), persistBlock)
-                .thenApply(p -> p.map(v -> v.left));
+        throw new IllegalStateException("Unimplemented!");
     }
 
     @Override
     public CompletableFuture<Optional<byte[]>> getRaw(List<Multihash> peerIds, PublicKeyHash owner, Cid hash, String auth, boolean persistBlock) {
-        if (hash.isIdentity())
-            return Futures.of(Optional.of(hash.getHash()));
-        if (noReads) {
-            if (peerIds.stream().anyMatch(p -> ids.stream().anyMatch(us -> us.bareMultihash().equals(p.bareMultihash()))))
-                throw new IllegalStateException("Reads from Glacier are disabled!");
-            return p2pFallback.getRaw(peerIds, owner, hash, auth, persistBlock);
-        }
-        return getRaw(peerIds, owner, hash, Optional.empty(), auth, true, Optional.empty(), persistBlock)
-                .thenApply(p -> p.map(v -> v.left));
+        throw new IllegalStateException("Unimplemented!");
     }
 
     /** Get raw block data and version
      *
      * @param hash
      * @param range
-     * @param auth
      * @param enforceAuth
      * @param bat
      * @return
@@ -525,7 +516,6 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                                                                      PublicKeyHash owner,
                                                                      Cid hash,
                                                                      Optional<Pair<Integer, Integer>> range,
-                                                                     String auth,
                                                                      boolean enforceAuth,
                                                                      Optional<BatWithId> bat,
                                                                      boolean persistP2pBlock) {
@@ -536,18 +526,18 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         if (! hash.isRaw()) {
             Optional<byte[]> cached = cborCache.get(hash).join();
             if (cached.isPresent()) {
-                if (enforceAuth && ! authoriser.allowRead(hash, cached.get(), id, auth).join())
+                if (enforceAuth && ! authoriser.allowRead(hash, cached.get(), id, generateAuth(hash, bat, id, hasher)).join())
                     throw new IllegalStateException("Unauthorised!");
                 return Futures.of(Optional.of(new Pair<>(cached.get(), null)));
             }
         }
         Optional<byte[]> buffered = blockBuffer.get(hash).join();
         if (buffered.isPresent()) {
-            if (enforceAuth && ! authoriser.allowRead(hash, buffered.get(), id, auth).join())
+            if (enforceAuth && ! authoriser.allowRead(hash, buffered.get(), id, generateAuth(hash, bat, id, hasher)).join())
                     throw new IllegalStateException("Unauthorised!");
                 return Futures.of(Optional.of(new Pair<>(buffered.get(), null)));
         }
-        return getWithBackoff(() -> getRawWithoutBackoff(peerIds, owner, hash, range, auth, enforceAuth, bat, persistP2pBlock))
+        return getWithBackoff(() -> getRawWithoutBackoff(peerIds, owner, hash, range, enforceAuth, bat, persistP2pBlock))
                 .thenApply(res -> {
                     if (hash.isRaw())
                         return res;
@@ -561,7 +551,6 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                                                                                    PublicKeyHash owner,
                                                                                    Cid hash,
                                                                                    Optional<Pair<Integer, Integer>> range,
-                                                                                   String auth,
                                                                                    boolean enforceAuth,
                                                                                    Optional<BatWithId> bat,
                                                                                    boolean persistP2pBlock) {
@@ -580,7 +569,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
             enforceUserBandwidthRateLimits(owner, blockAndVersion.left.length);
             enforceGlobalBandwidthLimit(blockAndVersion.left.length);
             // validate auth, unless this is an internal query
-            if (enforceAuth && ! authoriser.allowRead(hash, blockAndVersion.left, id, auth).join())
+            if (enforceAuth && ! authoriser.allowRead(hash, blockAndVersion.left, id, generateAuth(hash, bat, id, hasher)).join())
                 throw new IllegalStateException("Unauthorised!");
             if (range.isEmpty())
                 blockMetadata.put(hash, blockAndVersion.right, blockAndVersion.left);
@@ -609,15 +598,16 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
             }
 
             nonLocalGets.inc();
-            if (p2pGetId.equals(id)) {
-                if (auth.isEmpty())
-                    return p2pFallback.getRaw(peerIds, owner, hash, Optional.empty(), id, hasher, persistP2pBlock)
-                        .thenApply(dopt -> dopt.map(b -> new Pair<>(b, null)));
-                return p2pFallback.getRaw(peerIds, owner, hash, auth, persistP2pBlock)
-                        .thenApply(dopt -> dopt.map(b -> new Pair<>(b, null)));
-            }
-            // recalculate auth when the fallback node has a different node id
-            return p2pFallback.getRaw(peerIds, owner, hash, bat, p2pGetId, hasher, enforceAuth, persistP2pBlock)
+            return p2pHttpFallback.getRaw(peerIds.get(0), owner, hash, bat)
+                    .thenApply(res -> {
+                        if (res.isPresent() && persistP2pBlock) {
+                            if (hash.isRaw())
+                                putRaw(owner, owner, new byte[0], res.get(), new TransactionId(""), x -> {});
+                            else
+                                put(owner, owner, new byte[0], res.get(), new TransactionId(""));
+                        }
+                        return res;
+                    })
                     .thenApply(dopt -> dopt.map(b -> new Pair<>(b, null)));
         } finally {
             readTimer.observeDuration();
@@ -1047,7 +1037,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
             return Futures.of(cached.get());
         Optional<Pair<byte[], String>> data = getRaw(peerIds, owner, h, h.isRaw() ?
                 Optional.of(new Pair<>(0, Bat.MAX_RAW_BLOCK_PREFIX_SIZE - 1)) :
-                Optional.empty(), "", false, Optional.empty(), false).join();
+                Optional.empty(), false, Optional.empty(), false).join();
         if (data.isEmpty())
             throw new IllegalStateException("Block not present locally: " + h);
         byte[] bloc = data.get().left;
@@ -1295,9 +1285,9 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         JdbcIpnsAndSocial rawPointers = new JdbcIpnsAndSocial(database, sqlCommands);
         if (a.hasArg("integrity-check")) {
             if (a.hasArg("username"))
-                GarbageCollector.checkUserIntegrity(a.getArg("username"), s3, meta, rawPointers, usageStore, a.getBoolean("fix-metadata", false));
+                GarbageCollector.checkUserIntegrity(a.getArg("username"), s3, meta, rawPointers, usageStore, a.getBoolean("fix-metadata", false), hasher);
             else
-                GarbageCollector.checkIntegrity(s3, meta, rawPointers, usageStore, a.getBoolean("fix-metadata", false));
+                GarbageCollector.checkIntegrity(s3, meta, rawPointers, usageStore, a.getBoolean("fix-metadata", false), hasher);
             return;
         }
         System.out.println("Performing GC on S3 block store...");

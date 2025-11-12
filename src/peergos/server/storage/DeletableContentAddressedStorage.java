@@ -309,10 +309,12 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
         return getChangeInContainedSize(owner, original.get(), updated);
     }
 
-    default CompletableFuture<BlockMetadata> getBlockMetadata(PublicKeyHash owner, Cid block) {
-        return getRaw(Arrays.asList(id().join()), owner, block, "", true)
-                .thenApply(rawOpt -> BlockMetadataStore.extractMetadata(block, rawOpt.get()));
-    }
+    CompletableFuture<BlockMetadata> getBlockMetadata(PublicKeyHash owner, Cid block);
+
+//    default CompletableFuture<BlockMetadata> getBlockMetadata(PublicKeyHash owner, Cid block) {
+//        return getRaw(Arrays.asList(id().join()), owner, block, Optional.empty(), true)
+//                .thenApply(rawOpt -> BlockMetadataStore.extractMetadata(block, rawOpt.get()));
+//    }
 
     default CompletableFuture<Long> getChangeInContainedSize(PublicKeyHash owner, Cid original, Cid updated) {
         return getBlockMetadata(owner, original)
@@ -397,6 +399,11 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
                     .map(v -> v.cid.toString())
                     .collect(Collectors.toList()));
             poster.postUnzip(apiPrefix + BLOCK_RM_BULK, JSONParser.toString(json).getBytes(), -1);
+        }
+
+        @Override
+        public CompletableFuture<BlockMetadata> getBlockMetadata(PublicKeyHash owner, Cid block) {
+            throw new IllegalStateException("Unimplemented!");
         }
 
         @Override

@@ -103,7 +103,8 @@ public class GarbageCollector {
                                       BlockMetadataStore metadata,
                                       JdbcIpnsAndSocial pointers,
                                       UsageStore usage,
-                                      boolean fixMetadata) {
+                                      boolean fixMetadata,
+                                      Hasher h) {
         Map<PublicKeyHash, byte[]> allPointers = pointers.getAllEntries();
 
         List<Triple<Multihash, String, PublicKeyHash>> usageRoots = usage.getAllTargets();
@@ -118,7 +119,7 @@ public class GarbageCollector {
             if (updated.isPresent() && !done.contains(updated.get())) {
                 done.add(updated.get());
                 try {
-                    traverseDag(owner, updated.get(), metadata, done, fixMetadata, storage);
+                    traverseDag(owner, updated.get(), metadata, done, fixMetadata, storage, h);
                 } catch (Exception e) {
                     try {
                         String username = usage.getUsage(writerHash).owner;
@@ -135,7 +136,7 @@ public class GarbageCollector {
         for (Triple<Multihash, String, PublicKeyHash> usageRoot : usageRoots) {
             if (! done.contains(usageRoot.left)) {
                 try {
-                    traverseDag(usageRoot.right, usageRoot.left, metadata, done, fixMetadata, storage);
+                    traverseDag(usageRoot.right, usageRoot.left, metadata, done, fixMetadata, storage, h);
                 } catch (Exception e) {
                     String username = usageRoot.middle;
                     String msg = "Error marking reachable for user: " + username + ", from usage root " + usageRoot.left;
@@ -151,7 +152,8 @@ public class GarbageCollector {
                                           BlockMetadataStore metadata,
                                           JdbcIpnsAndSocial pointers,
                                           UsageStore usage,
-                                          boolean fixMetadata) {
+                                          boolean fixMetadata,
+                                          Hasher h) {
         Set<PublicKeyHash> writers = usage.getAllWriters(username);
         Set<Multihash> done = new HashSet<>();
         System.out.println("Checking integrity for user " + username);
@@ -167,7 +169,7 @@ public class GarbageCollector {
             if (updated.isPresent() && !done.contains(updated.get())) {
                 done.add(updated.get());
                 try {
-                    traverseDag(owner, updated.get(), metadata, done, fixMetadata, storage);
+                    traverseDag(owner, updated.get(), metadata, done, fixMetadata, storage, h);
                 } catch (Exception e) {
                     String msg = "Error marking reachable for user: " + username + ", writer " + writerHash + " " + e.getMessage();
                     System.err.println(msg);
@@ -182,13 +184,15 @@ public class GarbageCollector {
                                     BlockMetadataStore metadata,
                                     Set<Multihash> done,
                                     boolean fixMetadata,
-                                    DeletableContentAddressedStorage storage) {
+                                    DeletableContentAddressedStorage storage,
+                                    Hasher h) {
         if (cid.isIdentity())
             return;
         Optional<BlockMetadata> meta = metadata.get((Cid) cid);
+        Cid ourId = storage.id().join();
         if (meta.isEmpty() && fixMetadata) {
             // retrieving the block should add it to the metadata store
-            Optional<byte[]> block = storage.getRaw(Arrays.asList(storage.id().join()), owner, (Cid) cid, "", false, true).join();
+            Optional<byte[]> block = storage.getRaw(Arrays.asList(ourId), owner, (Cid) cid, Optional.empty(), ourId, h, false, true).join();
             meta = metadata.get((Cid) cid);
             if (meta.isPresent())
                 System.out.println("Fixed block metadata for " + cid);
@@ -197,7 +201,7 @@ public class GarbageCollector {
             throw new IllegalStateException("Absent block! " + cid + ", key: " + DirectS3BlockStore.hashToKey(cid));
         for (Cid link : meta.get().links) {
             done.add(link);
-            traverseDag(owner, link, metadata, done, fixMetadata, storage);
+            traverseDag(owner, link, metadata, done, fixMetadata, storage, h);
         }
     }
 

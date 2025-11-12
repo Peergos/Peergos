@@ -151,7 +151,7 @@ public class IpfsCoreNode implements CoreNode {
 
         if (updated.equals(original))
             return CompletableFuture.completedFuture(true);
-        return original.map(h -> storage.get(storageProviders, owner, (Cid)h, "", true)).orElseGet(() -> CompletableFuture.completedFuture(Optional.empty()))
+        return original.map(h -> storage.get(storageProviders, owner, (Cid)h, Optional.empty(), ourId, cryptoHash, true)).orElseGet(() -> CompletableFuture.completedFuture(Optional.empty()))
                 .thenApply(rawOpt -> rawOpt.map(y -> Champ.fromCbor(y, fromCbor)))
                 .thenCompose(left -> updated.map(h -> storage.get(storageProviders, owner, (Cid)h, Optional.empty(), ourId, cryptoHash, true)).orElseGet(() -> CompletableFuture.completedFuture(Optional.empty()))
                         .thenApply(rawOpt -> rawOpt.map(y -> Champ.fromCbor(y, fromCbor)))
@@ -252,7 +252,7 @@ public class IpfsCoreNode implements CoreNode {
             MaybeMultihash updatedTree = getTreeRoot(peerIds, owner, newChampRoot, ourId, hasher, ipfs);
             LOG.info("Updating pki to new tree root " + updatedTree);
             Consumer<Triple<ByteArrayWrapper, Optional<CborObject.CborMerkleLink>, Optional<CborObject.CborMerkleLink>>> consumer =
-                    t -> updateMapping(peerIds, owner, t.left, t.middle, t.right, ipfs, chains, reverseLookup, usernames);
+                    t -> updateMapping(peerIds, owner, t.left, t.middle, t.right, ipfs, chains, reverseLookup, usernames, ourId, hasher);
             Function<Cborable, CborObject.CborMerkleLink> fromCbor = c -> (CborObject.CborMerkleLink)c;
             IpfsCoreNode.applyToDiff(peerIds, ourId, owner, currentTree, updatedTree, 0, IpfsCoreNode::keyHash,
                     Collections.emptyList(), Collections.emptyList(),
@@ -270,9 +270,11 @@ public class IpfsCoreNode implements CoreNode {
                                      DeletableContentAddressedStorage ipfs,
                                      Map<String, List<UserPublicKeyLink>> chains,
                                      Map<PublicKeyHash, String> reverseLookup,
-                                     List<String> usernames) {
+                                     List<String> usernames,
+                                     Cid ourId,
+                                     Hasher hasher) {
         try {
-            Optional<CborObject> cborOpt = ipfs.get(peerIds, owner, (Cid)newValue.get().target, "", true).get();
+            Optional<CborObject> cborOpt = ipfs.get(peerIds, owner, (Cid)newValue.get().target, Optional.empty(), ourId, hasher, true).get();
             if (!cborOpt.isPresent()) {
                 LOG.severe("Couldn't retrieve new claim chain from " + newValue);
                 return;
@@ -285,7 +287,7 @@ public class IpfsCoreNode implements CoreNode {
             String username = new String(key.data);
 
             if (oldValue.isPresent()) {
-                Optional<CborObject> existingCborOpt = ipfs.get(peerIds, owner, (Cid)oldValue.get().target, "", true).get();
+                Optional<CborObject> existingCborOpt = ipfs.get(peerIds, owner, (Cid)oldValue.get().target, Optional.empty(), ourId, hasher, true).get();
                 if (!existingCborOpt.isPresent()) {
                     LOG.severe("Couldn't retrieve existing claim chain from " + newValue);
                     return;
