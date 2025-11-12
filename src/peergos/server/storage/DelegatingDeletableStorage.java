@@ -66,11 +66,6 @@ public class DelegatingDeletableStorage implements DeletableContentAddressedStor
     }
 
     @Override
-    public void bloomAdd(Multihash hash) {
-        target.bloomAdd(hash);
-    }
-
-    @Override
     public void bulkDelete(List<BlockVersion> blocks) {
         target.bulkDelete(blocks);
     }

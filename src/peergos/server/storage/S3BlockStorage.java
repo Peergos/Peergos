@@ -134,7 +134,6 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
     private final DeletableContentAddressedStorage p2pFallback, bloomTarget;
     private final ContentAddressedStorageProxy p2pHttpFallback;
 
-    private final LinkedBlockingQueue<Cid> bloomAdds = new LinkedBlockingQueue<>();
     private final LinkedBlockingQueue<Cid> blocksToFlush = new LinkedBlockingQueue<>();
     private final ConcurrentHashMap<PublicKeyHash, SlidingWindowCounter> userReadReqRateLimits = new ConcurrentHashMap();
     private final ConcurrentHashMap<PublicKeyHash, SlidingWindowCounter> userReadSizeRateLimits = new ConcurrentHashMap();
@@ -198,7 +197,6 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         globalReadBandwidth = new SlidingWindowCounter(60*60, 60*60 * maxReadBandwidthPerSecond);
         this.maxUserBandwidthPerMinute = 60 * maxUserBandwidthPerSecond;
         this.maxUserReadRequestsPerMinute = 60 * maxUserReadRequestsPerSecond;
-        startBloomThread();
         startFlusherThread();
         new Thread(() -> blockBuffer.applyToAll(c -> {
             bulkPutPool.submit(() -> getWithBackoff(() -> {
@@ -217,26 +215,6 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
     @Override
     public void setPki(CoreNode pki) {
         this.pki = pki;
-    }
-
-    private void startBloomThread() {
-        Thread bloomer = new Thread(() -> {
-            while (true) {
-                try {
-                    Cid h = bloomAdds.peek();
-                    if (h == null) {
-                        Thread.sleep(1_000);
-                        continue;
-                    }
-                    bloomTarget.bloomAdd(h);
-                    bloomAdds.poll();
-                } catch (Exception e) {
-                    LOG.log(Level.INFO, e.getMessage(), e);
-                }
-            }
-        });
-        bloomer.setDaemon(true);
-        bloomer.start();
     }
 
     private void startFlusherThread() {
@@ -412,7 +390,6 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                 res.add(S3Request.preSignPut(folder + s3Key, props.right.size, contentSha256, storageClass, false,
                         S3AdminRequests.asAwsDate(ZonedDateTime.now()), host, extraHeaders, region, accessKeyId, secretKey, useHttps, hasher).join());
                 blockPutAuths.inc();
-                bloomAdds.add(props.left);
                 if (isRaw)
                     blockMetadata.put(props.left, null, props.right);
             }

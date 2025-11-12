@@ -49,8 +49,6 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
         delete(blockVersion.cid);
     }
 
-    default void bloomAdd(Multihash hash) {}
-
     default Optional<BlockMetadataStore> getBlockMetadataStore() {
         return Optional.empty();
     }
@@ -424,11 +422,6 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
                             .map(BlockMetadata::fromJSON)
                             .collect(Collectors.toList()))
                     .join();
-        }
-
-        @Override
-        public void bloomAdd(Multihash hash) {
-            poster.get(apiPrefix + BLOOM_ADD + "?arg=" + hash.toString()).join();
         }
 
         @Override
