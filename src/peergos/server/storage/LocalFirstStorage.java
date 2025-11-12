@@ -14,6 +14,7 @@ import peergos.shared.storage.auth.BlockAuth;
 import peergos.shared.storage.auth.S3Request;
 import peergos.shared.util.Futures;
 
+import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
@@ -25,6 +26,7 @@ public class LocalFirstStorage extends DelegatingDeletableStorage {
     private final DeletableContentAddressedStorage local;
     private final ContentAddressedStorageProxy p2pGets;
     private final PeerId ourId;
+    private final Cid ourNodeId;
     private final Hasher hasher;
 
     public LocalFirstStorage(DeletableContentAddressedStorage local,
@@ -35,6 +37,7 @@ public class LocalFirstStorage extends DelegatingDeletableStorage {
         this.local = local;
         this.p2pGets = p2pGets;
         this.ourId = ourIds.isEmpty() ? PeerId.random() : ourIds.get(ourIds.size() - 1);
+        this.ourNodeId = Cid.decodePeerId(ourId.toString());
         this.hasher = hasher;
     }
 
@@ -135,6 +138,12 @@ public class LocalFirstStorage extends DelegatingDeletableStorage {
             }
             return Futures.of(res);
         });
+    }
+
+    @Override
+    public CompletableFuture<BlockMetadata> getBlockMetadata(PublicKeyHash owner, Cid block) {
+        return getRaw(Arrays.asList(ourNodeId), owner, block, Optional.empty(), ourNodeId, hasher, true)
+                .thenApply(rawOpt -> BlockMetadataStore.extractMetadata(block, rawOpt.get()));
     }
 
     @Override
