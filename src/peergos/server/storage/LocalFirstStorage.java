@@ -36,8 +36,9 @@ public class LocalFirstStorage extends DelegatingDeletableStorage {
         super(local);
         this.local = local;
         this.p2pGets = p2pGets;
-        this.ourId = ourIds.isEmpty() ? PeerId.random() : ourIds.get(ourIds.size() - 1);
-        this.ourNodeId = Cid.decodePeerId(ourId.toString());
+        this.ourId = ourIds.get(ourIds.size() - 1);
+        Multihash barePeerId = Multihash.decode(ourId.getBytes());
+        this.ourNodeId = new Cid(1, Cid.Codec.LibP2pKey, barePeerId.type, barePeerId.getHash());
         this.hasher = hasher;
     }
 

@@ -234,6 +234,8 @@ public class Builder {
         DeletableContentAddressedStorage.HTTP http = new DeletableContentAddressedStorage.HTTP(ipfsApi, false, hasher);
         ContentAddressedStorageProxy p2pGets = new ContentAddressedStorageProxy.HTTP(p2pHttpProxy);
         List<PeerId> ourIds = ids.getIdentities();
+        if (ourIds.isEmpty())
+            ourIds = Collections.singletonList(new PeerId(http.id().join().bareMultihash().toBytes()));
         MultiIdStorage ipfs = new MultiIdStorage(new LocalFirstStorage(http, p2pGets, ourIds, hasher), ourIds);
         String linkHost = a.getOptionalArg("public-domain").orElseGet(() -> "localhost:" + a.getInt("port"));
         if (useIPFS) {

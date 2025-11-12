@@ -309,11 +309,6 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
 
     CompletableFuture<BlockMetadata> getBlockMetadata(PublicKeyHash owner, Cid block);
 
-//    default CompletableFuture<BlockMetadata> getBlockMetadata(PublicKeyHash owner, Cid block) {
-//        return getRaw(Arrays.asList(id().join()), owner, block, Optional.empty(), true)
-//                .thenApply(rawOpt -> BlockMetadataStore.extractMetadata(block, rawOpt.get()));
-//    }
-
     default CompletableFuture<Long> getChangeInContainedSize(PublicKeyHash owner, Cid original, Cid updated) {
         return getBlockMetadata(owner, original)
                 .thenCompose(before -> getBlockMetadata(owner, updated).thenCompose(after -> {
