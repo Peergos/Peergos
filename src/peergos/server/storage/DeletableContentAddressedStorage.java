@@ -275,14 +275,7 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
      * @param root The hash of the object whose links we want
      * @return A list of the multihashes referenced with ipld links in this object
      */
-    default CompletableFuture<List<Cid>> getLinks(PublicKeyHash owner, Cid root, List<Multihash> peerids) {
-        if (root.isRaw())
-            return CompletableFuture.completedFuture(Collections.emptyList());
-        return get(peerids, owner, root, "", true).thenApply(opt -> opt
-                .map(cbor -> cbor.links().stream().map(c -> (Cid) c).collect(Collectors.toList()))
-                .orElse(Collections.emptyList())
-        );
-    }
+    CompletableFuture<List<Cid>> getLinks(PublicKeyHash owner, Cid root, List<Multihash> peerids);
 
     default CompletableFuture<Long> getRecursiveBlockSize(PublicKeyHash owner, Cid block, List<Multihash> peerids) {
         return getLinks(owner, block, peerids).thenCompose(links -> {
@@ -394,6 +387,11 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
 
         @Override
         public CompletableFuture<BlockMetadata> getBlockMetadata(PublicKeyHash owner, Cid block) {
+            throw new IllegalStateException("Unimplemented!");
+        }
+
+        @Override
+        public CompletableFuture<List<Cid>> getLinks(PublicKeyHash owner, Cid root, List<Multihash> peerids) {
             throw new IllegalStateException("Unimplemented!");
         }
 
