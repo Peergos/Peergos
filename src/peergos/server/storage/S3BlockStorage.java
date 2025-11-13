@@ -663,8 +663,8 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                     Optional<BlockMetadata> m = blockMetadata.get(c);
                     if (m.isPresent())
                         return Futures.of(m);
-                    return p2pHttpFallback.getRaw(peers.get(0), owner, c, mirrorBat)
-                            .thenApply(bo -> bo.map(b -> checkAndAddBlock(c, b)));
+                    return RetryStorage.runWithRetry(5, () -> p2pHttpFallback.getRaw(peers.get(0), owner, c, mirrorBat)
+                            .thenApply(bo -> bo.map(b -> checkAndAddBlock(c, b))));
                 })
                 .toList();
         return futs.stream()
@@ -691,7 +691,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
             return Futures.of(Collections.singletonList(newRoot));
 
         // This call will not verify the auth as we might not have the mirror bat present locally
-        Optional<byte[]> newBlock = p2pHttpFallback.getRaw(peerIds.get(0), owner, newRoot, mirrorBat).join();
+        Optional<byte[]> newBlock = getRaw(peerIds, owner, newRoot, mirrorBat, ourNodeId, hasher, false, true).join();
         if (newBlock.isEmpty())
             throw new IllegalStateException("Couldn't retrieve block: " + newRoot);
         if (! hasBlock(newRoot)) {
@@ -966,7 +966,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                                             Hasher h) {
         List<Optional<byte[]>> rawOpts = blocks.stream()
                 .parallel()
-                .map(b -> p2pFallback.getRaw(peerIds, owner, b, mirrorBat, ourId, h, false, true).join())
+                .map(b -> RetryStorage.runWithRetry(2, () -> p2pFallback.getRaw(peerIds, owner, b, mirrorBat, ourId, h, false, true)).join())
                 .toList();
         if (rawOpts.size() != blocks.size())
             throw new IllegalStateException("Incorrect number of blocks returned!");
