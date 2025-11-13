@@ -938,7 +938,6 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                     S3AdminRequests.asAwsDate(ZonedDateTime.now()), host, extraHeaders, region, accessKeyId, secretKey, useHttps, hasher).join();
             String version = HttpUtil.putWithVersion(putUrl, data).right;
             BlockMetadata meta = blockMetadata.put(cid, version, data);
-//            bloomAdds.add(cid);
             blockPuts.inc();
             blockPutBytes.labels("size").observe(data.length);
             if (! cid.isRaw())
