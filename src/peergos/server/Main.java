@@ -2,7 +2,10 @@ package peergos.server;
 
 import com.luciad.imageio.webp.WebPDecoderOptions;
 import com.webauthn4j.data.client.*;
+import io.libp2p.core.PeerId;
+import io.libp2p.core.crypto.PrivKey;
 import org.eclipse.jetty.server.Server;
+import org.peergos.HostBuilder;
 import org.scijava.nativelib.NativeLibraryUtil;
 import peergos.server.cli.CLI;
 import peergos.server.crypto.hash.ScryptJava;
@@ -712,6 +715,13 @@ public class Main extends Builder {
             BlockMetadataStore meta = buildBlockMetadata(a);
             JdbcServerIdentityStore ids = JdbcServerIdentityStore.build(getDBConnector(a, "serverids-file", dbConnectionPool), sqlCommands, crypto);
             IpfsWrapper ipfsWrapper = useIPFS ? IpfsWrapper.launch(a, blockAuth, meta, ids) : null;
+            if (ids.getIdentities().isEmpty()) {
+                // initialise id db with our current peerid and sign an ipns record
+                HostBuilder builder = new HostBuilder().generateIdentity();
+                PrivKey peerPrivate = builder.getPrivateKey();
+                byte[] signedRecord = ServerIdentity.generateSignedIpnsRecord(peerPrivate, Optional.empty(), false, 1);
+                ids.addIdentity(PeerId.fromPubKey(peerPrivate.publicKey()), signedRecord);
+            }
 
             boolean doExportAggregatedMetrics = a.getBoolean("collect-metrics");
             if (doExportAggregatedMetrics) {
@@ -741,7 +751,7 @@ public class Main extends Builder {
                     getDBConnector(a, "mutable-pointers-file", dbConnectionPool));
 
 
-            MutablePointers localPointers = UserRepository.build(localStorageForLinks, rawPointers);
+            MutablePointers localPointers = UserRepository.build(localStorageForLinks, rawPointers, hasher);
             MutablePointersProxy proxingMutable = new HttpMutablePointers(p2pHttpProxy, pkiServerNodeId);
             LinkRetrievalCounter linkCounts = new JdbcLinkRetrievalcounter(getDBConnector(a, "link-counts-sql-file", dbConnectionPool), sqlCommands);
 
@@ -785,7 +795,7 @@ public class Main extends Builder {
             userQuotas.setPki(core);
 
             boolean mirrorUsers = a.getBoolean("mirror-users", true);
-            if (a.hasArg("mirror.username")) // mirror pki before starting user mirror
+            if (a.hasArg("mirror.username") || isPki) // mirror pki before starting user mirror
                 core.initialize(mirrorUsers);
             else
                 new Thread(() -> core.initialize(mirrorUsers)).start();
@@ -815,7 +825,7 @@ public class Main extends Builder {
 
             SocialNetworkProxy httpSocial = new HttpSocialNetwork(p2pHttpProxy, p2pHttpProxy);
 
-            SocialNetwork local = UserRepository.build(localStorage, rawSocial);
+            SocialNetwork local = UserRepository.build(localStorage, rawSocial, hasher);
             SocialNetwork p2pSocial = new ProxyingSocialNetwork(nodeIds, core, local, httpSocial);
 
             Set<String> adminUsernames = Arrays.asList(a.getArg("admin-usernames", "").split(","))

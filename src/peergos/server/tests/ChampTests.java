@@ -196,6 +196,7 @@ public class ChampTests {
             currentHash = updated.right;
             state.put(key, Optional.of(new CborObject.CborMerkleLink(value)));
         }
+        Cid ourId = new Cid(1, Cid.Codec.Raw, Multihash.Type.sha2_256, new byte[32]);
 
         List<ByteArrayWrapper> keys = state.keySet().stream().collect(Collectors.toList());
         // update random entries
@@ -206,8 +207,9 @@ public class ChampTests {
             Pair<Champ<CborObject.CborMerkleLink>, Multihash> updated = current.put(user.publicKeyHash, user, key, hasher.apply(key).join(), 0, currentValue,
                     newValue, bitWidth, maxCollisions, Optional.empty(), hasher, tid, storage, writeHasher, currentHash).get();
             List<Triple<ByteArrayWrapper, Optional<CborObject.CborMerkleLink>, Optional<CborObject.CborMerkleLink>>> diffs = new ArrayList<>();
-            IpfsCoreNode.applyToDiff(Collections.emptyList(), MaybeMultihash.of(currentHash), MaybeMultihash.of(updated.right), 0, hasher,
-                    Collections.emptyList(), Collections.emptyList(), diffs::add, bitWidth, storage, c -> (CborObject.CborMerkleLink)c).join();
+
+            IpfsCoreNode.applyToDiff(Collections.emptyList(), ourId, user.publicKeyHash, MaybeMultihash.of(currentHash), MaybeMultihash.of(updated.right), 0, hasher,
+                    Collections.emptyList(), Collections.emptyList(), diffs::add, bitWidth, storage, crypto.hasher, c -> (CborObject.CborMerkleLink)c).join();
             if (diffs.size() != 1 || ! diffs.get(0).equals(new Triple<>(key, currentValue, newValue)))
                 throw new IllegalStateException("Incorrect champ diff updating element!");
         }
@@ -224,8 +226,8 @@ public class ChampTests {
                     newValue, bitWidth, maxCollisions, Optional.empty(), hasher, tid, storage, writeHasher, currentHash).get();
             List<Triple<ByteArrayWrapper, Optional<CborObject.CborMerkleLink>, Optional<CborObject.CborMerkleLink>>> diffs = new ArrayList<>();
 
-            IpfsCoreNode.applyToDiff(Collections.emptyList(), MaybeMultihash.of(currentHash), MaybeMultihash.of(updated.right), 0, hasher,
-                    Collections.emptyList(), Collections.emptyList(), diffs::add, bitWidth, storage, c -> (CborObject.CborMerkleLink)c).join();
+            IpfsCoreNode.applyToDiff(Collections.emptyList(), ourId, user.publicKeyHash, MaybeMultihash.of(currentHash), MaybeMultihash.of(updated.right), 0, hasher,
+                    Collections.emptyList(), Collections.emptyList(), diffs::add, bitWidth, storage, crypto.hasher, c -> (CborObject.CborMerkleLink)c).join();
             if (diffs.size() != 1 || ! diffs.get(0).equals(new Triple<>(key, currentValue, newValue)))
                 throw new IllegalStateException("Incorrect champ diff updating element!");
         }
@@ -241,8 +243,8 @@ public class ChampTests {
             Pair<Champ<CborObject.CborMerkleLink>, Multihash> updated = current.put(user.publicKeyHash, user, key, hasher.apply(key).join(), 0, currentValue,
                     newValue, bitWidth, maxCollisions, Optional.empty(), hasher, tid, storage, writeHasher, currentHash).get();
             List<Triple<ByteArrayWrapper, Optional<CborObject.CborMerkleLink>, Optional<CborObject.CborMerkleLink>>> diffs = new ArrayList<>();
-            IpfsCoreNode.applyToDiff(Collections.emptyList(), MaybeMultihash.of(currentHash), MaybeMultihash.of(updated.right), 0, hasher,
-                    Collections.emptyList(), Collections.emptyList(), diffs::add, bitWidth, storage, c -> (CborObject.CborMerkleLink)c).join();
+            IpfsCoreNode.applyToDiff(Collections.emptyList(), ourId, user.publicKeyHash, MaybeMultihash.of(currentHash), MaybeMultihash.of(updated.right), 0, hasher,
+                    Collections.emptyList(), Collections.emptyList(), diffs::add, bitWidth, storage, crypto.hasher, c -> (CborObject.CborMerkleLink)c).join();
             if (diffs.size() != 1 || ! diffs.get(0).equals(new Triple<>(key, currentValue, newValue)))
                 throw new IllegalStateException("Incorrect champ diff updating element!");
         }

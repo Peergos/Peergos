@@ -59,7 +59,7 @@ public class EfficiencyComparison {
                 }
 
                 int champSize = champStorage.totalSize();
-                long champUsage = champStorage.getRecursiveBlockSize((Cid)current.right, Arrays.asList(new Cid(1, Cid.Codec.DagCbor, Multihash.Type.sha2_256, new byte[32]))).get();
+                long champUsage = champStorage.getRecursiveBlockSize(null, (Cid)current.right, Arrays.asList(new Cid(1, Cid.Codec.DagCbor, Multihash.Type.sha2_256, new byte[32]))).get();
 
                 int idealUsage = state.size() * (32 + 34);
                 LOG.info(bitWidth + "-bit champ, " + maxCollisions + " max-collisions");

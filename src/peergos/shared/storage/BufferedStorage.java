@@ -397,10 +397,10 @@ public class BufferedStorage extends DelegatingStorage {
     }
 
     @Override
-    public CompletableFuture<Optional<Integer>> getSize(Multihash block) {
+    public CompletableFuture<Optional<Integer>> getSize(PublicKeyHash owner, Multihash block) {
         synchronized (storage) {
             if (!storage.containsKey(block))
-                return target.getSize(block);
+                return target.getSize(owner, block);
             return CompletableFuture.completedFuture(Optional.of(storage.get(block).block.length));
         }
     }

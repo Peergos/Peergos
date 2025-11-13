@@ -37,10 +37,10 @@ public class MetadataCachingStorage extends DelegatingDeletableStorage {
         if (metadata.size() > 0)
             return;
         LOG.info("Populating block metadata db..");
-        target.getAllBlockHashes(true).forEach(c -> {
-            Optional<BlockMetadata> existing = metadata.get(c);
+        target.getAllBlockHashes(true).forEach(p -> {
+            Optional<BlockMetadata> existing = metadata.get(p.right);
             if (existing.isEmpty())
-                metadata.put(c, null, target.getBlockMetadata(c).join());
+                metadata.put(p.right, null, target.getBlockMetadata(p.left, p.right).join());
         });
     }
 
@@ -70,15 +70,15 @@ public class MetadataCachingStorage extends DelegatingDeletableStorage {
     }
 
     @Override
-    public CompletableFuture<Optional<Integer>> getSize(Multihash block) {
+    public CompletableFuture<Optional<Integer>> getSize(PublicKeyHash owner, Multihash block) {
         Optional<BlockMetadata> meta = metadata.get((Cid) block);
         if (meta.isPresent())
             return Futures.of(Optional.of(meta.get().size));
-        return target.getSize(block);
+        return target.getSize(owner, block);
     }
 
     @Override
-    public CompletableFuture<List<Cid>> getLinks(Cid block, List<Multihash> peerids) {
+    public CompletableFuture<List<Cid>> getLinks(PublicKeyHash owner, Cid block, List<Multihash> peerids) {
         if (block.isRaw())
             return Futures.of(Collections.emptyList());
         if (block.isIdentity())
@@ -86,17 +86,17 @@ public class MetadataCachingStorage extends DelegatingDeletableStorage {
         Optional<BlockMetadata> meta = metadata.get(block);
         if (meta.isPresent())
             return Futures.of(meta.get().links);
-        return getBlockMetadata(block).thenApply(res -> res.links);
+        return getBlockMetadata(owner, block).thenApply(res -> res.links);
     }
 
     @Override
-    public CompletableFuture<BlockMetadata> getBlockMetadata(Cid block) {
+    public CompletableFuture<BlockMetadata> getBlockMetadata(PublicKeyHash owner, Cid block) {
         if (block.isIdentity())
             return Futures.of(BlockMetadataStore.extractMetadata(block, block.getHash()));
         Optional<BlockMetadata> meta = metadata.get(block);
         if (meta.isPresent())
             return Futures.of(meta.get());
-        return target.getBlockMetadata(block);
+        return target.getBlockMetadata(owner, block);
     }
 
     @Override
@@ -115,8 +115,8 @@ public class MetadataCachingStorage extends DelegatingDeletableStorage {
     }
 
     @Override
-    public CompletableFuture<Optional<CborObject>> get(List<Multihash> peerIds, Cid hash, String auth, boolean persistBlock) {
-        return target.get(peerIds, hash, auth, persistBlock).thenApply(res -> {
+    public CompletableFuture<Optional<CborObject>> get(List<Multihash> peerIds, PublicKeyHash owner, Cid hash, String auth, boolean persistBlock) {
+        return target.get(peerIds, owner, hash, auth, persistBlock).thenApply(res -> {
             if (persistBlock)
                 res.ifPresent(cbor -> writeBlockMetadata(cbor.toByteArray(), hash.isRaw()));
             return res;
@@ -124,8 +124,8 @@ public class MetadataCachingStorage extends DelegatingDeletableStorage {
     }
 
     @Override
-    public CompletableFuture<Optional<CborObject>> get(List<Multihash> peerIds, Cid hash, Optional<BatWithId> bat, Cid ourId, Hasher h, boolean persistBlock) {
-        return target.get(peerIds, hash, bat, ourId, h, persistBlock).thenApply(res -> {
+    public CompletableFuture<Optional<CborObject>> get(List<Multihash> peerIds, PublicKeyHash owner, Cid hash, Optional<BatWithId> bat, Cid ourId, Hasher h, boolean persistBlock) {
+        return target.get(peerIds, owner, hash, bat, ourId, h, persistBlock).thenApply(res -> {
             if (persistBlock)
                 res.ifPresent(cbor -> writeBlockMetadata(cbor.toByteArray(), hash.isRaw()));
             return res;
@@ -133,8 +133,8 @@ public class MetadataCachingStorage extends DelegatingDeletableStorage {
     }
 
     @Override
-    public CompletableFuture<Optional<byte[]>> getRaw(List<Multihash> peerIds, Cid hash, String auth, boolean doAuth, boolean persistBlock) {
-        return target.getRaw(peerIds, hash, auth, doAuth, persistBlock).thenApply(bopt -> {
+    public CompletableFuture<Optional<byte[]>> getRaw(List<Multihash> peerIds, PublicKeyHash owner, Cid hash, String auth, boolean doAuth, boolean persistBlock) {
+        return target.getRaw(peerIds, owner, hash, auth, doAuth, persistBlock).thenApply(bopt -> {
             if (persistBlock)
                 bopt.ifPresent(b -> writeBlockMetadata(b, hash.isRaw()));
             return bopt;
@@ -142,8 +142,8 @@ public class MetadataCachingStorage extends DelegatingDeletableStorage {
     }
 
     @Override
-    public CompletableFuture<Optional<byte[]>> getRaw(List<Multihash> peerIds, Cid hash, Optional<BatWithId> bat, Cid ourId, Hasher h, boolean persistBlock) {
-        return target.getRaw(peerIds, hash, bat, ourId, h, persistBlock).thenApply(bopt -> {
+    public CompletableFuture<Optional<byte[]>> getRaw(List<Multihash> peerIds, PublicKeyHash owner, Cid hash, Optional<BatWithId> bat, Cid ourId, Hasher h, boolean persistBlock) {
+        return target.getRaw(peerIds, owner, hash, bat, ourId, h, persistBlock).thenApply(bopt -> {
             if (persistBlock)
                 bopt.ifPresent(b -> writeBlockMetadata(b, hash.isRaw()));
             return bopt;
@@ -151,8 +151,8 @@ public class MetadataCachingStorage extends DelegatingDeletableStorage {
     }
 
     @Override
-    public CompletableFuture<Optional<byte[]>> getRaw(List<Multihash> peerIds, Cid hash, Optional<BatWithId> bat, Cid ourId, Hasher h, boolean doAuth, boolean persistBlock) {
-        return target.getRaw(peerIds, hash, bat, ourId, h, doAuth, persistBlock).thenApply(bopt -> {
+    public CompletableFuture<Optional<byte[]>> getRaw(List<Multihash> peerIds, PublicKeyHash owner, Cid hash, Optional<BatWithId> bat, Cid ourId, Hasher h, boolean doAuth, boolean persistBlock) {
+        return target.getRaw(peerIds, owner, hash, bat, ourId, h, doAuth, persistBlock).thenApply(bopt -> {
             if (persistBlock)
                 bopt.ifPresent(b -> writeBlockMetadata(b, hash.isRaw()));
             return bopt;
@@ -160,8 +160,8 @@ public class MetadataCachingStorage extends DelegatingDeletableStorage {
     }
 
     @Override
-    public CompletableFuture<Optional<byte[]>> getRaw(List<Multihash> peerIds, Cid hash, String auth, boolean persistBlock) {
-        return target.getRaw(peerIds, hash, auth, persistBlock).thenApply(bopt -> {
+    public CompletableFuture<Optional<byte[]>> getRaw(List<Multihash> peerIds, PublicKeyHash owner, Cid hash, String auth, boolean persistBlock) {
+        return target.getRaw(peerIds, owner, hash, auth, persistBlock).thenApply(bopt -> {
             if (persistBlock)
                 bopt.ifPresent(b -> writeBlockMetadata(b, hash.isRaw()));
             return bopt;
@@ -173,14 +173,14 @@ public class MetadataCachingStorage extends DelegatingDeletableStorage {
                                                Optional<Cid> updated, Optional<BatWithId> mirrorBat, Cid ourNodeId,
                                                NewBlocksProcessor newBlockProcessor, TransactionId tid, Hasher hasher) {
         return target.mirror(username, owner, writer, peerIds, existing, updated, mirrorBat, ourNodeId,
-                (w, bs, size) -> usage.addPendingUsage(username, w, addMetadata(peerIds, bs, mirrorBat, hasher)), tid, hasher);
+                (w, bs, size) -> usage.addPendingUsage(username, w, addMetadata(peerIds, owner, bs, mirrorBat, hasher)), tid, hasher);
     }
 
-    private int addMetadata(List<Multihash> peerIds, List<Cid> hashes, Optional<BatWithId> mirrorBat, Hasher h) {
+    private int addMetadata(List<Multihash> peerIds, PublicKeyHash owner, List<Cid> hashes, Optional<BatWithId> mirrorBat, Hasher h) {
         int totalSize = 0;
         Cid us = id().join();
         for (Cid c : hashes) {
-            totalSize += target.getRaw(peerIds, c, mirrorBat, us, h, false)
+            totalSize += target.getRaw(peerIds, owner, c, mirrorBat, us, h, false)
                     .thenApply(bopt -> bopt.map(b -> writeBlockMetadata(b, c.isRaw()).size)
                             .orElse(0))
                     .join();

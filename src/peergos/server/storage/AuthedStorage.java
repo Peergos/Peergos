@@ -61,16 +61,17 @@ public class AuthedStorage extends DelegatingDeletableStorage {
         List<Multihash> peerIds = hasBlock(hash) ?
                 Arrays.asList(ourNodeId) :
                 pki.getStorageProviders(owner);
-        return get(peerIds, hash, bat, ourNodeId, h, true);
+        return get(peerIds, owner, hash, bat, ourNodeId, h, true);
     }
 
     @Override
-    public CompletableFuture<Optional<CborObject>> get(List<Multihash> peerIds, Cid hash, String auth, boolean persistBlock) {
-        return getRaw(peerIds, hash, auth, persistBlock).thenApply(bopt -> bopt.map(CborObject::fromByteArray));
+    public CompletableFuture<Optional<CborObject>> get(List<Multihash> peerIds, PublicKeyHash owner, Cid hash, String auth, boolean persistBlock) {
+        return getRaw(peerIds, owner, hash, auth, persistBlock).thenApply(bopt -> bopt.map(CborObject::fromByteArray));
     }
 
     public static CompletableFuture<Optional<CborObject>> getWithAbsentMirrorBat(Throwable t,
                                                                                  List<Multihash> peerIds,
+                                                                                 PublicKeyHash owner,
                                                                                  Cid hash,
                                                                                  Optional<BatWithId> bat,
                                                                                  Cid ourId,
@@ -79,7 +80,7 @@ public class AuthedStorage extends DelegatingDeletableStorage {
         if (t.getMessage().contains("Unauthorised")) {
             if (! bat.get().id().isInline() && target.hasBlock(hash)) {
                 // we are dealing with a mirror bat that we likely don't have locally, we can check the hash to verify it
-                return target.getRaw(peerIds, hash, bat, ourId, h, false, false)
+                return target.getRaw(peerIds, owner, hash, bat, ourId, h, false, false)
                         .thenCompose(rawOpt -> {
                             if (rawOpt.isEmpty())
                                 return Futures.errored(t);
@@ -99,39 +100,39 @@ public class AuthedStorage extends DelegatingDeletableStorage {
     }
 
     @Override
-    public CompletableFuture<Optional<CborObject>> get(List<Multihash> peerIds, Cid hash, Optional<BatWithId> bat, Cid ourId, Hasher h, boolean  persistblock) {
+    public CompletableFuture<Optional<CborObject>> get(List<Multihash> peerIds, PublicKeyHash owner, Cid hash, Optional<BatWithId> bat, Cid ourId, Hasher h, boolean  persistblock) {
         if (bat.isEmpty())
-            return get(peerIds, hash, "", persistblock);
+            return get(peerIds, owner, hash, "", persistblock);
         return Futures.asyncExceptionally(() -> bat.get().bat.generateAuth(hash, ourId, 300, S3Request.currentDatetime(), bat.get().id, h)
                 .thenApply(BlockAuth::encode)
-                .thenCompose(auth -> get(peerIds, hash, auth, persistblock)),
-                t -> getWithAbsentMirrorBat(t, peerIds, hash, bat, ourId, h, this));
+                .thenCompose(auth -> get(peerIds, owner, hash, auth, persistblock)),
+                t -> getWithAbsentMirrorBat(t, peerIds, owner, hash, bat, ourId, h, this));
     }
 
     @Override
     public CompletableFuture<Optional<byte[]>> getRaw(PublicKeyHash owner, Cid hash, Optional<BatWithId> bat) {
-        return getRaw(pki.getStorageProviders(owner), hash, bat, ourNodeId, h, true);
+        return getRaw(pki.getStorageProviders(owner), owner, hash, bat, ourNodeId, h, true);
     }
 
     @Override
-    public CompletableFuture<Optional<byte[]>> getRaw(List<Multihash> peerIds, Cid hash, String auth, boolean persistBlock) {
-        return getRaw(peerIds, hash, auth, true, persistBlock);
+    public CompletableFuture<Optional<byte[]>> getRaw(List<Multihash> peerIds, PublicKeyHash owner, Cid hash, String auth, boolean persistBlock) {
+        return getRaw(peerIds, owner, hash, auth, true, persistBlock);
     }
 
     @Override
-    public CompletableFuture<BlockMetadata> getBlockMetadata(Cid block) {
-        return getRaw(Arrays.asList(ourNodeId), block, "", false, true)
+    public CompletableFuture<BlockMetadata> getBlockMetadata(PublicKeyHash owner, Cid block) {
+        return getRaw(Arrays.asList(ourNodeId), owner, block, Optional.empty(), ourNodeId, h, false, true)
                 .thenApply(rawOpt -> BlockMetadataStore.extractMetadata(block, rawOpt.get()));
     }
 
     @Override
-    public List<BlockMetadata> bulkGetLinks(List<Multihash> peerIds, List<Want> wants) {
-        return target.bulkGetLinks(peerIds, wants);
+    public List<BlockMetadata> bulkGetLinks(List<Multihash> peerIds, PublicKeyHash owner, List<Want> wants) {
+        return target.bulkGetLinks(peerIds, owner, wants);
     }
 
     @Override
-    public CompletableFuture<Optional<byte[]>> getRaw(List<Multihash> peerIds, Cid hash, String auth, boolean doAuth, boolean persistBlock) {
-        return target.getRaw(peerIds, hash, auth, persistBlock).thenApply(bopt -> {
+    public CompletableFuture<Optional<byte[]>> getRaw(List<Multihash> peerIds, PublicKeyHash owner, Cid hash, String auth, boolean doAuth, boolean persistBlock) {
+        return target.getRaw(peerIds, owner, hash, auth, persistBlock).thenApply(bopt -> {
             if (bopt.isEmpty())
                 return Optional.empty();
             byte[] block = bopt.get();
@@ -147,10 +148,10 @@ public class AuthedStorage extends DelegatingDeletableStorage {
     }
 
     @Override
-    public CompletableFuture<List<Cid>> getLinks(Cid root, List<Multihash> peerids) {
+    public CompletableFuture<List<Cid>> getLinks(PublicKeyHash owner, Cid root, List<Multihash> peerids) {
         if (root.codec == Cid.Codec.Raw)
             return CompletableFuture.completedFuture(Collections.emptyList());
-        return getRaw(Arrays.asList(ourNodeId), root, "", false, true)
+        return getRaw(Arrays.asList(ourNodeId), owner, root, Optional.empty(), ourNodeId, h, false, true)
                 .thenApply(opt -> opt.map(CborObject::fromByteArray))
                 .thenApply(opt -> opt
                         .map(cbor -> cbor.links().stream().map(c -> (Cid) c).collect(Collectors.toList()))
@@ -166,7 +167,7 @@ public class AuthedStorage extends DelegatingDeletableStorage {
     }
 
     @Override
-    public Stream<Cid> getAllBlockHashes(boolean useBlockstore) {
+    public Stream<Pair<PublicKeyHash, Cid>> getAllBlockHashes(boolean useBlockstore) {
         return target.getAllBlockHashes(useBlockstore);
     }
 

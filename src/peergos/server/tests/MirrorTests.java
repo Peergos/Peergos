@@ -10,6 +10,7 @@ import peergos.server.storage.auth.Want;
 import peergos.shared.Crypto;
 import peergos.shared.cbor.CborObject;
 import peergos.shared.crypto.hash.Hasher;
+import peergos.shared.crypto.hash.PublicKeyHash;
 import peergos.shared.io.ipfs.Cid;
 import peergos.shared.io.ipfs.Multihash;
 import peergos.shared.storage.TransactionId;
@@ -74,9 +75,9 @@ public class MirrorTests {
         }
 
         @Override
-        public List<BlockMetadata> bulkGetLinks(List<Multihash> peerIds, List<Want> wants) {
+        public List<BlockMetadata> bulkGetLinks(List<Multihash> peerIds, PublicKeyHash owner, List<Want> wants) {
             highLatencyCalls.incrementAndGet();
-            return super.bulkGetLinks(peerIds, wants);
+            return super.bulkGetLinks(peerIds, owner, wants);
         }
     }
 }

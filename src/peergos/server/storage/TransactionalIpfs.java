@@ -74,38 +74,86 @@ public class TransactionalIpfs extends DelegatingDeletableStorage {
     @Override
     public CompletableFuture<Optional<CborObject>> get(PublicKeyHash owner, Cid hash, Optional<BatWithId> bat) {
         List<Multihash> providers = hasBlock(hash) ? List.of(id) : pki.getStorageProviders(owner);
-        return get(providers, hash, bat, id, hasher, true);
+        return get(providers, owner, hash, bat, id, hasher, true);
     }
 
     @Override
-    public CompletableFuture<Optional<CborObject>> get(List<Multihash> peerIds, Cid hash, String auth, boolean persistBlock) {
-        return getRaw(peerIds, hash, auth, persistBlock).thenApply(bopt -> bopt.map(CborObject::fromByteArray));
+    public CompletableFuture<Optional<CborObject>> get(List<Multihash> peerIds,
+                                                       PublicKeyHash owner,
+                                                       Cid hash,
+                                                       String auth,
+                                                       boolean persistBlock) {
+        return getRaw(peerIds, owner, hash, auth, persistBlock).thenApply(bopt -> bopt.map(CborObject::fromByteArray));
     }
 
     @Override
-    public CompletableFuture<Optional<CborObject>> get(List<Multihash> peerIds, Cid hash, Optional<BatWithId> bat, Cid ourId, Hasher h, boolean persistBlock) {
+    public CompletableFuture<Optional<CborObject>> get(List<Multihash> peerIds,
+                                                       PublicKeyHash owner,
+                                                       Cid hash,
+                                                       Optional<BatWithId> bat,
+                                                       Cid ourId,
+                                                       Hasher h,
+                                                       boolean persistBlock) {
         if (bat.isEmpty())
-            return get(peerIds, hash, "", persistBlock);
+            return getRaw(peerIds, owner, hash, bat, ourId, hasher, true, persistBlock)
+                    .thenApply(opt -> opt.map(CborObject::fromByteArray));
         return Futures.asyncExceptionally(() -> bat.get().bat.generateAuth(hash, ourId, 300, S3Request.currentDatetime(), bat.get().id, h)
                         .thenApply(BlockAuth::encode)
-                        .thenCompose(auth -> get(peerIds, hash, auth, persistBlock)),
-                t -> AuthedStorage.getWithAbsentMirrorBat(t, peerIds, hash, bat, ourId, h, this)
+                        .thenCompose(auth -> get(peerIds, owner, hash, auth, persistBlock)),
+                t -> AuthedStorage.getWithAbsentMirrorBat(t, peerIds, owner, hash, bat, ourId, h, this)
         );
     }
 
     @Override
-    public CompletableFuture<Optional<byte[]>> getRaw(PublicKeyHash owner, Cid hash, Optional<BatWithId> bat) {
-        return getRaw(pki.getStorageProviders(owner), hash, bat, id, hasher, true);
+    public CompletableFuture<Optional<byte[]>> getRaw(PublicKeyHash owner,
+                                                      Cid hash,
+                                                      Optional<BatWithId> bat) {
+        return getRaw(pki.getStorageProviders(owner), owner, hash, bat, id, hasher, true);
     }
 
     @Override
-    public CompletableFuture<Optional<byte[]>> getRaw(List<Multihash> peerIds, Cid hash, String auth, boolean persistBlock) {
-        return getRaw(peerIds, hash, auth, true, persistBlock);
+    public CompletableFuture<Optional<byte[]>> getRaw(List<Multihash> peerIds,
+                                                      PublicKeyHash owner,
+                                                      Cid hash,
+                                                      Optional<BatWithId> bat,
+                                                      Cid ourId,
+                                                      Hasher h,
+                                                      boolean doAuth,
+                                                      boolean persistBlock) {
+        return target.getRaw(peerIds, owner, hash, bat, ourId, h, doAuth, persistBlock).thenApply(bopt -> {
+            if (bopt.isEmpty())
+                return Optional.empty();
+            byte[] block = bopt.get();
+            if (doAuth) {
+                String auth = bat.isEmpty() ? "" : bat.get().bat.generateAuth(hash, ourId, 300, S3Request.currentDatetime(), bat.get().id, h)
+                        .thenApply(BlockAuth::encode).join();
+                if (! authoriser.allowRead(hash, block, id().join(), auth).join()) {
+                    throw new IllegalStateException("Unauthorised!");
+                }
+            }
+            return bopt;
+        });
     }
 
     @Override
-    public CompletableFuture<Optional<byte[]>> getRaw(List<Multihash> peerIds, Cid hash, String auth, boolean doAuth, boolean persistBlock) {
-        return target.getRaw(peerIds, hash, auth, persistBlock).thenApply(bopt -> {
+    public CompletableFuture<Optional<byte[]>> getRaw(List<Multihash> peerIds,
+                                                      PublicKeyHash owner,
+                                                      Cid hash,
+                                                      String auth,
+                                                      boolean persistBlock) {
+        return getRaw(peerIds, owner, hash, auth, true, persistBlock);
+    }
+
+    @Override
+    public CompletableFuture<Optional<byte[]>> getRaw(List<Multihash> peerIds,
+                                                      PublicKeyHash owner,
+                                                      Cid hash,
+                                                      String auth,
+                                                      boolean doAuth,
+                                                      boolean persistBlock) {
+        if (hash.isIdentity())
+            return Futures.of(Optional.of(hash.getHash()));
+        return target.getRaw(peerIds, owner, hash, auth, persistBlock).thenApply(bopt -> {
             if (bopt.isEmpty())
                 return Optional.empty();
             byte[] block = bopt.get();
@@ -116,15 +164,26 @@ public class TransactionalIpfs extends DelegatingDeletableStorage {
     }
 
     @Override
+    public CompletableFuture<Optional<byte[]>> getRaw(List<Multihash> peerIds,
+                                                      PublicKeyHash owner,
+                                                      Cid hash,
+                                                      Optional<BatWithId> bat,
+                                                      Cid ourId,
+                                                      Hasher h,
+                                                      boolean persistBlock) {
+        return getRaw(peerIds, owner, hash, bat, ourId, h, true, persistBlock);
+    }
+
+    @Override
     public boolean hasBlock(Cid hash) {
         return target.hasBlock(hash);
     }
 
     @Override
-    public CompletableFuture<List<Cid>> getLinks(Cid root, List<Multihash> peerids) {
+    public CompletableFuture<List<Cid>> getLinks(PublicKeyHash owner, Cid root, List<Multihash> peerids) {
         if (root.isRaw())
             return CompletableFuture.completedFuture(Collections.emptyList());
-        return getRaw(Arrays.asList(id), root, "", false, true)
+        return getRaw(Arrays.asList(id), owner, root, Optional.empty(), id, hasher, false, true)
                 .thenApply(opt -> opt.map(CborObject::fromByteArray))
                 .thenApply(opt -> opt
                         .map(cbor -> cbor.links().stream().map(c -> (Cid) c).collect(Collectors.toList()))
@@ -133,13 +192,13 @@ public class TransactionalIpfs extends DelegatingDeletableStorage {
     }
 
     @Override
-    public List<BlockMetadata> bulkGetLinks(List<Multihash> peerIds, List<Want> wants) {
-        return target.bulkGetLinks(peerIds, wants);
+    public List<BlockMetadata> bulkGetLinks(List<Multihash> peerIds, PublicKeyHash owner, List<Want> wants) {
+        return target.bulkGetLinks(peerIds, owner, wants);
     }
 
     @Override
-    public CompletableFuture<BlockMetadata> getBlockMetadata(Cid block) {
-        return getRaw(List.of(id), block, "", false, true)
+    public CompletableFuture<BlockMetadata> getBlockMetadata(PublicKeyHash owner, Cid block) {
+        return getRaw(List.of(id), owner, block, Optional.empty(), id, hasher, false, true)
                 .thenApply(data -> BlockMetadataStore.extractMetadata(block, data.get()));
     }
 
@@ -183,7 +242,7 @@ public class TransactionalIpfs extends DelegatingDeletableStorage {
     }
 
     @Override
-    public Stream<Cid> getAllBlockHashes(boolean useBlockstore) {
+    public Stream<Pair<PublicKeyHash, Cid>> getAllBlockHashes(boolean useBlockstore) {
         return target.getAllBlockHashes(useBlockstore);
     }
 

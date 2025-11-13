@@ -18,6 +18,7 @@ import peergos.shared.Crypto;
 import peergos.shared.corenode.CoreNode;
 import peergos.shared.corenode.HTTPCoreNode;
 import peergos.shared.crypto.hash.PublicKeyHash;
+import peergos.shared.io.ipfs.Cid;
 import peergos.shared.login.mfa.MultiFactorAuthMethod;
 import peergos.shared.mutable.MutablePointers;
 import peergos.shared.storage.ContentAddressedStorage;
@@ -53,8 +54,9 @@ public class ServerAdmin {
                                                Crypto crypto,
                                                Set<PublicKeyHash> done) {
         done.add(w);
+        Cid ourId = storage.id().join();
         CommittedWriterData.Retriever retriever = (h, s) -> DeletableContentAddressedStorage.getWriterData(
-                Collections.emptyList(), h, s, false, storage);
+                Collections.emptyList(), id, h, s, false, ourId, crypto.hasher, storage);
         Set<PublicKeyHash> verifiedChildren = DeletableContentAddressedStorage.getDirectOwnedKeys(id, w, pointers,
                 retriever, storage, crypto.hasher).join();
         for (PublicKeyHash child : verifiedChildren) {
@@ -154,7 +156,7 @@ public class ServerAdmin {
                     JdbcIpnsAndSocial rawPointers = Builder.buildRawPointers(a,
                             Builder.getDBConnector(a, "mutable-pointers-file", dbConnectionPool));
 
-                    MutablePointers pointers = UserRepository.build(storage, rawPointers);
+                    MutablePointers pointers = UserRepository.build(storage, rawPointers, crypto.hasher);
                     QuotaAdmin quota = Builder.buildSpaceQuotas(a, storage,
                             Builder.getDBConnector(a, "space-requests-sql-file", dbConnectionPool),
                             Builder.getDBConnector(a, "quotas-sql-file", dbConnectionPool), false, false);

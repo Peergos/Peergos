@@ -32,6 +32,7 @@ public class FileContentAddressedStorage implements DeletableContentAddressedSto
     private final TransactionStore transactions;
     private final BlockRequestAuthoriser authoriser;
     private final Hasher hasher;
+    private final Cid ourId = new Cid(1, Cid.Codec.LibP2pKey, Multihash.Type.sha2_256, RAMStorage.hash("FileStorage".getBytes()));
 
     public FileContentAddressedStorage(Path root, TransactionStore transactions, BlockRequestAuthoriser authoriser, Hasher hasher) {
         this.root = root;
@@ -58,12 +59,12 @@ public class FileContentAddressedStorage implements DeletableContentAddressedSto
 
     @Override
     public CompletableFuture<Cid> id() {
-        return CompletableFuture.completedFuture(new Cid(1, Cid.Codec.LibP2pKey, Multihash.Type.sha2_256, RAMStorage.hash("FileStorage".getBytes())));
+        return CompletableFuture.completedFuture(ourId);
     }
 
     @Override
     public CompletableFuture<List<Cid>> ids() {
-        return CompletableFuture.completedFuture(List.of(new Cid(1, Cid.Codec.LibP2pKey, Multihash.Type.sha2_256, RAMStorage.hash("FileStorage".getBytes()))));
+        return CompletableFuture.completedFuture(List.of(ourId));
     }
 
     @Override
@@ -146,29 +147,79 @@ public class FileContentAddressedStorage implements DeletableContentAddressedSto
     }
 
     @Override
-    public CompletableFuture<Optional<CborObject>> get(List<Multihash> peerIds, Cid hash, String auth, boolean persistBlock) {
+    public CompletableFuture<Optional<CborObject>> get(List<Multihash> peerIds, PublicKeyHash owner, Cid hash, String auth, boolean persistBlock) {
         if (hash.codec == Cid.Codec.Raw)
             throw new IllegalStateException("Need to call getRaw if cid is not cbor!");
-        return getRaw(Collections.emptyList(), hash, auth, persistBlock).thenApply(opt -> opt.map(CborObject::fromByteArray));
+        return getRaw(Collections.emptyList(), owner, hash, auth, persistBlock).thenApply(opt -> opt.map(CborObject::fromByteArray));
     }
 
     @Override
     public CompletableFuture<Optional<CborObject>> get(PublicKeyHash owner, Cid hash, Optional<BatWithId> bat) {
-        return get(Collections.emptyList(), hash, bat, id().join(), hasher, false);
+        return get(Collections.emptyList(), owner, hash, bat, id().join(), hasher, false);
+    }
+
+    @Override
+    public CompletableFuture<Optional<byte[]>> getRaw(List<Multihash> peerIds,
+                                                      PublicKeyHash owner,
+                                                      Cid hash,
+                                                      Optional<BatWithId> bat,
+                                                      Cid ourId,
+                                                      Hasher h,
+                                                      boolean doAuth,
+                                                      boolean persistBlock) {
+        if (hash.isIdentity())
+            return Futures.of(Optional.of(hash.getHash()));
+        Path path = getFilePath(hash);
+        File file = root.resolve(path).toFile();
+        if (!file.exists()) {
+            return CompletableFuture.completedFuture(Optional.empty());
+        }
+        try (DataInputStream din = new DataInputStream(new BufferedInputStream(new FileInputStream(file)))) {
+            byte[] block = Serialize.readFully(din);
+
+            String auth = bat.isEmpty() ? "" :
+                    bat.get().bat.generateAuth(hash, ourId, 300, S3Request.currentDatetime(), bat.get().id, h)
+                    .thenApply(BlockAuth::encode).join();
+            if (! authoriser.allowRead(hash, block, id().join(), auth).join())
+                return Futures.errored(new IllegalStateException("Unauthorised!"));
+            return CompletableFuture.completedFuture(Optional.of(block));
+        } catch (IOException e) {
+            throw new RuntimeException(e.getMessage(), e);
+        }
     }
 
     @Override
     public CompletableFuture<Optional<byte[]>> getRaw(PublicKeyHash owner, Cid hash, Optional<BatWithId> bat) {
-        return getRaw(Collections.emptyList(), hash, bat, id().join(), hasher, false);
+        try {
+            if (hash.isIdentity())
+                return Futures.of(Optional.of(hash.getHash()));
+            Path path = getFilePath(hash);
+            File file = root.resolve(path).toFile();
+            if (! file.exists()){
+                return CompletableFuture.completedFuture(Optional.empty());
+            }
+            try (DataInputStream din = new DataInputStream(new BufferedInputStream(new FileInputStream(file)))) {
+                byte[] block = Serialize.readFully(din);
+
+                String auth = bat.isEmpty() ? "" :
+                        bat.get().bat.generateAuth(hash, ourId, 300, S3Request.currentDatetime(), bat.get().id, hasher)
+                                .thenApply(BlockAuth::encode).join();
+                if (! authoriser.allowRead(hash, block, id().join(), auth).join())
+                    return Futures.errored(new IllegalStateException("Unauthorised!"));
+                return CompletableFuture.completedFuture(Optional.of(block));
+            }
+        } catch (IOException e) {
+            throw new RuntimeException(e.getMessage(), e);
+        }
     }
 
     @Override
-    public CompletableFuture<Optional<byte[]>> getRaw(List<Multihash> peerIds, Cid hash, String auth, boolean persistBlock) {
-        return getRaw(peerIds, hash, auth, true, persistBlock);
+    public CompletableFuture<Optional<byte[]>> getRaw(List<Multihash> peerIds, PublicKeyHash owner, Cid hash, String auth, boolean persistBlock) {
+        return getRaw(peerIds, owner, hash, auth, true, persistBlock);
     }
 
     @Override
-    public CompletableFuture<Optional<byte[]>> getRaw(List<Multihash> peerIds, Cid hash, String auth, boolean doAuth, boolean persistBlock) {
+    public CompletableFuture<Optional<byte[]>> getRaw(List<Multihash> peerIds, PublicKeyHash owner, Cid hash, String auth, boolean doAuth, boolean persistBlock) {
         try {
             if (hash.isIdentity())
                 return Futures.of(Optional.of(hash.getHash()));
@@ -196,15 +247,21 @@ public class FileContentAddressedStorage implements DeletableContentAddressedSto
     }
 
     @Override
-    public List<BlockMetadata> bulkGetLinks(List<Multihash> peerIds, List<Want> wants) {
+    public List<BlockMetadata> bulkGetLinks(List<Multihash> peerIds, PublicKeyHash owner, List<Want> wants) {
         throw new IllegalStateException("Unimplemented!");
     }
 
     @Override
-    public CompletableFuture<List<Cid>> getLinks(Cid root, List<Multihash> peerids) {
+    public CompletableFuture<BlockMetadata> getBlockMetadata(PublicKeyHash owner, Cid block) {
+        return getRaw(Arrays.asList(id().join()), owner, block, Optional.empty(), ourId, hasher, true)
+                .thenApply(rawOpt -> BlockMetadataStore.extractMetadata(block, rawOpt.get()));
+    }
+
+    @Override
+    public CompletableFuture<List<Cid>> getLinks(PublicKeyHash owner, Cid root, List<Multihash> peerids) {
         if (root.codec == Cid.Codec.Raw)
             return CompletableFuture.completedFuture(Collections.emptyList());
-        return getRaw(peerids, root, "", false, false)
+        return getRaw(peerids, owner, root, Optional.empty(), ourId, hasher, false, false)
                 .thenApply(opt -> opt.map(CborObject::fromByteArray))
                 .thenApply(opt -> opt
                         .map(cbor -> cbor.links().stream().map(c -> (Cid) c).collect(Collectors.toList()))
@@ -247,7 +304,7 @@ public class FileContentAddressedStorage implements DeletableContentAddressedSto
     }
 
     @Override
-    public CompletableFuture<Optional<Integer>> getSize(Multihash h) {
+    public CompletableFuture<Optional<Integer>> getSize(PublicKeyHash owner, Multihash h) {
         Path path = getFilePath((Cid)h);
         File file = root.resolve(path).toFile();
         return CompletableFuture.completedFuture(file.exists() ? Optional.of((int) file.length()) : Optional.empty());
@@ -259,14 +316,14 @@ public class FileContentAddressedStorage implements DeletableContentAddressedSto
     }
 
     @Override
-    public Stream<Cid> getAllBlockHashes(boolean useBlockstore) {
-        return getFiles().stream();
+    public Stream<Pair<PublicKeyHash, Cid>> getAllBlockHashes(boolean useBlockstore) {
+        return getFiles().stream().map(c -> new Pair<>(PublicKeyHash.NULL, c));
     }
 
     @Override
     public void getAllBlockHashVersions(Consumer<List<BlockVersion>> res) {
         res.accept(getAllBlockHashes(false)
-                .map(c -> new BlockVersion(c, null, true))
+                .map(p -> new BlockVersion(p.right, null, true))
                 .collect(Collectors.toList()));
     }
 

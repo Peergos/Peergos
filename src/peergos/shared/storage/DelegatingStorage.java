@@ -98,8 +98,8 @@ public abstract class DelegatingStorage implements ContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<Optional<Integer>> getSize(Multihash block) {
-        return target.getSize(block);
+    public CompletableFuture<Optional<Integer>> getSize(PublicKeyHash owner, Multihash block) {
+        return target.getSize(owner, block);
     }
 
     @Override

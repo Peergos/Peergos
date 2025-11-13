@@ -154,8 +154,8 @@ public class RetryStorage implements ContentAddressedStorage {
     }
 
     @Override
-    public CompletableFuture<Optional<Integer>> getSize(Multihash block) {
-        return runWithRetry(() -> target.getSize(block));
+    public CompletableFuture<Optional<Integer>> getSize(PublicKeyHash owner, Multihash block) {
+        return runWithRetry(() -> target.getSize(owner, block));
     }
 
     @Override

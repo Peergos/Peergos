@@ -46,6 +46,7 @@ public class IpfsCoreNode implements CoreNode {
     private final List<String> usernames = new ArrayList<>();
     private final DifficultyGenerator difficultyGenerator;
     private final Map<String, PublicKeyHash> reservedUsernames = new ConcurrentHashMap<>();
+    private final Cid ourId;
 
     private MaybeMultihash currentRoot;
     private Optional<Long> currentSequence;
@@ -61,6 +62,7 @@ public class IpfsCoreNode implements CoreNode {
         this.currentRoot = MaybeMultihash.empty();
         this.currentSequence = Optional.empty();
         this.ipfs = ipfs;
+        this.ourId = ipfs.id().join();
         this.hasher = crypto.hasher;
         this.crypto = crypto;
         this.mutable = mutable;
@@ -97,16 +99,20 @@ public class IpfsCoreNode implements CoreNode {
      * @param newRoot The root of the new champ
      */
     private synchronized void update(MaybeMultihash newRoot, Optional<Long> newSequence) {
-        updateAllMappings(Arrays.asList(ipfs.id().join()), currentRoot, newRoot, ipfs, chains, reverseLookup, usernames);
+        updateAllMappings(Arrays.asList(ipfs.id().join()), peergosIdentity, currentRoot, newRoot,
+                ourId, hasher, ipfs, chains, reverseLookup, usernames);
         this.currentRoot = newRoot;
         this.currentSequence = newSequence;
     }
 
     public static CompletableFuture<CommittedWriterData> getWriterData(List<Multihash> peerIds,
+                                                                       PublicKeyHash owner,
                                                                        Cid hash,
                                                                        Optional<Long> sequence,
+                                                                       Cid ourId,
+                                                                       Hasher hasher,
                                                                        DeletableContentAddressedStorage dht) {
-        return dht.get(peerIds, hash, "", true)
+        return dht.get(peerIds, owner, hash, Optional.empty(), ourId, hasher, true)
                 .thenApply(cborOpt -> {
                     if (! cborOpt.isPresent())
                         throw new IllegalStateException("Couldn't retrieve WriterData from dht! " + hash);
@@ -114,16 +120,23 @@ public class IpfsCoreNode implements CoreNode {
                 });
     }
 
-    public static MaybeMultihash getTreeRoot(List<Multihash> peerIds, MaybeMultihash pointerTarget, DeletableContentAddressedStorage ipfs) {
+    public static MaybeMultihash getTreeRoot(List<Multihash> peerIds,
+                                             PublicKeyHash owner,
+                                             MaybeMultihash pointerTarget,
+                                             Cid ourId,
+                                             Hasher hasher,
+                                             DeletableContentAddressedStorage ipfs) {
         if (! pointerTarget.isPresent())
             return MaybeMultihash.empty();
-        CommittedWriterData current = getWriterData(peerIds, (Cid)pointerTarget.get(), Optional.empty(), ipfs).join();
+        CommittedWriterData current = getWriterData(peerIds, owner, (Cid)pointerTarget.get(), Optional.empty(), ourId, hasher, ipfs).join();
         return current.props.get().tree.map(MaybeMultihash::of).orElseGet(MaybeMultihash::empty);
 
     }
 
     public static <V extends Cborable> CompletableFuture<Boolean> applyToDiff(
             List<Multihash> storageProviders,
+            Cid ourId,
+            PublicKeyHash owner,
             MaybeMultihash original,
             MaybeMultihash updated,
             int depth,
@@ -133,13 +146,14 @@ public class IpfsCoreNode implements CoreNode {
             Consumer<Triple<ByteArrayWrapper, Optional<V>, Optional<V>>> consumer,
             int bitWidth,
             DeletableContentAddressedStorage storage,
+            Hasher cryptoHash,
             Function<Cborable, V> fromCbor) {
 
         if (updated.equals(original))
             return CompletableFuture.completedFuture(true);
-        return original.map(h -> storage.get(storageProviders, (Cid)h, "", true)).orElseGet(() -> CompletableFuture.completedFuture(Optional.empty()))
+        return original.map(h -> storage.get(storageProviders, owner, (Cid)h, Optional.empty(), ourId, cryptoHash, true)).orElseGet(() -> CompletableFuture.completedFuture(Optional.empty()))
                 .thenApply(rawOpt -> rawOpt.map(y -> Champ.fromCbor(y, fromCbor)))
-                .thenCompose(left -> updated.map(h -> storage.get(storageProviders, (Cid)h, "", true)).orElseGet(() -> CompletableFuture.completedFuture(Optional.empty()))
+                .thenCompose(left -> updated.map(h -> storage.get(storageProviders, owner, (Cid)h, Optional.empty(), ourId, cryptoHash, true)).orElseGet(() -> CompletableFuture.completedFuture(Optional.empty()))
                         .thenApply(rawOpt -> rawOpt.map(y -> Champ.fromCbor(y, fromCbor)))
                         .thenCompose(right -> Champ.hashAndMaskKeys(higherLeftMappings, depth, bitWidth, hasher)
                                 .thenCompose(leftHigherMappingsByBit -> Champ.hashAndMaskKeys(higherRightMappings, depth, bitWidth, hasher)
@@ -178,9 +192,11 @@ public class IpfsCoreNode implements CoreNode {
 
                                                 if (leftShard.isPresent() || rightShard.isPresent()) {
                                                     deeperLayers.add(applyToDiff(storageProviders,
+                                                            ourId,
+                                                            owner,
                                                             leftShard.orElse(MaybeMultihash.empty()),
                                                             rightShard.orElse(MaybeMultihash.empty()), depth + 1, hasher,
-                                                            leftMappings, rightMappings, consumer, bitWidth, storage, fromCbor));
+                                                            leftMappings, rightMappings, consumer, bitWidth, storage, cryptoHash, fromCbor));
                                                 } else {
                                                     Map<ByteArrayWrapper, Optional<V>> leftMap = leftMappings.stream()
                                                             .collect(Collectors.toMap(e -> e.key, e -> e.valueHash));
@@ -222,37 +238,43 @@ public class IpfsCoreNode implements CoreNode {
     }
 
     public static void updateAllMappings(List<Multihash> peerIds,
+                                         PublicKeyHash owner,
                                          MaybeMultihash currentChampRoot,
                                          MaybeMultihash newChampRoot,
+                                         Cid ourId,
+                                         Hasher hasher,
                                          DeletableContentAddressedStorage ipfs,
                                          Map<String, List<UserPublicKeyLink>> chains,
                                          Map<PublicKeyHash, String> reverseLookup,
                                          List<String> usernames) {
         try {
-            MaybeMultihash currentTree = getTreeRoot(peerIds, currentChampRoot, ipfs);
-            MaybeMultihash updatedTree = getTreeRoot(peerIds, newChampRoot, ipfs);
+            MaybeMultihash currentTree = getTreeRoot(peerIds, owner, currentChampRoot, ourId, hasher, ipfs);
+            MaybeMultihash updatedTree = getTreeRoot(peerIds, owner, newChampRoot, ourId, hasher, ipfs);
             LOG.info("Updating pki to new tree root " + updatedTree);
             Consumer<Triple<ByteArrayWrapper, Optional<CborObject.CborMerkleLink>, Optional<CborObject.CborMerkleLink>>> consumer =
-                    t -> updateMapping(peerIds, t.left, t.middle, t.right, ipfs, chains, reverseLookup, usernames);
+                    t -> updateMapping(peerIds, owner, t.left, t.middle, t.right, ipfs, chains, reverseLookup, usernames, ourId, hasher);
             Function<Cborable, CborObject.CborMerkleLink> fromCbor = c -> (CborObject.CborMerkleLink)c;
-            IpfsCoreNode.applyToDiff(peerIds, currentTree, updatedTree, 0, IpfsCoreNode::keyHash,
+            IpfsCoreNode.applyToDiff(peerIds, ourId, owner, currentTree, updatedTree, 0, IpfsCoreNode::keyHash,
                     Collections.emptyList(), Collections.emptyList(),
-                    consumer, ChampWrapper.BIT_WIDTH, ipfs, fromCbor).get();
+                    consumer, ChampWrapper.BIT_WIDTH, ipfs, hasher, fromCbor).get();
         } catch (Exception e) {
             throw new RuntimeException(e.getMessage(), e);
         }
     }
 
     public static void updateMapping(List<Multihash> peerIds,
+                                     PublicKeyHash owner,
                                      ByteArrayWrapper key,
                                      Optional<CborObject.CborMerkleLink> oldValue,
                                      Optional<CborObject.CborMerkleLink> newValue,
                                      DeletableContentAddressedStorage ipfs,
                                      Map<String, List<UserPublicKeyLink>> chains,
                                      Map<PublicKeyHash, String> reverseLookup,
-                                     List<String> usernames) {
+                                     List<String> usernames,
+                                     Cid ourId,
+                                     Hasher hasher) {
         try {
-            Optional<CborObject> cborOpt = ipfs.get(peerIds, (Cid)newValue.get().target, "", true).get();
+            Optional<CborObject> cborOpt = ipfs.get(peerIds, owner, (Cid)newValue.get().target, Optional.empty(), ourId, hasher, true).get();
             if (!cborOpt.isPresent()) {
                 LOG.severe("Couldn't retrieve new claim chain from " + newValue);
                 return;
@@ -265,7 +287,7 @@ public class IpfsCoreNode implements CoreNode {
             String username = new String(key.data);
 
             if (oldValue.isPresent()) {
-                Optional<CborObject> existingCborOpt = ipfs.get(peerIds, (Cid)oldValue.get().target, "", true).get();
+                Optional<CborObject> existingCborOpt = ipfs.get(peerIds, owner, (Cid)oldValue.get().target, Optional.empty(), ourId, hasher, true).get();
                 if (!existingCborOpt.isPresent()) {
                     LOG.severe("Couldn't retrieve existing claim chain from " + newValue);
                     return;

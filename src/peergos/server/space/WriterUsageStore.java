@@ -19,6 +19,10 @@ public interface WriterUsageStore {
 
     WriterUsage getUsage(PublicKeyHash writer);
 
+    PublicKeyHash getOwnerKey(PublicKeyHash writer);
+
+    PublicKeyHash getOwnerKey(String username);
+
     void updateWriterUsage(PublicKeyHash writer,
                            MaybeMultihash target,
                            Set<PublicKeyHash> removedOwnedKeys,
@@ -26,5 +30,5 @@ public interface WriterUsageStore {
                            long retainedStorage);
 
     // return current usage root, and username
-    List<Pair<Multihash, String>> getAllTargets();
+    List<Triple<Multihash, String, PublicKeyHash>> getAllTargets();
 }

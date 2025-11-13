@@ -24,11 +24,13 @@ public class UserRepository implements SocialNetwork, MutablePointers {
     private final DeletableContentAddressedStorage ipfs;
     private final JdbcIpnsAndSocial store;
     private final List<Multihash> us;
+    private final Hasher hasher;
 
-    public UserRepository(DeletableContentAddressedStorage ipfs, JdbcIpnsAndSocial store) {
+    public UserRepository(DeletableContentAddressedStorage ipfs, JdbcIpnsAndSocial store, Hasher hasher) {
         this.ipfs = ipfs;
         this.store = store;
         this.us = List.of(ipfs.id().join());
+        this.hasher = hasher;
     }
 
     @Override
@@ -80,7 +82,7 @@ public class UserRepository implements SocialNetwork, MutablePointers {
                                             // check the new target is valid for this writer (or a deletion)
                                             if (cas.updated.isPresent()) {
                                                 Multihash newHash = cas.updated.get();
-                                                CommittedWriterData newWriterData = DeletableContentAddressedStorage.getWriterData(us, (Cid) newHash, cas.sequence, false, ipfs).join();
+                                                CommittedWriterData newWriterData = DeletableContentAddressedStorage.getWriterData(us, owner, (Cid) newHash, cas.sequence, false, (Cid)us.get(0), hasher, ipfs).join();
                                                 if (!newWriterData.props.get().controller.equals(writer))
                                                     return Futures.of(false);
                                             }
@@ -100,7 +102,7 @@ public class UserRepository implements SocialNetwork, MutablePointers {
         return this;
     }
 
-    public static UserRepository build(DeletableContentAddressedStorage ipfs, JdbcIpnsAndSocial sqlNode) {
-        return new UserRepository(ipfs, sqlNode);
+    public static UserRepository build(DeletableContentAddressedStorage ipfs, JdbcIpnsAndSocial sqlNode, Hasher h) {
+        return new UserRepository(ipfs, sqlNode, h);
     }
 }
