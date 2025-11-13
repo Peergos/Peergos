@@ -69,8 +69,6 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
      */
     CompletableFuture<Optional<CborObject>> get(List<Multihash> peerIds, PublicKeyHash owner, Cid hash, String auth, boolean persistBlock);
 
-//    TODO? CompletableFuture<Optional<CborObject>> get(List<Multihash> peerIds, PublicKeyHash owner, Cid hash, Optional<BatWithId> bat, boolean persistBlock);
-
     default CompletableFuture<Optional<CborObject>> get(List<Multihash> peerIds,
                                                         PublicKeyHash owner,
                                                         Cid hash,
