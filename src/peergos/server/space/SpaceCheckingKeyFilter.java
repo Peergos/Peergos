@@ -388,6 +388,7 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
         if ((! errored && expectedUsage + size > quota) || (errored && expectedUsage + size > quota + USAGE_TOLERANCE)) {
             long pending = usage.getPending(writer);
             usageStore.confirmUsage(writerUsage.owner, writer, 0, true);
+            LOG.info("Rejecting write for " + writerUsage.owner);
             throw new IllegalStateException("Storage quota reached! \nUsed "
                     + usage.totalUsage() + " out of " + quota + " bytes. Rejecting write of size " + (size + pending) + ". \n" +
                     "Please delete some files or request more space.");
