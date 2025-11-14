@@ -131,7 +131,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
     private final BlockCache cborCache;
     private final BlockBuffer blockBuffer;
     private final Hasher hasher;
-    private final DeletableContentAddressedStorage p2pFallback, bloomTarget;
+    private final DeletableContentAddressedStorage p2pFallback;
     private final ContentAddressedStorageProxy p2pHttpFallback;
 
     private final LinkedBlockingQueue<Cid> blocksToFlush = new LinkedBlockingQueue<>();
@@ -160,8 +160,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                           long maxUserReadRequestsPerSecond,
                           Hasher hasher,
                           DeletableContentAddressedStorage p2pFallback,
-                          ContentAddressedStorageProxy p2pHttpFallback,
-                          DeletableContentAddressedStorage bloomTarget) {
+                          ContentAddressedStorageProxy p2pHttpFallback) {
         this.ids = ids;
         this.peerIds = ids.stream()
                 .map(Cid::bareMultihash)
@@ -192,7 +191,6 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         this.hasher = hasher;
         this.p2pFallback = p2pFallback;
         this.p2pHttpFallback = p2pHttpFallback;
-        this.bloomTarget = bloomTarget;
         globalReadReqCount = new SlidingWindowCounter(60*60, 60*60 * maxReadReqsPerSecond);
         globalReadBandwidth = new SlidingWindowCounter(60*60, 60*60 * maxReadBandwidthPerSecond);
         this.maxUserBandwidthPerMinute = 60 * maxUserBandwidthPerSecond;
@@ -801,7 +799,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
 
     @Override
     public CompletableFuture<IpnsEntry> getIpnsEntry(Multihash signer) {
-        return bloomTarget.getIpnsEntry(signer);
+        return p2pFallback.getIpnsEntry(signer);
     }
 
     private CompletableFuture<Optional<Integer>> getSizeWithoutRetry(Multihash hash) {
@@ -1257,7 +1255,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                 BlockStoreProperties.empty(), "localhost:8000", transactions, authoriser, null, meta, usageStore,
                 new RamBlockCache(1024, 100),
                 new FileBlockBuffer(a.fromPeergosDir("s3-block-buffer-dir", "block-buffer")),
-                Long.MAX_VALUE, Long.MAX_VALUE, Long.MAX_VALUE, Long.MAX_VALUE, hasher, new RAMStorage(hasher), null, new RAMStorage(hasher));
+                Long.MAX_VALUE, Long.MAX_VALUE, Long.MAX_VALUE, Long.MAX_VALUE, hasher, new RAMStorage(hasher), null);
         JdbcIpnsAndSocial rawPointers = new JdbcIpnsAndSocial(database, sqlCommands);
         if (a.hasArg("integrity-check")) {
             if (a.hasArg("username"))

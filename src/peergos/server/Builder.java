@@ -172,18 +172,6 @@ public class Builder {
     }
 
     /**
-     *
-     * @param a
-     * @return This returns the ipfs bloom  filter api target
-     */
-    public static JavaPoster buildBloomApiTarget(Args a) {
-        if (! a.hasArg("ipfs-bloom-api-address"))
-            return buildIpfsApi(a);
-        URL ipfsGatewayAddress = AddressUtil.getAddress(new MultiAddress(a.getArg("ipfs-bloom-api-address")));
-        return new JavaPoster(ipfsGatewayAddress, false);
-    }
-
-    /**
      * Create path to local blockstore directory from Args.
      *
      * @param args
@@ -253,7 +241,7 @@ public class Builder {
                         a.getLong(Main.GLOBAL_S3_READ_REQUESTS_LIMIT.name),
                         a.getLong(Main.USER_DOWNLOAD_BANDWIDTH_LIMIT.name),
                         a.getLong(Main.USER_S3_READ_REQUESTS_LIMIT.name),
-                        hasher, p2pBlockRetriever, new ContentAddressedStorageProxy.HTTP(p2pHttpProxy), ipfs);
+                        hasher, p2pBlockRetriever, new ContentAddressedStorageProxy.HTTP(p2pHttpProxy));
                 s3.updateMetadataStoreIfEmpty();
                 return new LocalIpnsStorage(s3, ids);
             } else if (enableGC) {
@@ -276,9 +264,6 @@ public class Builder {
                 S3Config config = S3Config.build(a, Optional.empty());
                 BlockStoreProperties props = buildS3Properties(a);
 
-                JavaPoster bloomApiTarget = buildBloomApiTarget(a);
-                DeletableContentAddressedStorage.HTTP bloomTarget = new DeletableContentAddressedStorage.HTTP(bloomApiTarget, false, hasher);
-
                 FileBlockCache cborCache = new FileBlockCache(a.fromPeergosDir("block-cache-dir", "block-cache"), 10 * 1024 * 1024 * 1024L);
                 FileBlockBuffer blockBuffer = new FileBlockBuffer(a.fromPeergosDir("s3-block-buffer-dir", "block-buffer"));
                 S3BlockStorage s3 = new S3BlockStorage(config, ipfs.ids().join(), props, linkHost, transactions, authoriser,
@@ -288,7 +273,7 @@ public class Builder {
                         a.getLong(Main.USER_DOWNLOAD_BANDWIDTH_LIMIT.name),
                         a.getLong(Main.USER_S3_READ_REQUESTS_LIMIT.name),
                         hasher, p2pBlockRetriever,
-                        new ContentAddressedStorageProxy.HTTP(p2pHttpProxy), bloomTarget);
+                        new ContentAddressedStorageProxy.HTTP(p2pHttpProxy));
                 s3.updateMetadataStoreIfEmpty();
                 return new LocalIpnsStorage(s3, ids);
             } else {
