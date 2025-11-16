@@ -652,18 +652,20 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         return put(expected, raw).right;
     }
 
+    ForkJoinPool mirrorPool = Threads.newPool(10, "S3-Mirror-");
+
     private List<BlockMetadata> bulkGetBlocks(List<Multihash> peers,
                                               PublicKeyHash owner,
                                               List<Cid> hashes,
                                               Optional<BatWithId> mirrorBat) {
-        List<CompletableFuture<Optional<BlockMetadata>>> futs = hashes.stream()
-                .map(c -> {
+        List<ForkJoinTask<Optional<BlockMetadata>>> futs = hashes.stream()
+                .map(c -> mirrorPool.submit(() -> {
                     Optional<BlockMetadata> m = blockMetadata.get(c);
                     if (m.isPresent())
-                        return Futures.of(m);
+                        return m;
                     return RetryStorage.runWithRetry(5, () -> p2pHttpFallback.getRaw(peers.get(0), owner, c, mirrorBat)
-                            .thenApply(bo -> bo.map(b -> checkAndAddBlock(c, b))));
-                })
+                            .thenApply(bo -> bo.map(b -> checkAndAddBlock(c, b)))).join();
+                }))
                 .toList();
         return futs.stream()
                 .map(f -> f.join().get())
