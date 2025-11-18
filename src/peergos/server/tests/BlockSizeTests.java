@@ -33,7 +33,7 @@ public class BlockSizeTests {
 
         String nameBase = IntStream.range(0, 252).mapToObj(i -> "A").collect(Collectors.joining());
         List<NamedRelativeCapability> children = IntStream.range(0, 500)
-                .mapToObj(i -> new NamedRelativeCapability(nameBase + String.format("%03d", i), nextChunk))
+                .mapToObj(i -> new NamedRelativeCapability(nameBase + String.format("%03d", i), nextChunk, Optional.of(true), Optional.of("appliction/x-someapp-somebig-string-too"), Optional.of(LocalDateTime.MAX)))
                 .collect(Collectors.toList());
         CryptreeNode.ChildrenLinks childrenLinks = new CryptreeNode.ChildrenLinks(children);
         CryptreeNode.DirAndChildren dir = CryptreeNode.createDir(MaybeMultihash.empty(), rBase,

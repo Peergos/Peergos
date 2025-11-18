@@ -1341,7 +1341,7 @@ public abstract class UserTests {
         WritableAbsoluteCapability batlessCap = cap.withMapKey(cFile.readOnlyPointer().getMapKey(), Optional.empty());
         network.synchronizer.applyComplexUpdate(owner, signingPair,
                 (s, c) -> root.getPointer().fileAccess.updateChildLink(s, c, root.writableFilePointer(), root.signingPair(),
-                        cap, new NamedAbsoluteCapability(filename, batlessCap), network, crypto.random, crypto.hasher)).join();
+                        cap, new NamedAbsoluteCapability(filename, batlessCap, Optional.empty(), Optional.empty(), Optional.empty()), network, crypto.random, crypto.hasher)).join();
 
         // check there are no BATs for this file
         UserContext newContext = PeergosNetworkUtils.ensureSignedUp(username, password, network.clear(), crypto);

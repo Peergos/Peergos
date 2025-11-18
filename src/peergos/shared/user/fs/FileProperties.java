@@ -249,6 +249,11 @@ public class FileProperties implements Cborable {
     }
 
     public String getType() {
+        return getType(mimeType, isDirectory);
+    }
+
+    @JsMethod
+    public static String getType(String mimeType, boolean isDirectory) {
         if (isDirectory)
             return "dir";
         if (mimeType.equals("text/calendar"))

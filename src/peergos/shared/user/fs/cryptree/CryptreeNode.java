@@ -316,8 +316,9 @@ public class CryptreeNode implements Cborable {
                     // Only get here on legacy format directories
                     return Futures.combineAllInOrder(c.children.a().stream()
                             .map(r -> network.retrieveMetadata(r.toAbsolute(us), version)
-                                    .thenApply(opt -> opt.map(ret -> new NamedRelativeCapability(new PathElement(ret.getProperties().name),
-                                            r))))
+                                    .thenApply(opt -> opt.map(ret -> new NamedRelativeCapability(
+                                            new PathElement(ret.getProperties().name),
+                                            r, Optional.empty(), Optional.empty(), Optional.empty()))))
                             .collect(Collectors.toList()))
                             .thenApply(res -> res.stream()
                                     .flatMap(Optional::stream)
@@ -806,7 +807,11 @@ public class CryptreeNode implements Cborable {
                                                                     committer)
                                                                     .thenApply(updatedChild -> new Pair<>(updatedChild.left,
                                                                             Stream.concat(p.right.stream(),
-                                                                                    Stream.of(new NamedAbsoluteCapability(c.getProperties().name, updatedChild.right)))
+                                                                                    Stream.of(new NamedAbsoluteCapability(c.getProperties().name,
+                                                                                            updatedChild.right,
+                                                                                            Optional.of(c.getProperties().isDirectory),
+                                                                                            Optional.of(c.getProperties().mimeType),
+                                                                                            Optional.of(c.getProperties().created))))
                                                                                     .collect(Collectors.toSet()))));
                                                 },
                                                 (x, y) -> new Pair<>(x.left.merge(y.left),
@@ -820,7 +825,7 @@ public class CryptreeNode implements Cborable {
                                             RelativeCapability nextChunkRel = RelativeCapability.buildSubsequentChunk(
                                                     nextChunk.right.getMapKey(), nextChunk.right.bat, newUs.cap.rBaseKey);
                                             List<NamedRelativeCapability> relativeChildLinks = newChildCaps.right.stream()
-                                                    .map(n -> new NamedRelativeCapability(n.name, newUs.cap.relativise(n.cap)))
+                                                    .map(n -> new NamedRelativeCapability(n.name, newUs.cap.relativise(n.cap), n.isDir, n.mimetype, n.created))
                                                     .collect(Collectors.toList());
                                             return createDir(MaybeMultihash.empty(), newUs.cap.rBaseKey,
                                                     newUs.cap.wBaseKey.get(), signer, props, newParentCap, newParentKey,
@@ -1028,7 +1033,7 @@ public class CryptreeNode implements Cborable {
                             tid -> child.commit(base, committer, childCap, entryWriter, network, tid), network.dhtClient)
                             .thenCompose(updatedBase -> {
                                 RelativeCapability cap = new RelativeCapability(Optional.empty(), dirMapKey, dirBat, dirReadKey, Optional.of(toChildWriteKey));
-                                NamedRelativeCapability subdirPointer = new NamedRelativeCapability(new PathElement(name), cap);
+                                NamedRelativeCapability subdirPointer = new NamedRelativeCapability(new PathElement(name), cap, Optional.of(true), Optional.of(""), Optional.of(timestamp));
                                 SigningPrivateKeyAndPublicHash signer = getSigner(us.rBaseKey, us.wBaseKey.get(), entryWriter);
                                 return addChildrenAndCommit(updatedBase, committer, Arrays.asList(subdirPointer), us, signer, mirrorBat, network, crypto);
                             });
@@ -1044,7 +1049,11 @@ public class CryptreeNode implements Cborable {
                                                        NetworkAccess network,
                                                        SafeRandom random,
                                                        Hasher hasher) {
-        NamedAbsoluteCapability newChild = new NamedAbsoluteCapability(modified.getProperties().name, modified.capability);
+        NamedAbsoluteCapability newChild = new NamedAbsoluteCapability(modified.getProperties().name,
+                modified.capability,
+                Optional.of(original.getProperties().isDirectory),
+                Optional.of(original.getProperties().mimeType),
+                Optional.of(original.getProperties().created));
         return updateChildLinks(base, committer, ourPointer, signer,
                 Arrays.asList(new Pair<>(original.capability, newChild)), network, random, hasher);
     }
@@ -1081,7 +1090,10 @@ public class CryptreeNode implements Cborable {
 
             List<NamedRelativeCapability> unchanged = children.stream()
                     .filter(e -> ! oldToNew.containsKey(e.capability.getLocation()))
-                    .map(c -> new NamedRelativeCapability(c.getProperties().name, ourPointer.relativise(c.capability)))
+                    .map(c -> new NamedRelativeCapability(c.getProperties().name, ourPointer.relativise(c.capability),
+                            Optional.of(c.getProperties().isDirectory),
+                            Optional.of(c.getProperties().mimeType),
+                            Optional.of(c.getProperties().created)))
                     .collect(Collectors.toList());
 
             List<NamedRelativeCapability> updatedLinks = children.stream()
@@ -1089,7 +1101,8 @@ public class CryptreeNode implements Cborable {
                     .map(c -> {
                         NamedAbsoluteCapability newTarget = oldToNew.get(c.capability.getLocation());
                         return new NamedRelativeCapability(newTarget.name,
-                                ourPointer.relativise(newTarget.cap));
+                                ourPointer.relativise(newTarget.cap),
+                                newTarget.isDir, newTarget.mimetype, newTarget.created);
                     })
                     .collect(Collectors.toList());
 
@@ -1134,7 +1147,8 @@ public class CryptreeNode implements Cborable {
         return getDirectChildrenCapabilities(ourPointer, current, network).thenCompose(childCaps -> {
             List<NamedRelativeCapability> withRemoval = childCaps.stream()
                     .filter(e -> ! locsToRemove.contains(e.cap.getLocation()))
-                    .map(c -> new NamedRelativeCapability(new PathElement(c.name.name), ourPointer.relativise(c.cap)))
+                    .map(c -> new NamedRelativeCapability(new PathElement(c.name.name),
+                            ourPointer.relativise(c.cap), c.isDir, c.mimetype, c.created))
                     .collect(Collectors.toList());
             Set<Location> kidLocs = childCaps.stream()
                     .map(r -> r.cap.getLocation())
@@ -1329,7 +1343,8 @@ public class CryptreeNode implements Cborable {
         Optional<SigningPrivateKeyAndPublicHash> empty = Optional.empty();
         return createDir(MaybeMultihash.empty(), linkCap.rBaseKey, linkCap.wBaseKey.get(), empty, targetProps.asLink(),
                 Optional.of(toParent), parentKey, nextChunk,
-                new ChildrenLinks(Collections.singletonList(new NamedRelativeCapability(new PathElement(targetProps.name), toTarget))),
+                new ChildrenLinks(Collections.singletonList(new NamedRelativeCapability(new PathElement(targetProps.name), toTarget,
+                        Optional.of(targetProps.isDirectory), Optional.of(targetProps.mimeType), Optional.of(targetProps.created)))),
                 linkCap.bat, mirrorBat, crypto.random, crypto.hasher);
     }
 

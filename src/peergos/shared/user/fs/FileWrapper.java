@@ -291,6 +291,7 @@ public class FileWrapper {
         return new Location(pointer.capability.owner, pointer.capability.writer, pointer.capability.getMapKey());
     }
 
+    @JsMethod
     public CompletableFuture<Set<NamedAbsoluteCapability>> getChildrenCapabilities(Hasher hasher, NetworkAccess network) {
         ensureUnmodified();
         if (!this.isDirectory())
@@ -359,6 +360,36 @@ public class FileWrapper {
         if (capTrie.isPresent())
             return capTrie.get().getChildren("", hasher, network);
         return getChildren(version, hasher, network, true);
+    }
+
+    @JsMethod
+    public CompletableFuture<Boolean> getChildrenFromCaps(Set<NamedAbsoluteCapability> caps,
+                                                          Consumer<Set<FileWrapper>> results,
+                                                          Hasher hasher,
+                                                          NetworkAccess network) {
+        if (capTrie.isPresent()) {
+            return capTrie.get().getChildren("", hasher, network)
+                    .thenAccept(results)
+                    .thenApply(x -> true);
+        }
+        Optional<SigningPrivateKeyAndPublicHash> childsEntryWriter = pointer.capability.wBaseKey
+                .map(wBase -> pointer.fileAccess.getSigner(pointer.capability.rBaseKey, wBase, entryWriter));
+        List<Set<NamedAbsoluteCapability>> batched = new ArrayList<>();
+        Set<NamedAbsoluteCapability> currentBatch = new HashSet<>();
+        batched.add(currentBatch);
+        for (NamedAbsoluteCapability cap : caps) {
+            currentBatch.add(cap);
+            if (currentBatch.size() == ContentAddressedStorage.MAX_CHAMP_GETS) {
+                currentBatch = new HashSet<>();
+                batched.add(currentBatch);
+            }
+        }
+        return Futures.combineAllInOrder(batched.stream()
+                        .filter(b -> !b.isEmpty())
+                        .map(b -> getFiles(owner(), b, childsEntryWriter, ownername, network, version)
+                                .thenAccept(p -> results.accept(p.left)))
+                        .collect(Collectors.toList()))
+                .thenApply(x -> true);
     }
 
     public CompletableFuture<Set<FileWrapper>> getChildren(Snapshot version, Hasher hasher, NetworkAccess network, boolean allowDanglingLinks) {
@@ -690,7 +721,8 @@ public class FileWrapper {
                             monitor, props, Optional.empty(), txn.getFirstLocation().getMapKey(), txn.firstBat, isCancelled);
                     return uploader.uploadFrom(s, c, network, startChunkIndex.intValue(), txn.getFirstLocation().owner,
                             signingPair(), mirrorBatId(), crypto.random, crypto.hasher);
-                }).thenApply(v -> new Pair<>(v, Optional.of(new NamedRelativeCapability(txn.targetFilename(), fromParent))));
+                }).thenApply(v -> new Pair<>(v, Optional.of(new NamedRelativeCapability(txn.targetFilename(), fromParent,
+                        Optional.of(props.isDirectory), Optional.of(props.mimeType), Optional.of(props.created)))));
     }
 
     private CompletableFuture<Long> findFirstAbsentChunkIndex(long currentIndex, byte[] streamSecret, Location currentLoc, Snapshot s, NetworkAccess network, Crypto crypto) {
@@ -1488,7 +1520,8 @@ public class FileWrapper {
                                                                         generateThumbnailAndUpdate(cwd, committer, fileWriteCap, filename, resetAgain,
                                                                                 network, isHidden, mimeType,
                                                                                 endIndex, timestamp, timestamp, actualStreamSecret, monitor)))
-                                                                .thenApply(s -> new Pair<>(s, Optional.of(new NamedRelativeCapability(filename, writableFilePointer().relativise(fileWriteCap)))));
+                                                                .thenApply(s -> new Pair<>(s, Optional.of(new NamedRelativeCapability(filename,
+                                                                        writableFilePointer().relativise(fileWriteCap), Optional.of(false), Optional.of(mimeType), Optional.of(timestamp)))));
                                                     }));
                                         })
                         )
@@ -1848,7 +1881,10 @@ public class FileWrapper {
                             (s, committer) -> nodeToUpdate.updateProperties(s, committer, us,
                                     entryWriter, newProps, userContext.network)
                                     .thenCompose(updated -> parent.updateChildLinks(updated, committer,
-                                            Arrays.asList(new Pair<>(us, new NamedAbsoluteCapability(newFilename, us))),
+                                            Arrays.asList(new Pair<>(us, new NamedAbsoluteCapability(newFilename, us,
+                                                    Optional.of(isDir),
+                                                    Optional.of(currentProps.mimeType),
+                                                    Optional.of(currentProps.created)))),
                                             userContext.network, userContext.crypto.random, userContext.crypto.hasher))
                                     .thenCompose(v -> userContext.isSecretLink() ? Futures.of(v) :
                                             userContext.sharedWithCache.rename(ourPath,
@@ -2051,7 +2087,7 @@ public class FileWrapper {
                                                                 tid -> target.getPath(net).thenCompose(newPath -> v.withWriter(owner(), target.writer(), net)
                                                                         .thenCompose(w -> net.uploadChunk(w, c, newMetadata, owner(), pointer.capability.getMapKey(), signingPair(), tid))
                                                                         .thenCompose(v2 -> target.pointer.fileAccess.addChildrenAndCommit(v2, c,
-                                                                                Arrays.asList(new NamedRelativeCapability(getName(), ourNewcap)),
+                                                                                Arrays.asList(new NamedRelativeCapability(getName(), ourNewcap, Optional.of(isDirectory()), Optional.of(getFileProperties().mimeType), Optional.of(getFileProperties().created))),
                                                                                 target.writableFilePointer(), target.signingPair(), targetMirrorBatId, net, context.crypto))
                                                                         .thenCompose(v3 -> parent.pointer.fileAccess
                                                                                 .removeChildren(v3, c, Arrays.asList(isLink() ? linkPointer.get().capability : getPointer().capability), parent.writableFilePointer(),
