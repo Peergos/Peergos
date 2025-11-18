@@ -1883,8 +1883,8 @@ public class FileWrapper {
                                     .thenCompose(updated -> parent.updateChildLinks(updated, committer,
                                             Arrays.asList(new Pair<>(us, new NamedAbsoluteCapability(newFilename, us,
                                                     Optional.of(isDir),
-                                                    Optional.of(getFileProperties().mimeType),
-                                                    Optional.of(getFileProperties().created)))),
+                                                    Optional.of(currentProps.mimeType),
+                                                    Optional.of(currentProps.created)))),
                                             userContext.network, userContext.crypto.random, userContext.crypto.hasher))
                                     .thenCompose(v -> userContext.isSecretLink() ? Futures.of(v) :
                                             userContext.sharedWithCache.rename(ourPath,
