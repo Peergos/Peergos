@@ -721,7 +721,8 @@ public class FileWrapper {
                             monitor, props, Optional.empty(), txn.getFirstLocation().getMapKey(), txn.firstBat, isCancelled);
                     return uploader.uploadFrom(s, c, network, startChunkIndex.intValue(), txn.getFirstLocation().owner,
                             signingPair(), mirrorBatId(), crypto.random, crypto.hasher);
-                }).thenApply(v -> new Pair<>(v, Optional.of(new NamedRelativeCapability(txn.targetFilename(), fromParent))));
+                }).thenApply(v -> new Pair<>(v, Optional.of(new NamedRelativeCapability(txn.targetFilename(), fromParent,
+                        Optional.of(props.isDirectory), Optional.of(props.mimeType), Optional.of(props.created)))));
     }
 
     private CompletableFuture<Long> findFirstAbsentChunkIndex(long currentIndex, byte[] streamSecret, Location currentLoc, Snapshot s, NetworkAccess network, Crypto crypto) {
@@ -1519,7 +1520,8 @@ public class FileWrapper {
                                                                         generateThumbnailAndUpdate(cwd, committer, fileWriteCap, filename, resetAgain,
                                                                                 network, isHidden, mimeType,
                                                                                 endIndex, timestamp, timestamp, actualStreamSecret, monitor)))
-                                                                .thenApply(s -> new Pair<>(s, Optional.of(new NamedRelativeCapability(filename, writableFilePointer().relativise(fileWriteCap)))));
+                                                                .thenApply(s -> new Pair<>(s, Optional.of(new NamedRelativeCapability(filename,
+                                                                        writableFilePointer().relativise(fileWriteCap), Optional.of(false), Optional.of(mimeType), Optional.of(timestamp)))));
                                                     }));
                                         })
                         )
@@ -1879,7 +1881,10 @@ public class FileWrapper {
                             (s, committer) -> nodeToUpdate.updateProperties(s, committer, us,
                                     entryWriter, newProps, userContext.network)
                                     .thenCompose(updated -> parent.updateChildLinks(updated, committer,
-                                            Arrays.asList(new Pair<>(us, new NamedAbsoluteCapability(newFilename, us))),
+                                            Arrays.asList(new Pair<>(us, new NamedAbsoluteCapability(newFilename, us,
+                                                    Optional.of(isDir),
+                                                    Optional.of(getFileProperties().mimeType),
+                                                    Optional.of(getFileProperties().created)))),
                                             userContext.network, userContext.crypto.random, userContext.crypto.hasher))
                                     .thenCompose(v -> userContext.isSecretLink() ? Futures.of(v) :
                                             userContext.sharedWithCache.rename(ourPath,
@@ -2082,7 +2087,7 @@ public class FileWrapper {
                                                                 tid -> target.getPath(net).thenCompose(newPath -> v.withWriter(owner(), target.writer(), net)
                                                                         .thenCompose(w -> net.uploadChunk(w, c, newMetadata, owner(), pointer.capability.getMapKey(), signingPair(), tid))
                                                                         .thenCompose(v2 -> target.pointer.fileAccess.addChildrenAndCommit(v2, c,
-                                                                                Arrays.asList(new NamedRelativeCapability(getName(), ourNewcap)),
+                                                                                Arrays.asList(new NamedRelativeCapability(getName(), ourNewcap, Optional.of(isDirectory()), Optional.of(getFileProperties().mimeType), Optional.of(getFileProperties().created))),
                                                                                 target.writableFilePointer(), target.signingPair(), targetMirrorBatId, net, context.crypto))
                                                                         .thenCompose(v3 -> parent.pointer.fileAccess
                                                                                 .removeChildren(v3, c, Arrays.asList(isLink() ? linkPointer.get().capability : getPointer().capability), parent.writableFilePointer(),

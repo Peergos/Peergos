@@ -2053,7 +2053,10 @@ public class UserContext {
                                 parent.getPointer().fileAccess.updateChildLink(
                                         rotated.left, c, (WritableAbsoluteCapability) parentCap,
                                         parentSigner, file.isLink() ? file.getLinkPointer().capability : originalCap,
-                                        new NamedAbsoluteCapability(file.getName(), rotated.right),
+                                        new NamedAbsoluteCapability(file.getName(), rotated.right,
+                                                Optional.of(file.getFileProperties().isDirectory),
+                                                Optional.of(file.getFileProperties().mimeType),
+                                                Optional.of(file.getFileProperties().created)),
                                         network, crypto.random, crypto.hasher)
                                         .thenCompose(s -> IpfsTransaction.call(owner,
                                                 tid -> FileWrapper.deleteAllChunks(
