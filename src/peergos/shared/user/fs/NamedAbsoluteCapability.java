@@ -1,5 +1,6 @@
 package peergos.shared.user.fs;
 
+import jsinterop.annotations.JsMethod;
 import peergos.shared.cbor.*;
 import peergos.shared.inode.*;
 
@@ -32,6 +33,26 @@ public class NamedAbsoluteCapability implements Cborable {
                                    Optional<String> mimetype,
                                    Optional<LocalDateTime> created) {
         this(new PathElement(name), cap, isDir, mimetype, created);
+    }
+
+    @JsMethod
+    public boolean isWritable() {
+        return cap.isWritable();
+    }
+
+    @JsMethod
+    public boolean isDir() {
+        return isDir.orElse(false);
+    }
+
+    @JsMethod
+    public LocalDateTime created() {
+        return created.orElse(LocalDateTime.MIN);
+    }
+
+    @JsMethod
+    public String mimeType() {
+        return mimetype.orElse("application/octet-stream");
     }
 
     private void addCbor(String key, CborObject val, CborObject.CborMap m) {
