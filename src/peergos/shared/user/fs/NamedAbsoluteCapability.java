@@ -47,7 +47,7 @@ public class NamedAbsoluteCapability implements Cborable {
 
     @JsMethod
     public LocalDateTime created() {
-        return created.orElse(LocalDateTime.MIN);
+        return created.orElse(LocalDateTime.of(2025, 1, 1, 0, 0, 0));
     }
 
     @JsMethod
