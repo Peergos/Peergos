@@ -292,6 +292,15 @@ public class FileWrapper {
     }
 
     @JsMethod
+    public CompletableFuture<Integer> getDirectChildrenCount(NetworkAccess network) {
+        ensureUnmodified();
+        if (!this.isDirectory())
+            return CompletableFuture.completedFuture(0);
+        return pointer.fileAccess.getDirectChildrenCapabilities(pointer.capability, version, network)
+                .thenApply(Set::size);
+    }
+
+    @JsMethod
     public CompletableFuture<Set<NamedAbsoluteCapability>> getChildrenCapabilities(Hasher hasher, NetworkAccess network) {
         ensureUnmodified();
         if (!this.isDirectory())
