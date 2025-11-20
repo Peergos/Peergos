@@ -178,7 +178,7 @@ public class Builder {
      * @return
      */
     public static Path blockstorePath(Args args) {
-        return args.fromPeergosDir("blockstore_dir", "blockstore");
+        return args.fromPeergosDir("blockstore_dir", ".ipfs/blocks");
     }
 
     private static BlockStoreProperties buildS3Properties(Args a) {
