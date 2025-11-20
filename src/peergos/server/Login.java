@@ -2,6 +2,7 @@ package peergos.server;
 
 import peergos.shared.*;
 import peergos.shared.crypto.hash.PublicKeyHash;
+import peergos.shared.io.ipfs.Multihash;
 import peergos.shared.user.*;
 
 import java.io.*;
@@ -13,6 +14,8 @@ public class Login {
     public static void main(String[] args) throws Exception {
         Crypto crypto = Main.initCrypto();
         NetworkAccess network = Builder.buildJavaNetworkAccess(new URL("https://peergos.net"), true, Optional.of("Peergos-" + UserService.CURRENT_VERSION + "-login"), Optional.empty()).get();
+        Multihash chmedly = network.coreNode.getHomeServer("drew_meetingav_net").join().get();
+        Multihash demo = network.coreNode.getHomeServer("demo").join().get();
         String username = args[0];
         Console console = System.console();
         String password = new String(console.readPassword("Enter password for " + username + ":"));

@@ -25,11 +25,12 @@ public class AuthedStorage extends DelegatingDeletableStorage {
 
     public AuthedStorage(DeletableContentAddressedStorage target,
                          BlockRequestAuthoriser authoriser,
+                         Cid ourNodeId,
                          String linkHost,
                          Hasher h) {
         super(target);
         this.target = target;
-        this.ourNodeId = target.id().join();
+        this.ourNodeId = ourNodeId;
         this.linkHost = linkHost;
         this.authoriser = authoriser;
         this.h = h;

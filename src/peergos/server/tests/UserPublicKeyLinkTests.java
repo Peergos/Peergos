@@ -11,6 +11,7 @@ import peergos.shared.corenode.UserPublicKeyLink;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.hash.*;
+import peergos.shared.io.ipfs.Cid;
 import peergos.shared.io.ipfs.Multihash;
 import peergos.shared.storage.*;
 import peergos.shared.util.*;
@@ -24,6 +25,7 @@ public class UserPublicKeyLinkTests {
 
     {
         ipfs = new FileContentAddressedStorage(PathUtil.get("blockstore"),
+                new Cid(1, Cid.Codec.LibP2pKey, Multihash.Type.sha2_256, RAMStorage.hash("FileStorage".getBytes())),
                     JdbcTransactionStore.build(Main.buildEphemeralSqlite(), new SqliteCommands()), (a, b, c, d) -> Futures.of(true), Main.initCrypto().hasher);
     }
 

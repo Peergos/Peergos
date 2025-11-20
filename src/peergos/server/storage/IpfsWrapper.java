@@ -231,7 +231,7 @@ public class IpfsWrapper implements AutoCloseable {
     public final Path ipfsDir;
     public final IpfsConfigParams ipfsConfigParams;
 
-    private EmbeddedIpfs embeddedIpfs;
+    private EmbeddedPeer embeddedIpfs;
     private HttpServer apiServer;
     private HttpServer p2pServer;
     private volatile boolean running = true;
@@ -421,12 +421,7 @@ public class IpfsWrapper implements AutoCloseable {
 
         org.peergos.blockstore.metadatadb.BlockMetadataStore meta =
                 new DelegatingBlockMetadataStore(metaDB);
-        boolean provideBlocks = args.hasArg("mirror.node.id") || args.hasArg("mirror.username");
-        boolean runBitswap = true; // TODO disable this after 1 release
-        ipfsWrapper.embeddedIpfs = EmbeddedIpfs.build(records,
-                EmbeddedIpfs.buildBlockStore(config, ipfsWrapper.ipfsDir, meta, false),
-                provideBlocks,
-                runBitswap,
+        ipfsWrapper.embeddedIpfs = EmbeddedPeer.build(records,
                 config.addresses.getSwarmAddresses(),
                 config.bootstrap.getBootstrapAddresses(),
                 config.identity,
@@ -435,10 +430,7 @@ public class IpfsWrapper implements AutoCloseable {
                                 .map(io.ipfs.multiaddr.MultiAddress::new)
                                 .collect(Collectors.toList()))
                         .orElse(Collections.emptyList()),
-                authoriser,
-                config.addresses.proxyTargetAddress.map(IpfsWrapper::proxyHandler),
-                Optional.of("/peergos/bitswap"),
-                Optional.empty()
+                config.addresses.proxyTargetAddress.map(IpfsWrapper::proxyHandler)
         );
         ipfsWrapper.embeddedIpfs.start(args.getBoolean("async-bootstrap", false));
         io.ipfs.multiaddr.MultiAddress apiAddress = config.addresses.apiAddress;
@@ -454,7 +446,7 @@ public class IpfsWrapper implements AutoCloseable {
             }
 
             ipfsWrapper.apiServer = HttpServer.create(localAPIAddress, maxConnectionQueue);
-            ipfsWrapper.apiServer.createContext(APIHandler.API_URL, new APIHandler(ipfsWrapper.embeddedIpfs));
+            ipfsWrapper.apiServer.createContext(APIHandler.API_URL, new PeerAPIHandler(ipfsWrapper.embeddedIpfs));
             ipfsWrapper.apiServer.setExecutor(Threads.newPool(handlerThreads, "Nabu-api-handler-"));
             ipfsWrapper.apiServer.start();
 
