@@ -35,25 +35,25 @@ public class WriterDataTests {
         SigningPrivateKeyAndPublicHash signerB = new SigningPrivateKeyAndPublicHash(pubB, pairB.secretSigningKey);
 
         WriterData wdA = IpfsTransaction.call(pubA, tid -> WriterData.createEmpty(pubA, signerA, dht, hasher, tid), dht).join();
-        WriterData wdB = IpfsTransaction.call(pubB, tid -> WriterData.createEmpty(pubB, signerB, dht, hasher, tid), dht).join();
+        WriterData wdB = IpfsTransaction.call(pubA, tid -> WriterData.createEmpty(pubA, signerB, dht, hasher, tid), dht).join();
 
         WriterData wdA2 = wdA.addOwnedKey(pubA, signerA, OwnerProof.build(signerB, pubA).join(), dht, hasher).join();
         wdA2.commit(pubA, signerA, MaybeMultihash.empty(), Optional.empty(), mutable, dht, hasher, test).join();
-        CommittedWriterData bCurrentCwd = wdB.commit(pubB, signerB, MaybeMultihash.empty(), Optional.empty(), mutable, dht, hasher, test).join().get(pubB);
-        MaybeMultihash bCurrent = bCurrentCwd.hash;
+        CommittedWriterData bCurrentCwd = wdB.commit(pubA, signerB, MaybeMultihash.empty(), Optional.empty(), mutable, dht, hasher, test).join().get(pubB);
 
         CommittedWriterData.Retriever retriever = (h, s) -> DeletableContentAddressedStorage.getWriterData(Collections.emptyList(), pubA, h, s, false, dht.id().join(), hasher, dht);
         Set<PublicKeyHash> ownedByA1 = DeletableContentAddressedStorage.getOwnedKeysRecursive(pubA, pubA, mutable, retriever, dht, hasher).join();
-        Set<PublicKeyHash> ownedByB1 = DeletableContentAddressedStorage.getOwnedKeysRecursive(pubB, pubB, mutable, retriever, dht, hasher).join();
+        Set<PublicKeyHash> ownedByB1 = DeletableContentAddressedStorage.getOwnedKeysRecursive(pubA, pubB, mutable, retriever, dht, hasher).join();
 
         Assert.assertTrue(ownedByA1.size() == 2);
         Assert.assertTrue(ownedByB1.size() == 1);
 
-        WriterData wdB2 = wdB.addOwnedKey(pubB, signerB, OwnerProof.build(signerA, pubB).join(), dht, hasher).join();
-        wdB2.commit(pubB, signerB, bCurrent, bCurrentCwd.sequence, mutable, dht, hasher, test).join();
+        MaybeMultihash bCurrent = bCurrentCwd.hash;
+        WriterData wdB2 = wdB.addOwnedKey(pubA, signerB, OwnerProof.build(signerA, pubB).join(), dht, hasher).join();
+        wdB2.commit(pubA, signerB, bCurrent, bCurrentCwd.sequence, mutable, dht, hasher, test).join();
 
         Set<PublicKeyHash> ownedByA2 = DeletableContentAddressedStorage.getOwnedKeysRecursive(pubA, pubA, mutable, retriever, dht, hasher).join();
-        Set<PublicKeyHash> ownedByB2 = DeletableContentAddressedStorage.getOwnedKeysRecursive(pubB, pubB, mutable, retriever, dht, hasher).join();
+        Set<PublicKeyHash> ownedByB2 = DeletableContentAddressedStorage.getOwnedKeysRecursive(pubA, pubB, mutable, retriever, dht, hasher).join();
 
         Assert.assertTrue(ownedByA2.size() == 2);
         Assert.assertTrue(ownedByB2.size() == 2);

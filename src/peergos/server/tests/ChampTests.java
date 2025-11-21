@@ -29,7 +29,6 @@ public class ChampTests {
 
     private static final Crypto crypto = Main.initCrypto();
     private static final Hasher writeHasher = crypto.hasher;
-    private static final PublicKeyHash owner = new PublicKeyHash(new Cid(1, Cid.Codec.DagCbor, Multihash.Type.id, new byte[36]));
     private final Function<ByteArrayWrapper, CompletableFuture<byte[]>> hasher;
 
     public ChampTests(Function<ByteArrayWrapper, CompletableFuture<byte[]>> hasher) {
@@ -56,6 +55,7 @@ public class ChampTests {
                 new Cid(1, Cid.Codec.LibP2pKey, Multihash.Type.sha2_256, RAMStorage.hash("FileStorage".getBytes())),
                 JdbcTransactionStore.build(Main.buildEphemeralSqlite(), new SqliteCommands()), (a, b, c, d) -> Futures.of(true), crypto.hasher);
         SigningPrivateKeyAndPublicHash user = createUser(storage, crypto);
+        PublicKeyHash owner = user.publicKeyHash;
         Random r = new Random(28);
 
         Supplier<Multihash> randomHash = () -> {
@@ -67,8 +67,8 @@ public class ChampTests {
         Map<ByteArrayWrapper, Optional<CborObject.CborMerkleLink>> state = new HashMap<>();
 
         Champ<CborObject.CborMerkleLink> current = Champ.empty(c -> (CborObject.CborMerkleLink)c);
-        TransactionId tid = storage.startTransaction(user.publicKeyHash).get();
-        Multihash currentHash = storage.put(user.publicKeyHash, user, current.serialize(), writeHasher, tid).get();
+        TransactionId tid = storage.startTransaction(owner).get();
+        Multihash currentHash = storage.put(owner, user, current.serialize(), writeHasher, tid).get();
         int bitWidth = 5;
         int maxCollisions = 3;
         // build a random tree and keep track of the state
@@ -76,7 +76,7 @@ public class ChampTests {
         for (int i = 0; i < nKeys; i++) {
             ByteArrayWrapper key = new ByteArrayWrapper(randomHash.get().toBytes());
             Multihash value = randomHash.get();
-            Pair<Champ<CborObject.CborMerkleLink>, Multihash> updated = current.put(user.publicKeyHash, user, key, hasher.apply(key).join(), 0,
+            Pair<Champ<CborObject.CborMerkleLink>, Multihash> updated = current.put(owner, user, key, hasher.apply(key).join(), 0,
                     Optional.empty(), Optional.of(new CborObject.CborMerkleLink(value)), bitWidth, maxCollisions, Optional.empty(), hasher, tid, storage, writeHasher, currentHash).get();
             Optional<CborObject.CborMerkleLink> result = updated.left.get(owner, key, hasher.apply(key).join(), 0, bitWidth, storage).get();
             if (! result.equals(Optional.of(new CborObject.CborMerkleLink(value))))
@@ -102,7 +102,7 @@ public class ChampTests {
             ByteArrayWrapper key = e.getKey();
             Multihash value = randomHash.get();
             Optional<CborObject.CborMerkleLink> currentValue = current.get(owner, e.getKey(), hasher.apply(e.getKey()).join(), 0, bitWidth, storage).get();
-            Pair<Champ<CborObject.CborMerkleLink>, Multihash> updated = current.put(user.publicKeyHash, user, key, hasher.apply(key).join(), 0, currentValue,
+            Pair<Champ<CborObject.CborMerkleLink>, Multihash> updated = current.put(owner, user, key, hasher.apply(key).join(), 0, currentValue,
                     Optional.of(new CborObject.CborMerkleLink(value)), bitWidth, maxCollisions, Optional.empty(), hasher, tid, storage, writeHasher, currentHash).get();
             Optional<CborObject.CborMerkleLink> result = updated.left.get(owner, key, hasher.apply(key).join(), 0, bitWidth, storage).get();
             if (! result.equals(Optional.of(new CborObject.CborMerkleLink(value))))
@@ -116,7 +116,7 @@ public class ChampTests {
         for (Map.Entry<ByteArrayWrapper, Optional<CborObject.CborMerkleLink>> e : state.entrySet()) {
             ByteArrayWrapper key = e.getKey();
             Optional<CborObject.CborMerkleLink> currentValue = current.get(owner, e.getKey(), hasher.apply(e.getKey()).join(), 0, bitWidth, storage).get();
-            Pair<Champ<CborObject.CborMerkleLink>, Multihash> updated = current.remove(user.publicKeyHash, user, key, hasher.apply(key).join(), 0, currentValue,
+            Pair<Champ<CborObject.CborMerkleLink>, Multihash> updated = current.remove(owner, user, key, hasher.apply(key).join(), 0, currentValue,
                     bitWidth, maxCollisions, Optional.empty(), tid, storage, writeHasher, currentHash).get();
             Optional<CborObject.CborMerkleLink> result = updated.left.get(owner, key, hasher.apply(key).join(), 0, bitWidth, storage).get();
             if (! result.equals(Optional.empty()))
@@ -127,9 +127,9 @@ public class ChampTests {
         for (int i = 0; i < 100; i++) {
             ByteArrayWrapper key = new ByteArrayWrapper(randomHash.get().toBytes());
             Multihash value = randomHash.get();
-            Pair<Champ<CborObject.CborMerkleLink>, Multihash> updated = current.put(user.publicKeyHash, user, key, hasher.apply(key).join(), 0, Optional.empty(),
+            Pair<Champ<CborObject.CborMerkleLink>, Multihash> updated = current.put(owner, user, key, hasher.apply(key).join(), 0, Optional.empty(),
                     Optional.of(new CborObject.CborMerkleLink(value)), bitWidth, maxCollisions, Optional.empty(), hasher, tid, storage, writeHasher, currentHash).get();
-            Pair<Champ<CborObject.CborMerkleLink>, Multihash> removed = updated.left.remove(user.publicKeyHash, user, key, hasher.apply(key).join(), 0,
+            Pair<Champ<CborObject.CborMerkleLink>, Multihash> removed = updated.left.remove(owner, user, key, hasher.apply(key).join(), 0,
                     Optional.of(new CborObject.CborMerkleLink(value)), bitWidth, maxCollisions, Optional.empty(), tid, storage, writeHasher, updated.right).get();
             if (! removed.right.equals(currentHash))
                 throw new IllegalStateException("Non canonical state!");
@@ -293,6 +293,7 @@ public class ChampTests {
         int bitWidth = 5;
         int maxCollisions = 3;
         SigningPrivateKeyAndPublicHash user = createUser(storage, crypto);
+        PublicKeyHash owner = user.publicKeyHash;
         Random r = new Random(28);
 
         Supplier<Multihash> randomHash = () -> {
@@ -401,6 +402,7 @@ public class ChampTests {
                 new Cid(1, Cid.Codec.LibP2pKey, Multihash.Type.sha2_256, RAMStorage.hash("FileStorage".getBytes())),
                 JdbcTransactionStore.build(Main.buildEphemeralSqlite(), new SqliteCommands()), (a, b, c, d) -> Futures.of(true), crypto.hasher);
         SigningPrivateKeyAndPublicHash user = createUser(storage, crypto);
+        PublicKeyHash owner = user.publicKeyHash;
         Random r = new Random(28);
 
         Supplier<Multihash> randomHash = () -> {
