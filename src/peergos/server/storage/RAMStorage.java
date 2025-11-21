@@ -201,13 +201,6 @@ public class RAMStorage implements DeletableContentAddressedStorage {
     }
 
     @Override
-    public List<BlockMetadata> bulkGetLinks(List<Multihash> peerIds, PublicKeyHash owner, List<Want> wants) {
-        return wants.stream()
-                .map(w -> getBlockMetadata(owner, w.cid).join())
-                .toList();
-    }
-
-    @Override
     public CompletableFuture<BlockMetadata> getBlockMetadata(PublicKeyHash owner, Cid block) {
         return getRaw(Arrays.asList(id().join()), owner, block, Optional.empty(), id().join(), hasher, true)
                 .thenApply(rawOpt -> BlockMetadataStore.extractMetadata(block, rawOpt.get()));

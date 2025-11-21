@@ -1,7 +1,6 @@
 package peergos.server.storage;
 
 import io.libp2p.core.PeerId;
-import peergos.server.storage.auth.Want;
 import peergos.shared.cbor.CborObject;
 import peergos.shared.crypto.hash.Hasher;
 import peergos.shared.crypto.hash.PublicKeyHash;
@@ -10,8 +9,6 @@ import peergos.shared.io.ipfs.Multihash;
 import peergos.shared.storage.ContentAddressedStorageProxy;
 import peergos.shared.storage.TransactionId;
 import peergos.shared.storage.auth.BatWithId;
-import peergos.shared.storage.auth.BlockAuth;
-import peergos.shared.storage.auth.S3Request;
 import peergos.shared.util.Futures;
 
 import java.util.Arrays;

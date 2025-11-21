@@ -458,7 +458,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         if (noReads) {
             if (peerIds.stream().anyMatch(p -> ids.stream().anyMatch(us -> us.bareMultihash().equals(p.bareMultihash()))))
                 throw new IllegalStateException("Reads from Glacier are disabled!");
-            return p2pFallback.getRaw(peerIds, owner, hash, bat, ourId, h, persistBlock);
+            return p2pHttpFallback.getRaw(peerIds.get(0), owner, hash, bat);
         }
         return getRaw(peerIds, owner, hash, Optional.empty(), true, bat, persistBlock)
                 .thenApply(p -> p.map(v -> v.left));
@@ -965,7 +965,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                                             Hasher h) {
         List<Optional<byte[]>> rawOpts = blocks.stream()
                 .parallel()
-                .map(b -> RetryStorage.runWithRetry(2, () -> p2pFallback.getRaw(peerIds, owner, b, mirrorBat, ourId, h, false, true)).join())
+                .map(b -> RetryStorage.runWithRetry(2, () -> p2pHttpFallback.getRaw(peerIds.get(0), owner, b, mirrorBat)).join())
                 .toList();
         if (rawOpts.size() != blocks.size())
             throw new IllegalStateException("Incorrect number of blocks returned!");
@@ -980,17 +980,6 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
             hashed.add(new Pair<>(c, bytes));
         }
         return hashed.stream().map(p -> put(p.left, p.right).right).toList();
-    }
-
-    @Override
-    public List<BlockMetadata> bulkGetLinks(List<Multihash> peerIds, PublicKeyHash owner, List<Want> wants) {
-        List<BlockMetadata> meta = p2pFallback.bulkGetLinks(peerIds, owner, wants);
-        if (meta.size() != wants.size())
-            throw new IllegalStateException("Incorrect number of block metadata returned!");
-        for (int i=0; i < wants.size(); i++) {
-            blockMetadata.put(wants.get(i).cid, null, meta.get(i));
-        }
-        return meta;
     }
 
     @Override

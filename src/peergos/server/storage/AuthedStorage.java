@@ -127,11 +127,6 @@ public class AuthedStorage extends DelegatingDeletableStorage {
     }
 
     @Override
-    public List<BlockMetadata> bulkGetLinks(List<Multihash> peerIds, PublicKeyHash owner, List<Want> wants) {
-        return target.bulkGetLinks(peerIds, owner, wants);
-    }
-
-    @Override
     public CompletableFuture<Optional<byte[]>> getRaw(List<Multihash> peerIds, PublicKeyHash owner, Cid hash, String auth, boolean doAuth, boolean persistBlock) {
         return target.getRaw(peerIds, owner, hash, auth, persistBlock).thenApply(bopt -> {
             if (bopt.isEmpty())

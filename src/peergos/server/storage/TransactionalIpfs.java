@@ -192,11 +192,6 @@ public class TransactionalIpfs extends DelegatingDeletableStorage {
     }
 
     @Override
-    public List<BlockMetadata> bulkGetLinks(List<Multihash> peerIds, PublicKeyHash owner, List<Want> wants) {
-        return target.bulkGetLinks(peerIds, owner, wants);
-    }
-
-    @Override
     public CompletableFuture<BlockMetadata> getBlockMetadata(PublicKeyHash owner, Cid block) {
         return getRaw(List.of(id), owner, block, Optional.empty(), id, hasher, false, true)
                 .thenApply(data -> BlockMetadataStore.extractMetadata(block, data.get()));

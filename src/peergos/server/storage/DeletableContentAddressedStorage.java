@@ -255,19 +255,15 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
         return Futures.of(updated);
     }
 
-    List<BlockMetadata> bulkGetLinks(List<Multihash> peerIds, PublicKeyHash owner, List<Want> wants);
-
     default List<BlockMetadata> bulkGetLinks(List<Multihash> peerIds,
                                              PublicKeyHash owner,
                                              Cid ourId,
                                              List<Cid> blocks,
                                              Optional<BatWithId> mirrorBat,
                                              Hasher h) {
-        List<Want> wants = blocks.stream()
-                .map(c -> new Want(c, mirrorBat.map(b -> b.bat.generateAuth(c, ourId, 300, S3Request.currentDatetime(), b.id, h)
-                        .thenApply(BlockAuth::encode).join())))
+        return blocks.stream()
+                .map(c -> BlockMetadataStore.extractMetadata(c, getRaw(peerIds, owner, c, mirrorBat, ourId, h, true).join().get()))
                 .collect(Collectors.toList());
-        return bulkGetLinks(peerIds, owner, wants);
     }
 
     /**
@@ -393,26 +389,6 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
         @Override
         public CompletableFuture<List<Cid>> getLinks(PublicKeyHash owner, Cid root, List<Multihash> peerids) {
             throw new IllegalStateException("Unimplemented!");
-        }
-
-        @Override
-        public List<BlockMetadata> bulkGetLinks(List<Multihash> peerIds, PublicKeyHash owner, List<Want> wants) {
-            if (wants.isEmpty())
-                return Collections.emptyList();
-            Map<String, Object> json = new HashMap<>();
-            json.put("wants", wants.stream()
-                    .map(Want::toJson)
-                    .collect(Collectors.toList()));
-            String peers = peerIds.stream()
-                    .map(Multihash::bareMultihash)
-                    .map(Multihash::toBase58)
-                    .collect(Collectors.joining(","));
-            return poster.post(apiPrefix + BLOCK_STAT_BULK + "?peers=" + peers, JSONParser.toString(json).getBytes(), true, -1)
-                    .thenApply(raw -> ((List<Map<String, Object>>) JSONParser.parse(new String(raw)))
-                            .stream()
-                            .map(BlockMetadata::fromJSON)
-                            .collect(Collectors.toList()))
-                    .join();
         }
 
         @Override

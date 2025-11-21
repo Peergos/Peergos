@@ -1,7 +1,6 @@
 package peergos.server.tests;
 
 import peergos.server.storage.*;
-import peergos.server.storage.auth.Want;
 import peergos.shared.cbor.CborObject;
 import peergos.shared.corenode.CoreNode;
 import peergos.shared.crypto.hash.Hasher;
@@ -126,11 +125,6 @@ public class VersionedWriteOnlyStorage implements DeletableContentAddressedStora
 
     @Override
     public CompletableFuture<Optional<byte[]>> getRaw(List<Multihash> peerIds, PublicKeyHash owner, Cid hash, String auth, boolean persistBlock) {
-        throw new IllegalStateException("Not implemented!");
-    }
-
-    @Override
-    public List<BlockMetadata> bulkGetLinks(List<Multihash> peerIds, PublicKeyHash owner, List<Want> wants) {
         throw new IllegalStateException("Not implemented!");
     }
 
