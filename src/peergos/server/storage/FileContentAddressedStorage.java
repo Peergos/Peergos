@@ -22,7 +22,7 @@ import java.util.function.*;
 import java.util.logging.*;
 import java.util.stream.*;
 
-/** A local directory implementation of ContentAddressedStorage. Only used for testing.
+/** A local directory implementation of ContentAddressedStorage.
  *
  */
 public class FileContentAddressedStorage implements DeletableContentAddressedStorage {

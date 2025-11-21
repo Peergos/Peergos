@@ -21,7 +21,7 @@ import java.util.stream.*;
 public class RAMStorage implements DeletableContentAddressedStorage {
     private static final int CID_V1 = 1;
 
-    private Map<Cid, byte[]> storage = new EfficientHashMap<>();
+    private Map<PublicKeyHash, Map<Cid, byte[]>> storage = new EfficientHashMap<>();
     private Map<TransactionId, List<Cid>> openTransactions = new ConcurrentHashMap<>();
     private final Set<Cid> pinnedRoots = new HashSet<>();
     private final Hasher hasher;
@@ -108,7 +108,7 @@ public class RAMStorage implements DeletableContentAddressedStorage {
                                             List<byte[]> signedHashes,
                                             List<byte[]> blocks,
                                             TransactionId tid) {
-        return put(writer, blocks, false, tid);
+        return put(owner, blocks, false, tid);
     }
 
     @Override
@@ -118,21 +118,31 @@ public class RAMStorage implements DeletableContentAddressedStorage {
                                                List<byte[]> blocks,
                                                TransactionId tid,
                                                ProgressConsumer<Long> progressConsumer) {
-        return put(writer, blocks, true, tid);
+        return put(owner, blocks, true, tid);
     }
 
-    private CompletableFuture<List<Cid>> put(PublicKeyHash writer, List<byte[]> blocks, boolean isRaw, TransactionId tid) {
+    private CompletableFuture<List<Cid>> put(PublicKeyHash owner, List<byte[]> blocks, boolean isRaw, TransactionId tid) {
         return CompletableFuture.completedFuture(blocks.stream()
                 .map(b -> {
                     Cid cid = hashToCid(b, isRaw);
-                    put(cid, b);
+                    put(owner, cid, b);
                     openTransactions.get(tid).add(cid);
                     return cid;
                 }).collect(Collectors.toList()));
     }
 
-    private synchronized void put(Cid cid, byte[] data) {
-        storage.put(cid, data);
+    private synchronized void put(PublicKeyHash owner, Cid cid, byte[] data) {
+        Map<Cid, byte[]> userStorage = forUser(owner);
+        userStorage.put(cid, data);
+    }
+
+    private Map<Cid, byte[]> forUser(PublicKeyHash owner) {
+        Map<Cid, byte[]> res = storage.get(owner);
+        if (res != null)
+            return res;
+        EfficientHashMap<Cid, byte[]> val = new EfficientHashMap<>();
+        storage.put(owner, val);
+        return val;
     }
 
     @Override
@@ -144,15 +154,17 @@ public class RAMStorage implements DeletableContentAddressedStorage {
                                                       Hasher h,
                                                       boolean doAuth,
                                                       boolean persistBlock) {
-        return CompletableFuture.completedFuture(storage.containsKey(hash) ?
-                Optional.of(storage.get(hash)) :
+        Map<Cid, byte[]> userStorage = forUser(owner);
+        return CompletableFuture.completedFuture(userStorage.containsKey(hash) ?
+                Optional.of(userStorage.get(hash)) :
                 Optional.empty());
     }
 
     @Override
     public CompletableFuture<Optional<byte[]>> getRaw(List<Multihash> peerIds, PublicKeyHash owner, Cid object, String auth, boolean persistBlock) {
-        return CompletableFuture.completedFuture(storage.containsKey(object) ?
-                Optional.of(storage.get(object)) :
+        Map<Cid, byte[]> userStorage = forUser(owner);
+        return CompletableFuture.completedFuture(userStorage.containsKey(object) ?
+                Optional.of(userStorage.get(object)) :
                 Optional.empty());
     }
 
@@ -165,7 +177,7 @@ public class RAMStorage implements DeletableContentAddressedStorage {
     public CompletableFuture<Optional<CborObject>> get(List<Multihash> peerIds, PublicKeyHash owner, Cid hash, String auth, boolean persistBlock) {
         if (hash.codec == Cid.Codec.Raw)
             throw new IllegalStateException("Need to call getRaw if cid is not cbor!");
-        return CompletableFuture.completedFuture(getAndParseObject(hash));
+        return CompletableFuture.completedFuture(getAndParseObject(owner, hash));
     }
 
     @Override
@@ -173,10 +185,11 @@ public class RAMStorage implements DeletableContentAddressedStorage {
         return get(Collections.emptyList(), owner, hash, bat, id().join(), hasher, false);
     }
 
-    private synchronized Optional<CborObject> getAndParseObject(Multihash hash) {
-        if (! storage.containsKey(hash))
+    private synchronized Optional<CborObject> getAndParseObject(PublicKeyHash owner, Multihash hash) {
+        Map<Cid, byte[]> userStorage = forUser(owner);
+        if (! userStorage.containsKey(hash))
             return Optional.empty();
-        return Optional.of(CborObject.fromByteArray(storage.get(hash)));
+        return Optional.of(CborObject.fromByteArray(userStorage.get(hash)));
     }
 
     public synchronized void clear() {
@@ -184,7 +197,7 @@ public class RAMStorage implements DeletableContentAddressedStorage {
     }
 
     public synchronized int size() {
-        return storage.size();
+        return storage.values().stream().mapToInt(Map::size).sum();
     }
 
     @Override
@@ -217,9 +230,10 @@ public class RAMStorage implements DeletableContentAddressedStorage {
 
     @Override
     public CompletableFuture<Optional<Integer>> getSize(PublicKeyHash owner, Multihash block) {
-        if (!storage.containsKey(block))
+        Map<Cid, byte[]> userStorage = forUser(owner);
+        if (!userStorage.containsKey(block))
             return CompletableFuture.completedFuture(Optional.empty());
-        return CompletableFuture.completedFuture(Optional.of(storage.get(block).length));
+        return CompletableFuture.completedFuture(Optional.of(userStorage.get(block).length));
     }
 
     @Override
@@ -271,7 +285,9 @@ public class RAMStorage implements DeletableContentAddressedStorage {
     }
 
     public int totalSize() {
-        return storage.values().stream().mapToInt(a -> a.length).sum();
+        return storage.values().stream()
+                .flatMap(m -> m.values().stream())
+                .mapToInt(a -> a.length).sum();
     }
 
     @Override
