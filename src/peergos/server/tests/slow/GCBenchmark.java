@@ -10,6 +10,7 @@ import peergos.shared.*;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
+import peergos.shared.io.ipfs.Cid;
 import peergos.shared.io.ipfs.Multihash;
 import peergos.shared.mutable.*;
 import peergos.shared.storage.*;
@@ -27,6 +28,7 @@ public class GCBenchmark {
     @Test
     public void millionObjects() throws IOException {
         DeletableContentAddressedStorage storage = new FileContentAddressedStorage(Files.createTempDirectory("peergos-tmp" + System.currentTimeMillis()),
+                new Cid(1, Cid.Codec.LibP2pKey, Multihash.Type.sha2_256, RAMStorage.hash("FileStorage".getBytes())),
                 JdbcTransactionStore.build(Main.buildEphemeralSqlite(), new SqliteCommands()), (a, b, c, d) -> Futures.of(true), crypto.hasher);
         JdbcIpnsAndSocial pointers = new JdbcIpnsAndSocial(Main.buildEphemeralSqlite(), new SqliteCommands());
         UsageStore usage = new JdbcUsageStore(Main.buildEphemeralSqlite(), new SqliteCommands());

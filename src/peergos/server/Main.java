@@ -191,7 +191,7 @@ public class Main extends Builder {
             boolean useIPFS = args.getBoolean("useIPFS");
             ContentAddressedStorage dht = useIPFS ?
                     new ContentAddressedStorage.HTTP(Builder.buildIpfsApi(args), false, crypto.hasher) :
-                    new FileContentAddressedStorage(blockstorePath(args),
+                    new FileContentAddressedStorage(blockstorePath(args), new Cid(1, Cid.Codec.LibP2pKey, Multihash.Type.sha2_256, RAMStorage.hash("FileStorage".getBytes())),
                             JdbcTransactionStore.build(getDBConnector(args, "transactions-sql-file"), new SqliteCommands()),
                             (a, b, c, d) -> Futures.of(true), crypto.hasher);
 
@@ -311,7 +311,7 @@ public class Main extends Builder {
                     BlockRequestAuthoriser blockRequestAuthoriser = Builder.blockAuthoriser(args, batStore, crypto.hasher);
                     Multihash pkiIpfsNodeId = useIPFS ?
                             new ContentAddressedStorage.HTTP(Builder.buildIpfsApi(args), false, crypto.hasher).id().join() :
-                            new FileContentAddressedStorage(blockstorePath(args),
+                            new FileContentAddressedStorage(blockstorePath(args), new Cid(1, Cid.Codec.LibP2pKey, Multihash.Type.sha2_256, RAMStorage.hash("FileStorage".getBytes())),
                                     JdbcTransactionStore.build(getDBConnector(args, "transactions-sql-file"), new SqliteCommands()),
                                     blockRequestAuthoriser, crypto.hasher).id().get();
 
@@ -398,7 +398,7 @@ public class Main extends Builder {
                         throw new IllegalStateException("S3 not supported for PKI!");
                     ContentAddressedStorage storage = useIPFS ?
                             new ContentAddressedStorage.HTTP(Builder.buildIpfsApi(args), false, crypto.hasher) :
-                            new FileContentAddressedStorage(blockstorePath(args),
+                            new FileContentAddressedStorage(blockstorePath(args), new Cid(1, Cid.Codec.LibP2pKey, Multihash.Type.sha2_256, RAMStorage.hash("FileStorage".getBytes())),
                                     transactions, authoriser, crypto.hasher);
                     Multihash pkiIpfsNodeId = storage.id().get();
 

@@ -178,7 +178,7 @@ public class Builder {
      * @return
      */
     public static Path blockstorePath(Args args) {
-        return args.fromPeergosDir("blockstore_dir", "blockstore");
+        return args.fromPeergosDir("blockstore_dir", ".ipfs/blocks");
     }
 
     private static BlockStoreProperties buildS3Properties(Args a) {
@@ -244,13 +244,18 @@ public class Builder {
                         hasher, p2pBlockRetriever, new ContentAddressedStorageProxy.HTTP(p2pHttpProxy));
                 s3.updateMetadataStoreIfEmpty();
                 return new LocalIpnsStorage(s3, ids);
-            } else if (enableGC) {
-                TransactionalIpfs txns = new TransactionalIpfs(ipfs, transactions, authoriser, ipfs.id().join(), linkHost, hasher);
+            }
+            Multihash peerId = Multihash.decode(ourIds.get(ourIds.size() - 1).getBytes());
+            Cid ourId = new Cid(1, Cid.Codec.LibP2pKey, peerId.type, peerId.getHash());
+            FileContentAddressedStorage files = new FileContentAddressedStorage(blockstorePath(a), ourId, transactions, authoriser, hasher);
+            MultiIdStorage blocks = new MultiIdStorage(new LocalFirstStorage(files, p2pGets, ourIds, hasher), ourIds);
+            if (enableGC) {
+                TransactionalIpfs txns = new TransactionalIpfs(blocks, transactions, authoriser, ourId, linkHost, hasher);
                 MetadataCachingStorage metabs = new MetadataCachingStorage(txns, meta, usage, hasher);
                 metabs.updateMetadataStoreIfEmpty();
                 return new LocalIpnsStorage(metabs, ids);
             } else {
-                AuthedStorage target = new AuthedStorage(ipfs, authoriser, linkHost, hasher);
+                AuthedStorage target = new AuthedStorage(blocks, authoriser, ourId, linkHost, hasher);
                 MetadataCachingStorage metabs = new MetadataCachingStorage(target, meta, usage, hasher);
                 metabs.updateMetadataStoreIfEmpty();
                 return new LocalIpnsStorage(metabs, ids);
@@ -277,7 +282,9 @@ public class Builder {
                 s3.updateMetadataStoreIfEmpty();
                 return new LocalIpnsStorage(s3, ids);
             } else {
-                FileContentAddressedStorage fileBacked = new FileContentAddressedStorage(blockstorePath(a), transactions, authoriser, hasher);
+                // only used for testing
+                Cid ourId = new Cid(1, Cid.Codec.LibP2pKey, Multihash.Type.sha2_256, RAMStorage.hash("FileStorage".getBytes()));
+                FileContentAddressedStorage fileBacked = new FileContentAddressedStorage(blockstorePath(a), ourId, transactions, authoriser, hasher);
                 MetadataCachingStorage metabs = new MetadataCachingStorage(fileBacked, meta, usage, hasher);
                 metabs.updateMetadataStoreIfEmpty();
                 return new LocalIpnsStorage(metabs, ids);

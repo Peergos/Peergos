@@ -32,10 +32,15 @@ public class FileContentAddressedStorage implements DeletableContentAddressedSto
     private final TransactionStore transactions;
     private final BlockRequestAuthoriser authoriser;
     private final Hasher hasher;
-    private final Cid ourId = new Cid(1, Cid.Codec.LibP2pKey, Multihash.Type.sha2_256, RAMStorage.hash("FileStorage".getBytes()));
+    private final Cid ourId;
 
-    public FileContentAddressedStorage(Path root, TransactionStore transactions, BlockRequestAuthoriser authoriser, Hasher hasher) {
+    public FileContentAddressedStorage(Path root,
+                                       Cid ourId,
+                                       TransactionStore transactions,
+                                       BlockRequestAuthoriser authoriser,
+                                       Hasher hasher) {
         this.root = root;
+        this.ourId = ourId;
         this.transactions = transactions;
         this.authoriser = authoriser;
         this.hasher = hasher;

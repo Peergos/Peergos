@@ -12,6 +12,8 @@ import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.crypto.symmetric.*;
 import peergos.shared.inode.*;
+import peergos.shared.io.ipfs.Cid;
+import peergos.shared.io.ipfs.Multihash;
 import peergos.shared.storage.*;
 import peergos.shared.storage.auth.*;
 import peergos.shared.user.fs.*;
@@ -31,6 +33,7 @@ public class InodeFilesystemTests {
     @Test
     public void deleteExample() throws IOException {
         ContentAddressedStorage storage = new FileContentAddressedStorage(Files.createTempDirectory("peergos-tmp"),
+                new Cid(1, Cid.Codec.LibP2pKey, Multihash.Type.sha2_256, RAMStorage.hash("FileStorage".getBytes())),
                 JdbcTransactionStore.build(Main.buildEphemeralSqlite(), new SqliteCommands()), (a, b, c, d) -> Futures.of(true), crypto.hasher);
         SigningPrivateKeyAndPublicHash user = createUser(storage, crypto);
         Random r = new Random(28);
@@ -69,6 +72,7 @@ public class InodeFilesystemTests {
     @Test
     public void nameClash() throws Exception {
         ContentAddressedStorage storage = new FileContentAddressedStorage(Files.createTempDirectory("peergos-tmp"),
+                new Cid(1, Cid.Codec.LibP2pKey, Multihash.Type.sha2_256, RAMStorage.hash("FileStorage".getBytes())),
                 JdbcTransactionStore.build(Main.buildEphemeralSqlite(), new SqliteCommands()), (a, b, c, d) -> Futures.of(true), crypto.hasher);
         SigningPrivateKeyAndPublicHash user = createUser(storage, crypto);
         Random r = new Random(28);
@@ -102,6 +106,7 @@ public class InodeFilesystemTests {
     @Test
     public void insertAndRetrieve() throws Exception {
         ContentAddressedStorage storage = new FileContentAddressedStorage(Files.createTempDirectory("peergos-tmp"),
+                new Cid(1, Cid.Codec.LibP2pKey, Multihash.Type.sha2_256, RAMStorage.hash("FileStorage".getBytes())),
                 JdbcTransactionStore.build(Main.buildEphemeralSqlite(), new SqliteCommands()), (a, b, c, d) -> Futures.of(true), crypto.hasher);
         SigningPrivateKeyAndPublicHash user = createUser(storage, crypto);
         Random r = new Random(28);
