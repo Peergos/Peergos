@@ -19,7 +19,7 @@ See more screenshots in the web-ui repository [https://github.com/Peergos/web-ui
 
 Try it now!
 ----
-Want to try it out now? Here's a read-only secret link [to a folder](https://peergos.net/#%7B%22secretLink%22:true%2c%22link%22:%22#6MDZhRRPT4ugkJuUfcWtaZodN5QYzkZKJtHpDHomFJrVhNSZysiFYimpgtcA2F/6MDZhRRPT4ugkJuUfcRzRbPpFimcBNJx2N9TJDnL4W3ETYhwdsWdvgCkXkwipF/FCYSFhpQ1xD2cydr6CFQ6UwFkgB82pWReAUzKVDxe4KA/5Pf7SvCG1mMtui2aPd9F3SH2wdwsPro1GxTa7VfxkWrj9XQGAUB%22%2c%22open%22:true%2c%22path%22:%22/demo/%22%7D);
+Want to try it out now? Here's a read-only secret link [to a folder](https://peergos.net/secret/z59vuwzfFDovgun2sU9YF8LqJRVXaoVR39XAkvRR6sNp7CJnseecHhV/3647803968#oqmlU2vyq0Fe);
 
 Sign-up
 ----
