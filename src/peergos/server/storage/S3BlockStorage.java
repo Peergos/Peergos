@@ -114,10 +114,10 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
             .help("Number of times we get a http 429 rate limit response")
             .register();
 
-    private final Cid id, p2pGetId;
+    private final Cid id;
     private final List<Cid> ids;
     private final List<Multihash> peerIds;
-    private final String region, bucket, folder, regionEndpoint, host;
+    private final String region, bucket, folder, host;
     private final boolean useHttps;
     private final String accessKeyId, secretKey;
     private final Optional<String> storageClass;
@@ -131,7 +131,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
     private final BlockCache cborCache;
     private final BlockBuffer blockBuffer;
     private final Hasher hasher;
-    private final DeletableContentAddressedStorage p2pFallback;
+    private final DeletableContentAddressedStorage ipnsHandler;
     private final ContentAddressedStorageProxy p2pHttpFallback;
 
     private final LinkedBlockingQueue<Cid> blocksToFlush = new LinkedBlockingQueue<>();
@@ -159,17 +159,15 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                           long maxUserBandwidthPerSecond,
                           long maxUserReadRequestsPerSecond,
                           Hasher hasher,
-                          DeletableContentAddressedStorage p2pFallback,
+                          DeletableContentAddressedStorage ipnsHandler,
                           ContentAddressedStorageProxy p2pHttpFallback) {
         this.ids = ids;
         this.peerIds = ids.stream()
                 .map(Cid::bareMultihash)
                 .collect(Collectors.toList());
         this.id = ids.get(ids.size() - 1);
-        this.p2pGetId = p2pFallback.id().join();
         this.region = config.region;
         this.bucket = config.bucket;
-        this.regionEndpoint = config.regionEndpoint;
         this.host = config.getHost();
         this.useHttps = ! host.endsWith("localhost") && ! host.contains("localhost:");
         this.folder = (useHttps ? "" : bucket + "/") + (config.path.isEmpty() || config.path.endsWith("/") ? config.path : config.path + "/");
@@ -178,7 +176,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         this.accessKeyId = config.accessKey;
         this.secretKey = config.secretKey;
         LOG.info("Using S3 Block Storage at " + config.regionEndpoint + ", bucket " + config.bucket
-                + ", path: " + config.path + ", peerids: "+peerIds+", p2p-get peerid: " + p2pGetId.bareMultihash());
+                + ", path: " + config.path + ", peerids: "+peerIds);
         this.props = props;
         this.linkHost = linkHost;
         this.transactions = transactions;
@@ -189,7 +187,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         this.cborCache = cborCache;
         this.blockBuffer = blockBuffer;
         this.hasher = hasher;
-        this.p2pFallback = p2pFallback;
+        this.ipnsHandler = ipnsHandler;
         this.p2pHttpFallback = p2pHttpFallback;
         globalReadReqCount = new SlidingWindowCounter(60*60, 60*60 * maxReadReqsPerSecond);
         globalReadBandwidth = new SlidingWindowCounter(60*60, 60*60 * maxReadBandwidthPerSecond);
@@ -458,7 +456,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         if (noReads) {
             if (peerIds.stream().anyMatch(p -> ids.stream().anyMatch(us -> us.bareMultihash().equals(p.bareMultihash()))))
                 throw new IllegalStateException("Reads from Glacier are disabled!");
-            return p2pFallback.getRaw(peerIds, owner, hash, bat, ourId, h, persistBlock);
+            return p2pHttpFallback.getRaw(peerIds.get(0), owner, hash, bat);
         }
         return getRaw(peerIds, owner, hash, Optional.empty(), true, bat, persistBlock)
                 .thenApply(p -> p.map(v -> v.left));
@@ -630,7 +628,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         }
     }
 
-    private boolean isRateLimitedException(IOException e) {
+    public static boolean isRateLimitedException(IOException e) {
         String msg = e.getMessage();
         if (msg == null) {
             return false;
@@ -801,7 +799,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
 
     @Override
     public CompletableFuture<IpnsEntry> getIpnsEntry(Multihash signer) {
-        return p2pFallback.getIpnsEntry(signer);
+        return ipnsHandler.getIpnsEntry(signer);
     }
 
     private CompletableFuture<Optional<Integer>> getSizeWithoutRetry(Multihash hash) {
@@ -965,7 +963,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                                             Hasher h) {
         List<Optional<byte[]>> rawOpts = blocks.stream()
                 .parallel()
-                .map(b -> RetryStorage.runWithRetry(2, () -> p2pFallback.getRaw(peerIds, owner, b, mirrorBat, ourId, h, false, true)).join())
+                .map(b -> RetryStorage.runWithRetry(2, () -> p2pHttpFallback.getRaw(peerIds.get(0), owner, b, mirrorBat)).join())
                 .toList();
         if (rawOpts.size() != blocks.size())
             throw new IllegalStateException("Incorrect number of blocks returned!");
@@ -980,17 +978,6 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
             hashed.add(new Pair<>(c, bytes));
         }
         return hashed.stream().map(p -> put(p.left, p.right).right).toList();
-    }
-
-    @Override
-    public List<BlockMetadata> bulkGetLinks(List<Multihash> peerIds, PublicKeyHash owner, List<Want> wants) {
-        List<BlockMetadata> meta = p2pFallback.bulkGetLinks(peerIds, owner, wants);
-        if (meta.size() != wants.size())
-            throw new IllegalStateException("Incorrect number of block metadata returned!");
-        for (int i=0; i < wants.size(); i++) {
-            blockMetadata.put(wants.get(i).cid, null, meta.get(i));
-        }
-        return meta;
     }
 
     @Override

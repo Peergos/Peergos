@@ -31,11 +31,6 @@ public class DelegatingDeletableStorage implements DeletableContentAddressedStor
     }
 
     @Override
-    public List<BlockMetadata> bulkGetLinks(List<Multihash> peerIds, PublicKeyHash owner, List<Want> wants) {
-        return target.bulkGetLinks(peerIds, owner, wants);
-    }
-
-    @Override
     public Stream<Pair<PublicKeyHash, Cid>> getAllBlockHashes(boolean useBlockstore) {
         return target.getAllBlockHashes(useBlockstore);
     }

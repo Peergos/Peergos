@@ -6,7 +6,6 @@ import peergos.server.Main;
 import peergos.server.storage.BlockMetadata;
 import peergos.server.storage.NewBlocksProcessor;
 import peergos.server.storage.RAMStorage;
-import peergos.server.storage.auth.Want;
 import peergos.shared.Crypto;
 import peergos.shared.cbor.CborObject;
 import peergos.shared.crypto.hash.Hasher;
@@ -17,6 +16,7 @@ import peergos.shared.storage.TransactionId;
 import peergos.shared.storage.auth.BatWithId;
 
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.IntStream;
 
@@ -75,9 +75,14 @@ public class MirrorTests {
         }
 
         @Override
-        public List<BlockMetadata> bulkGetLinks(List<Multihash> peerIds, PublicKeyHash owner, List<Want> wants) {
+        public List<BlockMetadata> bulkGetLinks(List<Multihash> peerIds,
+                                                PublicKeyHash owner,
+                                                Cid ourId,
+                                                List<Cid> blocks,
+                                                Optional<BatWithId> mirrorBat,
+                                                Hasher h) {
             highLatencyCalls.incrementAndGet();
-            return super.bulkGetLinks(peerIds, owner, wants);
+            return super.bulkGetLinks(peerIds, owner, ourId, blocks, mirrorBat, h);
         }
     }
 }

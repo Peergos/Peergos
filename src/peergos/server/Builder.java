@@ -235,13 +235,21 @@ public class Builder {
 
                 FileBlockCache cborCache = new FileBlockCache(a.fromPeergosDir("block-cache-dir", "block-cache"), 1024 * 1024 * 1024L);
                 FileBlockBuffer blockBuffer = new FileBlockBuffer(a.fromPeergosDir("s3-block-buffer-dir", "block-buffer"));
+
+                String remoteS3Prefix = "remote.";
+                if (a.hasArg("mirror.node.id") && S3Config.useS3(a, remoteS3Prefix)) {
+                    LOG.info("Reading directly from remote S3 for mirror");
+                    S3Config remoteConfig = S3Config.build(a, Optional.of(remoteS3Prefix));
+                    Cid nodeToMirrorId = Cid.decode(a.getArg("mirror.node.id"));
+                    p2pGets = new DirectS3Proxy(remoteConfig, nodeToMirrorId, hasher);
+                }
                 S3BlockStorage s3 = new S3BlockStorage(config, ipfs.ids().join(), props, linkHost, transactions, authoriser,
                         bats, meta, usage, cborCache, blockBuffer,
                         a.getLong(Main.GLOBAL_DOWNLOAD_BANDWIDTH_LIMIT.name),
                         a.getLong(Main.GLOBAL_S3_READ_REQUESTS_LIMIT.name),
                         a.getLong(Main.USER_DOWNLOAD_BANDWIDTH_LIMIT.name),
                         a.getLong(Main.USER_S3_READ_REQUESTS_LIMIT.name),
-                        hasher, p2pBlockRetriever, new ContentAddressedStorageProxy.HTTP(p2pHttpProxy));
+                        hasher, p2pBlockRetriever, p2pGets);
                 s3.updateMetadataStoreIfEmpty();
                 return new LocalIpnsStorage(s3, ids);
             }
