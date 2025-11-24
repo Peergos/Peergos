@@ -28,6 +28,7 @@ public class QuotaTests {
     private static int RANDOM_SEED = 666;
     private final NetworkAccess network;
     private final Crypto crypto = Main.initCrypto();
+    private static ServerProcesses server;
 
     private static Random random = new Random(RANDOM_SEED);
 
@@ -44,7 +45,7 @@ public class QuotaTests {
 
     @BeforeClass
     public static void init() {
-        Main.PKI_INIT.main(args);
+        server = Main.PKI_INIT.main(args);
     }
 
     private String generateUsername() {
@@ -130,7 +131,8 @@ public class QuotaTests {
                     network, crypto, () -> false, x -> {}).get();
             Assert.fail();
         } catch (Exception e) {}
-        Thread.sleep(2_000);
+        server.localApi.gc.collect(x -> Futures.of(true));
+        server.localApi.gc.collect(x -> Futures.of(true));
         file.remove(home, filePath, context).get();
     }
 }
