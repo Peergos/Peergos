@@ -744,9 +744,11 @@ public class MirrorCoreNode implements CoreNode {
         }
 
         // Copy pending follow requests to local server
+        List<byte[]> existing = localSocial.getRawFollowRequests(owner);
         for (BlindFollowRequest req : res.pendingFollowReqs) {
             // write directly to local social database to avoid being redirected to user's current node
-            localSocial.addFollowRequest(owner, req.serialize()).join();
+            if (existing.stream().noneMatch(b -> Arrays.equals(b, req.serialize())))
+                localSocial.addFollowRequest(owner, req.serialize()).join();
         }
 
         // update local link counts
