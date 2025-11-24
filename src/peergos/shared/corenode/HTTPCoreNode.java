@@ -358,7 +358,8 @@ public class HTTPCoreNode implements CoreNode {
                                                        Multihash currentStorageId,
                                                        Optional<BatWithId> mirrorBat,
                                                        LocalDateTime latestLinkCountUpdate,
-                                                       long currentUsage) {
+                                                       long currentUsage,
+                                                       boolean commitToPki) {
         String modifiedPrefix = urlPrefix.isEmpty() ? "" : getProxyUrlPrefix(currentStorageId);
         try {
             ByteArrayOutputStream bout = new ByteArrayOutputStream();
@@ -372,6 +373,7 @@ public class HTTPCoreNode implements CoreNode {
                 Serialize.serialize(mirrorBat.get().serialize(), dout);
             dout.writeLong(latestLinkCountUpdate.toEpochSecond(ZoneOffset.UTC));
             dout.writeLong(currentUsage);
+            dout.writeBoolean(commitToPki);
             dout.flush();
 
             return poster.postUnzip(modifiedPrefix + Constants.CORE_URL + "migrateUser", bout.toByteArray(), -1)

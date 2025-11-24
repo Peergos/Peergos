@@ -199,8 +199,9 @@ public class TofuCoreNode implements CoreNode {
                                                        Multihash currentStorageId,
                                                        Optional<BatWithId> mirrorBat,
                                                        LocalDateTime latestLinkCountUpdate,
-                                                       long currentUsage) {
-        return source.migrateUser(username, newChain, currentStorageId, mirrorBat, latestLinkCountUpdate, currentUsage)
+                                                       long currentUsage,
+                                                       boolean commitToPki) {
+        return source.migrateUser(username, newChain, currentStorageId, mirrorBat, latestLinkCountUpdate, currentUsage, commitToPki)
                 .thenCompose(res -> source.getChain(username)
                         .thenCompose(chain -> tofu.updateChain(username, chain, network.dhtClient)
                                 .thenCompose(x -> commit())

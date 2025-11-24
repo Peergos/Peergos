@@ -246,7 +246,8 @@ public class CoreNodeHandler implements HttpHandler
                 Optional.empty();
         long seconds = din.readLong();
         long currentUsage = din.readLong();
-        UserSnapshot state = coreNode.migrateUser(username, newChain, currentStorageId, mirrorBat, LocalDateTime.ofEpochSecond(seconds, 0, ZoneOffset.UTC), currentUsage).join();
+        boolean commitToPki = din.readBoolean();
+        UserSnapshot state = coreNode.migrateUser(username, newChain, currentStorageId, mirrorBat, LocalDateTime.ofEpochSecond(seconds, 0, ZoneOffset.UTC), currentUsage, commitToPki).join();
         dout.write(state.serialize());
     }
 

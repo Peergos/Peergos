@@ -553,7 +553,8 @@ public class IpfsCoreNode implements CoreNode {
                                                        Multihash currentStorageId,
                                                        Optional<BatWithId> mirrorBat,
                                                        LocalDateTime latestLinkCountUpdate,
-                                                       long currentUsage) {
+                                                       long currentUsage,
+                                                       boolean commitToPki) {
         throw new IllegalStateException("Migration from pki node unimplemented!");
     }
 

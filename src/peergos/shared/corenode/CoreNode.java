@@ -89,7 +89,8 @@ public interface CoreNode {
                                                 Multihash currentStorageId,
                                                 Optional<BatWithId> mirrorBat,
                                                 LocalDateTime latestLinkCountUpdate,
-                                                long usage);
+                                                long usage,
+                                                boolean commitToPki);
 
     CompletableFuture<Optional<Multihash>> getNextServerId(Multihash serverId);
 
