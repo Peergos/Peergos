@@ -35,6 +35,10 @@ public class S3Config {
         return a.hasArg("s3.bucket");
     }
 
+    public static boolean useS3(Args a, String prefix) {
+        return a.hasArg(prefix + "s3.bucket");
+    }
+
     public static S3Config build(Args a, Optional<String> prefix) {
         String path = a.getArg(prefix.orElse("") + "s3.path", "");
         String bucket = a.getArg(prefix.orElse("") + "s3.bucket");
@@ -42,7 +46,7 @@ public class S3Config {
         String accessKey = a.getArg(prefix.orElse("") + "s3.accessKey", "");
         String secretKey = a.getArg(prefix.orElse("") + "s3.secretKey", "");
         String regionEndpoint = a.getArg(prefix.orElse("") + "s3.region.endpoint", bucket + ".amazonaws.com");
-        boolean glacier = a.getBoolean("use-glacier", false);
+        boolean glacier = a.getBoolean(prefix.orElse("") + "use-glacier", false);
         Optional<String> storageClass = glacier ? Optional.of("GLACIER") : Optional.empty();
         return new S3Config(path, bucket, region, accessKey, secretKey, regionEndpoint, storageClass);
     }

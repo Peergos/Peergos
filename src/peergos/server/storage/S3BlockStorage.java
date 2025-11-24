@@ -114,10 +114,10 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
             .help("Number of times we get a http 429 rate limit response")
             .register();
 
-    private final Cid id, p2pGetId;
+    private final Cid id;
     private final List<Cid> ids;
     private final List<Multihash> peerIds;
-    private final String region, bucket, folder, regionEndpoint, host;
+    private final String region, bucket, folder, host;
     private final boolean useHttps;
     private final String accessKeyId, secretKey;
     private final Optional<String> storageClass;
@@ -131,7 +131,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
     private final BlockCache cborCache;
     private final BlockBuffer blockBuffer;
     private final Hasher hasher;
-    private final DeletableContentAddressedStorage p2pFallback;
+    private final DeletableContentAddressedStorage ipnsHandler;
     private final ContentAddressedStorageProxy p2pHttpFallback;
 
     private final LinkedBlockingQueue<Cid> blocksToFlush = new LinkedBlockingQueue<>();
@@ -159,17 +159,15 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                           long maxUserBandwidthPerSecond,
                           long maxUserReadRequestsPerSecond,
                           Hasher hasher,
-                          DeletableContentAddressedStorage p2pFallback,
+                          DeletableContentAddressedStorage ipnsHandler,
                           ContentAddressedStorageProxy p2pHttpFallback) {
         this.ids = ids;
         this.peerIds = ids.stream()
                 .map(Cid::bareMultihash)
                 .collect(Collectors.toList());
         this.id = ids.get(ids.size() - 1);
-        this.p2pGetId = p2pFallback.id().join();
         this.region = config.region;
         this.bucket = config.bucket;
-        this.regionEndpoint = config.regionEndpoint;
         this.host = config.getHost();
         this.useHttps = ! host.endsWith("localhost") && ! host.contains("localhost:");
         this.folder = (useHttps ? "" : bucket + "/") + (config.path.isEmpty() || config.path.endsWith("/") ? config.path : config.path + "/");
@@ -178,7 +176,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         this.accessKeyId = config.accessKey;
         this.secretKey = config.secretKey;
         LOG.info("Using S3 Block Storage at " + config.regionEndpoint + ", bucket " + config.bucket
-                + ", path: " + config.path + ", peerids: "+peerIds+", p2p-get peerid: " + p2pGetId.bareMultihash());
+                + ", path: " + config.path + ", peerids: "+peerIds);
         this.props = props;
         this.linkHost = linkHost;
         this.transactions = transactions;
@@ -189,7 +187,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         this.cborCache = cborCache;
         this.blockBuffer = blockBuffer;
         this.hasher = hasher;
-        this.p2pFallback = p2pFallback;
+        this.ipnsHandler = ipnsHandler;
         this.p2pHttpFallback = p2pHttpFallback;
         globalReadReqCount = new SlidingWindowCounter(60*60, 60*60 * maxReadReqsPerSecond);
         globalReadBandwidth = new SlidingWindowCounter(60*60, 60*60 * maxReadBandwidthPerSecond);
@@ -630,7 +628,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         }
     }
 
-    private boolean isRateLimitedException(IOException e) {
+    public static boolean isRateLimitedException(IOException e) {
         String msg = e.getMessage();
         if (msg == null) {
             return false;
@@ -801,7 +799,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
 
     @Override
     public CompletableFuture<IpnsEntry> getIpnsEntry(Multihash signer) {
-        return p2pFallback.getIpnsEntry(signer);
+        return ipnsHandler.getIpnsEntry(signer);
     }
 
     private CompletableFuture<Optional<Integer>> getSizeWithoutRetry(Multihash hash) {
