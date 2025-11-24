@@ -273,7 +273,7 @@ public class MultiNodeNetworkTests {
         Assert.assertTrue(bats.equals(batsViaNewNode));
         Optional<BatWithId> mirrorBat = Optional.of(bats.get(bats.size() - 1));
         long usageVia1 = user.getSpaceUsage(false).join();
-        userViaNewServer.network.coreNode.migrateUser(username, newChain, originalNodeId, mirrorBat, LocalDateTime.now(), usageVia1).join();
+        userViaNewServer.network.coreNode.migrateUser(username, newChain, originalNodeId, mirrorBat, LocalDateTime.now(), usageVia1, true).join();
 
         List<UserPublicKeyLink> chain = userViaNewServer.network.coreNode.getChain(username).join();
         Multihash storageNode = chain.get(chain.size() - 1).claim.storageProviders.stream().findFirst().get();
@@ -297,7 +297,7 @@ public class MultiNodeNetworkTests {
 
         // check a reverse migration can't be triggered by anyone else
         try {
-            node1.coreNode.migrateUser(username, existing, newStorageNodeId, mirrorBat, LocalDateTime.now(), usageVia2).join();
+            node1.coreNode.migrateUser(username, existing, newStorageNodeId, mirrorBat, LocalDateTime.now(), usageVia2, true).join();
             throw new RuntimeException("Shouldn't get here!");
         } catch (CompletionException e) {
             if (! e.getCause().getMessage().startsWith("Migration+claim+has+earlier+expiry+than+current+one"))
@@ -362,7 +362,7 @@ public class MultiNodeNetworkTests {
         List<BatWithId> bats = user.network.batCave.getUserBats(username, userViaNewServer.signer).join();
         Optional<BatWithId> mirrorBat = Optional.of(bats.get(bats.size() - 1));
         try {
-            userViaNewServer.network.coreNode.migrateUser(username, newChain, originalNodeId, mirrorBat, LocalDateTime.now(), 1_000_000).join();
+            userViaNewServer.network.coreNode.migrateUser(username, newChain, originalNodeId, mirrorBat, LocalDateTime.now(), 1_000_000, true).join();
             throw new RuntimeException("Shouldn't get here!");
         } catch (CompletionException e) {}
 

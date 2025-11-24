@@ -165,6 +165,18 @@ public class JdbcIpnsAndSocial {
         return CompletableFuture.completedFuture(resp.serialize());
     }
 
+    public List<byte[]> getRawFollowRequests(PublicKeyHash owner) {
+        byte[] dummy = null;
+        FollowRequestData request = new FollowRequestData(owner, dummy);
+        FollowRequestData[] requests = request.select();
+        if (requests == null)
+            return Collections.emptyList();
+
+        return Arrays.asList(requests).stream()
+                .map(req -> req.data)
+                .collect(Collectors.toList());
+    }
+
     public List<BlindFollowRequest> getAndParseFollowRequests(PublicKeyHash owner) {
         byte[] reqs = getFollowRequests(owner).join();
         CborObject cbor = CborObject.fromByteArray(reqs);

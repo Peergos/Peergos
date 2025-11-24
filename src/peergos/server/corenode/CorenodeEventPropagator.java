@@ -147,8 +147,9 @@ public class CorenodeEventPropagator implements CoreNode {
                                                        Multihash currentStorageId,
                                                        Optional<BatWithId> mirrorBat,
                                                        LocalDateTime latestLinkCountUpdate,
-                                                       long currentUsage) {
-        return target.migrateUser(username, newChain, currentStorageId, mirrorBat, latestLinkCountUpdate, currentUsage).thenApply(res -> {
+                                                       long currentUsage,
+                                                       boolean commitToPki) {
+        return target.migrateUser(username, newChain, currentStorageId, mirrorBat, latestLinkCountUpdate, currentUsage, commitToPki).thenApply(res -> {
             processEvent(newChain);
             return res;
         });

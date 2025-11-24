@@ -244,7 +244,8 @@ public class SignUpFilter implements CoreNode {
                                                        Multihash currentStorageId,
                                                        Optional<BatWithId> mirrorBat,
                                                        LocalDateTime linkCountsAfter,
-                                                       long currentUsage) {
+                                                       long currentUsage,
+                                                       boolean commitToPki) {
         if (forUs(newChain)) {
             if (! quotaStore.allowSignupOrUpdate(username, ""))
                 throw new IllegalStateException("This server is not currently accepting new user migrations.");
@@ -256,7 +257,7 @@ public class SignUpFilter implements CoreNode {
                 throw new IllegalStateException("Not enough space for user to migrate user to this server!");
         }
 
-        return target.migrateUser(username, newChain, currentStorageId, mirrorBat, linkCountsAfter, currentUsage);
+        return target.migrateUser(username, newChain, currentStorageId, mirrorBat, linkCountsAfter, currentUsage, commitToPki);
     }
 
     @Override

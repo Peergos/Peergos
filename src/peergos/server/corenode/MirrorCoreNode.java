@@ -641,7 +641,8 @@ public class MirrorCoreNode implements CoreNode {
                                                        Multihash currentStorageId,
                                                        Optional<BatWithId> mirrorBat,
                                                        LocalDateTime latestLinkCountUpdate,
-                                                       long currentUsage) {
+                                                       long currentUsage,
+                                                       boolean commitToPki) {
         // check chain validity before proceeding further
         List<UserPublicKeyLink> existingChain = getChain(username).join();
         UserPublicKeyLink currentLast = existingChain.get(existingChain.size() - 1);
@@ -663,8 +664,9 @@ public class MirrorCoreNode implements CoreNode {
                             localSocial.getAndParseFollowRequests(owner),
                             batCave.getUserBats(username, new byte[0]).join(),
                             rawAccount.getLoginData(username), updated)).join();
-            updateChain(username, newChain, work, "").join();
-            // from this point on new writes are proxied to the new storage server
+            if (commitToPki)
+                updateChain(username, newChain, work, "").join();
+            // from this point on new writes are proxied to the new storage server if we committed to the PKI
             return Futures.of(update(snapshot));
         }
 
@@ -693,34 +695,21 @@ public class MirrorCoreNode implements CoreNode {
 
             // Proxy call to their current storage server
             LocalDateTime localLatestLinkCountTime = linkCounts.getLatestModificationTime(username).orElse(LocalDateTime.MIN);
-            UserSnapshot res = writeTarget.migrateUser(username, newChain, currentStorageId, mirrorBat, localLatestLinkCountTime, currentUsage).join();
+            UserSnapshot res = writeTarget.migrateUser(username, newChain, currentStorageId, mirrorBat,
+                    localLatestLinkCountTime, currentUsage, false).join();
+            // make sure login data, link counts, pending follow reqs are present locally before updating PKI via remote server
+            commitUpdate(res, username, storageProviders, owner, mirrorBat, mirrored);
+            mirrored = res.pointerState;
+
+            // now tell remote node to commit to the PKI
+            res = writeTarget.migrateUser(username, newChain, currentStorageId, mirrorBat,
+                    localLatestLinkCountTime, currentUsage, true).join();
+
             // pick up the new pki data locally
             update();
 
-            List<BatWithId> localMirrorBats = batCave.getUserBats(username, new byte[0]).join();
-            res.mirrorBats.forEach(b -> {
-                if (! localMirrorBats.contains(b))
-                    batCave.addBat(username, b.id(), b.bat, new byte[0]);
-            });
-            res.login.ifPresent(rawAccount::setLoginData);
-
-            // commit diff since our mirror above
-            for (Map.Entry<PublicKeyHash, byte[]> e : res.pointerState.entrySet()) {
-                byte[] existingVal = mirrored.get(e.getKey());
-                if (! Arrays.equals(existingVal, e.getValue())) {
-                    Mirror.mirrorMerkleTree(username, owner, e.getKey(), storageProviders, e.getValue(), mirrorBat,
-                            ipfs, rawPointers, transactions, usageStore, hasher);
-                }
-            }
-
-            // Copy pending follow requests to local server
-            for (BlindFollowRequest req : res.pendingFollowReqs) {
-                // write directly to local social database to avoid being redirected to user's current node
-                localSocial.addFollowRequest(owner, req.serialize()).join();
-            }
-
-            // update local link counts
-            linkCounts.setCounts(username, res.linkCounts);
+            // commit any new diff
+            commitUpdate(res, username, storageProviders, owner, mirrorBat, mirrored);
 
             // Make sure usage is updated
             List<Multihash> us = List.of(ourNodeId.bareMultihash());
@@ -729,7 +718,41 @@ public class MirrorCoreNode implements CoreNode {
             SpaceCheckingKeyFilter.processCorenodeEvent(username, owner, allUserKeys, usageStore, ipfs, p2pMutable, hasher);
             return Futures.of(res);
         } else // Proxy call to their target storage server
-            return writeTarget.migrateUser(username, newChain, migrationTargetNode, mirrorBat, latestLinkCountUpdate, currentUsage);
+            return writeTarget.migrateUser(username, newChain, migrationTargetNode, mirrorBat, latestLinkCountUpdate, currentUsage, commitToPki);
+    }
+
+    private void commitUpdate(UserSnapshot res,
+                              String username,
+                              List<Multihash> storageProviders,
+                              PublicKeyHash owner,
+                              Optional<BatWithId> mirrorBat,
+                              Map<PublicKeyHash, byte[]> mirrored) {
+        List<BatWithId> localMirrorBats = batCave.getUserBats(username, new byte[0]).join();
+        res.mirrorBats.forEach(b -> {
+            if (! localMirrorBats.contains(b))
+                batCave.addBat(username, b.id(), b.bat, new byte[0]);
+        });
+        res.login.ifPresent(rawAccount::setLoginData);
+
+        // commit diff since our mirror above
+        for (Map.Entry<PublicKeyHash, byte[]> e : res.pointerState.entrySet()) {
+            byte[] existingVal = mirrored.get(e.getKey());
+            if (! Arrays.equals(existingVal, e.getValue())) {
+                Mirror.mirrorMerkleTree(username, owner, e.getKey(), storageProviders, e.getValue(), mirrorBat,
+                        ipfs, rawPointers, transactions, usageStore, hasher);
+            }
+        }
+
+        // Copy pending follow requests to local server
+        List<byte[]> existing = localSocial.getRawFollowRequests(owner);
+        for (BlindFollowRequest req : res.pendingFollowReqs) {
+            // write directly to local social database to avoid being redirected to user's current node
+            if (existing.stream().noneMatch(b -> Arrays.equals(b, req.serialize())))
+                localSocial.addFollowRequest(owner, req.serialize()).join();
+        }
+
+        // update local link counts
+        linkCounts.setCounts(username, res.linkCounts);
     }
 
     @Override

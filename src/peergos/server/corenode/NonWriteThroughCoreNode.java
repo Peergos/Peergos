@@ -145,7 +145,8 @@ public class NonWriteThroughCoreNode implements CoreNode {
                                                        Multihash currentStorageId,
                                                        Optional<BatWithId> mirrorBat,
                                                        LocalDateTime latestLinkCountUpdate,
-                                                       long currentUsage) {
+                                                       long currentUsage,
+                                                       boolean commitToPki) {
         throw new IllegalStateException("Unimplemented method!");
     }
 

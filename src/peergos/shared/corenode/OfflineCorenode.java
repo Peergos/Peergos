@@ -124,8 +124,9 @@ public class OfflineCorenode implements CoreNode {
                                                        Multihash currentStorageId,
                                                        Optional<BatWithId> mirrorBat,
                                                        LocalDateTime latestLinkCountUpdate,
-                                                       long currentUsage) {
-        return target.migrateUser(username, newChain, currentStorageId, mirrorBat, latestLinkCountUpdate, currentUsage);
+                                                       long currentUsage,
+                                                       boolean commitToPki) {
+        return target.migrateUser(username, newChain, currentStorageId, mirrorBat, latestLinkCountUpdate, currentUsage, commitToPki);
     }
 
     @Override
