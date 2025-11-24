@@ -99,6 +99,7 @@ public class MimeTypes {
                     new Pair<>("md", "md"),
                     new Pair<>("csv", "csv"),
                     new Pair<>("edn", "x-clojure"),
+                    new Pair<>("excalidraw", "application/vnd.excalidraw+json"),
                     new Pair<>("xml", "xml"),
                     new Pair<>("asp", "asp"),
                     new Pair<>("rt", "richtext"),
