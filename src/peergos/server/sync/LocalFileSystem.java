@@ -40,12 +40,20 @@ public class LocalFileSystem implements SyncFilesystem {
 
     @Override
     public long totalSpace() throws IOException {
-        return Files.getFileStore(root).getTotalSpace();
+        try {
+            return Files.getFileStore(root).getTotalSpace();
+        } catch (Exception e) {
+            return Long.MAX_VALUE;
+        }
     }
 
     @Override
     public long freeSpace() throws IOException {
-        return Files.getFileStore(root).getUsableSpace();
+        try {
+            return Files.getFileStore(root).getUsableSpace();
+        } catch (Exception e) {
+            return Long.MAX_VALUE;
+        }
     }
 
     @Override
