@@ -259,9 +259,7 @@ public class UserContext {
                 try {
                     staticData = entryData.getData(loginRoot);
                 } catch (Exception e) {
-                    if (legacyAccount)
-                        throw new IllegalStateException("Incorrect password");
-                    else throw new RuntimeException(e);
+                    throw new IllegalStateException("Incorrect username or password");
                 }
                 // Use generated signer for legacy logins, or get from UserStaticData for newer logins
                 SigningPrivateKeyAndPublicHash signer =
