@@ -63,7 +63,7 @@ public class AccountHandler implements HttpHandler {
                                 Optional.of(MultiFactorAuthResponse.fromCbor(CborObject.fromByteArray(ArrayOps.hexToBytes(params.get("mfa").get(0))))) :
                                 Optional.empty();
                         boolean forceProxy = params.containsKey("proxy") ? Boolean.parseBoolean(params.get("proxy").get(0)) : false;
-                        Either<UserStaticData, MultiFactorAuthRequest> res = account.getLoginData(username, authorisedReader, auth, mfa, false, forceProxy).join();
+                        Either<UserStaticData, MultiFactorAuthRequest> res = account.getLoginData(username, authorisedReader, auth, mfa, false, forceProxy, false).join();
                         AggregatedMetrics.LOGIN_GET.inc();
                         byte[] resBytes = new LoginResponse(res).serialize();
                         dout.write(resBytes);

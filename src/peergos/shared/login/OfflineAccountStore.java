@@ -36,11 +36,12 @@ public class OfflineAccountStore implements Account {
                                                                                           byte[] auth,
                                                                                           Optional<MultiFactorAuthResponse>  mfa,
                                                                                           boolean cacheMfaLoginData,
-                                                                                          boolean forceProxy) {
+                                                                                          boolean forceProxy,
+                                                                                          boolean forceNoCache) {
         return Futures.asyncExceptionally(() -> {
                     if (online.isOnline()) {
                         CompletableFuture<Either<UserStaticData, MultiFactorAuthRequest>> res = new CompletableFuture<>();
-                        target.getLoginData(username, authorisedReader, auth, mfa, cacheMfaLoginData, forceProxy)
+                        target.getLoginData(username, authorisedReader, auth, mfa, cacheMfaLoginData, forceProxy, forceNoCache)
                                 .thenAccept(login -> {
                                     if (login.isA() && (mfa.isEmpty() || cacheMfaLoginData))
                                         local.setLoginData(new LoginData(username, login.a(), authorisedReader, Optional.empty()));
@@ -52,8 +53,9 @@ public class OfflineAccountStore implements Account {
                                         res.completeExceptionally(t);
                                     return null;
                                 });
-                        local.getEntryData(username, authorisedReader)
-                                .thenApply(cached -> res.complete(Either.a(cached)));
+                        if (! forceNoCache)
+                            local.getEntryData(username, authorisedReader)
+                                    .thenApply(cached -> res.complete(Either.a(cached)));
                         return res;
                     }
                     online.updateAsync();
