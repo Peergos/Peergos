@@ -72,7 +72,7 @@ public class HttpQuotaAdmin implements QuotaAdmin {
 
     @Override
     public boolean hadQuota(String username, LocalDateTime time) {
-        return poster.get(QUOTA_URL + QUOTA_PRIVATE_TIME + "?username=" + username + "&time=")
+        return poster.get(QUOTA_URL + QUOTA_PRIVATE_TIME + "?username=" + username + "&time=" + time)
                 .thenApply(res -> ((CborObject.CborBoolean)CborObject.fromByteArray(res)).value).join();
     }
 
