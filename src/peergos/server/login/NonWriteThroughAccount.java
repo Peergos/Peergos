@@ -30,10 +30,11 @@ public class NonWriteThroughAccount implements Account {
                                                                                           byte[] auth,
                                                                                           Optional<MultiFactorAuthResponse>  mfa,
                                                                                           boolean cacheMfaLoginData,
-                                                                                          boolean forceProxy) {
+                                                                                          boolean forceProxy,
+                                                                                          boolean forceNoCache) {
         LoginData updated = modifications.get(username);
         if (updated == null)
-            return source.getLoginData(username, authorisedReader, auth, mfa, false, forceProxy);
+            return source.getLoginData(username, authorisedReader, auth, mfa, false, forceProxy, forceNoCache);
         return Futures.of(Either.a(updated.entryPoints));
     }
 

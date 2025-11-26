@@ -38,7 +38,8 @@ public interface Account {
                                                                                    byte[] auth,
                                                                                    Optional<MultiFactorAuthResponse>  mfa,
                                                                                    boolean cacheMfaLoginData,
-                                                                                   boolean forceProxy);
+                                                                                   boolean forceProxy,
+                                                                                   boolean forceNoCache);
 
     /** Auth signed by identity
      *

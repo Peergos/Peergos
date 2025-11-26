@@ -67,7 +67,8 @@ public class HttpAccount implements AccountProxy {
                                                                                           byte[] auth,
                                                                                           Optional<MultiFactorAuthResponse>  mfa,
                                                                                           boolean cacheMfaLoginData,
-                                                                                          boolean forceProxy) {
+                                                                                          boolean forceProxy,
+                                                                                          boolean forceNoCache) {
         return getLoginData(directUrlPrefix, direct, username, authorisedReader, auth, mfa, forceProxy);
     }
 

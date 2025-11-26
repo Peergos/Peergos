@@ -32,7 +32,11 @@ public class UserStaticData implements Cborable {
     }
 
     public EntryPoints getData(SymmetricKey rootKey) {
-        return allEntryPoints.decrypt(rootKey, EntryPoints::fromCbor);
+        try {
+            return allEntryPoints.decrypt(rootKey, EntryPoints::fromCbor);
+        } catch (Exception e) {
+            throw new IllegalStateException("Incorrect username or password");
+        }
     }
 
     @Override

@@ -213,27 +213,44 @@ public class UserContext {
                 .exceptionally(Futures::logAndThrow);
     }
 
-    private static CompletableFuture<UserStaticData> getLoginData(String username,
-                                                                  PublicSigningKey loginPub,
-                                                                  SecretSigningKey loginSecret,
-                                                                  Function<MultiFactorAuthRequest, CompletableFuture<MultiFactorAuthResponse>> mfa,
-                                                                  boolean cacheMfaLoginData,
-                                                                  boolean forceProxy,
-                                                                  NetworkAccess network) {
+    private static CompletableFuture<Pair<UserStaticData, UserStaticData.EntryPoints>> getLoginData(String username,
+                                                                                                    PublicSigningKey loginPub,
+                                                                                                    SecretSigningKey loginSecret,
+                                                                                                    SymmetricKey loginRoot,
+                                                                                                    Function<MultiFactorAuthRequest, CompletableFuture<MultiFactorAuthResponse>> mfa,
+                                                                                                    boolean cacheMfaLoginData,
+                                                                                                    boolean forceProxy,
+                                                                                                    NetworkAccess network) {
         return TimeLimitedClient.signNow(loginSecret)
-                .thenCompose(signedTime -> network.account.getLoginData(username, loginPub, signedTime, Optional.empty(), cacheMfaLoginData, forceProxy))
+                .thenCompose(signedTime -> network.account.getLoginData(username, loginPub, signedTime, Optional.empty(), cacheMfaLoginData, forceProxy, false))
                 .thenCompose(res -> {
                     if (res.isA())
                         return Futures.of(res.a());
                     MultiFactorAuthRequest authReq = res.b();
                     return mfa.apply(authReq)
                             .thenCompose(authResp -> TimeLimitedClient.signNow(loginSecret)
-                                    .thenCompose(signedTime -> network.account.getLoginData(username, loginPub, signedTime, Optional.of(authResp), cacheMfaLoginData, forceProxy)))
+                                    .thenCompose(signedTime -> network.account.getLoginData(username, loginPub, signedTime, Optional.of(authResp), cacheMfaLoginData, forceProxy, false)))
                             .thenApply(login -> {
                                 if (login.isB())
                                     throw new IllegalStateException("Server rejected second factor auth");
                                 return login.a();
                             });
+                }).thenCompose(entryData -> {
+                    try {
+                        return Futures.of(new Pair<>(entryData, entryData.getData(loginRoot)));
+                    } catch (Exception e) {
+                        // try to get entry data avoiding the cache
+                        return TimeLimitedClient.signNow(loginSecret)
+                                .thenCompose(signedTime -> network.account.getLoginData(username, loginPub,
+                                        signedTime, Optional.empty(), cacheMfaLoginData, forceProxy, true))
+                                .thenApply(entryData2 -> {
+                                    try {
+                                        return new Pair<>(entryData2.a(), entryData2.a().getData(loginRoot));
+                                    } catch (Exception f) {
+                                        throw new IllegalStateException("Incorrect username or password");
+                                    }
+                                });
+                    }
                 });
     }
 
@@ -253,14 +270,10 @@ public class UserContext {
             PublicSigningKey loginPub = generatedCredentials.getUser().publicSigningKey;
             SecretSigningKey loginSecret = generatedCredentials.getUser().secretSigningKey;
             return (legacyAccount ?
-                    Futures.of(userData.staticData.get()) :
-                    getLoginData(username, loginPub, loginSecret, mfa, cacheMfaLoginData, forceProxy, network)).thenCompose(entryData -> {
-                UserStaticData.EntryPoints staticData;
-                try {
-                    staticData = entryData.getData(loginRoot);
-                } catch (Exception e) {
-                    throw new IllegalStateException("Incorrect username or password");
-                }
+                    Futures.of(userData.staticData.get().getData(loginRoot)) :
+                    getLoginData(username, loginPub, loginSecret, loginRoot, mfa, cacheMfaLoginData, forceProxy, network)
+                            .thenApply(p -> p.right)).thenCompose(staticData -> {
+
                 // Use generated signer for legacy logins, or get from UserStaticData for newer logins
                 SigningPrivateKeyAndPublicHash signer =
                         new SigningPrivateKeyAndPublicHash(userData.controller,
@@ -387,12 +400,12 @@ public class UserContext {
                             PublicSigningKey loginPub = generatedCredentials.getUser().publicSigningKey;
                             SecretSigningKey loginSecret = generatedCredentials.getUser().secretSigningKey;
                             return (legacyAccount ?
-                                    Futures.of(userData.staticData.get()) :
-                                    getLoginData(username, loginPub, loginSecret, mfa, false, false, network))
+                                    Futures.of(new Pair<>(userData.staticData.get(), userData.staticData.get())) :
+                                    getLoginData(username, loginPub, loginSecret, loginRoot, mfa, false, false, network))
                                     .thenCompose(entryData -> BoxingKeyPair.randomHybrid(crypto)
                                             .thenCompose(newBoxer -> writeSynchronizer.applyComplexUpdate(signer.publicKeyHash, signer,
                                                     (s, c) -> IpfsTransaction.call(signer.publicKeyHash,
-                                                            tid -> updateBoxerAndCommit(s, username, newBoxer, entryData,
+                                                            tid -> updateBoxerAndCommit(s, username, newBoxer, entryData.left,
                                                                     loginPub, signer, loginRoot, c, crypto, network, tid), network.dhtClient)))
                                             .thenApply(x -> true)
                                     );
@@ -593,9 +606,10 @@ public class UserContext {
                             throw new IllegalStateException("Legacy accounts do not have login data, change your password to upgrade your account.");
                         PublicSigningKey loginPub = generatedCredentials.getUser().publicSigningKey;
                         SecretSigningKey loginSecret = generatedCredentials.getUser().secretSigningKey;
-                        return getLoginData(username, loginPub, loginSecret, mfa, false, false, network)
-                                .thenCompose(userStaticData -> network.account.setLoginData(
-                                        new LoginData(username, userStaticData, loginPub, Optional.empty()), signer, true));
+                        SymmetricKey loginRoot = generatedCredentials.getRoot();
+                        return getLoginData(username, loginPub, loginSecret, loginRoot, mfa, false, false, network)
+                                .thenCompose(p -> network.account.setLoginData(
+                                        new LoginData(username, p.left, loginPub, Optional.empty()), signer, true));
                     });
         });
     }
@@ -1336,8 +1350,9 @@ public class UserContext {
                                 PublicKeyHash existingOwner = ContentAddressedStorage.hashKey(existingLogin.getUser().publicSigningKey);
                                 if (! isLegacy) {
                                     // identity doesn't change here, just need to update the secret UserStaticData
-                                    return getLoginData(username, existingLogin.getUser().publicSigningKey, existingLoginSecret, mfa, false, false, network).thenCompose(usd -> {
-                                        UserStaticData.EntryPoints entry = usd.getData(existingLogin.getRoot());
+                                    return getLoginData(username, existingLogin.getUser().publicSigningKey, existingLoginSecret,
+                                            existingLogin.getRoot(), mfa, false, false, network)
+                                            .thenApply(p -> p.right).thenCompose(entry -> {
                                         UserStaticData updatedEntry = new UserStaticData(entry.entries, updatedLogin.getRoot(), entry.identity, entry.boxer);
                                         // need to commit new login algorithm too in the same call
                                         return WriterData.getWriterData(signer.publicKeyHash, signer.publicKeyHash, network.mutable, network.dhtClient).thenCompose(cwd -> {

@@ -40,11 +40,12 @@ public class ProxyingAccount implements Account {
                                                                                           byte[] auth,
                                                                                           Optional<MultiFactorAuthResponse>  mfa,
                                                                                           boolean cacheMfaLoginData,
-                                                                                          boolean forceProxy) {
+                                                                                          boolean forceProxy,
+                                                                                          boolean forceNoCache) {
         return core.getPublicKeyHash(username).thenCompose(idOpt -> Proxy.redirectCall(core,
                 serverIds,
                 idOpt.get(),
-                () -> local.getLoginData(username, authorisedReader, auth, mfa, false, forceProxy),
+                () -> local.getLoginData(username, authorisedReader, auth, mfa, false, forceProxy, forceNoCache),
                 target -> p2p.getLoginData(target, username, authorisedReader, auth, mfa)));
     }
 
