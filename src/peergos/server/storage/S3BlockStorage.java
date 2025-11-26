@@ -198,7 +198,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
             bulkPutPool.submit(() -> getWithBackoff(() -> {
                 Optional<byte[]> block = blockBuffer.get(c).join();
                 if (block.isPresent()) {
-                    getWithBackoff(() -> put(c, block.get()));
+                    getWithBackoff(() -> put(c, block.get(), true));
                     Optional<BlockMetadata> meta = blockMetadata.get(c);
                     if (meta.isPresent())
                         blockBuffer.delete(c);
@@ -226,7 +226,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                         try {
                             Optional<byte[]> block = blockBuffer.get(h).join();
                             if (block.isPresent()) {
-                                getWithBackoff(() -> put(h, block.get()));
+                                getWithBackoff(() -> put(h, block.get(), true));
                                 Optional<BlockMetadata> meta = blockMetadata.get(h);
                                 if (meta.isPresent())
                                     blockBuffer.delete(h);
@@ -647,7 +647,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         Cid res = hasher.hash(raw, expected.isRaw()).join();
         if (! res.equals(expected))
             throw new IllegalStateException("Received block with incorrect hash!");
-        return put(expected, raw).right;
+        return put(expected, raw, false).right;
     }
 
     ForkJoinPool mirrorPool = Threads.newPool(10, "S3-Mirror-");
@@ -693,7 +693,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         if (newBlock.isEmpty())
             throw new IllegalStateException("Couldn't retrieve block: " + newRoot);
         if (! hasBlock(newRoot)) {
-            getWithBackoff(() -> put(newBlock.get(), newRoot.isRaw(), tid, owner));
+            getWithBackoff(() -> put(newBlock.get(), newRoot.isRaw(), tid, owner, false));
             usage.addPendingUsage(username, writer, newBlock.get().length);
         }
         if (newRoot.isRaw())
@@ -897,7 +897,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                                              TransactionId tid) {
         List<ForkJoinTask<Cid>> puts = blocks.stream()
                 .map(b -> bulkPutPool.submit(() -> getWithBackoff(() -> b.length > DirectS3BlockStore.MAX_SMALL_BLOCK_SIZE ?
-                        put(b, isRaw, tid, owner) : // This should only happen from p2p requests that can't use DirectS3Blockstore
+                        put(b, isRaw, tid, owner, true) : // This should only happen from p2p requests that can't use DirectS3Blockstore
                         putToBuffer(b, isRaw, tid, owner).join())))
                 .collect(Collectors.toList());
         return Futures.of(puts.stream().map(f ->  f.join()).collect(Collectors.toList()));
@@ -916,14 +916,14 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
      *
      * @param data
      */
-    public Cid put(byte[] data, boolean isRaw, TransactionId tid, PublicKeyHash owner) {
+    public Cid put(byte[] data, boolean isRaw, TransactionId tid, PublicKeyHash owner, boolean cacheCbor) {
         Multihash hash = new Multihash(Multihash.Type.sha2_256, Hash.sha256(data));
         Cid cid = new Cid(1, isRaw ? Cid.Codec.Raw : Cid.Codec.DagCbor, hash.type, hash.getHash());
         transactions.addBlock(cid, tid, owner);
-        return put(cid, data).left;
+        return put(cid, data, cacheCbor).left;
     }
 
-    public Pair<Cid, BlockMetadata> put(Cid cid, byte[] data) {
+    public Pair<Cid, BlockMetadata> put(Cid cid, byte[] data, boolean cacheCbor) {
         Histogram.Timer writeTimer = writeTimerLog.labels("write").startTimer();
         String key = hashToKey(cid);
         try {
@@ -938,7 +938,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
             BlockMetadata meta = blockMetadata.put(cid, version, data);
             blockPuts.inc();
             blockPutBytes.labels("size").observe(data.length);
-            if (! cid.isRaw())
+            if (cacheCbor && ! cid.isRaw())
                 cborCache.put(cid, data);
             return new Pair<>(cid, meta);
         } catch (IOException e) {
@@ -977,7 +977,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                 throw new IllegalStateException("Received block with incorrect hash!");
             hashed.add(new Pair<>(c, bytes));
         }
-        return hashed.stream().map(p -> put(p.left, p.right).right).toList();
+        return hashed.stream().map(p -> put(p.left, p.right, false).right).toList();
     }
 
     @Override
