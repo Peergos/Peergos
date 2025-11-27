@@ -547,7 +547,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
             if (range.isEmpty())
                 blockMetadata.put(hash, blockAndVersion.right, blockAndVersion.left);
             return Futures.of(Optional.of(blockAndVersion));
-        } catch (SocketTimeoutException | SSLException e) {
+        } catch (SocketTimeoutException | SSLException | SocketException e) {
             // S3 can't handle the load so treat this as a rate limit and slow down
             throw new RateLimitException();
         } catch (IOException e) {

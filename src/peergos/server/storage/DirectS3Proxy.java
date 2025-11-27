@@ -17,6 +17,7 @@ import peergos.shared.util.ProgressConsumer;
 
 import javax.net.ssl.SSLException;
 import java.io.IOException;
+import java.net.SocketException;
 import java.net.SocketTimeoutException;
 import java.time.LocalDateTime;
 import java.time.ZonedDateTime;
@@ -76,7 +77,7 @@ public class DirectS3Proxy implements ContentAddressedStorageProxy {
         try {
             Pair<byte[], String> blockAndVersion = HttpUtil.getWithVersion(getUrl);
             return Futures.of(Optional.of(blockAndVersion));
-        } catch (SocketTimeoutException | SSLException e) {
+        } catch (SocketTimeoutException | SSLException | SocketException e) {
             // S3 can't handle the load so treat this as a rate limit and slow down
             throw new RateLimitException();
         } catch (IOException e) {
