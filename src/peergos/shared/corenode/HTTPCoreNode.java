@@ -32,7 +32,6 @@ public class HTTPCoreNode implements CoreNode {
     {
         if (pkiServerNodeId == null)
             throw new IllegalStateException("Null pki server node id!");
-        LOG.info("Creating HTTP Corenode API at " + p2p);
         this.poster = p2p;
         this.urlPrefix = getProxyUrlPrefix(pkiServerNodeId);
     }

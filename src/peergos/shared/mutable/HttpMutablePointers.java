@@ -24,7 +24,6 @@ public class HttpMutablePointers implements MutablePointersProxy {
 
     public HttpMutablePointers(HttpPoster direct, HttpPoster p2p)
     {
-        LOG.info("Creating Http Mutable Pointers API at " + direct + " and " + p2p);
         this.directUrlPrefix = "";
         this.direct = direct;
         this.p2p = p2p;

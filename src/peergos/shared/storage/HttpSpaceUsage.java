@@ -22,7 +22,6 @@ public class HttpSpaceUsage implements SpaceUsageProxy {
 
     public HttpSpaceUsage(HttpPoster direct, HttpPoster p2p)
     {
-        LOG.info("Creating HTTP SpaceUsage API at " + direct + " and " + p2p);
         this.direct = direct;
         this.p2p = p2p;
     }
