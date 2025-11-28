@@ -38,7 +38,6 @@ public class HTTPCoreNode implements CoreNode {
 
     public HTTPCoreNode(HttpPoster direct)
     {
-        LOG.info("Creating HTTP Corenode API at " + direct);
         this.poster = direct;
         this.urlPrefix = "";
     }
