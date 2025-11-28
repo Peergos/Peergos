@@ -1154,12 +1154,18 @@ public class Main extends Builder {
                                 throw e;
                         }
                     }
+                    boolean isLinux = "linux".equalsIgnoreCase(System.getProperty("os.name"));
                     try {
                         if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.BROWSE)) {
                             Desktop.getDesktop().browse(api);
-                        } else
+                        } else {
+                            if (isLinux) // Fix Snap installer
+                                Runtime.getRuntime().exec(new String[] {"xdg-open", "http://localhost:" + port});
                             System.out.println("Please open http://localhost:" + port + " in your browser.");
+                        }
                     } catch (Throwable t) {
+                        if (isLinux)
+                            Runtime.getRuntime().exec(new String[] {"xdg-open", "http://localhost:" + port});
                         System.out.println("Please open http://localhost:" + port + " in your browser.");
                     }
                     return null;
