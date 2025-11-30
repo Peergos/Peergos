@@ -474,7 +474,10 @@ public class IpfsWrapper implements AutoCloseable {
         IdentitySection identity = ipfsConfigParams.identity.get();
 
         List<io.ipfs.multiaddr.MultiAddress> swarmAddresses = ipfsConfigParams.swarmAddrs.isEmpty() ?
-                List.of(new io.ipfs.multiaddr.MultiAddress("/ip6/::/tcp/" + ipfsConfigParams.swarmPort)) :
+                List.of(
+                        new io.ipfs.multiaddr.MultiAddress("/ip6/::/tcp/" + ipfsConfigParams.swarmPort),
+                        new io.ipfs.multiaddr.MultiAddress("/ip6/::/udp/" + ipfsConfigParams.swarmPort + "/quic-v1")
+                        ) :
                 ipfsConfigParams.swarmAddrs.stream()
                         .map(x -> x.toString())
                         .map(io.ipfs.multiaddr.MultiAddress::new)
