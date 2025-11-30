@@ -132,6 +132,8 @@ public class Mirror {
                         Logging.LOG().log(Level.WARNING, "Couldn't mirror user: " + snapshot.username, e);
                     }
                 }
+                if (snapshots.isEmpty())
+                    break;
                 cursor = snapshots.get(snapshots.size() - 1).username;
                 if (snapshots.size() < MirrorCoreNode.MAX_SNAPSHOTS)
                     break;
