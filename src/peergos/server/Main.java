@@ -560,7 +560,7 @@ public class Main extends Builder {
                 }
             },
             Stream.of(
-                    new Command.Arg("peergos-url", "Address of the Peergos server to migrate to", false, "https://peergos.net"),
+                    new Command.Arg("peergos-url", "Address of the user's home server", false, "https://peergos.net"),
                     new Command.Arg("username", "Your Peergos username", true)
             ).collect(Collectors.toList())
     );
