@@ -538,6 +538,33 @@ public class Main extends Builder {
             ).collect(Collectors.toList())
     );
 
+    public static final Command<Boolean> HOME = new Command<>("update-home-server-id",
+            "Update the home server id for a user",
+            a -> {
+                try {
+                    Crypto crypto = Main.initCrypto();
+                    NetworkAccess network = Builder.buildJavaNetworkAccess(new URL(a.getArg("peergos-url")),
+                            true, Optional.of("Peergos-" + UserService.CURRENT_VERSION + "-home"), Optional.empty()).join();
+                    String username = a.getArg("username");
+                    Console console = System.console();
+                    String password = new String(console.readPassword("Enter password for " + username + ":"));
+                    UserContext context = UserContext.signIn(username, password, Main::getMfaResponseCLI, network, crypto).join();
+                    boolean updated = context.ensureCurrentHost().join();
+                    if (updated)
+                        System.out.println("Updated home server id successfully!");
+                    else
+                        System.out.println("Home server id already uptodate!");
+                    return true;
+                } catch (IOException e) {
+                    throw new RuntimeException(e);
+                }
+            },
+            Stream.of(
+                    new Command.Arg("peergos-url", "Address of the Peergos server to migrate to", false, "https://peergos.net"),
+                    new Command.Arg("username", "Your Peergos username", true)
+            ).collect(Collectors.toList())
+    );
+
     public static final Command<Boolean> LINK_IDENTITY = new Command<>("link",
             "Link your Peergos identity to an account on another service.",
             a -> {
@@ -1188,6 +1215,7 @@ public class Main extends Builder {
                     Mirror.MIRROR,
                     MIGRATE,
                     VERSION,
+                    HOME,
                     IDENTITY,
                     PROXY,
                     ServerAdmin.SERVER_ADMIN,
