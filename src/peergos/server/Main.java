@@ -831,7 +831,7 @@ public class Main extends Builder {
                     a.getInt("max-daily-paid-signups", isPaidInstance(a) ? 10 : 0), isPki);
 
             if (a.getBoolean("update-usage", true))
-                SpaceCheckingKeyFilter.update(usageStore, userQuotas, core, localPointers, localStorage, hasher);
+                new Thread(() -> SpaceCheckingKeyFilter.update(usageStore, userQuotas, core, localPointers, localStorage, hasher)).start();
             SpaceCheckingKeyFilter spaceChecker = new SpaceCheckingKeyFilter(core, localPointers, localStorage,
                     hasher, userQuotas, usageStore, a.getLong(QUOTA_UPLOAD_LIMIT_SECONDS.name, 3600));
             CorenodeEventPropagator corePropagator = new CorenodeEventPropagator(signupFilter);
