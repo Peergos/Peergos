@@ -224,7 +224,7 @@ public class Builder {
         List<PeerId> ourIds = ids.getIdentities();
         if (ourIds.isEmpty())
             ourIds = Collections.singletonList(new PeerId(http.id().join().bareMultihash().toBytes()));
-        MultiIdStorage ipfs = new MultiIdStorage(new LocalFirstStorage(http, p2pGets, ourIds, hasher), ourIds);
+        MultiIdStorage ipfs = new MultiIdStorage(new LocalFirstStorage(http, http, p2pGets, ourIds, hasher), ourIds);
         String linkHost = a.getOptionalArg("public-domain").orElseGet(() -> "localhost:" + a.getInt("port"));
         if (useIPFS) {
             if (useS3) {
@@ -256,7 +256,7 @@ public class Builder {
             Multihash peerId = Multihash.decode(ourIds.get(ourIds.size() - 1).getBytes());
             Cid ourId = new Cid(1, Cid.Codec.LibP2pKey, peerId.type, peerId.getHash());
             FileContentAddressedStorage files = new FileContentAddressedStorage(blockstorePath(a), ourId, transactions, authoriser, hasher);
-            MultiIdStorage blocks = new MultiIdStorage(new LocalFirstStorage(files, p2pGets, ourIds, hasher), ourIds);
+            MultiIdStorage blocks = new MultiIdStorage(new LocalFirstStorage(files, http, p2pGets, ourIds, hasher), ourIds);
             if (enableGC) {
                 TransactionalIpfs txns = new TransactionalIpfs(blocks, transactions, authoriser, ourId, linkHost, hasher);
                 MetadataCachingStorage metabs = new MetadataCachingStorage(txns, meta, usage, hasher);

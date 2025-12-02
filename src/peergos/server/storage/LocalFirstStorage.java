@@ -7,6 +7,7 @@ import peergos.shared.crypto.hash.PublicKeyHash;
 import peergos.shared.io.ipfs.Cid;
 import peergos.shared.io.ipfs.Multihash;
 import peergos.shared.storage.ContentAddressedStorageProxy;
+import peergos.shared.storage.IpnsEntry;
 import peergos.shared.storage.TransactionId;
 import peergos.shared.storage.auth.BatWithId;
 import peergos.shared.util.Futures;
@@ -20,18 +21,20 @@ import java.util.stream.Stream;
 
 public class LocalFirstStorage extends DelegatingDeletableStorage {
 
-    private final DeletableContentAddressedStorage local;
+    private final DeletableContentAddressedStorage local, dhtLookup;
     private final ContentAddressedStorageProxy p2pGets;
     private final PeerId ourId;
     private final Cid ourNodeId;
     private final Hasher hasher;
 
     public LocalFirstStorage(DeletableContentAddressedStorage local,
+                             DeletableContentAddressedStorage dhtLookup,
                              ContentAddressedStorageProxy p2pGets,
                              List<PeerId> ourIds,
                              Hasher hasher) {
         super(local);
         this.local = local;
+        this.dhtLookup = dhtLookup;
         this.p2pGets = p2pGets;
         this.ourId = ourIds.get(ourIds.size() - 1);
         Multihash barePeerId = Multihash.decode(ourId.getBytes());
@@ -180,5 +183,10 @@ public class LocalFirstStorage extends DelegatingDeletableStorage {
                                                Optional<Cid> updated, Optional<BatWithId> mirrorBat, Cid ourNodeId,
                                                NewBlocksProcessor newBlockProcessor, TransactionId tid, Hasher hasher) {
         return DeletableContentAddressedStorage.mirror(username, owner, writer, peerIds, existing, updated, mirrorBat, ourNodeId, newBlockProcessor, tid, hasher, this);
+    }
+
+    @Override
+    public CompletableFuture<IpnsEntry> getIpnsEntry(Multihash signer) {
+        return dhtLookup.getIpnsEntry(signer);
     }
 }
