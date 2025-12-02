@@ -11,6 +11,7 @@ import peergos.shared.io.ipfs.Cid;
 import peergos.shared.login.mfa.*;
 import peergos.shared.resolution.*;
 import peergos.shared.storage.auth.*;
+import peergos.shared.storage.controller.InstanceAdmin;
 import peergos.shared.user.fs.cryptree.*;
 import peergos.shared.user.fs.transaction.*;
 import peergos.shared.*;
@@ -428,6 +429,12 @@ public class UserContext {
 
     public CompletableFuture<ResolutionRecord> validateResolutionRecord(IpnsEntry signedRecord, Multihash signer) {
         return signedRecord.getValue(signer, crypto);
+    }
+
+    @JsMethod
+    public CompletableFuture<String> getVersion() {
+        return network.instanceAdmin.getVersionInfo()
+                .thenApply(InstanceAdmin.VersionInfo::toString);
     }
 
     private static CompletableFuture<byte[]> signSpaceRequest(String username, SigningPrivateKeyAndPublicHash identity, long desiredQuota, boolean annual) {
