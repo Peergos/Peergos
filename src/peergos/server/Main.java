@@ -6,6 +6,7 @@ import io.libp2p.core.PeerId;
 import io.libp2p.core.crypto.PrivKey;
 import org.eclipse.jetty.server.Server;
 import org.peergos.HostBuilder;
+import org.peergos.RamAddressBook;
 import org.scijava.nativelib.NativeLibraryUtil;
 import peergos.server.cli.CLI;
 import peergos.server.crypto.hash.ScryptJava;
@@ -744,7 +745,7 @@ public class Main extends Builder {
             IpfsWrapper ipfsWrapper = useIPFS ? IpfsWrapper.launch(a, blockAuth, meta, ids) : null;
             if (ids.getIdentities().isEmpty()) {
                 // initialise id db with our current peerid and sign an ipns record
-                HostBuilder builder = new HostBuilder().generateIdentity();
+                HostBuilder builder = new HostBuilder(new RamAddressBook()).generateIdentity();
                 PrivKey peerPrivate = builder.getPrivateKey();
                 byte[] signedRecord = ServerIdentity.generateSignedIpnsRecord(peerPrivate, Optional.empty(), false, 1);
                 ids.addIdentity(PeerId.fromPubKey(peerPrivate.publicKey()), signedRecord);
