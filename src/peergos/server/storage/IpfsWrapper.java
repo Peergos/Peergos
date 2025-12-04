@@ -249,7 +249,7 @@ public class IpfsWrapper implements AutoCloseable {
             identityOpt = readIPFSIdentity(ipfsDir);
             if (identityOpt.isEmpty()) {
                 LOG.info("Creating new identity");
-                HostBuilder builder = new HostBuilder().generateIdentity();
+                HostBuilder builder = new HostBuilder(new RamAddressBook()).generateIdentity();
                 PrivKey privKey = builder.getPrivateKey();
                 PeerId peerId = builder.getPeerId();
                 identityOpt = Optional.of(new IdentitySection(privKey.bytes(), peerId));
@@ -430,6 +430,7 @@ public class IpfsWrapper implements AutoCloseable {
                                 .map(io.ipfs.multiaddr.MultiAddress::new)
                                 .collect(Collectors.toList()))
                         .orElse(Collections.emptyList()),
+                JdbcAddressLRU.buildSqlite(1000, args.fromPeergosDir("address-book", "address-book.sqlite").toString()),
                 config.addresses.proxyTargetAddress.map(IpfsWrapper::proxyHandler)
         );
         ipfsWrapper.embeddedIpfs.start(args.getBoolean("async-bootstrap", false));
