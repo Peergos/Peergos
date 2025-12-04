@@ -10,6 +10,7 @@ import org.peergos.config.*;
 import org.peergos.config.Filter;
 import org.peergos.net.*;
 import org.peergos.protocol.dht.DatabaseRecordStore;
+import org.peergos.protocol.dht.RecordStore;
 import org.peergos.protocol.http.HttpProtocol;
 import org.peergos.protocol.ipns.IPNS;
 import org.peergos.protocol.ipns.IpnsMapping;
@@ -416,8 +417,9 @@ public class IpfsWrapper implements AutoCloseable {
                 .exceptionally(ex -> false);
         };
 
-        Path datastorePath = ipfsWrapper.ipfsDir.resolve("datastore").resolve("h2-v2.datastore");
-        DatabaseRecordStore records = new DatabaseRecordStore(datastorePath.toAbsolutePath().toString());
+        Path datastorePath = ipfsWrapper.ipfsDir.resolve("datastore").resolve("records.sqlite");
+        datastorePath.getParent().toFile().mkdirs();
+        RecordStore records = JdbcRecordLRU.buildSqlite(1_000, datastorePath.toAbsolutePath().toString());
 
         org.peergos.blockstore.metadatadb.BlockMetadataStore meta =
                 new DelegatingBlockMetadataStore(metaDB);
