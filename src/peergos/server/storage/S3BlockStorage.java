@@ -655,14 +655,22 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
     private List<BlockMetadata> bulkGetBlocks(List<Multihash> peers,
                                               PublicKeyHash owner,
                                               List<Cid> hashes,
-                                              Optional<BatWithId> mirrorBat) {
+                                              Optional<BatWithId> mirrorBat,
+                                              AtomicLong retrievalCount,
+                                              AtomicLong retrievalSize) {
         List<ForkJoinTask<Optional<BlockMetadata>>> futs = hashes.stream()
                 .map(c -> mirrorPool.submit(() -> {
                     Optional<BlockMetadata> m = blockMetadata.get(c);
                     if (m.isPresent())
                         return m;
+                    long count = retrievalCount.incrementAndGet();
+                    if (count % 100 == 0)
+                        LOG.info("Retrieved " + count + " blocks, of total size " + retrievalSize.get());
                     return RetryStorage.runWithRetry(5, () -> p2pHttpFallback.getRaw(peers.get(0), owner, c, mirrorBat)
-                            .thenApply(bo -> bo.map(b -> checkAndAddBlock(c, b)))).join();
+                            .thenApply(bo -> bo.map(b -> {
+                                retrievalSize.addAndGet(b.length);
+                                return checkAndAddBlock(c, b);
+                            }))).join();
                 }))
                 .toList();
         return futs.stream()
@@ -709,9 +717,17 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                         .collect(Collectors.toList()))
                 .orElse(Collections.emptyList());
 
+        AtomicLong blockCount = new AtomicLong(0);
+        AtomicLong totalSize = new AtomicLong(0);
         return bulkMirror(owner, writer, peerIds, existingLinks, newLinks, mirrorBat, ourNodeId,
-                this::bulkGetBlocks,
-                (w, bs, size) -> usage.addPendingUsage(username, writer, size), tid, hasher);
+                (p, o, h, m) -> bulkGetBlocks(p, o, h, m, blockCount, totalSize),
+                (w, bs, size) -> usage.addPendingUsage(username, writer, size), tid, hasher)
+                .thenApply(cs -> {
+                    if (blockCount.get() > 0) {
+                        LOG.info("Mirrored " + blockCount.get() + " blocks, taking " + totalSize.get() + " bytes");
+                    }
+                    return cs;
+                });
     }
 
     @Override
