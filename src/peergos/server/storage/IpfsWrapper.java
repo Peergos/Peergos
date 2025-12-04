@@ -10,6 +10,7 @@ import org.peergos.config.*;
 import org.peergos.config.Filter;
 import org.peergos.net.*;
 import org.peergos.protocol.dht.DatabaseRecordStore;
+import org.peergos.protocol.dht.RecordStore;
 import org.peergos.protocol.http.HttpProtocol;
 import org.peergos.protocol.ipns.IPNS;
 import org.peergos.protocol.ipns.IpnsMapping;
@@ -249,7 +250,7 @@ public class IpfsWrapper implements AutoCloseable {
             identityOpt = readIPFSIdentity(ipfsDir);
             if (identityOpt.isEmpty()) {
                 LOG.info("Creating new identity");
-                HostBuilder builder = new HostBuilder().generateIdentity();
+                HostBuilder builder = new HostBuilder(new RamAddressBook()).generateIdentity();
                 PrivKey privKey = builder.getPrivateKey();
                 PeerId peerId = builder.getPeerId();
                 identityOpt = Optional.of(new IdentitySection(privKey.bytes(), peerId));
@@ -416,8 +417,9 @@ public class IpfsWrapper implements AutoCloseable {
                 .exceptionally(ex -> false);
         };
 
-        Path datastorePath = ipfsWrapper.ipfsDir.resolve("datastore").resolve("h2-v2.datastore");
-        DatabaseRecordStore records = new DatabaseRecordStore(datastorePath.toAbsolutePath().toString());
+        Path datastorePath = ipfsWrapper.ipfsDir.resolve("datastore").resolve("records.sqlite");
+        datastorePath.getParent().toFile().mkdirs();
+        RecordStore records = JdbcRecordLRU.buildSqlite(1_000, datastorePath.toAbsolutePath().toString());
 
         org.peergos.blockstore.metadatadb.BlockMetadataStore meta =
                 new DelegatingBlockMetadataStore(metaDB);
@@ -430,6 +432,7 @@ public class IpfsWrapper implements AutoCloseable {
                                 .map(io.ipfs.multiaddr.MultiAddress::new)
                                 .collect(Collectors.toList()))
                         .orElse(Collections.emptyList()),
+                JdbcAddressLRU.buildSqlite(1000, args.fromPeergosDir("address-book", "address-book.sqlite").toString()),
                 config.addresses.proxyTargetAddress.map(IpfsWrapper::proxyHandler)
         );
         ipfsWrapper.embeddedIpfs.start(args.getBoolean("async-bootstrap", false));
