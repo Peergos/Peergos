@@ -104,6 +104,7 @@ public class Mirror {
         HTTPCoreNode sourceNode = new HTTPCoreNode(p2pPoster, nodeId);
         int userCount = 0;
         String cursor = "";
+        Set<String> erroredUsers = new TreeSet<>();
         while (true) {
             Logging.LOG().log(Level.INFO, "Mirroring from cursor " + cursor);
             try {
@@ -129,6 +130,7 @@ public class Mirror {
                         }
                         userCount++;
                     } catch (Exception e) {
+                        erroredUsers.add(snapshot.username);
                         Logging.LOG().log(Level.WARNING, "Couldn't mirror user: " + snapshot.username, e);
                     }
                 }
@@ -143,6 +145,8 @@ public class Mirror {
             }
         }
         Logging.LOG().log(Level.INFO, "Finished mirroring data for node " + nodeId + ", with " + userCount + " users.");
+        if (! erroredUsers.isEmpty())
+            Logging.LOG().log(Level.INFO, "Errored users: " + erroredUsers);
     }
 
     /**
