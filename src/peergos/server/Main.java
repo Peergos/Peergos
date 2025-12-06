@@ -929,11 +929,14 @@ public class Main extends Builder {
                         try {
                             BatWithId instanceBat = a.getOptionalArg("mirror-instance-bat").map(BatWithId::decode)
                                     .orElseThrow(() -> new IllegalStateException("No target instance bat supplied"));
-                            Mirror.mirrorNode(nodeToMirrorId, instanceBat, core, p2pHttpProxy, p2mMutable, localStorage, rawPointers,
+                            int errors = Mirror.mirrorNode(nodeToMirrorId, instanceBat, core, p2pHttpProxy, p2mMutable, localStorage, rawPointers,
                                     rawAccount, batStore, transactions, linkCounts, usageStore, hasher);
                             try {
                                 int periodSeconds = a.getInt("server-mirror-period-seconds", 86400);
-                                Thread.sleep(periodSeconds * 1_000L);
+                                if (errors == 0)
+                                    Thread.sleep(periodSeconds * 1_000L);
+                                else
+                                    Thread.sleep(30_000);
                             } catch (InterruptedException f) {}
                         } catch (Exception e) {
                             e.printStackTrace();

@@ -86,19 +86,36 @@ public class Mirror {
             Arrays.asList(INIT)
     );
 
-    public static void mirrorNode(Multihash nodeId,
-                                  BatWithId instanceBat,
-                                  CoreNode core,
-                                  HttpPoster p2pPoster,
-                                  MutablePointers p2pPointers,
-                                  DeletableContentAddressedStorage storage,
-                                  JdbcIpnsAndSocial targetPointers,
-                                  JdbcAccount targetAccount,
-                                  BatCave batStorage,
-                                  TransactionStore transactions,
-                                  LinkRetrievalCounter linkCounts,
-                                  UsageStore usage,
-                                  Hasher hasher) {
+    /**
+     *
+     * @param nodeId
+     * @param instanceBat
+     * @param core
+     * @param p2pPoster
+     * @param p2pPointers
+     * @param storage
+     * @param targetPointers
+     * @param targetAccount
+     * @param batStorage
+     * @param transactions
+     * @param linkCounts
+     * @param usage
+     * @param hasher
+     * @return Number of errored users
+     */
+    public static int mirrorNode(Multihash nodeId,
+                                 BatWithId instanceBat,
+                                 CoreNode core,
+                                 HttpPoster p2pPoster,
+                                 MutablePointers p2pPointers,
+                                 DeletableContentAddressedStorage storage,
+                                 JdbcIpnsAndSocial targetPointers,
+                                 JdbcAccount targetAccount,
+                                 BatCave batStorage,
+                                 TransactionStore transactions,
+                                 LinkRetrievalCounter linkCounts,
+                                 UsageStore usage,
+                                 Hasher hasher) {
         Logging.LOG().log(Level.INFO, "Mirroring data for node " + nodeId);
         Optional<LocalDateTime> latest = linkCounts.getLatestModificationTime();
         HTTPCoreNode sourceNode = new HTTPCoreNode(p2pPoster, nodeId);
@@ -147,6 +164,7 @@ public class Mirror {
         Logging.LOG().log(Level.INFO, "Finished mirroring data for node " + nodeId + ", with " + userCount + " users.");
         if (! erroredUsers.isEmpty())
             Logging.LOG().log(Level.INFO, "Errored users: " + erroredUsers);
+        return erroredUsers.size();
     }
 
     /**
