@@ -653,6 +653,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
     ForkJoinPool mirrorPool = Threads.newPool(10, "S3-Mirror-");
 
     private List<BlockMetadata> bulkGetBlocks(List<Multihash> peers,
+                                              String username,
                                               PublicKeyHash owner,
                                               List<Cid> hashes,
                                               Optional<BatWithId> mirrorBat,
@@ -671,7 +672,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                         return m;
                     long count = retrievalCount.incrementAndGet();
                     if (count % 100 == 0)
-                        LOG.info("Retrieved " + count + " blocks, of total size " + retrievalSize.get());
+                        LOG.info("User " + username + ": retrieved " + count + " blocks, of total size " + retrievalSize.get());
                     return RetryStorage.runWithRetry(5, () -> p2pHttpFallback.getRaw(peers.get(0), owner, c, mirrorBat)
                             .thenApply(bo -> bo.map(b -> {
                                 retrievalSize.addAndGet(b.length);
@@ -726,7 +727,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         AtomicLong blockCount = new AtomicLong(0);
         AtomicLong totalSize = new AtomicLong(0);
         return bulkMirror(owner, writer, peerIds, existingLinks, newLinks, mirrorBat, ourNodeId,
-                (p, o, h, m) -> bulkGetBlocks(p, o, h, m, blockCount, totalSize),
+                (p, o, h, m) -> bulkGetBlocks(p, username, o, h, m, blockCount, totalSize),
                 (w, bs, size) -> usage.addPendingUsage(username, writer, size), tid, hasher)
                 .thenApply(cs -> {
                     if (blockCount.get() > 0) {
