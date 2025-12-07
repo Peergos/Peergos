@@ -2182,10 +2182,7 @@ public CompletableFuture<Boolean> copyTo(FileWrapper target, UserContext context
         }
         Supplier<Boolean> isCancelled = () -> false;
 
-        return target.hasChildWithName(version, getFileProperties().name, crypto.hasher, network).thenCompose(childExists -> {
-            if (childExists) {
-                return Futures.errored(new IllegalStateException("CopyTo target " + target + " already has child with name " + getFileProperties().name));
-            }
+        return pickUniqueCopyName(target, version, crypto.hasher, network).thenCompose(uniqueName -> {
             if (isDirectory()) {
                 byte[] newMapKey = crypto.random.randomBytes(32);
                 Optional<Bat> newBat = Optional.of(Bat.random(crypto.random));
@@ -2197,7 +2194,7 @@ public CompletableFuture<Boolean> copyTo(FileWrapper target, UserContext context
                         .withBaseWriteKey(newBaseW);
                 return withVersion(this.version.mergeAndOverwriteWith(version))
                         .getChildren(version, crypto.hasher, network, false).thenCompose(children ->
-                        target.mkdir(getName(), Optional.of(newBaseR), Optional.of(newBaseW), Optional.of(newMapKey),
+                        target.mkdir(uniqueName, Optional.of(newBaseR), Optional.of(newBaseW), Optional.of(newMapKey),
                                 newBat, getFileProperties().isHidden, targetMirrorBat, network, crypto, version, committer)
                                 .thenCompose(versionWithDir ->
                                         network.getFile(versionWithDir, newCap, target.getChildsEntryWriter(), target.ownername)
@@ -2213,7 +2210,7 @@ public CompletableFuture<Boolean> copyTo(FileWrapper target, UserContext context
                 return version.withWriter(owner(), writer(), network).thenCompose(snapshot ->
                         getInputStream(snapshot.get(writer()), network, crypto, x -> {})
                                 .thenCompose(stream -> getHash(network, crypto.hasher).thenCompose(hashTree -> target.uploadFileSection(snapshot, committer,
-                                                getName(), stream, existingThumbnail, false, 0, getSize(), hashTree,
+                                                uniqueName, stream, existingThumbnail, false, 0, getSize(), hashTree,
                                                 Optional.of(getFileProperties().modified),
                                                 Optional.empty(), Optional.empty(), Optional.empty(), false, false, false, network, crypto, isCancelled, x -> {},
                                                 crypto.random.randomBytes(32), Optional.empty(),
@@ -2223,6 +2220,46 @@ public CompletableFuture<Boolean> copyTo(FileWrapper target, UserContext context
                                                 target.addChildPointer(p.left, committer, p.right.get(), network, crypto))));
             }
         });
+    }
+
+
+    private CompletableFuture<String> pickUniqueCopyName(FileWrapper target,
+                                                         Snapshot version,
+                                                         Hasher hasher,
+                                                         NetworkAccess network) {
+        String originalName = getFileProperties().name;
+        int dot = originalName.lastIndexOf('.');
+        String base;
+        String ext;
+        if (dot > 0 && dot < originalName.length() - 1) {
+            base = originalName.substring(0, dot);
+            ext = originalName.substring(dot);
+        } else {
+            base = originalName;
+            ext = "";
+        }
+        return pickUniqueCopyName(target, version, hasher, network, base, ext, 0);
+    }
+
+    private CompletableFuture<String> pickUniqueCopyName(FileWrapper target,
+                                                         Snapshot version,
+                                                         Hasher hasher,
+                                                         NetworkAccess network,
+                                                         String base,
+                                                         String ext,
+                                                         int n) {
+        String candidate;
+        if (n == 0) {
+            candidate = base + ext;
+        } else if (n == 1) {
+            candidate = base + " (copy)" + ext;
+        } else {
+            candidate = base + " (copy " + n + ")" + ext;
+        }
+        return target.hasChildWithName(version, candidate, hasher, network)
+                .thenCompose(exists -> exists ?
+                        pickUniqueCopyName(target, version, hasher, network, base, ext, n + 1) :
+                        Futures.of(candidate));
     }
 
     @JsMethod
