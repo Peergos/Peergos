@@ -660,7 +660,13 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                                               AtomicLong retrievalSize) {
         List<ForkJoinTask<Optional<BlockMetadata>>> futs = hashes.stream()
                 .map(c -> mirrorPool.submit(() -> {
-                    Optional<BlockMetadata> m = blockMetadata.get(c);
+                    Optional<BlockMetadata> m;
+                    try {
+                        m = blockMetadata.get(c);
+                    } catch (Exception s) {
+                        // occasionally get weird spurious concurrent update exceptions from yugabytedb
+                        m = blockMetadata.get(c);
+                    }
                     if (m.isPresent())
                         return m;
                     long count = retrievalCount.incrementAndGet();
