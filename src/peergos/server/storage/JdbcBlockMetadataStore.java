@@ -45,6 +45,8 @@ public class JdbcBlockMetadataStore implements BlockMetadataStore {
                 connection.setAutoCommit(true);
             if (serializable)
                 connection.setTransactionIsolation(Connection.TRANSACTION_SERIALIZABLE);
+            else
+                connection.setTransactionIsolation(Connection.TRANSACTION_READ_COMMITTED);
             return connection;
         } catch (SQLException e) {
             throw new RuntimeException(e);
@@ -86,7 +88,7 @@ public class JdbcBlockMetadataStore implements BlockMetadataStore {
 
     @Override
     public Optional<BlockMetadata> get(Cid block) {
-        try (Connection conn = getConnection();
+        try (Connection conn = getConnection(false, false);
              PreparedStatement stmt = conn.prepareStatement(GET_INFO)) {
             stmt.setBytes(1, block.toBytes());
             ResultSet rs = stmt.executeQuery();
