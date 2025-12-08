@@ -295,6 +295,8 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
     }
 
     private void enforceUserBandwidthRateLimits(PublicKeyHash owner, long readSize) {
+        if (owner == null) // GC until we move to user partitioned blockstores
+            return;
         if (! userReadSizeRateLimits.computeIfAbsent(owner, o -> new SlidingWindowCounter(60, maxUserBandwidthPerMinute))
                 .allowRequest(readSize))
             throw new MajorRateLimitException("Rate Limit: User bandwidth limit exceeded. Please try again later.");
