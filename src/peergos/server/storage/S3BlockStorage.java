@@ -287,6 +287,8 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
     }
 
     private void enforceUserRequestRateLimits(PublicKeyHash owner, long readRequests) {
+        if (owner == null) // GC until we move to user partitioned blockstores
+            return;
         if (! userReadReqRateLimits.computeIfAbsent(owner, o -> new SlidingWindowCounter(60, maxUserReadRequestsPerMinute))
                 .allowRequest(readRequests))
             throw new MajorRateLimitException("Rate Limit: User request limit exceeded. Please try again later.");
