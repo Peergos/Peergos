@@ -328,6 +328,7 @@ public class GarbageCollector {
             return false;
         } catch (Exception e) {
             LOG.info("Error processing user " + getUsername(writerHash, usage) + " " + e.getMessage());
+            LOG.log(Level.SEVERE, e, e::getMessage);
             return false;
         }
     }
@@ -412,6 +413,7 @@ public class GarbageCollector {
             }
         } catch (Exception e) {
             LOG.info("Error processing user " + username.get() + " " + e.getMessage());
+            LOG.log(Level.SEVERE, e, e::getMessage);
         }
         if (isRoot)
             reachability.setReachable(queue, totalReachable);
