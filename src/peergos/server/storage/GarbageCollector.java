@@ -327,7 +327,7 @@ public class GarbageCollector {
             }
             return false;
         } catch (Exception e) {
-            LOG.info("Error processing user " + getUsername(writerHash, usage));
+            LOG.info("Error processing user " + getUsername(writerHash, usage) + " " + e.getMessage());
             return false;
         }
     }
@@ -411,7 +411,7 @@ public class GarbageCollector {
                 markReachable(storage, false, queue, link, reachability, metadata, username, totalReachable);
             }
         } catch (Exception e) {
-            LOG.info("Error processing user " + username.get());
+            LOG.info("Error processing user " + username.get() + " " + e.getMessage());
         }
         if (isRoot)
             reachability.setReachable(queue, totalReachable);
