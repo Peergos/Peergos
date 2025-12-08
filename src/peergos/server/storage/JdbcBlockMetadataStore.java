@@ -3,6 +3,7 @@ package peergos.server.storage;
 import peergos.server.sql.*;
 import peergos.server.util.*;
 import peergos.shared.cbor.*;
+import peergos.shared.crypto.hash.PublicKeyHash;
 import peergos.shared.storage.auth.*;
 import peergos.shared.io.ipfs.Cid;
 import peergos.shared.util.Pair;
@@ -23,8 +24,9 @@ public class JdbcBlockMetadataStore implements BlockMetadataStore {
     private static final String LIST_PAGINATED = "SELECT cid, version FROM blockmetadata WHERE cid > ? ORDER BY cid LIMIT " + PAGE_LIMIT + ";";
     private static final String LIST_SIZE_PAGINATED_FIRST = "SELECT cid, size FROM blockmetadata ORDER BY cid LIMIT " + PAGE_LIMIT + ";";
     private static final String LIST_SIZE_PAGINATED = "SELECT cid, size FROM blockmetadata WHERE cid > ? ORDER BY cid LIMIT " + PAGE_LIMIT + ";";
-    private static final String LIST_ALL = "SELECT cid, version FROM blockmetadata;";
-    private static final String SIZE = "SELECT COUNT(*) FROM blockmetadata;";
+    private static final String LIST_ALL = "SELECT cid, version FROM blockmetadata WHERE owner=?;";
+    private static final String SIZE = "SELECT COUNT(*) FROM blockmetadata WHERE owner=?;";
+    private static final String EMPTY = "SELECT * FROM blockmetadata LIMIT 1;";
     private Supplier<Connection> conn;
     private final SqlSupplier commands;
 
@@ -56,6 +58,12 @@ public class JdbcBlockMetadataStore implements BlockMetadataStore {
     private synchronized void init(SqlSupplier commands) {
         try (Connection conn = getConnection()) {
             commands.createTable(commands.createBlockMetadataStoreTableCommand(), conn);
+            try { // sqlite doesn't have an "if not exists" modifier on "add column"
+                commands.createTable(commands.ensureColumnExistsCommand("blockmetadata", "owner", commands.getByteArrayType() + " DEFAULT null"), conn);
+            } catch (SQLException f) {
+                if (!f.getMessage().contains("duplicate column"))
+                    throw new RuntimeException(f);
+            }
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
@@ -107,19 +115,20 @@ public class JdbcBlockMetadataStore implements BlockMetadataStore {
     }
 
     @Override
-    public void put(Cid block, String version, BlockMetadata meta) {
+    public void put(PublicKeyHash owner, Cid block, String version, BlockMetadata meta) {
         try (Connection conn = getConnection();
              PreparedStatement insert = conn.prepareStatement(commands.addMetadataCommand())) {
 
-            insert.setBytes(1, block.toBytes());
-            insert.setString(2, version);
-            insert.setLong(3, meta.size);
-            insert.setBytes(4, new CborObject.CborList(meta.links.stream()
+            insert.setBytes(1, owner.toBytes());
+            insert.setBytes(2, block.toBytes());
+            insert.setString(3, version);
+            insert.setLong(4, meta.size);
+            insert.setBytes(5, new CborObject.CborList(meta.links.stream()
                     .map(Cid::toBytes)
                     .map(CborObject.CborByteArray::new)
                     .collect(Collectors.toList()))
                     .toByteArray());
-            insert.setBytes(5, new CborObject.CborList(meta.batids)
+            insert.setBytes(6, new CborObject.CborList(meta.batids)
                     .toByteArray());
             insert.executeUpdate();
         } catch (SQLException sqe) {
@@ -129,12 +138,25 @@ public class JdbcBlockMetadataStore implements BlockMetadataStore {
     }
 
     @Override
-    public long size() {
+    public long size(PublicKeyHash owner) {
         try (Connection conn = getConnection();
-             PreparedStatement stmt = conn.prepareStatement(SIZE)) {
-            ResultSet rs = stmt.executeQuery();
+             PreparedStatement size = conn.prepareStatement(SIZE)) {
+            size.setBytes(1, owner != null ? owner.toBytes() : null);
+            ResultSet rs = size.executeQuery();
             rs.next();
             return rs.getInt(1);
+        } catch (SQLException sqe) {
+            LOG.log(Level.WARNING, sqe.getMessage(), sqe);
+            throw new RuntimeException(sqe);
+        }
+    }
+
+    @Override
+    public boolean isEmpty() {
+        try (Connection conn = getConnection();
+             PreparedStatement size = conn.prepareStatement(EMPTY)) {
+            ResultSet rs = size.executeQuery();
+            return rs.next();
         } catch (SQLException sqe) {
             LOG.log(Level.WARNING, sqe.getMessage(), sqe);
             throw new RuntimeException(sqe);
@@ -193,10 +215,11 @@ public class JdbcBlockMetadataStore implements BlockMetadataStore {
     }
 
     @Override
-    public Stream<BlockVersion> list() {
+    public Stream<BlockVersion> list(PublicKeyHash owner) {
         try (Connection conn = getConnection();
-             PreparedStatement stmt = conn.prepareStatement(LIST_ALL)) {
-            ResultSet rs = stmt.executeQuery();
+             PreparedStatement list = conn.prepareStatement(LIST_ALL)) {
+            list.setBytes(1, owner == null ? null : owner.toBytes());
+            ResultSet rs = list.executeQuery();
             List<BlockVersion> res = new ArrayList<>();
             while (rs.next()) {
                 res.add(new BlockVersion(Cid.cast(rs.getBytes("cid")), rs.getString("version"), true));
@@ -209,10 +232,11 @@ public class JdbcBlockMetadataStore implements BlockMetadataStore {
     }
 
     @Override
-    public void listCbor(Consumer<List<BlockVersion>> results) {
+    public void listCbor(PublicKeyHash owner, Consumer<List<BlockVersion>> results) {
         try (Connection conn = getConnection();
-             PreparedStatement stmt = conn.prepareStatement(LIST_ALL)) {
-            ResultSet rs = stmt.executeQuery();
+             PreparedStatement list = conn.prepareStatement(LIST_ALL)) {
+            list.setBytes(1, owner == null ? null : owner.toBytes());
+            ResultSet rs = list.executeQuery();
             List<BlockVersion> res = new ArrayList<>();
             while (rs.next()) {
                 Cid cid = Cid.cast(rs.getBytes("cid"));

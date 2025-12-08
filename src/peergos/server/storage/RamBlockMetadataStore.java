@@ -1,5 +1,6 @@
 package peergos.server.storage;
 
+import peergos.shared.crypto.hash.PublicKeyHash;
 import peergos.shared.io.ipfs.Cid;
 
 import java.util.*;
@@ -15,12 +16,17 @@ public class RamBlockMetadataStore implements BlockMetadataStore {
     }
 
     @Override
+    public boolean isEmpty() {
+        return store.isEmpty();
+    }
+
+    @Override
     public Optional<BlockMetadata> get(Cid block) {
         return Optional.ofNullable(store.get(block));
     }
 
     @Override
-    public void put(Cid block, String version, BlockMetadata meta) {
+    public void put(PublicKeyHash owner, Cid block, String version, BlockMetadata meta) {
         store.put(block, meta);
     }
 
@@ -40,12 +46,12 @@ public class RamBlockMetadataStore implements BlockMetadataStore {
     }
 
     @Override
-    public Stream<BlockVersion> list() {
+    public Stream<BlockVersion> list(PublicKeyHash owner) {
         return store.keySet().stream().map(c -> new BlockVersion(c, null, true));
     }
 
     @Override
-    public void listCbor(Consumer<List<BlockVersion>> res) {
+    public void listCbor(PublicKeyHash owner, Consumer<List<BlockVersion>> res) {
         res.accept(store.keySet()
                 .stream()
                 .filter(c -> ! c.isRaw())
@@ -54,7 +60,7 @@ public class RamBlockMetadataStore implements BlockMetadataStore {
     }
 
     @Override
-    public long size() {
+    public long size(PublicKeyHash owner) {
         return store.size();
     }
 

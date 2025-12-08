@@ -72,25 +72,35 @@ public class RAMStorage implements DeletableContentAddressedStorage {
     }
 
     @Override
-    public Stream<Pair<PublicKeyHash, Cid>> getAllBlockHashes(boolean useBlockstore) {
-        return storage.keySet().stream().map(c -> new Pair<>(PublicKeyHash.NULL, c));
+    public Stream<Pair<PublicKeyHash, Cid>> getAllBlockHashes(PublicKeyHash owner, boolean useBlockstore) {
+        return storage.getOrDefault(owner, Collections.emptyMap()).keySet()
+                .stream()
+                .map(c -> new Pair<>(owner, c));
     }
 
+    @Override
+    public Stream<Pair<PublicKeyHash, Cid>> getAllBlockHashes(boolean useBlockstore) {
+        return storage.entrySet().stream()
+                .flatMap(e -> e.getValue()
+                        .keySet()
+                        .stream()
+                        .map(c -> new Pair<>(e.getKey(), c)));
+    }
 
     @Override
-    public void getAllBlockHashVersions(Consumer<List<BlockVersion>> res) {
-        res.accept(getAllBlockHashes(false)
+    public void getAllBlockHashVersions(PublicKeyHash owner, Consumer<List<BlockVersion>> res) {
+        res.accept(getAllBlockHashes(owner, false)
                 .map(p -> new BlockVersion(p.right, null, true))
                 .collect(Collectors.toList()));
     }
 
     @Override
-    public void delete(Cid hash) {
-        storage.remove(hash);
+    public void delete(PublicKeyHash owner, Cid hash) {
+        storage.get(owner).remove(hash);
     }
 
     @Override
-    public List<Cid> getOpenTransactionBlocks() {
+    public List<Cid> getOpenTransactionBlocks(PublicKeyHash owner) {
         return openTransactions.values()
                 .stream()
                 .flatMap(List::stream)
@@ -98,7 +108,7 @@ public class RAMStorage implements DeletableContentAddressedStorage {
     }
 
     @Override
-    public void clearOldTransactions(long cutoffMillis) {
+    public void clearOldTransactions(PublicKeyHash owner, long cutoffMillis) {
 
     }
 
@@ -217,8 +227,8 @@ public class RAMStorage implements DeletableContentAddressedStorage {
     }
 
     @Override
-    public boolean hasBlock(Cid hash) {
-        return storage.containsKey(hash);
+    public boolean hasBlock(PublicKeyHash owner, Cid hash) {
+        return storage.get(owner).containsKey(hash);
     }
 
     @Override

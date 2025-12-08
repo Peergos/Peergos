@@ -82,16 +82,16 @@ public class GCTests {
                 .map(CborObject.CborMerkleLink::new).toList()
         ).serialize();
         Cid root = new Cid(1, Cid.Codec.DagCbor, Multihash.Type.sha2_256, Hash.sha256(raw));
-        storage.add(leaf);
-        BlockVersion rootV1 = storage.add(root);
-        metadb.put(root, rootV1.version, raw);
+        storage.add(writer, leaf);
+        BlockVersion rootV1 = storage.add(writer, root);
+        metadb.put(writer, root, rootV1.version, raw);
         byte[] signedCas = signer.signMessage(new PointerUpdate(MaybeMultihash.empty(), MaybeMultihash.of(root), Optional.of(1L)).serialize()).join();
         pointers.setPointer(writer, Optional.empty(), signedCas).join();
 
         verifyAllReachableBlocksArePresent(pointers, metadb, storage);
         Assert.assertEquals(2, storage.storage.size());
         List<BlockVersion> versions1 = new ArrayList<>();
-        storage.getAllBlockHashVersions(versions1::addAll);
+        storage.getAllBlockHashVersions(writer, versions1::addAll);
         Assert.assertEquals(2, versions1.size());
         gc.collect(s -> Futures.of(true));
         Optional<List<Cid>> links = rdb.getLinks(root);
@@ -99,11 +99,11 @@ public class GCTests {
         Assert.assertTrue(links.get().contains(leaf));
 
         // add a new version of the leaf block, and check it is kept and the original is deleted
-        BlockVersion leafV2 = storage.add(leaf);
+        BlockVersion leafV2 = storage.add(writer, leaf);
         gc.collect(s -> Futures.of(true));
         Assert.assertEquals(2, storage.storage.size());
         List<BlockVersion> versions2 = new ArrayList<>();
-        storage.getAllBlockHashVersions(versions2::addAll);
+        storage.getAllBlockHashVersions(writer, versions2::addAll);
         Assert.assertEquals(2, versions2.size());
         Assert.assertTrue(versions2.contains(leafV2));
         Optional<List<Cid>> links2 = rdb.getLinks(root);
@@ -111,11 +111,11 @@ public class GCTests {
         Assert.assertTrue(links2.get().contains(leaf));
 
         // now add a new version of the root
-        BlockVersion rootV2 = storage.add(root);
+        BlockVersion rootV2 = storage.add(writer, root);
         gc.collect(s -> Futures.of(true));
         Assert.assertEquals(2, storage.storage.size());
         List<BlockVersion> versions3 = new ArrayList<>();
-        storage.getAllBlockHashVersions(versions3::addAll);
+        storage.getAllBlockHashVersions(writer, versions3::addAll);
         Assert.assertEquals(2, versions3.size());
         Assert.assertTrue(versions3.contains(rootV2));
         Optional<List<Cid>> links3 = rdb.getLinks(root);
@@ -125,7 +125,7 @@ public class GCTests {
         gc.collect(s -> Futures.of(true));
         Assert.assertEquals(2, storage.storage.size());
         List<BlockVersion> versions4 = new ArrayList<>();
-        storage.getAllBlockHashVersions(versions4::addAll);
+        storage.getAllBlockHashVersions(writer, versions4::addAll);
         Assert.assertEquals(2, versions4.size());
         Assert.assertTrue(versions4.contains(rootV2));
     }
@@ -149,21 +149,21 @@ public class GCTests {
         SigningKeyPair signer = SigningKeyPair.random(crypto.random, crypto.signer);
         PublicKeyHash writer = ContentAddressedStorage.hashKey(signer.publicSigningKey);
         Cid root = generateTree(42, 1000, blocks -> blocks
-                        .forEach(b -> storage.storage.put(b, true)),
-                (b, kids) -> metadb.put(b, null, new BlockMetadata(10, kids, Collections.emptyList())));
+                        .forEach(b -> storage.storage.get(writer).put(b, true)),
+                (b, kids) -> metadb.put(writer, b, null, new BlockMetadata(10, kids, Collections.emptyList())));
         byte[] signedCas = signer.signMessage(new PointerUpdate(MaybeMultihash.empty(), MaybeMultihash.of(root), Optional.of(1L)).serialize()).join();
         pointers.setPointer(writer, Optional.empty(), signedCas).join();
 
         verifyAllReachableBlocksArePresent(pointers, metadb, storage);
 
         // test deleting a block fails to verify
-        Cid toRemove = storage.storage.keySet().stream().findAny().get();
-        storage.storage.remove(toRemove);
+        Cid toRemove = storage.storage.get(writer).keySet().stream().findAny().get();
+        storage.storage.get(writer).remove(toRemove);
         try {
             verifyAllReachableBlocksArePresent(pointers, metadb, storage);
             throw new RuntimeException("Should not get here");
         } catch (IllegalStateException expected) {}
-        storage.storage.put(toRemove, true);
+        storage.storage.get(writer).put(toRemove, true);
 
         metadb.resetRequestCount();
         gc.collect(s -> Futures.of(true));
@@ -200,8 +200,8 @@ public class GCTests {
         SigningKeyPair signer2 = SigningKeyPair.random(crypto.random, crypto.signer);
         PublicKeyHash writer2 = ContentAddressedStorage.hashKey(signer2.publicSigningKey);
         Cid root2 = generateTree(42, 1000, blocks -> blocks
-                        .forEach(b -> storage.storage.put(b, true)),
-                (b, kids) -> metadb.put(b, null, new BlockMetadata(10, kids, Collections.emptyList())));
+                        .forEach(b -> storage.storage.get(writer).put(b, true)),
+                (b, kids) -> metadb.put(writer, b, null, new BlockMetadata(10, kids, Collections.emptyList())));
         byte[] signedCas2 = signer2.signMessage(new PointerUpdate(MaybeMultihash.empty(), MaybeMultihash.of(root2), Optional.of(1L)).serialize()).join();
         pointers.setPointer(writer2, Optional.empty(), signedCas2).join();
 
@@ -220,21 +220,22 @@ public class GCTests {
             PointerUpdate cas = PointerUpdate.fromCbor(CborObject.fromByteArray(bothHashes));
             if (cas.updated.isPresent()) {
                 Cid root = (Cid) cas.updated.get();
-                verifySubtreePresent(root, meta, storage);
+                verifySubtreePresent(writerHash, root, meta, storage);
             }
         }
     }
 
-    public void verifySubtreePresent(Cid block,
+    public void verifySubtreePresent(PublicKeyHash owner,
+                                     Cid block,
                                      BlockMetadataStore meta,
                                      DeletableContentAddressedStorage storage) {
-        if (! storage.hasBlock(block))
+        if (! storage.hasBlock(owner, block))
             throw new IllegalStateException("Absent block " + block);
         if (block.isRaw())
             return;
         BlockMetadata m = meta.get(block).get();
         for (Cid link : m.links) {
-            verifySubtreePresent(link, meta, storage);
+            verifySubtreePresent(owner, link, meta, storage);
         }
     }
 
@@ -250,6 +251,7 @@ public class GCTests {
         String filename = "temp.sql";
         Path file = Path.of(filename);
         SqliteBlockReachability reachability = SqliteBlockReachability.createReachabilityDb(file);
+        PublicKeyHash owner = new PublicKeyHash(randomCbor(new Random(42)));
 
         int nUsers = 1;
         int nRawBlocks = 1 << 9;
@@ -257,7 +259,7 @@ public class GCTests {
         List<ForkJoinTask<Cid>> futs = IntStream.range(0, nUsers)
                 .mapToObj(i -> listPool.submit(() -> generateTree(i, nRawBlocks,
                         blocks ->  reachability.addBlocks(blocks.stream().map(c ->  new BlockVersion(c, null, true)).collect(Collectors.toList())),
-                        (b, links) -> metadb.put(b, null, new BlockMetadata(0, links, Collections.emptyList()))
+                        (b, links) -> metadb.put(owner, b, null, new BlockMetadata(0, links, Collections.emptyList()))
                         )))
                 .collect(Collectors.toList());
         List<Cid> roots = futs.stream()
@@ -273,7 +275,7 @@ public class GCTests {
         List<ForkJoinTask<Boolean>> usageMarked = roots.stream()
                 .map(r -> markPool.submit(() -> {
                     try {
-                        return GarbageCollector.markReachable(null, r,
+                        return GarbageCollector.markReachable(owner, null, r,
                                 "user-" + r, reachability, metadb, totalReachable);
                     } catch (Exception e) {
                         e.printStackTrace();

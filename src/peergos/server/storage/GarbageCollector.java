@@ -79,21 +79,22 @@ public class GarbageCollector {
         garbageCollector.start();
     }
 
-    private static void listBlocks(SqliteBlockReachability reachability,
+    private static void listBlocks(PublicKeyHash owner,
+                                   SqliteBlockReachability reachability,
                                    CidVersionInfiniFilter inRdb,
                                    boolean listFromBlockstore,
                                    DeletableContentAddressedStorage storage,
                                    BlockMetadataStore metadata) {
         // the reachability store dedupes on cid + version to guarantee no duplicates which would result in data loss
         if (listFromBlockstore)
-            storage.getAllBlockHashVersions(versions -> reachability.addBlocks(versions.stream()
+            storage.getAllBlockHashVersions(owner, versions -> reachability.addBlocks(versions.stream()
                     .filter(v ->  !inRdb.has(v))
                     .toList()));
         else {
-            storage.getAllRawBlockVersions(versions -> reachability.addBlocks(versions.stream()
+            storage.getAllRawBlockVersions(owner, versions -> reachability.addBlocks(versions.stream()
                     .filter(v ->  !inRdb.has(v))
                     .toList()));
-            metadata.listCbor(versions -> reachability.addBlocks(versions.stream()
+            metadata.listCbor(owner, versions -> reachability.addBlocks(versions.stream()
                     .filter(v ->  !inRdb.has(v))
                     .toList()));
         }
@@ -223,96 +224,107 @@ public class GarbageCollector {
                                boolean listFromBlockstore) {
         System.out.println("Starting blockstore garbage collection on node " + storage.id().join() + "...");
         // TODO: do GC in O(1) RAM with a bloom filter?: mark into bloom. Then list and check bloom to delete.
-        storage.clearOldTransactions(System.currentTimeMillis() - 24*3600*1000L);
-        long t0 = System.nanoTime();
-        Path reachabilityDbFile = reachabilityDbDir.resolve("reachability.sqlite");
-        SqliteBlockReachability reachability = SqliteBlockReachability.createReachabilityDb(reachabilityDbFile);
-        reachability.clearReachable();
-        // First build a bloom (infini) filter of the block versions in RDB
-        // then use this to efficiently filter the blockstore listing
-        long nMetaBlocks = metadata.size();
-        CidVersionInfiniFilter inRdb = CidVersionInfiniFilter.build(nMetaBlocks, 0.0001);
-        reachability.applyToAllVersions(versions -> versions.forEach(inRdb::add));
-        // Versions are only relevant for versioned S3 buckets, otherwise version is null
-        // For S3, clients write raw blocks directly, we need to get their version directly from S3
-        listBlocks(reachability, inRdb, listFromBlockstore, storage, metadata);
-        long t1 = System.nanoTime();
-        long nBlocks = reachability.size();
-        System.out.println("Listing " + nBlocks + " blocks took " + (t1-t0)/1_000_000_000 + "s");
+        List<Pair<String, PublicKeyHash>> allUsers = usage.getAllOwners();
+        for (Pair<String, PublicKeyHash> p : allUsers) {
+            PublicKeyHash owner = p.right;
+            String username = p.left;
+            storage.clearOldTransactions(owner, System.currentTimeMillis() - 24*3600*1000L);
+            long t0 = System.nanoTime();
+            Path reachabilityDbFile = reachabilityDbDir.resolve("reachability-" + username + ".sqlite");
+            SqliteBlockReachability reachability = SqliteBlockReachability.createReachabilityDb(reachabilityDbFile);
+            reachability.clearReachable();
+            // First build a bloom (infini) filter of the block versions in RDB
+            // then use this to efficiently filter the blockstore listing
+            long nMetaBlocks = metadata.size(owner);
+            CidVersionInfiniFilter inRdb = CidVersionInfiniFilter.build(nMetaBlocks, 0.0001);
+            reachability.applyToAllVersions(versions -> versions.forEach(inRdb::add));
+            // Versions are only relevant for versioned S3 buckets, otherwise version is null
+            // For S3, clients write raw blocks directly, we need to get their version directly from S3
+            listBlocks(owner, reachability, inRdb, listFromBlockstore, storage, metadata);
+            long t1 = System.nanoTime();
+            long nBlocks = reachability.size();
+            System.out.println("Listing " + nBlocks + " blocks took " + (t1 - t0) / 1_000_000_000 + "s");
 
-        List<Cid> pending = storage.getOpenTransactionBlocks();
-        long t2 = System.nanoTime();
-        System.out.println("Listing " + pending.size() + " pending blocks took " + (t2-t1)/1_000_000_000 + "s");
+            List<Cid> pending = storage.getOpenTransactionBlocks(owner);
+            long t2 = System.nanoTime();
+            System.out.println("Listing " + pending.size() + " pending blocks took " + (t2 - t1) / 1_000_000_000 + "s");
 
-        // This pointers call must happen AFTER the block and pending listing for correctness
-        Map<PublicKeyHash, byte[]> allPointers = pointers.getAllEntries();
-        long t3 = System.nanoTime();
-        System.out.println("Listing " + allPointers.size() + " pointers took " + (t3-t2)/1_000_000_000 + "s");
+            // This pointers call must happen AFTER the block and pending listing for correctness
+            // Todo specialise this call to only return owners from DB
+            Map<PublicKeyHash, byte[]> allPointers = pointers.getAllEntries()
+                    .entrySet()
+                    .stream()
+                    .filter(e -> owner.equals(usage.getOwnerKey(e.getKey())))
+                    .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+            long t3 = System.nanoTime();
+            System.out.println("Listing " + allPointers.size() + " pointers took " + (t3 - t2) / 1_000_000_000 + "s");
 
-        // Get the current roots from the usage store which shouldn't be GC'd until usage has been updated
-        List<Triple<Multihash, String, PublicKeyHash>> usageRoots = usage.getAllTargets();
+            // Get the current roots from the usage store which shouldn't be GC'd until usage has been updated
+            List<Triple<Multihash, String, PublicKeyHash>> usageRoots = usage.getAllTargets(username);
 
-        int markParallelism = 10;
-        ForkJoinPool markPool = Threads.newPool(markParallelism, "GC-mark-");
-        AtomicLong totalReachable = new AtomicLong(0);
-        List<ForkJoinTask<Boolean>> usageMarked = usageRoots.stream()
-                .map(r -> markPool.submit(() -> markReachable(storage, (Cid)r.left, r.middle, reachability, metadata, totalReachable)))
-                .collect(Collectors.toList());
-        usageMarked.forEach(f -> f.join());
-        long t4 = System.nanoTime();
-        long reachableAfterUsage = totalReachable.get();
-        System.out.println("Marking " + reachableAfterUsage + " reachable from " + usageRoots.size() + " usage roots took " + (t4-t3)/1_000_000_000 + "s");
+            int markParallelism = 10;
+            ForkJoinPool markPool = Threads.newPool(markParallelism, "GC-mark-");
+            AtomicLong totalReachable = new AtomicLong(0);
+            List<ForkJoinTask<Boolean>> usageMarked = usageRoots.stream()
+                    .map(r -> markPool.submit(() -> markReachable(owner, storage, (Cid) r.left, r.middle, reachability, metadata, totalReachable)))
+                    .collect(Collectors.toList());
+            usageMarked.forEach(f -> f.join());
+            long t4 = System.nanoTime();
+            long reachableAfterUsage = totalReachable.get();
+            System.out.println("Marking " + reachableAfterUsage + " reachable from " + usageRoots.size() + " usage roots took " + (t4 - t3) / 1_000_000_000 + "s");
 
-        Set<Multihash> fromUsage = new HashSet<>(usageRoots.size());
-        fromUsage.addAll(usageRoots.stream().map(r -> r.left).collect(Collectors.toSet()));
-        List<ForkJoinTask<Boolean>> marked = allPointers.entrySet().stream()
-                .map(e -> markPool.submit(() -> markReachable(e.getKey(), e.getValue(), reachability, storage, usage, fromUsage, metadata, totalReachable)))
-                .collect(Collectors.toList());
-        long rootsProcessed = marked.stream().filter(ForkJoinTask::join).count();
-        markPool.shutdown();
+            Set<Multihash> fromUsage = new HashSet<>(usageRoots.size());
+            fromUsage.addAll(usageRoots.stream().map(r -> r.left).collect(Collectors.toSet()));
+            List<ForkJoinTask<Boolean>> marked = allPointers.entrySet().stream()
+                    .map(e -> markPool.submit(() -> markReachable(owner, e.getKey(), e.getValue(), reachability, storage, usage, fromUsage, metadata, totalReachable)))
+                    .collect(Collectors.toList());
+            long rootsProcessed = marked.stream().filter(ForkJoinTask::join).count();
+            markPool.shutdown();
 
-        long t5 = System.nanoTime();
-        System.out.println("Marking " + (totalReachable.get() - reachableAfterUsage) + " reachable from "+rootsProcessed+" pointers took " + (t5-t4)/1_000_000_000 + "s");
-        reachability.setReachable(pending, totalReachable);
+            long t5 = System.nanoTime();
+            System.out.println("Marking " + (totalReachable.get() - reachableAfterUsage) + " reachable from " + rootsProcessed + " pointers took " + (t5 - t4) / 1_000_000_000 + "s");
+            reachability.setReachable(pending, totalReachable);
 
-        long t6 = System.nanoTime();
-        System.out.println("Marking "+pending.size()+" pending blocks reachable took " + (t6-t5)/1_000_000_000 + "s");
+            long t6 = System.nanoTime();
+            System.out.println("Marking " + pending.size() + " pending blocks reachable took " + (t6 - t5) / 1_000_000_000 + "s");
 
-        // Save pointers snapshot
-        snapshotSaver.apply(allPointers.entrySet().stream()).join();
+            // Save pointers snapshot
+            snapshotSaver.apply(allPointers.entrySet().stream()).join();
 
-        AtomicLong cborDelCount = new AtomicLong(0);
-        AtomicLong rawDelCount = new AtomicLong(0);
-        reachability.getUnreachable(del -> {
-            cborDelCount.addAndGet(del.stream().filter(v -> ! v.cid.isRaw()).count());
-            rawDelCount.addAndGet(del.stream().filter(v -> v.cid.isRaw()).count());
-        });
-        deleteConfirm.apply(cborDelCount.get(), rawDelCount.get(), nBlocks).join();
+            AtomicLong cborDelCount = new AtomicLong(0);
+            AtomicLong rawDelCount = new AtomicLong(0);
+            reachability.getUnreachable(del -> {
+                cborDelCount.addAndGet(del.stream().filter(v -> ! v.cid.isRaw()).count());
+                rawDelCount.addAndGet(del.stream().filter(v -> v.cid.isRaw()).count());
+            });
+            deleteConfirm.apply(cborDelCount.get(), rawDelCount.get(), nBlocks).join();
 
-        int deleteParallelism = 4;
-        long t7 = System.nanoTime();
-        ForkJoinPool pool = Threads.newPool(deleteParallelism, "GC-delete-");
-        AtomicLong progressCounter = new AtomicLong(0);
-        List<ForkJoinTask<Pair<Long, Long>>> futures = new ArrayList<>();
-        reachability.getUnreachable(toDel -> futures.add(pool.submit(() ->
-                deleteUnreachableBlocks(toDel, progressCounter, cborDelCount.get() + rawDelCount.get(), storage, metadata, reachability))));
-        Pair<Long, Long> deleted = futures.stream()
-                .map(ForkJoinTask::join)
-                .reduce((a, b) -> new Pair<>(a.left + b.left, a.right + b.right))
-                .orElse(new Pair<>(0L, 0L));
-        pool.shutdown();
-        long deletedCborBlocks = deleted.left;
-        long deletedRawBlocks = deleted.right;
-        long t8 = System.nanoTime();
-        metadata.compact();
-        reachability.compact();
-        long t9 = System.nanoTime();
-        System.out.println("Deleting blocks took " + (t8-t7)/1_000_000_000 + "s");
-        System.out.println("GC complete. Freed " + deletedCborBlocks + " cbor blocks and " + deletedRawBlocks +
-                " raw blocks, total duration: " + (t8-t7+t6-t0)/1_000_000_000 + "s, metadata.compact took " + (t9-t8)/1_000_000_000 + "s");
+            int deleteParallelism = 4;
+            long t7 = System.nanoTime();
+            ForkJoinPool pool = Threads.newPool(deleteParallelism, "GC-delete-");
+            AtomicLong progressCounter = new AtomicLong(0);
+            List<ForkJoinTask<Pair<Long, Long>>> futures = new ArrayList<>();
+            reachability.getUnreachable(toDel -> futures.add(pool.submit(() ->
+                    deleteUnreachableBlocks(owner, toDel, progressCounter, cborDelCount.get() + rawDelCount.get(), storage, metadata, reachability))));
+            Pair<Long, Long> deleted = futures.stream()
+                    .map(ForkJoinTask::join)
+                    .reduce((a, b) -> new Pair<>(a.left + b.left, a.right + b.right))
+                    .orElse(new Pair<>(0L, 0L));
+            pool.shutdown();
+            long deletedCborBlocks = deleted.left;
+            long deletedRawBlocks = deleted.right;
+            long t8 = System.nanoTime();
+            metadata.compact();
+            reachability.compact();
+            long t9 = System.nanoTime();
+            System.out.println("Deleting blocks took " + (t8 - t7) / 1_000_000_000 + "s");
+            System.out.println("GC complete. Freed " + deletedCborBlocks + " cbor blocks and " + deletedRawBlocks +
+                    " raw blocks, total duration: " + (t8 - t7 + t6 - t0) / 1_000_000_000 + "s, metadata.compact took " + (t9 - t8) / 1_000_000_000 + "s");
+        }
     }
 
-    private static boolean markReachable(PublicKeyHash writerHash,
+    private static boolean markReachable(PublicKeyHash owner,
+                                         PublicKeyHash writerHash,
                                          byte[] signedRawCas,
                                          SqliteBlockReachability reachability,
                                          DeletableContentAddressedStorage storage,
@@ -326,7 +338,7 @@ public class GarbageCollector {
             PointerUpdate cas = PointerUpdate.fromCbor(CborObject.fromByteArray(bothHashes));
             MaybeMultihash updated = cas.updated;
             if (updated.isPresent() && !done.contains(updated.get())) {
-                markReachable(storage, true, new ArrayList<>(1000), (Cid) updated.get(), reachability, metadata, () -> getUsername(writerHash, usage), totalReachable);
+                markReachable(owner, storage, true, new ArrayList<>(1000), (Cid) updated.get(), reachability, metadata, () -> getUsername(writerHash, usage), totalReachable);
                 return true;
             }
             return false;
@@ -345,7 +357,8 @@ public class GarbageCollector {
         }
     }
 
-    private static Pair<Long, Long> deleteUnreachableBlocks(List<BlockVersion> toDelete,
+    private static Pair<Long, Long> deleteUnreachableBlocks(PublicKeyHash owner,
+                                                            List<BlockVersion> toDelete,
                                                             AtomicLong progress,
                                                             long totalBlocksToDelete,
                                                             DeletableContentAddressedStorage storage,
@@ -359,7 +372,7 @@ public class GarbageCollector {
             metadata.remove(block.cid);
             reachability.removeBlock(block);
         }
-        getWithBackoff(() -> {storage.bulkDelete(toDelete); return true;});
+        getWithBackoff(() -> {storage.bulkDelete(owner, toDelete); return true;});
 
         long logEvery = Math.max(1_000, totalBlocksToDelete / 10);
         long updatedProgress = progress.addAndGet(toDelete.size());
@@ -369,16 +382,18 @@ public class GarbageCollector {
         return new Pair<>(deletedCborBlocks, deletedRawBlocks);
     }
 
-    public static boolean markReachable(DeletableContentAddressedStorage storage,
-                                         Cid root,
-                                         String username,
-                                         SqliteBlockReachability reachability,
-                                         BlockMetadataStore metadata,
-                                         AtomicLong totalReachable) {
-        return markReachable(storage, true, new ArrayList<>(1000), root, reachability, metadata, () -> username, totalReachable);
+    public static boolean markReachable(PublicKeyHash owner,
+                                        DeletableContentAddressedStorage storage,
+                                        Cid root,
+                                        String username,
+                                        SqliteBlockReachability reachability,
+                                        BlockMetadataStore metadata,
+                                        AtomicLong totalReachable) {
+        return markReachable(owner, storage, true, new ArrayList<>(1000), root, reachability, metadata, () -> username, totalReachable);
     }
 
-    private static boolean markReachable(DeletableContentAddressedStorage storage,
+    private static boolean markReachable(PublicKeyHash owner,
+                                         DeletableContentAddressedStorage storage,
                                          boolean isRoot,
                                          List<Cid> queue,
                                          Cid block,
@@ -393,8 +408,6 @@ public class GarbageCollector {
             Optional<List<Cid>> fromRdb = block.isRaw() ?
                     Optional.of(Collections.emptyList()) :
                     reachability.getLinks(block);
-            // Will be non null once we start partitioning blockstores by owner, and GC'ing within an owner
-            PublicKeyHash owner = null;
             List<Cid> newLinks = fromRdb
                     .orElseGet(() -> metadata.get(block).map(m -> m.links)
                             .orElseGet(() -> getWithBackoff(() -> storage.getLinks(owner, block, Arrays.asList(storage.id().join())).join())));
@@ -413,7 +426,7 @@ public class GarbageCollector {
                 queue.clear();
             }
             for (Cid link : newLinks) {
-                markReachable(storage, false, queue, link, reachability, metadata, username, totalReachable);
+                markReachable(owner, storage, false, queue, link, reachability, metadata, username, totalReachable);
             }
         } catch (Exception e) {
             LOG.info("Error processing user " + username.get() + " " + e.getMessage());

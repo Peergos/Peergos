@@ -3,6 +3,7 @@ package peergos.server.tests;
 import peergos.server.storage.BlockMetadata;
 import peergos.server.storage.BlockMetadataStore;
 import peergos.server.storage.BlockVersion;
+import peergos.shared.crypto.hash.PublicKeyHash;
 import peergos.shared.io.ipfs.Cid;
 
 import java.util.List;
@@ -29,14 +30,19 @@ class RequestCountingBlockMetadataStore implements BlockMetadataStore {
     }
 
     @Override
+    public boolean isEmpty() {
+        return target.isEmpty();
+    }
+
+    @Override
     public Optional<BlockMetadata> get(Cid block) {
         count.incrementAndGet();
         return target.get(block);
     }
 
     @Override
-    public void put(Cid block, String version, BlockMetadata meta) {
-        target.put(block, version, meta);
+    public void put(PublicKeyHash owner, Cid block, String version, BlockMetadata meta) {
+        target.put(owner, block, version, meta);
     }
 
     @Override
@@ -45,8 +51,8 @@ class RequestCountingBlockMetadataStore implements BlockMetadataStore {
     }
 
     @Override
-    public long size() {
-        return target.size();
+    public long size(PublicKeyHash owner) {
+        return target.size(owner);
     }
 
     @Override
@@ -60,13 +66,13 @@ class RequestCountingBlockMetadataStore implements BlockMetadataStore {
     }
 
     @Override
-    public Stream<BlockVersion> list() {
-        return target.list();
+    public Stream<BlockVersion> list(PublicKeyHash owner) {
+        return target.list(owner);
     }
 
     @Override
-    public void listCbor(Consumer<List<BlockVersion>> res) {
-        target.listCbor(res);
+    public void listCbor(PublicKeyHash owner, Consumer<List<BlockVersion>> res) {
+        target.listCbor(owner, res);
     }
 
     @Override
