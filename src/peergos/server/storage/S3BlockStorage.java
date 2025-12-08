@@ -1267,7 +1267,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                 BlockStoreProperties.empty(), "localhost:8000", transactions, authoriser, null, meta, usageStore,
                 new RamBlockCache(1024, 100),
                 new FileBlockBuffer(a.fromPeergosDir("s3-block-buffer-dir", "block-buffer")),
-                Long.MAX_VALUE, Long.MAX_VALUE, Long.MAX_VALUE, Long.MAX_VALUE, hasher, new RAMStorage(hasher), null);
+                Integer.MAX_VALUE, Integer.MAX_VALUE, Integer.MAX_VALUE, Integer.MAX_VALUE, hasher, new RAMStorage(hasher), null);
         JdbcIpnsAndSocial rawPointers = new JdbcIpnsAndSocial(database, sqlCommands);
         if (a.hasArg("integrity-check")) {
             if (a.hasArg("username"))
