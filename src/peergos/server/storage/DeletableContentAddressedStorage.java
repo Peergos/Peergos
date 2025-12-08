@@ -29,33 +29,35 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
 
     ForkJoinPool usagePool = Threads.newPool(100, "Usage-updater-");
 
+    Stream<Pair<PublicKeyHash, Cid>> getAllBlockHashes(PublicKeyHash owner, boolean useBlockstore);
+
     Stream<Pair<PublicKeyHash, Cid>> getAllBlockHashes(boolean useBlockstore);
 
-    void getAllBlockHashVersions(Consumer<List<BlockVersion>> res);
+    void getAllBlockHashVersions(PublicKeyHash owner, Consumer<List<BlockVersion>> res);
 
-    default void getAllRawBlockVersions(Consumer<List<BlockVersion>> res) {
-        getAllBlockHashVersions(all -> res.accept(all.stream().filter(v -> v.cid.isRaw()).collect(Collectors.toList())));
+    default void getAllRawBlockVersions(PublicKeyHash owner, Consumer<List<BlockVersion>> res) {
+        getAllBlockHashVersions(owner, all -> res.accept(all.stream().filter(v -> v.cid.isRaw()).collect(Collectors.toList())));
     }
 
-    List<Cid> getOpenTransactionBlocks();
+    List<Cid> getOpenTransactionBlocks(PublicKeyHash owner);
 
-    void clearOldTransactions(long cutoffMillis);
+    void clearOldTransactions(PublicKeyHash owner, long cutoffMillis);
 
-    boolean hasBlock(Cid hash);
+    boolean hasBlock(PublicKeyHash owner, Cid hash);
 
-    void delete(Cid block);
+    void delete(PublicKeyHash owner, Cid block);
 
-    default void delete(BlockVersion blockVersion) {
-        delete(blockVersion.cid);
+    default void delete(PublicKeyHash owner, BlockVersion blockVersion) {
+        delete(owner, blockVersion.cid);
     }
 
     default Optional<BlockMetadataStore> getBlockMetadataStore() {
         return Optional.empty();
     }
 
-    default void bulkDelete(List<BlockVersion> blockVersions) {
+    default void bulkDelete(PublicKeyHash owner, List<BlockVersion> blockVersions) {
         for (BlockVersion version : blockVersions) {
-            delete(version);
+            delete(owner, version);
         }
     }
 
@@ -353,31 +355,43 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
         }
 
         @Override
-        public Stream<Pair<PublicKeyHash, Cid>> getAllBlockHashes(boolean useBlockstore) {
-            String jsonStream = new String(poster.postUnzip(apiPrefix + REFS_LOCAL + "?use-block-store=" + useBlockstore, new byte[0], -1).join());
+        public Stream<Pair<PublicKeyHash, Cid>> getAllBlockHashes(PublicKeyHash owner, boolean useBlockstore) {
+            String jsonStream = new String(poster.postUnzip(apiPrefix + REFS_LOCAL +
+                    "?use-block-store=" + useBlockstore + "&owner=" + owner, new byte[0], -1).join());
             return JSONParser.parseStream(jsonStream).stream()
                     .map(m -> (String) (((Map) m).get("Ref")))
-                    .map(Cid::decode).map(c -> new Pair<>(PublicKeyHash.NULL, c));
+                    .map(Cid::decode).map(c -> new Pair<>(owner, c));
         }
 
         @Override
-        public void getAllBlockHashVersions(Consumer<List<BlockVersion>> res) {
-            res.accept(getAllBlockHashes(false)
+        public Stream<Pair<PublicKeyHash, Cid>> getAllBlockHashes(boolean useBlockstore) {
+            String jsonStream = new String(poster.postUnzip(apiPrefix + REFS_LOCAL +
+                    "?use-block-store=" + useBlockstore, new byte[0], -1).join());
+            return JSONParser.parseStream(jsonStream).stream()
+                    .map(m -> new Pair<>(
+                            PublicKeyHash.fromString((String) (((Map) m).get("Owner"))),
+                            Cid.decode((String) (((Map) m).get("Ref")))));
+        }
+
+        @Override
+        public void getAllBlockHashVersions(PublicKeyHash owner, Consumer<List<BlockVersion>> res) {
+            res.accept(getAllBlockHashes(owner, false)
                     .map(p -> new BlockVersion(p.right, null, true))
                     .collect(Collectors.toList()));
         }
 
         @Override
-        public void delete(Cid hash) {
-            poster.get(apiPrefix + BLOCK_RM + "?arg=" + hash.toString()).join();
+        public void delete(PublicKeyHash owner, Cid hash) {
+            poster.get(apiPrefix + BLOCK_RM + "?arg=" + hash.toString() + "&owner=" + owner).join();
         }
 
         @Override
-        public void bulkDelete(List<BlockVersion> blocks) {
+        public void bulkDelete(PublicKeyHash owner, List<BlockVersion> blocks) {
             Map<String, Object> json = new HashMap<>();
             json.put("cids", blocks.stream()
                     .map(v -> v.cid.toString())
                     .collect(Collectors.toList()));
+            json.put("owner", owner.toString());
             poster.postUnzip(apiPrefix + BLOCK_RM_BULK, JSONParser.toString(json).getBytes(), -1);
         }
 
@@ -392,18 +406,19 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
         }
 
         @Override
-        public boolean hasBlock(Cid hash) {
-            return poster.get(apiPrefix + BLOCK_PRESENT + "?arg=" + hash.toString())
+        public boolean hasBlock(PublicKeyHash owner, Cid hash) {
+            return poster.get(apiPrefix + BLOCK_PRESENT + "?arg=" + hash.toString() +
+                            "&owner=" + owner)
                     .thenApply(raw -> new String(raw).equals("true")).join();
         }
 
         @Override
-        public List<Cid> getOpenTransactionBlocks() {
+        public List<Cid> getOpenTransactionBlocks(PublicKeyHash owner) {
             throw new IllegalStateException("Unimplemented!");
         }
 
         @Override
-        public void clearOldTransactions(long cutoffMillis) {
+        public void clearOldTransactions(PublicKeyHash owner, long cutoffMillis) {
             throw new IllegalStateException("Unimplemented!");
         }
 

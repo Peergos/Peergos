@@ -84,7 +84,8 @@ public interface SqlSupplier {
     }
 
     default String createBlockMetadataStoreTableCommand() {
-        return "CREATE TABLE IF NOT EXISTS blockmetadata (cid " + getByteArrayType() + " primary key not null, " +
+        return "CREATE TABLE IF NOT EXISTS blockmetadata (owner " + getByteArrayType() + ", " +
+                "cid " + getByteArrayType() + " primary key not null, " +
                 "version varchar(160)," +
                 "size " + sqlInteger() + " not null, " +
                 "links " + getByteArrayType() + " not null, " +

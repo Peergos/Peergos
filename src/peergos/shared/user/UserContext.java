@@ -482,7 +482,7 @@ public class UserContext {
                 .thenCompose(userWithRoot -> {
                     PublicSigningKey loginPublicKey = userWithRoot.getUser().publicSigningKey;
 
-                    boolean isLegacy = algorithm.generateBoxerAndIdentity();
+                    boolean isLegacy = username.equals("peergos") || algorithm.generateBoxerAndIdentity();
                     SigningKeyPair identityPair = isLegacy ?
                             userWithRoot.getUser() :
                             existingIdentity.orElseGet(() -> SigningKeyPair.random(crypto.random, crypto.signer));

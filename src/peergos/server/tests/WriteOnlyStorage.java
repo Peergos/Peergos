@@ -19,16 +19,13 @@ import peergos.shared.util.ProgressConsumer;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
+import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Consumer;
 import java.util.stream.Stream;
 
 public class WriteOnlyStorage implements DeletableContentAddressedStorage {
-    public final Map<Cid, Boolean> storage = new EfficientHashMap<>();
+    public final Map<PublicKeyHash, Map<Cid, Boolean>> storage = new EfficientHashMap<>();
     private final BlockMetadataStore metadb;
 
     public WriteOnlyStorage(BlockMetadataStore metadb) {
@@ -40,12 +37,23 @@ public class WriteOnlyStorage implements DeletableContentAddressedStorage {
     }
 
     @Override
-    public Stream<Pair<PublicKeyHash, Cid>> getAllBlockHashes(boolean useBlockstore) {
-        return storage.keySet().stream().map(c -> new Pair<>(PublicKeyHash.NULL, c));
+    public Stream<Pair<PublicKeyHash, Cid>> getAllBlockHashes(PublicKeyHash owner, boolean useBlockstore) {
+        return storage.getOrDefault(owner, Collections.emptyMap()).keySet()
+                .stream()
+                .map(c -> new Pair<>(owner, c));
     }
 
     @Override
-    public void getAllBlockHashVersions(Consumer<List<BlockVersion>> res) {
+    public Stream<Pair<PublicKeyHash, Cid>> getAllBlockHashes(boolean useBlockstore) {
+        return storage.entrySet().stream()
+                .flatMap(e -> e.getValue()
+                        .keySet()
+                        .stream()
+                        .map(c -> new Pair<>(e.getKey(), c)));
+    }
+
+    @Override
+    public void getAllBlockHashVersions(PublicKeyHash owner, Consumer<List<BlockVersion>> res) {
         List<BlockVersion> batch = new ArrayList<>();
         for (Cid cid : storage.keySet()) {
             batch.add(new BlockVersion(cid, "hey", true));
@@ -58,22 +66,22 @@ public class WriteOnlyStorage implements DeletableContentAddressedStorage {
     }
 
     @Override
-    public List<Cid> getOpenTransactionBlocks() {
+    public List<Cid> getOpenTransactionBlocks(PublicKeyHash owner) {
         return List.of();
     }
 
     @Override
-    public void clearOldTransactions(long cutoffMillis) {
+    public void clearOldTransactions(PublicKeyHash owner, long cutoffMillis) {
 
     }
 
     @Override
-    public boolean hasBlock(Cid hash) {
+    public boolean hasBlock(PublicKeyHash owner, Cid hash) {
         return storage.containsKey(hash);
     }
 
     @Override
-    public void delete(Cid block) {
+    public void delete(PublicKeyHash owner, Cid block) {
         storage.remove(block);
     }
 

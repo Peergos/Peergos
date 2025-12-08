@@ -40,18 +40,18 @@ public class SqliteTableTests {
         txns.addBlock(hash1, TransactionId.build("tid1"), owner);
 
         // check both entries are correct
-        List<Cid> open = txns.getOpenTransactionBlocks();
+        List<Cid> open = txns.getOpenTransactionBlocks(owner);
         Assert.assertTrue(open.size() == 2);
 
         // check an immediate GC doesn't clear the new block
-        txns.clearOldTransactions(start);
-        Assert.assertTrue(txns.getOpenTransactionBlocks().size() == 1);
+        txns.clearOldTransactions(owner, start);
+        Assert.assertTrue(txns.getOpenTransactionBlocks(owner).size() == 1);
 
         // clear both entries
-        txns.clearOldTransactions(System.currentTimeMillis() + 1000);
+        txns.clearOldTransactions(owner, System.currentTimeMillis() + 1000);
 
         // check there are no entries left
-        List<Cid> empty = txns.getOpenTransactionBlocks();
+        List<Cid> empty = txns.getOpenTransactionBlocks(owner);
         Assert.assertTrue(empty.isEmpty());
     }
 }

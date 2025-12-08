@@ -134,7 +134,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
     private final DeletableContentAddressedStorage ipnsHandler;
     private final ContentAddressedStorageProxy p2pHttpFallback;
 
-    private final LinkedBlockingQueue<Cid> blocksToFlush = new LinkedBlockingQueue<>();
+    private final LinkedBlockingQueue<Pair<PublicKeyHash, Cid>> blocksToFlush = new LinkedBlockingQueue<>();
     private final ConcurrentHashMap<PublicKeyHash, SlidingWindowCounter> userReadReqRateLimits = new ConcurrentHashMap();
     private final ConcurrentHashMap<PublicKeyHash, SlidingWindowCounter> userReadSizeRateLimits = new ConcurrentHashMap();
     private final SlidingWindowCounter globalReadReqCount;
@@ -194,14 +194,14 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         this.maxUserBandwidthPerMinute = 60 * maxUserBandwidthPerSecond;
         this.maxUserReadRequestsPerMinute = 60 * maxUserReadRequestsPerSecond;
         startFlusherThread();
-        new Thread(() -> blockBuffer.applyToAll(c -> {
+        new Thread(() -> blockBuffer.applyToAll((o, c) -> {
             bulkPutPool.submit(() -> getWithBackoff(() -> {
-                Optional<byte[]> block = blockBuffer.get(c).join();
+                Optional<byte[]> block = blockBuffer.get(o, c).join();
                 if (block.isPresent()) {
-                    getWithBackoff(() -> put(c, block.get(), true));
+                    getWithBackoff(() -> put(o, c, block.get(), true));
                     Optional<BlockMetadata> meta = blockMetadata.get(c);
                     if (meta.isPresent())
-                        blockBuffer.delete(c);
+                        blockBuffer.delete(o, c);
                 }
                 return true;
             }));
@@ -217,29 +217,31 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         Thread flusher = new Thread(() -> {
             while (true) {
                 try {
-                    Cid h = blocksToFlush.peek();
-                    if (h == null) {
+                    Pair<PublicKeyHash, Cid> p = blocksToFlush.peek();
+                    if (p == null) {
                         Thread.sleep(1_000);
                         continue;
                     }
+                    PublicKeyHash owner = p.left;
+                    Cid h = p.right;
                     bulkPutPool.submit(() -> getWithBackoff(() -> {
                         try {
-                            Optional<byte[]> block = blockBuffer.get(h).join();
+                            Optional<byte[]> block = blockBuffer.get(owner, h).join();
                             if (block.isPresent()) {
-                                getWithBackoff(() -> put(h, block.get(), true));
+                                getWithBackoff(() -> put(owner, h, block.get(), true));
                                 Optional<BlockMetadata> meta = blockMetadata.get(h);
                                 if (meta.isPresent())
-                                    blockBuffer.delete(h);
+                                    blockBuffer.delete(owner, h);
                                 else {
                                     LOG.info("Error flushing block " + h);
-                                    blocksToFlush.add(h);
+                                    blocksToFlush.add(new Pair<>(owner, h));
                                 }
                             } else
-                                blocksToFlush.add(h);
+                                blocksToFlush.add(new Pair<>(owner, h));
                             return true;
                         } catch (Exception e) {
                             LOG.info("Error flushing block " + h + " " + e.getMessage());
-                            blocksToFlush.add(h);
+                            blocksToFlush.add(new Pair<>(owner, h));
                             throw new RuntimeException(e);
                         }
                     }));
@@ -264,6 +266,24 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
 
     private Cid keyToHash(String key) {
         return DirectS3BlockStore.keyToHash(key.substring(folder.length()));
+    }
+
+    private Pair<PublicKeyHash, Cid> keyToOwnerAndHash(Optional<PublicKeyHash> owner, String key) {
+        String path = key.substring(folder.length());
+        if (path.contains("/")) {
+            int slash = path.indexOf("/");
+            Cid hash = DirectS3BlockStore.keyToHash(path.substring(slash + 1));
+            if (owner.isPresent())
+                return new Pair<>(owner.get(), hash);
+            PublicKeyHash parsedOwner = PublicKeyHash.fromString(path.substring(0, slash));
+            return new Pair<>(parsedOwner, hash);
+        }
+        // legacy path without owner
+        return new Pair<>(null, DirectS3BlockStore.keyToHash(path));
+    }
+
+    private String ownerToPrefix(PublicKeyHash owner) {
+        return owner.toString();
     }
 
     @Override
@@ -391,7 +411,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                         S3AdminRequests.asAwsDate(ZonedDateTime.now()), host, extraHeaders, region, accessKeyId, secretKey, useHttps, hasher).join());
                 blockPutAuths.inc();
                 if (isRaw)
-                    blockMetadata.put(props.left, null, props.right);
+                    blockMetadata.put(owner, props.left, null, props.right);
             }
             return Futures.of(res);
         } catch (Exception e) {
@@ -508,7 +528,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                 return Futures.of(Optional.of(new Pair<>(cached.get(), null)));
             }
         }
-        Optional<byte[]> buffered = blockBuffer.get(hash).join();
+        Optional<byte[]> buffered = blockBuffer.get(owner, hash).join();
         if (buffered.isPresent()) {
             if (enforceAuth && ! authoriser.allowRead(hash, buffered.get(), id, generateAuth(hash, bat, id, hasher)).join())
                     throw new IllegalStateException("Unauthorised!");
@@ -549,7 +569,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
             if (enforceAuth && ! authoriser.allowRead(hash, blockAndVersion.left, id, generateAuth(hash, bat, id, hasher)).join())
                 throw new IllegalStateException("Unauthorised!");
             if (range.isEmpty())
-                blockMetadata.put(hash, blockAndVersion.right, blockAndVersion.left);
+                blockMetadata.put(owner, hash, blockAndVersion.right, blockAndVersion.left);
             return Futures.of(Optional.of(blockAndVersion));
         } catch (SocketTimeoutException | SSLException | SocketException e) {
             // S3 can't handle the load so treat this as a rate limit and slow down
@@ -592,8 +612,8 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
     }
 
     @Override
-    public boolean hasBlock(Cid hash) {
-        if (blockBuffer.hasBlock(hash))
+    public boolean hasBlock(PublicKeyHash owner, Cid hash) {
+        if (blockBuffer.hasBlock(owner, hash))
             return true;
         if (! hash.isRaw() && cborCache.hasBlock(hash))
             return true;
@@ -647,11 +667,11 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         }
     }
 
-    private BlockMetadata checkAndAddBlock(Cid expected, byte[] raw) {
+    private BlockMetadata checkAndAddBlock(PublicKeyHash owner, Cid expected, byte[] raw) {
         Cid res = hasher.hash(raw, expected.isRaw()).join();
         if (! res.equals(expected))
             throw new IllegalStateException("Received block with incorrect hash!");
-        return put(expected, raw, false).right;
+        return put(owner, expected, raw, false).right;
     }
 
     ForkJoinPool mirrorPool = Threads.newPool(10, "S3-Mirror-");
@@ -680,7 +700,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                     return RetryStorage.runWithRetry(5, () -> p2pHttpFallback.getRaw(peers.get(0), owner, c, mirrorBat)
                             .thenApply(bo -> bo.map(b -> {
                                 retrievalSize.addAndGet(b.length);
-                                return checkAndAddBlock(c, b);
+                                return checkAndAddBlock(owner, c, b);
                             }))).join();
                 }))
                 .toList();
@@ -711,7 +731,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         Optional<byte[]> newBlock = getRaw(peerIds, owner, newRoot, mirrorBat, ourNodeId, hasher, false, true).join();
         if (newBlock.isEmpty())
             throw new IllegalStateException("Couldn't retrieve block: " + newRoot);
-        if (! hasBlock(newRoot)) {
+        if (! hasBlock(owner, newRoot)) {
             getWithBackoff(() -> put(newBlock.get(), newRoot.isRaw(), tid, owner, false));
             usage.addPendingUsage(username, writer, newBlock.get().length);
         }
@@ -745,19 +765,19 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
     public CompletableFuture<List<byte[]>> getChampLookup(PublicKeyHash owner, Cid root, List<ChunkMirrorCap> caps, Optional<Cid> committedRoot) {
         if (noReads)
             throw new IllegalStateException("Reads from Glacier are disabled!");
-        if (! hasBlock(root))
+        if (! hasBlock(owner, root))
             return Futures.errored(new IllegalStateException("Champ root not present locally: " + root + " for owner: " + owner));
         return getChampLookup(owner, root, caps, committedRoot, hasher);
     }
 
     @Override
-    public List<Cid> getOpenTransactionBlocks() {
-        return transactions.getOpenTransactionBlocks();
+    public List<Cid> getOpenTransactionBlocks(PublicKeyHash owner) {
+        return transactions.getOpenTransactionBlocks(owner);
     }
 
     @Override
-    public void clearOldTransactions(long cutoffMillis) {
-        transactions.clearOldTransactions(cutoffMillis);
+    public void clearOldTransactions(PublicKeyHash owner, long cutoffMillis) {
+        transactions.clearOldTransactions(owner, cutoffMillis);
     }
 
     private void collectGarbage(JdbcIpnsAndSocial pointers, UsageStore usage, BlockMetadataStore metadata, boolean listFromBlockstore) {
@@ -807,18 +827,18 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         Optional<BlockMetadata> meta = blockMetadata.get((Cid) hash);
         if (meta.isPresent())
             return Futures.of(Optional.of(meta.get().size));
-        Optional<byte[]> buffered = blockBuffer.get((Cid) hash).join();
+        Optional<byte[]> buffered = blockBuffer.get(owner, (Cid) hash).join();
         if (buffered.isPresent())
             return Futures.of(Optional.of(buffered.get().length));
         return getBlockMetadata(owner, (Cid)hash)
                 .thenApply(m -> Optional.of(m.size));
     }
 
-    private CompletableFuture<Optional<Integer>> getSizeOnly(Multihash hash) {
+    private CompletableFuture<Optional<Integer>> getSizeOnly(PublicKeyHash owner, Multihash hash) {
         Optional<BlockMetadata> meta = blockMetadata.get((Cid) hash);
         if (meta.isPresent())
             return Futures.of(Optional.of(meta.get().size));
-        Optional<byte[]> buffered = blockBuffer.get((Cid) hash).join();
+        Optional<byte[]> buffered = blockBuffer.get(owner, (Cid) hash).join();
         if (buffered.isPresent())
             return Futures.of(Optional.of(buffered.get().length));
         return getWithBackoff(() -> getSizeWithoutRetry(hash));
@@ -935,8 +955,8 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
             throw new IllegalStateException("Block too big for block buffer!");
         Multihash hash = new Multihash(Multihash.Type.sha2_256, Hash.sha256(data));
         Cid h = new Cid(1, isRaw ? Cid.Codec.Raw : Cid.Codec.DagCbor, hash.type, hash.getHash());
-        blocksToFlush.add(h);
-        return blockBuffer.put(h, data).thenApply(x -> h);
+        blocksToFlush.add(new Pair<>(owner, h));
+        return blockBuffer.put(owner, h, data).thenApply(x -> h);
     }
 
     /** Must be atomic relative to reads of the same key
@@ -947,10 +967,10 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         Multihash hash = new Multihash(Multihash.Type.sha2_256, Hash.sha256(data));
         Cid cid = new Cid(1, isRaw ? Cid.Codec.Raw : Cid.Codec.DagCbor, hash.type, hash.getHash());
         transactions.addBlock(cid, tid, owner);
-        return put(cid, data, cacheCbor).left;
+        return put(owner, cid, data, cacheCbor).left;
     }
 
-    public Pair<Cid, BlockMetadata> put(Cid cid, byte[] data, boolean cacheCbor) {
+    public Pair<Cid, BlockMetadata> put(PublicKeyHash owner, Cid cid, byte[] data, boolean cacheCbor) {
         Histogram.Timer writeTimer = writeTimerLog.labels("write").startTimer();
         String key = hashToKey(cid);
         try {
@@ -962,7 +982,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
             PresignedUrl putUrl = S3Request.preSignPut(s3Key, data.length, contentHash, storageClass, false,
                     S3AdminRequests.asAwsDate(ZonedDateTime.now()), host, extraHeaders, region, accessKeyId, secretKey, useHttps, hasher).join();
             String version = HttpUtil.putWithVersion(putUrl, data).right;
-            BlockMetadata meta = blockMetadata.put(cid, version, data);
+            BlockMetadata meta = blockMetadata.put(owner, cid, version, data);
             blockPuts.inc();
             blockPutBytes.labels("size").observe(data.length);
             if (cacheCbor && ! cid.isRaw())
@@ -1004,7 +1024,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                 throw new IllegalStateException("Received block with incorrect hash!");
             hashed.add(new Pair<>(c, bytes));
         }
-        return hashed.stream().map(p -> put(p.left, p.right, false).right).toList();
+        return hashed.stream().map(p -> put(owner, p.left, p.right, false).right).toList();
     }
 
     @Override
@@ -1034,16 +1054,16 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         String version = data.get().right;
         if (h.isRaw()) {
             // we should avoid this by populating the metadata store, as it means two S3 calls, a ranged GET and a HEAD
-            int size = getSizeOnly(h).join().get();
+            int size = getSizeOnly(owner, h).join().get();
             BlockMetadata meta = new BlockMetadata(size, Collections.emptyList(), Bat.getRawBlockBats(bloc));
-            blockMetadata.put(h, version, meta);
+            blockMetadata.put(owner, h, version, meta);
             return Futures.of(meta);
         }
-        return Futures.of(blockMetadata.put(h, version, bloc));
+        return Futures.of(blockMetadata.put(owner, h, version, bloc));
     }
 
     public void updateMetadataStoreIfEmpty() {
-        if (blockMetadata.size() > 0)
+        if (! blockMetadata.isEmpty())
             return;
         LOG.info("Updating block metadata store from S3. Listing blocks...");
         List<Pair<PublicKeyHash, Cid>> all = getAllBlockHashes(true).collect(Collectors.toList());
@@ -1077,28 +1097,34 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
     @Override
     public Stream<Pair<PublicKeyHash, Cid>> getAllBlockHashes(boolean useBlockstore) {
         // todo make this actually streaming
-        return getFiles(Long.MAX_VALUE).stream();
+        return getFiles(Optional.empty(), Long.MAX_VALUE).stream();
     }
 
     @Override
-    public void getAllBlockHashVersions(Consumer<List<BlockVersion>> res) {
-        getFileVersions(res);
+    public Stream<Pair<PublicKeyHash, Cid>> getAllBlockHashes(PublicKeyHash owner, boolean useBlockstore) {
+        // todo make this actually streaming
+        return getFiles(Optional.of(owner), Long.MAX_VALUE).stream();
     }
 
     @Override
-    public void getAllRawBlockVersions(Consumer<List<BlockVersion>> res) {
-        applyToAllVersions("AFK", res, res);
+    public void getAllBlockHashVersions(PublicKeyHash owner, Consumer<List<BlockVersion>> res) {
+        getFileVersions(owner, res);
     }
 
-    private void getFileVersions(Consumer<List<BlockVersion>> res) {
-        applyToAllVersions("", res, res);
+    @Override
+    public void getAllRawBlockVersions(PublicKeyHash owner, Consumer<List<BlockVersion>> res) {
+        applyToAllVersions(ownerToPrefix(owner) + "/AFK", res, res);
     }
 
-    private List<Pair<PublicKeyHash, Cid>> getFiles(long maxReturned) {
+    private void getFileVersions(PublicKeyHash owner, Consumer<List<BlockVersion>> res) {
+        applyToAllVersions(ownerToPrefix(owner), res, res);
+    }
+
+    private List<Pair<PublicKeyHash, Cid>> getFiles(Optional<PublicKeyHash> owner, long maxReturned) {
         List<Pair<PublicKeyHash, Cid>> results = new ArrayList<>();
-        applyToAll(obj -> {
+        applyToAll(owner.map(this::ownerToPrefix), obj -> {
             try {
-                results.add(new Pair<>(PublicKeyHash.NULL, keyToHash(obj.key)));
+                results.add(keyToOwnerAndHash(owner, obj.key));
             } catch (Exception e) {
                 LOG.warning("Couldn't parse S3 key to Cid: " + obj.key);
             }
@@ -1106,19 +1132,13 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         return results;
     }
 
-    private List<String> getFilenames(long maxReturned) {
-        List<String> results = new ArrayList<>();
-        applyToAll(obj -> results.add(obj.key), maxReturned);
-        return results;
-    }
-
-    private void applyToAll(Consumer<S3AdminRequests.ObjectMetadata> processor, long maxObjects) {
+    private void applyToAll(Optional<String> prefix, Consumer<S3AdminRequests.ObjectMetadata> processor, long maxObjects) {
         try {
             Optional<String> continuationToken = Optional.empty();
             S3AdminRequests.ListObjectsReply result;
             long processedObjects = 0;
             do {
-                result = S3AdminRequests.listObjects(folder, 1_000, continuationToken,
+                result = S3AdminRequests.listObjects(folder + prefix.orElse(""), 1_000, continuationToken,
                         ZonedDateTime.now(), host, region, storageClass, accessKeyId, secretKey, url -> {
                             try {
                                 return HttpUtil.get(url);
@@ -1185,12 +1205,12 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
     }
 
     @Override
-    public void delete(Cid hash) {
-        delete(new BlockVersion(hash, null, true));
+    public void delete(PublicKeyHash owner, Cid hash) {
+        delete(owner, new BlockVersion(hash, null, true));
     }
 
     @Override
-    public void delete(BlockVersion version) {
+    public void delete(PublicKeyHash owner, BlockVersion version) {
         try {
             PresignedUrl delUrl = S3AdminRequests.preSignDelete(folder + hashToKey(version.cid), Optional.ofNullable(version.version),
                     S3AdminRequests.asAwsDate(ZonedDateTime.now()), host, region, storageClass, accessKeyId, secretKey, useHttps, hasher).join();
@@ -1203,7 +1223,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
     private static AtomicBoolean hasBulkDeleteError = new AtomicBoolean(false);
 
     @Override
-    public void bulkDelete(List<BlockVersion> versions) {
+    public void bulkDelete(PublicKeyHash owner, List<BlockVersion> versions) {
         List<Pair<String, String>> keyVersions = versions.stream()
                 .map(v -> new Pair<>(folder + hashToKey(v.cid), v.version))
                 .collect(Collectors.toList());
@@ -1230,7 +1250,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                 System.out.println("Falling back to parallel individual block deletes... (B2 doesn't implement bulk delete)" + e.getMessage());
             hasBulkDeleteError.set(true);
             for (BlockVersion version : versions) {
-                new Thread(() -> delete(version)).start();
+                new Thread(() -> delete(owner, version)).start();
             }
         }
     }

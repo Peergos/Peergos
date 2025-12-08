@@ -412,7 +412,7 @@ public class Main extends Builder {
                 }
             },
             Arrays.asList(
-                    new Command.Arg("peergos.identity.hash", "The hostname to listen on", true),
+                    new Command.Arg("peergos.identity.hash", "The identity of the 'peergos' user which hosts the pki", true),
                     LISTEN_HOST,
                     new Command.Arg("port", "The port for the local non tls server to listen on", true, "8000"),
                     new Command.Arg("useIPFS", "Whether to use IPFS or a local datastore", true, "false"),

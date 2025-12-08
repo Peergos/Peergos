@@ -73,7 +73,7 @@ public class TransactionalIpfs extends DelegatingDeletableStorage {
 
     @Override
     public CompletableFuture<Optional<CborObject>> get(PublicKeyHash owner, Cid hash, Optional<BatWithId> bat) {
-        List<Multihash> providers = hasBlock(hash) ? List.of(id) : pki.getStorageProviders(owner);
+        List<Multihash> providers = hasBlock(owner, hash) ? List.of(id) : pki.getStorageProviders(owner);
         return get(providers, owner, hash, bat, id, hasher, true);
     }
 
@@ -175,8 +175,8 @@ public class TransactionalIpfs extends DelegatingDeletableStorage {
     }
 
     @Override
-    public boolean hasBlock(Cid hash) {
-        return target.hasBlock(hash);
+    public boolean hasBlock(PublicKeyHash owner, Cid hash) {
+        return target.hasBlock(owner, hash);
     }
 
     @Override
@@ -202,7 +202,7 @@ public class TransactionalIpfs extends DelegatingDeletableStorage {
                                                           Cid root,
                                                           List<ChunkMirrorCap> caps,
                                                           Optional<Cid> committedRoot) {
-        if (! hasBlock(root))
+        if (! hasBlock(owner, root))
             return Futures.errored(new IllegalStateException("Champ root not present locally: " + root));
         return getChampLookup(owner, root, caps, committedRoot, hasher);
     }
@@ -237,32 +237,32 @@ public class TransactionalIpfs extends DelegatingDeletableStorage {
     }
 
     @Override
-    public Stream<Pair<PublicKeyHash, Cid>> getAllBlockHashes(boolean useBlockstore) {
-        return target.getAllBlockHashes(useBlockstore);
+    public Stream<Pair<PublicKeyHash, Cid>> getAllBlockHashes(PublicKeyHash owner, boolean useBlockstore) {
+        return target.getAllBlockHashes(owner, useBlockstore);
     }
 
     @Override
-    public void getAllBlockHashVersions(Consumer<List<BlockVersion>> res) {
-        target.getAllBlockHashVersions(res);
+    public void getAllBlockHashVersions(PublicKeyHash owner, Consumer<List<BlockVersion>> res) {
+        target.getAllBlockHashVersions(owner, res);
     }
 
     @Override
-    public void delete(Cid hash) {
-        target.delete(hash);
+    public void delete(PublicKeyHash owner, Cid hash) {
+        target.delete(owner, hash);
     }
 
     @Override
-    public void bulkDelete(List<BlockVersion> blocks) {
-        target.bulkDelete(blocks);
+    public void bulkDelete(PublicKeyHash owner, List<BlockVersion> blocks) {
+        target.bulkDelete(owner, blocks);
     }
 
     @Override
-    public List<Cid> getOpenTransactionBlocks() {
-        return transactions.getOpenTransactionBlocks();
+    public List<Cid> getOpenTransactionBlocks(PublicKeyHash owner) {
+        return transactions.getOpenTransactionBlocks(owner);
     }
 
     @Override
-    public void clearOldTransactions(long cutoffMillis) {
-        transactions.clearOldTransactions(cutoffMillis);
+    public void clearOldTransactions(PublicKeyHash owner, long cutoffMillis) {
+        transactions.clearOldTransactions(owner, cutoffMillis);
     }
 }
