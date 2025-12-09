@@ -360,10 +360,12 @@ public class UserContext {
                         .thenCompose(ids -> {
                             Multihash pkiCurrent = chain.get(chain.size() - 1).claim.storageProviders.get(0).bareMultihash();
                             List<Multihash> peerIds = ids.stream().map(c -> c.bareMultihash()).collect(Collectors.toList());
-                            boolean onHome = peerIds.contains(pkiCurrent);
+                            boolean onHome = peerIds.contains(pkiCurrent) || pkiCurrent.equals(Proxy.ZERO);
                             Multihash latest = peerIds.get(peerIds.size() - 1);
                             if (! onHome || latest.equals(pkiCurrent))
                                 return Futures.of(false);
+                            if (pkiCurrent.equals(Proxy.ZERO))
+                                return updateHostInPki(username, signer, LocalDate.now().plusMonths(2), latest, crypto.hasher, network);
                             // Need to check peerid chain and update our pki entry
                             return getAndVerifyServerIdChain(pkiCurrent, latest)
                                     .thenCompose(x -> updateHostInPki(username, signer, LocalDate.now().plusMonths(2), latest, crypto.hasher, network));
