@@ -32,10 +32,13 @@ public class InodeFilesystemTests {
 
     @Test
     public void deleteExample() throws IOException {
-        ContentAddressedStorage storage = new FileContentAddressedStorage(Files.createTempDirectory("peergos-tmp"),
+        DeletableContentAddressedStorage storage = new FileContentAddressedStorage(Files.createTempDirectory("peergos-tmp"),
                 new Cid(1, Cid.Codec.LibP2pKey, Multihash.Type.sha2_256, RAMStorage.hash("FileStorage".getBytes())),
                 JdbcTransactionStore.build(Main.buildEphemeralSqlite(), new SqliteCommands()), (a, b, c, d) -> Futures.of(true), crypto.hasher);
+        RamPki pki = new RamPki();
+        storage.setPki(pki);
         SigningPrivateKeyAndPublicHash user = createUser(storage, crypto);
+        pki.reverseLookup.put(user.publicKeyHash, "bob");
         Random r = new Random(28);
 
         Map<String, AbsoluteCapability> state = new HashMap<>();
@@ -71,10 +74,13 @@ public class InodeFilesystemTests {
 
     @Test
     public void nameClash() throws Exception {
-        ContentAddressedStorage storage = new FileContentAddressedStorage(Files.createTempDirectory("peergos-tmp"),
+        DeletableContentAddressedStorage storage = new FileContentAddressedStorage(Files.createTempDirectory("peergos-tmp"),
                 new Cid(1, Cid.Codec.LibP2pKey, Multihash.Type.sha2_256, RAMStorage.hash("FileStorage".getBytes())),
                 JdbcTransactionStore.build(Main.buildEphemeralSqlite(), new SqliteCommands()), (a, b, c, d) -> Futures.of(true), crypto.hasher);
+        RamPki pki = new RamPki();
+        storage.setPki(pki);
         SigningPrivateKeyAndPublicHash user = createUser(storage, crypto);
+        pki.reverseLookup.put(user.publicKeyHash, "bob");
         Random r = new Random(28);
 
         Map<String, AbsoluteCapability> state = new HashMap<>();
@@ -105,10 +111,13 @@ public class InodeFilesystemTests {
 
     @Test
     public void insertAndRetrieve() throws Exception {
-        ContentAddressedStorage storage = new FileContentAddressedStorage(Files.createTempDirectory("peergos-tmp"),
+        DeletableContentAddressedStorage storage = new FileContentAddressedStorage(Files.createTempDirectory("peergos-tmp"),
                 new Cid(1, Cid.Codec.LibP2pKey, Multihash.Type.sha2_256, RAMStorage.hash("FileStorage".getBytes())),
                 JdbcTransactionStore.build(Main.buildEphemeralSqlite(), new SqliteCommands()), (a, b, c, d) -> Futures.of(true), crypto.hasher);
+        RamPki pki = new RamPki();
+        storage.setPki(pki);
         SigningPrivateKeyAndPublicHash user = createUser(storage, crypto);
+        pki.reverseLookup.put(user.publicKeyHash, "bob");
         Random r = new Random(28);
 
         Map<String, AbsoluteCapability> state = new HashMap<>();
