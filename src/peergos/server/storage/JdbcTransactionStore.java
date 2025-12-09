@@ -82,7 +82,7 @@ public class JdbcTransactionStore implements TransactionStore {
         try (Connection conn = getConnection();
              PreparedStatement delete = conn.prepareStatement(DELETE_TRANSACTION)) {
             delete.setString(1, tid.toString());
-            delete.setBytes(2, owner.toBytes());
+            delete.setString(2, owner.toString());
             delete.executeUpdate();
         } catch (SQLException sqe) {
             LOG.log(Level.WARNING, sqe.getMessage(), sqe);
@@ -93,7 +93,7 @@ public class JdbcTransactionStore implements TransactionStore {
         try (Connection conn = getConnection();
              PreparedStatement delete = conn.prepareStatement(DELETE_OLD_TRANSACTIONS)) {
             delete.setLong(1, cutoffMillis);
-            delete.setBytes(2, owner.toBytes());
+            delete.setString(2, owner.toString());
             delete.executeUpdate();
         } catch (SQLException sqe) {
             LOG.log(Level.WARNING, sqe.getMessage(), sqe);
@@ -104,7 +104,7 @@ public class JdbcTransactionStore implements TransactionStore {
     public List<Cid> getOpenTransactionBlocks(PublicKeyHash owner) {
         try (Connection conn = getConnection();
              PreparedStatement select = conn.prepareStatement(SELECT_TRANSACTIONS_BLOCKS)) {
-            select.setBytes(1, owner.toBytes());
+            select.setString(1, owner.toString());
             ResultSet rs = select.executeQuery();
             List<Cid> results = new ArrayList<>();
             while (rs.next())
