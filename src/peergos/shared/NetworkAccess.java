@@ -303,7 +303,7 @@ public class NetworkAccess {
                                                           List<String> usernames,
                                                           boolean isPeergosServer,
                                                           boolean isJavascript) {
-        return (isPeergosServer ? localDht.ids() : Futures.of(List.of(Proxy.ZERO)))
+        return (isPeergosServer ? localDht.ids() : Futures.of(Collections.singletonList(Proxy.ZERO)))
                 .thenApply(nodeIds -> {
                     if (isPeergosServer)
                         return buildToPeergosServer(nodeIds, core, localDht, apiPoster, p2pPoster, mutableCacheTime, hasher, usernames, isJavascript);
