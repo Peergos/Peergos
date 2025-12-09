@@ -9,6 +9,7 @@ import java.util.concurrent.*;
 import java.util.function.*;
 
 public class Proxy {
+    public static final Cid ZERO = Cid.decode("zdvgq1QytJnbSZiAGiduxkd7hnhdnpHqBSfYGiCyG1YQjLEij");
 
     public static final <V> CompletableFuture<V> redirectCall(CoreNode core,
                                                               List<Cid> serverIds,
@@ -21,7 +22,9 @@ public class Proxy {
         Multihash target = storageIds.get(0);
         if (serverIds.stream()
                 .map(Cid::bareMultihash)
-                .anyMatch(c -> c.equals(target.bareMultihash()))) { // don't proxy
+                .anyMatch(c -> c.equals(target.bareMultihash()))
+                || target.equals(ZERO)) { // signup error assume local user
+            // don't proxy
             return direct.get();
         } else {
             return Futures.asyncExceptionally(() -> proxied.apply(target),
