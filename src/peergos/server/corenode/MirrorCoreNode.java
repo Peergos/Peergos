@@ -431,6 +431,8 @@ public class MirrorCoreNode implements CoreNode {
                                                                   OpLog setupOperations,
                                                                   ProofOfWork proof,
                                                                   String token) {
+        if (! chain.claim.storageProviders.get(0).bareMultihash().equals(ourNodeId.bareMultihash()))
+            throw new IllegalStateException("Trying to signup to wrong host! " + chain.claim.storageProviders.get(0));
         Optional<RequiredDifficulty> pkiResult = writeTarget.updateChain(username, Arrays.asList(chain), proof, token).join();
         if (pkiResult.isPresent()) { // signup rejected
             LOG.info("Rejecting signup: required " + pkiResult.get());
@@ -450,6 +452,8 @@ public class MirrorCoreNode implements CoreNode {
     public CompletableFuture<Either<PaymentProperties, RequiredDifficulty>> startPaidSignup(String username,
                                                                                             UserPublicKeyLink chain,
                                                                                             ProofOfWork proof) {
+        if (! chain.claim.storageProviders.get(0).bareMultihash().equals(ourNodeId.bareMultihash()))
+            throw new IllegalStateException("Trying to signup to wrong host! " + chain.claim.storageProviders.get(0));
         return writeTarget.startPaidSignup(username, chain, proof);
     }
 
