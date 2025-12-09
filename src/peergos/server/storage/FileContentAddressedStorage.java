@@ -33,6 +33,7 @@ public class FileContentAddressedStorage implements DeletableContentAddressedSto
     private final BlockRequestAuthoriser authoriser;
     private final Hasher hasher;
     private final Cid ourId;
+    private CoreNode pki;
 
     public FileContentAddressedStorage(Path root,
                                        Cid ourId,
@@ -55,7 +56,9 @@ public class FileContentAddressedStorage implements DeletableContentAddressedSto
     }
 
     @Override
-    public void setPki(CoreNode pki) {}
+    public void setPki(CoreNode pki) {
+        this.pki = pki;
+    }
 
     @Override
     public ContentAddressedStorage directToOrigin() {
@@ -135,11 +138,11 @@ public class FileContentAddressedStorage implements DeletableContentAddressedSto
                 .collect(Collectors.toList()));
     }
 
-    private static Path getFilePath(PublicKeyHash owner, Cid h) {
+    private Path getFilePath(PublicKeyHash owner, Cid h) {
         String key = DirectS3BlockStore.hashToKey(h);
 
         Path path = PathUtil.get("")
-                .resolve(owner.toString())
+                .resolve(pki.getUsername(owner).join())
                 .resolve(key.substring(key.length() - 3, key.length() - 1))
                 .resolve(key + ".data");
         return path;

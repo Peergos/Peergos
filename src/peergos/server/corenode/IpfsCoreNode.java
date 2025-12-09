@@ -81,6 +81,7 @@ public class IpfsCoreNode implements CoreNode {
         LOG.info("Initializing PKI from root " + currentPkiRoot);
         update(currentPkiRoot, currentPkiSequence);
         if (! currentPkiRoot.isPresent()) {
+            reverseLookup.put(peergosIdentity, "peergos");
             CommittedWriterData committed = IpfsTransaction.call(peergosIdentity,
                     tid -> WriterData.createEmpty(peergosIdentity, signer, ipfs, hasher, tid).join()
                             .commit(peergosIdentity, signer, MaybeMultihash.empty(), Optional.of(1L), mutable, ipfs, hasher, tid)
