@@ -53,6 +53,7 @@ public class TransactionalIpfs extends DelegatingDeletableStorage {
     @Override
     public void setPki(CoreNode pki) {
         this.pki = pki;
+        target.setPki(pki);
     }
 
     @Override
