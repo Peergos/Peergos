@@ -55,7 +55,7 @@ public class WriteOnlyStorage implements DeletableContentAddressedStorage {
     @Override
     public void getAllBlockHashVersions(PublicKeyHash owner, Consumer<List<BlockVersion>> res) {
         List<BlockVersion> batch = new ArrayList<>();
-        for (Cid cid : storage.keySet()) {
+        for (Cid cid : storage.getOrDefault(owner, Collections.emptyMap()).keySet()) {
             batch.add(new BlockVersion(cid, "hey", true));
             if (batch.size() == 1000) {
                 res.accept(batch);
@@ -77,12 +77,12 @@ public class WriteOnlyStorage implements DeletableContentAddressedStorage {
 
     @Override
     public boolean hasBlock(PublicKeyHash owner, Cid hash) {
-        return storage.containsKey(hash);
+        return storage.containsKey(owner) && storage.get(owner).containsKey(hash);
     }
 
     @Override
     public void delete(PublicKeyHash owner, Cid block) {
-        storage.remove(block);
+        storage.getOrDefault(owner, Collections.emptyMap()).remove(block);
     }
 
     @Override

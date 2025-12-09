@@ -66,16 +66,18 @@ public class VersionedWriteOnlyStorage implements DeletableContentAddressedStora
     @Override
     public void getAllBlockHashVersions(PublicKeyHash owner, Consumer<List<BlockVersion>> res) {
         List<BlockVersion> batch = new ArrayList<>();
-        for (Cid cid : storage.keySet()) {
-            Set<String> versions = this.versions.getOrDefault(cid, Collections.emptySet());
-            if (!versions.isEmpty()) {
-                String latest = versions.stream().sorted(Comparator.reverseOrder()).findFirst().get();
-                for (String version : versions) {
-                    batch.add(new BlockVersion(cid, version, version.equals(latest)));
-                }
-                if (batch.size() >= 1000) {
-                    res.accept(batch);
-                    batch.clear();
+        for (PublicKeyHash writer : storage.keySet()) {
+            for (Cid cid : storage.get(writer).keySet()) {
+                Set<String> versions = this.versions.getOrDefault(cid, Collections.emptySet());
+                if (!versions.isEmpty()) {
+                    String latest = versions.stream().sorted(Comparator.reverseOrder()).findFirst().get();
+                    for (String version : versions) {
+                        batch.add(new BlockVersion(cid, version, version.equals(latest)));
+                    }
+                    if (batch.size() >= 1000) {
+                        res.accept(batch);
+                        batch.clear();
+                    }
                 }
             }
         }
@@ -94,7 +96,7 @@ public class VersionedWriteOnlyStorage implements DeletableContentAddressedStora
 
     @Override
     public boolean hasBlock(PublicKeyHash owner, Cid hash) {
-        return storage.containsKey(hash);
+        return storage.get(owner).containsKey(hash);
     }
 
     @Override

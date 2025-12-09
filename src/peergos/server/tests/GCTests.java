@@ -18,6 +18,7 @@ import peergos.shared.io.ipfs.*;
 import peergos.shared.mutable.PointerUpdate;
 import peergos.shared.storage.*;
 import peergos.shared.util.Futures;
+import peergos.shared.util.Pair;
 
 import java.io.*;
 import java.nio.file.*;
@@ -67,9 +68,6 @@ public class GCTests {
 
         GarbageCollector gc = new GarbageCollector(storage, pointers, usage, dir, (x, y, z) -> Futures.of(true), true);
         gc.collect(s -> Futures.of(true));
-        Path dbFile = dir.resolve("reachability.sqlite");
-        Assert.assertTrue(Files.exists(dbFile));
-        SqliteBlockReachability rdb = SqliteBlockReachability.createReachabilityDb(dbFile);
 
         verifyAllReachableBlocksArePresent(pointers, metadb, storage);
 
@@ -87,13 +85,22 @@ public class GCTests {
         metadb.put(writer, root, rootV1.version, raw);
         byte[] signedCas = signer.signMessage(new PointerUpdate(MaybeMultihash.empty(), MaybeMultihash.of(root), Optional.of(1L)).serialize()).join();
         pointers.setPointer(writer, Optional.empty(), signedCas).join();
+        String username = "user";
+        usage.addUserIfAbsent(username);
+        usage.addWriter(username, writer);
+        usage.updateWriterUsage(writer, MaybeMultihash.of(randomCbor(new Random(42))), Collections.emptySet(), Collections.emptySet(), 1024*1024);
+        usage.confirmUsage(username, writer, 10*1024*1024, false);
 
         verifyAllReachableBlocksArePresent(pointers, metadb, storage);
-        Assert.assertEquals(2, storage.storage.size());
+        Assert.assertEquals(2, storage.storage.values().stream().map(Map::size).mapToInt(i -> i).sum());
         List<BlockVersion> versions1 = new ArrayList<>();
         storage.getAllBlockHashVersions(writer, versions1::addAll);
         Assert.assertEquals(2, versions1.size());
         gc.collect(s -> Futures.of(true));
+
+        Path dbFile = dir.resolve("reachability-" + username + ".sqlite");
+        Assert.assertTrue(Files.exists(dbFile));
+        SqliteBlockReachability rdb = SqliteBlockReachability.createReachabilityDb(dbFile);
         Optional<List<Cid>> links = rdb.getLinks(root);
         Assert.assertTrue(links.isPresent());
         Assert.assertTrue(links.get().contains(leaf));
@@ -101,7 +108,7 @@ public class GCTests {
         // add a new version of the leaf block, and check it is kept and the original is deleted
         BlockVersion leafV2 = storage.add(writer, leaf);
         gc.collect(s -> Futures.of(true));
-        Assert.assertEquals(2, storage.storage.size());
+        Assert.assertEquals(2, storage.storage.values().stream().map(Map::size).mapToInt(i -> i).sum());
         List<BlockVersion> versions2 = new ArrayList<>();
         storage.getAllBlockHashVersions(writer, versions2::addAll);
         Assert.assertEquals(2, versions2.size());
@@ -113,7 +120,7 @@ public class GCTests {
         // now add a new version of the root
         BlockVersion rootV2 = storage.add(writer, root);
         gc.collect(s -> Futures.of(true));
-        Assert.assertEquals(2, storage.storage.size());
+        Assert.assertEquals(2, storage.storage.values().stream().map(Map::size).mapToInt(i -> i).sum());
         List<BlockVersion> versions3 = new ArrayList<>();
         storage.getAllBlockHashVersions(writer, versions3::addAll);
         Assert.assertEquals(2, versions3.size());
@@ -123,7 +130,7 @@ public class GCTests {
         Assert.assertTrue(links3.get().contains(leaf));
 
         gc.collect(s -> Futures.of(true));
-        Assert.assertEquals(2, storage.storage.size());
+        Assert.assertEquals(2, storage.storage.values().stream().map(Map::size).mapToInt(i -> i).sum());
         List<BlockVersion> versions4 = new ArrayList<>();
         storage.getAllBlockHashVersions(writer, versions4::addAll);
         Assert.assertEquals(2, versions4.size());
@@ -148,11 +155,21 @@ public class GCTests {
         // write a tree, gc and verify again
         SigningKeyPair signer = SigningKeyPair.random(crypto.random, crypto.signer);
         PublicKeyHash writer = ContentAddressedStorage.hashKey(signer.publicSigningKey);
+        String username = "user";
+        usage.addUserIfAbsent(username);
+        usage.addWriter(username, writer);
+        usage.updateWriterUsage(writer, MaybeMultihash.of(randomCbor(new Random(42))), Collections.emptySet(), Collections.emptySet(), 1024*1024);
+        usage.confirmUsage(username, writer, 10*1024*1024, false);
+        List<Pair<String, PublicKeyHash>> owners = usage.getAllOwners();
+        Assert.assertTrue(! owners.isEmpty());
+
+        storage.storage.put(writer, new HashMap<>());
         Cid root = generateTree(42, 1000, blocks -> blocks
                         .forEach(b -> storage.storage.get(writer).put(b, true)),
                 (b, kids) -> metadb.put(writer, b, null, new BlockMetadata(10, kids, Collections.emptyList())));
         byte[] signedCas = signer.signMessage(new PointerUpdate(MaybeMultihash.empty(), MaybeMultihash.of(root), Optional.of(1L)).serialize()).join();
         pointers.setPointer(writer, Optional.empty(), signedCas).join();
+        usage.updateWriterUsage(writer, MaybeMultihash.of(root), Collections.emptySet(), Collections.emptySet(), 1024*1024);
 
         verifyAllReachableBlocksArePresent(pointers, metadb, storage);
 
@@ -171,7 +188,7 @@ public class GCTests {
         verifyAllReachableBlocksArePresent(pointers, metadb, storage);
         Assert.assertTrue(gcMetadbGets < 2000);
 
-        Path dbFile = dir.resolve("reachability.sqlite");
+        Path dbFile = dir.resolve("reachability-"+username+".sqlite");
         Assert.assertTrue(Files.exists(dbFile));
         SqliteBlockReachability rdb = SqliteBlockReachability.createReachabilityDb(dbFile);
         Optional<List<Cid>> links = rdb.getLinks(root);
@@ -191,6 +208,7 @@ public class GCTests {
         Assert.assertEquals(bigSize, Files.size(dbFile));
 
         // Remove root so everything is GC'd and test db file size decreases
+        usage.updateWriterUsage(writer, MaybeMultihash.empty(), Collections.emptySet(), Collections.emptySet(), 1024*1024);
         boolean setPointer = pointers.setPointer(writer, Optional.of(signedCas), signer.signMessage(new PointerUpdate(MaybeMultihash.of(root), MaybeMultihash.empty(), Optional.of(2L)).serialize()).join()).join();
         gc.collect(s -> Futures.of(true));
         long emptySize = Files.size(dbFile);
@@ -199,11 +217,14 @@ public class GCTests {
         // Add a new tree
         SigningKeyPair signer2 = SigningKeyPair.random(crypto.random, crypto.signer);
         PublicKeyHash writer2 = ContentAddressedStorage.hashKey(signer2.publicSigningKey);
+        storage.storage.put(writer2, new HashMap<>());
         Cid root2 = generateTree(42, 1000, blocks -> blocks
-                        .forEach(b -> storage.storage.get(writer).put(b, true)),
-                (b, kids) -> metadb.put(writer, b, null, new BlockMetadata(10, kids, Collections.emptyList())));
+                        .forEach(b -> storage.storage.get(writer2).put(b, true)),
+                (b, kids) -> metadb.put(writer2, b, null, new BlockMetadata(10, kids, Collections.emptyList())));
         byte[] signedCas2 = signer2.signMessage(new PointerUpdate(MaybeMultihash.empty(), MaybeMultihash.of(root2), Optional.of(1L)).serialize()).join();
         pointers.setPointer(writer2, Optional.empty(), signedCas2).join();
+        usage.addWriter("user2", writer2);
+        usage.updateWriterUsage(writer2, MaybeMultihash.of(root2), Collections.emptySet(), Collections.emptySet(), 1024*1024);
 
         gc.collect(s -> Futures.of(true));
         verifyAllReachableBlocksArePresent(pointers, metadb, storage);

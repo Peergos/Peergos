@@ -429,8 +429,7 @@ public class JdbcUsageStore implements UsageStore {
                     .map(x -> MaybeMultihash.of(Cid.cast(x)))
                     .orElse(MaybeMultihash.empty());
                 String username = resultSet.getString(2);
-                if (target.isPresent())
-                    res.add(new Pair<>(username, getOwnerKey(username)));
+                res.add(new Pair<>(username, getOwnerKey(username)));
             }
             return res;
         } catch (SQLException sqe) {
