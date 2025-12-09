@@ -312,7 +312,10 @@ public class FileContentAddressedStorage implements DeletableContentAddressedSto
 
     protected List<Pair<PublicKeyHash, Cid>> getFiles(Optional<PublicKeyHash> owner) {
         List<Pair<PublicKeyHash, Cid>> existing = new ArrayList<>();
-        getFilesRecursive(owner.map(o -> root.resolve(pki.getUsername(o).join())).orElse(root), (o, c) -> existing.add(new Pair<>(o, c)), root);
+        Path base = owner.map(o -> root.resolve(pki.getUsername(o).join())).orElse(root);
+        if (! base.toFile().exists())
+            return existing;
+        getFilesRecursive(base, (o, c) -> existing.add(new Pair<>(o, c)), root);
         return existing;
     }
 
