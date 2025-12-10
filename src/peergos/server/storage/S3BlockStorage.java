@@ -140,6 +140,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
     private final SlidingWindowCounter globalReadReqCount;
     private final SlidingWindowCounter globalReadBandwidth;
     private final long maxUserBandwidthPerMinute, maxUserReadRequestsPerMinute;
+    private final PartitionStatus partitionStatus;
     private final JdbcBatCave bats;
     private CoreNode pki;
 
@@ -158,6 +159,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                           long maxReadReqsPerSecond,
                           long maxUserBandwidthPerSecond,
                           long maxUserReadRequestsPerSecond,
+                          PartitionStatus partitioned,
                           Hasher hasher,
                           DeletableContentAddressedStorage ipnsHandler,
                           ContentAddressedStorageProxy p2pHttpFallback) {
@@ -193,6 +195,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         globalReadBandwidth = new SlidingWindowCounter(60*60, 60*60 * maxReadBandwidthPerSecond);
         this.maxUserBandwidthPerMinute = 60 * maxUserBandwidthPerSecond;
         this.maxUserReadRequestsPerMinute = 60 * maxUserReadRequestsPerSecond;
+        this.partitionStatus = partitioned;
         startFlusherThread();
         new Thread(() -> blockBuffer.applyToAll((o, c) -> {
             bulkPutPool.submit(() -> getWithBackoff(() -> {
@@ -206,6 +209,60 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                 return true;
             }));
         })).start();
+    }
+
+    private boolean userPartitioningComplete() {
+        return partitionStatus.isDone();
+    }
+
+    public void partitionByUser() {
+        if (userPartitioningComplete())
+            return;
+        new Thread(() -> {
+            List<Triple<Multihash, String, PublicKeyHash>> allTargets = usage.getAllTargets();
+            // randomise list so multiple servers can help without clashing too much
+            Collections.shuffle(allTargets);
+            for (Triple<Multihash, String, PublicKeyHash> target : allTargets) {
+                moveSubtreeToOwner(target.right, (Cid) target.left, List.of(id));
+            }
+            partitionStatus.complete();
+        }).start();
+    }
+
+    private void moveSubtreeToOwner(PublicKeyHash owner, Cid root, List<Multihash> ourIds) {
+        moveLegacyBlockToOwner(owner, root);
+        List<Cid> links = getLinks(owner, root, ourIds).join();
+        for (Cid link : links) {
+            moveSubtreeToOwner(owner, link, ourIds);
+        }
+    }
+
+    private void moveLegacyBlockToOwner(PublicKeyHash owner, Cid block) {
+        if (block.isIdentity())
+            return;
+        // use new owner metadata column to determine if block has been moved already
+        Optional<PublicKeyHash> metaOwner = blockMetadata.getOwner(block);
+        if (metaOwner.isEmpty()) {
+            // Unfortunately we have to copy, then delete, then update metadata
+            copyObject(legacyHashToKey(block), hashToKey(owner, block), hasher);
+            delete(null, block);
+            blockMetadata.setOwner(owner, block);
+        }
+    }
+
+    private void copyObject(String sourceKey,
+                                   String destKey,
+                                   Hasher h) {
+        PresignedUrl copyUrl = S3Request.preSignCopy(bucket, sourceKey, destKey, S3AdminRequests.asAwsDate(ZonedDateTime.now()), host,
+                storageClass, Collections.emptyMap(), region, accessKeyId, secretKey, true, h).join();
+        try {
+            System.out.println("Copying s3://" + bucket + "/" + sourceKey + " to s3://" + bucket + "/" + destKey);
+            String res = new String(HttpUtil.putWithVersion(copyUrl, new byte[0]).left);
+            if (! res.startsWith("<?xml version=\"1.0\" encoding=\"UTF-8\"?><CopyObjectResult") || !res.contains("</LastModified><ETag>"))
+                throw new IllegalStateException(res);
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     @Override
@@ -265,6 +322,8 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
     }
 
     private String hashToKey(PublicKeyHash owner, Multihash hash) {
+        if (owner == null)
+            return DirectS3BlockStore.hashToKey(hash);
         return pki.getUsername(owner).join() + "/" + DirectS3BlockStore.hashToKey(hash);
     }
 
@@ -539,7 +598,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                     throw new IllegalStateException("Unauthorised!");
                 return Futures.of(Optional.of(new Pair<>(buffered.get(), null)));
         }
-        return getWithBackoff(() -> getRawWithoutBackoff(peerIds, owner, hash, range, enforceAuth, bat, persistP2pBlock))
+        return getWithBackoff(() -> getRawWithoutBackoff(peerIds, owner, hash, range, enforceAuth, bat, persistP2pBlock, false))
                 .thenApply(res -> {
                     if (hash.isRaw())
                         return res;
@@ -555,11 +614,12 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                                                                                    Optional<Pair<Integer, Integer>> range,
                                                                                    boolean enforceAuth,
                                                                                    Optional<BatWithId> bat,
-                                                                                   boolean persistP2pBlock) {
+                                                                                   boolean persistP2pBlock,
+                                                                                   boolean useLegacyPath) {
         enforceGlobalRequestRateLimit();
         enforceUserRequestRateLimits(owner, 1);
 
-        String path = folder + hashToKey(owner, hash);
+        String path = folder + (useLegacyPath ? legacyHashToKey(hash) : hashToKey(owner, hash));
         PresignedUrl getUrl = S3Request.preSignGet(path, Optional.of(600), range,
                 S3AdminRequests.asAwsDate(ZonedDateTime.now()), host, region, storageClass, accessKeyId, secretKey, useHttps, hasher).join();
         Histogram.Timer readTimer = hash.isRaw() ?
@@ -591,6 +651,8 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
             if (! notFound) {
                 LOG.warning("S3 error reading " + path);
                 LOG.log(Level.WARNING, msg, e);
+                if (! useLegacyPath && ! userPartitioningComplete())
+                    return getRawWithoutBackoff(peerIds, owner, hash, range, enforceAuth, bat, persistP2pBlock, true);
             }
             failedBlockGets.inc();
 
@@ -1292,11 +1354,14 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         BlockMetadataStore meta = Builder.buildBlockMetadata(a);
         Supplier<Connection> usageDb = Main.getDBConnector(a, "space-usage-sql-file");
         UsageStore usageStore = new JdbcUsageStore(usageDb, sqlCommands);
+        Supplier<Connection> statusDb = Main.getDBConnector(a, "partition-status-file");
+        PartitionStatus partitioned = new JdbcPartitionStatus(statusDb, sqlCommands);
         S3BlockStorage s3 = new S3BlockStorage(config, List.of(Cid.decode(a.getArg("ipfs.id"))),
                 BlockStoreProperties.empty(), "localhost:8000", transactions, authoriser, null, meta, usageStore,
                 new RamBlockCache(1024, 100),
                 new FileBlockBuffer(a.fromPeergosDir("s3-block-buffer-dir", "block-buffer")),
-                Integer.MAX_VALUE, Integer.MAX_VALUE, Integer.MAX_VALUE, Integer.MAX_VALUE, hasher, new RAMStorage(hasher), null);
+                Integer.MAX_VALUE, Integer.MAX_VALUE, Integer.MAX_VALUE, Integer.MAX_VALUE, partitioned, hasher,
+                new RAMStorage(hasher), null);
         JdbcIpnsAndSocial rawPointers = new JdbcIpnsAndSocial(database, sqlCommands);
         if (a.hasArg("integrity-check")) {
             if (a.hasArg("username"))

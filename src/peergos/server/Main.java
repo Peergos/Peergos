@@ -194,7 +194,7 @@ public class Main extends Builder {
                     new ContentAddressedStorage.HTTP(Builder.buildIpfsApi(args), false, crypto.hasher) :
                     new FileContentAddressedStorage(blockstorePath(args), new Cid(1, Cid.Codec.LibP2pKey, Multihash.Type.sha2_256, RAMStorage.hash("FileStorage".getBytes())),
                             JdbcTransactionStore.build(getDBConnector(args, "transactions-sql-file"), new SqliteCommands()),
-                            (a, b, c, d) -> Futures.of(true), crypto.hasher);
+                            (a, b, c, d) -> Futures.of(true), PartitionStatus.DONE, crypto.hasher);
 
             SigningKeyPair peergosIdentityKeys = peergos.getUser();
             PublicKeyHash peergosPublicHash = ContentAddressedStorage.hashKey(peergosIdentityKeys.publicSigningKey);
@@ -308,13 +308,15 @@ public class Main extends Builder {
 
                     args = bootstrap(args);
 
-                    BatCave batStore = new JdbcBatCave(getDBConnector(args, "bat-store"), getSqlCommands(args));
+                    SqlSupplier sqlCommands = getSqlCommands(args);
+                    BatCave batStore = new JdbcBatCave(getDBConnector(args, "bat-store"), sqlCommands);
                     BlockRequestAuthoriser blockRequestAuthoriser = Builder.blockAuthoriser(args, batStore, crypto.hasher);
+                    PartitionStatus partitionStatus = new JdbcPartitionStatus(getDBConnector(args, "partition-status-file"), sqlCommands);
                     Multihash pkiIpfsNodeId = useIPFS ?
                             new ContentAddressedStorage.HTTP(Builder.buildIpfsApi(args), false, crypto.hasher).id().join() :
                             new FileContentAddressedStorage(blockstorePath(args), new Cid(1, Cid.Codec.LibP2pKey, Multihash.Type.sha2_256, RAMStorage.hash("FileStorage".getBytes())),
                                     JdbcTransactionStore.build(getDBConnector(args, "transactions-sql-file"), new SqliteCommands()),
-                                    blockRequestAuthoriser, crypto.hasher).id().get();
+                                    blockRequestAuthoriser, partitionStatus, crypto.hasher).id().get();
 
                     if (ipfs != null)
                         ipfs.stop();
@@ -394,13 +396,14 @@ public class Main extends Builder {
                     JdbcTransactionStore transactions = JdbcTransactionStore.build(transactionDb, sqlCommands);
                     BatCave batStore = new JdbcBatCave(getDBConnector(args, "bat-store", transactionDb), sqlCommands);
                     BlockRequestAuthoriser authoriser = Builder.blockAuthoriser(args, batStore, crypto.hasher);
+                    PartitionStatus partitionStatus = new JdbcPartitionStatus(getDBConnector(args, "partition-status-file", transactionDb), sqlCommands);
 
                     if (S3Config.useS3(args))
                         throw new IllegalStateException("S3 not supported for PKI!");
                     ContentAddressedStorage storage = useIPFS ?
                             new ContentAddressedStorage.HTTP(Builder.buildIpfsApi(args), false, crypto.hasher) :
                             new FileContentAddressedStorage(blockstorePath(args), new Cid(1, Cid.Codec.LibP2pKey, Multihash.Type.sha2_256, RAMStorage.hash("FileStorage".getBytes())),
-                                    transactions, authoriser, crypto.hasher);
+                                    transactions, authoriser, partitionStatus, crypto.hasher);
                     Multihash pkiIpfsNodeId = storage.id().get();
 
                     if (ipfs != null)
@@ -778,8 +781,10 @@ public class Main extends Builder {
 
             Supplier<Connection> usageDb = getDBConnector(a, "space-usage-sql-file", dbConnectionPool);
             UsageStore usageStore = new JdbcUsageStore(usageDb, sqlCommands);
+            Supplier<Connection> statusDb = Main.getDBConnector(a, "partition-status-file");
+            PartitionStatus partitionStatus = new JdbcPartitionStatus(statusDb, sqlCommands);
             DeletableContentAddressedStorage localStorageForLinks = buildLocalStorage(a, meta, batStore, transactions, blockAuth,
-                    ids, usageStore, crypto.hasher);
+                    ids, usageStore, partitionStatus, crypto.hasher);
             JdbcIpnsAndSocial rawPointers = buildRawPointers(a,
                     getDBConnector(a, "mutable-pointers-file", dbConnectionPool));
 

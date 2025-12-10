@@ -24,6 +24,8 @@ public interface SqlSupplier {
 
     String addMetadataCommand();
 
+    String updateMetadataCommand();
+
     String vacuumCommand();
 
     default String createMutablePointersTableCommand() {
@@ -90,6 +92,10 @@ public interface SqlSupplier {
                 "size " + sqlInteger() + " not null, " +
                 "links " + getByteArrayType() + " not null, " +
                 "batids " + getByteArrayType() + " not null);";
+    }
+
+    default String createPartitionStatusTableCommand() {
+        return "CREATE TABLE IF NOT EXISTS partitioned (done boolean);";
     }
 
     default String createServerMessageTableCommand() {

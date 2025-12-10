@@ -14,6 +14,15 @@ public interface BlockMetadataStore {
 
     Optional<BlockMetadata> get(Cid block);
 
+    /**
+     *
+     * @param block
+     * @return The owner for a block or empty if it is a legacy block
+     */
+    Optional<PublicKeyHash> getOwner(Cid block);
+
+    void setOwner(PublicKeyHash owner, Cid block);
+
     void put(PublicKeyHash owner, Cid block, String version, BlockMetadata meta);
 
     void remove(Cid block);
