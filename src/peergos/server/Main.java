@@ -75,6 +75,8 @@ public class Main extends Builder {
         new Command.Arg("transactions-sql-file", "The filename for the transactions datastore", false, "transactions.sql");
     public static final Command.Arg ARG_BAT_STORE =
                     new Command.Arg("bat-store", "The filename for the BAT store (or :memory: for ram based)", true, "bats.sql");
+    public static final Command.Arg ARG_PARTITIONED_STATUS =
+                    new Command.Arg("partition-status-file", "The filename for the partition status db", true, "partition-status.sql");
     public static final Command.Arg ARG_USE_IPFS =
         new Command.Arg("useIPFS", "Use IPFS for storage or a local disk store if not", false, "true");
     public static final Command.Arg ARG_IPFS_API_ADDRESS =
@@ -143,6 +145,7 @@ public class Main extends Builder {
                     new Command.Arg("public-domain", "The public domain name for this server (required if TLS is managed upstream)", false),
                     ARG_USE_IPFS,
                     ARG_BAT_STORE,
+                    ARG_PARTITIONED_STATUS,
                     new Command.Arg("allow-external-secret-links", "Allow external secret links to be served from this server", false),
                     new Command.Arg("allow-external-login", "Allow users from other servers to login through this server", false),
                     new Command.Arg("mutable-pointers-file", "The filename for the mutable pointers datastore", true, "mutable.sql"),
@@ -353,6 +356,7 @@ public class Main extends Builder {
                     new Command.Arg("link-counts-sql-file", "The filename for the secret link counts datastore", true, "link-counts.sql"),
                     new Command.Arg("ipfs-api-address", "ipfs api port", true, "/ip4/127.0.0.1/tcp/5001"),
                     new Command.Arg("ipfs-gateway-address", "ipfs gateway port", true, "/ip4/127.0.0.1/tcp/8080"),
+                    ARG_PARTITIONED_STATUS,
                     ARG_IPFS_PROXY_TARGET,
                     new Command.Arg("pki.secret.key.path", "The path to the pki secret key file", true, "test.pki.secret.key"),
                     new Command.Arg("pki.public.key.path", "The path to the pki public key file", true, "test.pki.public.key"),
@@ -430,6 +434,7 @@ public class Main extends Builder {
                     new Command.Arg("link-counts-sql-file", "The filename for the secret link counts datastore", true, "link-counts.sql"),
                     ARG_IPFS_API_ADDRESS,
                     new Command.Arg("ipfs-gateway-address", "ipfs gateway port", true, "/ip4/127.0.0.1/tcp/8080"),
+                    ARG_PARTITIONED_STATUS,
                     ARG_IPFS_PROXY_TARGET,
                     new Command.Arg("pki.secret.key.path", "The path to the pki secret key file", true, "test.pki.secret.key"),
                     new Command.Arg("pki.public.key.path", "The path to the pki public key file", true, "test.pki.public.key"),
