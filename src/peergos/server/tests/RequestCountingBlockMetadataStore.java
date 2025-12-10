@@ -41,6 +41,16 @@ class RequestCountingBlockMetadataStore implements BlockMetadataStore {
     }
 
     @Override
+    public Optional<PublicKeyHash> getOwner(Cid block) {
+        return target.getOwner(block);
+    }
+
+    @Override
+    public void setOwner(PublicKeyHash owner, Cid block) {
+        target.setOwner(owner, block);
+    }
+
+    @Override
     public void put(PublicKeyHash owner, Cid block, String version, BlockMetadata meta) {
         target.put(owner, block, version, meta);
     }

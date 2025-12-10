@@ -23,6 +23,11 @@ public class SqliteCommands implements SqlSupplier {
     }
 
     @Override
+    public String updateMetadataCommand() {
+        return "UPDATE blockmetadata SET owner=? WHERE cid=?;";
+    }
+
+    @Override
     public String createFollowRequestsTableCommand() {
         return "CREATE TABLE IF NOT EXISTS followrequests (id integer primary key autoincrement, " +
                 "name text not null, followrequest text not null);";

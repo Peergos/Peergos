@@ -18,6 +18,7 @@ public class JdbcBlockMetadataStore implements BlockMetadataStore {
 
     private static final Logger LOG = Logging.LOG();
     private static final String GET_INFO = "SELECT * FROM blockmetadata WHERE cid = ?;";
+    private static final String GET_OWNER = "SELECT owner FROM blockmetadata WHERE cid = ?;";
     private static final String REMOVE = "DELETE FROM blockmetadata where cid = ?;";
     public static final int PAGE_LIMIT = 100_000;
     private static final String LIST_PAGINATED_FIRST = "SELECT cid, version FROM blockmetadata ORDER BY cid LIMIT " + PAGE_LIMIT + ";";
@@ -108,6 +109,36 @@ public class JdbcBlockMetadataStore implements BlockMetadataStore {
                 return Optional.of(new BlockMetadata(rs.getInt("size"), links, batIds));
             }
             return Optional.empty();
+        } catch (SQLException sqe) {
+            LOG.log(Level.WARNING, sqe.getMessage(), sqe);
+            throw new RuntimeException(sqe);
+        }
+    }
+
+    @Override
+    public Optional<PublicKeyHash> getOwner(Cid block) {
+        try (Connection conn = getConnection(false, false);
+             PreparedStatement stmt = conn.prepareStatement(GET_OWNER)) {
+            stmt.setBytes(1, block.toBytes());
+            ResultSet rs = stmt.executeQuery();
+            if (rs.next()) {
+                return Optional.of(PublicKeyHash.decode(rs.getBytes("owner")));
+            }
+            return Optional.empty();
+        } catch (SQLException sqe) {
+            LOG.log(Level.WARNING, sqe.getMessage(), sqe);
+            throw new RuntimeException(sqe);
+        }
+    }
+
+    @Override
+    public void setOwner(PublicKeyHash owner, Cid block) {
+        try (Connection conn = getConnection();
+             PreparedStatement update = conn.prepareStatement(commands.updateMetadataCommand())) {
+
+            update.setBytes(1, owner.toBytes());
+            update.setBytes(2, block.toBytes());
+            update.executeUpdate();
         } catch (SQLException sqe) {
             LOG.log(Level.WARNING, sqe.getMessage(), sqe);
             throw new RuntimeException(sqe);

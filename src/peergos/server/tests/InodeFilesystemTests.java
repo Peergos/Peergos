@@ -34,7 +34,8 @@ public class InodeFilesystemTests {
     public void deleteExample() throws IOException {
         DeletableContentAddressedStorage storage = new FileContentAddressedStorage(Files.createTempDirectory("peergos-tmp"),
                 new Cid(1, Cid.Codec.LibP2pKey, Multihash.Type.sha2_256, RAMStorage.hash("FileStorage".getBytes())),
-                JdbcTransactionStore.build(Main.buildEphemeralSqlite(), new SqliteCommands()), (a, b, c, d) -> Futures.of(true), crypto.hasher);
+                JdbcTransactionStore.build(Main.buildEphemeralSqlite(), new SqliteCommands()),
+                (a, b, c, d) -> Futures.of(true), PartitionStatus.DONE, crypto.hasher);
         RamPki pki = new RamPki();
         storage.setPki(pki);
         SigningPrivateKeyAndPublicHash user = createUser(storage, crypto);
@@ -76,7 +77,8 @@ public class InodeFilesystemTests {
     public void nameClash() throws Exception {
         DeletableContentAddressedStorage storage = new FileContentAddressedStorage(Files.createTempDirectory("peergos-tmp"),
                 new Cid(1, Cid.Codec.LibP2pKey, Multihash.Type.sha2_256, RAMStorage.hash("FileStorage".getBytes())),
-                JdbcTransactionStore.build(Main.buildEphemeralSqlite(), new SqliteCommands()), (a, b, c, d) -> Futures.of(true), crypto.hasher);
+                JdbcTransactionStore.build(Main.buildEphemeralSqlite(), new SqliteCommands()),
+                (a, b, c, d) -> Futures.of(true), PartitionStatus.DONE, crypto.hasher);
         RamPki pki = new RamPki();
         storage.setPki(pki);
         SigningPrivateKeyAndPublicHash user = createUser(storage, crypto);
@@ -113,7 +115,8 @@ public class InodeFilesystemTests {
     public void insertAndRetrieve() throws Exception {
         DeletableContentAddressedStorage storage = new FileContentAddressedStorage(Files.createTempDirectory("peergos-tmp"),
                 new Cid(1, Cid.Codec.LibP2pKey, Multihash.Type.sha2_256, RAMStorage.hash("FileStorage".getBytes())),
-                JdbcTransactionStore.build(Main.buildEphemeralSqlite(), new SqliteCommands()), (a, b, c, d) -> Futures.of(true), crypto.hasher);
+                JdbcTransactionStore.build(Main.buildEphemeralSqlite(), new SqliteCommands()),
+                (a, b, c, d) -> Futures.of(true), PartitionStatus.DONE, crypto.hasher);
         RamPki pki = new RamPki();
         storage.setPki(pki);
         SigningPrivateKeyAndPublicHash user = createUser(storage, crypto);

@@ -1,5 +1,6 @@
 package peergos.server.storage;
 
+import peergos.server.space.UsageStore;
 import peergos.server.storage.auth.*;
 import peergos.server.util.Logging;
 import peergos.shared.cbor.*;
@@ -31,6 +32,7 @@ public class FileContentAddressedStorage implements DeletableContentAddressedSto
     private final Path root;
     private final TransactionStore transactions;
     private final BlockRequestAuthoriser authoriser;
+    private final PartitionStatus partitionStatus;
     private final Hasher hasher;
     private final Cid ourId;
     private CoreNode pki;
@@ -39,11 +41,13 @@ public class FileContentAddressedStorage implements DeletableContentAddressedSto
                                        Cid ourId,
                                        TransactionStore transactions,
                                        BlockRequestAuthoriser authoriser,
+                                       PartitionStatus partitioned,
                                        Hasher hasher) {
         this.root = root;
         this.ourId = ourId;
         this.transactions = transactions;
         this.authoriser = authoriser;
+        this.partitionStatus = partitioned;
         this.hasher = hasher;
         File rootDir = root.toFile();
         if (!rootDir.exists()) {
@@ -63,6 +67,49 @@ public class FileContentAddressedStorage implements DeletableContentAddressedSto
     @Override
     public ContentAddressedStorage directToOrigin() {
         return this;
+    }
+
+    private boolean userPartitioningComplete() {
+        return partitionStatus.isDone();
+    }
+
+    public void partitionByUser(UsageStore usage) {
+        if (userPartitioningComplete())
+            return;
+        new Thread(() -> {
+            LOG.info("Partitioning blockstore by user. Please wait...");
+            System.out.println("Partitioning blockstore by user. Please wait...");
+            List<Triple<Multihash, String, PublicKeyHash>> allTargets = usage.getAllTargets();
+            for (Triple<Multihash, String, PublicKeyHash> target : allTargets) {
+                moveSubtreeToOwner(target.right, (Cid) target.left, List.of(ourId));
+            }
+            LOG.info("Partitioning blockstore completed.");
+            System.out.println("Partitioning blockstore completed.");
+            partitionStatus.complete();
+        }).start();
+    }
+
+    private void moveSubtreeToOwner(PublicKeyHash owner, Cid root, List<Multihash> ourIds) {
+        moveLegacyBlockToOwner(owner, root);
+        List<Cid> links = getLinks(owner, root, ourIds).join();
+        for (Cid link : links) {
+            moveSubtreeToOwner(owner, link, ourIds);
+        }
+    }
+
+    private void moveLegacyBlockToOwner(PublicKeyHash owner, Cid block) {
+        if (block.isIdentity())
+            return;
+        Path oldPath = getLegacyFilePath(block);
+        File oldFile = root.resolve(oldPath).toFile();
+        if (oldFile.exists()) {
+            Path newPath = getFilePath(owner, block);
+            try {
+                Files.move(oldPath, newPath, StandardCopyOption.REPLACE_EXISTING);
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+        }
     }
 
     @Override
@@ -190,7 +237,11 @@ public class FileContentAddressedStorage implements DeletableContentAddressedSto
         Path path = getFilePath(owner, hash);
         File file = root.resolve(path).toFile();
         if (!file.exists()) {
-            return CompletableFuture.completedFuture(Optional.empty());
+            if (userPartitioningComplete())
+                return CompletableFuture.completedFuture(Optional.empty());
+            file = root.resolve(getLegacyFilePath(hash)).toFile();
+            if (!file.exists())
+                return CompletableFuture.completedFuture(Optional.empty());
         }
         try (DataInputStream din = new DataInputStream(new BufferedInputStream(new FileInputStream(file)))) {
             byte[] block = Serialize.readFully(din);
