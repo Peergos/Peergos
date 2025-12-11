@@ -795,7 +795,7 @@ public class Main extends Builder {
 
             List<Cid> nodeIds = localStorageForLinks.ids().get();
 
-            boolean enableGC = a.getBoolean("enable-gc", false);
+            boolean enableGC = a.getBoolean("enable-gc", false) && partitionStatus.isDone();
             GarbageCollector gc = null;
             if (enableGC) {
                 boolean useS3 = S3Config.useS3(a);
