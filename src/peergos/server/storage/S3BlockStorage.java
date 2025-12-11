@@ -141,6 +141,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
     private final SlidingWindowCounter globalReadBandwidth;
     private final long maxUserBandwidthPerMinute, maxUserReadRequestsPerMinute;
     private final PartitionStatus partitionStatus;
+    private final boolean partitionComplete;
     private final JdbcBatCave bats;
     private CoreNode pki;
 
@@ -196,6 +197,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         this.maxUserBandwidthPerMinute = 60 * maxUserBandwidthPerSecond;
         this.maxUserReadRequestsPerMinute = 60 * maxUserReadRequestsPerSecond;
         this.partitionStatus = partitioned;
+        this.partitionComplete = partitionStatus.isDone();
         startFlusherThread();
         new Thread(() -> blockBuffer.applyToAll((o, c) -> {
             bulkPutPool.submit(() -> getWithBackoff(() -> {
@@ -411,7 +413,9 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                 .collect(Collectors.toList());
 
         for (BlockMirrorCap block : blocks) {
-            String s3Key = hashToKey(owner, block.hash);
+            String s3Key = hashToKey(partitionComplete ?
+                    owner :
+                    blockMetadata.getOwner(block.hash).orElse(null), block.hash);
             res.add(S3Request.preSignGet(folder + s3Key, Optional.of(600), Optional.empty(), S3AdminRequests.asAwsDate(ZonedDateTime.now()), host, region, storageClass, accessKeyId, secretKey, useHttps, hasher).join());
         }
         long byteCount = 0;
