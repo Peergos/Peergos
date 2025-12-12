@@ -325,8 +325,8 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
 
     private String hashToKey(PublicKeyHash owner, Multihash hash) {
         if (owner == null)
-            return DirectS3BlockStore.hashToKey(hash);
-        return pki.getUsername(owner).join() + "/" + DirectS3BlockStore.hashToKey(hash);
+            return legacyHashToKey(hash);
+        return ownerToPrefix(owner) + "/" + DirectS3BlockStore.hashToKey(hash);
     }
 
     private Cid keyToHash(String key) {
@@ -349,7 +349,12 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
     }
 
     private String ownerToPrefix(PublicKeyHash owner) {
-        return owner.toString();
+        // legacy data all starts with AFK or AFY, usernames start with a lowercase letter
+        // We want to be able to efficiently list all legacy blocks
+        // Achieve this by listing from B which is after A and before lowercase
+        if (owner == null)
+            return "";
+        return pki.getUsername(owner).join() + "/";
     }
 
     @Override
@@ -1184,11 +1189,11 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
 
     @Override
     public void getAllRawBlockVersions(PublicKeyHash owner, Consumer<List<BlockVersion>> res) {
-        applyToAllVersions(ownerToPrefix(owner) + "/AFK", res, res);
+        applyToAllVersions(ownerToPrefix(owner) + "AFK", res, res);
     }
 
     private void getFileVersions(PublicKeyHash owner, Consumer<List<BlockVersion>> res) {
-        applyToAllVersions(ownerToPrefix(owner), res, res);
+        applyToAllVersions(ownerToPrefix(owner) + (owner == null ? "A" : ""), res, res);
     }
 
     private List<Pair<PublicKeyHash, Cid>> getFiles(Optional<PublicKeyHash> owner, long maxReturned) {
