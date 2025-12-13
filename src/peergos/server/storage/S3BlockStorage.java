@@ -326,7 +326,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
     private String hashToKey(PublicKeyHash owner, Multihash hash) {
         if (owner == null)
             return legacyHashToKey(hash);
-        return ownerToPrefix(owner) + "/" + DirectS3BlockStore.hashToKey(hash);
+        return ownerToPrefix(owner) + DirectS3BlockStore.hashToKey(hash);
     }
 
     private Cid keyToHash(String key) {
