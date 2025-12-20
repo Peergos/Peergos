@@ -1086,6 +1086,9 @@ public class UserContext {
 
     @JsMethod
     public CompletableFuture<Optional<BatId>> ensureMirrorId() {
+        Optional<BatId> mirrorBatId = mirrorBatId();
+        if (mirrorBatId.isPresent())
+            return Futures.of(mirrorBatId);
         return getMirrorBat()
                 .thenCompose(current -> {
                     if (current.isPresent())
