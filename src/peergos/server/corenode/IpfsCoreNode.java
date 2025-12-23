@@ -79,9 +79,9 @@ public class IpfsCoreNode implements CoreNode {
         Optional<Long> currentPkiSequence = currentPkiPointer.sequence;
         MaybeMultihash currentPkiRoot = currentPkiPointer.updated;
         LOG.info("Initializing PKI from root " + currentPkiRoot);
+        reverseLookup.put(peergosIdentity, "peergos");
         update(currentPkiRoot, currentPkiSequence);
         if (! currentPkiRoot.isPresent()) {
-            reverseLookup.put(peergosIdentity, "peergos");
             CommittedWriterData committed = IpfsTransaction.call(peergosIdentity,
                     tid -> WriterData.createEmpty(peergosIdentity, signer, ipfs, hasher, tid).join()
                             .commit(peergosIdentity, signer, MaybeMultihash.empty(), Optional.of(1L), mutable, ipfs, hasher, tid)
@@ -116,7 +116,7 @@ public class IpfsCoreNode implements CoreNode {
         return dht.get(peerIds, owner, hash, Optional.empty(), ourId, hasher, true)
                 .thenApply(cborOpt -> {
                     if (! cborOpt.isPresent())
-                        throw new IllegalStateException("Couldn't retrieve WriterData from dht! " + hash);
+                        throw new IllegalStateException("Couldn't retrieve WriterData! " + hash);
                     return new CommittedWriterData(MaybeMultihash.of(hash), WriterData.fromCbor(cborOpt.get()), sequence);
                 });
     }
