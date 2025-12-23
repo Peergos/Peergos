@@ -104,12 +104,13 @@ public class FileContentAddressedStorage implements DeletableContentAddressedSto
     private void moveLegacyBlockToOwner(PublicKeyHash owner, Cid block) {
         if (block.isIdentity())
             return;
-        Path oldPath = getLegacyFilePath(block);
-        File oldFile = root.resolve(oldPath).toFile();
+        Path oldPath = root.resolve(getLegacyFilePath(block));
+        File oldFile = oldPath.toFile();
         if (oldFile.exists()) {
-            Path newPath = getFilePath(owner, block);
+            Path newPath = root.resolve(getFilePath(owner, block));
+            newPath.getParent().toFile().mkdirs();
             try {
-                Files.move(oldPath, newPath, StandardCopyOption.REPLACE_EXISTING);
+                Files.move(oldPath, newPath, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
             } catch (IOException e) {
                 throw new RuntimeException(e);
             }
@@ -240,11 +241,11 @@ public class FileContentAddressedStorage implements DeletableContentAddressedSto
             return Futures.of(Optional.of(hash.getHash()));
         Path path = getFilePath(owner, hash);
         File file = root.resolve(path).toFile();
-        if (!file.exists()) {
+        if (! file.exists()) {
             if (userPartitioningComplete())
                 return CompletableFuture.completedFuture(Optional.empty());
             file = root.resolve(getLegacyFilePath(hash)).toFile();
-            if (!file.exists())
+            if (! file.exists())
                 return CompletableFuture.completedFuture(Optional.empty());
         }
         try (DataInputStream din = new DataInputStream(new BufferedInputStream(new FileInputStream(file)))) {
@@ -253,7 +254,7 @@ public class FileContentAddressedStorage implements DeletableContentAddressedSto
             String auth = bat.isEmpty() ? "" :
                     bat.get().bat.generateAuth(hash, ourId, 300, S3Request.currentDatetime(), bat.get().id, h)
                     .thenApply(BlockAuth::encode).join();
-            if (! authoriser.allowRead(hash, block, id().join(), auth).join())
+            if (doAuth && ! authoriser.allowRead(hash, block, id().join(), auth).join())
                 return Futures.errored(new IllegalStateException("Unauthorised!"));
             return CompletableFuture.completedFuture(Optional.of(block));
         } catch (IOException e) {
@@ -269,7 +270,12 @@ public class FileContentAddressedStorage implements DeletableContentAddressedSto
             Path path = getFilePath(owner, hash);
             File file = root.resolve(path).toFile();
             if (! file.exists()){
-                return CompletableFuture.completedFuture(Optional.empty());
+                boolean isPartitioned = userPartitioningComplete();
+                if (isPartitioned)
+                    return CompletableFuture.completedFuture(Optional.empty());
+                file = root.resolve(getLegacyFilePath(hash)).toFile();
+                if (! file.exists())
+                    return CompletableFuture.completedFuture(Optional.empty());
             }
             try (DataInputStream din = new DataInputStream(new BufferedInputStream(new FileInputStream(file)))) {
                 byte[] block = Serialize.readFully(din);
@@ -298,8 +304,13 @@ public class FileContentAddressedStorage implements DeletableContentAddressedSto
                 return Futures.of(Optional.of(hash.getHash()));
             Path path = getFilePath(owner, hash);
             File file = root.resolve(path).toFile();
-            if (! file.exists()){
-                return CompletableFuture.completedFuture(Optional.empty());
+            if (! file.exists()) {
+                boolean isPartitioned = userPartitioningComplete();
+                if (isPartitioned)
+                    return CompletableFuture.completedFuture(Optional.empty());
+                file = root.resolve(getLegacyFilePath(hash)).toFile();
+                if (! file.exists())
+                    return CompletableFuture.completedFuture(Optional.empty());
             }
             try (DataInputStream din = new DataInputStream(new BufferedInputStream(new FileInputStream(file)))) {
                 byte[] block = Serialize.readFully(din);
@@ -316,7 +327,16 @@ public class FileContentAddressedStorage implements DeletableContentAddressedSto
     public boolean hasBlock(PublicKeyHash owner, Cid hash) {
         Path path = getFilePath(owner, hash);
         File file = root.resolve(path).toFile();
-        return file.exists();
+        boolean isPartitioned = userPartitioningComplete();
+        boolean exists = file.exists();
+        if (isPartitioned) {
+            return exists;
+        }
+        if (exists)
+            return true;
+        Path legacyFilePath = getLegacyFilePath(hash);
+        File legacyFile = root.resolve(legacyFilePath).toFile();
+        return legacyFile.exists();
     }
 
     @Override
