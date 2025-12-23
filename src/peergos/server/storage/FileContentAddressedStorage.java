@@ -55,6 +55,7 @@ public class FileContentAddressedStorage implements DeletableContentAddressedSto
             final boolean mkdirs = root.toFile().mkdirs();
             if (!mkdirs)
                 throw new IllegalStateException("Unable to create directory " + root);
+            partitionStatus.complete();
         }
         if (!rootDir.isDirectory())
             throw new IllegalStateException("File store path must be a directory! " + root);
