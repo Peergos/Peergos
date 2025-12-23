@@ -3,6 +3,7 @@ package peergos.server.storage;
 import peergos.server.space.UsageStore;
 import peergos.server.storage.auth.*;
 import peergos.server.util.Logging;
+import peergos.server.util.Threads;
 import peergos.shared.cbor.*;
 import peergos.shared.corenode.*;
 import peergos.shared.crypto.hash.*;
@@ -35,7 +36,7 @@ public class FileContentAddressedStorage implements DeletableContentAddressedSto
     private final PartitionStatus partitionStatus;
     private final Hasher hasher;
     private final Cid ourId;
-    private CoreNode pki;
+    private volatile CoreNode pki;
 
     public FileContentAddressedStorage(Path root,
                                        Cid ourId,
@@ -77,6 +78,9 @@ public class FileContentAddressedStorage implements DeletableContentAddressedSto
         if (userPartitioningComplete())
             return;
         new Thread(() -> {
+            while (this.pki == null) {
+                Threads.sleep(1_000);
+            }
             LOG.info("Partitioning blockstore by user. Please wait...");
             System.out.println("Partitioning blockstore by user. Please wait...");
             List<Triple<Multihash, String, PublicKeyHash>> allTargets = usage.getAllTargets();
