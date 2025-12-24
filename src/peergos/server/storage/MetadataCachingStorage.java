@@ -2,6 +2,7 @@ package peergos.server.storage;
 
 import peergos.server.space.UsageStore;
 import peergos.shared.cbor.*;
+import peergos.shared.corenode.CoreNode;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.storage.*;
 import peergos.shared.io.ipfs.Cid;
@@ -11,7 +12,6 @@ import peergos.shared.util.*;
 
 import java.util.*;
 import java.util.concurrent.*;
-import java.util.function.*;
 import java.util.logging.*;
 
 public class MetadataCachingStorage extends DelegatingDeletableStorage {
@@ -31,6 +31,12 @@ public class MetadataCachingStorage extends DelegatingDeletableStorage {
         this.metadata = metadata;
         this.usage = usage;
         this.hasher = hasher;
+    }
+
+    @Override
+    public void setPki(CoreNode pki) {
+        super.setPki(pki);
+        updateMetadataStoreIfEmpty();
     }
 
     public void updateMetadataStoreIfEmpty() {

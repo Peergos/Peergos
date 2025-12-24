@@ -253,8 +253,6 @@ public class Builder {
                         a.getLong(Main.USER_S3_READ_REQUESTS_LIMIT.name),
                         partitionStatus,
                         hasher, p2pBlockRetriever, p2pGets);
-                s3.updateMetadataStoreIfEmpty();
-                s3.partitionByUser();
                 return new LocalIpnsStorage(s3, ids);
             }
             Multihash peerId = Multihash.decode(ourIds.get(ourIds.size() - 1).getBytes());
@@ -266,12 +264,10 @@ public class Builder {
             if (enableGC) {
                 TransactionalIpfs txns = new TransactionalIpfs(blocks, transactions, authoriser, ourId, linkHost, hasher);
                 MetadataCachingStorage metabs = new MetadataCachingStorage(txns, meta, usage, hasher);
-                metabs.updateMetadataStoreIfEmpty();
                 return new LocalIpnsStorage(metabs, ids);
             } else {
                 AuthedStorage target = new AuthedStorage(blocks, authoriser, ourId, linkHost, hasher);
                 MetadataCachingStorage metabs = new MetadataCachingStorage(target, meta, usage, hasher);
-                metabs.updateMetadataStoreIfEmpty();
                 return new LocalIpnsStorage(metabs, ids);
             }
         } else {
@@ -294,8 +290,6 @@ public class Builder {
                         partitionStatus,
                         hasher, p2pBlockRetriever,
                         new ContentAddressedStorageProxy.HTTP(p2pHttpProxy));
-                s3.updateMetadataStoreIfEmpty();
-                s3.partitionByUser();
                 return new LocalIpnsStorage(s3, ids);
             } else {
                 // only used for testing
@@ -303,7 +297,6 @@ public class Builder {
                 FileContentAddressedStorage fileBacked = new FileContentAddressedStorage(blockstorePath(a), ourId,
                         transactions, authoriser, partitionStatus, hasher);
                 MetadataCachingStorage metabs = new MetadataCachingStorage(fileBacked, meta, usage, hasher);
-                metabs.updateMetadataStoreIfEmpty();
                 return new LocalIpnsStorage(metabs, ids);
             }
         }

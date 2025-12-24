@@ -270,6 +270,8 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
     @Override
     public void setPki(CoreNode pki) {
         this.pki = pki;
+        updateMetadataStoreIfEmpty();
+        partitionByUser();
     }
 
     private void startFlusherThread() {
