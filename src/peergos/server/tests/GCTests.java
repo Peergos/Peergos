@@ -98,7 +98,7 @@ public class GCTests {
         Assert.assertEquals(2, versions1.size());
         gc.collect(s -> Futures.of(true));
 
-        Path dbFile = dir.resolve("reachability-" + username + ".sqlite");
+        Path dbFile = dir.resolve("reachability").resolve("reachability-" + username + ".sqlite");
         Assert.assertTrue(Files.exists(dbFile));
         SqliteBlockReachability rdb = SqliteBlockReachability.createReachabilityDb(dbFile);
         Optional<List<Cid>> links = rdb.getLinks(root);
