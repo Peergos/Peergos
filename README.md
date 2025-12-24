@@ -461,7 +461,7 @@ Webdav
 ------
 You can run a local webdav bridge which allows you to access your Peergos files with any webdav compatible client. Run the following command (choose an arbitrary webdav username and password): 
 ```
->> java -Djava.library.path=native-lib -jar Peergos.jar webdav -peergos-url https://peergos.net -username $username -PEERGOS_PASSWORD $password -webdav.username $webdav-username -PEERGOS_WEBDAV_PASSWORD $webdav-password
+>> peergos webdav -peergos-url https://peergos.net -username $username -PEERGOS_PASSWORD $password -webdav.username $webdav-username -PEERGOS_WEBDAV_PASSWORD $webdav-password
 ```
 You can then browse to your home directory with http://localhost:8090/$YOUR-USERNAME
 
