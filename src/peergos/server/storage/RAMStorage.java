@@ -1,5 +1,7 @@
 package peergos.server.storage;
 
+import peergos.server.corenode.JdbcIpnsAndSocial;
+import peergos.server.space.UsageStore;
 import peergos.server.storage.auth.*;
 import peergos.shared.cbor.*;
 import peergos.shared.corenode.*;
@@ -32,6 +34,9 @@ public class RAMStorage implements DeletableContentAddressedStorage {
 
     @Override
     public void setPki(CoreNode pki) {}
+
+    @Override
+    public void partitionByUser(UsageStore usage, JdbcIpnsAndSocial mutable) {}
 
     @Override
     public ContentAddressedStorage directToOrigin() {

@@ -1,5 +1,7 @@
 package peergos.server.tests;
 
+import peergos.server.corenode.JdbcIpnsAndSocial;
+import peergos.server.space.UsageStore;
 import peergos.server.storage.*;
 import peergos.shared.cbor.CborObject;
 import peergos.shared.corenode.CoreNode;
@@ -88,6 +90,11 @@ public class WriteOnlyStorage implements DeletableContentAddressedStorage {
     @Override
     public void setPki(CoreNode pki) {
 
+    }
+
+    @Override
+    public void partitionByUser(UsageStore usage, JdbcIpnsAndSocial mutable) {
+        throw new IllegalStateException("Not implemented!");
     }
 
     @Override

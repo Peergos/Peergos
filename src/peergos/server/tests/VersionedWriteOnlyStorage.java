@@ -1,5 +1,7 @@
 package peergos.server.tests;
 
+import peergos.server.corenode.JdbcIpnsAndSocial;
+import peergos.server.space.UsageStore;
 import peergos.server.storage.*;
 import peergos.shared.cbor.CborObject;
 import peergos.shared.corenode.CoreNode;
@@ -228,6 +230,11 @@ public class VersionedWriteOnlyStorage implements DeletableContentAddressedStora
 
     @Override
     public CompletableFuture<LinkCounts> getLinkCounts(String owner, LocalDateTime after, BatWithId mirrorBat) {
+        throw new IllegalStateException("Not implemented!");
+    }
+
+    @Override
+    public void partitionByUser(UsageStore usage, JdbcIpnsAndSocial mutable) {
         throw new IllegalStateException("Not implemented!");
     }
 
