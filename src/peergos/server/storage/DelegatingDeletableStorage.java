@@ -33,8 +33,10 @@ public class DelegatingDeletableStorage implements DeletableContentAddressedStor
     }
 
     @Override
-    public void partitionByUser(UsageStore usage, JdbcIpnsAndSocial mutable) {
-        target.partitionByUser(usage, mutable);
+    public void partitionByUser(UsageStore usage,
+                                JdbcIpnsAndSocial mutable,
+                                PublicKeyHash pkiKey) {
+        target.partitionByUser(usage, mutable, pkiKey);
     }
 
     @Override

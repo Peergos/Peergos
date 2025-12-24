@@ -16,6 +16,7 @@ import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.Cid;
 import peergos.shared.io.ipfs.Multihash;
 import peergos.shared.io.ipfs.bases.Base64;
+import peergos.shared.mutable.PointerUpdate;
 import peergos.shared.storage.*;
 import peergos.shared.storage.auth.*;
 import peergos.shared.user.fs.*;
@@ -218,11 +219,14 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
     }
 
     @Override
-    public void partitionByUser(UsageStore usage, JdbcIpnsAndSocial mutable) {
-        partitionByUser();
+    public void partitionByUser(UsageStore usage,
+                                JdbcIpnsAndSocial mutable,
+                                PublicKeyHash pkiKey) {
+        partitionByUser(mutable, pkiKey);
     }
 
-    public void partitionByUser() {
+    public void partitionByUser(JdbcIpnsAndSocial mutable,
+                                PublicKeyHash pkiKey) {
         if (userPartitioningComplete())
             return;
         new Thread(() -> {
@@ -232,6 +236,19 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
             for (Triple<Multihash, String, PublicKeyHash> target : allTargets) {
                 moveSubtreeToOwner(target.right, (Cid) target.left, List.of(id));
             }
+            Map<PublicKeyHash, byte[]> allPointers = mutable.getAllEntries();
+            PublicKeyHash pkiOwner = pki.getPublicKeyHash("peergos").join().get();
+
+            allPointers.forEach((writerHash, rawPointer) -> {
+                PublicKeyHash owner = writerHash.equals(pkiKey) ? pkiOwner : usage.getOwnerKey(writerHash);
+                PublicSigningKey writer = getSigningKey(null, writerHash).join().get();
+                byte[] bothHashes = writer.unsignMessage(rawPointer).join();
+                PointerUpdate cas = PointerUpdate.fromCbor(CborObject.fromByteArray(bothHashes));
+                MaybeMultihash updated = cas.updated;
+
+                if (updated.isPresent())
+                    moveSubtreeToOwner(owner, (Cid) updated.get(), List.of(id));
+            });
             partitionStatus.complete();
         }).start();
     }

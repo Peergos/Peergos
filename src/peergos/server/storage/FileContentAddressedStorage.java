@@ -1,5 +1,6 @@
 package peergos.server.storage;
 
+import peergos.server.corenode.IpfsCoreNode;
 import peergos.server.corenode.JdbcIpnsAndSocial;
 import peergos.server.space.UsageStore;
 import peergos.server.storage.auth.*;
@@ -12,9 +13,11 @@ import peergos.shared.crypto.asymmetric.PublicSigningKey;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.Cid;
 import peergos.shared.io.ipfs.Multihash;
+import peergos.shared.mutable.MutablePointers;
 import peergos.shared.mutable.PointerUpdate;
 import peergos.shared.storage.*;
 import peergos.shared.storage.auth.*;
+import peergos.shared.user.CommittedWriterData;
 import peergos.shared.user.fs.*;
 import peergos.shared.util.*;
 
@@ -80,16 +83,14 @@ public class FileContentAddressedStorage implements DeletableContentAddressedSto
     }
 
     @Override
-    public void partitionByUser(UsageStore usage, JdbcIpnsAndSocial mutable) {
+    public void partitionByUser(UsageStore usage,
+                                JdbcIpnsAndSocial mutable,
+                                PublicKeyHash pkiKey) {
         if (userPartitioningComplete()) {
             LOG.info("Blockstore already partitioned.");
-
             return;
         }
         new Thread(() -> {
-            while (this.pki == null) {
-                Threads.sleep(1_000);
-            }
             LOG.info("Partitioning blockstore by user. Please wait...");
             System.out.println("Partitioning blockstore by user. Please wait...");
             List<Triple<Multihash, String, PublicKeyHash>> allTargets = usage.getAllTargets();
@@ -97,19 +98,17 @@ public class FileContentAddressedStorage implements DeletableContentAddressedSto
                 moveSubtreeToOwner(target.right, (Cid) target.left, List.of(ourId));
             }
             Map<PublicKeyHash, byte[]> allPointers = mutable.getAllEntries();
-            allPointers.forEach((writerHash, rawPointer) -> {
-                try {
-                    PublicKeyHash owner = usage.getOwnerKey(writerHash);
-                    PublicSigningKey writer = getSigningKey(null, writerHash).join().get();
-                    byte[] bothHashes = writer.unsignMessage(rawPointer).join();
-                    PointerUpdate cas = PointerUpdate.fromCbor(CborObject.fromByteArray(bothHashes));
-                    MaybeMultihash updated = cas.updated;
+            PublicKeyHash pkiOwner = pki.getPublicKeyHash("peergos").join().get();
 
-                    if (updated.isPresent())
-                        moveSubtreeToOwner(owner, (Cid) updated.get(), List.of(ourId));
-                } catch (IllegalStateException e) {
-                    // pki key hits this
-                }
+            allPointers.forEach((writerHash, rawPointer) -> {
+                PublicKeyHash owner = writerHash.equals(pkiKey) ? pkiOwner : usage.getOwnerKey(writerHash);
+                PublicSigningKey writer = getSigningKey(null, writerHash).join().get();
+                byte[] bothHashes = writer.unsignMessage(rawPointer).join();
+                PointerUpdate cas = PointerUpdate.fromCbor(CborObject.fromByteArray(bothHashes));
+                MaybeMultihash updated = cas.updated;
+
+                if (updated.isPresent())
+                    moveSubtreeToOwner(owner, (Cid) updated.get(), List.of(ourId));
             });
 
             LOG.info("Partitioning blockstore completed.");
