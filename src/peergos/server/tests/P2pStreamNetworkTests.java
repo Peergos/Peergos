@@ -6,6 +6,7 @@ import org.junit.Ignore;
 import org.junit.Test;
 import peergos.server.*;
 import peergos.server.storage.*;
+import peergos.server.tests.util.TestPorts;
 import peergos.server.util.*;
 import peergos.shared.*;
 import peergos.shared.io.ipfs.MultiAddress;
@@ -42,10 +43,10 @@ public class P2pStreamNetworkTests {
         int bootstrapSwarmPort = args.getInt("ipfs-swarm-port");
 
         // other nodes
-        int ipfsApiPort = 9000 + random.nextInt(8000);
-        int ipfsGatewayPort = 9000 + random.nextInt(8000);
-        int ipfsSwarmPort = 9000 + random.nextInt(8000);
-        int allowPort = 9000 + random.nextInt(8000);
+        int ipfsApiPort = TestPorts.getPort();
+        int ipfsGatewayPort = TestPorts.getPort();
+        int ipfsSwarmPort = TestPorts.getPort();
+        int allowPort = TestPorts.getPort();
         Args normalNode = UserTests.buildArgs()
                 .with("ipfs-api-address", "/ip4/127.0.0.1/tcp/" + ipfsApiPort)
                 .with("ipfs-gateway-address", "/ip4/127.0.0.1/tcp/" + ipfsGatewayPort)
