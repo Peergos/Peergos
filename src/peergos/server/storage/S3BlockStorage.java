@@ -217,6 +217,11 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         return partitionStatus.isDone();
     }
 
+    @Override
+    public void partitionByUser(UsageStore usage, JdbcIpnsAndSocial mutable) {
+        partitionByUser();
+    }
+
     public void partitionByUser() {
         if (userPartitioningComplete())
             return;
@@ -271,7 +276,6 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
     public void setPki(CoreNode pki) {
         this.pki = pki;
         updateMetadataStoreIfEmpty();
-        partitionByUser();
     }
 
     private void startFlusherThread() {
