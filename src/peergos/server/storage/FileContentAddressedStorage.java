@@ -1,14 +1,18 @@
 package peergos.server.storage;
 
+import peergos.server.corenode.JdbcIpnsAndSocial;
 import peergos.server.space.UsageStore;
 import peergos.server.storage.auth.*;
 import peergos.server.util.Logging;
 import peergos.server.util.Threads;
+import peergos.shared.MaybeMultihash;
 import peergos.shared.cbor.*;
 import peergos.shared.corenode.*;
+import peergos.shared.crypto.asymmetric.PublicSigningKey;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.Cid;
 import peergos.shared.io.ipfs.Multihash;
+import peergos.shared.mutable.PointerUpdate;
 import peergos.shared.storage.*;
 import peergos.shared.storage.auth.*;
 import peergos.shared.user.fs.*;
@@ -75,9 +79,12 @@ public class FileContentAddressedStorage implements DeletableContentAddressedSto
         return partitionStatus.isDone();
     }
 
-    public void partitionByUser(UsageStore usage) {
-        if (userPartitioningComplete())
+    public void partitionByUser(UsageStore usage, JdbcIpnsAndSocial mutable) {
+        if (userPartitioningComplete()) {
+            LOG.info("Blockstore already partitioned.");
+
             return;
+        }
         new Thread(() -> {
             while (this.pki == null) {
                 Threads.sleep(1_000);
@@ -88,6 +95,18 @@ public class FileContentAddressedStorage implements DeletableContentAddressedSto
             for (Triple<Multihash, String, PublicKeyHash> target : allTargets) {
                 moveSubtreeToOwner(target.right, (Cid) target.left, List.of(ourId));
             }
+            Map<PublicKeyHash, byte[]> allPointers = mutable.getAllEntries();
+            allPointers.forEach((writerHash, rawPointer) -> {
+                PublicKeyHash owner = usage.getOwnerKey(writerHash);
+                PublicSigningKey writer = getSigningKey(null, writerHash).join().get();
+                byte[] bothHashes = writer.unsignMessage(rawPointer).join();
+                PointerUpdate cas = PointerUpdate.fromCbor(CborObject.fromByteArray(bothHashes));
+                MaybeMultihash updated = cas.updated;
+
+                if (updated.isPresent())
+                    moveSubtreeToOwner(owner, (Cid) updated.get(), List.of(ourId));
+            });
+
             LOG.info("Partitioning blockstore completed.");
             System.out.println("Partitioning blockstore completed.");
             partitionStatus.complete();
