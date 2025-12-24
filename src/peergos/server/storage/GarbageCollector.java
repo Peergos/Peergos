@@ -233,7 +233,9 @@ public class GarbageCollector {
 
             storage.clearOldTransactions(owner, System.currentTimeMillis() - 24*3600*1000L);
             long t0 = System.nanoTime();
-            Path reachabilityDbFile = reachabilityDbDir.resolve("reachability-" + username + ".sqlite");
+            Path reachabilityDbFile = reachabilityDbDir.resolve("reachability")
+                    .resolve("reachability-" + username + ".sqlite");
+            reachabilityDbFile.getParent().toFile().mkdirs();
             SqliteBlockReachability reachability = SqliteBlockReachability.createReachabilityDb(reachabilityDbFile);
             reachability.clearReachable();
             // First build a bloom (infini) filter of the block versions in RDB
