@@ -193,6 +193,11 @@ public class FileContentAddressedStorage implements DeletableContentAddressedSto
 
     private Path getFilePath(PublicKeyHash owner, Cid h) {
         String key = DirectS3BlockStore.hashToKey(h);
+        if (owner == null) { // legacy block lookup
+            return PathUtil.get("")
+                .resolve(key.substring(key.length() - 3, key.length() - 1))
+                .resolve(key + ".data");
+        }
 
         Path path = PathUtil.get("")
                 .resolve(pki.getUsername(owner).join())
