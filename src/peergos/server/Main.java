@@ -788,10 +788,10 @@ public class Main extends Builder {
             UsageStore usageStore = new JdbcUsageStore(usageDb, sqlCommands);
             Supplier<Connection> statusDb = Main.getDBConnector(a, "partition-status-file");
             PartitionStatus partitionStatus = new JdbcPartitionStatus(statusDb, sqlCommands);
-            DeletableContentAddressedStorage localStorageForLinks = buildLocalStorage(a, meta, batStore, transactions, blockAuth,
-                    ids, usageStore, partitionStatus, crypto.hasher);
             JdbcIpnsAndSocial rawPointers = buildRawPointers(a,
                     getDBConnector(a, "mutable-pointers-file", dbConnectionPool));
+            DeletableContentAddressedStorage localStorageForLinks = buildLocalStorage(a, meta, batStore, transactions, blockAuth,
+                    ids, usageStore, rawPointers, partitionStatus, crypto.hasher);
 
 
             MutablePointers localPointers = UserRepository.build(localStorageForLinks, rawPointers, hasher);

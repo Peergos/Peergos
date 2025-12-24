@@ -214,6 +214,7 @@ public class Builder {
                                                                      BlockRequestAuthoriser authoriser,
                                                                      ServerIdentityStore ids,
                                                                      UsageStore usage,
+                                                                     JdbcIpnsAndSocial rawPointers,
                                                                      PartitionStatus partitionStatus,
                                                                      Hasher hasher) throws SQLException {
         boolean useIPFS = a.getBoolean("useIPFS");
@@ -259,7 +260,7 @@ public class Builder {
             Cid ourId = new Cid(1, Cid.Codec.LibP2pKey, peerId.type, peerId.getHash());
             FileContentAddressedStorage files = new FileContentAddressedStorage(blockstorePath(a), ourId,
                     transactions, authoriser, partitionStatus, hasher);
-            files.partitionByUser(usage);
+            files.partitionByUser(usage, rawPointers);
             MultiIdStorage blocks = new MultiIdStorage(new LocalFirstStorage(files, http, p2pGets, ourIds, hasher), ourIds);
             if (enableGC) {
                 TransactionalIpfs txns = new TransactionalIpfs(blocks, transactions, authoriser, ourId, linkHost, hasher);

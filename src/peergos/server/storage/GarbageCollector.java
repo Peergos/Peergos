@@ -228,6 +228,9 @@ public class GarbageCollector {
         for (Pair<String, PublicKeyHash> p : allUsers) {
             PublicKeyHash owner = p.right;
             String username = p.left;
+            System.out.println("Starting GC for " + username);
+            // TODO check if user snapshot hasn't changed and short circuit
+
             storage.clearOldTransactions(owner, System.currentTimeMillis() - 24*3600*1000L);
             long t0 = System.nanoTime();
             Path reachabilityDbFile = reachabilityDbDir.resolve("reachability-" + username + ".sqlite");
@@ -254,7 +257,12 @@ public class GarbageCollector {
             Map<PublicKeyHash, byte[]> allPointers = pointers.getAllEntries()
                     .entrySet()
                     .stream()
-                    .filter(e -> owner.equals(usage.getOwnerKey(e.getKey())))
+                    .filter(e -> {
+                        try {
+                            return owner.equals(usage.getOwnerKey(e.getKey()));
+                        } catch (IllegalStateException f) {
+                            return false;
+                        }})
                     .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
             long t3 = System.nanoTime();
             System.out.println("Listing " + allPointers.size() + " pointers took " + (t3 - t2) / 1_000_000_000 + "s");

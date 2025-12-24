@@ -110,9 +110,9 @@ public class ServerMessages extends Builder {
             SqlSupplier cmds = getSqlCommands(a);
             JdbcServerIdentityStore ids = JdbcServerIdentityStore.build(getDBConnector(a, "serverids-file", dbConnectionPool), cmds, crypto);
             UsageStore usageStore = new JdbcUsageStore(getDBConnector(a, "space-usage-sql-file", dbConnectionPool), cmds);
-            DeletableContentAddressedStorage localStorage = buildLocalStorage(a, metaDB, null, transactions,
-                    blockRequestAuthoriser, ids, usageStore, null, hasher);
             JdbcIpnsAndSocial rawPointers = buildRawPointers(a, getDBConnector(a, "mutable-pointers-file", dbConnectionPool));
+            DeletableContentAddressedStorage localStorage = buildLocalStorage(a, metaDB, null, transactions,
+                    blockRequestAuthoriser, ids, usageStore, rawPointers, null, hasher);
             MutablePointers localPointers = UserRepository.build(localStorage, rawPointers, hasher);
             MutablePointersProxy proxingMutable = new HttpMutablePointers(buildP2pHttpProxy(a), getPkiServerId(a));
             JdbcIpnsAndSocial rawSocial = new JdbcIpnsAndSocial(getDBConnector(a, "social-sql-file", dbConnectionPool), cmds);
