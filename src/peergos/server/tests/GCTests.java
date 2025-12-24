@@ -188,7 +188,7 @@ public class GCTests {
         verifyAllReachableBlocksArePresent(pointers, metadb, storage);
         Assert.assertTrue(gcMetadbGets < 2000);
 
-        Path dbFile = dir.resolve("reachability-"+username+".sqlite");
+        Path dbFile = dir.resolve("reachability").resolve("reachability-"+username+".sqlite");
         Assert.assertTrue(Files.exists(dbFile));
         SqliteBlockReachability rdb = SqliteBlockReachability.createReachabilityDb(dbFile);
         Optional<List<Cid>> links = rdb.getLinks(root);
