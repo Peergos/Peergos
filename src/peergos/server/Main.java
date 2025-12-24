@@ -801,17 +801,6 @@ public class Main extends Builder {
             List<Cid> nodeIds = localStorageForLinks.ids().get();
             Logging.LOG().info("Our peerids: " + nodeIds);
 
-            boolean enableGC = a.getBoolean("enable-gc", false) && partitionStatus.isDone();
-            GarbageCollector gc = null;
-            if (enableGC) {
-                boolean useS3 = S3Config.useS3(a);
-                boolean listRawBlocks = useS3 && a.getBoolean("s3.versioned-bucket");
-                gc = new GarbageCollector(localStorageForLinks, rawPointers, usageStore, a.fromPeergosDir("", ""), (cd, rd, c) -> Futures.of(true), listRawBlocks);
-                Function<Stream<Map.Entry<PublicKeyHash, byte[]>>, CompletableFuture<Boolean>> snapshotSaver = s -> Futures.of(true);
-                int gcInterval = 12 * 60 * 60 * 1000;
-                gc.start(a.getInt("gc.period.millis", gcInterval), snapshotSaver);
-            }
-
             JdbcIpnsAndSocial rawSocial = new JdbcIpnsAndSocial(getDBConnector(a, "social-sql-file", dbConnectionPool), sqlCommands);
             HttpSpaceUsage httpSpaceUsage = new HttpSpaceUsage(p2pHttpProxy, p2pHttpProxy);
 
@@ -837,6 +826,17 @@ public class Main extends Builder {
                     rawSocial, usageStore, userQuotas, rawAccount, batStore, account, linkCounts, crypto);
             localStorage.setPki(core);
             userQuotas.setPki(core);
+
+            boolean enableGC = a.getBoolean("enable-gc", false) && partitionStatus.isDone();
+            GarbageCollector gc = null;
+            if (enableGC) {
+                boolean useS3 = S3Config.useS3(a);
+                boolean listRawBlocks = useS3 && a.getBoolean("s3.versioned-bucket");
+                gc = new GarbageCollector(localStorageForLinks, rawPointers, usageStore, a.fromPeergosDir("", ""), (cd, rd, c) -> Futures.of(true), listRawBlocks);
+                Function<Stream<Map.Entry<PublicKeyHash, byte[]>>, CompletableFuture<Boolean>> snapshotSaver = s -> Futures.of(true);
+                int gcInterval = 12 * 60 * 60 * 1000;
+                gc.start(a.getInt("gc.period.millis", gcInterval), snapshotSaver);
+            }
 
             boolean mirrorUsers = a.getBoolean("mirror-users", true);
             if (a.hasArg("mirror.username") || isPki) // mirror pki before starting user mirror
