@@ -1,5 +1,7 @@
 package peergos.server.storage;
 
+import peergos.server.corenode.JdbcIpnsAndSocial;
+import peergos.server.space.UsageStore;
 import peergos.server.storage.auth.*;
 import peergos.server.util.*;
 import peergos.shared.*;
@@ -62,6 +64,8 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
     }
 
     void setPki(CoreNode pki);
+
+    void partitionByUser(UsageStore usage, JdbcIpnsAndSocial mutable);
 
     /**
      * @param peerIds
@@ -424,6 +428,9 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
 
         @Override
         public void setPki(CoreNode pki) {}
+
+        @Override
+        public void partitionByUser(UsageStore usage, JdbcIpnsAndSocial mutable) {}
 
         @Override
         public CompletableFuture<Optional<CborObject>> get(List<Multihash> peerIds, PublicKeyHash owner, Cid hash, String auth, boolean persistBlock) {
