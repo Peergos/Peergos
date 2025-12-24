@@ -71,6 +71,7 @@ public class IpfsCoreNode implements CoreNode {
         this.peergosIdentity = peergosIdentity;
         this.signer = pkiSigner;
         this.difficultyGenerator = new DifficultyGenerator(System.currentTimeMillis(), maxSignupsPerDay);
+        reverseLookup.put(peergosIdentity, "peergos");
     }
 
     @Override
@@ -79,7 +80,6 @@ public class IpfsCoreNode implements CoreNode {
         Optional<Long> currentPkiSequence = currentPkiPointer.sequence;
         MaybeMultihash currentPkiRoot = currentPkiPointer.updated;
         LOG.info("Initializing PKI from root " + currentPkiRoot);
-        reverseLookup.put(peergosIdentity, "peergos");
         update(currentPkiRoot, currentPkiSequence);
         if (! currentPkiRoot.isPresent()) {
             CommittedWriterData committed = IpfsTransaction.call(peergosIdentity,

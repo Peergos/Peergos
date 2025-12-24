@@ -79,6 +79,7 @@ public class FileContentAddressedStorage implements DeletableContentAddressedSto
         return partitionStatus.isDone();
     }
 
+    @Override
     public void partitionByUser(UsageStore usage, JdbcIpnsAndSocial mutable) {
         if (userPartitioningComplete()) {
             LOG.info("Blockstore already partitioned.");
@@ -97,14 +98,18 @@ public class FileContentAddressedStorage implements DeletableContentAddressedSto
             }
             Map<PublicKeyHash, byte[]> allPointers = mutable.getAllEntries();
             allPointers.forEach((writerHash, rawPointer) -> {
-                PublicKeyHash owner = usage.getOwnerKey(writerHash);
-                PublicSigningKey writer = getSigningKey(null, writerHash).join().get();
-                byte[] bothHashes = writer.unsignMessage(rawPointer).join();
-                PointerUpdate cas = PointerUpdate.fromCbor(CborObject.fromByteArray(bothHashes));
-                MaybeMultihash updated = cas.updated;
+                try {
+                    PublicKeyHash owner = usage.getOwnerKey(writerHash);
+                    PublicSigningKey writer = getSigningKey(null, writerHash).join().get();
+                    byte[] bothHashes = writer.unsignMessage(rawPointer).join();
+                    PointerUpdate cas = PointerUpdate.fromCbor(CborObject.fromByteArray(bothHashes));
+                    MaybeMultihash updated = cas.updated;
 
-                if (updated.isPresent())
-                    moveSubtreeToOwner(owner, (Cid) updated.get(), List.of(ourId));
+                    if (updated.isPresent())
+                        moveSubtreeToOwner(owner, (Cid) updated.get(), List.of(ourId));
+                } catch (IllegalStateException e) {
+                    // pki key hits this
+                }
             });
 
             LOG.info("Partitioning blockstore completed.");
