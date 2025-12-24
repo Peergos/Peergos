@@ -150,7 +150,7 @@ public class JdbcBlockMetadataStore implements BlockMetadataStore {
         try (Connection conn = getConnection();
              PreparedStatement insert = conn.prepareStatement(commands.addMetadataCommand())) {
 
-            insert.setBytes(1, owner.toBytes());
+            insert.setBytes(1, owner != null ? owner.toBytes() : null);
             insert.setBytes(2, block.toBytes());
             insert.setString(3, version);
             insert.setLong(4, meta.size);
