@@ -79,7 +79,7 @@ public class LocalFirstStorage extends DelegatingDeletableStorage {
             return Futures.of(Optional.of(hash.getHash()));
         boolean localBlock = local.hasBlock(owner, hash);
         if (localBlock)
-            return local.getRaw(owner, hash, bat);
+            return local.getRaw(peerIds, owner, hash, bat, ourId, h, doAuth, persistBlock);
         if (peerIds.get(0).equals(ourId))
             throw new IllegalStateException("We should have this block!");
         return p2pGets.getRaw(peerIds.get(0), owner, hash, bat).thenCompose(res -> {
