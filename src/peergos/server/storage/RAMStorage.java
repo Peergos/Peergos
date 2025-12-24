@@ -36,7 +36,9 @@ public class RAMStorage implements DeletableContentAddressedStorage {
     public void setPki(CoreNode pki) {}
 
     @Override
-    public void partitionByUser(UsageStore usage, JdbcIpnsAndSocial mutable) {}
+    public void partitionByUser(UsageStore usage,
+                                JdbcIpnsAndSocial mutable,
+                                PublicKeyHash pkiKey) {}
 
     @Override
     public ContentAddressedStorage directToOrigin() {

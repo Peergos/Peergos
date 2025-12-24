@@ -65,7 +65,9 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
 
     void setPki(CoreNode pki);
 
-    void partitionByUser(UsageStore usage, JdbcIpnsAndSocial mutable);
+    void partitionByUser(UsageStore usage,
+                         JdbcIpnsAndSocial mutable,
+                         PublicKeyHash pkiKey);
 
     /**
      * @param peerIds
@@ -430,7 +432,9 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
         public void setPki(CoreNode pki) {}
 
         @Override
-        public void partitionByUser(UsageStore usage, JdbcIpnsAndSocial mutable) {}
+        public void partitionByUser(UsageStore usage,
+                                    JdbcIpnsAndSocial mutable,
+                                    PublicKeyHash pkiKey) {}
 
         @Override
         public CompletableFuture<Optional<CborObject>> get(List<Multihash> peerIds, PublicKeyHash owner, Cid hash, String auth, boolean persistBlock) {

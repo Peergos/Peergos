@@ -93,7 +93,9 @@ public class WriteOnlyStorage implements DeletableContentAddressedStorage {
     }
 
     @Override
-    public void partitionByUser(UsageStore usage, JdbcIpnsAndSocial mutable) {
+    public void partitionByUser(UsageStore usage,
+                                JdbcIpnsAndSocial mutable,
+                                PublicKeyHash pkiKey) {
         throw new IllegalStateException("Not implemented!");
     }
 
