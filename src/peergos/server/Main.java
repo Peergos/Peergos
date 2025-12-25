@@ -858,7 +858,7 @@ public class Main extends Builder {
                 core.initialize(mirrorUsers);
             else
                 new Thread(() -> core.initialize(mirrorUsers)).start();
-            if (a.getBoolean("partition-blockstore", false))
+            if (a.getBoolean("partition-blockstore", true))
                 localStorage.partitionByUser(usageStore, rawPointers,
                         getPkiKey(PublicKeyHash.fromString(a.getArg("peergos.identity.hash")), pkiServerNodeId,
                                 isPki ? localPointers : proxingMutable, localStorage, hasher));
