@@ -333,7 +333,7 @@ public class Main extends Builder {
                         }
                     }
 
-                    ServerProcesses daemon = PEERGOS.main(args);
+                    ServerProcesses daemon = PEERGOS.main(args.with("partition-blockstore", "false"));
                     poststrap(args);
                     return daemon;
                 } catch (Exception e) {
@@ -737,13 +737,13 @@ public class Main extends Builder {
         }
     }
 
-    private static PublicKeyHash getPkiKey(CoreNode pki,
+    private static PublicKeyHash getPkiKey(PublicKeyHash pkiOwnerIdentity,
+                                           Multihash pkiPeerId,
                                            MutablePointers mutable,
                                            DeletableContentAddressedStorage ipfs,
                                            Hasher hasher) {
-        PublicKeyHash pkiOwnerIdentity = pki.getPublicKeyHash("peergos").join().get();
-        Multihash pkiPeerId = pki.getHomeServer("peergos").join().get();
-        byte[] pkiIdPointer = mutable.getPointer(pkiOwnerIdentity, pkiOwnerIdentity).join().get();
+        Optional<byte[]> pointer = mutable.getPointer(pkiOwnerIdentity, pkiOwnerIdentity).join();
+        byte[] pkiIdPointer = pointer.get();
         PointerUpdate fresh = MutablePointers.parsePointerTarget(pkiIdPointer, pkiOwnerIdentity, pkiOwnerIdentity, ipfs).join();
         MaybeMultihash newPeergosRoot = fresh.updated;
 
@@ -858,7 +858,10 @@ public class Main extends Builder {
                 core.initialize(mirrorUsers);
             else
                 new Thread(() -> core.initialize(mirrorUsers)).start();
-            localStorage.partitionByUser(usageStore, rawPointers, getPkiKey(core, proxingMutable, localStorage, hasher));
+            if (a.getBoolean("partition-blockstore", false))
+                localStorage.partitionByUser(usageStore, rawPointers,
+                        getPkiKey(PublicKeyHash.fromString(a.getArg("peergos.identity.hash")), pkiServerNodeId,
+                                isPki ? localPointers : proxingMutable, localStorage, hasher));
 
             CoreNode signupFilter = new SignUpFilter(core, userQuotas, nodeIds.get(nodeIds.size() - 1), httpSpaceUsage, hasher,
                     a.getInt("max-daily-paid-signups", isPaidInstance(a) ? 10 : 0), isPki);
