@@ -1,6 +1,7 @@
 package peergos.server.storage;
 
 import peergos.server.util.Logging;
+import peergos.shared.corenode.CoreNode;
 import peergos.shared.crypto.hash.PublicKeyHash;
 import peergos.shared.io.ipfs.*;
 import peergos.shared.storage.*;
@@ -8,10 +9,8 @@ import peergos.shared.util.*;
 
 import java.io.*;
 import java.nio.file.*;
-import java.nio.file.attribute.*;
 import java.util.*;
 import java.util.concurrent.*;
-import java.util.concurrent.atomic.*;
 import java.util.function.*;
 import java.util.logging.*;
 
@@ -21,6 +20,8 @@ import java.util.logging.*;
 public class FileBlockBuffer implements BlockBuffer {
     private static final Logger LOG = Logging.LOG();
     private final Path root;
+    private CoreNode pki;
+
     public FileBlockBuffer(Path root) {
         this.root = root;
         File rootDir = root.toFile();
@@ -33,11 +34,15 @@ public class FileBlockBuffer implements BlockBuffer {
             throw new IllegalStateException("File store path must be a directory! " + root);
     }
 
-    private static Path getFilePath(PublicKeyHash owner, Cid h) {
+    public void setPki(CoreNode pki) {
+        this.pki = pki;
+    }
+
+    private Path getFilePath(PublicKeyHash owner, Cid h) {
         String key = DirectS3BlockStore.hashToKey(h);
 
         Path path = PathUtil.get("")
-                .resolve(owner.toString())
+                .resolve(pki.getUsername(owner).join())
                 .resolve(key.substring(key.length() - 3, key.length() - 1))
                 .resolve(key + ".data");
         return path;
@@ -57,7 +62,9 @@ public class FileBlockBuffer implements BlockBuffer {
         try {
             if (hash.isIdentity())
                 return Futures.of(Optional.of(hash.getHash()));
-            Path path = getFilePath(owner, hash);
+            Path path = owner == null ?
+                    getLegacyFilePath(hash) :
+                    getFilePath(owner, hash);
             File file = root.resolve(path).toFile();
             if (! file.exists()){
                 return CompletableFuture.completedFuture(Optional.empty());
