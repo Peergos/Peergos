@@ -1,5 +1,6 @@
 package peergos.server.storage;
 
+import peergos.shared.corenode.CoreNode;
 import peergos.shared.crypto.hash.PublicKeyHash;
 import peergos.shared.io.ipfs.*;
 
@@ -19,4 +20,5 @@ public interface BlockBuffer {
 
     void applyToAll(BiConsumer<PublicKeyHash, Cid> action);
 
+    void setPki(CoreNode pki);
 }

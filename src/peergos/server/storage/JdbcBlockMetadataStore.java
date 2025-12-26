@@ -187,7 +187,7 @@ public class JdbcBlockMetadataStore implements BlockMetadataStore {
         try (Connection conn = getConnection();
              PreparedStatement size = conn.prepareStatement(EMPTY)) {
             ResultSet rs = size.executeQuery();
-            return rs.next();
+            return ! rs.next();
         } catch (SQLException sqe) {
             LOG.log(Level.WARNING, sqe.getMessage(), sqe);
             throw new RuntimeException(sqe);

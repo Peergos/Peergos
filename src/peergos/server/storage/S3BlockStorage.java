@@ -292,6 +292,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
     @Override
     public void setPki(CoreNode pki) {
         this.pki = pki;
+        this.blockBuffer.setPki(pki);
         updateMetadataStoreIfEmpty();
     }
 
