@@ -252,6 +252,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                 if (updated.isPresent())
                     moveSubtreeToOwner(owner, (Cid) updated.get(), List.of(id));
             });
+            LOG.info("S3 blockstore partitioning complete");
             partitionStatus.complete();
         }).start();
     }
