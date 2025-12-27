@@ -231,30 +231,38 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
             LOG.info("S3 blockstore already partitioned");
             return;
         }
-        LOG.info("partitioning S3 blockstore...");
+        LOG.info("Partitioning S3 blockstore...");
         new Thread(() -> {
-            List<Triple<Multihash, String, PublicKeyHash>> allTargets = usage.getAllTargets();
-            // randomise list so multiple servers can help without clashing too much
-            Collections.shuffle(allTargets);
-            for (Triple<Multihash, String, PublicKeyHash> target : allTargets) {
-                LOG.info("Partitioning user " + target.middle);
-                moveSubtreeToOwner(target.right, (Cid) target.left, List.of(id));
+            while (true) {
+                try {
+                    List<Triple<Multihash, String, PublicKeyHash>> allTargets = usage.getAllTargets();
+                    // randomise list so multiple servers can help without clashing too much
+                    Collections.shuffle(allTargets);
+                    for (Triple<Multihash, String, PublicKeyHash> target : allTargets) {
+                        LOG.info("Partitioning user " + target.middle);
+                        moveSubtreeToOwner(target.right, (Cid) target.left, List.of(id));
+                    }
+                    Map<PublicKeyHash, byte[]> allPointers = mutable.getAllEntries();
+                    PublicKeyHash pkiOwner = pki.getPublicKeyHash("peergos").join().get();
+
+                    allPointers.forEach((writerHash, rawPointer) -> {
+                        PublicKeyHash owner = writerHash.equals(pkiKey) ? pkiOwner : usage.getOwnerKey(writerHash);
+                        PublicSigningKey writer = getSigningKey(null, writerHash).join().get();
+                        byte[] bothHashes = writer.unsignMessage(rawPointer).join();
+                        PointerUpdate cas = PointerUpdate.fromCbor(CborObject.fromByteArray(bothHashes));
+                        MaybeMultihash updated = cas.updated;
+
+                        if (updated.isPresent())
+                            moveSubtreeToOwner(owner, (Cid) updated.get(), List.of(id));
+                    });
+                    LOG.info("S3 blockstore partitioning complete");
+                    partitionStatus.complete();
+                    return;
+                } catch (Exception e) {
+                    LOG.log(Level.SEVERE, e, e::getMessage);
+                    Threads.sleep(10 * 60_000);
+                }
             }
-            Map<PublicKeyHash, byte[]> allPointers = mutable.getAllEntries();
-            PublicKeyHash pkiOwner = pki.getPublicKeyHash("peergos").join().get();
-
-            allPointers.forEach((writerHash, rawPointer) -> {
-                PublicKeyHash owner = writerHash.equals(pkiKey) ? pkiOwner : usage.getOwnerKey(writerHash);
-                PublicSigningKey writer = getSigningKey(null, writerHash).join().get();
-                byte[] bothHashes = writer.unsignMessage(rawPointer).join();
-                PointerUpdate cas = PointerUpdate.fromCbor(CborObject.fromByteArray(bothHashes));
-                MaybeMultihash updated = cas.updated;
-
-                if (updated.isPresent())
-                    moveSubtreeToOwner(owner, (Cid) updated.get(), List.of(id));
-            });
-            LOG.info("S3 blockstore partitioning complete");
-            partitionStatus.complete();
         }).start();
     }
 
