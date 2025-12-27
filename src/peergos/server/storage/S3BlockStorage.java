@@ -231,6 +231,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
             LOG.info("S3 blockstore already partitioned");
             return;
         }
+        LOG.info("partitioning S3 blockstore...");
         new Thread(() -> {
             List<Triple<Multihash, String, PublicKeyHash>> allTargets = usage.getAllTargets();
             // randomise list so multiple servers can help without clashing too much
