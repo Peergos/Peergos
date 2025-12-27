@@ -282,7 +282,10 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         try {
             System.out.println("Copying s3://" + bucket + "/" + sourceKey + " to s3://" + bucket + "/" + destKey);
             String res = new String(HttpUtil.putWithVersion(copyUrl, new byte[0]).left);
-            if (! res.startsWith("<?xml version=\"1.0\" encoding=\"UTF-8\"?><CopyObjectResult") || !res.contains("</LastModified><ETag>"))
+            if (! res.startsWith("<?xml version=\"1.0\" encoding=\"UTF-8\"") ||
+                    ! res.contains("<CopyObjectResult") ||
+                    ! res.contains("<LastModified>") ||
+                    ! res.contains("<ETag>"))
                 throw new IllegalStateException(res);
         } catch (IOException e) {
             throw new RuntimeException(e);
