@@ -227,13 +227,16 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
 
     public void partitionByUser(JdbcIpnsAndSocial mutable,
                                 PublicKeyHash pkiKey) {
-        if (userPartitioningComplete())
+        if (userPartitioningComplete()) {
+            LOG.info("S3 blockstore already partitioned");
             return;
+        }
         new Thread(() -> {
             List<Triple<Multihash, String, PublicKeyHash>> allTargets = usage.getAllTargets();
             // randomise list so multiple servers can help without clashing too much
             Collections.shuffle(allTargets);
             for (Triple<Multihash, String, PublicKeyHash> target : allTargets) {
+                LOG.info("Partitioning user " + target.middle);
                 moveSubtreeToOwner(target.right, (Cid) target.left, List.of(id));
             }
             Map<PublicKeyHash, byte[]> allPointers = mutable.getAllEntries();
