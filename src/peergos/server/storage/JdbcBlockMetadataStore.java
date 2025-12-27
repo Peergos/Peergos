@@ -122,7 +122,8 @@ public class JdbcBlockMetadataStore implements BlockMetadataStore {
             stmt.setBytes(1, block.toBytes());
             ResultSet rs = stmt.executeQuery();
             if (rs.next()) {
-                return Optional.of(PublicKeyHash.decode(rs.getBytes("owner")));
+                return Optional.ofNullable(rs.getBytes("owner"))
+                        .map(PublicKeyHash::decode);
             }
             return Optional.empty();
         } catch (SQLException sqe) {
