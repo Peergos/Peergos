@@ -213,6 +213,8 @@ public class Builder {
                                                                      BlockRequestAuthoriser authoriser,
                                                                      ServerIdentityStore ids,
                                                                      UsageStore usage,
+                                                                     JdbcIpnsAndSocial rawPointers,
+                                                                     PartitionStatus partitionStatus,
                                                                      Hasher hasher) throws SQLException {
         boolean useIPFS = a.getBoolean("useIPFS");
         boolean enableGC = a.getBoolean("enable-gc", false);
@@ -249,23 +251,22 @@ public class Builder {
                         a.getLong(Main.GLOBAL_S3_READ_REQUESTS_LIMIT.name),
                         a.getLong(Main.USER_DOWNLOAD_BANDWIDTH_LIMIT.name),
                         a.getLong(Main.USER_S3_READ_REQUESTS_LIMIT.name),
+                        partitionStatus,
                         hasher, p2pBlockRetriever, p2pGets);
-                s3.updateMetadataStoreIfEmpty();
                 return new LocalIpnsStorage(s3, ids);
             }
             Multihash peerId = Multihash.decode(ourIds.get(ourIds.size() - 1).getBytes());
             Cid ourId = new Cid(1, Cid.Codec.LibP2pKey, peerId.type, peerId.getHash());
-            FileContentAddressedStorage files = new FileContentAddressedStorage(blockstorePath(a), ourId, transactions, authoriser, hasher);
+            FileContentAddressedStorage files = new FileContentAddressedStorage(blockstorePath(a), ourId,
+                    transactions, authoriser, partitionStatus, hasher);
             MultiIdStorage blocks = new MultiIdStorage(new LocalFirstStorage(files, http, p2pGets, ourIds, hasher), ourIds);
             if (enableGC) {
                 TransactionalIpfs txns = new TransactionalIpfs(blocks, transactions, authoriser, ourId, linkHost, hasher);
                 MetadataCachingStorage metabs = new MetadataCachingStorage(txns, meta, usage, hasher);
-                metabs.updateMetadataStoreIfEmpty();
                 return new LocalIpnsStorage(metabs, ids);
             } else {
                 AuthedStorage target = new AuthedStorage(blocks, authoriser, ourId, linkHost, hasher);
                 MetadataCachingStorage metabs = new MetadataCachingStorage(target, meta, usage, hasher);
-                metabs.updateMetadataStoreIfEmpty();
                 return new LocalIpnsStorage(metabs, ids);
             }
         } else {
@@ -285,16 +286,16 @@ public class Builder {
                         a.getLong(Main.GLOBAL_S3_READ_REQUESTS_LIMIT.name),
                         a.getLong(Main.USER_DOWNLOAD_BANDWIDTH_LIMIT.name),
                         a.getLong(Main.USER_S3_READ_REQUESTS_LIMIT.name),
+                        partitionStatus,
                         hasher, p2pBlockRetriever,
                         new ContentAddressedStorageProxy.HTTP(p2pHttpProxy));
-                s3.updateMetadataStoreIfEmpty();
                 return new LocalIpnsStorage(s3, ids);
             } else {
                 // only used for testing
                 Cid ourId = new Cid(1, Cid.Codec.LibP2pKey, Multihash.Type.sha2_256, RAMStorage.hash("FileStorage".getBytes()));
-                FileContentAddressedStorage fileBacked = new FileContentAddressedStorage(blockstorePath(a), ourId, transactions, authoriser, hasher);
+                FileContentAddressedStorage fileBacked = new FileContentAddressedStorage(blockstorePath(a), ourId,
+                        transactions, authoriser, partitionStatus, hasher);
                 MetadataCachingStorage metabs = new MetadataCachingStorage(fileBacked, meta, usage, hasher);
-                metabs.updateMetadataStoreIfEmpty();
                 return new LocalIpnsStorage(metabs, ids);
             }
         }

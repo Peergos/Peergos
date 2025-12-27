@@ -20,7 +20,12 @@ public class PostgresCommands implements SqlSupplier {
 
     @Override
     public String addMetadataCommand() {
-        return "INSERT INTO blockmetadata (cid, version, size, links, batids) VALUES(?, ?, ?, ?, ?) ON CONFLICT DO NOTHING;";
+        return "INSERT INTO blockmetadata (owner, cid, version, size, links, batids) VALUES(?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING;";
+    }
+
+    @Override
+    public String updateMetadataCommand() {
+        return "UPDATE blockmetadata SET owner=? WHERE cid=?;";
     }
 
     @Override
