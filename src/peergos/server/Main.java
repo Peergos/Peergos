@@ -163,6 +163,7 @@ public class Main extends Builder {
                     GLOBAL_S3_READ_REQUESTS_LIMIT,
                     USER_DOWNLOAD_BANDWIDTH_LIMIT,
                     USER_S3_READ_REQUESTS_LIMIT,
+                    VERSIONED_S3,
                     ServerIdentity.ARG_SERVERIDS_SQL_FILE,
                     new Command.Arg("enable-gc", "Enable the blockstore garbage collector", false, "true"),
                     new Command.Arg("gc.period.millis", "Garbage collect frequency in millis (default 12h)", false, "43200000"),
