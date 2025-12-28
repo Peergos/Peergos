@@ -6,7 +6,6 @@ import peergos.shared.cbor.*;
 import peergos.shared.crypto.hash.PublicKeyHash;
 import peergos.shared.storage.auth.*;
 import peergos.shared.io.ipfs.Cid;
-import peergos.shared.util.Pair;
 
 import java.sql.*;
 import java.util.*;
@@ -139,6 +138,21 @@ public class JdbcBlockMetadataStore implements BlockMetadataStore {
 
             update.setBytes(1, owner.toBytes());
             update.setBytes(2, block.toBytes());
+            update.executeUpdate();
+        } catch (SQLException sqe) {
+            LOG.log(Level.WARNING, sqe.getMessage(), sqe);
+            throw new RuntimeException(sqe);
+        }
+    }
+
+    @Override
+    public void setOwnerAndVersion(PublicKeyHash owner, Cid block, String version) {
+        try (Connection conn = getConnection();
+             PreparedStatement update = conn.prepareStatement(commands.setMetadataVersionAndOwnerCommand())) {
+
+            update.setString(1, version);
+            update.setBytes(2, owner.toBytes());
+            update.setBytes(3, block.toBytes());
             update.executeUpdate();
         } catch (SQLException sqe) {
             LOG.log(Level.WARNING, sqe.getMessage(), sqe);

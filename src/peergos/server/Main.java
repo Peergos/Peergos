@@ -97,6 +97,7 @@ public class Main extends Builder {
     public static final Command.Arg USER_DOWNLOAD_BANDWIDTH_LIMIT = new Command.Arg("user-download-bandwidth-limit", "The maximum amount of data allowed to be downloaded per user in bytes per second.", false, "100000000");
     public static final Command.Arg GLOBAL_S3_READ_REQUESTS_LIMIT = new Command.Arg("global-s3-read-requests-limit", "The maximum number of S3 read requests allowed from this server per second.", false, "100000");
     public static final Command.Arg USER_S3_READ_REQUESTS_LIMIT = new Command.Arg("user-s3-read-requests-limit", "The maximum number of S3 read requests allowed from this server per user per second.", false, "1000");
+    public static final Command.Arg VERSIONED_S3 = new Command.Arg("s3.versioned-bucket", "If the S3 bucket is versioned", false, "false");
 
     public static Command<IpfsWrapper> IPFS = new Command<>("ipfs",
             "Configure and start IPFS daemon",
@@ -846,7 +847,7 @@ public class Main extends Builder {
             GarbageCollector gc = null;
             if (enableGC) {
                 boolean useS3 = S3Config.useS3(a);
-                boolean listRawBlocks = useS3 && a.getBoolean("s3.versioned-bucket");
+                boolean listRawBlocks = useS3 && a.getBoolean(VERSIONED_S3.name);
                 gc = new GarbageCollector(localStorageForLinks, rawPointers, usageStore, a.fromPeergosDir("", ""), (cd, rd, c) -> Futures.of(true), listRawBlocks);
                 Function<Stream<Map.Entry<PublicKeyHash, byte[]>>, CompletableFuture<Boolean>> snapshotSaver = s -> Futures.of(true);
                 int gcInterval = 12 * 60 * 60 * 1000;

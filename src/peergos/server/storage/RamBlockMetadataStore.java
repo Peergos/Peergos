@@ -36,6 +36,11 @@ public class RamBlockMetadataStore implements BlockMetadataStore {
     }
 
     @Override
+    public void setOwnerAndVersion(PublicKeyHash owner, Cid block, String version) {
+
+    }
+
+    @Override
     public void put(PublicKeyHash owner, Cid block, String version, BlockMetadata meta) {
         store.put(block, meta);
     }

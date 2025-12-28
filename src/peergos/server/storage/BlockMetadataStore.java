@@ -4,7 +4,6 @@ import peergos.shared.cbor.*;
 import peergos.shared.crypto.hash.PublicKeyHash;
 import peergos.shared.storage.auth.*;
 import peergos.shared.io.ipfs.Cid;
-import peergos.shared.util.Pair;
 
 import java.util.*;
 import java.util.function.*;
@@ -22,6 +21,8 @@ public interface BlockMetadataStore {
     Optional<PublicKeyHash> getOwner(Cid block);
 
     void setOwner(PublicKeyHash owner, Cid block);
+
+    void setOwnerAndVersion(PublicKeyHash owner, Cid block, String version);
 
     void put(PublicKeyHash owner, Cid block, String version, BlockMetadata meta);
 

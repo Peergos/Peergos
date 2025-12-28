@@ -45,6 +45,8 @@ import java.util.function.*;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
+import static peergos.server.Main.VERSIONED_S3;
+
 public class Builder {
     private static final Logger LOG = Logger.getLogger(Builder.class.getName());
     public static void disableLog() {
@@ -220,6 +222,7 @@ public class Builder {
         boolean useIPFS = a.getBoolean("useIPFS");
         boolean enableGC = a.getBoolean("enable-gc", false);
         boolean useS3 = S3Config.useS3(a);
+        boolean versionedS3 = a.getBoolean(VERSIONED_S3.name);
         JavaPoster ipfsApi = buildIpfsApi(a);
         JavaPoster p2pHttpProxy = buildP2pHttpProxy(a);
         DeletableContentAddressedStorage.HTTP http = new DeletableContentAddressedStorage.HTTP(ipfsApi, false, hasher);
@@ -252,6 +255,8 @@ public class Builder {
                         a.getLong(Main.GLOBAL_S3_READ_REQUESTS_LIMIT.name),
                         a.getLong(Main.USER_DOWNLOAD_BANDWIDTH_LIMIT.name),
                         a.getLong(Main.USER_S3_READ_REQUESTS_LIMIT.name),
+                        versionedS3,
+                        a.getPeergosDir(),
                         partitionStatus,
                         hasher, p2pBlockRetriever, p2pGets);
                 return new LocalIpnsStorage(s3, ids);
@@ -287,6 +292,8 @@ public class Builder {
                         a.getLong(Main.GLOBAL_S3_READ_REQUESTS_LIMIT.name),
                         a.getLong(Main.USER_DOWNLOAD_BANDWIDTH_LIMIT.name),
                         a.getLong(Main.USER_S3_READ_REQUESTS_LIMIT.name),
+                        versionedS3,
+                        a.getPeergosDir(),
                         partitionStatus,
                         hasher, p2pBlockRetriever,
                         new ContentAddressedStorageProxy.HTTP(p2pHttpProxy));
