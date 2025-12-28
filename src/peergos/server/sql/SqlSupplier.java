@@ -26,6 +26,8 @@ public interface SqlSupplier {
 
     String updateMetadataCommand();
 
+    String setMetadataVersionAndOwnerCommand();
+
     String vacuumCommand();
 
     default String createMutablePointersTableCommand() {
