@@ -33,6 +33,7 @@ public class SqliteBlockList {
     private static final String INSERT_SUFFIX = "INTO blocks (username, hash, version) VALUES(?, ?, ?)";
     private static final String APPLY_TO_ALL_VERSIONS = "SELECT hash, version FROM blocks";
     private static final String HAS_BLOCK = "SELECT hash, version FROM blocks WHERE hash=? AND username=?;";
+    private static final String HAS_LEGACY_BLOCK = "SELECT hash, version FROM blocks WHERE hash=? AND username IS NULL;";
     private static final String GET_VERSIONS = "SELECT version FROM blocks WHERE hash=? AND username=?;";
     private static final String GET_LEGACY_VERSIONS = "SELECT version FROM blocks WHERE hash=? AND username IS NULL;";
     private static final String COUNT = "SELECT COUNT(*) FROM blocks";
@@ -99,6 +100,17 @@ public class SqliteBlockList {
     }
 
     public synchronized boolean hasBlock(String username, Cid block) {
+        if (username == null) {
+            try (Connection conn = getConnection();
+                 PreparedStatement stmt = conn.prepareStatement(HAS_LEGACY_BLOCK)) {
+                stmt.setBytes(1, block.toBytes());
+                ResultSet rs = stmt.executeQuery();
+                return rs.next();
+            } catch (SQLException sqe) {
+                LOG.log(Level.WARNING, sqe.getMessage(), sqe);
+                throw new RuntimeException(sqe);
+            }
+        }
         try (Connection conn = getConnection();
              PreparedStatement stmt = conn.prepareStatement(HAS_BLOCK)) {
             stmt.setBytes(1, block.toBytes());
