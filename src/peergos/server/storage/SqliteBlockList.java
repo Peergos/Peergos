@@ -34,6 +34,7 @@ public class SqliteBlockList {
     private static final String APPLY_TO_ALL_VERSIONS = "SELECT hash, version FROM blocks";
     private static final String HAS_BLOCK = "SELECT hash, version FROM blocks WHERE hash=? AND username=?;";
     private static final String GET_VERSIONS = "SELECT version FROM blocks WHERE hash=? AND username=?;";
+    private static final String GET_LEGACY_VERSIONS = "SELECT version FROM blocks WHERE hash=? AND username IS NULL;";
     private static final String COUNT = "SELECT COUNT(*) FROM blocks";
 
     private final Supplier<Connection> conn;
@@ -111,6 +112,21 @@ public class SqliteBlockList {
     }
 
     public synchronized List<String> getVersions(String username, Cid block) {
+        if (username == null) {
+            try (Connection conn = getConnection();
+                 PreparedStatement stmt = conn.prepareStatement(GET_LEGACY_VERSIONS)) {
+                stmt.setBytes(1, block.toBytes());
+                ResultSet rs = stmt.executeQuery();
+                List<String> res = new ArrayList<>();
+                while (rs.next()) {
+                    res.add(rs.getString(1));
+                }
+                return res;
+            } catch (SQLException sqe) {
+                LOG.log(Level.WARNING, sqe.getMessage(), sqe);
+                throw new RuntimeException(sqe);
+            }
+        }
         try (Connection conn = getConnection();
              PreparedStatement stmt = conn.prepareStatement(GET_VERSIONS)) {
             stmt.setBytes(1, block.toBytes());
