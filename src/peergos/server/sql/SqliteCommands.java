@@ -29,7 +29,7 @@ public class SqliteCommands implements SqlSupplier {
 
     @Override
     public String setMetadataVersionAndOwnerCommand() {
-        return "UPDATE blockmetadata SET version=? AND owner=? WHERE cid=?;";
+        return "UPDATE blockmetadata SET version=?, owner=? WHERE cid=?;";
     }
 
     @Override
