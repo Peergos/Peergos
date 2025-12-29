@@ -85,9 +85,9 @@ public class SqliteBlockList {
                     .collect(Collectors.toList());
 
             for (UserBlockVersion version : distinct) {
-                insert.setBytes(1, version.cid.toBytes());
-                insert.setString(2, version.version);
-                insert.setString(3, version.username);
+                insert.setString(1, version.username);
+                insert.setBytes(2, version.cid.toBytes());
+                insert.setString(3, version.version);
                 insert.addBatch();
             }
             int[] inserted = insert.executeBatch();
