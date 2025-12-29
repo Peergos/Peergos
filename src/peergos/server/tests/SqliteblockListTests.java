@@ -24,6 +24,8 @@ public class SqliteblockListTests {
         blocks.addBlocks(List.of(new UserBlockVersion(null, h, version, true)));
         List<String> versions = blocks.getVersions(null, h);
         Assert.assertEquals(List.of(version), versions);
+
+        Assert.assertTrue(blocks.hasBlock(null, h));
     }
 
     private Cid randomCbor(Random r) {
