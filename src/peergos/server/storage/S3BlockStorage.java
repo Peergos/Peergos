@@ -345,6 +345,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                 // tolerate missing blocks
                 if (msg == null || !msg.contains("NoSuchKey"))
                     throw new RuntimeException(e);
+                LOG.info("S3 partition missing user " + username + " block " + block);
             }
         }
     }
