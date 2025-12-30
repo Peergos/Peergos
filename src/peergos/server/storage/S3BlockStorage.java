@@ -256,9 +256,10 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                             .collect(Collectors.toList())));
                     LOG.info("Listing partitioned blocks");
                     getPartitionedVersions(partitionedBlocklist::addBlocks);
-                    List<Triple<Multihash, String, PublicKeyHash>> allTargets = usage.getAllTargets();
-                    // randomise list so multiple servers can help without clashing too much
-                    Collections.shuffle(allTargets);
+                    List<Triple<Multihash, String, PublicKeyHash>> allTargets = usage.getAllTargets()
+                            .stream()
+                            .sorted(Comparator.comparing(a -> a.middle))
+                            .collect(Collectors.toList());
                     for (Triple<Multihash, String, PublicKeyHash> target : allTargets) {
                         LOG.info("Partitioning user " + target.middle);
                         moveSubtreeToOwner(target.right, target.middle, (Cid) target.left, List.of(id), legacyBlocklist, partitionedBlocklist);
@@ -282,7 +283,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                     return;
                 } catch (Exception e) {
                     LOG.log(Level.SEVERE, e, e::getMessage);
-                    Threads.sleep(10 * 60_000);
+                    Threads.sleep(120 * 60_000);
                 }
             }
         }).start();
@@ -316,27 +317,35 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
             boolean alreadyMoved = partitionedBlocklist.hasBlock(username, block);
             boolean legacyPresent = legacyBlockList.hasBlock(null, block);
             String newVersion;
-            if (alreadyMoved) {
-                List<String> versions = partitionedBlocklist.getVersions(username, block);
-                newVersion = versions.get(versions.size() - 1);
-            } else {
-                newVersion = copyObject(legacyHashToKey(block), hashToKey(owner, block), hasher);
-            }
-            if (legacyPresent) {
-                if (isVersioned) {
-                    List<String> versions = legacyBlockList.getVersions(null, block);
-                    for (String version : versions) {
-                        delete(null, new BlockVersion(block, version, true));
-                    }
+            try {
+                if (alreadyMoved) {
+                    List<String> versions = partitionedBlocklist.getVersions(username, block);
+                    newVersion = versions.get(versions.size() - 1);
                 } else {
-                    delete(null, block);
+                    newVersion = copyObject(legacyHashToKey(block), hashToKey(owner, block), hasher);
                 }
-            }
+                if (legacyPresent) {
+                    if (isVersioned) {
+                        List<String> versions = legacyBlockList.getVersions(null, block);
+                        for (String version : versions) {
+                            LOG.info("S3 delete version of s3://" + bucket + "/" + legacyHashToKey(block));
+                            delete(null, new BlockVersion(block, version, true));
+                        }
+                    } else {
+                        delete(null, block);
+                    }
+                }
 
-            if (isVersioned)
-                blockMetadata.setOwnerAndVersion(owner, block, newVersion);
-            else
-                blockMetadata.setOwner(owner, block);
+                if (isVersioned)
+                    blockMetadata.setOwnerAndVersion(owner, block, newVersion);
+                else
+                    blockMetadata.setOwner(owner, block);
+            } catch (Exception e) {
+                String msg = e.getMessage();
+                // tolerate missing blocks
+                if (msg == null || !msg.contains("NoSuchKey"))
+                    throw new RuntimeException(e);
+            }
         }
     }
 
@@ -346,7 +355,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         PresignedUrl copyUrl = S3Request.preSignCopy(bucket, sourceKey, destKey, S3AdminRequests.asAwsDate(ZonedDateTime.now()), host,
                 storageClass, Collections.emptyMap(), region, accessKeyId, secretKey, true, h).join();
         try {
-            System.out.println("Copying s3://" + bucket + "/" + sourceKey + " to s3://" + bucket + "/" + destKey);
+            LOG.info("Copying s3://" + bucket + "/" + sourceKey + " to s3://" + bucket + "/" + destKey);
             Pair<byte[], String> reply = HttpUtil.putWithVersion(copyUrl, new byte[0]);
             String res = new String(reply.left);
             if (! res.startsWith("<?xml version=\"1.0\" encoding=\"UTF-8\"") ||
