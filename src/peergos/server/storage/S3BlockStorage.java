@@ -1,11 +1,15 @@
 package peergos.server.storage;
 
+import com.webauthn4j.data.client.Origin;
 import io.prometheus.client.Histogram;
 import io.prometheus.client.Counter;
 import peergos.server.*;
 import peergos.server.corenode.*;
+import peergos.server.login.AccountWithStorage;
+import peergos.server.login.JdbcAccount;
 import peergos.server.space.*;
 import peergos.server.sql.*;
+import peergos.server.storage.admin.QuotaAdmin;
 import peergos.server.storage.auth.*;
 import peergos.server.util.*;
 import peergos.shared.*;
@@ -16,9 +20,13 @@ import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.Cid;
 import peergos.shared.io.ipfs.Multihash;
 import peergos.shared.io.ipfs.bases.Base64;
+import peergos.shared.mutable.HttpMutablePointers;
+import peergos.shared.mutable.MutablePointers;
+import peergos.shared.mutable.MutablePointersProxy;
 import peergos.shared.mutable.PointerUpdate;
 import peergos.shared.storage.*;
 import peergos.shared.storage.auth.*;
+import peergos.shared.user.Account;
 import peergos.shared.user.fs.*;
 import peergos.shared.util.*;
 
@@ -1523,6 +1531,32 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                 GarbageCollector.checkIntegrity(s3, meta, rawPointers, usageStore, a.getBoolean("fix-metadata", false), hasher);
             return;
         }
+        MutablePointers localPointers = UserRepository.build(s3, rawPointers, hasher);
+        Multihash pkiServerNodeId = Builder.getPkiServerId(a);
+        JavaPoster p2pHttpProxy = Builder.buildP2pHttpProxy(a);
+        MutablePointersProxy proxingMutable = new HttpMutablePointers(p2pHttpProxy, pkiServerNodeId);
+        LinkRetrievalCounter linkCounts = new JdbcLinkRetrievalcounter(Main.getDBConnector(a, "link-counts-sql-file", database), sqlCommands);
+        JdbcIpnsAndSocial rawSocial = new JdbcIpnsAndSocial(Builder.getDBConnector(a, "social-sql-file", database), sqlCommands);
+        String listeningHost = a.getArg(Main.LISTEN_HOST.name);
+        int webPort = a.getInt("port");
+        Optional<String> tlsHostname = a.hasArg("tls.keyfile.password") ? Optional.of(listeningHost) : Optional.empty();
+        Optional<String> publicHostname = tlsHostname.isPresent() ? tlsHostname : a.getOptionalArg("public-domain");
+        Origin origin = new Origin(publicHostname.map(host -> (Main.isLanIP(host) ? "http://" : "https://") + host).orElse("http://localhost:" + webPort));
+        String rpId = publicHostname.orElse("localhost");
+        JdbcAccount rawAccount = new JdbcAccount(Builder.getDBConnector(a, "account-sql-file", database), sqlCommands, origin, rpId);
+        Account account = new AccountWithStorage(s3, localPointers, rawAccount);
+        boolean isPki = false;
+        InetSocketAddress userAPIAddress = new InetSocketAddress(listeningHost, webPort);
+        boolean localhostApi = userAPIAddress.getHostName().equals("localhost");
+        QuotaAdmin userQuotas = Main.buildSpaceQuotas(a, s3,
+                Main.getDBConnector(a, "space-requests-sql-file", database),
+                Main.getDBConnector(a, "quotas-sql-file", database), isPki, localhostApi);
+        JdbcBatCave batStore = new JdbcBatCave(Main.getDBConnector(a, "bat-store", database), sqlCommands);
+
+        CoreNode core = Builder.buildCorenode(a, s3, transactions, rawPointers, localPointers, proxingMutable,
+                rawSocial, usageStore, userQuotas, rawAccount, batStore, account, linkCounts, crypto);
+
+        s3.setPki(core);
         System.out.println("Performing GC on S3 block store...");
         s3.collectGarbage(rawPointers, usageStore, meta, versioned);
     }
