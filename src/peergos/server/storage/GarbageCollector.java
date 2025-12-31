@@ -303,7 +303,9 @@ public class GarbageCollector {
 
             AtomicLong delCount = new AtomicLong(0);
             reachability.getUnreachable(del -> delCount.addAndGet(del.size()));
-            deleteConfirm.apply(delCount.get(), nBlocks).join();
+            boolean delete = deleteConfirm.apply(delCount.get(), nBlocks).join();
+            if (! delete)
+                continue;
 
             int deleteParallelism = 4;
             long t7 = System.nanoTime();
