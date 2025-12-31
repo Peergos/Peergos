@@ -1001,7 +1001,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         String confirm = System.console().readLine();
         if (confirm.equals("Y"))
             return Futures.of(true);
-        throw new IllegalStateException("Aborting delete!");
+        return Futures.of(false);
     }
 
     public CompletableFuture<Boolean> savePointerSnapshot(Stream<Map.Entry<PublicKeyHash, byte[]>> pointers) {

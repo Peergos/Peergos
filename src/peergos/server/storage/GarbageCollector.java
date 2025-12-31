@@ -307,7 +307,9 @@ public class GarbageCollector {
                 cborDelCount.addAndGet(del.stream().filter(v -> ! v.cid.isRaw()).count());
                 rawDelCount.addAndGet(del.stream().filter(v -> v.cid.isRaw()).count());
             });
-            deleteConfirm.apply(cborDelCount.get(), rawDelCount.get(), nBlocks).join();
+            boolean delete = deleteConfirm.apply(cborDelCount.get(), rawDelCount.get(), nBlocks).join();
+            if (! delete)
+                continue;
 
             int deleteParallelism = 4;
             long t7 = System.nanoTime();
