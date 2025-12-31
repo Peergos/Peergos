@@ -260,19 +260,30 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                             .stream()
                             .sorted(Comparator.comparing(a -> a.middle))
                             .collect(Collectors.toList());
+                    Set<Multihash> doneRoots = new HashSet<>();
                     for (Triple<Multihash, String, PublicKeyHash> target : allTargets) {
                         LOG.info("Partitioning user " + target.middle);
                         moveSubtreeToOwner(target.right, target.middle, (Cid) target.left, List.of(id), legacyBlocklist, partitionedBlocklist);
+                        doneRoots.add(target.left);
                     }
                     Map<PublicKeyHash, byte[]> allPointers = mutable.getAllEntries();
                     PublicKeyHash pkiOwner = pki.getPublicKeyHash("peergos").join().get();
 
+                    LOG.info("Partitioning blocks from remaining pointers..");
                     allPointers.forEach((writerHash, rawPointer) -> {
-                        PublicKeyHash owner = writerHash.equals(pkiKey) ? pkiOwner : usage.getOwnerKey(writerHash);
                         PublicSigningKey writer = getSigningKey(null, writerHash).join().get();
                         byte[] bothHashes = writer.unsignMessage(rawPointer).join();
                         PointerUpdate cas = PointerUpdate.fromCbor(CborObject.fromByteArray(bothHashes));
                         MaybeMultihash updated = cas.updated;
+                        if (updated.isPresent() && doneRoots.contains(updated.get()))
+                            return;
+                        PublicKeyHash owner;
+                        try {
+                            owner = writerHash.equals(pkiKey) ? pkiOwner : usage.getOwnerKey(writerHash);
+                        } catch (Exception e) {
+                            LOG.warning("Couldn't partition key with unknown owner: " + writerHash);
+                            return;
+                        }
                         String username = pki.getUsername(owner).join();
 
                         if (updated.isPresent())
@@ -321,8 +332,10 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                 if (alreadyMoved) {
                     List<String> versions = partitionedBlocklist.getVersions(username, block);
                     newVersion = versions.get(versions.size() - 1);
-                } else {
+                } else if (legacyPresent) {
                     newVersion = copyObject(legacyHashToKey(block), hashToKey(owner, block), hasher);
+                } else {
+                    throw new IllegalStateException("User " + username + " missing block: " + legacyHashToKey(block));
                 }
                 if (legacyPresent) {
                     if (isVersioned) {
@@ -343,9 +356,9 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
             } catch (Exception e) {
                 String msg = e.getMessage();
                 // tolerate missing blocks
-                if (msg == null || !msg.contains("NoSuchKey"))
+                if (msg == null || (!msg.contains("NoSuchKey") && !msg.contains("missing block")))
                     throw new RuntimeException(e);
-                LOG.info("S3 partition missing user " + username + " block " + block);
+                LOG.info("S3 partition missing block (user " + username + ") " + block);
             }
         }
     }
