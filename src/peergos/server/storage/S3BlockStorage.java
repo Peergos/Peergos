@@ -993,6 +993,10 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
     }
 
     private CompletableFuture<Boolean> confirmDeleteBlocks(long count, long total) {
+        if (count == 0) {
+            System.out.println("0 blocks to delete");
+            return Futures.of(true);
+        }
         System.out.println("Delete " + count + " blocks out of " + total + ", " + (count * 100 / total) + "% (Y/N)");
         String confirm = System.console().readLine();
         if (confirm.equals("Y"))
@@ -1537,7 +1541,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         MutablePointersProxy proxingMutable = new HttpMutablePointers(p2pHttpProxy, pkiServerNodeId);
         LinkRetrievalCounter linkCounts = new JdbcLinkRetrievalcounter(Main.getDBConnector(a, "link-counts-sql-file", database), sqlCommands);
         JdbcIpnsAndSocial rawSocial = new JdbcIpnsAndSocial(Builder.getDBConnector(a, "social-sql-file", database), sqlCommands);
-        String listeningHost = a.getArg(Main.LISTEN_HOST.name);
+        String listeningHost = a.getArg(Main.LISTEN_HOST.name, "localhost");
         int webPort = a.getInt("port");
         Optional<String> tlsHostname = a.hasArg("tls.keyfile.password") ? Optional.of(listeningHost) : Optional.empty();
         Optional<String> publicHostname = tlsHostname.isPresent() ? tlsHostname : a.getOptionalArg("public-domain");
