@@ -993,7 +993,11 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
     }
 
     private CompletableFuture<Boolean> confirmDeleteBlocks(long cborCount, long rawCount, long total) {
-        System.out.println("Delete " + cborCount + " cbor blocks and " + rawCount + " raw blocks out of " + total + ", " + ((cborCount + rawCount) * 100 / total) + "% (Y/N)");
+        if (cborCount == 0 && rawCount == 0) {
+            System.out.println("0 blocks to delete");
+            return Futures.of(true);
+        }
+            System.out.println("Delete " + cborCount + " cbor blocks and " + rawCount + " raw blocks out of " + total + ", " + ((cborCount + rawCount) * 100 / total) + "% (Y/N)");
         String confirm = System.console().readLine();
         if (confirm.equals("Y"))
             return Futures.of(true);
@@ -1537,7 +1541,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         MutablePointersProxy proxingMutable = new HttpMutablePointers(p2pHttpProxy, pkiServerNodeId);
         LinkRetrievalCounter linkCounts = new JdbcLinkRetrievalcounter(Main.getDBConnector(a, "link-counts-sql-file", database), sqlCommands);
         JdbcIpnsAndSocial rawSocial = new JdbcIpnsAndSocial(Builder.getDBConnector(a, "social-sql-file", database), sqlCommands);
-        String listeningHost = a.getArg(Main.LISTEN_HOST.name);
+        String listeningHost = a.getArg(Main.LISTEN_HOST.name, "localhost");
         int webPort = a.getInt("port");
         Optional<String> tlsHostname = a.hasArg("tls.keyfile.password") ? Optional.of(listeningHost) : Optional.empty();
         Optional<String> publicHostname = tlsHostname.isPresent() ? tlsHostname : a.getOptionalArg("public-domain");
