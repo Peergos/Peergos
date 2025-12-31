@@ -479,13 +479,20 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         return new Pair<>(null, DirectS3BlockStore.keyToHash(path));
     }
 
+    private final LRUCache<PublicKeyHash, String> ownerToUser = new LRUCache<>(1000);
+
     private String ownerToPrefix(PublicKeyHash owner) {
         // legacy data all starts with AFK or AFY, usernames start with a lowercase letter
         // We want to be able to efficiently list all legacy blocks
         // Achieve this by listing from B which is after A and before lowercase
         if (owner == null)
             return "";
-        return pki.getUsername(owner).join() + "/";
+        String cached = ownerToUser.get(owner);
+        if (cached != null)
+            return cached + "/";
+        String username = usage.getUsage(owner).owner;
+        ownerToUser.put(owner, username);
+        return username + "/";
     }
 
     @Override
@@ -566,7 +573,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                 .findFirst();
         if (mirrorBat.isPresent()) {
             String username = bats.getOwner(mirrorBat.get());
-            PublicKeyHash verifiedOwner = pki.getPublicKeyHash(username).join().get();
+            PublicKeyHash verifiedOwner = usage.getOwnerKey(username);
             // check rate limits
             enforceGlobalRequestRateLimit();
             enforceGlobalBandwidthLimit(byteCount);
