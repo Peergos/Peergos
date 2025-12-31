@@ -223,14 +223,18 @@ public class GarbageCollector {
                                TriFunction<Long, Long, Long, CompletableFuture<Boolean>> deleteConfirm,
                                boolean listFromBlockstore) {
         System.out.println("Starting blockstore garbage collection on node " + storage.id().join() + "...");
-        // TODO: do GC in O(1) RAM with a bloom filter?: mark into bloom. Then list and check bloom to delete.
-        List<Pair<String, PublicKeyHash>> allUsers = usage.getAllOwners();
+        List<Pair<String, PublicKeyHash>> allUsers = usage.getAllOwners()
+                .stream()
+                .sorted(Comparator.comparing(a -> a.left))
+                .distinct()
+                .collect(Collectors.toList());
         for (Pair<String, PublicKeyHash> p : allUsers) {
             PublicKeyHash owner = p.right;
             String username = p.left;
             System.out.println("Starting GC for " + username);
             // TODO check if user snapshot hasn't changed and short circuit
 
+            // TODO: do GC in O(1) RAM with a bloom filter?: mark into bloom. Then list and check bloom to delete.
             storage.clearOldTransactions(owner, System.currentTimeMillis() - 24*3600*1000L);
             long t0 = System.nanoTime();
             Path reachabilityDbFile = reachabilityDbDir.resolve("reachability")
