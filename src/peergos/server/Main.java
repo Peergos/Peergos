@@ -742,15 +742,15 @@ public class Main extends Builder {
     private static PublicKeyHash getPkiKey(PublicKeyHash pkiOwnerIdentity,
                                            Multihash pkiPeerId,
                                            MutablePointers mutable,
-                                           DeletableContentAddressedStorage ipfs,
+                                           Function<Cid, Cborable> blockGet,
                                            Hasher hasher) {
         Optional<byte[]> pointer = mutable.getPointer(pkiOwnerIdentity, pkiOwnerIdentity).join();
         byte[] pkiIdPointer = pointer.get();
-        PointerUpdate fresh = MutablePointers.parsePointerTarget(pkiIdPointer, pkiOwnerIdentity, pkiOwnerIdentity, ipfs).join();
+        PointerUpdate fresh = MutablePointers.parsePointerTarget(pkiIdPointer, pkiOwnerIdentity, pkiOwnerIdentity, new RAMStorage(hasher)).join();
         MaybeMultihash newPeergosRoot = fresh.updated;
 
-        CommittedWriterData currentPeergosWd = IpfsCoreNode.getWriterData(List.of(pkiPeerId), pkiOwnerIdentity,
-                (Cid)newPeergosRoot.get(), fresh.sequence, ipfs.id().join(), hasher, ipfs).join();
+        CommittedWriterData currentPeergosWd = new CommittedWriterData(MaybeMultihash.of(newPeergosRoot.get()),
+                WriterData.fromCbor(blockGet.apply((Cid)newPeergosRoot.get())), fresh.sequence);
         return currentPeergosWd.props.get().namedOwnedKeys.get("pki").ownedKey;
     }
 
@@ -810,7 +810,6 @@ public class Main extends Builder {
             DeletableContentAddressedStorage localStorageForLinks = buildLocalStorage(a, meta, batStore, transactions, blockAuth,
                     ids, usageStore, rawPointers, partitionStatus, crypto.hasher);
 
-
             MutablePointers localPointers = UserRepository.build(localStorageForLinks, rawPointers, hasher);
             MutablePointersProxy proxingMutable = new HttpMutablePointers(p2pHttpProxy, pkiServerNodeId);
             LinkRetrievalCounter linkCounts = new JdbcLinkRetrievalcounter(getDBConnector(a, "link-counts-sql-file", dbConnectionPool), sqlCommands);
@@ -860,10 +859,16 @@ public class Main extends Builder {
                 core.initialize(mirrorUsers);
             else
                 new Thread(() -> core.initialize(mirrorUsers)).start();
-            if (a.getBoolean("partition-blockstore", true))
-                localStorage.partitionByUser(usageStore, rawPointers,
-                        getPkiKey(PublicKeyHash.fromString(a.getArg("peergos.identity.hash")), pkiServerNodeId,
-                                isPki ? localPointers : proxingMutable, localStorage, hasher));
+            if (a.getBoolean("partition-blockstore", true)) {
+                ContentAddressedStorageProxy p2pGets = new ContentAddressedStorageProxy.HTTP(p2pHttpProxy);
+                PublicKeyHash pkiOwnerIdentity = PublicKeyHash.fromString(a.getArg("peergos.identity.hash"));
+                PublicKeyHash pkiKey = getPkiKey(pkiOwnerIdentity, pkiServerNodeId,
+                        isPki ? localPointers :
+                                proxingMutable,
+                        isPki ? cid -> localStorage.get(pkiOwnerIdentity, cid, Optional.empty()).join().get() :
+                                cid -> p2pGets.get(pkiServerNodeId, pkiOwnerIdentity, cid, Optional.empty()).join().get(), hasher);
+                localStorage.partitionByUser(usageStore, rawPointers, pkiKey);
+            }
 
             CoreNode signupFilter = new SignUpFilter(core, userQuotas, nodeIds.get(nodeIds.size() - 1), httpSpaceUsage, hasher,
                     a.getInt("max-daily-paid-signups", isPaidInstance(a) ? 10 : 0), isPki);
