@@ -1,5 +1,6 @@
 package peergos.server.storage;
 
+import peergos.server.space.UsageStore;
 import peergos.server.util.HttpUtil;
 import peergos.shared.cbor.CborObject;
 import peergos.shared.crypto.hash.Hasher;
@@ -12,6 +13,7 @@ import peergos.shared.storage.auth.S3Request;
 import peergos.shared.user.fs.EncryptedCapability;
 import peergos.shared.user.fs.SecretLink;
 import peergos.shared.util.Futures;
+import peergos.shared.util.LRUCache;
 import peergos.shared.util.Pair;
 import peergos.shared.util.ProgressConsumer;
 
@@ -29,7 +31,6 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 import static peergos.server.storage.S3BlockStorage.isRateLimitedException;
-import static peergos.shared.storage.DirectS3BlockStore.hashToKey;
 
 /** This can be used for direct (read-only) blockstore access when mirroring a server from S3 to glacier
  *
@@ -44,9 +45,14 @@ public class DirectS3Proxy implements ContentAddressedStorageProxy {
     private final boolean useHttps;
     private final Cid remoteId;
     private final Hasher h;
+    private final UsageStore usage;
 
-    public DirectS3Proxy(S3Config config, Cid remoteId, Hasher h) {
+    public DirectS3Proxy(S3Config config,
+                         Cid remoteId,
+                         UsageStore usage,
+                         Hasher h) {
         this.remoteId = remoteId;
+        this.usage = usage;
         this.h = h;
         this.region = config.region;
         this.bucket = config.bucket;
@@ -64,14 +70,41 @@ public class DirectS3Proxy implements ContentAddressedStorageProxy {
             throw new IllegalStateException("Can only proxy to the target instance!");
         if (hash.isIdentity())
             return Futures.of(Optional.of(hash.getHash()));
-        return getWithBackoff(() -> getRawWithoutBackoff(List.of(targetServerId), owner, hash))
+        return getWithBackoff(() -> getRawWithoutBackoff(List.of(targetServerId), owner, hash, false))
                 .thenApply(p -> p.map(v -> v.left));
+    }
+
+    private final LRUCache<PublicKeyHash, String> ownerToUser = new LRUCache<>(1000);
+
+    private String ownerToPrefix(PublicKeyHash owner) {
+        // legacy data all starts with AFK or AFY, usernames start with a lowercase letter
+        // We want to be able to efficiently list all legacy blocks
+        // Achieve this by listing from B which is after A and before lowercase
+        if (owner == null)
+            return "";
+        String cached = ownerToUser.get(owner);
+        if (cached != null)
+            return cached + "/";
+        String username = usage.getUsage(owner).owner;
+        ownerToUser.put(owner, username);
+        return username + "/";
+    }
+
+    private static String legacyHashToKey(Multihash hash) {
+        return DirectS3BlockStore.hashToKey(hash);
+    }
+
+    private String hashToKey(PublicKeyHash owner, Multihash hash) {
+        if (owner == null)
+            return legacyHashToKey(hash);
+        return ownerToPrefix(owner) + DirectS3BlockStore.hashToKey(hash);
     }
 
     private CompletableFuture<Optional<Pair<byte[], String>>> getRawWithoutBackoff(List<Multihash> peerIds,
                                                                                    PublicKeyHash owner,
-                                                                                   Cid hash) {
-        String path = folder + hashToKey(hash);
+                                                                                   Cid hash,
+                                                                                   boolean useLegacyPath) {
+        String path = folder + (useLegacyPath ? legacyHashToKey(hash) : hashToKey(owner, hash));
         PresignedUrl getUrl = S3Request.preSignGet(path, Optional.of(600), Optional.empty(),
                 S3AdminRequests.asAwsDate(ZonedDateTime.now()), host, region, storageClass, accessKeyId, secretKey, useHttps, h).join();
         try {
@@ -91,6 +124,8 @@ public class DirectS3Proxy implements ContentAddressedStorageProxy {
                 LOG.warning("Remote S3 error reading " + path);
                 LOG.log(Level.WARNING, msg, e);
             }
+            if (notFound && ! useLegacyPath)
+                return getRawWithoutBackoff(peerIds, owner, hash, true);
             throw new RuntimeException(e);
         }
     }
