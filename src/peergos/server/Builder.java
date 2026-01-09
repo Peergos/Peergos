@@ -388,7 +388,7 @@ public class Builder {
                     )));
             SigningKeyPair pkiKeys = new SigningKeyPair(pkiPublic, pkiSecretKey);
             PublicKeyHash pkiPublicHash = ContentAddressedStorage.hashKey(pkiKeys.publicSigningKey);
-
+            LOG.info("PKI key: " + pkiPublicHash);
             SigningPrivateKeyAndPublicHash pkiSigner = new SigningPrivateKeyAndPublicHash(pkiPublicHash, pkiSecretKey);
 
             return new IpfsCoreNode(pkiSigner, a.getInt("max-daily-signups"), dht, crypto, mutable,

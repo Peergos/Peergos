@@ -862,11 +862,16 @@ public class Main extends Builder {
             if (a.getBoolean("partition-blockstore", true)) {
                 ContentAddressedStorageProxy p2pGets = new ContentAddressedStorageProxy.HTTP(p2pHttpProxy);
                 PublicKeyHash pkiOwnerIdentity = PublicKeyHash.fromString(a.getArg("peergos.identity.hash"));
-                PublicKeyHash pkiKey = getPkiKey(pkiOwnerIdentity, pkiServerNodeId,
-                        isPki ? localPointers :
-                                proxingMutable,
-                        isPki ? cid -> localStorage.get(pkiOwnerIdentity, cid, Optional.empty()).join().get() :
-                                cid -> p2pGets.get(pkiServerNodeId, pkiOwnerIdentity, cid, Optional.empty()).join().get(), hasher);
+                PublicKeyHash pkiKey;
+                if (isPki) {
+                    PublicSigningKey pkiPublic =
+                            PublicSigningKey.fromByteArray(
+                                    Files.readAllBytes(a.fromPeergosDir("pki.public.key.path")));
+                    pkiKey = ContentAddressedStorage.hashKey(pkiPublic);
+                } else {
+                    pkiKey = getPkiKey(pkiOwnerIdentity, pkiServerNodeId, proxingMutable,
+                            cid -> p2pGets.get(pkiServerNodeId, pkiOwnerIdentity, cid, Optional.empty()).join().get(), hasher);
+                }
                 localStorage.partitionByUser(usageStore, rawPointers, pkiKey);
             }
 
