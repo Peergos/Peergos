@@ -8,6 +8,7 @@ import peergos.shared.storage.auth.*;
 import peergos.shared.util.*;
 
 import java.io.*;
+import java.net.http.HttpClient;
 import java.time.*;
 import java.util.*;
 import java.util.concurrent.*;
@@ -24,6 +25,7 @@ public class S3BucketCopy {
                                           Optional<String> endPrefix,
                                           S3Config config,
                                           AtomicLong counter,
+                                          HttpClient client,
                                           Hasher h) {
         Optional<String> continuationToken = Optional.empty();
         S3AdminRequests.ListObjectsReply result;
@@ -32,7 +34,7 @@ public class S3BucketCopy {
                 result = S3AdminRequests.listObjects(startPrefix, 1_000, continuationToken,
                         ZonedDateTime.now(), config.getHost(), config.region, config.storageClass, config.accessKey, config.secretKey, url -> {
                             try {
-                                return HttpUtil.get(url);
+                                return HttpUtil.get(url, client);
                             } catch (IOException e) {
                                 throw new RuntimeException(e);
                             }
@@ -62,9 +64,11 @@ public class S3BucketCopy {
         }
     }
 
-    private static Set<String> getFilenames(S3Config config, Hasher h) {
+    private static Set<String> getFilenames(S3Config config,
+                                            HttpClient client,
+                                            Hasher h) {
         Set<String> results = new HashSet<>();
-        applyToAllInRange(obj -> results.add(obj.key), "", Optional.empty(), config, new AtomicLong(0), h);
+        applyToAllInRange(obj -> results.add(obj.key), "", Optional.empty(), config, new AtomicLong(0), client, h);
         return results;
     }
 
@@ -87,13 +91,14 @@ public class S3BucketCopy {
     private static void copyObjectInterProvider(String key,
                                                 S3Config source,
                                                 S3Config target,
+                                                HttpClient client,
                                                 Hasher h) {
         PresignedUrl getUrl = S3Request.preSignGet(key, Optional.of(600), Optional.empty(),
                 S3AdminRequests.asAwsDate(ZonedDateTime.now()), source.getHost(),
                 source.region, source.storageClass, source.accessKey, source.secretKey, true, h).join();
         try {
             System.out.println("Copying s3://"+source.getHost() + "/" + source.bucket + "/" + key + " to s3://" + target.getHost() + "/" + target.bucket);
-            byte[] res = HttpUtil.get(getUrl);
+            byte[] res = HttpUtil.get(getUrl, client);
             Map<String, String> extraHeaders = new TreeMap<>();
             extraHeaders.put("Content-Type", "application/octet-stream");
             boolean hashContent = true;
@@ -112,9 +117,10 @@ public class S3BucketCopy {
                                   AtomicLong counter,
                                   AtomicLong copyCounter,
                                   int parallelism,
+                                  HttpClient client,
                                   Hasher h) {
         System.out.println("Listing destination bucket...");
-        Set<String> targetKeys = getFilenames(dest, h);
+        Set<String> targetKeys = getFilenames(dest, client, h);
         ForkJoinPool pool = Threads.newPool(parallelism, "S3-copy-");
         boolean sameHost = source.regionEndpoint.equals(dest.regionEndpoint);
         System.out.println("Copying objects...");
@@ -127,10 +133,10 @@ public class S3BucketCopy {
                     if (sameHost)
                         copyObject(obj.key, source.bucket, dest, h);
                     else
-                        copyObjectInterProvider(obj.key, source, dest, h);
+                        copyObjectInterProvider(obj.key, source, dest, client, h);
                 });
             }
-        }, startPrefix, endPrefix, source, counter, h);
+        }, startPrefix, endPrefix, source, counter, client, h);
         while (! pool.isQuiescent())
             try {Thread.sleep(100);} catch (InterruptedException e) {}
         System.out.println("Objects copied: " + copyCounter.get());
@@ -145,7 +151,10 @@ public class S3BucketCopy {
         Optional<String> endPrefix = Optional.empty();
 
         System.out.println("Copying S3 bucket " + source.getHost() + "/" + source.bucket + " to " + dest.getHost() + "/" + dest.bucket);
+        HttpClient client = HttpClient.newBuilder()
+                .connectTimeout(Duration.ofMillis(10_000))
+                .build();
         copyRange(startPrefix, endPrefix, source, dest, new AtomicLong(0),
-                new AtomicLong(0), a.getInt("parallelism"), Main.initCrypto().hasher);
+                new AtomicLong(0), a.getInt("parallelism"), client, Main.initCrypto().hasher);
     }
 }
