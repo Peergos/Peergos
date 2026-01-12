@@ -9,6 +9,7 @@ import peergos.shared.storage.*;
 import peergos.shared.util.*;
 
 import java.io.*;
+import java.net.http.HttpClient;
 import java.time.*;
 import java.util.*;
 import java.util.concurrent.*;
@@ -26,6 +27,7 @@ public class S3DeleteOld {
                                           Optional<String> endPrefix,
                                           S3Config config,
                                           AtomicLong counter,
+                                          HttpClient client,
                                           Hasher h) {
         try {
             Optional<String> keyMarker = Optional.empty();
@@ -35,7 +37,7 @@ public class S3DeleteOld {
                 result = S3AdminRequests.listObjectVersions(startPrefix, 1_000, keyMarker, versionIdMarker,
                         ZonedDateTime.now(), config.getHost(), config.region, config.storageClass, config.accessKey, config.secretKey, url -> {
                             try {
-                                return HttpUtil.get(url);
+                                return HttpUtil.get(url, client);
                             } catch (IOException e) {
                                 throw new RuntimeException(e);
                             }
@@ -85,6 +87,7 @@ public class S3DeleteOld {
                                      AtomicLong counter,
                                      AtomicLong doneCounter,
                                      int parallelism,
+                                     HttpClient client,
                                      Hasher h) {
         ForkJoinPool pool = Threads.newPool(parallelism, "S3-delete-");
         System.out.println("Processing objects...");
@@ -98,7 +101,7 @@ public class S3DeleteOld {
                     try {Thread.sleep(100);} catch (InterruptedException e) {}
                 doneCounter.addAndGet(del.size());
                 pool.submit(() -> deleteProcessor.accept(del));
-        }, startPrefix, endPrefix, config, counter, h);
+        }, startPrefix, endPrefix, config, counter, client, h);
         while (! pool.isQuiescent())
             try {Thread.sleep(100);} catch (InterruptedException e) {}
         System.out.println("Objects processed: " + doneCounter.get());
@@ -191,7 +194,10 @@ public class S3DeleteOld {
         };
 
         System.out.println("Deleting objects in S3 bucket " + config.bucket + " older than " + cutoff);
+        HttpClient client = HttpClient.newBuilder()
+                .connectTimeout(Duration.ofMillis(10_000))
+                .build();
         applyToRange(startPrefix, endPrefix, processor, deleteProcessor, config, new AtomicLong(0),
-                new AtomicLong(0), a.getInt("parallelism"), Main.initCrypto().hasher);
+                new AtomicLong(0), a.getInt("parallelism"), client, Main.initCrypto().hasher);
     }
 }

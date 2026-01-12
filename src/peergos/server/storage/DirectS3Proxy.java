@@ -21,6 +21,8 @@ import javax.net.ssl.SSLException;
 import java.io.IOException;
 import java.net.SocketException;
 import java.net.SocketTimeoutException;
+import java.net.http.HttpClient;
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.ZonedDateTime;
 import java.util.List;
@@ -46,6 +48,7 @@ public class DirectS3Proxy implements ContentAddressedStorageProxy {
     private final Cid remoteId;
     private final Hasher h;
     private final UsageStore usage;
+    private final HttpClient client;
 
     public DirectS3Proxy(S3Config config,
                          Cid remoteId,
@@ -64,6 +67,9 @@ public class DirectS3Proxy implements ContentAddressedStorageProxy {
         this.storageClass = config.storageClass;
         this.accessKeyId = config.accessKey;
         this.secretKey = config.secretKey;
+        this.client = HttpClient.newBuilder()
+                .connectTimeout(Duration.ofMillis(10_000))
+                .build();
     }
 
     @Override
@@ -110,7 +116,7 @@ public class DirectS3Proxy implements ContentAddressedStorageProxy {
         PresignedUrl getUrl = S3Request.preSignGet(path, Optional.of(600), Optional.empty(),
                 S3AdminRequests.asAwsDate(ZonedDateTime.now()), host, region, storageClass, accessKeyId, secretKey, useHttps, h).join();
         try {
-            Pair<byte[], String> blockAndVersion = HttpUtil.getWithVersion(getUrl);
+            Pair<byte[], String> blockAndVersion = HttpUtil.getWithVersion(getUrl, client);
             return Futures.of(Optional.of(blockAndVersion));
         } catch (SocketTimeoutException | SSLException | SocketException e) {
             // S3 can't handle the load so treat this as a rate limit and slow down

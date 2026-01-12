@@ -6,6 +6,7 @@ import peergos.shared.crypto.hash.*;
 import peergos.shared.storage.*;
 
 import java.io.*;
+import java.net.http.HttpClient;
 import java.time.*;
 import java.util.*;
 import java.util.concurrent.atomic.*;
@@ -21,6 +22,7 @@ public class S3BucketStats {
                                           Optional<String> endPrefix,
                                           S3Config config,
                                           AtomicLong counter,
+                                          HttpClient client,
                                           Hasher h) {
         try {
             Optional<String> continuationToken = Optional.empty();
@@ -29,7 +31,7 @@ public class S3BucketStats {
                 result = S3AdminRequests.listObjects(startPrefix, 1_000, continuationToken,
                         ZonedDateTime.now(), config.getHost(), config.region, config.storageClass, config.accessKey, config.secretKey, url -> {
                             try {
-                                return HttpUtil.get(url);
+                                return HttpUtil.get(url, client);
                             } catch (IOException e) {
                                 throw new RuntimeException(e);
                             }
@@ -60,6 +62,7 @@ public class S3BucketStats {
                                      Optional<String> endPrefix,
                                      S3Config source,
                                      AtomicLong counter,
+                                     HttpClient client,
                                      Hasher h) {
         AtomicLong rawBlocks = new AtomicLong(0);
         AtomicLong cborBlocks = new AtomicLong(0);
@@ -74,7 +77,7 @@ public class S3BucketStats {
                 cborBlocks.incrementAndGet();
                 cborBlocksSize.addAndGet(obj.size);
             }
-        }, startPrefix, endPrefix, source, counter, h);
+        }, startPrefix, endPrefix, source, counter, client, h);
         System.out.println("Raw blocks: " + rawBlocks.get() + ",  size: " + rawBlocksSize.get() + ",  average size: " + (rawBlocksSize.get()/rawBlocks.get()));
         System.out.println("Cbor blocks: " + cborBlocks.get() + ",  size: " + cborBlocksSize.get() + ",  average size: " + (cborBlocksSize.get()/cborBlocks.get()));
     }
@@ -86,6 +89,9 @@ public class S3BucketStats {
         Optional<String> endPrefix = Optional.empty();
 
         System.out.println("Analysing S3 bucket " + source.getHost() + "/" + source.bucket);
-        analyseRange(startPrefix, endPrefix, source, new AtomicLong(0), Main.initCrypto().hasher);
+        HttpClient client = HttpClient.newBuilder()
+                .connectTimeout(Duration.ofMillis(10_000))
+                .build();
+        analyseRange(startPrefix, endPrefix, source, new AtomicLong(0), client, Main.initCrypto().hasher);
     }
 }

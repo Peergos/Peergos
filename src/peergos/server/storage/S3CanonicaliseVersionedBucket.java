@@ -5,6 +5,7 @@ import peergos.server.util.*;
 import peergos.shared.crypto.hash.*;
 
 import java.io.*;
+import java.net.http.HttpClient;
 import java.time.*;
 import java.util.*;
 import java.util.function.*;
@@ -19,6 +20,7 @@ public class S3CanonicaliseVersionedBucket {
                                            Consumer<S3AdminRequests.DeleteMarker> deleteProcessor,
                                            long maxObjects,
                                            S3Config config,
+                                           HttpClient client,
                                            Hasher h) {
         try {
             Optional<String> keyMarker = Optional.empty();
@@ -29,7 +31,7 @@ public class S3CanonicaliseVersionedBucket {
                 result = S3AdminRequests.listObjectVersions(prefix, 1_000, keyMarker, versionIdMarker,
                         ZonedDateTime.now(), config.getHost(), config.region, config.storageClass, config.accessKey, config.secretKey, url -> {
                             try {
-                                return HttpUtil.get(url);
+                                return HttpUtil.get(url, client);
                             } catch (IOException e) {
                                 throw new RuntimeException(e);
                             }
@@ -66,7 +68,10 @@ public class S3CanonicaliseVersionedBucket {
         }
     }
 
-    private static void processFileVersions(long maxReturned, S3Config config, Hasher h) {
+    private static void processFileVersions(long maxReturned,
+                                            S3Config config,
+                                            HttpClient client,
+                                            Hasher h) {
         applyToAllVersions("", obj -> {
             try {
                 if (! obj.isLatest) {
@@ -85,7 +90,7 @@ public class S3CanonicaliseVersionedBucket {
             } catch (Exception e) {
                 LOG.warning("Couldn't parse S3 key to Cid: " + del.key);
             }
-        }, maxReturned, config, h);
+        }, maxReturned, config, client, h);
     }
 
     public static void main(String[] args) {
@@ -93,6 +98,9 @@ public class S3CanonicaliseVersionedBucket {
         S3Config config = S3Config.build(a, Optional.empty());
 
         System.out.println("Listing old versions in S3 bucket " + config.getHost() + "/" + config.bucket);
-        processFileVersions(Long.MAX_VALUE, config, Main.initCrypto().hasher);
+        HttpClient client = HttpClient.newBuilder()
+                .connectTimeout(Duration.ofMillis(10_000))
+                .build();
+        processFileVersions(Long.MAX_VALUE, config, client, Main.initCrypto().hasher);
     }
 }
