@@ -147,6 +147,10 @@ public class Mirror {
                         }
                         userCount++;
                     } catch (Exception e) {
+                        if (e.getCause() instanceof UnknownHostException) {
+                            Logging.LOG().log(Level.WARNING, "Couldn't mirror user: " + snapshot.username, e);
+                            throw new Error(e.getCause());
+                        }
                         erroredUsers.add(snapshot.username);
                         Logging.LOG().log(Level.WARNING, "Couldn't mirror user: " + snapshot.username, e);
                     }

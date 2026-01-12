@@ -42,7 +42,7 @@ public class DirectS3Proxy implements ContentAddressedStorageProxy {
     private final String region, bucket, host, folder;
     private final String accessKeyId, secretKey;
     private final Optional<String> storageClass;
-    private final boolean useHttps;
+    private final boolean useHttps, startWithLegacyPath;
     private final Cid remoteId;
     private final Hasher h;
     private final UsageStore usage;
@@ -50,6 +50,7 @@ public class DirectS3Proxy implements ContentAddressedStorageProxy {
     public DirectS3Proxy(S3Config config,
                          Cid remoteId,
                          UsageStore usage,
+                         boolean startWithLegacyPath,
                          Hasher h) {
         this.remoteId = remoteId;
         this.usage = usage;
@@ -59,6 +60,7 @@ public class DirectS3Proxy implements ContentAddressedStorageProxy {
         this.host = config.getHost();
         this.useHttps = ! host.endsWith("localhost") && ! host.contains("localhost:");
         this.folder = (useHttps ? "" : bucket + "/") + (config.path.isEmpty() || config.path.endsWith("/") ? config.path : config.path + "/");
+        this.startWithLegacyPath = startWithLegacyPath;
         this.storageClass = config.storageClass;
         this.accessKeyId = config.accessKey;
         this.secretKey = config.secretKey;
@@ -70,7 +72,7 @@ public class DirectS3Proxy implements ContentAddressedStorageProxy {
             throw new IllegalStateException("Can only proxy to the target instance!");
         if (hash.isIdentity())
             return Futures.of(Optional.of(hash.getHash()));
-        return getWithBackoff(() -> getRawWithoutBackoff(List.of(targetServerId), owner, hash, false))
+        return getWithBackoff(() -> getRawWithoutBackoff(List.of(targetServerId), owner, hash, startWithLegacyPath))
                 .thenApply(p -> p.map(v -> v.left));
     }
 
