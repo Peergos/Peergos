@@ -92,8 +92,10 @@ public class HttpUtil {
             int respCode = response.statusCode();
             if (respCode == 502 || respCode == 503)
                 throw new RateLimitException();
-            if (respCode == 404)
-                throw new FileNotFoundException();
+            if (respCode == 404) {
+                byte[] errBody = Serialize.readFully(response.body());
+                throw new FileNotFoundException(new String(errBody));
+            }
             if (respCode != 200) {
                 byte[] errBody = Serialize.readFully(response.body());
                 throw new IOException(new String(errBody));
