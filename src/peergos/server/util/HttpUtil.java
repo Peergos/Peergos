@@ -87,36 +87,37 @@ public class HttpUtil {
                 requestBuilder.setHeader(e.getKey(), e.getValue());
         }
 
+        HttpResponse<InputStream> response;
         try {
-            HttpResponse<InputStream> response = client.send(requestBuilder.build(), HttpResponse.BodyHandlers.ofInputStream());
-            int respCode = response.statusCode();
-            if (respCode == 502 || respCode == 503) {
-                byte[] errBody = Serialize.readFully(response.body());
-                Logger.getGlobal().info(new String(errBody));
-                throw new RateLimitException();
-            }
-            if (respCode == 404) {
-                byte[] errBody = Serialize.readFully(response.body());
-                throw new FileNotFoundException(new String(errBody));
-            }
-            if (respCode != 200) {
-                byte[] errBody = Serialize.readFully(response.body());
-                throw new IOException(new String(errBody));
-            }
-            InputStream in = response.body();
-            Map<String, String> headers = response.headers().map()
-                    .entrySet()
-                    .stream()
-                    .filter(e -> e.getKey() != null)
-                    .collect(Collectors.toMap(e -> e.getKey().toLowerCase(), e -> e.getValue().get(0)));
-            String version = headers.getOrDefault("x-amz-version-id", null);
-            return new Pair<>(Serialize.readFully(in), version);
+            response = client.send(requestBuilder.build(), HttpResponse.BodyHandlers.ofInputStream());
         } catch (IOException e) {
             Logger.getGlobal().info(e.getMessage());
             throw new RateLimitException();
         } catch (InterruptedException e) {
             throw new RuntimeException(e);
         }
+        int respCode = response.statusCode();
+        if (respCode == 502 || respCode == 503) {
+            byte[] errBody = Serialize.readFully(response.body());
+            Logger.getGlobal().info(new String(errBody));
+            throw new RateLimitException();
+        }
+        if (respCode == 404) {
+            byte[] errBody = Serialize.readFully(response.body());
+            throw new FileNotFoundException(new String(errBody));
+        }
+        if (respCode != 200) {
+            byte[] errBody = Serialize.readFully(response.body());
+            throw new IOException(new String(errBody));
+        }
+        InputStream in = response.body();
+        Map<String, String> headers = response.headers().map()
+                .entrySet()
+                .stream()
+                .filter(e -> e.getKey() != null)
+                .collect(Collectors.toMap(e -> e.getKey().toLowerCase(), e -> e.getValue().get(0)));
+        String version = headers.getOrDefault("x-amz-version-id", null);
+        return new Pair<>(Serialize.readFully(in), version);
     }
 
     public static Map<String, List<String>> head(PresignedUrl head) throws IOException {
