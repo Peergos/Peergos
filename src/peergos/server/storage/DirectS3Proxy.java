@@ -140,10 +140,11 @@ public class DirectS3Proxy implements ContentAddressedStorageProxy {
 
     private static <V> V getWithBackoff(Supplier<V> req) {
         long sleep = 100;
-        for (int i=0; i < 20; i++) {
+        for (int i=0; i < 10; i++) {
             try {
                 return req.get();
             } catch (RateLimitException e) {
+                LOG.info(e.getMessage());
                 try {
                     Thread.sleep(sleep);
                 } catch (InterruptedException f) {}
