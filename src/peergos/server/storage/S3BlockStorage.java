@@ -900,6 +900,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                                               PublicKeyHash owner,
                                               List<Cid> hashes,
                                               Optional<BatWithId> mirrorBat,
+                                              AtomicLong skippedCount,
                                               AtomicLong retrievalCount,
                                               AtomicLong retrievalSize) {
         List<ForkJoinTask<Optional<BlockMetadata>>> futs = hashes.stream()
@@ -911,8 +912,12 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                         // occasionally get weird spurious concurrent update exceptions from yugabytedb
                         m = blockMetadata.get(c);
                     }
-                    if (m.isPresent())
+                    if (m.isPresent()) {
+                        long skipped = skippedCount.incrementAndGet();
+                        if (skipped % 100 == 0)
+                        LOG.info("User " + username + ": skipped " + skipped + " blocks already present.");
                         return m;
+                    }
                     long count = retrievalCount.incrementAndGet();
                     if (count % 100 == 0)
                         LOG.info("User " + username + ": retrieved " + count + " blocks, of total size " + retrievalSize.get());
@@ -967,10 +972,11 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                         .collect(Collectors.toList()))
                 .orElse(Collections.emptyList());
 
+        AtomicLong skippedBlockCount = new AtomicLong(0);
         AtomicLong blockCount = new AtomicLong(0);
         AtomicLong totalSize = new AtomicLong(0);
         return bulkMirror(owner, writer, peerIds, existingLinks, newLinks, mirrorBat, ourNodeId,
-                (p, o, h, m) -> bulkGetBlocks(p, username, o, h, m, blockCount, totalSize),
+                (p, o, h, m) -> bulkGetBlocks(p, username, o, h, m, skippedBlockCount, blockCount, totalSize),
                 (w, bs, size) -> usage.addPendingUsage(username, writer, size), tid, hasher)
                 .thenApply(cs -> {
                     if (blockCount.get() > 0) {
