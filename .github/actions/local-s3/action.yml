@@ -32,6 +32,9 @@ runs:
     - name: Start minio
       shell: bash
       run: ( minio server '${{ runner.temp }}/minio.data' & )
+    - name: Wait for minio to start
+      shell: bash
+      run: ( sleep 2 )
     - name: Check if minio is running
       shell: bash
       run: |
