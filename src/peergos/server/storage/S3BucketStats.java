@@ -22,7 +22,6 @@ public class S3BucketStats {
                                           Optional<String> endPrefix,
                                           S3Config config,
                                           AtomicLong counter,
-                                          HttpClient client,
                                           Hasher h) {
         try {
             Optional<String> continuationToken = Optional.empty();
@@ -31,7 +30,7 @@ public class S3BucketStats {
                 result = S3AdminRequests.listObjects(startPrefix, 1_000, continuationToken,
                         ZonedDateTime.now(), config.getHost(), config.region, config.storageClass, config.accessKey, config.secretKey, url -> {
                             try {
-                                return HttpUtil.get(url, client);
+                                return HttpUtil.get(url);
                             } catch (IOException e) {
                                 throw new RuntimeException(e);
                             }
@@ -77,7 +76,7 @@ public class S3BucketStats {
                 cborBlocks.incrementAndGet();
                 cborBlocksSize.addAndGet(obj.size);
             }
-        }, startPrefix, endPrefix, source, counter, client, h);
+        }, startPrefix, endPrefix, source, counter, h);
         System.out.println("Raw blocks: " + rawBlocks.get() + ",  size: " + rawBlocksSize.get() + ",  average size: " + (rawBlocksSize.get()/rawBlocks.get()));
         System.out.println("Cbor blocks: " + cborBlocks.get() + ",  size: " + cborBlocksSize.get() + ",  average size: " + (cborBlocksSize.get()/cborBlocks.get()));
     }

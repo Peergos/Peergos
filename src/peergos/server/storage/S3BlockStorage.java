@@ -156,7 +156,6 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
     private final boolean partitionComplete;
     private final JdbcBatCave bats;
     private CoreNode pki;
-    private final HttpClient client;
 
     public S3BlockStorage(S3Config config,
                           List<Cid> ids,
@@ -228,9 +227,6 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                 return true;
             }));
         })).start();
-        this.client = HttpClient.newBuilder()
-                .connectTimeout(Duration.ofMillis(10_000))
-                .build();
     }
 
     private boolean userPartitioningComplete() {
@@ -778,7 +774,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                 RawReadTimerLog.labels("read").startTimer() :
                 CborReadTimerLog.labels("read").startTimer();
         try {
-            Pair<byte[], String> blockAndVersion = HttpUtil.getWithVersion(getUrl, client);
+            Pair<byte[], String> blockAndVersion = HttpUtil.getWithVersion(getUrl);
             blockGets.inc();
             enforceUserBandwidthRateLimits(owner, blockAndVersion.left.length);
             enforceGlobalBandwidthLimit(blockAndVersion.left.length);
@@ -1382,7 +1378,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                 result = S3AdminRequests.listObjects(folder + prefix.orElse(""), 1_000, continuationToken,
                         ZonedDateTime.now(), host, region, storageClass, accessKeyId, secretKey, url -> {
                             try {
-                                return HttpUtil.get(url, client);
+                                return HttpUtil.get(url);
                             } catch (IOException e) {
                                 throw new RuntimeException(e);
                             }
@@ -1419,7 +1415,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                 result = S3AdminRequests.listObjectVersions(folder + prefix, 1_000, keyMarker, versionIdMarker,
                         ZonedDateTime.now(), host, region, storageClass, accessKeyId, secretKey, url -> getWithBackoff(() -> {
                             try {
-                                return HttpUtil.get(url, client);
+                                return HttpUtil.get(url);
                             } catch (IOException e) {
                                 throw new RuntimeException(e);
                             }

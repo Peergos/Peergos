@@ -20,7 +20,6 @@ public class S3CanonicaliseVersionedBucket {
                                            Consumer<S3AdminRequests.DeleteMarker> deleteProcessor,
                                            long maxObjects,
                                            S3Config config,
-                                           HttpClient client,
                                            Hasher h) {
         try {
             Optional<String> keyMarker = Optional.empty();
@@ -31,7 +30,7 @@ public class S3CanonicaliseVersionedBucket {
                 result = S3AdminRequests.listObjectVersions(prefix, 1_000, keyMarker, versionIdMarker,
                         ZonedDateTime.now(), config.getHost(), config.region, config.storageClass, config.accessKey, config.secretKey, url -> {
                             try {
-                                return HttpUtil.get(url, client);
+                                return HttpUtil.get(url);
                             } catch (IOException e) {
                                 throw new RuntimeException(e);
                             }
@@ -90,7 +89,7 @@ public class S3CanonicaliseVersionedBucket {
             } catch (Exception e) {
                 LOG.warning("Couldn't parse S3 key to Cid: " + del.key);
             }
-        }, maxReturned, config, client, h);
+        }, maxReturned, config, h);
     }
 
     public static void main(String[] args) {

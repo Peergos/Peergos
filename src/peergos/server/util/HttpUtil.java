@@ -6,10 +6,6 @@ import peergos.shared.util.*;
 
 import java.io.*;
 import java.net.*;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
-import java.time.Duration;
 import java.util.*;
 import java.util.logging.*;
 import java.util.stream.*;
@@ -72,52 +68,43 @@ public class HttpUtil {
         }
     }
 
-    public static byte[] get(PresignedUrl url, HttpClient client) throws IOException {
-        return getWithVersion(url, client).left;
+    public static byte[] get(PresignedUrl url) throws IOException {
+        return getWithVersion(url).left;
     }
 
-    public static Pair<byte[], String> getWithVersion(PresignedUrl url, HttpClient client) throws IOException {
-        URI uri = URI.create(url.base);
-        HttpRequest.Builder requestBuilder = HttpRequest.newBuilder()
-                .uri(uri)
-                .GET()
-                .timeout(Duration.ofSeconds(60));
-        for (Map.Entry<String, String> e : url.fields.entrySet()) {
-            if (! e.getKey().equals("Host") && ! e.getKey().equals("Content-Length"))
-                requestBuilder.setHeader(e.getKey(), e.getValue());
-        }
-
-        HttpResponse<InputStream> response;
+    public static Pair<byte[], String> getWithVersion(PresignedUrl url) throws IOException {
         try {
-            response = client.send(requestBuilder.build(), HttpResponse.BodyHandlers.ofInputStream());
-        } catch (IOException e) {
-            Logger.getGlobal().info(e.getMessage());
-            throw new RateLimitException();
-        } catch (InterruptedException e) {
+            HttpURLConnection conn = (HttpURLConnection) new URI(url.base).toURL().openConnection();
+            conn.setConnectTimeout(10_000);
+            conn.setReadTimeout(60_000);
+            conn.setRequestMethod("GET");
+            for (Map.Entry<String, String> e : url.fields.entrySet()) {
+                conn.setRequestProperty(e.getKey(), e.getValue());
+            }
+
+            try {
+                int respCode = conn.getResponseCode();
+                if (respCode == 502 || respCode == 503)
+                    throw new RateLimitException();
+                if (respCode == 404)
+                    throw new FileNotFoundException();
+                InputStream in = conn.getInputStream();
+                Map<String, String> headers = conn.getHeaderFields().entrySet()
+                        .stream()
+                        .filter(e -> e.getKey() != null)
+                        .collect(Collectors.toMap(e -> e.getKey().toLowerCase(), e -> e.getValue().get(0)));
+                String version = headers.getOrDefault("x-amz-version-id", null);
+                return new Pair<>(Serialize.readFully(in), version);
+            } catch (IOException e) {
+                InputStream err = conn.getErrorStream();
+                if (err == null)
+                    throw e;
+                byte[] errBody = Serialize.readFully(err);
+                throw new IOException(new String(errBody), e);
+            }
+        } catch (URISyntaxException e) {
             throw new RuntimeException(e);
         }
-        int respCode = response.statusCode();
-        if (respCode == 502 || respCode == 503) {
-            byte[] errBody = Serialize.readFully(response.body());
-            Logger.getGlobal().info(new String(errBody));
-            throw new RateLimitException();
-        }
-        if (respCode == 404) {
-            byte[] errBody = Serialize.readFully(response.body());
-            throw new FileNotFoundException(new String(errBody));
-        }
-        if (respCode != 200) {
-            byte[] errBody = Serialize.readFully(response.body());
-            throw new IOException(new String(errBody));
-        }
-        InputStream in = response.body();
-        Map<String, String> headers = response.headers().map()
-                .entrySet()
-                .stream()
-                .filter(e -> e.getKey() != null)
-                .collect(Collectors.toMap(e -> e.getKey().toLowerCase(), e -> e.getValue().get(0)));
-        String version = headers.getOrDefault("x-amz-version-id", null);
-        return new Pair<>(Serialize.readFully(in), version);
     }
 
     public static Map<String, List<String>> head(PresignedUrl head) throws IOException {
