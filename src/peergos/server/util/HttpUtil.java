@@ -74,6 +74,8 @@ public class HttpUtil {
 
     public static Pair<byte[], String> getWithVersion(PresignedUrl url) throws IOException {
         try {
+            if (url.base.startsWith("https://"))
+                return getWithVersionHttps(url);
             HttpURLConnection conn = (HttpURLConnection) new URI(url.base).toURL().openConnection();
             conn.setConnectTimeout(10_000);
             conn.setReadTimeout(60_000);
@@ -105,6 +107,20 @@ public class HttpUtil {
                 }
             }
         } catch (URISyntaxException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    public static Pair<byte[], String> getWithVersionHttps(PresignedUrl url) throws IOException {
+        URI original;
+        try {
+            original = new URI(url.base);
+        } catch (URISyntaxException e) {
+            throw new IllegalArgumentException(e);
+        }
+        try {
+            return NettyPinnedHttps.get(original);
+        } catch (Exception e) {
             throw new RuntimeException(e);
         }
     }
@@ -148,6 +164,21 @@ public class HttpUtil {
     }
 
     private static Pair<byte[], String> putOrPostWithVersion(String method, PresignedUrl target, byte[] body) throws IOException {
+        if (target.base.startsWith("https://")) {
+            URI original;
+            try {
+                original = new URI(target.base);
+            } catch (URISyntaxException e) {
+                throw new IllegalArgumentException(e);
+            }
+
+            try {
+                return NettyPinnedHttps.putOrPost(method, original, target.fields, body);
+            } catch (InterruptedException e) {
+                throw new RuntimeException(e);
+            }
+        }
+
         HttpURLConnection conn = null;
         try {
             conn = (HttpURLConnection) new URI(target.base).toURL().openConnection();
