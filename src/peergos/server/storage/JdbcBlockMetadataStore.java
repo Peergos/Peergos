@@ -115,6 +115,35 @@ public class JdbcBlockMetadataStore implements BlockMetadataStore {
     }
 
     @Override
+    public List<Cid> hasBlocks(List<Cid> blocks) {
+        String placeholders = blocks.stream()
+                .map(b -> "?")
+                .collect(Collectors.joining(","));
+
+        String sql = "SELECT cid FROM blockmetadata WHERE cid IN (" + placeholders + ");";
+
+        try (Connection conn = getConnection(false, false);
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+
+            for (int i = 0; i < blocks.size(); i++) {
+                stmt.setBytes(i + 1, blocks.get(i).toBytes());
+            }
+
+            ResultSet rs = stmt.executeQuery();
+            List<Cid> present = new ArrayList<>();
+
+            while (rs.next()) {
+                present.add(Cid.cast(rs.getBytes("cid")));
+            }
+
+            return present;
+        } catch (SQLException sqe) {
+            LOG.log(Level.WARNING, sqe.getMessage(), sqe);
+            throw new RuntimeException(sqe);
+        }
+    }
+
+    @Override
     public Optional<PublicKeyHash> getOwner(Cid block) {
         try (Connection conn = getConnection(false, false);
              PreparedStatement stmt = conn.prepareStatement(GET_OWNER)) {

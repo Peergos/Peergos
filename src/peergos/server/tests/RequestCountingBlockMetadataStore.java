@@ -11,6 +11,7 @@ import java.util.Optional;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 class RequestCountingBlockMetadataStore implements BlockMetadataStore {
@@ -38,6 +39,14 @@ class RequestCountingBlockMetadataStore implements BlockMetadataStore {
     public Optional<BlockMetadata> get(Cid block) {
         count.incrementAndGet();
         return target.get(block);
+    }
+
+    @Override
+    public List<Cid> hasBlocks(List<Cid> blocks) {
+        count.incrementAndGet();
+        return blocks.stream()
+                .filter(h -> target.get(h).isPresent())
+                .collect(Collectors.toList());
     }
 
     @Override

@@ -899,21 +899,17 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                                               AtomicLong skippedCount,
                                               AtomicLong retrievalCount,
                                               AtomicLong retrievalSize) {
+        List<Cid> present = blockMetadata.hasBlocks(hashes);
+        long original = skippedCount.get();
+        if (original/100 != (original + present.size())/100) {
+            long skipped = (original + present.size())/100 * 100;
+            LOG.info("User " + username + ": skipped " + String.format("%,d", skipped) + " blocks already present.");
+        }
+        skippedCount.addAndGet(present.size());
+
         List<ForkJoinTask<Optional<BlockMetadata>>> futs = hashes.stream()
+                .filter(h -> ! present.contains(h))
                 .map(c -> mirrorPool.submit(() -> {
-                    Optional<BlockMetadata> m;
-                    try {
-                        m = blockMetadata.get(c);
-                    } catch (Exception s) {
-                        // occasionally get weird spurious concurrent update exceptions from yugabytedb
-                        m = blockMetadata.get(c);
-                    }
-                    if (m.isPresent()) {
-                        long skipped = skippedCount.incrementAndGet();
-                        if (skipped % 100 == 0)
-                        LOG.info("User " + username + ": skipped " + String.format("%,d", skipped) + " blocks already present.");
-                        return m;
-                    }
                     long count = retrievalCount.incrementAndGet();
                     if (count % 100 == 0)
                         LOG.info("User " + username + ": retrieved " + String.format("%,d", count) + " blocks, of total size " + String.format("%,d", retrievalSize.get()));
