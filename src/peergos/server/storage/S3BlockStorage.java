@@ -899,7 +899,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                                               AtomicLong skippedCount,
                                               AtomicLong retrievalCount,
                                               AtomicLong retrievalSize) {
-        List<Cid> present = blockMetadata.hasBlocks(hashes);
+        Map<Cid, BlockMetadata> present = blockMetadata.getAll(hashes);
         long original = skippedCount.get();
         if (original/100 != (original + present.size())/100) {
             long skipped = (original + present.size())/100 * 100;
@@ -908,7 +908,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         skippedCount.addAndGet(present.size());
 
         List<ForkJoinTask<Optional<BlockMetadata>>> futs = hashes.stream()
-                .filter(h -> ! present.contains(h))
+                .filter(h -> ! present.containsKey(h))
                 .map(c -> mirrorPool.submit(() -> {
                     long count = retrievalCount.incrementAndGet();
                     if (count % 100 == 0)
@@ -920,8 +920,9 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                             }))).join();
                 }))
                 .toList();
-        return futs.stream()
-                .map(f -> f.join().get())
+        return Stream.concat(
+                        present.values().stream(),
+                        futs.stream().map(f -> f.join().get()))
                 .toList();
     }
 
