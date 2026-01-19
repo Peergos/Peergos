@@ -1,5 +1,6 @@
 package peergos.server.storage;
 
+import peergos.server.space.UsageStore;
 import peergos.server.util.Logging;
 import peergos.shared.corenode.CoreNode;
 import peergos.shared.crypto.hash.PublicKeyHash;
@@ -20,10 +21,11 @@ import java.util.logging.*;
 public class FileBlockBuffer implements BlockBuffer {
     private static final Logger LOG = Logging.LOG();
     private final Path root;
-    private CoreNode pki;
+    private final UsageStore usage;
 
-    public FileBlockBuffer(Path root) {
+    public FileBlockBuffer(Path root, UsageStore usage) {
         this.root = root;
+        this.usage = usage;
         File rootDir = root.toFile();
         if (!rootDir.exists()) {
             final boolean mkdirs = root.toFile().mkdirs();
@@ -35,14 +37,13 @@ public class FileBlockBuffer implements BlockBuffer {
     }
 
     public void setPki(CoreNode pki) {
-        this.pki = pki;
     }
 
     private Path getFilePath(PublicKeyHash owner, Cid h) {
         String key = DirectS3BlockStore.hashToKey(h);
 
         Path path = PathUtil.get("")
-                .resolve(pki.getUsername(owner).join())
+                .resolve(usage.getUsage(owner).owner)
                 .resolve(key.substring(key.length() - 3, key.length() - 1))
                 .resolve(key + ".data");
         return path;

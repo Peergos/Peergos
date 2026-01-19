@@ -240,7 +240,7 @@ public class Builder {
                 TransactionalIpfs p2pBlockRetriever = new TransactionalIpfs(ipfs, transactions, authoriser, ipfs.id().join(), linkHost, hasher);
 
                 FileBlockCache cborCache = new FileBlockCache(a.fromPeergosDir("block-cache-dir", "block-cache"), 1024 * 1024 * 1024L);
-                FileBlockBuffer blockBuffer = new FileBlockBuffer(a.fromPeergosDir("s3-block-buffer-dir", "block-buffer"));
+                FileBlockBuffer blockBuffer = new FileBlockBuffer(a.fromPeergosDir("s3-block-buffer-dir", "block-buffer"), usage);
 
                 String remoteS3Prefix = "remote.";
                 if (a.hasArg("mirror.node.id") && S3Config.useS3(a, remoteS3Prefix)) {
@@ -286,7 +286,7 @@ public class Builder {
                 BlockStoreProperties props = buildS3Properties(a);
 
                 FileBlockCache cborCache = new FileBlockCache(a.fromPeergosDir("block-cache-dir", "block-cache"), 10 * 1024 * 1024 * 1024L);
-                FileBlockBuffer blockBuffer = new FileBlockBuffer(a.fromPeergosDir("s3-block-buffer-dir", "block-buffer"));
+                FileBlockBuffer blockBuffer = new FileBlockBuffer(a.fromPeergosDir("s3-block-buffer-dir", "block-buffer"), usage);
                 S3BlockStorage s3 = new S3BlockStorage(config, ipfs.ids().join(), props, linkHost, transactions, authoriser,
                         bats, meta, usage, cborCache, blockBuffer,
                         a.getLong(Main.GLOBAL_DOWNLOAD_BANDWIDTH_LIMIT.name),
