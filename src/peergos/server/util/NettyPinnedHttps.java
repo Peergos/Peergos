@@ -95,6 +95,8 @@ public final class NettyPinnedHttps {
                             public void exceptionCaught(ChannelHandlerContext ctx, Throwable t) {
                                 if (t instanceof SslClosedEngineException)
                                     result.completeExceptionally(new RateLimitException());
+                                else if (t instanceof SocketException)
+                                    result.completeExceptionally(new RateLimitException());
                                 else
                                     result.completeExceptionally(t);
                                 ctx.close();
@@ -183,6 +185,8 @@ public final class NettyPinnedHttps {
                             @Override
                             public void exceptionCaught(ChannelHandlerContext ctx, Throwable t) {
                                 if (t instanceof SslClosedEngineException)
+                                    result.completeExceptionally(new RateLimitException());
+                                else if (t instanceof SocketException)
                                     result.completeExceptionally(new RateLimitException());
                                 else
                                     result.completeExceptionally(t);
