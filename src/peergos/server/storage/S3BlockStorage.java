@@ -1538,7 +1538,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         S3BlockStorage s3 = new S3BlockStorage(config, List.of(Cid.decode(a.getArg("ipfs.id"))),
                 BlockStoreProperties.empty(), "localhost:8000", transactions, authoriser, null, meta, usageStore,
                 new RamBlockCache(1024, 100),
-                new FileBlockBuffer(a.fromPeergosDir("s3-block-buffer-dir", "block-buffer")),
+                new FileBlockBuffer(a.fromPeergosDir("s3-block-buffer-dir", "block-buffer"), usageStore),
                 Integer.MAX_VALUE, Integer.MAX_VALUE, Integer.MAX_VALUE, Integer.MAX_VALUE,
                 versioned, a.getPeergosDir(), partitioned, hasher,
                 new RAMStorage(hasher), null);
