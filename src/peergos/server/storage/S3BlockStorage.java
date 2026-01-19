@@ -911,12 +911,12 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                     if (m.isPresent()) {
                         long skipped = skippedCount.incrementAndGet();
                         if (skipped % 100 == 0)
-                        LOG.info("User " + username + ": skipped " + skipped + " blocks already present.");
+                        LOG.info("User " + username + ": skipped " + String.format("%,d", skipped) + " blocks already present.");
                         return m;
                     }
                     long count = retrievalCount.incrementAndGet();
                     if (count % 100 == 0)
-                        LOG.info("User " + username + ": retrieved " + count + " blocks, of total size " + retrievalSize.get());
+                        LOG.info("User " + username + ": retrieved " + String.format("%,d", count) + " blocks, of total size " + String.format("%,d", retrievalSize.get()));
                     return RetryStorage.runWithRetry(5, () -> p2pHttpFallback.getRaw(peers.get(0), owner, c, mirrorBat)
                             .thenApply(bo -> bo.map(b -> {
                                 retrievalSize.addAndGet(b.length);
@@ -976,7 +976,8 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                 (w, bs, size) -> usage.addPendingUsage(username, writer, size), tid, hasher)
                 .thenApply(cs -> {
                     if (blockCount.get() > 0) {
-                        LOG.info("Mirrored " + blockCount.get() + " blocks, taking " + totalSize.get() + " bytes");
+                        LOG.info("Mirrored " + String.format("%,d", blockCount.get()) + " blocks, taking " +
+                                String.format("%,d", totalSize.get()) + " bytes");
                     }
                     return cs;
                 });
