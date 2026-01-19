@@ -43,8 +43,8 @@ public final class PinnedHost {
     }
 
     void ensureRefreshed() throws IOException {
-            if (System.nanoTime() - lastRefresh > 60*60*1000_000_000L)
-                refresh();
+//            if (System.nanoTime() - lastRefresh > 60*60*1000_000_000L)
+//                refresh();
     }
 
     void refresh() throws IOException {
