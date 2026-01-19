@@ -15,6 +15,8 @@ public interface BlockMetadataStore {
 
     List<Cid> hasBlocks(List<Cid> blocks);
 
+    Map<Cid, BlockMetadata> getAll(List<Cid> blocks);
+
     /**
      *
      * @param block

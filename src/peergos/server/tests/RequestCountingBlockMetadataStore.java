@@ -5,8 +5,10 @@ import peergos.server.storage.BlockMetadataStore;
 import peergos.server.storage.BlockVersion;
 import peergos.shared.crypto.hash.PublicKeyHash;
 import peergos.shared.io.ipfs.Cid;
+import peergos.shared.util.Pair;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BiConsumer;
@@ -47,6 +49,14 @@ class RequestCountingBlockMetadataStore implements BlockMetadataStore {
         return blocks.stream()
                 .filter(h -> target.get(h).isPresent())
                 .collect(Collectors.toList());
+    }
+
+    @Override
+    public Map<Cid, BlockMetadata> getAll(List<Cid> blocks) {
+        return blocks.stream()
+                .map(h -> new Pair<>(h, target.get(h)))
+                .filter(p -> p.right.isPresent())
+                .collect(Collectors.toMap(p -> p.left, p -> p.right.get()));
     }
 
     @Override
