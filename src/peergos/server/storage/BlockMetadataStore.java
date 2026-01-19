@@ -13,6 +13,8 @@ public interface BlockMetadataStore {
 
     Optional<BlockMetadata> get(Cid block);
 
+    List<Cid> hasBlocks(List<Cid> blocks);
+
     /**
      *
      * @param block

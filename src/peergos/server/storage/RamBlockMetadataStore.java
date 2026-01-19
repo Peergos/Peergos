@@ -26,6 +26,13 @@ public class RamBlockMetadataStore implements BlockMetadataStore {
     }
 
     @Override
+    public List<Cid> hasBlocks(List<Cid> blocks) {
+        return blocks.stream()
+                .filter(store::containsKey)
+                .collect(Collectors.toList());
+    }
+
+    @Override
     public Optional<PublicKeyHash> getOwner(Cid block) {
         return Optional.empty();
     }
