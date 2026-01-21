@@ -209,6 +209,21 @@ public class Builder {
         }
     }
 
+    public static ContentAddressedStorageProxy buildP2PBlockRetrieverForS3(Args a,
+                                                                           UsageStore usage,
+                                                                           Hasher hasher,
+                                                                           ContentAddressedStorageProxy def) {
+        String remoteS3Prefix = "remote.";
+        if (a.hasArg("mirror.node.id") && S3Config.useS3(a, remoteS3Prefix)) {
+            LOG.info("Reading directly from remote S3 for mirror");
+            S3Config remoteConfig = S3Config.build(a, Optional.of(remoteS3Prefix));
+            Cid nodeToMirrorId = Cid.decode(a.getArg("mirror.node.id"));
+            boolean legacyS3Path = a.getBoolean("use-legacy-mirror-s3-path", false);
+            return new DirectS3Proxy(remoteConfig, nodeToMirrorId, usage, legacyS3Path, hasher);
+        }
+        return def;
+    }
+
     public static DeletableContentAddressedStorage buildLocalStorage(Args a,
                                                                      BlockMetadataStore meta,
                                                                      JdbcBatCave bats,
@@ -242,14 +257,7 @@ public class Builder {
                 FileBlockCache cborCache = new FileBlockCache(a.fromPeergosDir("block-cache-dir", "block-cache"), 1024 * 1024 * 1024L);
                 FileBlockBuffer blockBuffer = new FileBlockBuffer(a.fromPeergosDir("s3-block-buffer-dir", "block-buffer"), usage);
 
-                String remoteS3Prefix = "remote.";
-                if (a.hasArg("mirror.node.id") && S3Config.useS3(a, remoteS3Prefix)) {
-                    LOG.info("Reading directly from remote S3 for mirror");
-                    S3Config remoteConfig = S3Config.build(a, Optional.of(remoteS3Prefix));
-                    Cid nodeToMirrorId = Cid.decode(a.getArg("mirror.node.id"));
-                    boolean legacyS3Path = a.getBoolean("use-legacy-mirror-s3-path", false);
-                    p2pGets = new DirectS3Proxy(remoteConfig, nodeToMirrorId, usage, legacyS3Path, hasher);
-                }
+                p2pGets = buildP2PBlockRetrieverForS3(a, usage, hasher, p2pGets);
                 S3BlockStorage s3 = new S3BlockStorage(config, ipfs.ids().join(), props, linkHost, transactions, authoriser,
                         bats, meta, usage, cborCache, blockBuffer,
                         a.getLong(Main.GLOBAL_DOWNLOAD_BANDWIDTH_LIMIT.name),
