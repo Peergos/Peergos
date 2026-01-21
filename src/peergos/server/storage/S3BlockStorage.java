@@ -1529,27 +1529,29 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         BlockRequestAuthoriser authoriser = (c, b, s, auth) -> Futures.of(true);
         BlockMetadataStore meta = Builder.buildBlockMetadata(a);
         Supplier<Connection> usageDb = Main.getDBConnector(a, "space-usage-sql-file");
-        UsageStore usageStore = new JdbcUsageStore(usageDb, sqlCommands);
+        UsageStore usage = new JdbcUsageStore(usageDb, sqlCommands);
         Supplier<Connection> statusDb = Main.getDBConnector(a, "partition-status-file");
         PartitionStatus partitioned = new JdbcPartitionStatus(statusDb, sqlCommands);
+        JavaPoster p2pHttpProxy = Builder.buildP2pHttpProxy(a);
+        ContentAddressedStorageProxy p2pHttpFallback = new ContentAddressedStorageProxy.HTTP(p2pHttpProxy);
+        p2pHttpFallback = Builder.buildP2PBlockRetrieverForS3(a, usage, hasher, p2pHttpFallback);
         S3BlockStorage s3 = new S3BlockStorage(config, List.of(Cid.decode(a.getArg("ipfs.id"))),
-                BlockStoreProperties.empty(), "localhost:8000", transactions, authoriser, null, meta, usageStore,
+                BlockStoreProperties.empty(), "localhost:8000", transactions, authoriser, null, meta, usage,
                 new RamBlockCache(1024, 100),
-                new FileBlockBuffer(a.fromPeergosDir("s3-block-buffer-dir", "block-buffer"), usageStore),
+                new FileBlockBuffer(a.fromPeergosDir("s3-block-buffer-dir", "block-buffer"), usage),
                 Integer.MAX_VALUE, Integer.MAX_VALUE, Integer.MAX_VALUE, Integer.MAX_VALUE,
                 versioned, a.getPeergosDir(), partitioned, hasher,
-                new RAMStorage(hasher), null);
+                new RAMStorage(hasher), p2pHttpFallback);
         JdbcIpnsAndSocial rawPointers = new JdbcIpnsAndSocial(database, sqlCommands);
         if (a.hasArg("integrity-check")) {
             if (a.hasArg("username"))
-                GarbageCollector.checkUserIntegrity(a.getArg("username"), s3, meta, rawPointers, usageStore, a.getBoolean("fix-metadata", false), hasher);
+                GarbageCollector.checkUserIntegrity(a.getArg("username"), s3, meta, rawPointers, usage, a.getBoolean("fix-metadata", false), hasher);
             else
-                GarbageCollector.checkIntegrity(s3, meta, rawPointers, usageStore, a.getBoolean("fix-metadata", false), hasher);
+                GarbageCollector.checkIntegrity(s3, meta, rawPointers, usage, a.getBoolean("fix-metadata", false), hasher);
             return;
         }
         MutablePointers localPointers = UserRepository.build(s3, rawPointers, hasher);
         Multihash pkiServerNodeId = Builder.getPkiServerId(a);
-        JavaPoster p2pHttpProxy = Builder.buildP2pHttpProxy(a);
         MutablePointersProxy proxingMutable = new HttpMutablePointers(p2pHttpProxy, pkiServerNodeId);
         LinkRetrievalCounter linkCounts = new JdbcLinkRetrievalcounter(Main.getDBConnector(a, "link-counts-sql-file", database), sqlCommands);
         JdbcIpnsAndSocial rawSocial = new JdbcIpnsAndSocial(Builder.getDBConnector(a, "social-sql-file", database), sqlCommands);
@@ -1570,11 +1572,11 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         JdbcBatCave batStore = new JdbcBatCave(Main.getDBConnector(a, "bat-store", database), sqlCommands);
 
         CoreNode core = Builder.buildCorenode(a, s3, transactions, rawPointers, localPointers, proxingMutable,
-                rawSocial, usageStore, userQuotas, rawAccount, batStore, account, linkCounts, crypto);
+                rawSocial, usage, userQuotas, rawAccount, batStore, account, linkCounts, crypto);
 
         s3.setPki(core);
         System.out.println("Performing GC on S3 block store...");
-        s3.collectGarbage(rawPointers, usageStore, meta, versioned);
+        s3.collectGarbage(rawPointers, usage, meta, versioned);
     }
 
     @Override
