@@ -756,6 +756,17 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                 });
     }
 
+    public static Throwable getRootCause(Throwable t) {
+        Throwable cause = t.getCause();
+        if (t instanceof CompletionException)
+            return getRootCause(cause);
+        if (t instanceof ExecutionException)
+            return getRootCause(cause);
+        if (t instanceof RuntimeException && cause != null && cause != t)
+            return getRootCause(cause);
+        return t;
+    }
+
     private CompletableFuture<Optional<Pair<byte[], String>>> getRawWithoutBackoff(List<Multihash> peerIds,
                                                                                    PublicKeyHash owner,
                                                                                    Cid hash,
@@ -795,7 +806,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                 S3BlockStorage.rateLimited.inc();
                 throw new RateLimitException();
             }
-            boolean notFound = Exceptions.getRootCause(e) instanceof FileNotFoundException || msg.contains("<Code>NoSuchKey</Code>");
+            boolean notFound = getRootCause(e) instanceof FileNotFoundException || msg.contains("<Code>NoSuchKey</Code>");
             if (! notFound) {
                 LOG.warning("S3 error reading " + path);
                 LOG.log(Level.WARNING, msg, e);
