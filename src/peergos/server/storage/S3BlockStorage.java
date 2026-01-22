@@ -1543,13 +1543,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                 versioned, a.getPeergosDir(), partitioned, hasher,
                 new RAMStorage(hasher), p2pHttpFallback);
         JdbcIpnsAndSocial rawPointers = new JdbcIpnsAndSocial(database, sqlCommands);
-        if (a.hasArg("integrity-check")) {
-            if (a.hasArg("username"))
-                GarbageCollector.checkUserIntegrity(a.getArg("username"), s3, meta, rawPointers, usage, a.getBoolean("fix-metadata", false), hasher);
-            else
-                GarbageCollector.checkIntegrity(s3, meta, rawPointers, usage, a.getBoolean("fix-metadata", false), hasher);
-            return;
-        }
+
         MutablePointers localPointers = UserRepository.build(s3, rawPointers, hasher);
         Multihash pkiServerNodeId = Builder.getPkiServerId(a);
         MutablePointersProxy proxingMutable = new HttpMutablePointers(p2pHttpProxy, pkiServerNodeId);
@@ -1575,6 +1569,13 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                 rawSocial, usage, userQuotas, rawAccount, batStore, account, linkCounts, crypto);
 
         s3.setPki(core);
+        if (a.hasArg("integrity-check")) {
+            if (a.hasArg("username"))
+                GarbageCollector.checkUserIntegrity(a.getArg("username"), s3, meta, rawPointers, usage, core, a.getBoolean("fix-metadata", false), hasher);
+            else
+                GarbageCollector.checkIntegrity(s3, meta, rawPointers, usage, core, a.getBoolean("fix-metadata", false), hasher);
+            return;
+        }
         System.out.println("Performing GC on S3 block store...");
         s3.collectGarbage(rawPointers, usage, meta, versioned);
     }
