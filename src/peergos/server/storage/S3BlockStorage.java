@@ -795,18 +795,21 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
             if (range.isEmpty())
                 blockMetadata.put(owner, hash, blockAndVersion.right, blockAndVersion.left);
             return Futures.of(Optional.of(blockAndVersion));
-        } catch (SocketTimeoutException | SSLException | SocketException e) {
-            // S3 can't handle the load so treat this as a rate limit and slow down
-            throw new RateLimitException();
-        } catch (IOException e) {
+        } catch (Exception e) {
             String msg = e.getMessage();
-            boolean rateLimited = isRateLimitedException(e);
+            Throwable cause = getRootCause(e);
+            boolean rateLimited = cause instanceof RateLimitException
+                    || cause instanceof SocketTimeoutException
+                    || cause instanceof SSLException
+                    || cause instanceof SocketException
+                    || isRateLimitedException(e);
             if (rateLimited) {
                 getRateLimited.inc();
                 S3BlockStorage.rateLimited.inc();
                 throw new RateLimitException();
             }
-            boolean notFound = getRootCause(e) instanceof FileNotFoundException || msg.contains("<Code>NoSuchKey</Code>");
+
+            boolean notFound = cause instanceof FileNotFoundException || msg.contains("<Code>NoSuchKey</Code>");
             if (! notFound) {
                 LOG.warning("S3 error reading " + path);
                 LOG.log(Level.WARNING, msg, e);
@@ -878,7 +881,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         }
     }
 
-    public static boolean isRateLimitedException(IOException e) {
+    public static boolean isRateLimitedException(Exception e) {
         String msg = e.getMessage();
         if (msg == null) {
             return false;
