@@ -606,7 +606,9 @@ public class MirrorCoreNode implements CoreNode {
     private boolean isHome(String username, Set<Multihash> ourIds) {
         List<UserPublicKeyLink> chain = state.chains.get(username);
         return chain != null &&
-                chain.get(chain.size() - 1).claim.storageProviders.stream().anyMatch(ourIds::contains);
+                chain.get(chain.size() - 1).claim.storageProviders.stream()
+                        .map(Multihash::bareMultihash)
+                        .anyMatch(ourIds::contains);
     }
 
     @Override
