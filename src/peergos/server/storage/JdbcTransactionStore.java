@@ -15,9 +15,9 @@ import java.util.logging.*;
 public class JdbcTransactionStore implements TransactionStore {
 	private static final Logger LOG = Logging.LOG();
 
-    private static final String SELECT_TRANSACTIONS_BLOCKS = "SELECT tid, owner, hash, time FROM transactions;";
+    private static final String SELECT_TRANSACTIONS_BLOCKS = "SELECT tid, hash, time FROM transactions WHERE owner=?;";
     private static final String DELETE_TRANSACTION = "DELETE FROM transactions WHERE tid = ? AND owner = ?;";
-    private static final String DELETE_OLD_TRANSACTIONS = "DELETE FROM transactions WHERE time < ?;";
+    private static final String DELETE_OLD_TRANSACTIONS = "DELETE FROM transactions WHERE time < ? AND owner = ?;";
 
     private Supplier<Connection> conn;
     private final SqlSupplier commands;
@@ -46,7 +46,7 @@ public class JdbcTransactionStore implements TransactionStore {
 
         try (Connection conn = getConnection()) {
             commands.createTable(commands.createTransactionsTableCommand(), conn);
-            try { // sqlite doesn't have an "if not exists" modifer on "add column"
+            try { // sqlite doesn't have an "if not exists" modifier on "add column"
                 commands.createTable(commands.ensureColumnExistsCommand("transactions", "time", commands.sqlInteger() + " DEFAULT 0"), conn);
             } catch (SQLException f) {
                 if (!f.getMessage().contains("duplicate column"))
@@ -89,10 +89,11 @@ public class JdbcTransactionStore implements TransactionStore {
         }
     }
 
-    public void clearOldTransactions(long cutoffMillis) {
+    public void clearOldTransactions(PublicKeyHash owner, long cutoffMillis) {
         try (Connection conn = getConnection();
              PreparedStatement delete = conn.prepareStatement(DELETE_OLD_TRANSACTIONS)) {
             delete.setLong(1, cutoffMillis);
+            delete.setString(2, owner.toString());
             delete.executeUpdate();
         } catch (SQLException sqe) {
             LOG.log(Level.WARNING, sqe.getMessage(), sqe);
@@ -100,15 +101,15 @@ public class JdbcTransactionStore implements TransactionStore {
     }
 
     @Override
-    public List<Cid> getOpenTransactionBlocks() {
+    public List<Cid> getOpenTransactionBlocks(PublicKeyHash owner) {
         try (Connection conn = getConnection();
              PreparedStatement select = conn.prepareStatement(SELECT_TRANSACTIONS_BLOCKS)) {
+            select.setString(1, owner.toString());
             ResultSet rs = select.executeQuery();
             List<Cid> results = new ArrayList<>();
             while (rs.next())
             {
                 String tid = rs.getString("tid");
-                String owner = rs.getString("owner");
                 String hash = rs.getString("hash");
                 results.add(Cid.decode(hash));
             }
