@@ -684,7 +684,12 @@ public class Main extends Builder {
                             SyncConfig.fromArgs(a);
 
                     SyncRunner.ThreadBased syncer = new SyncRunner.ThreadBased(a, withoutS3, pointerCache, offlineCorenode, crypto);
-                    SyncProperties sync = new SyncProperties(syncConfig, peergosDir, syncer, Either.a(new HostDirEnumerator.Java()));
+                    boolean flatpak = a.hasArg("flatpak");
+                    Either<HostDirEnumerator, HostDirChooser> syncDirChooser = flatpak ?
+                            Either.b(new HostDirChooser.Flatpak()) :
+                            Either.a(new HostDirEnumerator.Java());
+
+                    SyncProperties sync = new SyncProperties(syncConfig, peergosDir, syncer, syncDirChooser);
                     UserService server = new UserService(withoutS3, offlineBats, crypto, offlineCorenode, offlineAccounts,
                             httpSocial, pointerCache, admin, httpUsage, serverMessager, null, Optional.of(sync));
 
@@ -882,7 +887,11 @@ public class Main extends Builder {
                     oldSyncConfig.toFile().exists() ?
                             SyncConfig.fromArgs(Args.parse(new String[]{"-run-once", "true"}, Optional.of(oldSyncConfig), false)):
                             SyncConfig.fromArgs(a);
-            SyncProperties sync = new SyncProperties(syncConfig, a.getPeergosDir(), syncer, Either.a(new HostDirEnumerator.Java()));
+            boolean flatpak = a.hasArg("flatpak");
+            Either<HostDirEnumerator, HostDirChooser> syncDirChooser = flatpak ?
+                    Either.b(new HostDirChooser.Flatpak()) :
+                    Either.a(new HostDirEnumerator.Java());
+            SyncProperties sync = new SyncProperties(syncConfig, a.getPeergosDir(), syncer, syncDirChooser);
             UserService localAPI = new UserService(cachingStorage, p2pBats, crypto, corePropagator, verifyingAccount,
                     p2pSocial, p2mMutable, storageAdmin, p2pSpaceUsage, serverMessages, gc, Optional.of(sync));
             UserService p2pAPI = new UserService(cachingStorage, p2pBats, crypto, corePropagator, verifyingAccount,

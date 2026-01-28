@@ -225,6 +225,13 @@ public class SyncConfigHandler implements HttpHandler {
                 resp.write(res);
                 exchange.close();
                 ForkJoinPool.commonPool().execute(() -> updateRemotePaths(updated));
+            } else if (action.equals("use-host-dir-chooser")) {
+                boolean useHostDirChooser = hostPaths.isB();
+                byte[] res = JSONParser.toString(useHostDirChooser).getBytes(StandardCharsets.UTF_8);
+                exchange.sendResponseHeaders(200, res.length);
+                OutputStream resp = exchange.getResponseBody();
+                resp.write(res);
+                exchange.close();
             } else if (action.equals("get-host-paths")) {
                 if (hostPaths.isB())
                     throw new IllegalStateException("Use direct dir chooser");
