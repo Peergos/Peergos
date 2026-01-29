@@ -33,7 +33,7 @@ public class LocalFileSystem implements SyncFilesystem {
     public LocalFileSystem(Path root, Hasher hasher) {
         this.root = root;
         this.hasher = hasher;
-        if (! exists(root))
+        if (! root.toFile().exists())
             throw new IllegalStateException("Dir does not exist: " + root);
         this.hasBackSlashes = ! root.getFileSystem().getSeparator().equals("/");
     }
