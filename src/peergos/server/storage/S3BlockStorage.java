@@ -925,7 +925,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                 .filter(h -> ! present.containsKey(h))
                 .map(c -> mirrorPool.submit(() -> {
                     long count = retrievalCount.incrementAndGet();
-                    if (count % 100 == 0)
+                    if (count % 100 == 0 || count == 1)
                         LOG.info("User " + username + ": retrieved " + String.format("%,d", count) + " blocks, of total size " + String.format("%,d", retrievalSize.get()));
                     return RetryStorage.runWithRetry(5, () -> p2pHttpFallback.getRaw(peers.get(0), owner, c, mirrorBat)
                             .thenApply(bo -> bo.map(b -> {
