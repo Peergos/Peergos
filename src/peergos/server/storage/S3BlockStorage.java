@@ -930,7 +930,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                     return RetryStorage.runWithRetry(5, () -> p2pHttpFallback.getRaw(peers.get(0), owner, c, mirrorBat)
                             .thenApply(bo -> bo.map(b -> {
                                 retrievalSize.addAndGet(b.length);
-                                return checkAndAddBlock(owner, c, b);
+                                return RetryStorage.runWithRetry(5, () -> Futures.of(checkAndAddBlock(owner, c, b))).join();
                             }))).join();
                 }))
                 .toList();
