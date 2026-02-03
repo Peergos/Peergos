@@ -126,6 +126,20 @@ public class HttpUtil {
     }
 
     public static Map<String, List<String>> head(PresignedUrl head) throws IOException {
+        if (head.base.startsWith("https://")) {
+            URI original;
+            try {
+                original = new URI(head.base);
+            } catch (URISyntaxException e) {
+                throw new IllegalArgumentException(e);
+            }
+            try {
+                return NettyPinnedHttps.head(original);
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+        }
+
         try {
             HttpURLConnection conn = (HttpURLConnection) new URI(head.base).toURL().openConnection();
             conn.setRequestMethod("HEAD");

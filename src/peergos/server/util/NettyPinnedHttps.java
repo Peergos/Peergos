@@ -16,6 +16,8 @@ import peergos.shared.util.Pair;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.net.*;
+import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 
@@ -116,6 +118,92 @@ public final class NettyPinnedHttps {
         FullHttpRequest req = new DefaultFullHttpRequest(
                 HttpVersion.HTTP_1_1,
                 HttpMethod.GET,
+                path);
+
+        req.headers()
+                .set(HttpHeaderNames.HOST, uri.getHost())
+                .set(HttpHeaderNames.CONNECTION, HttpHeaderValues.CLOSE);
+
+        ch.writeAndFlush(req).sync();
+
+        return result.join();
+    }
+
+    public static Map<String, List<String>> head(URI uri) throws InterruptedException, IOException {
+        if (!"https".equalsIgnoreCase(uri.getScheme()))
+            throw new IllegalArgumentException("HTTPS only");
+
+        PinnedHost pinned = getHost(uri);
+        InetAddress addr = pinned.next();
+
+        CompletableFuture<Map<String, List<String>>> result = new CompletableFuture<>();
+
+        SslContext sslCtx = SslContextBuilder.forClient().build();
+
+        Bootstrap bootstrap = new Bootstrap()
+                .group(GROUP)
+                .channel(NioSocketChannel.class)
+                .resolver(NoopAddressResolverGroup.INSTANCE)
+                .handler(new ChannelInitializer<SocketChannel>() {
+                    @Override
+                    protected void initChannel(SocketChannel ch) {
+                        ChannelPipeline p = ch.pipeline();
+
+                        p.addLast(sslCtx.newHandler(
+                                ch.alloc(),
+                                uri.getHost(),
+                                uri.getPort() == -1 ? 443 : uri.getPort()));
+
+                        p.addLast(new HttpClientCodec());
+                        p.addLast(new HttpObjectAggregator(2 * 1024 * 1024));
+
+                        p.addLast(new SimpleChannelInboundHandler<FullHttpResponse>() {
+                            @Override
+                            protected void channelRead0(ChannelHandlerContext ctx,
+                                                        FullHttpResponse resp) {
+                                int respCode = resp.status().code();
+                                if (respCode != 200) {
+                                    if (respCode == 502 || respCode == 503)
+                                        result.completeExceptionally(new RateLimitException());
+                                    else if (respCode == 404) {
+                                        result.completeExceptionally(new FileNotFoundException());
+                                    } else
+                                        result.completeExceptionally(
+                                                new RuntimeException("HTTP " + resp.status()));
+                                } else {
+                                    HttpHeaders headers = resp.headers();
+                                    Map<String, List<String>> res = new HashMap<>();
+                                    headers.forEach(e -> res.put(e.getKey(), List.of(e.getValue())));
+                                    result.complete(res);
+                                }
+                                ctx.close();
+                            }
+
+                            @Override
+                            public void exceptionCaught(ChannelHandlerContext ctx, Throwable t) {
+                                if (t instanceof SslClosedEngineException)
+                                    result.completeExceptionally(new RateLimitException());
+                                else if (t instanceof SocketException)
+                                    result.completeExceptionally(new RateLimitException());
+                                else
+                                    result.completeExceptionally(t);
+                                ctx.close();
+                            }
+                        });
+                    }
+                });
+
+        InetSocketAddress remote =
+                new InetSocketAddress(addr, uri.getPort() == -1 ? 443 : uri.getPort());
+
+        Channel ch = bootstrap.connect(remote).sync().channel();
+
+        String path = uri.getRawPath()
+                + (uri.getRawQuery() != null ? "?" + uri.getRawQuery() : "");
+
+        FullHttpRequest req = new DefaultFullHttpRequest(
+                HttpVersion.HTTP_1_1,
+                HttpMethod.HEAD,
                 path);
 
         req.headers()
