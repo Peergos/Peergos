@@ -959,20 +959,21 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
             return Futures.of(Collections.singletonList(newRoot));
 
         // This call will not verify the auth as we might not have the mirror bat present locally
-        Optional<byte[]> newBlock = getRaw(peerIds, owner, newRoot, mirrorBat, ourNodeId, hasher, false, true).join();
-        if (newBlock.isEmpty())
-            throw new IllegalStateException("Couldn't retrieve block: " + newRoot);
-        if (! hasBlock(owner, newRoot)) {
+        boolean hasBlock = hasBlock(owner, newRoot);
+        if (! hasBlock) {
+            Optional<byte[]> newBlock = getRaw(peerIds, owner, newRoot, mirrorBat, ourNodeId, hasher, false, true).join();
+            if (newBlock.isEmpty())
+                throw new IllegalStateException("Couldn't retrieve block: " + newRoot);
             getWithBackoff(() -> put(newBlock.get(), newRoot.isRaw(), tid, owner, false));
             usage.addPendingUsage(username, writer, newBlock.get().length);
         }
         if (newRoot.isRaw())
             return Futures.of(Collections.singletonList(newRoot));
+        BlockMetadata meta = getBlockMetadata(owner, newRoot).join();
 
-        List<Cid> newLinks = CborObject.fromByteArray(newBlock.get()).links()
+        List<Cid> newLinks = meta.links
                 .stream()
                 .filter(h -> !h.isIdentity())
-                .map(c -> (Cid)c)
                 .collect(Collectors.toList());
         List<Cid> existingLinks = existing.map(c -> getLinks(owner, c, peerIds).join().stream()
                         .filter(h -> !h.isIdentity())
