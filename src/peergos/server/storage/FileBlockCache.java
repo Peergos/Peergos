@@ -193,7 +193,14 @@ public class FileBlockCache implements BlockCache {
             needToCommitSize.set(true);
             return Futures.of(true);
         } catch (IOException e) {
-            throw new RuntimeException(e.getMessage(), e);
+            String msg = e.getMessage();
+            // handle running out of inodes by clearing cache
+            if (msg != null && msg.toLowerCase(Locale.ROOT).contains("space")) {
+                LOG.info("Clearing block cache after running out of space/inodes...");
+                clear();
+                return Futures.of(false);
+            }
+            throw new RuntimeException(msg, e);
         }
     }
 
