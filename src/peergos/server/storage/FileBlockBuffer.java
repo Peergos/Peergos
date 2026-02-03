@@ -81,9 +81,13 @@ public class FileBlockBuffer implements BlockBuffer {
 
     @Override
     public boolean hasBlock(PublicKeyHash owner, Cid hash) {
-        Path path = getFilePath(owner, hash);
-        File file = root.resolve(path).toFile();
-        return file.exists();
+        try {
+            Path path = getFilePath(owner, hash);
+            File file = root.resolve(path).toFile();
+            return file.exists();
+        } catch (IllegalStateException e) {
+            return false;
+        }
     }
 
     @Override
