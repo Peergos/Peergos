@@ -862,12 +862,15 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         } catch (FileNotFoundException e) {
             return false;
         } catch (IOException e) {
-            String msg = e.getMessage();
+            Throwable t = getRootCause(e);
+            if (t instanceof FileNotFoundException)
+                return false;
+            String msg = t.getMessage();
             if (msg == null) {
                 LOG.info("Error checking for " + hash + ": " + e);
                 return false;
             }
-            boolean rateLimited = isRateLimitedException(e);
+            boolean rateLimited = isRateLimitedException(t);
             if (rateLimited) {
                 S3BlockStorage.rateLimited.inc();
                 throw new RateLimitException();
@@ -881,7 +884,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         }
     }
 
-    public static boolean isRateLimitedException(Exception e) {
+    public static boolean isRateLimitedException(Throwable e) {
         String msg = e.getMessage();
         if (msg == null) {
             return false;
