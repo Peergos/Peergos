@@ -1204,8 +1204,7 @@ public class Main extends Builder {
                             );
                             Process p = pb.start();
                             p.onExit().thenAccept(done -> {
-                                // TODO Stop server if browser window is closed
-
+                                System.exit(0);
                             });
                         } else if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.BROWSE)) {
                             Desktop.getDesktop().browse(api);
