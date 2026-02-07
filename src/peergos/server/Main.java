@@ -1194,9 +1194,20 @@ public class Main extends Builder {
                                 throw e;
                         }
                     }
+                    boolean flatpak = args.hasArg("flatpak");
                     boolean isLinux = "linux".equalsIgnoreCase(System.getProperty("os.name"));
                     try {
-                        if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.BROWSE)) {
+                        if (flatpak) {
+                            ProcessBuilder pb = new ProcessBuilder(
+                                    "chromium",
+                                    "--app=http://localhost:" + port
+                            );
+                            Process p = pb.start();
+                            p.onExit().thenAccept(done -> {
+                                // TODO Stop server if browser window is closed
+
+                            });
+                        } else if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.BROWSE)) {
                             Desktop.getDesktop().browse(api);
                         } else {
                             if (isLinux) // Fix Snap installer
