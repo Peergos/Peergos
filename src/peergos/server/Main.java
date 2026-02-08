@@ -1210,6 +1210,8 @@ public class Main extends Builder {
                             });
                         } else if (isWindows) {
                             ProcessBuilder pb = new ProcessBuilder(
+                                    "cmd.exe",
+                                    "/C",
                                     "start",
                                     "msedge",
                                     "--args",
