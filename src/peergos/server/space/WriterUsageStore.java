@@ -31,4 +31,13 @@ public interface WriterUsageStore {
 
     // return current usage root, and username
     List<Triple<Multihash, String, PublicKeyHash>> getAllTargets();
+
+    // return current usage root, and username
+    List<Triple<Multihash, String, PublicKeyHash>> getAllTargets(String username);
+
+    /**
+     *
+     * @return All usernames and owner keys using space locally
+     */
+    List<Pair<String, PublicKeyHash>> getAllOwners();
 }

@@ -204,12 +204,6 @@ public class FileBlockCache implements BlockCache {
         }
     }
 
-    protected List<Cid> getFiles() {
-        List<Cid> existing = new ArrayList<>();
-        FileContentAddressedStorage.getFilesRecursive(root, existing::add);
-        return existing;
-    }
-
     public CompletableFuture<Optional<Integer>> getSize(Multihash h) {
         Path path = getFilePath((Cid)h);
         File file = root.resolve(path).toFile();

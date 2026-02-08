@@ -76,7 +76,7 @@ public class IpfsUserTests extends UserTests {
         // need to clear transactions otherwise blocks won't be GC'd for a day
         TransactionStore transactionStore = Builder.buildTransactionStore(args, Builder.getDBConnector(args.with("transactions-sql-file", "transactions.sql"),
                 "transactions-sql-file"));
-        transactionStore.clearOldTransactions(System.currentTimeMillis());
+        transactionStore.clearOldTransactions(context.signer.publicKeyHash, System.currentTimeMillis());
         gc();
         long sizeBefore = getBlockstoreSize();
         long usageBefore = context.getSpaceUsage(false).join();
@@ -93,8 +93,8 @@ public class IpfsUserTests extends UserTests {
         Path filePath = PathUtil.get(username, filename);
         context.getByPath(filePath).join().get()
                 .remove(context.getUserRoot().join(), filePath, context).join();
-        transactionStore.clearOldTransactions(System.currentTimeMillis());
-        List<Cid> open = transactionStore.getOpenTransactionBlocks();
+        transactionStore.clearOldTransactions(context.signer.publicKeyHash, System.currentTimeMillis());
+        List<Cid> open = transactionStore.getOpenTransactionBlocks(context.signer.publicKeyHash);
         Assert.assertTrue(open.isEmpty());
         long usageAfter = context.getSpaceUsage(false).join();
         Assert.assertTrue(usageAfter == usageBefore);
