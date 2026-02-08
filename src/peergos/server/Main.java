@@ -1212,6 +1212,7 @@ public class Main extends Builder {
                             ProcessBuilder pb = new ProcessBuilder(
                                     "start",
                                     "msedge",
+                                    "--args",
                                     "--app=http://localhost:" + port
                             );
                             Process p = pb.start();
