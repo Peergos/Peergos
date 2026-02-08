@@ -1220,7 +1220,7 @@ public class Main extends Builder {
                             Process p = pb.start();
 
                             p.onExit().thenAccept(done -> {
-                                System.exit(0);
+                                System.out.println("Edge exited...");
                             });
                         } else if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.BROWSE)) {
                             Desktop.getDesktop().browse(api);
