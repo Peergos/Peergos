@@ -1196,6 +1196,8 @@ public class Main extends Builder {
                     }
                     boolean flatpak = args.hasArg("flatpak");
                     boolean isLinux = "linux".equalsIgnoreCase(System.getProperty("os.name"));
+                    boolean isWindows = System.getProperty("os.name").toLowerCase().startsWith("windows");
+
                     try {
                         if (flatpak) {
                             ProcessBuilder pb = new ProcessBuilder(
@@ -1206,6 +1208,33 @@ public class Main extends Builder {
                             p.onExit().thenAccept(done -> {
                                 System.exit(0);
                             });
+                        } else if (isWindows) {
+                            ProcessBuilder pbe = new ProcessBuilder(
+                                    "if",
+                                    "exist",
+                                    "\"c:\\Program Files\\Google\\Chrome\\Application\\chrome.exe\"",
+                                    "echo",
+                                    "exists"
+                            );
+                            Process pe = pbe.start();
+                            BufferedReader r = new BufferedReader(
+                                    new InputStreamReader(pe.getInputStream())
+                            );
+
+                            boolean chromePresent = r.readLine().trim().equals("exists");
+
+                            if (chromePresent) {
+                                ProcessBuilder pb = new ProcessBuilder(
+                                        "\"c:\\Program Files\\Google\\Chrome\\Application\\chrome.exe\"",
+                                        "--app=http://localhost:" + port
+                                );
+                                Process p = pb.start();
+
+                                p.onExit().thenAccept(done -> {
+                                    System.exit(0);
+                                });
+                            } else if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.BROWSE))
+                                Desktop.getDesktop().browse(api);
                         } else if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.BROWSE)) {
                             Desktop.getDesktop().browse(api);
                         } else {
@@ -1216,6 +1245,9 @@ public class Main extends Builder {
                     } catch (Throwable t) {
                         if (isLinux)
                             Runtime.getRuntime().exec(new String[] {"xdg-open", "http://localhost:" + port});
+                        if (isWindows)
+                            if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.BROWSE))
+                                Desktop.getDesktop().browse(api);
                         System.out.println("Please open http://localhost:" + port + " in your browser.");
                     }
                     return null;
