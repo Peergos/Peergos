@@ -1233,6 +1233,7 @@ public class Main extends Builder {
                         if (isWindows)
                             if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.BROWSE))
                                 Desktop.getDesktop().browse(api);
+                        t.printStackTrace();
                         System.out.println("Please open http://localhost:" + port + " in your browser.");
                     }
                     return null;
