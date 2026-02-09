@@ -1201,8 +1201,17 @@ public class Main extends Builder {
                     try {
                         if (flatpak) {
                             ProcessBuilder pb = new ProcessBuilder(
-                                    "chromium",
-                                    "--app=http://localhost:" + port
+                                    "flatpak-spawn",
+                                    "--host",
+                                    "flatpak",
+                                    "run",
+                                    "com.google.Chrome",
+                                    "--app=http://localhost:" + port,
+                                    "--window-size=1280,900",
+                                    "--no-default-browser-check",
+                                    "--no-first-run",
+                                    "--disable-sync",
+                                    "--disable-default-apps"
                             );
                             Process p = pb.start();
                             p.onExit().thenAccept(done -> {
