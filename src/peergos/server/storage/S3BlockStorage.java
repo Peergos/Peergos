@@ -861,7 +861,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
             return true;
         } catch (FileNotFoundException e) {
             return false;
-        } catch (IOException e) {
+        } catch (Exception e) {
             Throwable t = getRootCause(e);
             if (t instanceof FileNotFoundException)
                 return false;
