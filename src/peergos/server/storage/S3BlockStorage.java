@@ -854,7 +854,13 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
 
     public boolean hasBlockWithoutBackoff(PublicKeyHash owner, Cid hash) {
         try {
-            PresignedUrl headUrl = S3Request.preSignHead(folder + hashToKey(owner, hash), Optional.of(60),
+            String key;
+            try {
+                key = hashToKey(owner, hash);
+            } catch (Exception e) {
+                return false;
+            }
+            PresignedUrl headUrl = S3Request.preSignHead(folder + key, Optional.of(60),
                     S3AdminRequests.asAwsDate(ZonedDateTime.now()), host, region, storageClass, accessKeyId, secretKey, useHttps, hasher).join();
             Map<String, List<String>> headRes = HttpUtil.head(headUrl);
             blockHeads.inc();
