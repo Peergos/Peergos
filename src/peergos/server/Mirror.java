@@ -138,10 +138,11 @@ public class Mirror {
                             if (!localMirrorBats.contains(mirrorBat))
                                 batStorage.addBat(username, mirrorBat.id(), mirrorBat.bat, new byte[0]);
                         }
+                        usage.addUserIfAbsent(username);
+                        usage.addWriter(username, owner);
                         for (Map.Entry<PublicKeyHash, byte[]> pointer : snapshot.pointerState.entrySet()) {
                             PublicKeyHash writer = pointer.getKey();
                             byte[] value = pointer.getValue();
-                            usage.addUserIfAbsent(username);
                             usage.addWriter(username, writer);
                             mirrorMerkleTree(username, owner, writer, List.of(nodeId), value, Optional.of(instanceBat), storage, targetPointers, transactions, usage, hasher);
                         }
