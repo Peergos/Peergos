@@ -1210,18 +1210,22 @@ public class Main extends Builder {
                                 System.exit(0);
                             });
                         } else if (isWindows) {
-                            ProcessBuilder pb = new ProcessBuilder(
-                                    "cmd.exe",
-                                    "/C",
-                                    "start",
-                                    "msedge",
-                                    "--args",
-                                    "--app=http://localhost:" + port
-                            );
-                            Process p = pb.start();
+                            String edgePath = "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe";
+                            if (!new File(edgePath).exists()) {
+                                edgePath = "C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe";
+                            }
 
-                            p.onExit().thenAccept(done -> {
-                                System.out.println("Edge exited...");
+                            ProcessBuilder pb = new ProcessBuilder(
+                                    edgePath,
+                                    "--app=http://localhost:" + port,
+                                    "--user-data-dir=" + System.getenv("APPDATA") + "\\Peergos\\edge-data"
+                            );
+
+                            Process edgeProcess = pb.start();
+
+                            edgeProcess.onExit().thenAccept(done -> {
+                                System.out.println("Edge closed, shutting down...");
+                                System.exit(0);
                             });
                         } else if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.BROWSE)) {
                             Desktop.getDesktop().browse(api);
