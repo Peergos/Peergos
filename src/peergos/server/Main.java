@@ -1201,10 +1201,8 @@ public class Main extends Builder {
                     try {
                         if (flatpak) {
                             ProcessBuilder pb = new ProcessBuilder(
-                                    "zypak-wrapper",
-                                    "/app/extra/electron/electron",
-                                    "/app/share/peergos/electron-main.js",
-                                    "--peergos-url=http://localhost:" + port
+                                    "flatpak.sh",
+                                    Integer.toString(port)
                             );
                             pb.inheritIO();
                             Process p = pb.start();
