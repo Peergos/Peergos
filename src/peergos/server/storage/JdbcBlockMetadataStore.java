@@ -145,6 +145,9 @@ public class JdbcBlockMetadataStore implements BlockMetadataStore {
 
     @Override
     public Map<Cid, BlockMetadata> getAll(List<Cid> blocks) {
+        if (blocks.isEmpty())
+            return Collections.emptyMap();
+
         String placeholders = blocks.stream()
                 .map(b -> "?")
                 .collect(Collectors.joining(","));
