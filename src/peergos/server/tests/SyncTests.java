@@ -528,6 +528,48 @@ public class SyncTests {
     }
 
     @Test
+    public void modifyLargeFile() throws Exception {
+        modifyLargeFile(6 * 1024 * 1024);
+    }
+
+    public void modifyLargeFile(int fileSize) throws Exception {
+        Path base1 = Files.createTempDirectory("peergos-sync");
+        Path base2 = Files.createTempDirectory("peergos-sync");
+
+        LocalFileSystem localFs = new LocalFileSystem(base1, Main.initCrypto().hasher);
+        LocalFileSystem remoteFs = new LocalFileSystem(base2, Main.initCrypto().hasher);
+        SyncState syncedState = new JdbcTreeState(":memory:");
+
+        boolean syncLocalDeletes = true;
+        boolean syncRemoteDeletes = true;
+
+        DirectorySync.syncDir(localFs, remoteFs, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, 32, 5, crypto, () -> false, DirectorySync::log);
+
+        // Create and sync a file
+        byte[] data = new byte[fileSize];
+        new Random(42).nextBytes(data);
+        String filename = "document.txt";
+        Files.write(base1.resolve(filename), data, StandardOpenOption.CREATE);
+        DirectorySync.syncDir(localFs, remoteFs, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, 32, 5, crypto, () -> false, DirectorySync::log);
+
+        FileState synced1 = syncedState.byPath(filename);
+        Assert.assertNotNull(synced1);
+
+        // User edits the file locally (real content change)
+        Thread.sleep(10);
+        byte[] newData = new byte[fileSize + 1024];
+        new Random(99).nextBytes(newData);
+        Files.write(base1.resolve(filename), newData, StandardOpenOption.CREATE);
+
+        // Sync the change
+        DirectorySync.syncDir(localFs, remoteFs, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, 32, 5, crypto, () -> false, DirectorySync::log);
+
+        // Verify the file is synced correctly
+        Assert.assertArrayEquals(newData, Files.readAllBytes(base1.resolve(filename)));
+        Assert.assertArrayEquals(newData, Files.readAllBytes(base2.resolve(filename)));
+    }
+
+    @Test
     public void treeStateStore() throws IOException {
         Crypto crypto = Main.initCrypto();
         Path tmp = Files.createTempDirectory("peergos-sync-test");

@@ -179,7 +179,8 @@ public class LocalFileSystem implements SyncFilesystem {
 
     @Override
     public AsyncReader getBytes(Path p, long fileOffset) throws IOException {
-        return new FileAsyncReader(root.resolve(p).toFile());
+        FileAsyncReader reader = new FileAsyncReader(root.resolve(p).toFile());
+        return reader.seek(fileOffset).join();
     }
 
     @Override
