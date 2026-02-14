@@ -168,7 +168,7 @@ public class Mirror {
         }
         Logging.LOG().log(Level.INFO, "Finished mirroring data for node " + nodeId + ", with " + userCount + " users.");
         if (! erroredUsers.isEmpty())
-            Logging.LOG().log(Level.INFO, "Errored users: " + erroredUsers);
+            Logging.LOG().log(Level.INFO, "Errored users: " + erroredUsers.size() + " - " + erroredUsers);
         return erroredUsers.size();
     }
 
