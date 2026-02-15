@@ -496,7 +496,7 @@ public interface CborObject extends Cborable {
                 return a.length - b.length;
             for (int i=0; i < a.length; i++)
                 if (a[i] != b[i])
-                    return a[i] & 0xff - b[i] & 0xff;
+                    return (a[i] & 0xff) - (b[i] & 0xff);
             return 0;
         }
 

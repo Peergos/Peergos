@@ -162,12 +162,14 @@ public class AbsoluteCapability implements Cborable {
         return Objects.equals(owner, that.owner) &&
                 Objects.equals(writer, that.writer) &&
                 Arrays.equals(mapKey, that.mapKey) &&
-                Objects.equals(rBaseKey, that.rBaseKey);
+                Objects.equals(bat, that.bat) &&
+                Objects.equals(rBaseKey, that.rBaseKey) &&
+                Objects.equals(wBaseKey, that.wBaseKey);
     }
 
     @Override
     public int hashCode() {
-        int result = Objects.hash(owner, writer, rBaseKey);
+        int result = Objects.hash(owner, writer, bat, rBaseKey, wBaseKey);
         result = 31 * result + Arrays.hashCode(mapKey);
         return result;
     }

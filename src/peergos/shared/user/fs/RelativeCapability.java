@@ -105,12 +105,14 @@ public class RelativeCapability implements Cborable {
         RelativeCapability that = (RelativeCapability) o;
         return Objects.equals(writer, that.writer) &&
                 Arrays.equals(mapKey, that.mapKey) &&
-                Objects.equals(rBaseKey, that.rBaseKey);
+                Objects.equals(bat, that.bat) &&
+                Objects.equals(rBaseKey, that.rBaseKey) &&
+                Objects.equals(wBaseKeyLink, that.wBaseKeyLink);
     }
 
     @Override
     public int hashCode() {
-        int result = Objects.hash(writer, rBaseKey);
+        int result = Objects.hash(writer, bat, rBaseKey, wBaseKeyLink);
         result = 31 * result + Arrays.hashCode(mapKey);
         return result;
     }

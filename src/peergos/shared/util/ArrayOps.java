@@ -88,7 +88,7 @@ public class ArrayOps
     {
         for (int i=0; i < Math.min(a.length, b.length); i++)
             if (a[i] != b[i])
-                return a[i] & 0xff - b[i] & 0xff;
+                return (a[i] & 0xff) - (b[i] & 0xff);
             return 0;
     }
 
