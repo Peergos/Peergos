@@ -14,7 +14,7 @@ public interface TransactionStore {
 
     void closeTransaction(PublicKeyHash owner, TransactionId tid);
 
-    List<Cid> getOpenTransactionBlocks();
+    List<Cid> getOpenTransactionBlocks(PublicKeyHash owner);
 
-    void clearOldTransactions(long cutoffUtcMillis);
+    void clearOldTransactions(PublicKeyHash owner, long cutoffUtcMillis);
 }

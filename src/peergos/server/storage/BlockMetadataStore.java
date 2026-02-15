@@ -1,9 +1,9 @@
 package peergos.server.storage;
 
 import peergos.shared.cbor.*;
+import peergos.shared.crypto.hash.PublicKeyHash;
 import peergos.shared.storage.auth.*;
 import peergos.shared.io.ipfs.Cid;
-import peergos.shared.util.Pair;
 
 import java.util.*;
 import java.util.function.*;
@@ -13,23 +13,40 @@ public interface BlockMetadataStore {
 
     Optional<BlockMetadata> get(Cid block);
 
-    void put(Cid block, String version, BlockMetadata meta);
+    List<Cid> hasBlocks(List<Cid> blocks);
+
+    Map<Cid, BlockMetadata> getAll(List<Cid> blocks);
+
+    /**
+     *
+     * @param block
+     * @return The owner for a block or empty if it is a legacy block
+     */
+    Optional<PublicKeyHash> getOwner(Cid block);
+
+    void setOwner(PublicKeyHash owner, Cid block);
+
+    void setOwnerAndVersion(PublicKeyHash owner, Cid block, String version);
+
+    void put(PublicKeyHash owner, Cid block, String version, BlockMetadata meta);
 
     void remove(Cid block);
 
-    long size();
+    long size(PublicKeyHash owner);
+
+    boolean isEmpty();
 
     void applyToAll(Consumer<Cid> consumer);
 
     void applyToAllSizes(BiConsumer<Cid, Long> action);
 
-    Stream<BlockVersion> list();
+    Stream<BlockVersion> list(PublicKeyHash owner);
 
-    void listCbor(Consumer<List<BlockVersion>> res);
+    void listCbor(PublicKeyHash owner, Consumer<List<BlockVersion>> res);
 
-    default BlockMetadata put(Cid block, String version, byte[] data) {
+    default BlockMetadata put(PublicKeyHash owner, Cid block, String version, byte[] data) {
         BlockMetadata meta = extractMetadata(block, data);
-        put(block, version, meta);
+        put(owner, block, version, meta);
         return meta;
     }
 

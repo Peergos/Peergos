@@ -151,10 +151,10 @@ public class ServerAdmin {
                     BlockRequestAuthoriser blockAuth = Builder.blockAuthoriser(a, batStore, crypto.hasher);
                     Supplier<Connection> usageDb = Builder.getDBConnector(a, "space-usage-sql-file", dbConnectionPool);
                     JdbcUsageStore usageStore = new JdbcUsageStore(usageDb, sqlCommands);
-                    DeletableContentAddressedStorage storage = Builder.buildLocalStorage(a, meta, null, null, blockAuth,
-                            ids, usageStore, crypto.hasher);
                     JdbcIpnsAndSocial rawPointers = Builder.buildRawPointers(a,
                             Builder.getDBConnector(a, "mutable-pointers-file", dbConnectionPool));
+                    DeletableContentAddressedStorage storage = Builder.buildLocalStorage(a, meta, null, null, blockAuth,
+                            ids, usageStore, rawPointers, null, crypto.hasher);
 
                     MutablePointers pointers = UserRepository.build(storage, rawPointers, crypto.hasher);
                     QuotaAdmin quota = Builder.buildSpaceQuotas(a, storage,

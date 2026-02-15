@@ -52,7 +52,7 @@ public class LocalFirstStorage extends DelegatingDeletableStorage {
                                                       boolean persistBlock) {
         if (hash.isIdentity())
             return Futures.of(Optional.of(hash.getHash()));
-        boolean localBlock = local.hasBlock(hash);
+        boolean localBlock = local.hasBlock(owner, hash);
         if (localBlock)
             return local.getRaw(peerIds, owner, hash, bat, ourId, h, persistBlock);
         return p2pGets.getRaw(peerIds.get(0), owner, hash, bat).thenCompose(res -> {
@@ -77,9 +77,9 @@ public class LocalFirstStorage extends DelegatingDeletableStorage {
                                                       boolean persistBlock) {
         if (hash.isIdentity())
             return Futures.of(Optional.of(hash.getHash()));
-        boolean localBlock = local.hasBlock(hash);
+        boolean localBlock = local.hasBlock(owner, hash);
         if (localBlock)
-            return local.getRaw(owner, hash, bat);
+            return local.getRaw(peerIds, owner, hash, bat, ourId, h, doAuth, persistBlock);
         if (peerIds.get(0).equals(ourId))
             throw new IllegalStateException("We should have this block!");
         return p2pGets.getRaw(peerIds.get(0), owner, hash, bat).thenCompose(res -> {
@@ -103,7 +103,7 @@ public class LocalFirstStorage extends DelegatingDeletableStorage {
             throw new IllegalStateException("Can't retrieve private block!");
         if (hash.isIdentity())
             return Futures.of(Optional.of(CborObject.fromByteArray(hash.getHash())));
-        boolean localBlock = local.hasBlock(hash);
+        boolean localBlock = local.hasBlock(owner, hash);
         if (localBlock)
             return local.get(peerIds, owner, hash, auth, persistBlock);
         return p2pGets.get(peerIds.get(0), owner, hash, Optional.empty()).thenCompose(res -> {
@@ -127,7 +127,7 @@ public class LocalFirstStorage extends DelegatingDeletableStorage {
                                                        boolean persistblock) {
         if (hash.isIdentity())
             return Futures.of(Optional.of(CborObject.fromByteArray(hash.getHash())));
-        boolean localBlock = local.hasBlock(hash);
+        boolean localBlock = local.hasBlock(owner, hash);
         if (localBlock)
             return local.get(owner, hash, bat);
         return p2pGets.get(peerIds.get(0), owner, hash, bat).thenCompose(res -> {
@@ -155,7 +155,7 @@ public class LocalFirstStorage extends DelegatingDeletableStorage {
                                             Optional<BatWithId> mirrorBat,
                                             Hasher h) {
         List<Cid> localHashes = blocks.stream()
-                .filter(c -> local.hasBlock(c))
+                .filter(c -> local.hasBlock(owner, c))
                 .collect(Collectors.toList());
         List<BlockMetadata> localMeta = localHashes.stream()
                 .map(c -> getBlockMetadata(owner, c).join())
