@@ -199,9 +199,7 @@ public class JdbcAccount implements LoginCache {
                 return CompletableFuture.completedFuture(UserStaticData.fromCbor(CborObject.fromByteArray(Base64.getDecoder().decode(rs.getString("entry")))));
             }
 
-            if (hasEntry(username))
-                return Futures.errored(new IllegalStateException("Incorrect password"));
-            return Futures.errored(new IllegalStateException("Unknown username. Did you enter it correctly?"));
+            return Futures.errored(new IllegalStateException("Incorrect username or password"));
         } catch (SQLException sqe) {
             LOG.log(Level.WARNING, sqe.getMessage(), sqe);
             return Futures.errored(sqe);
