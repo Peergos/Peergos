@@ -34,7 +34,7 @@ public class Serialize
     public static String deserializeString(DataInput din, int len) throws IOException
     {
         int l = din.readInt();
-        if (l > len)
+        if (l < 0 || l > len)
             throw new IOException("String size "+ l + " too long.");
         byte[] b = new byte[l];
         din.readFully(b);
@@ -64,7 +64,7 @@ public class Serialize
 
     public static byte[] getByteArray(int len, int maxLength) throws IOException
     {
-        if (len > maxLength)
+        if (len < 0 || len > maxLength)
             throw new IOException("byte array of size "+ len +" too big.");
         return new byte[len];
     }
