@@ -56,7 +56,7 @@ public class SocialHandler implements HttpHandler {
             switch (method) {
                 case "followRequest":
                     AggregatedMetrics.FOLLOW_REQUEST_COUNTER.inc();
-                    byte[] encryptedCap = Serialize.readFully(din, 1024);
+                    byte[] encryptedCap = Serialize.readFully(din, 4096);
                     boolean followRequested = social.sendFollowRequest(owner, encryptedCap).get();
                     dout.writeBoolean(followRequested);
                     break;
