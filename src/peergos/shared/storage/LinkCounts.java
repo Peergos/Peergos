@@ -33,6 +33,8 @@ public class LinkCounts implements Cborable {
         CborObject.CborMap m = (CborObject.CborMap) cbor;
         CborObject.CborList d = m.getList("d");
         Map<Long, Pair<Long, LocalDateTime>> counts = new HashMap<>();
+        if (d.value.size() % 3 != 0)
+            throw new IllegalStateException("Invalid cbor for LinkCounts: list size " + d.value.size() + " is not a multiple of 3");
         for (int i = 0; i < d.value.size(); i += 3) {
             long key = ((CborObject.CborLong) d.value.get(i)).value;
             long count = ((CborObject.CborLong) d.value.get(i + 1)).value;

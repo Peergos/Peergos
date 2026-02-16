@@ -83,8 +83,13 @@ public class Serialize
         ByteArrayOutputStream bout =  new ByteArrayOutputStream();
         byte[] b =  new  byte[0x1000];
         int nRead;
-        while ((nRead = in.read(b, 0, b.length)) != -1 )
+        int total = 0;
+        while ((nRead = in.read(b, 0, b.length)) != -1 ) {
+            total += nRead;
+            if (total > maxSize)
+                throw new IOException("Input exceeds maximum size of " + maxSize + " bytes");
             bout.write(b, 0, nRead);
+        }
         in.close();
         return bout.toByteArray();
     }

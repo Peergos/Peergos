@@ -763,6 +763,8 @@ public class Champ<V extends Cborable> implements Cborable {
             if (keyOrHash instanceof CborObject.CborList) {
                 List<KeyElement<V>> mappings = new ArrayList<>();
                 List<? extends Cborable> mappingsCbor = ((CborObject.CborList) keyOrHash).value;
+                if (mappingsCbor.size() % 2 != 0)
+                    throw new IllegalStateException("Invalid cbor for CHAMP mappings: odd number of elements " + mappingsCbor.size());
                 for (int j=0; j < mappingsCbor.size(); j += 2) {
                     byte[] key = ((CborObject.CborByteArray) mappingsCbor.get(j)).value;
                     Cborable value = mappingsCbor.get(j + 1);
