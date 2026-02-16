@@ -87,7 +87,7 @@ public interface BlockRequestAuthoriser {
             return false;
         String signature = S3Request.computeSignature(req, bat.encodeSecret(), h).join();
         String expected = ArrayOps.bytesToHex(auth.signature);
-        return signature.equals(expected);
+        return java.security.MessageDigest.isEqual(signature.getBytes(), expected.getBytes());
     }
 
     static String invalidReason(BlockAuth auth, Cid block, Cid sourceNode, List<BatId> batids, Hasher h) {
