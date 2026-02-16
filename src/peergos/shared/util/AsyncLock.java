@@ -46,9 +46,12 @@ public class AsyncLock<T> {
                     return true;
                 }))
                 .exceptionally(t -> {
-                    // The initial supplier failed
+                    // The previous queueHead failed - use updater to recover
+                    // so subsequent operations aren't permanently poisoned
                     result.completeExceptionally(t);
-                    newHead.completeExceptionally(t);
+                    updater.get()
+                            .thenApply(newHead::complete)
+                            .exceptionally(e -> newHead.completeExceptionally(e));
                     return true;
                 });
 
