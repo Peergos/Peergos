@@ -29,7 +29,10 @@ public class WriteFilter extends DelegatingStorage {
                                                             List<List<BatId>> batIds,
                                                             boolean isRaw,
                                                             TransactionId tid) {
-        if (! keyFilter.apply(writer, blockSizes.stream().mapToInt(x -> x).sum()))
+        long totalSize = blockSizes.stream().mapToLong(Integer::longValue).sum();
+        if (totalSize > Integer.MAX_VALUE)
+            throw new IllegalStateException("Total write size too large: " + totalSize);
+        if (! keyFilter.apply(writer, (int) totalSize))
             throw new IllegalStateException("Key not allowed to write to this server: " + writer);
         if (blockSizes.stream().anyMatch(s -> s > Fragment.MAX_LENGTH_WITH_BAT_PREFIX))
             throw new IllegalStateException("Block too big!");
@@ -47,7 +50,10 @@ public class WriteFilter extends DelegatingStorage {
                                             List<byte[]> signedHashes,
                                             List<byte[]> blocks,
                                             TransactionId tid) {
-        if (! keyFilter.apply(writer, blocks.stream().mapToInt(x -> x.length).sum()))
+        long totalSize = blocks.stream().mapToLong(x -> x.length).sum();
+        if (totalSize > Integer.MAX_VALUE)
+            throw new IllegalStateException("Total write size too large: " + totalSize);
+        if (! keyFilter.apply(writer, (int) totalSize))
             throw new IllegalStateException("Key not allowed to write to this server: " + writer);
         if (blocks.stream().anyMatch(b -> b.length > Fragment.MAX_LENGTH_WITH_BAT_PREFIX))
             throw new IllegalStateException("Block too big!");
@@ -61,7 +67,10 @@ public class WriteFilter extends DelegatingStorage {
                                                List<byte[]> blocks,
                                                TransactionId tid,
                                                ProgressConsumer<Long> progressConsumer) {
-        if (! keyFilter.apply(writer, blocks.stream().mapToInt(x -> x.length).sum()))
+        long totalSize = blocks.stream().mapToLong(x -> x.length).sum();
+        if (totalSize > Integer.MAX_VALUE)
+            throw new IllegalStateException("Total write size too large: " + totalSize);
+        if (! keyFilter.apply(writer, (int) totalSize))
             throw new IllegalStateException("Key not allowed to write to this server: " + writer);
         if (blocks.stream().anyMatch(b -> b.length > Fragment.MAX_LENGTH_WITH_BAT_PREFIX))
             throw new IllegalStateException("Block too big!");
