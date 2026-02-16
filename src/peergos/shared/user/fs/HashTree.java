@@ -95,7 +95,8 @@ public class HashTree implements Cborable {
         return Futures.combineAllInOrder(LongStream.range(0, nChunks)
                         .mapToObj(i -> {
                             boolean lastOfMultiChunk = i == nChunks - 1 && nChunks > 1;
-                            int remaining = lastOfMultiChunk ? (int) (size % Chunk.MAX_SIZE) : chunk.length;
+                            long lastChunkSize = size % Chunk.MAX_SIZE;
+                            int remaining = lastOfMultiChunk ? (int) (lastChunkSize == 0 ? Chunk.MAX_SIZE : lastChunkSize) : chunk.length;
                             return readChunk(f, lastOfMultiChunk ? new byte[remaining] : chunk, 0, remaining)
                                     .thenCompose(data -> hasher.sha256(data));
                         })
@@ -130,7 +131,7 @@ public class HashTree implements Cborable {
                                 return buildLevel(level3, hasher)
                                         .thenCompose(level4 -> {
                                             if (level4.size() == 1) {
-                                                return hasher.sha256(new CborObject.CborList(level3).serialize())
+                                                return hasher.sha256(new CborObject.CborList(level4).serialize())
                                                         .thenApply(RootHash::new)
                                                         .thenApply(r -> new HashTree(r, level1, level2, level3));
                                             }
