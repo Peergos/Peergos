@@ -98,7 +98,11 @@ public class StorageHandler implements HttpHandler {
                     WriteAuthRequest req = WriteAuthRequest.fromCbor(CborObject.fromByteArray(reqBody));
                     List<byte[]> signatures = req.signatures;
                     List<Integer> blockSizes = req.sizes.stream()
-                            .map(x -> x.intValue())
+                            .map(x -> {
+                                if (x < 0 || x > Integer.MAX_VALUE)
+                                    throw new IllegalStateException("Invalid block size: " + x);
+                                return x.intValue();
+                            })
                             .collect(Collectors.toList());
                     boolean isRaw = Boolean.parseBoolean(last.apply("raw"));
                     dht.authWrites(ownerHash.get(), writerHash, signatures, blockSizes, req.batIds, isRaw, tid).thenAccept(res -> {
