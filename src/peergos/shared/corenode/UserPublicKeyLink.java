@@ -220,7 +220,7 @@ public class UserPublicKeyLink implements Cborable {
         if (existing.size() == 0 || updated.equals(existing))
             return CompletableFuture.completedFuture(updated);
         int indexOfChange = 0;
-        for (int i=0; i < updated.size(); i++)
+        for (int i=0; i < updated.size() && i < existing.size(); i++)
             if (updated.get(i).equals(existing.get(i)))
                 indexOfChange++;
             else
