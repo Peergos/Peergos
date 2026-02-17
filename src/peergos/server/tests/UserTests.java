@@ -527,7 +527,7 @@ public abstract class UserTests {
         try {
             UserContext oldContext = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
         } catch (Exception e) {
-            if (! e.getMessage().contains("Incorrect password") && ! e.getMessage().contains("Incorrect+password"))
+            if (! e.getMessage().contains("Incorrect username or password") && ! e.getMessage().contains("Incorrect+username+or+password"))
                 throw e;
         }
     }
