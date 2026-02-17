@@ -154,6 +154,7 @@ public class Mirror {
                         }
                         erroredUsers.add(snapshot.username);
                         Logging.LOG().log(Level.WARNING, "Couldn't mirror user: " + snapshot.username, e);
+                        Logging.LOG().log(Level.WARNING, "Errored users so far (" + erroredUsers.size() + "): " + erroredUsers);
                     }
                 }
                 if (snapshots.isEmpty())
@@ -168,7 +169,7 @@ public class Mirror {
         }
         Logging.LOG().log(Level.INFO, "Finished mirroring data for node " + nodeId + ", with " + userCount + " users.");
         if (! erroredUsers.isEmpty())
-            Logging.LOG().log(Level.INFO, "Errored users: " + erroredUsers.size() + " - " + erroredUsers);
+            Logging.LOG().log(Level.INFO, "Errored users (" + erroredUsers.size() + "): " + erroredUsers);
         return erroredUsers.size();
     }
 
