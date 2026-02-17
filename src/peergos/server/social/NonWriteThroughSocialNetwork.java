@@ -41,7 +41,7 @@ public class NonWriteThroughSocialNetwork implements SocialNetwork {
             byte[] reqs = source.getFollowRequests(owner, signedTime).join();
             CborObject cbor = CborObject.fromByteArray(reqs);
             List<byte[]> notDeleted = new ArrayList<>();
-            List<ByteArrayWrapper> removed = removedFollowRequests.get(owner);
+            List<ByteArrayWrapper> removed = removedFollowRequests.getOrDefault(owner, Collections.emptyList());
             CborObject.CborList list = (CborObject.CborList) cbor;
             for (Cborable reqCbor: list.value) {
                 byte[] req = reqCbor.serialize();
@@ -49,7 +49,7 @@ public class NonWriteThroughSocialNetwork implements SocialNetwork {
                 if (! removed.contains(wrapped))
                     notDeleted.add(req);
             }
-            notDeleted.addAll(newFollowRequests.get(owner).stream()
+            notDeleted.addAll(newFollowRequests.getOrDefault(owner, Collections.emptyList()).stream()
                     .map(w -> w.data)
                     .collect(Collectors.toList()));
             ByteArrayOutputStream bout = new ByteArrayOutputStream();
