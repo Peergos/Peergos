@@ -175,7 +175,7 @@ public class DoPut extends AbstractMethod {
                         if (split[1].contains("/")) {
                             int slash = split[1].indexOf("/");
                             end = Long.parseLong(split[1].substring(0, slash));
-                            length = Long.parseLong(split[1].substring(slash));
+                            length = Long.parseLong(split[1].substring(slash + 1));
                         } else {
                             end = Long.parseLong(split[1]);
                             length = end-start;
