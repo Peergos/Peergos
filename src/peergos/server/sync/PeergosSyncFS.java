@@ -327,18 +327,20 @@ public class PeergosSyncFS implements SyncFilesystem {
     }
 
     private void applyToSubtree(Path basePath, FileWrapper base, Consumer<FileProps> onFile, Consumer<FileProps> onDir) {
-        Set<FileWrapper> children = base.getChildren(base.version, context.crypto.hasher, context.network, false).join();
-        for (FileWrapper child : children) {
-            Path childPath = basePath.resolve(child.getName());
-            FileProps childProps = new FileProps(root.relativize(childPath).normalize().toString().replaceAll("\\\\", "/"),
-                    child.getFileProperties().modified.toInstant(ZoneOffset.UTC).toEpochMilli() / 1000 * 1000,
-                    child.getSize(), Optional.of(child));
-            if (! child.isDirectory()) {
-                onFile.accept(childProps);
-            } else {
-                onDir.accept(childProps);
-                applyToSubtree(childPath, child, onFile, onDir);
+        Set<NamedAbsoluteCapability> childCaps = base.getChildrenCapabilities(context.crypto.hasher, context.network).join();
+        base.getChildrenFromCaps(childCaps, children -> {
+            for (FileWrapper child : children) {
+                Path childPath = basePath.resolve(child.getName());
+                FileProps childProps = new FileProps(root.relativize(childPath).normalize().toString().replaceAll("\\\\", "/"),
+                        child.getFileProperties().modified.toInstant(ZoneOffset.UTC).toEpochMilli() / 1000 * 1000,
+                        child.getSize(), Optional.of(child));
+                if (!child.isDirectory()) {
+                    onFile.accept(childProps);
+                } else {
+                    onDir.accept(childProps);
+                    applyToSubtree(childPath, child, onFile, onDir);
+                }
             }
-        }
+        }, context.crypto.hasher, context.network).join();
     }
 }
