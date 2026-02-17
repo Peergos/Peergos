@@ -126,8 +126,8 @@ public class InodeFileSystem implements Cborable {
                                                                     .thenCompose(updatedDir -> p.left.putValue(owner,
                                                                             writer, dirKey, Optional.of(dir), updatedDir, tid))
                                                                     .thenApply(f -> new Pair<>(f, ! hasOtherChildren)) :
-                                                            Futures.of(new Pair<>(p.left, ! hasOtherChildren))) :
-                                            Futures.of(new Pair<>(this, ! hasOtherChildren)));
+                                                            Futures.of(new Pair<>(p.left, false))) :
+                                            Futures.of(new Pair<>(this, false)));
                 }));
     }
 
