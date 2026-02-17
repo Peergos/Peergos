@@ -328,7 +328,9 @@ public class PeergosSyncFS implements SyncFilesystem {
 
     private void applyToSubtree(Path basePath, FileWrapper base, Consumer<FileProps> onFile, Consumer<FileProps> onDir) {
         Set<NamedAbsoluteCapability> childCaps = base.getChildrenCapabilities(context.crypto.hasher, context.network).join();
+        AtomicLong directChildCount = new AtomicLong(0);
         base.getChildrenFromCaps(childCaps, children -> {
+            directChildCount.addAndGet(children.size());
             for (FileWrapper child : children) {
                 Path childPath = basePath.resolve(child.getName());
                 FileProps childProps = new FileProps(root.relativize(childPath).normalize().toString().replaceAll("\\\\", "/"),
@@ -342,5 +344,7 @@ public class PeergosSyncFS implements SyncFilesystem {
                 }
             }
         }, context.crypto.hasher, context.network).join();
+        if (directChildCount.get() != childCaps.size())
+            throw new IllegalStateException("Couldn't retrieve all " + childCaps.size() + " children for " + basePath);
     }
 }
