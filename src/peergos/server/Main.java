@@ -1197,6 +1197,7 @@ public class Main extends Builder {
                     boolean flatpak = args.hasArg("flatpak");
                     boolean isLinux = "linux".equalsIgnoreCase(System.getProperty("os.name"));
                     boolean isWindows = System.getProperty("os.name").toLowerCase().startsWith("windows");
+                    boolean isMacOS = System.getProperty("os.name").toLowerCase().startsWith("mac");
 
                     try {
                         if (flatpak) {
@@ -1227,6 +1228,23 @@ public class Main extends Builder {
                                 System.out.println("Edge closed, shutting down...");
                                 System.exit(0);
                             });
+                        } else if (isMacOS) {
+                            Path jar = Path.of(Main.class.getProtectionDomain()
+                                    .getCodeSource()
+                                    .getLocation()
+                                    .toURI());
+                            Path binary = jar.getParent().resolve("PeergosWebView");
+                            ProcessBuilder pb = new ProcessBuilder(
+                                    binary.toString(),
+                                    "" + port
+                            );
+                            pb.inheritIO();
+                            Process webviewProcess = pb.start();
+
+                            webviewProcess.onExit().thenAccept(done -> {
+                                System.out.println("Webview closed, shutting down...");
+                                System.exit(0);
+                            });
                         } else if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.BROWSE)) {
                             Desktop.getDesktop().browse(api);
                         } else {
@@ -1237,7 +1255,7 @@ public class Main extends Builder {
                     } catch (Throwable t) {
                         if (isLinux)
                             Runtime.getRuntime().exec(new String[] {"xdg-open", "http://localhost:" + port});
-                        if (isWindows)
+                        if (isWindows || isMacOS)
                             if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.BROWSE))
                                 Desktop.getDesktop().browse(api);
                         t.printStackTrace();
