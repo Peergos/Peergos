@@ -148,7 +148,7 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
                     Logging.LOG().info("Root hash changed from " + writerUsage.target() + " to " + rootHash);
                     long updatedSize = dht.getRecursiveBlockSize(owner, (Cid)rootHash.get(), us).get();
                     long deltaUsage = updatedSize - writerUsage.directRetainedStorage();
-                    store.confirmUsage(writerUsage.owner, writerKey, deltaUsage, false);
+                    store.confirmUsage(writerUsage.owner, writerKey, deltaUsage, store.getUsage(writerUsage.owner).isErrored());
                     Set<PublicKeyHash> directOwnedKeys = DeletableContentAddressedStorage.getDirectOwnedKeys(owner, writerKey, mutable,
                             (h, s) -> DeletableContentAddressedStorage.getWriterData(us, owner, h, s, false, ourId, hasher, dht), dht, hasher).join();
                     List<PublicKeyHash> newOwnedKeys = directOwnedKeys.stream()
@@ -278,7 +278,7 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
         List<Multihash> us = List.of(ourId.bareMultihash());
         if (! newRoot.isPresent()) {
             LOG.info("Removing usage for (" + owner + ", " + writer + ") from " + current.directRetainedStorage());
-            state.confirmUsage(current.owner, writer, -current.directRetainedStorage(), false);
+            state.confirmUsage(current.owner, writer, -current.directRetainedStorage(), state.getUsage(current.owner).isErrored());
             state.updateWriterUsage(writer, MaybeMultihash.empty(), Collections.emptySet(), Collections.emptySet(), 0);
             if (existingRoot.isPresent()) {
                 try {
@@ -306,7 +306,7 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
                 for (PublicKeyHash owned : updatedOwned) {
                     state.addWriter(current.owner, owned);
                 }
-                state.confirmUsage(current.owner, writer, changeInStorage, false);
+                state.confirmUsage(current.owner, writer, changeInStorage, state.getUsage(current.owner).isErrored());
 
                 HashSet<PublicKeyHash> removedChildren = new HashSet<>(current.ownedKeys());
                 removedChildren.removeAll(updatedOwned);
@@ -400,6 +400,8 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
         }
         if (! writeLimit.allowRequest(size))
             throw new IllegalStateException("Upload bandwidth exceeded please try again tomorrow");
+        if (errored && expectedUsage + size < quota) // clear errored (space tolerance) after successfully lowering usage
+            usageStore.confirmUsage(writerUsage.owner, writer, 0, false);
         try {
             usageStore.addPendingUsage(writerUsage.owner, writer, size);
         } catch (Exception e) {
