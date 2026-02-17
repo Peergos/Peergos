@@ -70,11 +70,12 @@ public class MessageEnvelope implements Cborable {
         return Objects.equals(author, that.author) &&
                 Objects.equals(timestamp, that.timestamp) &&
                 Objects.equals(creationTime, that.creationTime) &&
+                Objects.equals(previousMessages, that.previousMessages) &&
                 Objects.equals(payload, that.payload);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(author, timestamp, creationTime, payload);
+        return Objects.hash(author, timestamp, creationTime, previousMessages, payload);
     }
 }
