@@ -5,6 +5,7 @@ runs:
   using: composite
   steps:
     - name: Set env for minio
+      if: runner.os == 'Linux'
       id: minio
       shell: bash
       run: |
@@ -23,6 +24,7 @@ runs:
           echo 'home=/usr/local/bin' >> $GITHUB_OUTPUT
         fi
     - name: Download minio
+      if: runner.os == 'Linux'
       shell: bash
       run: |
         curl --retry 5 --no-progress-meter --output '${{ steps.minio.outputs.home }}/minio' 'https://dl.min.io/server/minio/release/${{ steps.minio.outputs.release }}/archive/minio.RELEASE.2023-10-07T15-07-38Z'
@@ -30,13 +32,16 @@ runs:
         chmod +x '${{ steps.minio.outputs.home }}/minio'
         chmod +x '${{ steps.minio.outputs.home }}/mc'
     - name: Start minio
+      if: runner.os == 'Linux'
       shell: bash
       run: ( minio server '${{ runner.temp }}/minio.data' & )
     - name: Check if minio is running
+      if: runner.os == 'Linux'
       shell: bash
       run: |
         mc alias set minio 'http://localhost:9000' '${{ env.MINIO_ROOT_USER }}' '${{ env.MINIO_ROOT_PASSWORD }}'
     - name: Create bucket
+      if: runner.os == 'Linux'
       shell: bash
       run: |
         mc mb '${{ runner.temp }}/minio.data/local-s3'
