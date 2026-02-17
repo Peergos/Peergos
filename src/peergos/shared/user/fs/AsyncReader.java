@@ -133,7 +133,7 @@ public interface AsyncReader extends AutoCloseable {
                                 return Futures.of((long)localOffset);
                         } catch (RuntimeException e) {
                             int fromThisChunk = localOffset;
-                            return parseLimitedStreamRecurse(Arrays.copyOfRange(buf, localOffset, bytesRead), fromCbor,
+                            return parseLimitedStreamRecurse(Arrays.copyOfRange(buf, localOffset, prefix.length + bytesRead), fromCbor,
                                     accumulator, toSkip, objectsToRead, maxBytesToRead - bytesRead)
                                     .thenApply(rest -> rest + fromThisChunk);
                         }
