@@ -85,7 +85,9 @@ public class FileBlockBuffer implements BlockBuffer {
                         throw new IllegalStateException("Could not make " + someParent + ", ancestor of " + parentDir + " writable");
                 }
             }
-            Files.write(target, data, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.CREATE, StandardOpenOption.WRITE);
+            Path tmp = root.resolve(filePath.getFileName().toString() + ".tmp");
+            Files.write(tmp, data, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.CREATE, StandardOpenOption.WRITE);
+            Files.move(tmp, target, StandardCopyOption.ATOMIC_MOVE);
             return Futures.of(true);
         } catch (IOException e) {
             throw new RuntimeException(e.getMessage(), e);
