@@ -789,6 +789,7 @@ public class Main extends Builder {
             LinkRetrievalCounter linkCounts = new JdbcLinkRetrievalcounter(getDBConnector(a, "link-counts-sql-file", dbConnectionPool), sqlCommands);
 
             List<Cid> nodeIds = localStorageForLinks.ids().get();
+            Logging.LOG().info("Our peerids: " + nodeIds);
 
             boolean enableGC = a.getBoolean("enable-gc", false);
             GarbageCollector gc = null;
