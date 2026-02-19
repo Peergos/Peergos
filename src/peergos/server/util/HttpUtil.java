@@ -199,7 +199,7 @@ public class HttpUtil {
                 throw new RateLimitException();
             InputStream in = conn.getInputStream();
             byte[] body = Serialize.readFully(in);
-            throw new IllegalStateException("HTTP " + code + "-" + body);
+            throw new IllegalStateException("HTTP " + code + "-" + Arrays.toString(body));
         } catch (IOException e) {
             InputStream err = conn.getErrorStream();
             byte[] errBody = Serialize.readFully(err);
