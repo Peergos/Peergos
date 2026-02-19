@@ -65,7 +65,7 @@ public class GCTests {
         JdbcIpnsAndSocial pointers = new JdbcIpnsAndSocial(getDb(dir.resolve("mutable.sqlite")), cmds);
         JdbcUsageStore usage = new JdbcUsageStore(getDb(dir.resolve("usage.sqlite")), cmds);
 
-        GarbageCollector gc = new GarbageCollector(storage, pointers, usage, dir, (x, y) -> Futures.of(true), true);
+        GarbageCollector gc = new GarbageCollector(storage, pointers, usage, dir, (x, y, z) -> Futures.of(true), true);
         gc.collect(s -> Futures.of(true));
         Path dbFile = dir.resolve("reachability.sqlite");
         Assert.assertTrue(Files.exists(dbFile));
@@ -140,7 +140,7 @@ public class GCTests {
         JdbcIpnsAndSocial pointers = new JdbcIpnsAndSocial(getDb(dir.resolve("mutable.sqlite")), cmds);
         JdbcUsageStore usage = new JdbcUsageStore(getDb(dir.resolve("usage.sqlite")), cmds);
 
-        GarbageCollector gc = new GarbageCollector(storage, pointers, usage, dir, (x, y) -> Futures.of(true), true);
+        GarbageCollector gc = new GarbageCollector(storage, pointers, usage, dir, (x, y, z) -> Futures.of(true), true);
         gc.collect(s -> Futures.of(true));
 
         verifyAllReachableBlocksArePresent(pointers, metadb, storage);

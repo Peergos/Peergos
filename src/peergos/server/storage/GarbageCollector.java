@@ -31,13 +31,13 @@ public class GarbageCollector {
     private final boolean listRawFromBlockstore;
     private final AtomicBoolean running = new AtomicBoolean(false);
     private final Path reachabilityDbDir;
-    private final BiFunction<Long, Long, CompletableFuture<Boolean>> deleteConfirm;
+    private final TriFunction<Long, Long, Long, CompletableFuture<Boolean>> deleteConfirm;
 
     public GarbageCollector(DeletableContentAddressedStorage storage,
                             JdbcIpnsAndSocial pointers,
                             UsageStore usage,
                             Path reachabilityDbDir,
-                            BiFunction<Long, Long, CompletableFuture<Boolean>> deleteConfirm,
+                            TriFunction<Long, Long, Long, CompletableFuture<Boolean>> deleteConfirm,
                             boolean listRawFromBlockstore) {
         this.storage = storage;
         this.pointers = pointers;
@@ -219,7 +219,7 @@ public class GarbageCollector {
                                Path reachabilityDbDir,
                                Function<Stream<Map.Entry<PublicKeyHash, byte[]>>, CompletableFuture<Boolean>> snapshotSaver,
                                BlockMetadataStore metadata,
-                               BiFunction<Long, Long, CompletableFuture<Boolean>> deleteConfirm,
+                               TriFunction<Long, Long, Long, CompletableFuture<Boolean>> deleteConfirm,
                                boolean listFromBlockstore) {
         System.out.println("Starting blockstore garbage collection on node " + storage.id().join() + "...");
         // TODO: do GC in O(1) RAM with a bloom filter?: mark into bloom. Then list and check bloom to delete.
@@ -281,9 +281,13 @@ public class GarbageCollector {
         // Save pointers snapshot
         snapshotSaver.apply(allPointers.entrySet().stream()).join();
 
-        AtomicLong delCount = new AtomicLong(0);
-        reachability.getUnreachable(del -> delCount.addAndGet(del.size()));
-        deleteConfirm.apply(delCount.get(), nBlocks).join();
+        AtomicLong cborDelCount = new AtomicLong(0);
+        AtomicLong rawDelCount = new AtomicLong(0);
+        reachability.getUnreachable(del -> {
+            cborDelCount.addAndGet(del.stream().filter(v -> ! v.cid.isRaw()).count());
+            rawDelCount.addAndGet(del.stream().filter(v -> v.cid.isRaw()).count());
+        });
+        deleteConfirm.apply(cborDelCount.get(), rawDelCount.get(), nBlocks).join();
 
         int deleteParallelism = 4;
         long t7 = System.nanoTime();
@@ -291,7 +295,7 @@ public class GarbageCollector {
         AtomicLong progressCounter = new AtomicLong(0);
         List<ForkJoinTask<Pair<Long, Long>>> futures = new ArrayList<>();
         reachability.getUnreachable(toDel -> futures.add(pool.submit(() ->
-                deleteUnreachableBlocks(toDel, progressCounter, delCount.get(), storage, metadata, reachability))));
+                deleteUnreachableBlocks(toDel, progressCounter, cborDelCount.get() + rawDelCount.get(), storage, metadata, reachability))));
         Pair<Long, Long> deleted = futures.stream()
                 .map(ForkJoinTask::join)
                 .reduce((a, b) -> new Pair<>(a.left + b.left, a.right + b.right))

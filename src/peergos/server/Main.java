@@ -796,7 +796,7 @@ public class Main extends Builder {
             if (enableGC) {
                 boolean useS3 = S3Config.useS3(a);
                 boolean listRawBlocks = useS3 && a.getBoolean("s3.versioned-bucket");
-                gc = new GarbageCollector(localStorageForLinks, rawPointers, usageStore, a.fromPeergosDir("", ""), (d, c) -> Futures.of(true), listRawBlocks);
+                gc = new GarbageCollector(localStorageForLinks, rawPointers, usageStore, a.fromPeergosDir("", ""), (cd, rd, c) -> Futures.of(true), listRawBlocks);
                 Function<Stream<Map.Entry<PublicKeyHash, byte[]>>, CompletableFuture<Boolean>> snapshotSaver = s -> Futures.of(true);
                 int gcInterval = 12 * 60 * 60 * 1000;
                 gc.start(a.getInt("gc.period.millis", gcInterval), snapshotSaver);

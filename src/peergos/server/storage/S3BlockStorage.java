@@ -765,8 +765,8 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                 this::savePointerSnapshot, metadata, this::confirmDeleteBlocks, listFromBlockstore);
     }
 
-    private CompletableFuture<Boolean> confirmDeleteBlocks(long count, long total) {
-        System.out.println("Delete " + count + " blocks out of " + total + ", " + (count * 100 / total) + "% (Y/N)");
+    private CompletableFuture<Boolean> confirmDeleteBlocks(long cborCount, long rawCount, long total) {
+        System.out.println("Delete " + cborCount + " cbor blocks and " + rawCount + " raw blocks out of " + total + ", " + ((cborCount + rawCount) * 100 / total) + "% (Y/N)");
         String confirm = System.console().readLine();
         if (confirm.equals("Y"))
             return Futures.of(true);
