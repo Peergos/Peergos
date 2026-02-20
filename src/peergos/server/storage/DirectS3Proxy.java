@@ -27,6 +27,7 @@ import java.time.LocalDateTime;
 import java.time.ZonedDateTime;
 import java.util.List;
 import java.util.Optional;
+import java.util.Random;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Supplier;
 import java.util.logging.Level;
@@ -48,6 +49,7 @@ public class DirectS3Proxy implements ContentAddressedStorageProxy {
     private final Cid remoteId;
     private final Hasher h;
     private final UsageStore usage;
+    private final Random rnd = new Random();
 
     public DirectS3Proxy(S3Config config,
                          Cid remoteId,
@@ -134,15 +136,15 @@ public class DirectS3Proxy implements ContentAddressedStorageProxy {
         }
     }
 
-    private static <V> V getWithBackoff(Supplier<V> req) {
-        long sleep = 100;
+    private <V> V getWithBackoff(Supplier<V> req) {
+        long sleep = 100 + rnd.nextInt(100);
         for (int i=0; i < 10; i++) {
             try {
                 return req.get();
             } catch (RateLimitException e) {
                 LOG.info(e.getMessage());
                 try {
-                    Thread.sleep(sleep);
+                    Thread.sleep(sleep + rnd.nextInt(1_000));
                 } catch (InterruptedException f) {}
                 sleep *= 2;
             }
