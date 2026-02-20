@@ -97,6 +97,7 @@ public class Builder {
         props.setProperty("dataSource.password", postgresPassword);
         props.setProperty("dataSource.databaseName", databaseName);
         HikariConfig config = new HikariConfig(props);
+        config.setMaximumPoolSize(5);
         HikariDataSource ds = new HikariDataSource(config);
 
         return () -> {
