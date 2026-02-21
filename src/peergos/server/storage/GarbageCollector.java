@@ -160,7 +160,9 @@ public class GarbageCollector {
         PublicKeyHash owner = usage.getOwnerKey(writers.stream().findAny().get());
 
         Map<PublicKeyHash, byte[]> userPointers = writers.stream()
-                .collect(Collectors.toMap(w -> w, w -> pointers.getPointer(w).join().get()));
+                .map(w -> new Pair<>(w, pointers.getPointer(w).join()))
+                .filter(p -> p.right.isPresent())
+                .collect(Collectors.toMap(p -> p.left, p -> p.right.get()));
         userPointers.forEach((writerHash, signedRawCas) -> {
             PublicSigningKey writer = getWithBackoff(() -> storage.getSigningKey(null, writerHash).join().get());
             byte[] bothHashes = writer.unsignMessage(signedRawCas).join();
