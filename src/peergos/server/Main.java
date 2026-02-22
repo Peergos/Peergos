@@ -75,6 +75,8 @@ public class Main extends Builder {
         new Command.Arg("transactions-sql-file", "The filename for the transactions datastore", false, "transactions.sql");
     public static final Command.Arg ARG_BAT_STORE =
                     new Command.Arg("bat-store", "The filename for the BAT store (or :memory: for ram based)", true, "bats.sql");
+    public static final Command.Arg ARG_PARTITIONED_STATUS =
+                    new Command.Arg("partition-status-file", "The filename for the partition status db", true, "partition-status.sql");
     public static final Command.Arg ARG_USE_IPFS =
         new Command.Arg("useIPFS", "Use IPFS for storage or a local disk store if not", false, "true");
     public static final Command.Arg ARG_IPFS_API_ADDRESS =
@@ -95,6 +97,7 @@ public class Main extends Builder {
     public static final Command.Arg USER_DOWNLOAD_BANDWIDTH_LIMIT = new Command.Arg("user-download-bandwidth-limit", "The maximum amount of data allowed to be downloaded per user in bytes per second.", false, "100000000");
     public static final Command.Arg GLOBAL_S3_READ_REQUESTS_LIMIT = new Command.Arg("global-s3-read-requests-limit", "The maximum number of S3 read requests allowed from this server per second.", false, "100000");
     public static final Command.Arg USER_S3_READ_REQUESTS_LIMIT = new Command.Arg("user-s3-read-requests-limit", "The maximum number of S3 read requests allowed from this server per user per second.", false, "1000");
+    public static final Command.Arg VERSIONED_S3 = new Command.Arg("s3.versioned-bucket", "If the S3 bucket is versioned", false, "false");
 
     public static Command<IpfsWrapper> IPFS = new Command<>("ipfs",
             "Configure and start IPFS daemon",
@@ -143,6 +146,7 @@ public class Main extends Builder {
                     new Command.Arg("public-domain", "The public domain name for this server (required if TLS is managed upstream)", false),
                     ARG_USE_IPFS,
                     ARG_BAT_STORE,
+                    ARG_PARTITIONED_STATUS,
                     new Command.Arg("allow-external-secret-links", "Allow external secret links to be served from this server", false),
                     new Command.Arg("allow-external-login", "Allow users from other servers to login through this server", false),
                     new Command.Arg("mutable-pointers-file", "The filename for the mutable pointers datastore", true, "mutable.sql"),
@@ -159,6 +163,7 @@ public class Main extends Builder {
                     GLOBAL_S3_READ_REQUESTS_LIMIT,
                     USER_DOWNLOAD_BANDWIDTH_LIMIT,
                     USER_S3_READ_REQUESTS_LIMIT,
+                    VERSIONED_S3,
                     ServerIdentity.ARG_SERVERIDS_SQL_FILE,
                     new Command.Arg("enable-gc", "Enable the blockstore garbage collector", false, "true"),
                     new Command.Arg("gc.period.millis", "Garbage collect frequency in millis (default 12h)", false, "43200000"),
@@ -194,7 +199,7 @@ public class Main extends Builder {
                     new ContentAddressedStorage.HTTP(Builder.buildIpfsApi(args), false, crypto.hasher) :
                     new FileContentAddressedStorage(blockstorePath(args), new Cid(1, Cid.Codec.LibP2pKey, Multihash.Type.sha2_256, RAMStorage.hash("FileStorage".getBytes())),
                             JdbcTransactionStore.build(getDBConnector(args, "transactions-sql-file"), new SqliteCommands()),
-                            (a, b, c, d) -> Futures.of(true), crypto.hasher);
+                            (a, b, c, d) -> Futures.of(true), PartitionStatus.DONE, crypto.hasher);
 
             SigningKeyPair peergosIdentityKeys = peergos.getUser();
             PublicKeyHash peergosPublicHash = ContentAddressedStorage.hashKey(peergosIdentityKeys.publicSigningKey);
@@ -308,13 +313,15 @@ public class Main extends Builder {
 
                     args = bootstrap(args);
 
-                    BatCave batStore = new JdbcBatCave(getDBConnector(args, "bat-store"), getSqlCommands(args));
+                    SqlSupplier sqlCommands = getSqlCommands(args);
+                    BatCave batStore = new JdbcBatCave(getDBConnector(args, "bat-store"), sqlCommands);
                     BlockRequestAuthoriser blockRequestAuthoriser = Builder.blockAuthoriser(args, batStore, crypto.hasher);
+                    PartitionStatus partitionStatus = new JdbcPartitionStatus(getDBConnector(args, "partition-status-file"), sqlCommands);
                     Multihash pkiIpfsNodeId = useIPFS ?
                             new ContentAddressedStorage.HTTP(Builder.buildIpfsApi(args), false, crypto.hasher).id().join() :
                             new FileContentAddressedStorage(blockstorePath(args), new Cid(1, Cid.Codec.LibP2pKey, Multihash.Type.sha2_256, RAMStorage.hash("FileStorage".getBytes())),
                                     JdbcTransactionStore.build(getDBConnector(args, "transactions-sql-file"), new SqliteCommands()),
-                                    blockRequestAuthoriser, crypto.hasher).id().get();
+                                    blockRequestAuthoriser, partitionStatus, crypto.hasher).id().get();
 
                     if (ipfs != null)
                         ipfs.stop();
@@ -328,7 +335,7 @@ public class Main extends Builder {
                         }
                     }
 
-                    ServerProcesses daemon = PEERGOS.main(args);
+                    ServerProcesses daemon = PEERGOS.main(args.with("partition-blockstore", "false"));
                     poststrap(args);
                     return daemon;
                 } catch (Exception e) {
@@ -351,6 +358,7 @@ public class Main extends Builder {
                     new Command.Arg("link-counts-sql-file", "The filename for the secret link counts datastore", true, "link-counts.sql"),
                     new Command.Arg("ipfs-api-address", "ipfs api port", true, "/ip4/127.0.0.1/tcp/5001"),
                     new Command.Arg("ipfs-gateway-address", "ipfs gateway port", true, "/ip4/127.0.0.1/tcp/8080"),
+                    ARG_PARTITIONED_STATUS,
                     ARG_IPFS_PROXY_TARGET,
                     new Command.Arg("pki.secret.key.path", "The path to the pki secret key file", true, "test.pki.secret.key"),
                     new Command.Arg("pki.public.key.path", "The path to the pki public key file", true, "test.pki.public.key"),
@@ -394,13 +402,14 @@ public class Main extends Builder {
                     JdbcTransactionStore transactions = JdbcTransactionStore.build(transactionDb, sqlCommands);
                     BatCave batStore = new JdbcBatCave(getDBConnector(args, "bat-store", transactionDb), sqlCommands);
                     BlockRequestAuthoriser authoriser = Builder.blockAuthoriser(args, batStore, crypto.hasher);
+                    PartitionStatus partitionStatus = new JdbcPartitionStatus(getDBConnector(args, "partition-status-file", transactionDb), sqlCommands);
 
                     if (S3Config.useS3(args))
                         throw new IllegalStateException("S3 not supported for PKI!");
                     ContentAddressedStorage storage = useIPFS ?
                             new ContentAddressedStorage.HTTP(Builder.buildIpfsApi(args), false, crypto.hasher) :
                             new FileContentAddressedStorage(blockstorePath(args), new Cid(1, Cid.Codec.LibP2pKey, Multihash.Type.sha2_256, RAMStorage.hash("FileStorage".getBytes())),
-                                    transactions, authoriser, crypto.hasher);
+                                    transactions, authoriser, partitionStatus, crypto.hasher);
                     Multihash pkiIpfsNodeId = storage.id().get();
 
                     if (ipfs != null)
@@ -412,7 +421,7 @@ public class Main extends Builder {
                 }
             },
             Arrays.asList(
-                    new Command.Arg("peergos.identity.hash", "The hostname to listen on", true),
+                    new Command.Arg("peergos.identity.hash", "The identity of the 'peergos' user which hosts the pki", true),
                     LISTEN_HOST,
                     new Command.Arg("port", "The port for the local non tls server to listen on", true, "8000"),
                     new Command.Arg("useIPFS", "Whether to use IPFS or a local datastore", true, "false"),
@@ -427,6 +436,7 @@ public class Main extends Builder {
                     new Command.Arg("link-counts-sql-file", "The filename for the secret link counts datastore", true, "link-counts.sql"),
                     ARG_IPFS_API_ADDRESS,
                     new Command.Arg("ipfs-gateway-address", "ipfs gateway port", true, "/ip4/127.0.0.1/tcp/8080"),
+                    ARG_PARTITIONED_STATUS,
                     ARG_IPFS_PROXY_TARGET,
                     new Command.Arg("pki.secret.key.path", "The path to the pki secret key file", true, "test.pki.secret.key"),
                     new Command.Arg("pki.public.key.path", "The path to the pki public key file", true, "test.pki.public.key"),
@@ -729,6 +739,21 @@ public class Main extends Builder {
         }
     }
 
+    private static PublicKeyHash getPkiKey(PublicKeyHash pkiOwnerIdentity,
+                                           Multihash pkiPeerId,
+                                           MutablePointers mutable,
+                                           Function<Cid, Cborable> blockGet,
+                                           Hasher hasher) {
+        Optional<byte[]> pointer = mutable.getPointer(pkiOwnerIdentity, pkiOwnerIdentity).join();
+        byte[] pkiIdPointer = pointer.get();
+        PointerUpdate fresh = MutablePointers.parsePointerTarget(pkiIdPointer, pkiOwnerIdentity, pkiOwnerIdentity, new RAMStorage(hasher)).join();
+        MaybeMultihash newPeergosRoot = fresh.updated;
+
+        CommittedWriterData currentPeergosWd = new CommittedWriterData(MaybeMultihash.of(newPeergosRoot.get()),
+                WriterData.fromCbor(blockGet.apply((Cid)newPeergosRoot.get())), fresh.sequence);
+        return currentPeergosWd.props.get().namedOwnedKeys.get("pki").ownedKey;
+    }
+
     public static ServerProcesses startPeergos(Args a) {
         try {
             Crypto crypto = initCrypto();
@@ -778,11 +803,12 @@ public class Main extends Builder {
 
             Supplier<Connection> usageDb = getDBConnector(a, "space-usage-sql-file", dbConnectionPool);
             UsageStore usageStore = new JdbcUsageStore(usageDb, sqlCommands);
-            DeletableContentAddressedStorage localStorageForLinks = buildLocalStorage(a, meta, batStore, transactions, blockAuth,
-                    ids, usageStore, crypto.hasher);
+            Supplier<Connection> statusDb = Main.getDBConnector(a, "partition-status-file");
+            PartitionStatus partitionStatus = new JdbcPartitionStatus(statusDb, sqlCommands);
             JdbcIpnsAndSocial rawPointers = buildRawPointers(a,
                     getDBConnector(a, "mutable-pointers-file", dbConnectionPool));
-
+            DeletableContentAddressedStorage localStorageForLinks = buildLocalStorage(a, meta, batStore, transactions, blockAuth,
+                    ids, usageStore, rawPointers, partitionStatus, crypto.hasher);
 
             MutablePointers localPointers = UserRepository.build(localStorageForLinks, rawPointers, hasher);
             MutablePointersProxy proxingMutable = new HttpMutablePointers(p2pHttpProxy, pkiServerNodeId);
@@ -790,17 +816,6 @@ public class Main extends Builder {
 
             List<Cid> nodeIds = localStorageForLinks.ids().get();
             Logging.LOG().info("Our peerids: " + nodeIds);
-
-            boolean enableGC = a.getBoolean("enable-gc", false);
-            GarbageCollector gc = null;
-            if (enableGC) {
-                boolean useS3 = S3Config.useS3(a);
-                boolean listRawBlocks = useS3 && a.getBoolean("s3.versioned-bucket");
-                gc = new GarbageCollector(localStorageForLinks, rawPointers, usageStore, a.fromPeergosDir("", ""), (cd, rd, c) -> Futures.of(true), listRawBlocks);
-                Function<Stream<Map.Entry<PublicKeyHash, byte[]>>, CompletableFuture<Boolean>> snapshotSaver = s -> Futures.of(true);
-                int gcInterval = 12 * 60 * 60 * 1000;
-                gc.start(a.getInt("gc.period.millis", gcInterval), snapshotSaver);
-            }
 
             JdbcIpnsAndSocial rawSocial = new JdbcIpnsAndSocial(getDBConnector(a, "social-sql-file", dbConnectionPool), sqlCommands);
             HttpSpaceUsage httpSpaceUsage = new HttpSpaceUsage(p2pHttpProxy, p2pHttpProxy);
@@ -828,11 +843,37 @@ public class Main extends Builder {
             localStorage.setPki(core);
             userQuotas.setPki(core);
 
+            boolean enableGC = a.getBoolean("enable-gc", false) && partitionStatus.isDone();
+            GarbageCollector gc = null;
+            if (enableGC) {
+                boolean useS3 = S3Config.useS3(a);
+                boolean listRawBlocks = useS3 && a.getBoolean(VERSIONED_S3.name);
+                gc = new GarbageCollector(localStorageForLinks, rawPointers, usageStore, a.fromPeergosDir("", ""), (cd, rd, c) -> Futures.of(true), listRawBlocks);
+                Function<Stream<Map.Entry<PublicKeyHash, byte[]>>, CompletableFuture<Boolean>> snapshotSaver = s -> Futures.of(true);
+                int gcInterval = 12 * 60 * 60 * 1000;
+                gc.start(a.getInt("gc.period.millis", gcInterval), snapshotSaver);
+            }
+
             boolean mirrorUsers = a.getBoolean("mirror-users", true);
             if (a.hasArg("mirror.username") || isPki) // mirror pki before starting user mirror
                 core.initialize(mirrorUsers);
             else
                 new Thread(() -> core.initialize(mirrorUsers)).start();
+            if (a.getBoolean("partition-blockstore", true)) {
+                ContentAddressedStorageProxy p2pGets = new ContentAddressedStorageProxy.HTTP(p2pHttpProxy);
+                PublicKeyHash pkiOwnerIdentity = PublicKeyHash.fromString(a.getArg("peergos.identity.hash"));
+                PublicKeyHash pkiKey;
+                if (isPki) {
+                    PublicSigningKey pkiPublic =
+                            PublicSigningKey.fromByteArray(
+                                    Files.readAllBytes(a.fromPeergosDir("pki.public.key.path")));
+                    pkiKey = ContentAddressedStorage.hashKey(pkiPublic);
+                } else {
+                    pkiKey = getPkiKey(pkiOwnerIdentity, pkiServerNodeId, proxingMutable,
+                            cid -> p2pGets.get(pkiServerNodeId, pkiOwnerIdentity, cid, Optional.empty()).join().get(), hasher);
+                }
+                localStorage.partitionByUser(usageStore, rawPointers, pkiKey);
+            }
 
             CoreNode signupFilter = new SignUpFilter(core, userQuotas, nodeIds.get(nodeIds.size() - 1), httpSpaceUsage, hasher,
                     a.getInt("max-daily-paid-signups", isPaidInstance(a) ? 10 : 0), isPki);

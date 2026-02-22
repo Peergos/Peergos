@@ -131,8 +131,10 @@ public class QuotaTests {
                     network, crypto, () -> false, x -> {}).get();
             Assert.fail();
         } catch (Exception e) {}
-        server.localApi.gc.collect(x -> Futures.of(true));
-        server.localApi.gc.collect(x -> Futures.of(true));
+        if (server.localApi.gc != null) {
+            server.localApi.gc.collect(x -> Futures.of(true));
+            server.localApi.gc.collect(x -> Futures.of(true));
+        }
         file.remove(home, filePath, context).get();
     }
 }

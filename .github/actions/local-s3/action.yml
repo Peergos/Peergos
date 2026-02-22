@@ -35,6 +35,9 @@ runs:
       if: runner.os == 'Linux'
       shell: bash
       run: ( minio server '${{ runner.temp }}/minio.data' & )
+    - name: Wait for minio to start
+      shell: bash
+      run: ( sleep 2 )
     - name: Check if minio is running
       if: runner.os == 'Linux'
       shell: bash

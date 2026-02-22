@@ -26,7 +26,8 @@ public class UserPublicKeyLinkTests {
     {
         ipfs = new FileContentAddressedStorage(PathUtil.get("blockstore"),
                 new Cid(1, Cid.Codec.LibP2pKey, Multihash.Type.sha2_256, RAMStorage.hash("FileStorage".getBytes())),
-                    JdbcTransactionStore.build(Main.buildEphemeralSqlite(), new SqliteCommands()), (a, b, c, d) -> Futures.of(true), Main.initCrypto().hasher);
+                    JdbcTransactionStore.build(Main.buildEphemeralSqlite(), new SqliteCommands()),
+                (a, b, c, d) -> Futures.of(true), PartitionStatus.DONE, Main.initCrypto().hasher);
     }
 
     private final List<Multihash> id;

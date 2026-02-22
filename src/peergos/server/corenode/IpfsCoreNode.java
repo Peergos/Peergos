@@ -71,6 +71,7 @@ public class IpfsCoreNode implements CoreNode {
         this.peergosIdentity = peergosIdentity;
         this.signer = pkiSigner;
         this.difficultyGenerator = new DifficultyGenerator(System.currentTimeMillis(), maxSignupsPerDay);
+        reverseLookup.put(peergosIdentity, "peergos");
     }
 
     @Override
@@ -115,7 +116,7 @@ public class IpfsCoreNode implements CoreNode {
         return dht.get(peerIds, owner, hash, Optional.empty(), ourId, hasher, true)
                 .thenApply(cborOpt -> {
                     if (! cborOpt.isPresent())
-                        throw new IllegalStateException("Couldn't retrieve WriterData from dht! " + hash);
+                        throw new IllegalStateException("Couldn't retrieve WriterData! " + hash);
                     return new CommittedWriterData(MaybeMultihash.of(hash), WriterData.fromCbor(cborOpt.get()), sequence);
                 });
     }
@@ -472,7 +473,7 @@ public class IpfsCoreNode implements CoreNode {
             ChampWrapper<CborObject.CborMerkleLink> champ = currentTree.isPresent() ?
                     ChampWrapper.create(peergosIdentity, (Cid)currentTree.get(), Optional.empty(), IpfsCoreNode::keyHash, ipfs, hasher, c -> (CborObject.CborMerkleLink)c).get() :
                     IpfsTransaction.call(peergosIdentity,
-                            tid -> ChampWrapper.create(signer.publicKeyHash, signer, IpfsCoreNode::keyHash, tid, ipfs, hasher, c -> (CborObject.CborMerkleLink)c),
+                            tid -> ChampWrapper.create(peergosIdentity, signer, IpfsCoreNode::keyHash, tid, ipfs, hasher, c -> (CborObject.CborMerkleLink)c),
                             ipfs).get();
             Optional<CborObject.CborMerkleLink> existing = champ.get(username.getBytes()).get();
             Optional<CborObject> cborOpt = existing.isPresent() ?
@@ -505,7 +506,7 @@ public class IpfsCoreNode implements CoreNode {
                     ipfs).get();
             synchronized (this) {
                 return IpfsTransaction.call(peergosIdentity,
-                        tid -> champ.put(signer.publicKeyHash, signer, username.getBytes(), existing, new CborObject.CborMerkleLink(mergedChainHash), Optional.empty(), tid)
+                        tid -> champ.put(peergosIdentity, signer, username.getBytes(), existing, new CborObject.CborMerkleLink(mergedChainHash), Optional.empty(), tid)
                                 .thenCompose(newPkiRoot -> current.props.get().withChamp(newPkiRoot)
                                         .commit(peergosIdentity, signer, currentRoot, currentSequence, mutable, ipfs, hasher, tid)),
                         ipfs

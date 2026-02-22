@@ -2,6 +2,7 @@ package peergos.server.storage;
 
 import peergos.server.space.UsageStore;
 import peergos.shared.cbor.*;
+import peergos.shared.corenode.CoreNode;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.storage.*;
 import peergos.shared.io.ipfs.Cid;
@@ -11,7 +12,6 @@ import peergos.shared.util.*;
 
 import java.util.*;
 import java.util.concurrent.*;
-import java.util.function.*;
 import java.util.logging.*;
 
 public class MetadataCachingStorage extends DelegatingDeletableStorage {
@@ -33,14 +33,20 @@ public class MetadataCachingStorage extends DelegatingDeletableStorage {
         this.hasher = hasher;
     }
 
+    @Override
+    public void setPki(CoreNode pki) {
+        super.setPki(pki);
+        updateMetadataStoreIfEmpty();
+    }
+
     public void updateMetadataStoreIfEmpty() {
-        if (metadata.size() > 0)
+        if (! metadata.isEmpty())
             return;
         LOG.info("Populating block metadata db..");
         target.getAllBlockHashes(true).forEach(p -> {
             Optional<BlockMetadata> existing = metadata.get(p.right);
             if (existing.isEmpty())
-                metadata.put(p.right, null, target.getBlockMetadata(p.left, p.right).join());
+                metadata.put(p.left, p.right, null, target.getBlockMetadata(p.left, p.right).join());
         });
     }
 
@@ -54,7 +60,7 @@ public class MetadataCachingStorage extends DelegatingDeletableStorage {
         return target.put(owner, writer, signedHashes, blocks, tid)
                 .thenApply(cids -> {
                     for (int i=0; i < cids.size(); i++)
-                        metadata.put(cids.get(i), null, blocks.get(i));
+                        metadata.put(owner, cids.get(i), null, blocks.get(i));
                     return cids;
                 });
     }
@@ -64,7 +70,7 @@ public class MetadataCachingStorage extends DelegatingDeletableStorage {
         return target.putRaw(owner, writer, signedHashes, blocks, tid, progressCounter)
                 .thenApply(cids -> {
                     for (int i=0; i < cids.size(); i++)
-                        metadata.put(cids.get(i), null, blocks.get(i));
+                        metadata.put(owner, cids.get(i), null, blocks.get(i));
                     return cids;
                 });
     }
@@ -109,16 +115,16 @@ public class MetadataCachingStorage extends DelegatingDeletableStorage {
         return target.get(owner, hash, bat);
     }
 
-    private BlockMetadata writeBlockMetadata(byte[] block, boolean isRaw) {
+    private BlockMetadata writeBlockMetadata(PublicKeyHash owner, byte[] block, boolean isRaw) {
         Cid cid = hashToCid(block, isRaw, hasher).join();
-        return metadata.put(cid, null, block);
+        return metadata.put(owner, cid, null, block);
     }
 
     @Override
     public CompletableFuture<Optional<CborObject>> get(List<Multihash> peerIds, PublicKeyHash owner, Cid hash, String auth, boolean persistBlock) {
         return target.get(peerIds, owner, hash, auth, persistBlock).thenApply(res -> {
             if (persistBlock)
-                res.ifPresent(cbor -> writeBlockMetadata(cbor.toByteArray(), hash.isRaw()));
+                res.ifPresent(cbor -> writeBlockMetadata(owner, cbor.toByteArray(), hash.isRaw()));
             return res;
         });
     }
@@ -127,7 +133,7 @@ public class MetadataCachingStorage extends DelegatingDeletableStorage {
     public CompletableFuture<Optional<CborObject>> get(List<Multihash> peerIds, PublicKeyHash owner, Cid hash, Optional<BatWithId> bat, Cid ourId, Hasher h, boolean persistBlock) {
         return target.get(peerIds, owner, hash, bat, ourId, h, persistBlock).thenApply(res -> {
             if (persistBlock)
-                res.ifPresent(cbor -> writeBlockMetadata(cbor.toByteArray(), hash.isRaw()));
+                res.ifPresent(cbor -> writeBlockMetadata(owner, cbor.toByteArray(), hash.isRaw()));
             return res;
         });
     }
@@ -136,7 +142,7 @@ public class MetadataCachingStorage extends DelegatingDeletableStorage {
     public CompletableFuture<Optional<byte[]>> getRaw(List<Multihash> peerIds, PublicKeyHash owner, Cid hash, String auth, boolean doAuth, boolean persistBlock) {
         return target.getRaw(peerIds, owner, hash, auth, doAuth, persistBlock).thenApply(bopt -> {
             if (persistBlock)
-                bopt.ifPresent(b -> writeBlockMetadata(b, hash.isRaw()));
+                bopt.ifPresent(b -> writeBlockMetadata(owner, b, hash.isRaw()));
             return bopt;
         });
     }
@@ -145,7 +151,7 @@ public class MetadataCachingStorage extends DelegatingDeletableStorage {
     public CompletableFuture<Optional<byte[]>> getRaw(List<Multihash> peerIds, PublicKeyHash owner, Cid hash, Optional<BatWithId> bat, Cid ourId, Hasher h, boolean persistBlock) {
         return target.getRaw(peerIds, owner, hash, bat, ourId, h, persistBlock).thenApply(bopt -> {
             if (persistBlock)
-                bopt.ifPresent(b -> writeBlockMetadata(b, hash.isRaw()));
+                bopt.ifPresent(b -> writeBlockMetadata(owner, b, hash.isRaw()));
             return bopt;
         });
     }
@@ -154,7 +160,7 @@ public class MetadataCachingStorage extends DelegatingDeletableStorage {
     public CompletableFuture<Optional<byte[]>> getRaw(List<Multihash> peerIds, PublicKeyHash owner, Cid hash, Optional<BatWithId> bat, Cid ourId, Hasher h, boolean doAuth, boolean persistBlock) {
         return target.getRaw(peerIds, owner, hash, bat, ourId, h, doAuth, persistBlock).thenApply(bopt -> {
             if (persistBlock)
-                bopt.ifPresent(b -> writeBlockMetadata(b, hash.isRaw()));
+                bopt.ifPresent(b -> writeBlockMetadata(owner, b, hash.isRaw()));
             return bopt;
         });
     }
@@ -163,7 +169,7 @@ public class MetadataCachingStorage extends DelegatingDeletableStorage {
     public CompletableFuture<Optional<byte[]>> getRaw(List<Multihash> peerIds, PublicKeyHash owner, Cid hash, String auth, boolean persistBlock) {
         return target.getRaw(peerIds, owner, hash, auth, persistBlock).thenApply(bopt -> {
             if (persistBlock)
-                bopt.ifPresent(b -> writeBlockMetadata(b, hash.isRaw()));
+                bopt.ifPresent(b -> writeBlockMetadata(owner, b, hash.isRaw()));
             return bopt;
         });
     }
@@ -181,7 +187,7 @@ public class MetadataCachingStorage extends DelegatingDeletableStorage {
         Cid us = id().join();
         for (Cid c : hashes) {
             totalSize += target.getRaw(peerIds, owner, c, mirrorBat, us, h, false)
-                    .thenApply(bopt -> bopt.map(b -> writeBlockMetadata(b, c.isRaw()).size)
+                    .thenApply(bopt -> bopt.map(b -> writeBlockMetadata(owner, b, c.isRaw()).size)
                             .orElse(0))
                     .join();
         }

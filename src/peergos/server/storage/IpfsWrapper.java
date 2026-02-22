@@ -421,8 +421,6 @@ public class IpfsWrapper implements AutoCloseable {
         datastorePath.getParent().toFile().mkdirs();
         RecordStore records = JdbcRecordLRU.buildSqlite(1_000, datastorePath.toAbsolutePath().toString());
 
-        org.peergos.blockstore.metadatadb.BlockMetadataStore meta =
-                new DelegatingBlockMetadataStore(metaDB);
         ipfsWrapper.embeddedIpfs = EmbeddedPeer.build(records,
                 config.addresses.getSwarmAddresses(),
                 config.bootstrap.getBootstrapAddresses(),

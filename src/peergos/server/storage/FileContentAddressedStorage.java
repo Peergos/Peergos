@@ -1,14 +1,23 @@
 package peergos.server.storage;
 
+import peergos.server.corenode.IpfsCoreNode;
+import peergos.server.corenode.JdbcIpnsAndSocial;
+import peergos.server.space.UsageStore;
 import peergos.server.storage.auth.*;
 import peergos.server.util.Logging;
+import peergos.server.util.Threads;
+import peergos.shared.MaybeMultihash;
 import peergos.shared.cbor.*;
 import peergos.shared.corenode.*;
+import peergos.shared.crypto.asymmetric.PublicSigningKey;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.Cid;
 import peergos.shared.io.ipfs.Multihash;
+import peergos.shared.mutable.MutablePointers;
+import peergos.shared.mutable.PointerUpdate;
 import peergos.shared.storage.*;
 import peergos.shared.storage.auth.*;
+import peergos.shared.user.CommittedWriterData;
 import peergos.shared.user.fs.*;
 import peergos.shared.util.*;
 
@@ -31,35 +40,105 @@ public class FileContentAddressedStorage implements DeletableContentAddressedSto
     private final Path root;
     private final TransactionStore transactions;
     private final BlockRequestAuthoriser authoriser;
+    private final PartitionStatus partitionStatus;
     private final Hasher hasher;
     private final Cid ourId;
+    private volatile CoreNode pki;
 
     public FileContentAddressedStorage(Path root,
                                        Cid ourId,
                                        TransactionStore transactions,
                                        BlockRequestAuthoriser authoriser,
+                                       PartitionStatus partitioned,
                                        Hasher hasher) {
         this.root = root;
         this.ourId = ourId;
         this.transactions = transactions;
         this.authoriser = authoriser;
+        this.partitionStatus = partitioned;
         this.hasher = hasher;
         File rootDir = root.toFile();
         if (!rootDir.exists()) {
             final boolean mkdirs = root.toFile().mkdirs();
             if (!mkdirs)
                 throw new IllegalStateException("Unable to create directory " + root);
+            partitionStatus.complete();
         }
         if (!rootDir.isDirectory())
             throw new IllegalStateException("File store path must be a directory! " + root);
     }
 
     @Override
-    public void setPki(CoreNode pki) {}
+    public void setPki(CoreNode pki) {
+        this.pki = pki;
+    }
 
     @Override
     public ContentAddressedStorage directToOrigin() {
         return this;
+    }
+
+    private boolean userPartitioningComplete() {
+        return partitionStatus.isDone();
+    }
+
+    @Override
+    public void partitionByUser(UsageStore usage,
+                                JdbcIpnsAndSocial mutable,
+                                PublicKeyHash pkiKey) {
+        if (userPartitioningComplete()) {
+            LOG.info("Blockstore already partitioned.");
+            return;
+        }
+        new Thread(() -> {
+            LOG.info("Partitioning blockstore by user. Please wait...");
+            System.out.println("Partitioning blockstore by user. Please wait...");
+            List<Triple<Multihash, String, PublicKeyHash>> allTargets = usage.getAllTargets();
+            for (Triple<Multihash, String, PublicKeyHash> target : allTargets) {
+                moveSubtreeToOwner(target.right, (Cid) target.left, List.of(ourId));
+            }
+            Map<PublicKeyHash, byte[]> allPointers = mutable.getAllEntries();
+            PublicKeyHash pkiOwner = pki.getPublicKeyHash("peergos").join().get();
+
+            allPointers.forEach((writerHash, rawPointer) -> {
+                PublicKeyHash owner = writerHash.equals(pkiKey) ? pkiOwner : usage.getOwnerKey(writerHash);
+                PublicSigningKey writer = getSigningKey(null, writerHash).join().get();
+                byte[] bothHashes = writer.unsignMessage(rawPointer).join();
+                PointerUpdate cas = PointerUpdate.fromCbor(CborObject.fromByteArray(bothHashes));
+                MaybeMultihash updated = cas.updated;
+
+                if (updated.isPresent())
+                    moveSubtreeToOwner(owner, (Cid) updated.get(), List.of(ourId));
+            });
+
+            LOG.info("Partitioning blockstore completed.");
+            System.out.println("Partitioning blockstore completed.");
+            partitionStatus.complete();
+        }).start();
+    }
+
+    private void moveSubtreeToOwner(PublicKeyHash owner, Cid root, List<Multihash> ourIds) {
+        moveLegacyBlockToOwner(owner, root);
+        List<Cid> links = getLinks(owner, root, ourIds).join();
+        for (Cid link : links) {
+            moveSubtreeToOwner(owner, link, ourIds);
+        }
+    }
+
+    private void moveLegacyBlockToOwner(PublicKeyHash owner, Cid block) {
+        if (block.isIdentity())
+            return;
+        Path oldPath = root.resolve(getLegacyFilePath(block));
+        File oldFile = oldPath.toFile();
+        if (oldFile.exists()) {
+            Path newPath = root.resolve(getFilePath(owner, block));
+            newPath.getParent().toFile().mkdirs();
+            try {
+                Files.move(oldPath, newPath, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+        }
     }
 
     @Override
@@ -90,19 +169,19 @@ public class FileContentAddressedStorage implements DeletableContentAddressedSto
 
     @Override
     public CompletableFuture<List<byte[]>> getChampLookup(PublicKeyHash owner, Cid root, List<ChunkMirrorCap> caps, Optional<Cid> committedRoot) {
-        if (! hasBlock(root))
+        if (! hasBlock(owner, root))
             return Futures.errored(new IllegalStateException("Champ root not present locally: " + root));
         return getChampLookup(owner, root, caps, committedRoot, hasher);
     }
 
     @Override
-    public List<Cid> getOpenTransactionBlocks() {
-        return transactions.getOpenTransactionBlocks();
+    public List<Cid> getOpenTransactionBlocks(PublicKeyHash owner) {
+        return transactions.getOpenTransactionBlocks(owner);
     }
 
     @Override
-    public void clearOldTransactions(long cutoffMillis) {
-        transactions.clearOldTransactions(cutoffMillis);
+    public void clearOldTransactions(PublicKeyHash owner, long cutoffMillis) {
+        transactions.clearOldTransactions(owner, cutoffMillis);
     }
 
     @Override
@@ -135,7 +214,22 @@ public class FileContentAddressedStorage implements DeletableContentAddressedSto
                 .collect(Collectors.toList()));
     }
 
-    private static Path getFilePath(Cid h) {
+    private Path getFilePath(PublicKeyHash owner, Cid h) {
+        String key = DirectS3BlockStore.hashToKey(h);
+        if (owner == null) { // legacy block lookup
+            return PathUtil.get("")
+                .resolve(key.substring(key.length() - 3, key.length() - 1))
+                .resolve(key + ".data");
+        }
+
+        Path path = PathUtil.get("")
+                .resolve(pki.getUsername(owner).join())
+                .resolve(key.substring(key.length() - 3, key.length() - 1))
+                .resolve(key + ".data");
+        return path;
+    }
+
+    private static Path getLegacyFilePath(Cid h) {
         String key = DirectS3BlockStore.hashToKey(h);
 
         Path path = PathUtil.get("")
@@ -174,10 +268,14 @@ public class FileContentAddressedStorage implements DeletableContentAddressedSto
                                                       boolean persistBlock) {
         if (hash.isIdentity())
             return Futures.of(Optional.of(hash.getHash()));
-        Path path = getFilePath(hash);
+        Path path = getFilePath(owner, hash);
         File file = root.resolve(path).toFile();
-        if (!file.exists()) {
-            return CompletableFuture.completedFuture(Optional.empty());
+        if (! file.exists()) {
+            if (userPartitioningComplete())
+                return CompletableFuture.completedFuture(Optional.empty());
+            file = root.resolve(getLegacyFilePath(hash)).toFile();
+            if (! file.exists())
+                return CompletableFuture.completedFuture(Optional.empty());
         }
         try (DataInputStream din = new DataInputStream(new BufferedInputStream(new FileInputStream(file)))) {
             byte[] block = Serialize.readFully(din);
@@ -185,7 +283,7 @@ public class FileContentAddressedStorage implements DeletableContentAddressedSto
             String auth = bat.isEmpty() ? "" :
                     bat.get().bat.generateAuth(hash, ourId, 300, S3Request.currentDatetime(), bat.get().id, h)
                     .thenApply(BlockAuth::encode).join();
-            if (! authoriser.allowRead(hash, block, id().join(), auth).join())
+            if (doAuth && ! authoriser.allowRead(hash, block, id().join(), auth).join())
                 return Futures.errored(new IllegalStateException("Unauthorised!"));
             return CompletableFuture.completedFuture(Optional.of(block));
         } catch (IOException e) {
@@ -198,10 +296,15 @@ public class FileContentAddressedStorage implements DeletableContentAddressedSto
         try {
             if (hash.isIdentity())
                 return Futures.of(Optional.of(hash.getHash()));
-            Path path = getFilePath(hash);
+            Path path = getFilePath(owner, hash);
             File file = root.resolve(path).toFile();
             if (! file.exists()){
-                return CompletableFuture.completedFuture(Optional.empty());
+                boolean isPartitioned = userPartitioningComplete();
+                if (isPartitioned)
+                    return CompletableFuture.completedFuture(Optional.empty());
+                file = root.resolve(getLegacyFilePath(hash)).toFile();
+                if (! file.exists())
+                    return CompletableFuture.completedFuture(Optional.empty());
             }
             try (DataInputStream din = new DataInputStream(new BufferedInputStream(new FileInputStream(file)))) {
                 byte[] block = Serialize.readFully(din);
@@ -228,10 +331,15 @@ public class FileContentAddressedStorage implements DeletableContentAddressedSto
         try {
             if (hash.isIdentity())
                 return Futures.of(Optional.of(hash.getHash()));
-            Path path = getFilePath(hash);
+            Path path = getFilePath(owner, hash);
             File file = root.resolve(path).toFile();
-            if (! file.exists()){
-                return CompletableFuture.completedFuture(Optional.empty());
+            if (! file.exists()) {
+                boolean isPartitioned = userPartitioningComplete();
+                if (isPartitioned)
+                    return CompletableFuture.completedFuture(Optional.empty());
+                file = root.resolve(getLegacyFilePath(hash)).toFile();
+                if (! file.exists())
+                    return CompletableFuture.completedFuture(Optional.empty());
             }
             try (DataInputStream din = new DataInputStream(new BufferedInputStream(new FileInputStream(file)))) {
                 byte[] block = Serialize.readFully(din);
@@ -245,10 +353,19 @@ public class FileContentAddressedStorage implements DeletableContentAddressedSto
     }
 
     @Override
-    public boolean hasBlock(Cid hash) {
-        Path path = getFilePath(hash);
+    public boolean hasBlock(PublicKeyHash owner, Cid hash) {
+        Path path = getFilePath(owner, hash);
         File file = root.resolve(path).toFile();
-        return file.exists();
+        boolean isPartitioned = userPartitioningComplete();
+        boolean exists = file.exists();
+        if (isPartitioned) {
+            return exists;
+        }
+        if (exists)
+            return true;
+        Path legacyFilePath = getLegacyFilePath(hash);
+        File legacyFile = root.resolve(legacyFilePath).toFile();
+        return legacyFile.exists();
     }
 
     @Override
@@ -273,7 +390,7 @@ public class FileContentAddressedStorage implements DeletableContentAddressedSto
         try {
             Cid cid = new Cid(CID_V1, isRaw ? Cid.Codec.Raw : Cid.Codec.DagCbor,
                     Multihash.Type.sha2_256, RAMStorage.hash(data));
-            Path filePath = getFilePath(cid);
+            Path filePath = getFilePath(owner, cid);
             Path target = root.resolve(filePath);
             Path parent = target.getParent();
             File parentDir = parent.toFile();
@@ -297,15 +414,18 @@ public class FileContentAddressedStorage implements DeletableContentAddressedSto
         }
     }
 
-    protected List<Cid> getFiles() {
-        List<Cid> existing = new ArrayList<>();
-        getFilesRecursive(root, existing::add);
+    protected List<Pair<PublicKeyHash, Cid>> getFiles(Optional<PublicKeyHash> owner) {
+        List<Pair<PublicKeyHash, Cid>> existing = new ArrayList<>();
+        Path base = owner.map(o -> root.resolve(pki.getUsername(o).join())).orElse(root);
+        if (! base.toFile().exists())
+            return existing;
+        getFilesRecursive(base, (o, c) -> existing.add(new Pair<>(o, c)), root);
         return existing;
     }
 
     @Override
     public CompletableFuture<Optional<Integer>> getSize(PublicKeyHash owner, Multihash h) {
-        Path path = getFilePath((Cid)h);
+        Path path = getFilePath(owner, (Cid)h);
         File file = root.resolve(path).toFile();
         return CompletableFuture.completedFuture(file.exists() ? Optional.of((int) file.length()) : Optional.empty());
     }
@@ -317,50 +437,44 @@ public class FileContentAddressedStorage implements DeletableContentAddressedSto
 
     @Override
     public Stream<Pair<PublicKeyHash, Cid>> getAllBlockHashes(boolean useBlockstore) {
-        return getFiles().stream().map(c -> new Pair<>(PublicKeyHash.NULL, c));
+        return getFiles(Optional.empty()).stream();
     }
 
     @Override
-    public void getAllBlockHashVersions(Consumer<List<BlockVersion>> res) {
-        res.accept(getAllBlockHashes(false)
+    public Stream<Pair<PublicKeyHash, Cid>> getAllBlockHashes(PublicKeyHash owner, boolean useBlockstore) {
+        return getFiles(Optional.of(owner)).stream();
+    }
+
+    @Override
+    public void getAllBlockHashVersions(PublicKeyHash owner, Consumer<List<BlockVersion>> res) {
+        res.accept(getAllBlockHashes(owner, false)
                 .map(p -> new BlockVersion(p.right, null, true))
                 .collect(Collectors.toList()));
     }
 
     @Override
-    public void delete(Cid h) {
-        Path path = getFilePath(h);
+    public void delete(PublicKeyHash owner, Cid h) {
+        Path path = getFilePath(owner, h);
         File file = root.resolve(path).toFile();
         if (file.exists())
             file.delete();
     }
 
-    public Optional<Long> getLastAccessTimeMillis(Cid h) {
-        Path path = getFilePath(h);
-        File file = root.resolve(path).toFile();
-        if (! file.exists())
-            return Optional.empty();
-        try {
-            BasicFileAttributes attrs = Files.readAttributes(root.resolve(path), BasicFileAttributes.class);
-            FileTime time = attrs.lastAccessTime();
-            return Optional.of(time.toMillis());
-        } catch (NoSuchFileException nope) {
-            return Optional.empty();
-        } catch (IOException e) {
-            throw new RuntimeException(e.getMessage(), e);
-        }
+    public void applyToAll(BiConsumer<PublicKeyHash, Cid> processor) {
+        getFilesRecursive(root, processor, root);
     }
 
-    public void applyToAll(Consumer<Cid> processor) {
-        getFilesRecursive(root, processor);
-    }
-
-    public static void getFilesRecursive(Path path, Consumer<Cid> accumulator) {
+    public static void getFilesRecursive(Path path, BiConsumer<PublicKeyHash, Cid> accumulator, Path root) {
         File pathFile = path.toFile();
         if (pathFile.isFile()) {
             if (pathFile.getName().endsWith(".data")) {
                 String name = pathFile.getName();
-                accumulator.accept(DirectS3BlockStore.keyToHash(name.substring(0, name.length() - 5)));
+                Path fromRoot = path.relativize(root);
+                int nameCount = fromRoot.getNameCount();
+                PublicKeyHash owner = nameCount > 2 ?
+                        PublicKeyHash.fromString(fromRoot.getName(0).toString()) :
+                        null;
+                accumulator.accept(owner, DirectS3BlockStore.keyToHash(name.substring(0, name.length() - 5)));
             }
             return;
         }
@@ -373,11 +487,16 @@ public class FileContentAddressedStorage implements DeletableContentAddressedSto
         for (String filename : filenames) {
             Path child = path.resolve(filename);
             if (child.toFile().isDirectory()) {
-                getFilesRecursive(child, accumulator);
+                getFilesRecursive(child, accumulator, root);
             } else if (filename.endsWith(".data")) {
                 try {
                     String name = child.toFile().getName();
-                    accumulator.accept(DirectS3BlockStore.keyToHash(name.substring(0, name.length() - 5)));
+                    Path fromRoot = path.relativize(root);
+                    int nameCount = fromRoot.getNameCount();
+                    PublicKeyHash owner = nameCount > 2 ?
+                            PublicKeyHash.fromString(fromRoot.getName(0).toString()) :
+                            null;
+                    accumulator.accept(owner, DirectS3BlockStore.keyToHash(name.substring(0, name.length() - 5)));
                 } catch (IllegalStateException e) {
                     // ignore files who's name isn't a valid multihash
                     LOG.info("Ignoring file "+ child +" since name is not of form $cid.data");
@@ -386,30 +505,8 @@ public class FileContentAddressedStorage implements DeletableContentAddressedSto
         }
     }
 
-    public Set<Cid> retainOnly(Set<Cid> pins) {
-        List<Cid> existing = getFiles();
-        Set<Cid> removed = new HashSet<>();
-        for (Cid h : existing) {
-            if (! pins.contains(h)) {
-                removed.add(h);
-                File file = root.resolve(getFilePath(h)).toFile();
-                if (file.exists() && !file.delete())
-                    LOG.warning("Could not delete " + file);
-                File legacy = root.resolve(h.toString()).toFile();
-                if (legacy.exists() && ! legacy.delete())
-                    LOG.warning("Could not delete " + legacy);
-            }
-        }
-        return removed;
-    }
+    public void migrateToOwnerPartitionedStore() {
 
-    public boolean contains(Multihash multihash) {
-        Path path = getFilePath((Cid)multihash);
-        File file = root.resolve(path).toFile();
-        if (! file.exists()) { // for backwards compatibility with existing data
-            file = root.resolve(path.getFileName()).toFile();
-        }
-        return file.exists();
     }
 
     @Override
@@ -441,17 +538,19 @@ public class FileContentAddressedStorage implements DeletableContentAddressedSto
         moveProtobufBlocks(root, targetDir);
     }
     public static void moveProtobufBlocks(Path root, Path targetDir) {
-        getFilesRecursive(root, cid -> {
-            if (cid.codec == Cid.Codec.DagProtobuf) {
-                // move block
-                String filename = DirectS3BlockStore.hashToKey(cid) + ".data";
-                Path path = getFilePath(cid);
-                try {
-                    Files.move(root.resolve(path), targetDir.resolve(filename), StandardCopyOption.REPLACE_EXISTING);
-                } catch (IOException e) {
-                    throw new RuntimeException(e);
-                }
-            }
-        });
+        getFilesRecursive(root,
+                (Owner, cid) -> {
+                    if (cid.codec == Cid.Codec.DagProtobuf) {
+                        // move block
+                        String filename = DirectS3BlockStore.hashToKey(cid) + ".data";
+                        Path path = getLegacyFilePath(cid);
+                        try {
+                            Files.move(root.resolve(path), targetDir.resolve(filename), StandardCopyOption.REPLACE_EXISTING);
+                        } catch (IOException e) {
+                            throw new RuntimeException(e);
+                        }
+                    }
+                },
+                root);
     }
 }

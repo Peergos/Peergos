@@ -6,6 +6,7 @@ import peergos.shared.crypto.hash.*;
 import peergos.shared.storage.*;
 
 import java.io.*;
+import java.net.http.HttpClient;
 import java.time.*;
 import java.util.*;
 import java.util.concurrent.atomic.*;
@@ -60,6 +61,7 @@ public class S3BucketStats {
                                      Optional<String> endPrefix,
                                      S3Config source,
                                      AtomicLong counter,
+                                     HttpClient client,
                                      Hasher h) {
         AtomicLong rawBlocks = new AtomicLong(0);
         AtomicLong cborBlocks = new AtomicLong(0);
@@ -86,6 +88,9 @@ public class S3BucketStats {
         Optional<String> endPrefix = Optional.empty();
 
         System.out.println("Analysing S3 bucket " + source.getHost() + "/" + source.bucket);
-        analyseRange(startPrefix, endPrefix, source, new AtomicLong(0), Main.initCrypto().hasher);
+        HttpClient client = HttpClient.newBuilder()
+                .connectTimeout(Duration.ofMillis(10_000))
+                .build();
+        analyseRange(startPrefix, endPrefix, source, new AtomicLong(0), client, Main.initCrypto().hasher);
     }
 }

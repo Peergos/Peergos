@@ -59,7 +59,7 @@ public class AuthedStorage extends DelegatingDeletableStorage {
 
     @Override
     public CompletableFuture<Optional<CborObject>> get(PublicKeyHash owner, Cid hash, Optional<BatWithId> bat) {
-        List<Multihash> peerIds = hasBlock(hash) ?
+        List<Multihash> peerIds = hasBlock(owner, hash) ?
                 Arrays.asList(ourNodeId) :
                 pki.getStorageProviders(owner);
         return get(peerIds, owner, hash, bat, ourNodeId, h, true);
@@ -79,7 +79,7 @@ public class AuthedStorage extends DelegatingDeletableStorage {
                                                                                  Hasher h,
                                                                                  DeletableContentAddressedStorage target) {
         if (t.getMessage().contains("Unauthorised")) {
-            if (! bat.get().id().isInline() && target.hasBlock(hash)) {
+            if (! bat.get().id().isInline() && target.hasBlock(owner, hash)) {
                 // we are dealing with a mirror bat that we likely don't have locally, we can check the hash to verify it
                 return target.getRaw(peerIds, owner, hash, bat, ourId, h, false, false)
                         .thenCompose(rawOpt -> {
@@ -139,8 +139,8 @@ public class AuthedStorage extends DelegatingDeletableStorage {
     }
 
     @Override
-    public boolean hasBlock(Cid hash) {
-        return target.hasBlock(hash);
+    public boolean hasBlock(PublicKeyHash owner, Cid hash) {
+        return target.hasBlock(owner, hash);
     }
 
     @Override
@@ -157,33 +157,33 @@ public class AuthedStorage extends DelegatingDeletableStorage {
 
     @Override
     public CompletableFuture<List<byte[]>> getChampLookup(PublicKeyHash owner, Cid root, List<ChunkMirrorCap> caps, Optional<Cid> committedRoot) {
-        if (! hasBlock(root))
+        if (! hasBlock(owner, root))
             return Futures.errored(new IllegalStateException("Champ root not present locally: " + root));
         return getChampLookup(owner, root, caps, committedRoot, h);
     }
 
     @Override
-    public Stream<Pair<PublicKeyHash, Cid>> getAllBlockHashes(boolean useBlockstore) {
-        return target.getAllBlockHashes(useBlockstore);
+    public Stream<Pair<PublicKeyHash, Cid>> getAllBlockHashes(PublicKeyHash owner, boolean useBlockstore) {
+        return target.getAllBlockHashes(owner, useBlockstore);
     }
 
     @Override
-    public void getAllBlockHashVersions(Consumer<List<BlockVersion>> res) {
-        target.getAllBlockHashVersions(res);
+    public void getAllBlockHashVersions(PublicKeyHash owner, Consumer<List<BlockVersion>> res) {
+        target.getAllBlockHashVersions(owner, res);
     }
 
     @Override
-    public List<Cid> getOpenTransactionBlocks() {
-        return target.getOpenTransactionBlocks();
+    public List<Cid> getOpenTransactionBlocks(PublicKeyHash owner) {
+        return target.getOpenTransactionBlocks(owner);
     }
 
     @Override
-    public void clearOldTransactions(long cutoffMillis) {
-        target.clearOldTransactions(cutoffMillis);
+    public void clearOldTransactions(PublicKeyHash owner, long cutoffMillis) {
+        target.clearOldTransactions(owner, cutoffMillis);
     }
 
     @Override
-    public void delete(Cid hash) {
-        target.delete(hash);
+    public void delete(PublicKeyHash owner, Cid hash) {
+        target.delete(owner, hash);
     }
 }

@@ -6,6 +6,7 @@ import peergos.server.sql.*;
 import peergos.server.storage.*;
 import peergos.server.util.*;
 import peergos.shared.*;
+import peergos.shared.crypto.hash.PublicKeyHash;
 import peergos.shared.storage.auth.*;
 import peergos.shared.io.ipfs.Cid;
 import peergos.shared.io.ipfs.Multihash;
@@ -45,28 +46,29 @@ public class SqliteBlockMetadataTest {
         BlockMetadataStore store = new JdbcBlockMetadataStore(() -> instance, new SqliteCommands());
 
         Cid cid = randomCid();
+        PublicKeyHash owner = new PublicKeyHash(cid);
         BlockMetadata meta = new BlockMetadata(10240, randomCids(20), Collections.emptyList());
-        store.put(cid, "alpha", meta);
+        store.put(owner, cid, "alpha", meta);
 
         // add same cid again
-        store.put(cid, "beta", meta);
+        store.put(owner, cid, "beta", meta);
         Cid cid2 = randomCid();
         BlockMetadata meta2 = new BlockMetadata(10240, randomCids(20),
                 List.of(BatId.inline(Bat.random(crypto.random)), BatId.inline(Bat.random(crypto.random))));
-        store.put(cid2, "gammaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", meta2);
+        store.put(owner, cid2, "gammaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", meta2);
 
-        List<BlockVersion> ls = store.list().collect(Collectors.toList());
+        List<BlockVersion> ls = store.list(owner).collect(Collectors.toList());
         Assert.assertTrue(ls.size() == 2);
 
-        long size = store.size();
+        long size = store.size(owner);
         Assert.assertTrue(size == 2);
 
         // null versions
         Cid cid3 = randomCid();
         BlockMetadata meta3 = new BlockMetadata(10240, randomCids(20),
                 List.of(BatId.inline(Bat.random(crypto.random)), BatId.inline(Bat.random(crypto.random))));
-        store.put(cid3, null, meta3);
-        Assert.assertTrue(store.list().filter(v -> v.cid.equals(cid3)).findFirst().get().version == null);
+        store.put(owner, cid3, null, meta3);
+        Assert.assertTrue(store.list(owner).filter(v -> v.cid.equals(cid3)).findFirst().get().version == null);
 
         List<Cid> all = new ArrayList<>();
         store.applyToAll(all::add);
@@ -82,11 +84,12 @@ public class SqliteBlockMetadataTest {
         Connection memory = Sqlite.build(sqlFilePath);
         Connection instance = new Sqlite.UncloseableConnection(memory);
         BlockMetadataStore store = new JdbcBlockMetadataStore(() -> instance, new SqliteCommands());
+        PublicKeyHash owner = new PublicKeyHash(randomCid());
 
         for (int i=0; i < 5 * JdbcBlockMetadataStore.PAGE_LIMIT/2; i++) {
             Cid cid = randomCid();
             BlockMetadata meta = new BlockMetadata(10240, randomCids(20), Collections.emptyList());
-            store.put(cid, "alpha", meta);
+            store.put(owner, cid, "alpha", meta);
         }
 
         List<Cid> all = new ArrayList<>();

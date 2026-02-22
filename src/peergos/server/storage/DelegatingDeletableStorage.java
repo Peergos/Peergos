@@ -1,5 +1,7 @@
 package peergos.server.storage;
 
+import peergos.server.corenode.JdbcIpnsAndSocial;
+import peergos.server.space.UsageStore;
 import peergos.server.storage.auth.*;
 import peergos.shared.cbor.*;
 import peergos.shared.corenode.*;
@@ -31,38 +33,50 @@ public class DelegatingDeletableStorage implements DeletableContentAddressedStor
     }
 
     @Override
+    public void partitionByUser(UsageStore usage,
+                                JdbcIpnsAndSocial mutable,
+                                PublicKeyHash pkiKey) {
+        target.partitionByUser(usage, mutable, pkiKey);
+    }
+
+    @Override
+    public Stream<Pair<PublicKeyHash, Cid>> getAllBlockHashes(PublicKeyHash owner, boolean useBlockstore) {
+        return target.getAllBlockHashes(owner, useBlockstore);
+    }
+
+    @Override
     public Stream<Pair<PublicKeyHash, Cid>> getAllBlockHashes(boolean useBlockstore) {
         return target.getAllBlockHashes(useBlockstore);
     }
 
     @Override
-    public void getAllBlockHashVersions(Consumer<List<BlockVersion>> res) {
-        target.getAllBlockHashVersions(res);
+    public void getAllBlockHashVersions(PublicKeyHash owner, Consumer<List<BlockVersion>> res) {
+        target.getAllBlockHashVersions(owner, res);
     }
 
     @Override
-    public List<Cid> getOpenTransactionBlocks() {
-        return target.getOpenTransactionBlocks();
+    public List<Cid> getOpenTransactionBlocks(PublicKeyHash owner) {
+        return target.getOpenTransactionBlocks(owner);
     }
 
     @Override
-    public void clearOldTransactions(long cutoffMillis) {
-        target.clearOldTransactions(cutoffMillis);
+    public void clearOldTransactions(PublicKeyHash owner, long cutoffMillis) {
+        target.clearOldTransactions(owner, cutoffMillis);
     }
 
     @Override
-    public boolean hasBlock(Cid hash) {
-        return target.hasBlock(hash);
+    public boolean hasBlock(PublicKeyHash owner, Cid hash) {
+        return target.hasBlock(owner, hash);
     }
 
     @Override
-    public void delete(Cid hash) {
-        target.delete(hash);
+    public void delete(PublicKeyHash owner, Cid hash) {
+        target.delete(owner, hash);
     }
 
     @Override
-    public void bulkDelete(List<BlockVersion> blocks) {
-        target.bulkDelete(blocks);
+    public void bulkDelete(PublicKeyHash owner, List<BlockVersion> blocks) {
+        target.bulkDelete(owner, blocks);
     }
 
     @Override

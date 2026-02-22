@@ -9,6 +9,7 @@ import peergos.shared.storage.*;
 import peergos.shared.util.*;
 
 import java.io.*;
+import java.net.http.HttpClient;
 import java.time.*;
 import java.util.*;
 import java.util.concurrent.*;
@@ -191,6 +192,9 @@ public class S3DeleteOld {
         };
 
         System.out.println("Deleting objects in S3 bucket " + config.bucket + " older than " + cutoff);
+        HttpClient client = HttpClient.newBuilder()
+                .connectTimeout(Duration.ofMillis(10_000))
+                .build();
         applyToRange(startPrefix, endPrefix, processor, deleteProcessor, config, new AtomicLong(0),
                 new AtomicLong(0), a.getInt("parallelism"), Main.initCrypto().hasher);
     }
