@@ -435,17 +435,17 @@ public class JdbcUsageStore implements UsageStore {
     @Override
     public List<Pair<String, PublicKeyHash>> getAllOwners() {
         try (Connection conn = getConnection();
-             PreparedStatement get = conn.prepareStatement(
-                     "SELECT u.name, w.key_hash " +
-                             "FROM writerusage wu " +
-                             "INNER JOIN users u ON wu.user_id = u.id " +
-                             "INNER JOIN writers w ON wu.writer_id = w.id;")) {
+             PreparedStatement get = conn.prepareStatement("SELECT writerusage.target,users.name FROM writerusage " +
+                     "INNER JOIN users ON writerusage.user_id=users.id;")) {
             List<Pair<String, PublicKeyHash>> res = new ArrayList<>();
             ResultSet resultSet = get.executeQuery();
             while (resultSet.next()) {
-                String username = resultSet.getString(1);
-                PublicKeyHash writer = PublicKeyHash.decode(resultSet.getBytes(2));
-                res.add(new Pair<>(username, getOwnerKey(writer, conn)));
+                MaybeMultihash target = Optional.ofNullable(resultSet.getBytes(1))
+                        .map(x -> MaybeMultihash.of(Cid.cast(x)))
+                        .orElse(MaybeMultihash.empty());
+                String username = resultSet.getString(2);
+                if (target.isPresent())
+                    res.add(new Pair<>(username, getOwnerKey(username, conn)));
             }
             return res;
         } catch (SQLException sqe) {
@@ -464,8 +464,16 @@ public class JdbcUsageStore implements UsageStore {
     }
 
     public PublicKeyHash getOwnerKey(String username) {
-        try (Connection conn = getConnection();
-             PreparedStatement search = conn.prepareStatement(
+        try (Connection conn = getConnection()){
+            return getOwnerKey(username, conn);
+        } catch (SQLException sqe) {
+            LOG.log(Level.WARNING, sqe.getMessage(), sqe);
+            throw new RuntimeException(sqe);
+        }
+    }
+
+    private PublicKeyHash getOwnerKey(String username, Connection conn) {
+        try (PreparedStatement search = conn.prepareStatement(
                      "SELECT w.key_hash FROM writerusage wu " +
                              "INNER JOIN users u ON wu.user_id = u.id " +
                              "INNER JOIN writers w ON wu.writer_id = w.id " +
