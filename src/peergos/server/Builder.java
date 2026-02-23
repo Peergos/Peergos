@@ -45,6 +45,8 @@ import java.util.function.*;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
+import static peergos.server.Main.VERSIONED_S3;
+
 public class Builder {
     private static final Logger LOG = Logger.getLogger(Builder.class.getName());
     public static void disableLog() {
@@ -207,6 +209,21 @@ public class Builder {
         }
     }
 
+    public static ContentAddressedStorageProxy buildP2PBlockRetrieverForS3(Args a,
+                                                                           UsageStore usage,
+                                                                           Hasher hasher,
+                                                                           ContentAddressedStorageProxy def) {
+        String remoteS3Prefix = "remote.";
+        if (a.hasArg("mirror.node.id") && S3Config.useS3(a, remoteS3Prefix)) {
+            LOG.info("Reading directly from remote S3 for mirror");
+            S3Config remoteConfig = S3Config.build(a, Optional.of(remoteS3Prefix));
+            Cid nodeToMirrorId = Cid.decode(a.getArg("mirror.node.id"));
+            boolean legacyS3Path = a.getBoolean("use-legacy-mirror-s3-path", false);
+            return new DirectS3Proxy(remoteConfig, nodeToMirrorId, usage, legacyS3Path, hasher);
+        }
+        return def;
+    }
+
     public static DeletableContentAddressedStorage buildLocalStorage(Args a,
                                                                      BlockMetadataStore meta,
                                                                      JdbcBatCave bats,
@@ -214,10 +231,13 @@ public class Builder {
                                                                      BlockRequestAuthoriser authoriser,
                                                                      ServerIdentityStore ids,
                                                                      UsageStore usage,
+                                                                     JdbcIpnsAndSocial rawPointers,
+                                                                     PartitionStatus partitionStatus,
                                                                      Hasher hasher) throws SQLException {
         boolean useIPFS = a.getBoolean("useIPFS");
         boolean enableGC = a.getBoolean("enable-gc", false);
         boolean useS3 = S3Config.useS3(a);
+        boolean versionedS3 = a.getBoolean(VERSIONED_S3.name);
         JavaPoster ipfsApi = buildIpfsApi(a);
         JavaPoster p2pHttpProxy = buildP2pHttpProxy(a);
         DeletableContentAddressedStorage.HTTP http = new DeletableContentAddressedStorage.HTTP(ipfsApi, false, hasher);
@@ -235,38 +255,33 @@ public class Builder {
                 TransactionalIpfs p2pBlockRetriever = new TransactionalIpfs(ipfs, transactions, authoriser, ipfs.id().join(), linkHost, hasher);
 
                 FileBlockCache cborCache = new FileBlockCache(a.fromPeergosDir("block-cache-dir", "block-cache"), 1024 * 1024 * 1024L);
-                FileBlockBuffer blockBuffer = new FileBlockBuffer(a.fromPeergosDir("s3-block-buffer-dir", "block-buffer"));
+                FileBlockBuffer blockBuffer = new FileBlockBuffer(a.fromPeergosDir("s3-block-buffer-dir", "block-buffer"), usage);
 
-                String remoteS3Prefix = "remote.";
-                if (a.hasArg("mirror.node.id") && S3Config.useS3(a, remoteS3Prefix)) {
-                    LOG.info("Reading directly from remote S3 for mirror");
-                    S3Config remoteConfig = S3Config.build(a, Optional.of(remoteS3Prefix));
-                    Cid nodeToMirrorId = Cid.decode(a.getArg("mirror.node.id"));
-                    p2pGets = new DirectS3Proxy(remoteConfig, nodeToMirrorId, hasher);
-                }
+                p2pGets = buildP2PBlockRetrieverForS3(a, usage, hasher, p2pGets);
                 S3BlockStorage s3 = new S3BlockStorage(config, ipfs.ids().join(), props, linkHost, transactions, authoriser,
                         bats, meta, usage, cborCache, blockBuffer,
                         a.getLong(Main.GLOBAL_DOWNLOAD_BANDWIDTH_LIMIT.name),
                         a.getLong(Main.GLOBAL_S3_READ_REQUESTS_LIMIT.name),
                         a.getLong(Main.USER_DOWNLOAD_BANDWIDTH_LIMIT.name),
                         a.getLong(Main.USER_S3_READ_REQUESTS_LIMIT.name),
+                        versionedS3,
+                        a.getPeergosDir(),
+                        partitionStatus,
                         hasher, p2pBlockRetriever, p2pGets);
-                s3.updateMetadataStoreIfEmpty();
                 return new LocalIpnsStorage(s3, ids);
             }
             Multihash peerId = Multihash.decode(ourIds.get(ourIds.size() - 1).getBytes());
             Cid ourId = new Cid(1, Cid.Codec.LibP2pKey, peerId.type, peerId.getHash());
-            FileContentAddressedStorage files = new FileContentAddressedStorage(blockstorePath(a), ourId, transactions, authoriser, hasher);
+            FileContentAddressedStorage files = new FileContentAddressedStorage(blockstorePath(a), ourId,
+                    transactions, authoriser, partitionStatus, hasher);
             MultiIdStorage blocks = new MultiIdStorage(new LocalFirstStorage(files, http, p2pGets, ourIds, hasher), ourIds);
             if (enableGC) {
                 TransactionalIpfs txns = new TransactionalIpfs(blocks, transactions, authoriser, ourId, linkHost, hasher);
                 MetadataCachingStorage metabs = new MetadataCachingStorage(txns, meta, usage, hasher);
-                metabs.updateMetadataStoreIfEmpty();
                 return new LocalIpnsStorage(metabs, ids);
             } else {
                 AuthedStorage target = new AuthedStorage(blocks, authoriser, ourId, linkHost, hasher);
                 MetadataCachingStorage metabs = new MetadataCachingStorage(target, meta, usage, hasher);
-                metabs.updateMetadataStoreIfEmpty();
                 return new LocalIpnsStorage(metabs, ids);
             }
         } else {
@@ -279,23 +294,25 @@ public class Builder {
                 BlockStoreProperties props = buildS3Properties(a);
 
                 FileBlockCache cborCache = new FileBlockCache(a.fromPeergosDir("block-cache-dir", "block-cache"), 10 * 1024 * 1024 * 1024L);
-                FileBlockBuffer blockBuffer = new FileBlockBuffer(a.fromPeergosDir("s3-block-buffer-dir", "block-buffer"));
+                FileBlockBuffer blockBuffer = new FileBlockBuffer(a.fromPeergosDir("s3-block-buffer-dir", "block-buffer"), usage);
                 S3BlockStorage s3 = new S3BlockStorage(config, ipfs.ids().join(), props, linkHost, transactions, authoriser,
                         bats, meta, usage, cborCache, blockBuffer,
                         a.getLong(Main.GLOBAL_DOWNLOAD_BANDWIDTH_LIMIT.name),
                         a.getLong(Main.GLOBAL_S3_READ_REQUESTS_LIMIT.name),
                         a.getLong(Main.USER_DOWNLOAD_BANDWIDTH_LIMIT.name),
                         a.getLong(Main.USER_S3_READ_REQUESTS_LIMIT.name),
+                        versionedS3,
+                        a.getPeergosDir(),
+                        partitionStatus,
                         hasher, p2pBlockRetriever,
                         new ContentAddressedStorageProxy.HTTP(p2pHttpProxy));
-                s3.updateMetadataStoreIfEmpty();
                 return new LocalIpnsStorage(s3, ids);
             } else {
                 // only used for testing
                 Cid ourId = new Cid(1, Cid.Codec.LibP2pKey, Multihash.Type.sha2_256, RAMStorage.hash("FileStorage".getBytes()));
-                FileContentAddressedStorage fileBacked = new FileContentAddressedStorage(blockstorePath(a), ourId, transactions, authoriser, hasher);
+                FileContentAddressedStorage fileBacked = new FileContentAddressedStorage(blockstorePath(a), ourId,
+                        transactions, authoriser, partitionStatus, hasher);
                 MetadataCachingStorage metabs = new MetadataCachingStorage(fileBacked, meta, usage, hasher);
-                metabs.updateMetadataStoreIfEmpty();
                 return new LocalIpnsStorage(metabs, ids);
             }
         }
@@ -380,7 +397,7 @@ public class Builder {
                     )));
             SigningKeyPair pkiKeys = new SigningKeyPair(pkiPublic, pkiSecretKey);
             PublicKeyHash pkiPublicHash = ContentAddressedStorage.hashKey(pkiKeys.publicSigningKey);
-
+            LOG.info("PKI key: " + pkiPublicHash);
             SigningPrivateKeyAndPublicHash pkiSigner = new SigningPrivateKeyAndPublicHash(pkiPublicHash, pkiSecretKey);
 
             return new IpfsCoreNode(pkiSigner, a.getInt("max-daily-signups"), dht, crypto, mutable,

@@ -1,16 +1,17 @@
 package peergos.server.storage;
 
+import peergos.server.space.UsageStore;
 import peergos.server.util.Logging;
+import peergos.shared.corenode.CoreNode;
+import peergos.shared.crypto.hash.PublicKeyHash;
 import peergos.shared.io.ipfs.*;
 import peergos.shared.storage.*;
 import peergos.shared.util.*;
 
 import java.io.*;
 import java.nio.file.*;
-import java.nio.file.attribute.*;
 import java.util.*;
 import java.util.concurrent.*;
-import java.util.concurrent.atomic.*;
 import java.util.function.*;
 import java.util.logging.*;
 
@@ -20,8 +21,11 @@ import java.util.logging.*;
 public class FileBlockBuffer implements BlockBuffer {
     private static final Logger LOG = Logging.LOG();
     private final Path root;
-    public FileBlockBuffer(Path root) {
+    private final UsageStore usage;
+
+    public FileBlockBuffer(Path root, UsageStore usage) {
         this.root = root;
+        this.usage = usage;
         File rootDir = root.toFile();
         if (!rootDir.exists()) {
             final boolean mkdirs = root.toFile().mkdirs();
@@ -32,7 +36,20 @@ public class FileBlockBuffer implements BlockBuffer {
             throw new IllegalStateException("File store path must be a directory! " + root);
     }
 
-    private Path getFilePath(Cid h) {
+    public void setPki(CoreNode pki) {
+    }
+
+    private Path getFilePath(PublicKeyHash owner, Cid h) {
+        String key = DirectS3BlockStore.hashToKey(h);
+
+        Path path = PathUtil.get("")
+                .resolve(usage.getUsage(owner).owner)
+                .resolve(key.substring(key.length() - 3, key.length() - 1))
+                .resolve(key + ".data");
+        return path;
+    }
+
+    private Path getLegacyFilePath(Cid h) {
         String key = DirectS3BlockStore.hashToKey(h);
 
         Path path = PathUtil.get("")
@@ -42,11 +59,13 @@ public class FileBlockBuffer implements BlockBuffer {
     }
 
     @Override
-    public CompletableFuture<Optional<byte[]>> get(Cid hash) {
+    public CompletableFuture<Optional<byte[]>> get(PublicKeyHash owner, Cid hash) {
         try {
             if (hash.isIdentity())
                 return Futures.of(Optional.of(hash.getHash()));
-            Path path = getFilePath(hash);
+            Path path = owner == null ?
+                    getLegacyFilePath(hash) :
+                    getFilePath(owner, hash);
             File file = root.resolve(path).toFile();
             if (! file.exists()){
                 return CompletableFuture.completedFuture(Optional.empty());
@@ -61,15 +80,20 @@ public class FileBlockBuffer implements BlockBuffer {
     }
 
     @Override
-    public boolean hasBlock(Cid hash) {
-        Path path = getFilePath(hash);
-        File file = root.resolve(path).toFile();
-        return file.exists();
+    public boolean hasBlock(PublicKeyHash owner, Cid hash) {
+        try {
+            Path path = getFilePath(owner, hash);
+            File file = root.resolve(path).toFile();
+            return file.exists();
+        } catch (IllegalStateException e) {
+            return false;
+        }
     }
 
-    public CompletableFuture<Boolean> put(Cid hash, byte[] data) {
+    @Override
+    public CompletableFuture<Boolean> put(PublicKeyHash owner, Cid hash, byte[] data) {
         try {
-            Path filePath = getFilePath(hash);
+            Path filePath = getFilePath(owner, hash);
             Path target = root.resolve(filePath);
             Path parent = target.getParent();
             File parentDir = parent.toFile();
@@ -94,21 +118,22 @@ public class FileBlockBuffer implements BlockBuffer {
         }
     }
 
-    public CompletableFuture<Optional<Integer>> getSize(Multihash h) {
-        Path path = getFilePath((Cid)h);
+    public CompletableFuture<Optional<Integer>> getSize(PublicKeyHash owner, Multihash h) {
+        Path path = getFilePath(owner, (Cid)h);
         File file = root.resolve(path).toFile();
         return CompletableFuture.completedFuture(file.exists() ? Optional.of((int) file.length()) : Optional.empty());
     }
 
-    public CompletableFuture<Boolean> delete(Cid h) {
-        Path path = getFilePath(h);
+    @Override
+    public CompletableFuture<Boolean> delete(PublicKeyHash owner, Cid h) {
+        Path path = getFilePath(owner, h);
         File file = root.resolve(path).toFile();
         if (file.exists())
             file.delete();
         return Futures.of(true);
     }
 
-    public void applyToAll(Consumer<Cid> processor) {
-        FileContentAddressedStorage.getFilesRecursive(root, processor);
+    public void applyToAll(BiConsumer<PublicKeyHash, Cid> processor) {
+        FileContentAddressedStorage.getFilesRecursive(root, processor, root);
     }
 }
