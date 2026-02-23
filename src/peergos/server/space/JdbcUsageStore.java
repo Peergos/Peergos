@@ -435,17 +435,13 @@ public class JdbcUsageStore implements UsageStore {
     @Override
     public List<Pair<String, PublicKeyHash>> getAllOwners() {
         try (Connection conn = getConnection();
-             PreparedStatement get = conn.prepareStatement("SELECT writerusage.target,users.name FROM writerusage " +
+             PreparedStatement get = conn.prepareStatement("SELECT users.name FROM writerusage " +
                      "INNER JOIN users ON writerusage.user_id=users.id;")) {
             List<Pair<String, PublicKeyHash>> res = new ArrayList<>();
             ResultSet resultSet = get.executeQuery();
             while (resultSet.next()) {
-                MaybeMultihash target = Optional.ofNullable(resultSet.getBytes(1))
-                        .map(x -> MaybeMultihash.of(Cid.cast(x)))
-                        .orElse(MaybeMultihash.empty());
-                String username = resultSet.getString(2);
-                if (target.isPresent())
-                    res.add(new Pair<>(username, getOwnerKey(username, conn)));
+                String username = resultSet.getString(1);
+                res.add(new Pair<>(username, getOwnerKey(username, conn)));
             }
             return res;
         } catch (SQLException sqe) {

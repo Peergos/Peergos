@@ -238,6 +238,9 @@ public class GarbageCollector {
                 .sorted(Comparator.comparing(a -> a.left))
                 .distinct()
                 .collect(Collectors.toList());
+        Set<String> currentUsers = allUsers.stream().map(p -> p.left).collect(Collectors.toSet());
+        if (currentUsers.size() != allUsers.size())
+            throw new IllegalStateException("Duplicate username getting all owners!");
         for (Pair<String, PublicKeyHash> p : allUsers) {
             PublicKeyHash owner = p.right;
             String username = p.left;
