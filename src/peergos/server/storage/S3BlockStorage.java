@@ -1025,7 +1025,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
 
     private void collectGarbage(JdbcIpnsAndSocial pointers, UsageStore usage, BlockMetadataStore metadata, boolean listFromBlockstore) {
         GarbageCollector.collect(this, pointers, usage, Paths.get(""),
-                this::savePointerSnapshot, metadata, this::confirmDeleteBlocks, listFromBlockstore);
+                x -> Futures.of(true), metadata, this::confirmDeleteBlocks, listFromBlockstore);
     }
 
     private CompletableFuture<Boolean> confirmDeleteBlocks(long cborCount, long rawCount, long total) {
@@ -1038,20 +1038,6 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         if (confirm.equals("Y"))
             return Futures.of(true);
         return Futures.of(false);
-    }
-
-    public CompletableFuture<Boolean> savePointerSnapshot(Stream<Map.Entry<PublicKeyHash, byte[]>> pointers) {
-        // Save pointers snapshot to file
-        Path pointerSnapshotFile = PathUtil.get("pointers-snapshot-" + LocalDateTime.now() + ".txt");
-        pointers.forEach(entry -> {
-            try {
-                Files.write(pointerSnapshotFile, (entry.getKey() + ":" +
-                        ArrayOps.bytesToHex(entry.getValue()) + "\n").getBytes(), StandardOpenOption.CREATE, StandardOpenOption.APPEND);
-            } catch (IOException e) {
-                throw new RuntimeException(e);
-            }
-        });
-        return Futures.of(true);
     }
 
     private static <V> V getWithBackoff(Supplier<V> req) {
