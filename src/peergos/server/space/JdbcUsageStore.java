@@ -406,19 +406,24 @@ public class JdbcUsageStore implements UsageStore {
 
     @Override
     public List<Triple<Multihash, String, PublicKeyHash>> getAllTargets(String username) {
-        int userId = getUserId(username);
         try (Connection conn = getConnection();
-             PreparedStatement get = conn.prepareStatement("SELECT writerusage.target FROM writerusage " +
-                     "WHERE writerusage.user_id=?;")) {
-            get.setInt(1, userId);
+             PreparedStatement get = conn.prepareStatement(
+                     "SELECT wu.target, w.key_hash " +
+                             "FROM writerusage wu " +
+                             "INNER JOIN users u ON wu.user_id = u.id " +
+                             "INNER JOIN writers w ON wu.writer_id = w.id " +
+                             "WHERE u.name = ?;")) {
+            get.setString(1, username);
             List<Triple<Multihash, String, PublicKeyHash>> res = new ArrayList<>();
             ResultSet resultSet = get.executeQuery();
             while (resultSet.next()) {
                 MaybeMultihash target = Optional.ofNullable(resultSet.getBytes(1))
-                    .map(x -> MaybeMultihash.of(Cid.cast(x)))
-                    .orElse(MaybeMultihash.empty());
-                if (target.isPresent())
-                    res.add(new Triple<>(target.get(), username, getOwnerKey(username)));
+                        .map(x -> MaybeMultihash.of(Cid.cast(x)))
+                        .orElse(MaybeMultihash.empty());
+                if (target.isPresent()) {
+                    PublicKeyHash writer = PublicKeyHash.decode(resultSet.getBytes(2));
+                    res.add(new Triple<>(target.get(), username, getOwnerKey(writer, conn)));
+                }
             }
             return res;
         } catch (SQLException sqe) {
@@ -430,16 +435,17 @@ public class JdbcUsageStore implements UsageStore {
     @Override
     public List<Pair<String, PublicKeyHash>> getAllOwners() {
         try (Connection conn = getConnection();
-             PreparedStatement get = conn.prepareStatement("SELECT writerusage.target,users.name FROM writerusage " +
-                     "INNER JOIN users ON writerusage.user_id=users.id;")) {
+             PreparedStatement get = conn.prepareStatement(
+                     "SELECT u.name, w.key_hash " +
+                             "FROM writerusage wu " +
+                             "INNER JOIN users u ON wu.user_id = u.id " +
+                             "INNER JOIN writers w ON wu.writer_id = w.id;")) {
             List<Pair<String, PublicKeyHash>> res = new ArrayList<>();
             ResultSet resultSet = get.executeQuery();
             while (resultSet.next()) {
-                MaybeMultihash target = Optional.ofNullable(resultSet.getBytes(1))
-                    .map(x -> MaybeMultihash.of(Cid.cast(x)))
-                    .orElse(MaybeMultihash.empty());
-                String username = resultSet.getString(2);
-                res.add(new Pair<>(username, getOwnerKey(username)));
+                String username = resultSet.getString(1);
+                PublicKeyHash writer = PublicKeyHash.decode(resultSet.getBytes(2));
+                res.add(new Pair<>(username, getOwnerKey(writer, conn)));
             }
             return res;
         } catch (SQLException sqe) {
