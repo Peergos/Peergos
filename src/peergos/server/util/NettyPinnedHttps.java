@@ -1,6 +1,7 @@
 package peergos.server.util;
 
 import io.netty.bootstrap.Bootstrap;
+import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.*;
 import io.netty.channel.nio.NioEventLoopGroup;
@@ -41,7 +42,7 @@ public final class NettyPinnedHttps {
         }
     }
 
-    public static Pair<byte[], String> get(URI uri) throws InterruptedException, IOException {
+    public static Pair<byte[], String> get(URI uri, Map<String, String> fields) throws InterruptedException, IOException {
         if (!"https".equalsIgnoreCase(uri.getScheme()))
             throw new IllegalArgumentException("HTTPS only");
 
@@ -79,9 +80,13 @@ public final class NettyPinnedHttps {
                                         result.completeExceptionally(new RateLimitException());
                                     else if (respCode == 404) {
                                         result.completeExceptionally(new FileNotFoundException());
-                                    } else
+                                    } else {
+                                        ByteBuf reply = resp.content();
+                                        byte[] body = new byte[reply.readableBytes()];
+                                        reply.readBytes(body);
                                         result.completeExceptionally(
-                                                new RuntimeException("HTTP " + resp.status()));
+                                                new RuntimeException("HTTP " + resp.status() + new String(body)));
+                                    }
                                 } else {
                                     byte[] body = new byte[resp.content().readableBytes()];
                                     resp.content().readBytes(body);
@@ -123,13 +128,14 @@ public final class NettyPinnedHttps {
         req.headers()
                 .set(HttpHeaderNames.HOST, uri.getHost())
                 .set(HttpHeaderNames.CONNECTION, HttpHeaderValues.CLOSE);
+        fields.forEach((k, v) -> req.headers().set(k, v));
 
         ch.writeAndFlush(req).sync();
 
         return result.join();
     }
 
-    public static Map<String, List<String>> head(URI uri) throws InterruptedException, IOException {
+    public static Map<String, List<String>> head(URI uri, Map<String, String> fields) throws InterruptedException, IOException {
         if (!"https".equalsIgnoreCase(uri.getScheme()))
             throw new IllegalArgumentException("HTTPS only");
 
@@ -209,6 +215,7 @@ public final class NettyPinnedHttps {
         req.headers()
                 .set(HttpHeaderNames.HOST, uri.getHost())
                 .set(HttpHeaderNames.CONNECTION, HttpHeaderValues.CLOSE);
+        fields.forEach((k, v) -> req.headers().set(k, v));
 
         ch.writeAndFlush(req).sync();
 

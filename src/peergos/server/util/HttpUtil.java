@@ -119,7 +119,7 @@ public class HttpUtil {
             throw new IllegalArgumentException(e);
         }
         try {
-            return NettyPinnedHttps.get(original);
+            return NettyPinnedHttps.get(original, url.fields);
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
@@ -134,7 +134,7 @@ public class HttpUtil {
                 throw new IllegalArgumentException(e);
             }
             try {
-                return NettyPinnedHttps.head(original);
+                return NettyPinnedHttps.head(original, head.fields);
             } catch (Exception e) {
                 throw new RuntimeException(e);
             }
