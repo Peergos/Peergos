@@ -63,11 +63,17 @@ public class FileBlockBuffer implements BlockBuffer {
         try {
             if (hash.isIdentity())
                 return Futures.of(Optional.of(hash.getHash()));
-            Path path = owner == null ?
-                    getLegacyFilePath(hash) :
-                    getFilePath(owner, hash);
-            File file = root.resolve(path).toFile();
-            if (! file.exists()){
+            File file;
+            try {
+                Path path = owner == null ?
+                        getLegacyFilePath(hash) :
+                        getFilePath(owner, hash);
+                file = root.resolve(path).toFile();
+                if (!file.exists()) {
+                    return CompletableFuture.completedFuture(Optional.empty());
+                }
+            } catch (Exception e) {
+                // writer not present on this server
                 return CompletableFuture.completedFuture(Optional.empty());
             }
             try (DataInputStream din = new DataInputStream(new BufferedInputStream(new FileInputStream(file)))) {
