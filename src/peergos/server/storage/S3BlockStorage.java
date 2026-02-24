@@ -376,6 +376,12 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
     private String copyObject(String sourceKey,
                               String destKey,
                               Hasher h) {
+        return getWithBackoff(() -> copyObjectWithoutBackoff(sourceKey, destKey, h));
+    }
+
+    private String copyObjectWithoutBackoff(String sourceKey,
+                                            String destKey,
+                                            Hasher h) {
         PresignedUrl copyUrl = S3Request.preSignCopy(bucket, sourceKey, destKey, S3AdminRequests.asAwsDate(ZonedDateTime.now()), host,
                 storageClass, Collections.emptyMap(), region, accessKeyId, secretKey, true, h).join();
         try {
