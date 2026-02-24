@@ -367,6 +367,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                 // tolerate missing blocks
                 if (msg == null || (!msg.contains("NoSuchKey") && !msg.contains("missing block")))
                     throw new RuntimeException(e);
+                LOG.log(Level.SEVERE, e, e::getMessage);
                 LOG.info("S3 partition missing block (user " + username + ") " + block);
             }
         }
@@ -809,10 +810,11 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                 throw new RateLimitException();
             }
 
-            boolean notFound = cause instanceof FileNotFoundException || msg.contains("<Code>NoSuchKey</Code>");
+            boolean notFound = cause instanceof FileNotFoundException || (msg != null && msg.contains("<Code>NoSuchKey</Code>"));
             if (! notFound) {
                 LOG.warning("S3 error reading " + path);
                 LOG.log(Level.WARNING, msg, e);
+            } else {
                 if (! useLegacyPath && ! userPartitioningComplete())
                     return getRawWithoutBackoff(peerIds, owner, hash, range, enforceAuth, bat, persistP2pBlock, true);
             }
@@ -820,6 +822,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
 
             if (peerIds.stream().map(Multihash::bareMultihash).anyMatch(this.peerIds::contains)) {
                 // This is the owner's home server, we should have the block!
+                LOG.log(Level.SEVERE, cause, cause::getMessage);
                 throw new IllegalStateException("Missing block " + hash);
             }
 
@@ -849,14 +852,14 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         Optional<BlockMetadata> meta = blockMetadata.get(hash);
         if (meta.isPresent())
             return true;
-        return getWithBackoff(() -> hasBlockWithoutBackoff(owner, hash));
+        return getWithBackoff(() -> hasBlockWithoutBackoff(owner, hash, false));
     }
 
-    public boolean hasBlockWithoutBackoff(PublicKeyHash owner, Cid hash) {
+    public boolean hasBlockWithoutBackoff(PublicKeyHash owner, Cid hash, boolean useLegacyPath) {
         try {
             String key;
             try {
-                key = hashToKey(owner, hash);
+                key = (useLegacyPath ? legacyHashToKey(hash) : hashToKey(owner, hash));
             } catch (Exception e) {
                 return false;
             }
@@ -866,22 +869,22 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
             blockHeads.inc();
             return true;
         } catch (FileNotFoundException e) {
+            if (! useLegacyPath && ! userPartitioningComplete())
+                return hasBlockWithoutBackoff(owner, hash, true);
             return false;
         } catch (Exception e) {
-            Throwable t = getRootCause(e);
-            if (t instanceof FileNotFoundException)
-                return false;
-            String msg = t.getMessage();
-            if (msg == null) {
+            Throwable cause = getRootCause(e);
+            String msg = cause.getMessage();
+            if (msg == null && ! (cause instanceof FileNotFoundException)) {
                 LOG.info("Error checking for " + hash + ": " + e);
                 return false;
             }
-            boolean rateLimited = isRateLimitedException(t);
+            boolean rateLimited = isRateLimitedException(cause);
             if (rateLimited) {
                 S3BlockStorage.rateLimited.inc();
                 throw new RateLimitException();
             }
-            boolean notFound = msg.contains("<Code>NoSuchKey</Code>");
+            boolean notFound = cause instanceof FileNotFoundException || msg.contains("<Code>NoSuchKey</Code>");
             if (! notFound) {
                 LOG.warning("S3 error reading " + hash);
                 LOG.log(Level.WARNING, msg, e);
