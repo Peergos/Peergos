@@ -396,6 +396,17 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
             return reply.right;
         } catch (IOException e) {
             throw new RuntimeException(e);
+        } catch (Exception e) {
+            Throwable cause = getRootCause(e);
+            boolean rateLimited = cause instanceof RateLimitException
+                    || cause instanceof SocketTimeoutException
+                    || cause instanceof SSLException
+                    || cause instanceof SocketException
+                    || isRateLimitedException(e);
+            if (rateLimited) {
+                throw new RateLimitException();
+            }
+            throw new RuntimeException(e);
         }
     }
 
