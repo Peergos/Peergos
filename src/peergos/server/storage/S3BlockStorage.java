@@ -249,6 +249,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         }
         LOG.info("Partitioning S3 blockstore...");
         new Thread(() -> {
+            ForkJoinPool partitionPool = new ForkJoinPool(30);
             while (true) {
                 try {
                     Path legacyBlockListFile = peergosDir.resolve("legacy-versions.sqlite");
@@ -275,7 +276,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                     Set<Multihash> doneRoots = new HashSet<>();
                     for (Triple<Multihash, String, PublicKeyHash> target : allTargets) {
                         LOG.info("Partitioning user " + target.middle);
-                        moveSubtreeToOwner(target.right, target.middle, (Cid) target.left, List.of(id), legacyBlocklist, partitionedBlocklist);
+                        moveSubtreeToOwner(target.right, target.middle, (Cid) target.left, List.of(id), legacyBlocklist, partitionedBlocklist, partitionPool);
                         doneRoots.add(target.left);
                     }
                     Map<PublicKeyHash, byte[]> allPointers = mutable.getAllEntries();
@@ -299,7 +300,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                         String username = pki.getUsername(owner).join();
 
                         if (updated.isPresent())
-                            moveSubtreeToOwner(owner, username, (Cid) updated.get(), List.of(id), legacyBlocklist, partitionedBlocklist);
+                            moveSubtreeToOwner(owner, username, (Cid) updated.get(), List.of(id), legacyBlocklist, partitionedBlocklist, partitionPool);
                     });
                     LOG.info("S3 blockstore partitioning complete");
                     partitionStatus.complete();
@@ -317,11 +318,14 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                                     Cid root,
                                     List<Multihash> ourIds,
                                     SqliteBlockList reachability,
-                                    SqliteBlockList partitionedBlocklist) {
-        moveLegacyBlockToOwner(owner, username, root, reachability, partitionedBlocklist);
+                                    SqliteBlockList partitionedBlocklist,
+                                    ForkJoinPool pool) {
+        while (pool.getQueuedSubmissionCount() > 100)
+            try {Thread.sleep(100);} catch (InterruptedException e) {}
+        pool.submit(() -> moveLegacyBlockToOwner(owner, username, root, reachability, partitionedBlocklist));
         List<Cid> links = getLinks(owner, root, ourIds).join();
         for (Cid link : links) {
-            moveSubtreeToOwner(owner, username, link, ourIds, reachability, partitionedBlocklist);
+            moveSubtreeToOwner(owner, username, link, ourIds, reachability, partitionedBlocklist, pool);
         }
     }
 
