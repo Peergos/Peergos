@@ -1,6 +1,7 @@
 package peergos.server.storage;
 
 import com.webauthn4j.data.client.Origin;
+import io.netty.handler.ssl.SslClosedEngineException;
 import io.prometheus.client.Histogram;
 import io.prometheus.client.Counter;
 import peergos.server.*;
@@ -399,17 +400,34 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         } catch (IOException e) {
             throw new RuntimeException(e);
         } catch (Exception e) {
-            Throwable cause = getRootCause(e);
-            boolean rateLimited = cause instanceof RateLimitException
-                    || cause instanceof SocketTimeoutException
-                    || cause instanceof SSLException
-                    || cause instanceof SocketException
+            boolean rateLimited = isRateLimitedException(e)
+                    || isCausedBy(e, RateLimitException.class, SocketTimeoutException.class,
+                    SSLException.class, SslClosedEngineException.class,
+                    SocketException.class)
                     || isRateLimitedException(e);
             if (rateLimited) {
                 throw new RateLimitException();
             }
             throw new RuntimeException(e);
         }
+    }
+
+    private static boolean isCausedBy(Throwable t, Class<?>... types) {
+        Set<Throwable> visited = Collections.newSetFromMap(new IdentityHashMap<>());
+        Deque<Throwable> queue = new ArrayDeque<>();
+        queue.add(t);
+        while (!queue.isEmpty()) {
+            Throwable current = queue.poll();
+            if (!visited.add(current))
+                continue;
+            for (Class<?> type : types)
+                if (type.isInstance(current))
+                    return true;
+            if (current.getCause() != null)
+                queue.add(current.getCause());
+            queue.addAll(Arrays.asList(current.getSuppressed()));
+        }
+        return false;
     }
 
     @Override
