@@ -263,8 +263,10 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                     getAllBlockHashVersions(null, vs -> legacyBlocklist.addBlocks(vs.stream()
                             .map(v -> new UserBlockVersion(null, v.cid, v.version, v.isLatest))
                             .collect(Collectors.toList())));
+                    LOG.info(legacyBlocklist.size() + " legacy blocks remaining");
                     LOG.info("Listing partitioned blocks");
                     getPartitionedVersions(partitionedBlocklist::addBlocks);
+                    LOG.info(partitionedBlocklist.size() + " partitioned blocks.");
                     List<Triple<Multihash, String, PublicKeyHash>> allTargets = usage.getAllTargets()
                             .stream()
                             .sorted(Comparator.comparing(a -> a.middle))
@@ -1435,11 +1437,12 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                                     Optional<String> startKey,
                                     Consumer<List<UserBlockVersion>> processor,
                                     Consumer<List<UserBlockVersion>> deleteProcessor) {
-        try {
-            Optional<String> keyMarker = startKey;
-            Optional<String> versionIdMarker = Optional.empty();
-            S3AdminRequests.ListObjectVersionsReply result;
-            do {
+        Optional<String> keyMarker = startKey;
+        Optional<String> versionIdMarker = Optional.empty();
+        S3AdminRequests.ListObjectVersionsReply result = null;
+        int sleep = 100;
+        do {
+            try {
                 result = S3AdminRequests.listObjectVersions(folder + prefix, 1_000, keyMarker, versionIdMarker,
                         ZonedDateTime.now(), host, region, storageClass, accessKeyId, secretKey, url -> getWithBackoff(() -> {
                             try {
@@ -1470,10 +1473,22 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                 LOG.log(Level.FINE, "Next version id marker : " + result.nextVersionIdMarker);
                 keyMarker = result.nextKeyMarker;
                 versionIdMarker = result.nextVersionIdMarker;
-            } while (result.isTruncated);
-        } catch (Exception e) {
-            LOG.log(Level.SEVERE, e.getMessage(), e);
-        }
+                sleep = Math.max(100, sleep / 2);
+            } catch (Exception e) {
+                Throwable cause = getRootCause(e);
+                boolean rateLimited = cause instanceof RateLimitException
+                        || cause instanceof SocketTimeoutException
+                        || cause instanceof SSLException
+                        || cause instanceof SocketException
+                        || isRateLimitedException(e);
+                if (rateLimited) {
+                    Threads.sleep(sleep);
+                    sleep *= 2;
+                } else {
+                    LOG.log(Level.SEVERE, e.getMessage(), e);
+                }
+            }
+        } while (result == null || result.isTruncated);
     }
 
     @Override
