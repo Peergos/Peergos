@@ -1798,6 +1798,10 @@ public class FileWrapper {
                                                       Crypto crypto) {
         String finalPath = TrieNode.canonicalise(subPath.toString());
         List<String> elements = Arrays.asList(finalPath.split("/"));
+        if (! isWritable())
+            return getChild(elements.get(0), crypto.hasher, network)
+                    .thenCompose(kid -> kid.get().getOrMkdirs(PathUtil.get(elements.subList(1, elements.size())
+                            .stream().collect(Collectors.joining("/"))), network, isSystemFolder, mirrorBat, crypto));
         return network.synchronizer.applyComplexComputation(owner(), signingPair(),
                 (state, committer) -> getOrMkdirs(elements, isSystemFolder, mirrorBat, network, crypto, state, committer))
                 .thenApply(p -> p.right);
