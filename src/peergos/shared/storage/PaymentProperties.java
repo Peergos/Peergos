@@ -47,6 +47,16 @@ public final class PaymentProperties  implements Cborable {
     }
 
     @JsMethod
+    public Optional<String> getExpiry() {
+        return expiry.map(e -> e.toLocalDate().toString());
+    }
+
+    @JsMethod
+    public String getNextCharge() {
+        return Long.toString(nextCharge/100);
+    }
+
+    @JsMethod
     public boolean isPaid() {
         return paymentServerUrl.isPresent();
     }
