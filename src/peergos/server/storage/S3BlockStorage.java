@@ -323,9 +323,13 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         while (pool.getQueuedSubmissionCount() > 100)
             try {Thread.sleep(100);} catch (InterruptedException e) {}
         pool.submit(() -> moveLegacyBlockToOwner(owner, username, root, reachability, partitionedBlocklist));
-        List<Cid> links = getLinks(owner, root, ourIds).join();
-        for (Cid link : links) {
-            moveSubtreeToOwner(owner, username, link, ourIds, reachability, partitionedBlocklist, pool);
+        try {
+            List<Cid> links = getLinks(owner, root, ourIds).join();
+            for (Cid link : links) {
+                moveSubtreeToOwner(owner, username, link, ourIds, reachability, partitionedBlocklist, pool);
+            }
+        } catch (Exception e) {
+            LOG.log(Level.SEVERE, e, () -> "Error getting links for " + root);
         }
     }
 
