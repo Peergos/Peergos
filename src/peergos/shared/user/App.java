@@ -36,9 +36,11 @@ public class App implements StoreAppData {
     public static final String DATA_DIR_NAME = "data";
 
     private final UserContext ctx;
+    private final String username;
     private final Path appDataDirectoryWithoutUser;
-    private App(UserContext ctx, Path appDataDirectory) {
+    private App(UserContext ctx, String username, Path appDataDirectory) {
         this.ctx = ctx;
+        this.username = username;
         validatePath(appDataDirectory);
         this.appDataDirectoryWithoutUser = appDataDirectory;
     }
@@ -65,11 +67,16 @@ public class App implements StoreAppData {
     @JsMethod
     public static CompletableFuture<App> init(UserContext ctx, String appName) {
         Path appDataDir = PathUtil.get(APPS_DIR_NAME, appName, DATA_DIR_NAME);
-        App app = new App(ctx, appDataDir);
-        return ctx.username == null ? Futures.of(app) :
-                ctx.getUserRoot()
-                .thenCompose(root -> root.getOrMkdirs(appDataDir, ctx.network, true, ctx.mirrorBatId(), ctx.crypto))
-                .thenApply(appDir -> app);
+        return (ctx.username != null ?
+                Futures.of(ctx.username) :
+                ctx.getEntryPath().thenApply(p -> p.substring(0, p.indexOf("/"))))
+                .thenCompose(username -> {
+                    App app = new App(ctx, username, appDataDir);
+                    return ctx.username == null ? Futures.of(app) :
+                            ctx.getUserRoot()
+                                    .thenCompose(root -> root.getOrMkdirs(appDataDir, ctx.network, true, ctx.mirrorBatId(), ctx.crypto))
+                                    .thenApply(appDir -> app);
+                });
     }
 
     private void validatePath(Path path) {
@@ -94,13 +101,13 @@ public class App implements StoreAppData {
 
     private Path fullPath(Path path, String username) {
         Path relativePath = normalisePath(path);
-        Path result = PathUtil.get(username == null ? ctx.username : username).resolve(appDataDirectoryWithoutUser).resolve(relativePath);
+        Path result = PathUtil.get(username == null ? this.username : username).resolve(appDataDirectoryWithoutUser).resolve(relativePath);
         return result;
     }
 
     private CompletableFuture<Boolean> appendFileContents(Path path, byte[] data) {
         Path pathWithoutUsername = path.subpath(1, path.getNameCount());
-        return ctx.getByPath(ctx.username).thenCompose(userRoot -> userRoot.get().getOrMkdirs(pathWithoutUsername.getParent(), ctx.network, false, ctx.mirrorBatId(), ctx.crypto)
+        return ctx.getByPath(username).thenCompose(userRoot -> userRoot.get().getOrMkdirs(pathWithoutUsername.getParent(), ctx.network, false, ctx.mirrorBatId(), ctx.crypto)
                 .thenCompose(dir -> dir.appendFileJS(path.getFileName().toString(), AsyncReader.build(data),
                                 0,data.length, ctx.network, ctx.crypto, x -> {})
                         .thenApply(fw -> true)
@@ -109,7 +116,7 @@ public class App implements StoreAppData {
 
     private CompletableFuture<Boolean> writeFileContents(Path path, byte[] data) {
         Path pathWithoutUsername = path.subpath(1, path.getNameCount());
-        return ctx.getByPath(ctx.username).thenCompose(userRoot -> userRoot.get().getOrMkdirs(pathWithoutUsername.getParent(), ctx.network, false, ctx.mirrorBatId(), ctx.crypto)
+        return ctx.getByPath(username).thenCompose(userRoot -> userRoot.get().getOrMkdirs(pathWithoutUsername.getParent(), ctx.network, false, ctx.mirrorBatId(), ctx.crypto)
                 .thenCompose(dir -> dir.uploadOrReplaceFile(path.getFileName().toString(), AsyncReader.build(data),
                         data.length, ctx.network, ctx.crypto, () -> false, x -> {})
                         .thenApply(fw -> true)
@@ -160,7 +167,7 @@ public class App implements StoreAppData {
     @JsMethod
     public CompletableFuture<List<String>> dirInternal(Path relativePath, String username) {
         Path path = relativePath == null ?
-                PathUtil.get(username == null ? ctx.username : username).resolve(appDataDirectoryWithoutUser)
+                PathUtil.get(username == null ? this.username : username).resolve(appDataDirectoryWithoutUser)
                 : fullPath(relativePath, username);
         return ctx.getByPath(path).thenCompose(dirOpt -> {
             if(dirOpt.isEmpty()) {
@@ -173,7 +180,7 @@ public class App implements StoreAppData {
     @JsMethod
     public CompletableFuture<String> mimeTypeInternal(Path relativePath, String username) {
         Path path = relativePath == null ?
-                PathUtil.get(username == null ? ctx.username : username).resolve(appDataDirectoryWithoutUser)
+                PathUtil.get(username == null ? this.username : username).resolve(appDataDirectoryWithoutUser)
                 : fullPath(relativePath, username);
         return ctx.getByPath(path).thenApply(fileOpt -> {
             if(fileOpt.isEmpty()) {
@@ -185,7 +192,7 @@ public class App implements StoreAppData {
 
     @JsMethod
     public CompletableFuture<Boolean> createDirectoryInternal(Path relativePath, String username) {
-        Path base = PathUtil.get(username == null ? ctx.username : username).resolve(appDataDirectoryWithoutUser);
+        Path base = PathUtil.get(username == null ? this.username : username).resolve(appDataDirectoryWithoutUser);
         return ctx.getByPath(base)
                 .thenCompose(baseOpt -> baseOpt.get().getOrMkdirs(normalisePath(relativePath), ctx.network, false, ctx.mirrorBatId(), ctx.crypto)
                 .thenApply(fw -> true));
