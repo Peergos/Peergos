@@ -69,7 +69,7 @@ public class App implements StoreAppData {
         Path appDataDir = PathUtil.get(APPS_DIR_NAME, appName, DATA_DIR_NAME);
         return (ctx.username != null ?
                 Futures.of(ctx.username) :
-                ctx.getEntryPath().thenApply(p -> p.substring(0, p.indexOf("/"))))
+                ctx.getEntryPath().thenApply(p -> p.substring(1, p.indexOf("/", 1))))
                 .thenCompose(username -> {
                     App app = new App(ctx, username, appDataDir);
                     return ctx.username == null ? Futures.of(app) :

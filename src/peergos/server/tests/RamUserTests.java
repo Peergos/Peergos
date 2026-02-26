@@ -24,6 +24,7 @@ import peergos.shared.util.*;
 import javax.crypto.spec.*;
 import java.io.*;
 import java.net.*;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
 import java.security.*;
 import java.time.*;
@@ -175,6 +176,22 @@ public class RamUserTests extends UserTests {
         Assert.assertTrue(usedMfa.get());
     }
 
+    @Test
+    public void appWriteInSecretLink() throws Exception {
+        String username = generateUsername();
+        String password = "test01";
+        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network.clear(), crypto);
+        String dirName = "someapp";
+        context.getUserRoot().join()
+                .mkdir(".apps", network, false, context.mirrorBatId(), crypto).join();
+        context.getByPath(username + "/.apps").join().get()
+                .mkdir(dirName, network, false, context.mirrorBatId(), crypto).join();
+        LinkProperties link = context.createSecretLink(username + "/.apps/" + dirName, true, Optional.empty(), Optional.empty(), "", false).join();
+
+        UserContext fromLink = UserContext.fromSecretLinkV2(link.toLinkString(context.signer.publicKeyHash), () -> Futures.of(""), network, crypto).join();
+        App app = App.init(fromLink, dirName).join();
+        app.writeInternal(Paths.get(dirName), "G'day mate!".getBytes(StandardCharsets.UTF_8), null).join();
+    }
 
     @Test
     public void copybug() throws Exception {
