@@ -3,6 +3,8 @@ package peergos.shared.storage;
 import jsinterop.annotations.*;
 import peergos.shared.cbor.*;
 
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.*;
 
 public final class PaymentProperties  implements Cborable {
@@ -13,27 +15,35 @@ public final class PaymentProperties  implements Cborable {
     public final long freeQuota;
     public final long desiredQuota;
     public final boolean annual;
+    public final Optional<LocalDateTime> expiry;
+    public final long nextCharge;
 
     private PaymentProperties(Optional<String> paymentServerUrl,
                               Optional<String> error,
                               Optional<String> clientSecret,
                               long freeQuota,
                               long desiredQuota,
-                              boolean annual) {
+                              boolean annual,
+                              Optional<LocalDateTime> expiry,
+                              long nextCharge) {
         this.paymentServerUrl = paymentServerUrl;
         this.error = error;
         this.clientSecret = clientSecret;
         this.freeQuota = freeQuota;
         this.desiredQuota = desiredQuota;
         this.annual = annual;
+        this.expiry = expiry;
+        this.nextCharge = nextCharge;
     }
 
     public PaymentProperties(long freeQuota) {
-        this(Optional.empty(), Optional.empty(), Optional.empty(), freeQuota, 0, false);
+        this(Optional.empty(), Optional.empty(), Optional.empty(), freeQuota, 0, false, Optional.empty(), 0);
     }
 
-    public PaymentProperties(String paymentServerUrl, Optional<String> clientSecret, long freeQuota, long desiredQuota, boolean annual) {
-        this(Optional.of(paymentServerUrl), Optional.empty(), clientSecret, freeQuota, desiredQuota, annual);
+    public PaymentProperties(String paymentServerUrl, Optional<String> clientSecret,
+                             long freeQuota, long desiredQuota, boolean annual,
+                             Optional<LocalDateTime> expiry, long nextCharge) {
+        this(Optional.of(paymentServerUrl), Optional.empty(), clientSecret, freeQuota, desiredQuota, annual, expiry, nextCharge);
     }
 
     @JsMethod
@@ -82,7 +92,7 @@ public final class PaymentProperties  implements Cborable {
                                             long freeQuota,
                                             long desiredQuota,
                                             boolean annual) {
-        return new PaymentProperties(Optional.of(paymentServerUrl), Optional.of(error), clientSecret, freeQuota, desiredQuota, annual);
+        return new PaymentProperties(Optional.of(paymentServerUrl), Optional.of(error), clientSecret, freeQuota, desiredQuota, annual, Optional.empty(), 0);
     }
 
     @Override
@@ -95,6 +105,8 @@ public final class PaymentProperties  implements Cborable {
         error.ifPresent(err -> state.put("err", new CborObject.CborString(err)));
         if (clientSecret.isPresent())
             state.put("client_secret", new CborObject.CborString(clientSecret.get()));
+        expiry.ifPresent(e -> state.put("expiry", new CborObject.CborLong(e.toEpochSecond(ZoneOffset.UTC))));
+        state.put("nextCharge", new CborObject.CborLong(nextCharge));
         return CborObject.CborMap.build(state);
     }
 
@@ -108,6 +120,8 @@ public final class PaymentProperties  implements Cborable {
         long freeQuota = m.getLong("freeQuota");
         long desiredQuota = m.getLong("desiredQuota");
         boolean annual = m.getBoolean("annual", false);
-        return new PaymentProperties(url, err, client_secret, freeQuota, desiredQuota, annual);
+        long nextCharge = m.getOptionalLong("nextCharge").orElse(0L);
+        Optional<LocalDateTime> expiry = m.getOptionalLong("expiry").map(e -> LocalDateTime.ofEpochSecond(e, 0, ZoneOffset.UTC));
+        return new PaymentProperties(url, err, client_secret, freeQuota, desiredQuota, annual, expiry, nextCharge);
     }
 }
