@@ -665,7 +665,7 @@ public class Main extends Builder {
                     SpaceUsageProxy httpUsage = new HttpSpaceUsage(poster, poster);
                     ServerMessager serverMessager = new ServerMessager.HTTP(poster);
                     BatCave batCave = new HttpBatCave(poster, poster);
-                    HttpInstanceAdmin admin = new HttpInstanceAdmin(poster);
+                    HttpInstanceAdmin admin = new LocalVersionInstanceAdmin(poster);
 
                     FileBlockCache blockCache = new FileBlockCache(a.getPeergosDir().resolve(Paths.get("blocks", "cache")),
                             10*1024*1024*1024L);
