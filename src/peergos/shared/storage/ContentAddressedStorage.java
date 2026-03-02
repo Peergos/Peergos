@@ -627,14 +627,14 @@ public interface ContentAddressedStorage {
         private final List<Cid> ourNodeIds;
         private final CoreNode core;
         private final boolean allowNonLocalLinks;
-        private final Function<String, Boolean> isLocal;
+        private final Function<PublicKeyHash, Boolean> isLocal;
 
         public Proxying(ContentAddressedStorage local,
                         ContentAddressedStorageProxy p2p,
                         List<Cid> ourNodeIds,
                         CoreNode core,
                         boolean allowNonLocalLinks,
-                        Function<String, Boolean> isLocal) {
+                        Function<PublicKeyHash, Boolean> isLocal) {
             this.local = local;
             this.p2p = p2p;
             this.ourNodeIds = ourNodeIds;
@@ -718,7 +718,7 @@ public interface ContentAddressedStorage {
         @Override
         public CompletableFuture<EncryptedCapability> getSecretLink(SecretLink link) {
             PublicKeyHash owner = link.owner;
-            if (! allowNonLocalLinks && ! isLocal.apply(core.getUsername(owner).join()))
+            if (! allowNonLocalLinks && ! isLocal.apply(owner))
                 throw new IllegalStateException("Please use the link owner's server");
             return Proxy.redirectCall(core,
                     ourNodeIds,
