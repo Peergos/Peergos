@@ -22,6 +22,7 @@ import java.net.*;
 import java.time.*;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.function.Function;
 import java.util.stream.*;
 
 public interface ContentAddressedStorage {
@@ -625,17 +626,26 @@ public interface ContentAddressedStorage {
         private final ContentAddressedStorageProxy p2p;
         private final List<Cid> ourNodeIds;
         private final CoreNode core;
+        private final boolean allowNonLocalLinks;
+        private final Function<String, Boolean> isLocal;
 
-        public Proxying(ContentAddressedStorage local, ContentAddressedStorageProxy p2p, List<Cid> ourNodeIds, CoreNode core) {
+        public Proxying(ContentAddressedStorage local,
+                        ContentAddressedStorageProxy p2p,
+                        List<Cid> ourNodeIds,
+                        CoreNode core,
+                        boolean allowNonLocalLinks,
+                        Function<String, Boolean> isLocal) {
             this.local = local;
             this.p2p = p2p;
             this.ourNodeIds = ourNodeIds;
             this.core = core;
+            this.allowNonLocalLinks = allowNonLocalLinks;
+            this.isLocal = isLocal;
         }
 
         @Override
         public ContentAddressedStorage directToOrigin() {
-            return new Proxying(local.directToOrigin(), p2p, ourNodeIds, core);
+            return new Proxying(local.directToOrigin(), p2p, ourNodeIds, core, allowNonLocalLinks, isLocal);
         }
 
         @Override
@@ -707,6 +717,11 @@ public interface ContentAddressedStorage {
 
         @Override
         public CompletableFuture<EncryptedCapability> getSecretLink(SecretLink link) {
+            PublicKeyHash owner = link.owner;
+            String username = core.getUsername(owner).join();
+            boolean isLocal = this.isLocal.apply(username);
+            if (! isLocal && ! allowNonLocalLinks)
+                throw new IllegalStateException("Please use the link owner's server");
             return Proxy.redirectCall(core,
                     ourNodeIds,
                     link.owner,
