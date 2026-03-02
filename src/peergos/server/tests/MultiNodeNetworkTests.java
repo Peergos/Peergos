@@ -40,6 +40,7 @@ public class MultiNodeNetworkTests {
     private static Args args = UserTests.buildArgs()
             .with("useIPFS", "true")
             .with("async-bootstrap", "true")
+            .with("allow-external-secret-links", "true")
             .with("enable-gc", "true")
             .with("allow-external-login", "true")
             .removeArg(IpfsWrapper.IPFS_BOOTSTRAP_NODES); // no bootstrapping

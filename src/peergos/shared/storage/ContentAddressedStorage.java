@@ -718,9 +718,7 @@ public interface ContentAddressedStorage {
         @Override
         public CompletableFuture<EncryptedCapability> getSecretLink(SecretLink link) {
             PublicKeyHash owner = link.owner;
-            String username = core.getUsername(owner).join();
-            boolean isLocal = this.isLocal.apply(username);
-            if (! isLocal && ! allowNonLocalLinks)
+            if (! allowNonLocalLinks && ! isLocal.apply(core.getUsername(owner).join()))
                 throw new IllegalStateException("Please use the link owner's server");
             return Proxy.redirectCall(core,
                     ourNodeIds,
