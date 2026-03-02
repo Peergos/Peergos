@@ -56,9 +56,6 @@ public class SecretLinkStorage extends DelegatingDeletableStorage {
     public CompletableFuture<EncryptedCapability> getSecretLink(SecretLink link) {
         PublicKeyHash owner = link.owner;
         String username = pki.getUsername(owner).join();
-        boolean isLocal = quota.getQuota(username) > 0;
-        if (! isLocal && !allowNonLocalLinks)
-            throw new IllegalStateException("Please use the link owner's server");
 
         WriterData wd = WriterData.getWriterData(owner, owner, pointers, target).join().props.get();
         if (wd.secretLinks.isEmpty())

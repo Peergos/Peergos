@@ -891,8 +891,21 @@ public class Main extends Builder {
             int maxCachedBlockSize = a.getInt("max-cached-block-size", 50 * 1024);
             ContentAddressedStorage filteringDht = new WriteFilter(localStorage, spaceChecker::allowWrite);
             ContentAddressedStorageProxy proxingDht = new ContentAddressedStorageProxy.HTTP(p2pHttpProxy);
+            LRUCache<PublicKeyHash, Boolean> nonLocal = new LRUCache<>(100);
             ContentAddressedStorage p2pDht = new ContentAddressedStorage.Proxying(filteringDht, proxingDht, nodeIds,
-                    core, allowNonLocalLinks, n -> userQuotas.getQuota(n) > 0);
+                    core, allowNonLocalLinks, owner -> {
+                synchronized (nonLocal) {
+                    if (nonLocal.containsKey(owner))
+                        return true;
+                }
+                boolean isLocal = userQuotas.getQuota(core.getUsername(owner).join()) > 0;
+                if (! isLocal) {
+                    synchronized (nonLocal) {
+                        nonLocal.put(owner, true);
+                    }
+                }
+                return isLocal;
+            });
 
             Path blacklistPath = a.fromPeergosDir("blacklist_file", "blacklist.txt");
             PublicKeyBlackList blacklist = new UserBasedBlacklist(blacklistPath, core, localMutable, localStorage, hasher);
