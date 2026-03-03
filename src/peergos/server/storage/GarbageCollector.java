@@ -122,12 +122,12 @@ public class GarbageCollector {
             if (updated.isPresent() && !done.contains(updated.get())) {
                 done.add(updated.get());
                 try {
-                    String username = usage.getUsage(writerHash).owner;
+                    String username = usage.getOwner(writerHash);
                     Cid homeServer = (Cid) pki.getHomeServer(username).join().get();
                     traverseDag(owner, updated.get(), homeServer, metadata, done, fixMetadata, storage, h);
                 } catch (Exception e) {
                     try {
-                        String username = usage.getUsage(writerHash).owner;
+                        String username = usage.getOwner(writerHash);
                         String msg = "Error marking reachable for user: " + username + ", writer " + writerHash + " " + e.getMessage();
                         System.err.println(msg);
                     } catch (Exception f) {
@@ -380,7 +380,7 @@ public class GarbageCollector {
 
     private static String getUsername(PublicKeyHash writer, UsageStore usage) {
         try {
-            return usage.getUsage(writer).owner;
+            return usage.getOwner(writer);
         } catch (Exception e) {
             return "Orphaned writer: " + writer;
         }

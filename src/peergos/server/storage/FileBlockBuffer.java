@@ -43,7 +43,7 @@ public class FileBlockBuffer implements BlockBuffer {
         String key = DirectS3BlockStore.hashToKey(h);
 
         Path path = PathUtil.get("")
-                .resolve(usage.getUsage(owner).owner)
+                .resolve(usage.getOwner(owner))
                 .resolve(key.substring(key.length() - 3, key.length() - 1))
                 .resolve(key + ".data");
         return path;
