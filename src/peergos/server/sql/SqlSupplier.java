@@ -145,7 +145,8 @@ public interface SqlSupplier {
                 ");"+
                 "CREATE TABLE IF NOT EXISTS ownedkeys (" +
                 "parent_id INTEGER REFERENCES writers(id)," +
-                "owned_id INTEGER REFERENCES writers(id)" +
+                "owned_id INTEGER REFERENCES writers(id)," +
+                "PRIMARY KEY (parent_id, owned_id)" +
                 ");";
     }
 
