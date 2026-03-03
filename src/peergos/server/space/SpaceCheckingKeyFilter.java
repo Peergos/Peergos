@@ -376,10 +376,24 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
         return quotaAdmin.requestQuota(owner, signedRequest,  usage.totalUsage());
     }
 
+    private final LRUCache<Long, Map<String, Long>> quotas = new LRUCache<>(2);
+
     public boolean allowWrite(PublicKeyHash writer, int size) {
         String owner = usageStore.getOwner(writer);
         UserUsage usage = usageStore.getUsage(owner);
-        long quota = quotaAdmin.getQuota(owner);
+        long timeKey = System.currentTimeMillis() / 3_600_000;
+        Map<String, Long> cachedQuotas;
+        synchronized (this) {
+            cachedQuotas = quotas.get(timeKey);
+            if (cachedQuotas == null) {
+                cachedQuotas = new ConcurrentHashMap<>();
+                quotas.put(timeKey, cachedQuotas);
+            }
+        }
+        Long cachedQuota = cachedQuotas.get(owner);
+        long quota = cachedQuota != null ? cachedQuota : quotaAdmin.getQuota(owner);
+        if (cachedQuota == null)
+            cachedQuotas.put(owner, quota);
         long expectedUsage = usage.expectedUsage();
         boolean errored = usage.isErrored();
         if ((! errored && expectedUsage + size > quota) || (errored && expectedUsage + size > quota + USAGE_TOLERANCE)) {
