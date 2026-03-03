@@ -147,8 +147,10 @@ public class BufferedNetworkAccess extends NetworkAccess {
             return Futures.of(base.hash.toOptional().map(c -> (Cid) c));
         }
         boolean higherBaseVersion = base.sequence.orElse(-1L) > lastCommitTarget.get().right.orElse(-1L);
-        // If a later commit is not in local buffer, then there must have been an external commit, use it
-        if (higherBaseVersion && base.hash.isPresent() && ! blockBuffer.hasBufferedBlock((Cid) base.hash.get()))
+        // If a later commit is not in local buffer or a merged pointer,
+        // then there must have been an external commit, use it
+        boolean isBufferedWrite = pointerBuffer.isBufferedWrite(writer, base.hash);
+        if (higherBaseVersion && base.hash.isPresent() && !isBufferedWrite && ! blockBuffer.hasBufferedBlock((Cid) base.hash.get()))
             return Futures.of(base.hash.toOptional().map(c -> (Cid) c));
         return Futures.of(lastCommitTarget.get().left);
     }

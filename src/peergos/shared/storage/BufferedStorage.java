@@ -71,7 +71,11 @@ public class BufferedStorage extends DelegatingStorage {
                                                           List<ChunkMirrorCap> caps,
                                                           Optional<Cid> committedRoot) {
         if (isEmpty())
-            return target.getChampLookup(owner, root, caps, committedRoot);
+            return Futures.asyncExceptionally(
+                    () -> target.getChampLookup(owner, root, caps, committedRoot),
+                    t -> getChampRoot(committedRoot, root, owner, this)
+                            .thenCompose(updatedRoot -> target.getChampLookup(owner, updatedRoot, caps, Optional.empty()))
+                    );
         // If we are in a write transaction try to perform a local champ lookup from the buffer,
         // falling back to a direct champ get
         //TODO collect all missing lookups into a single remote bulk get

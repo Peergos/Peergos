@@ -37,11 +37,21 @@ public class BufferedPointers implements MutablePointers {
     private final Map<PublicKeyHash, WriterUpdate> latest = new HashMap<>();
     private final Map<PublicKeyHash, WriterUpdate> lastCommits = new LRUCache<>(20);
     private final List<WriterUpdate> writerUpdates = new ArrayList<>();
+    private final Set<MaybeMultihash> mergedTargets = new HashSet();
 
     public BufferedPointers(MutablePointers target) {
         if (target instanceof BufferedPointers)
             throw new IllegalStateException("Nested BufferedPointers!");
         this.target = target;
+    }
+
+    public boolean isBufferedWrite(PublicKeyHash writer, MaybeMultihash target) {
+        WriterUpdate latestWrite = latest.get(writer);
+        if (latestWrite == null)
+            return false;
+        if (mergedTargets.contains(target))
+            return true;
+        return latestWrite.currentHash.equals(target);
     }
 
     public Optional<Pair<Optional<Cid>, Optional<Long>>> getCommittedPointerTarget(PublicKeyHash writer) {
@@ -83,6 +93,7 @@ public class BufferedPointers implements MutablePointers {
             } else {
                 WriterUpdate last = writerUpdates.get(writerUpdates.size() - 1);
                 if (last.writer.equals(writer)) {
+                    mergedTargets.add(last.currentHash);
                     writerUpdates.set(writerUpdates.size() - 1, new WriterUpdate(writer, last.prevHash, newHash, last.currentSequence));
                 } else {
                     writerUpdates.add(new WriterUpdate(writer, prevHash, newHash, PointerUpdate.increment(prevSequence)));
@@ -153,6 +164,7 @@ public class BufferedPointers implements MutablePointers {
 
     public void clear() {
         writers.clear();
+        mergedTargets.clear();
         synchronized (writerUpdates) {
             writerUpdates.clear();
         }
