@@ -68,6 +68,8 @@ public class RetryStorage implements ContentAddressedStorage {
                             res.completeExceptionally(e);
                         } else if (e instanceof MajorRateLimitException) {
                             res.completeExceptionally(e);
+                        } else if (e.getMessage() != null && e.getMessage().contains("Champ+root+not+present")) {
+                            res.completeExceptionally(e);
                         } else {
                             retryAfter(() -> recurse(retriesLeft - 1, maxAttempts, f)
                                             .thenAccept(res::complete)
