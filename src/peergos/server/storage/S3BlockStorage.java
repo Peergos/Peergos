@@ -34,7 +34,6 @@ import peergos.shared.util.*;
 import javax.net.ssl.*;
 import java.io.*;
 import java.net.*;
-import java.net.http.HttpClient;
 import java.nio.file.*;
 import java.sql.*;
 import java.time.*;
@@ -157,6 +156,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
     private final boolean partitionComplete;
     private final JdbcBatCave bats;
     private CoreNode pki;
+    private final ForkJoinPool retrieverPool = new ForkJoinPool(30);
 
     public S3BlockStorage(S3Config config,
                           List<Cid> ids,
@@ -1042,7 +1042,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         AtomicLong totalSize = new AtomicLong(0);
         return bulkMirror(owner, writer, peerIds, existingLinks, newLinks, mirrorBat, ourNodeId,
                 (p, o, h, m) -> bulkGetBlocks(p, username, o, h, m, skippedBlockCount, blockCount, totalSize),
-                (w, bs, size) -> usage.addPendingUsage(username, writer, size), tid, hasher)
+                (w, bs, size) -> usage.addPendingUsage(username, writer, size), retrieverPool)
                 .thenApply(cs -> {
                     if (blockCount.get() > 0) {
                         LOG.info("Mirrored " + String.format("%,d", blockCount.get()) + " blocks, taking " +
@@ -1050,6 +1050,76 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                     }
                     return cs;
                 });
+    }
+
+    private CompletableFuture<List<Cid>> bulkMirror(PublicKeyHash owner,
+                                                    PublicKeyHash writer,
+                                                    List<Multihash> peerIds,
+                                                    List<Cid> existing,
+                                                    List<Cid> updated,
+                                                    Optional<BatWithId> mirrorBat,
+                                                    Cid ourNodeId,
+                                                    P2pBlockGet retriever,
+                                                    NewBlocksProcessor newBlockProcessor,
+                                                    ForkJoinPool retrieverPool) {
+        if (updated.isEmpty())
+            return Futures.of(updated);
+        Set<Cid> common = new HashSet<>(existing);
+        common.retainAll(updated);
+
+        List<Cid> removed = existing.stream()
+                .filter(x -> ! common.contains(x))
+                .filter(c -> ! c.isIdentity())
+                .collect(Collectors.toList());
+        List<Cid> added = updated.stream()
+                .filter(x -> ! common.contains(x))
+                .filter(c -> ! c.isIdentity())
+                .collect(Collectors.toList());
+
+        List<BlockMetadata> addedLinks = retriever.bulkGet(peerIds, owner, added, mirrorBat);
+        newBlockProcessor.process(writer, added, addedLinks.stream().mapToInt(p -> p.size).sum());
+        if (removed.isEmpty()) {
+            List<Cid> allCbor = addedLinks.stream()
+                    .map(p -> p.links)
+                    .flatMap(Collection::stream)
+                    .filter(c -> !c.isIdentity() && !c.isRaw())
+                    .collect(Collectors.toList());
+            for (int i=0; i < allCbor.size();) {
+                int end = Math.min(allCbor.size(), i + 100);
+                while (retrieverPool.getQueuedSubmissionCount() > 100)
+                    try {Thread.sleep(100);} catch (InterruptedException e) {}
+                int fI = i;
+                retrieverPool.submit(() -> bulkMirror(owner, writer, peerIds, Collections.emptyList(),
+                        allCbor.subList(fI, end), mirrorBat, ourNodeId, retriever, newBlockProcessor, retrieverPool));
+                i = end;
+            }
+            List<Cid> allRaw = addedLinks.stream()
+                    .map(p -> p.links)
+                    .flatMap(Collection::stream)
+                    .filter(c -> !c.isIdentity() && c.isRaw())
+                    .collect(Collectors.toList());
+            for (int i=0; i < allRaw.size();i++) {
+                int fI = i;
+                while (retrieverPool.getQueuedSubmissionCount() > 100)
+                    try {Thread.sleep(100);} catch (InterruptedException e) {}
+                retrieverPool.submit(() -> bulkMirror(owner, writer, peerIds, Collections.emptyList(),
+                        allRaw.subList(fI, fI+1), mirrorBat, ourNodeId, retriever, newBlockProcessor, retrieverPool));
+            }
+        } else {
+            for (int i = 0; i < added.size(); i++) {
+                List<Cid> newLinks = addedLinks.get(i).links;
+                List<Cid> existingLinks = i >= removed.size() ?
+                        Collections.emptyList() :
+                        getLinks(owner, removed.get(i), Arrays.asList(ourNodeId)).join().stream()
+                                .filter(c -> !c.isIdentity())
+                                .collect(Collectors.toList());
+                while (retrieverPool.getQueuedSubmissionCount() > 100)
+                    try {Thread.sleep(100);} catch (InterruptedException e) {}
+                retrieverPool.submit(() -> bulkMirror(owner, writer, peerIds, existingLinks, newLinks, mirrorBat,
+                        ourNodeId, retriever, newBlockProcessor, retrieverPool));
+            }
+        }
+        return Futures.of(updated);
     }
 
     @Override
