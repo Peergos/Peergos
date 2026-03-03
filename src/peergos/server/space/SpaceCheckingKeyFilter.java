@@ -243,9 +243,9 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
         Set<PublicKeyHash> updatedOwned =
                 DeletableContentAddressedStorage.getDirectOwnedKeys(event.owner, event.writer, pointerUpdate.updated,
                         (h, s) -> DeletableContentAddressedStorage.getWriterData(us, event.owner, h, s, false, ourId, hasher, dht), dht, hasher).join();
-        WriterUsage current = usageStore.getUsage(event.writer);
+        String owner = usageStore.getOwner(event.writer);
         for (PublicKeyHash owned : updatedOwned) {
-            usageStore.addWriter(current.owner, owned);
+            usageStore.addWriter(owner, owned);
         }
     }
 
@@ -346,12 +346,10 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
     @Override
     public CompletableFuture<Long> getUsage(PublicKeyHash owner, byte[] signedTime, boolean local) {
         TimeLimited.isAllowedTime(signedTime, 300, dht, owner);
-        WriterUsage writerUsage = usageStore.getUsage(owner);
-        if (writerUsage == null)
-            return Futures.errored(new IllegalStateException("Unknown identity key: " + owner));
-        UserUsage usage = usageStore.getUsage(writerUsage.owner);
+        String user = usageStore.getOwner(owner);
+        UserUsage usage = usageStore.getUsage(user);
         if (usage == null)
-            return Futures.errored(new IllegalStateException("No usage present for user: " + writerUsage.owner));
+            return Futures.errored(new IllegalStateException("No usage present for user: " + user));
         return CompletableFuture.completedFuture(local ? usage.expectedUsage() : usage.totalUsage());
     }
 
@@ -363,9 +361,7 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
     @Override
     public CompletableFuture<Long> getQuota(PublicKeyHash owner, byte[] signedTime) {
         TimeLimited.isAllowedTime(signedTime, 24*3600, dht, owner);
-        WriterUsage writerUsage = usageStore.getUsage(owner);
-        if (writerUsage == null)
-            return Futures.errored(new IllegalStateException("Unknown identity key: " + owner));
+        String user = usageStore.getOwner(owner);
         return quotaAdmin.getQuota(owner, signedTime);
     }
 

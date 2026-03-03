@@ -91,7 +91,7 @@ public class DirectS3Proxy implements ContentAddressedStorageProxy {
         String cached = ownerToUser.get(owner);
         if (cached != null)
             return cached + "/";
-        String username = usage.getUsage(owner).owner;
+        String username = usage.getOwner(owner);
         ownerToUser.put(owner, username);
         return username + "/";
     }
