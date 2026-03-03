@@ -1044,6 +1044,8 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                 (p, o, h, m) -> bulkGetBlocks(p, username, o, h, m, skippedBlockCount, blockCount, totalSize),
                 (w, bs, size) -> usage.addPendingUsage(username, writer, size), retrieverPool)
                 .thenApply(cs -> {
+                    while (! retrieverPool.isQuiescent())
+                        try {Thread.sleep(1_000);} catch (InterruptedException e) {}
                     if (blockCount.get() > 0) {
                         LOG.info("Mirrored " + String.format("%,d", blockCount.get()) + " blocks, taking " +
                                 String.format("%,d", totalSize.get()) + " bytes");
@@ -1340,12 +1342,14 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                 cborCache.put(cid, data);
             return new Pair<>(cid, meta);
         } catch (IOException e) {
-            boolean rateLimited = isRateLimitedException(e);
+            boolean rateLimited = isRateLimitedException(e)
+                    || isCausedBy(e, RateLimitException.class, SocketTimeoutException.class,
+                    SSLException.class, SslClosedEngineException.class,
+                    SocketException.class);
             if (rateLimited) {
                 S3BlockStorage.rateLimited.inc();
                 throw new RateLimitException();
             }
-            LOG.log(Level.SEVERE, e.getMessage(), e);
             throw new RuntimeException(e.getMessage(), e);
         } finally {
             writeTimer.observeDuration();
