@@ -377,23 +377,32 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
     }
 
     private final LRUCache<Long, Map<String, Long>> quotas = new LRUCache<>(2);
+    private final LRUCache<Long, Map<String, UserUsage>> usageCache = new LRUCache<>(2);
 
     public boolean allowWrite(PublicKeyHash writer, int size) {
         String owner = usageStore.getOwner(writer);
-        UserUsage usage = usageStore.getUsage(owner);
         long timeKey = System.currentTimeMillis() / 3_600_000;
         Map<String, Long> cachedQuotas;
         synchronized (this) {
-            cachedQuotas = quotas.get(timeKey);
-            if (cachedQuotas == null) {
-                cachedQuotas = new ConcurrentHashMap<>();
-                quotas.put(timeKey, cachedQuotas);
-            }
+            cachedQuotas = quotas.computeIfAbsent(timeKey, k -> new ConcurrentHashMap<>());
         }
         Long cachedQuota = cachedQuotas.get(owner);
         long quota = cachedQuota != null ? cachedQuota : quotaAdmin.getQuota(owner);
         if (cachedQuota == null)
             cachedQuotas.put(owner, quota);
+
+        UserUsage usage;
+        Map<String, UserUsage> usageByHour;
+        long tenMinuteKey = System.currentTimeMillis() / 600_000;
+        synchronized (this) {
+            usageByHour = usageCache.computeIfAbsent(tenMinuteKey, k -> new ConcurrentHashMap<>());
+        }
+        usage = usageByHour.get(owner);
+        if (usage == null || usage.isErrored() || usage.expectedUsage() + 10L * 1024*1024*1024 > quota) {
+            usage = usageStore.getUsage(owner);
+            usageByHour.put(owner, usage);
+        }
+
         long expectedUsage = usage.expectedUsage();
         boolean errored = usage.isErrored();
         if ((! errored && expectedUsage + size > quota) || (errored && expectedUsage + size > quota + USAGE_TOLERANCE)) {
@@ -414,7 +423,7 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
         if (errored && expectedUsage + size < quota) // clear errored (space tolerance) after successfully lowering usage
             usageStore.confirmUsage(owner, writer, 0, false);
         try {
-            usageStore.addPendingUsage(owner, writer, size);
+            usage.addPending(writer, size);
         } catch (Exception e) {
             throw new IllegalStateException("Couldn't update pending usage for user " + owner, e);
         }
