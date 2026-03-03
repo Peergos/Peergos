@@ -283,6 +283,8 @@ public final class NettyPinnedHttps {
                                     result.completeExceptionally(new RateLimitException());
                                 else if (t instanceof SocketException)
                                     result.completeExceptionally(new RateLimitException());
+                                else if (t.getMessage() != null && t.getMessage().contains("Connection reset"))
+                                    result.completeExceptionally(new RateLimitException());
                                 else
                                     result.completeExceptionally(t);
                                 ctx.close();

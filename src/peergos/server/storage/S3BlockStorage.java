@@ -957,7 +957,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         Cid res = hasher.hash(raw, expected.isRaw()).join();
         if (! res.equals(expected))
             throw new IllegalStateException("Received block with incorrect hash!");
-        return put(owner, expected, raw, false).right;
+        return getWithBackoff(() -> put(owner, expected, raw, false)).right;
     }
 
     ForkJoinPool mirrorPool = Threads.newPool(10, "S3-Mirror-");
