@@ -488,7 +488,8 @@ public class JdbcUsageStore implements UsageStore {
 
     private Map<PublicKeyHash, String> owners = new LRUCache<>(100);
 
-    private String getOwner(PublicKeyHash writer) {
+    @Override
+    public String getOwner(PublicKeyHash writer) {
         String cached = owners.get(writer);
         if (cached != null)
             return cached;

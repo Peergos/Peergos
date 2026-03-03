@@ -377,35 +377,32 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
     }
 
     public boolean allowWrite(PublicKeyHash writer, int size) {
-        WriterUsage writerUsage = usageStore.getUsage(writer);
-        if (writerUsage == null)
-            throw new IllegalStateException("Unknown writing key hash: " + writer);
-
-        UserUsage usage = usageStore.getUsage(writerUsage.owner);
-        long quota = quotaAdmin.getQuota(writerUsage.owner);
+        String owner = usageStore.getOwner(writer);
+        UserUsage usage = usageStore.getUsage(owner);
+        long quota = quotaAdmin.getQuota(owner);
         long expectedUsage = usage.expectedUsage();
         boolean errored = usage.isErrored();
         if ((! errored && expectedUsage + size > quota) || (errored && expectedUsage + size > quota + USAGE_TOLERANCE)) {
             long pending = usage.getPending(writer);
-            usageStore.confirmUsage(writerUsage.owner, writer, 0, true);
-            LOG.info("Rejecting write for " + writerUsage.owner);
+            usageStore.confirmUsage(owner, writer, 0, true);
+            LOG.info("Rejecting write for " + owner);
             throw new IllegalStateException("Storage quota reached! \nUsed "
                     + usage.totalUsage() + " out of " + quota + " bytes. Rejecting write of size " + (size + pending) + ". \n" +
                     "Please delete some files or request more space.");
         }
-        SlidingWindowCounter writeLimit = writeLimiter.get(writerUsage.owner);
+        SlidingWindowCounter writeLimit = writeLimiter.get(owner);
         if (writeLimit == null) {
             writeLimit = new SlidingWindowCounter(quotaUploadLimitSeconds, quota);
-            writeLimiter.put(writerUsage.owner, writeLimit);
+            writeLimiter.put(owner, writeLimit);
         }
         if (! writeLimit.allowRequest(size))
             throw new IllegalStateException("Upload bandwidth exceeded please try again tomorrow");
         if (errored && expectedUsage + size < quota) // clear errored (space tolerance) after successfully lowering usage
-            usageStore.confirmUsage(writerUsage.owner, writer, 0, false);
+            usageStore.confirmUsage(owner, writer, 0, false);
         try {
-            usageStore.addPendingUsage(writerUsage.owner, writer, size);
+            usageStore.addPendingUsage(owner, writer, size);
         } catch (Exception e) {
-            throw new IllegalStateException("Couldn't update pending usage for user " + writerUsage.owner, e);
+            throw new IllegalStateException("Couldn't update pending usage for user " + owner, e);
         }
         return true;
     }

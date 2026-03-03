@@ -23,6 +23,8 @@ public interface WriterUsageStore {
 
     PublicKeyHash getOwnerKey(String username);
 
+    String getOwner(PublicKeyHash writer);
+
     void updateWriterUsage(PublicKeyHash writer,
                            MaybeMultihash target,
                            Set<PublicKeyHash> removedOwnedKeys,
