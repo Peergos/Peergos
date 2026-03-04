@@ -943,6 +943,8 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         if (msg == null) {
             return false;
         }
+        if (msg.contains("Connection reset"))
+            return true;
         int startIndex = msg.indexOf("<Code>");
         int endIndex = msg.indexOf("</Code>");
         if (startIndex >=0 && endIndex >=0 && startIndex < endIndex) {
@@ -1350,6 +1352,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                 S3BlockStorage.rateLimited.inc();
                 throw new RateLimitException();
             }
+            LOG.log(Level.SEVERE, e.getMessage(), e);
             throw new RuntimeException(e.getMessage(), e);
         } finally {
             writeTimer.observeDuration();
