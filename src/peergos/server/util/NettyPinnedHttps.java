@@ -130,7 +130,13 @@ public final class NettyPinnedHttps {
                 .set(HttpHeaderNames.CONNECTION, HttpHeaderValues.CLOSE);
         fields.forEach((k, v) -> req.headers().set(k, v));
 
-        ch.writeAndFlush(req).sync();
+        try {
+            ch.writeAndFlush(req).sync();
+        } catch (InterruptedException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new RateLimitException();
+        }
 
         return result.join();
     }
@@ -217,7 +223,13 @@ public final class NettyPinnedHttps {
                 .set(HttpHeaderNames.CONNECTION, HttpHeaderValues.CLOSE);
         fields.forEach((k, v) -> req.headers().set(k, v));
 
-        ch.writeAndFlush(req).sync();
+        try {
+            ch.writeAndFlush(req).sync();
+        } catch (InterruptedException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new RateLimitException();
+        }
 
         return result.join();
     }
@@ -312,7 +324,13 @@ public final class NettyPinnedHttps {
                 .set(HttpHeaderNames.CONNECTION, HttpHeaderValues.CLOSE);
         headers.forEach((k, v) -> req.headers().set(k, v));
 
-        ch.writeAndFlush(req).sync();
+        try {
+            ch.writeAndFlush(req).sync();
+        } catch (InterruptedException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new RateLimitException();
+        }
 
         return result.join();
     }

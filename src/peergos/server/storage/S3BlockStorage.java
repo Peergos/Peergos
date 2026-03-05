@@ -156,7 +156,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
     private final boolean partitionComplete;
     private final JdbcBatCave bats;
     private CoreNode pki;
-    private final ForkJoinPool retrieverPool = new ForkJoinPool(30);
+    ForkJoinPool mirrorPool = Threads.newPool(30, "S3-Mirror-");
 
     public S3BlockStorage(S3Config config,
                           List<Cid> ids,
@@ -962,8 +962,6 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         return getWithBackoff(() -> put(owner, expected, raw, false)).right;
     }
 
-    ForkJoinPool mirrorPool = Threads.newPool(10, "S3-Mirror-");
-
     private List<BlockMetadata> bulkGetBlocks(List<Multihash> peers,
                                               String username,
                                               PublicKeyHash owner,
@@ -1044,9 +1042,9 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         AtomicLong totalSize = new AtomicLong(0);
         return bulkMirror(owner, writer, peerIds, existingLinks, newLinks, mirrorBat, ourNodeId,
                 (p, o, h, m) -> bulkGetBlocks(p, username, o, h, m, skippedBlockCount, blockCount, totalSize),
-                (w, bs, size) -> usage.addPendingUsage(username, writer, size), retrieverPool)
+                (w, bs, size) -> usage.addPendingUsage(username, writer, size), mirrorPool)
                 .thenApply(cs -> {
-                    while (! retrieverPool.isQuiescent())
+                    while (! mirrorPool.isQuiescent())
                         try {Thread.sleep(1_000);} catch (InterruptedException e) {}
                     if (blockCount.get() > 0) {
                         LOG.info("Mirrored " + String.format("%,d", blockCount.get()) + " blocks, taking " +
@@ -1090,7 +1088,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                     .collect(Collectors.toList());
             for (int i=0; i < allCbor.size();) {
                 int end = Math.min(allCbor.size(), i + 100);
-                while (retrieverPool.getQueuedSubmissionCount() > 100)
+                while (retrieverPool.getQueuedSubmissionCount() > 30)
                     try {Thread.sleep(100);} catch (InterruptedException e) {}
                 int fI = i;
                 retrieverPool.submit(() -> bulkMirror(owner, writer, peerIds, Collections.emptyList(),
@@ -1104,7 +1102,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                     .collect(Collectors.toList());
             for (int i=0; i < allRaw.size();i++) {
                 int fI = i;
-                while (retrieverPool.getQueuedSubmissionCount() > 100)
+                while (retrieverPool.getQueuedSubmissionCount() > 30)
                     try {Thread.sleep(100);} catch (InterruptedException e) {}
                 retrieverPool.submit(() -> bulkMirror(owner, writer, peerIds, Collections.emptyList(),
                         allRaw.subList(fI, fI+1), mirrorBat, ourNodeId, retriever, newBlockProcessor, retrieverPool));
@@ -1117,7 +1115,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                         getLinks(owner, removed.get(i), Arrays.asList(ourNodeId)).join().stream()
                                 .filter(c -> !c.isIdentity())
                                 .collect(Collectors.toList());
-                while (retrieverPool.getQueuedSubmissionCount() > 100)
+                while (retrieverPool.getQueuedSubmissionCount() > 30)
                     try {Thread.sleep(100);} catch (InterruptedException e) {}
                 retrieverPool.submit(() -> bulkMirror(owner, writer, peerIds, existingLinks, newLinks, mirrorBat,
                         ourNodeId, retriever, newBlockProcessor, retrieverPool));
