@@ -198,68 +198,85 @@ public class DirectS3BlockStore implements ContentAddressedStorage {
                                                                        double spaceIncreaseFactor) {
         if (publicReads || ! authedReads)
             return NetworkAccess.downloadFragments(owner, hashes, bats, fallback, h, monitor, spaceIncreaseFactor);
-
-        return onOwnersNode(owner).thenCompose(onOwners -> {
-            if (! onOwners)
-                return NetworkAccess.downloadFragments(owner, hashes, bats, fallback, h, monitor, spaceIncreaseFactor);
-
-            // Do a bulk auth in a single call
-            List<Pair<Integer, Cid>> indexAndHash = IntStream.range(0, hashes.size())
-                    .mapToObj(i -> new Pair<>(i, hashes.get(i)))
+        Optional<BlockCache> cache = fallback.getBlockCache();
+        return Futures.combineAll(hashes.stream().map(bh -> cache.map(c -> c.get(bh)
+                                .thenApply(dopt -> dopt.map(d -> new FragmentWithHash(new Fragment(d), Optional.of(bh)))))
+                        .orElse(Futures.of(Optional.empty())))
+                .collect(Collectors.toSet())).thenCompose(cachedOpts -> {
+            List<FragmentWithHash> cached = cachedOpts.stream()
+                    .flatMap(Optional::stream)
                     .collect(Collectors.toList());
-            List<Pair<Integer, Cid>> nonIdentity = indexAndHash.stream()
-                    .filter(p -> !p.right.isIdentity())
+            Set<Cid> cachedHashes = cached.stream()
+                    .map(f -> f.hash.get())
+                    .collect(Collectors.toSet());
+            List<Cid> remaining = hashes.stream()
+                    .filter(bh -> ! cachedHashes.contains(bh))
                     .collect(Collectors.toList());
-            CompletableFuture<List<PresignedUrl>> auths = nonIdentity.isEmpty() ?
-                    Futures.of(Collections.emptyList()) :
-                    fallback.authReads(owner, nonIdentity.stream()
-                            .map(p -> new BlockMirrorCap(p.right,
-                                    bats.size() > p.left ?
-                                            Optional.of(bats.get(p.left)) :
-                                            Optional.empty()))
-                            .collect(Collectors.toList()));
-            CompletableFuture<List<FragmentWithHash>> allResults = new CompletableFuture();
-            auths
-                    .thenCompose(preAuthedGets ->
-                            Futures.combineAllInOrder(IntStream.range(0, preAuthedGets.size())
-                                    .parallel()
-                                    .mapToObj(i -> direct.get(preAuthedGets.get(i).base, preAuthedGets.get(i).fields)
-                                            .thenApply(b -> {
-                                                monitor.accept((long) b.length);
-                                                Pair<Integer, Cid> hashAndIndex = nonIdentity.get(i);
-                                                return new Pair<>(hashAndIndex.left,
-                                                        new FragmentWithHash(new Fragment(b), Optional.of(hashAndIndex.right)));
-                                            }))
-                                    .collect(Collectors.toList())))
-                    .thenApply(retrieved -> {
-                        FragmentWithHash[] res = new FragmentWithHash[hashes.size()];
-                        for (Pair<Integer, FragmentWithHash> p : retrieved) {
-                            res[p.left] = p.right;
-                        }
-                        // This section is only relevant for legacy data that uses identity multihashes to inline fragments
-                        for (int i = 0; i < hashes.size(); i++)
-                            if (res[i] == null) {
-                                Multihash identity = hashes.get(i);
-                                if (!identity.isIdentity())
-                                    throw new IllegalStateException("Hash should be identity!");
-                                res[i] = new FragmentWithHash(new Fragment(identity.getHash()), Optional.empty());
+            return onOwnersNode(owner).thenCompose(onOwners -> {
+                if (!onOwners)
+                    return NetworkAccess.downloadFragments(owner, hashes, bats, fallback, h, monitor, spaceIncreaseFactor);
+
+                // Do a bulk auth in a single call
+                List<Pair<Integer, Cid>> indexAndHash = IntStream.range(0, remaining.size())
+                        .mapToObj(i -> new Pair<>(i, remaining.get(i)))
+                        .collect(Collectors.toList());
+                List<Pair<Integer, Cid>> nonIdentity = indexAndHash.stream()
+                        .filter(p -> !p.right.isIdentity())
+                        .collect(Collectors.toList());
+                CompletableFuture<List<PresignedUrl>> auths = nonIdentity.isEmpty() ?
+                        Futures.of(Collections.emptyList()) :
+                        fallback.authReads(owner, nonIdentity.stream()
+                                .map(p -> new BlockMirrorCap(p.right,
+                                        bats.size() > p.left ?
+                                                Optional.of(bats.get(p.left)) :
+                                                Optional.empty()))
+                                .collect(Collectors.toList()));
+                CompletableFuture<List<FragmentWithHash>> allResults = new CompletableFuture();
+                auths
+                        .thenCompose(preAuthedGets ->
+                                Futures.combineAllInOrder(IntStream.range(0, preAuthedGets.size())
+                                        .parallel()
+                                        .mapToObj(i -> direct.get(preAuthedGets.get(i).base, preAuthedGets.get(i).fields)
+                                                .thenApply(b -> {
+                                                    monitor.accept((long) b.length);
+                                                    Pair<Integer, Cid> hashAndIndex = nonIdentity.get(i);
+                                                    cache.ifPresent(c -> c.put(hashAndIndex.right, b));
+                                                    return new Pair<>(hashAndIndex.left,
+                                                            new FragmentWithHash(new Fragment(b), Optional.of(hashAndIndex.right)));
+                                                }))
+                                        .collect(Collectors.toList())))
+                        .thenApply(retrieved -> {
+                            FragmentWithHash[] res = new FragmentWithHash[hashes.size()];
+                            for (Pair<Integer, FragmentWithHash> p : retrieved) {
+                                res[p.left] = p.right;
                             }
-                        return Arrays.asList(res);
-                    }).thenAccept(allResults::complete)
-                    .exceptionally(t -> {
-                        if (t instanceof MajorRateLimitException) {
-                            allResults.completeExceptionally(t);
+                            for (int i = remaining.size(); i < hashes.size(); i++)
+                                res[i] = cached.get(i - remaining.size());
+                            // This section is only relevant for legacy data that uses identity multihashes to inline fragments
+                            for (int i = 0; i < hashes.size(); i++)
+                                if (res[i] == null) {
+                                    Multihash identity = hashes.get(i);
+                                    if (!identity.isIdentity())
+                                        throw new IllegalStateException("Hash should be identity!");
+                                    res[i] = new FragmentWithHash(new Fragment(identity.getHash()), Optional.empty());
+                                }
+                            return Arrays.asList(res);
+                        }).thenAccept(allResults::complete)
+                        .exceptionally(t -> {
+                            if (t instanceof MajorRateLimitException) {
+                                allResults.completeExceptionally(t);
+                                return null;
+                            }
+                            NetworkAccess.downloadFragments(owner, hashes, bats, this, h, monitor, spaceIncreaseFactor)
+                                    .thenAccept(allResults::complete)
+                                    .exceptionally(e -> {
+                                        allResults.completeExceptionally(e);
+                                        return null;
+                                    });
                             return null;
-                        }
-                        NetworkAccess.downloadFragments(owner, hashes, bats, this, h, monitor, spaceIncreaseFactor)
-                                .thenAccept(allResults::complete)
-                                .exceptionally(e -> {
-                                    allResults.completeExceptionally(e);
-                                    return null;
-                                });
-                        return null;
-                    });
-            return allResults;
+                        });
+                return allResults;
+            });
         });
     }
 
