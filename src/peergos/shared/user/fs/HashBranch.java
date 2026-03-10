@@ -48,6 +48,11 @@ public class HashBranch implements Cborable {
     }
 
     @Override
+    public String toString() {
+        return rootHash.toString();
+    }
+
+    @Override
     public boolean equals(Object o) {
         if (this == o) return true;
         if (o == null || getClass() != o.getClass()) return false;
