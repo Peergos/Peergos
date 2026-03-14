@@ -1448,6 +1448,11 @@ public class FileWrapper {
                                                     throw new FileExistsException(filename);
                                                 FileWrapper child = childOpt.get();
                                                 FileProperties childProps = child.getFileProperties();
+                                                Optional<HashBranch> existingHash = childProps.treeHash;
+                                                if (existingHash.isPresent() &&
+                                                        hash.isPresent() &&
+                                                        existingHash.get().rootHash.equals(hash.get().rootHash))
+                                                    return Futures.of(new Pair<>(current, Optional.<NamedRelativeCapability>empty()));
 
                                                 TriFunction<FileWrapper, Snapshot, Long, CompletableFuture<Snapshot>> updatePropsIfNecessary =
                                                         (updatedChild, latestSnapshot, writeEnd) -> {
