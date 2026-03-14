@@ -1451,8 +1451,10 @@ public class FileWrapper {
                                                 Optional<HashBranch> existingHash = childProps.treeHash;
                                                 if (existingHash.isPresent() &&
                                                         hash.isPresent() &&
-                                                        existingHash.get().rootHash.equals(hash.get().rootHash))
+                                                        existingHash.get().rootHash.equals(hash.get().rootHash)) {
+                                                    monitor.accept(endIndex - startIndex + THUMBNAIL_PROGRESS_OFFSET);
                                                     return Futures.of(new Pair<>(current, Optional.<NamedRelativeCapability>empty()));
+                                                }
 
                                                 TriFunction<FileWrapper, Snapshot, Long, CompletableFuture<Snapshot>> updatePropsIfNecessary =
                                                         (updatedChild, latestSnapshot, writeEnd) -> {
