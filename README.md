@@ -102,13 +102,13 @@ There is a public chat room for Peergos on [Matrix](https://matrix.to/#/#peergos
 
 Peergos aims
 ------------
- - To allow individuals to securely and privately store files in a peer to peer network which has no central node and is generally difficult to disrupt or surveil
- - To allow secure sharing of files with other users of the network without visible meta-data (who shares with who)
+ - Allow individuals to securely and privately store files in a peer to peer network which has no central node and is generally difficult to disrupt or surveil
+ - Allow secure sharing of files with other users of the network without visible meta-data (who shares with who)
  - Allow web apps to be loaded and run directly from Peergos in a sandbox that prevents data exfiltration and with user granted permissions
- - To have a beautiful user interface that any computer or mobile user can understand
- - To be independent of the central TLS Certificate Authority trust architecture
- - Self hostable - A user should be able to easily run Peergos on a machine in their home and get their own Peergos storage space, and social communication platform from it. 
- - A secure web interface
+ - Have a beautiful user interface that any computer or mobile user can understand
+ - Be independent of the central TLS Certificate Authority trust architecture
+ - Be self-hostable - A user should be able to easily run Peergos on a machine in their home and get their own Peergos storage space, and social communication platform from it. 
+ - Have a secure web interface
 
 Project anti-aims
 -----------------
@@ -117,7 +117,7 @@ Project anti-aims
 Architecture
 ------------
 1.0 Layers of architecture
- - 1: Peer-to-peer and data layer - [IPFS](https://ipfs.io) provides the data storage, routing and retrieval. A User must have at least one peergos instance storing their data for it to be available. 
+ - 1: Peer-to-peer and data layer - [IPFS](https://ipfs.io) provides the data storage, routing and retrieval. A User must have at least one Peergos instance storing their data for it to be available. 
  - 2: Authorization Layer - a key pair controls who is able to modify parts of the file system (every write is signed)
  - 3: Data storage - controlled by a given public key there is a [merkle-champ](https://en.wikipedia.org/wiki/Hash_array_mapped_trie) of encrypted chunks under random labels, without any cross links visible to the server (the server can't deduce the size of files)
  - 4: Encryption - Strong encryption is done on the user's machine using [TweetNaCl](http://tweetnacl.cr.yp.to/), with each 5MiB chunk of a file being encrypted independently. 
@@ -127,7 +127,7 @@ Architecture
 2.0 Language
  - The IPFS layer is coded in Java - we have a minimal ipfs implementation - [Nabu](https://github.com/peergos/nabu)
  - The Peergos server is coded to run on JVM to get portability and speed, predominantly Java
- - The web interface is mostly coded in Java and cross compiled to Javascript, with the exception of the Tweetnacl and scrypt libraries, and a small amount of GUI code in JS for Vue.js. 
+ - The web interface is mostly coded in Java and cross compiled to JavaScript, with the exception of the Tweetnacl and scrypt libraries, and a small amount of GUI code in JS for Vue.js. 
  - Apps are written in HTML5
 
 3.0 Nodes
@@ -137,7 +137,7 @@ Architecture
 4.0 Trust
  - New versions of the software will be delivered through Peergos itself. (Able to be turned off by the user if desired)
  - A user who trusts a public Peergos server (and the SSL Certificate authority chain) can use the web interface over TLS
- - A less trusting user can run a Peergos server/rpoxy on their own machine and use the web interface over localhost
+ - A less trusting user can run a Peergos server/proxy on their own machine and use the web interface over localhost
  - A more paranoid user can run a Peergos server on their own machine and use the CLI or the fuse/webdav binding
  - Servers are trustless - your data and metadata cannot be exposed even if your server is compromised (assuming your client is not compromised)
  - IPFS itself is not trusted and all data stored or retrieved from it is self-certifying. 
@@ -147,7 +147,7 @@ Architecture
  - A user's username is used along with a random salt and the hash of their password and run through scrypt (with parameters 17, 8, 1, 96, though users can choose harder parameters if desired) to generate a symmetric key and a signing keypair. The signing keypair is then used to auth and retrieve encrypted login data. This login data is then decrypted using the symmetric key to obtain the identity key pair, social keypair and root directory capability. This means that a user can log in from any machine without transferring any keys, and also that their keys are protected from a brute force attack (see slides mentioned above for a cost estimate).
 
 5.0 Encryption
- - private keys never leave client node, two random symmetric keys are generated for every file or directory (explicitly not convergent encryption, which leaks information)
+ - Private keys never leave the client node. Two random symmetric keys are generated for every file or directory (explicitly not convergent encryption, which leaks information)
 
 5.1 Post-quantum encryption
  - Files that haven't been shared with another user are already resistant to quantum computer based attacks. This is because the operations to decrypt them from logging in, to seeing plain-text, include only hashing and symmetric encryption, both of which are currently believed to not be significantly weakened with a quantum computer. 
@@ -160,13 +160,13 @@ Architecture
  
 7.0 Sharing of a file (with another user, through a secret link, or publicly)
  - Once user A is being followed by user B, then A can share files with user B (B can revoke their following at any time)
- - File access control is based on [cryptree](https://raw.githubusercontent.com/ianopolous/Peergos/master/papers/wuala-cryptree.pdf) system used by Wuala
- - a link can be generated to a file or a folder which can be shared with anyone through any medium. A link is of the form https://demo.peergos.net/#KEY_MATERIAL which has the property that even the link doesn't leak the file contents to the network, as the key material after the # is not sent to the server, but interpreted locally in the browser. We have extended cryptree to protect much more metadata, including file size, names, thumbnails, directory structure and more. 
- - a user can publish a capability to a file or folder they control which makes it publicly visible
+ - File access control is based on the [cryptree](https://raw.githubusercontent.com/ianopolous/Peergos/master/papers/wuala-cryptree.pdf) system used by Wuala
+ - A link can be generated to a file or a folder which can be shared with anyone through any medium. A link is of the form https://demo.peergos.net/#KEY_MATERIAL which has the property that even the link doesn't leak the file contents to the network, as the key material after the # is not sent to the server, but interpreted locally in the browser. We have extended cryptree to protect much more metadata, including file size, names, thumbnails, directory structure and more. 
+ - A user can publish a capability to a file or folder they control which makes it publicly visible
 
 Usage - running locally to log in to another instance
 -----
-Use this method to login to a peergos account on another instance without any reliance on DNS or the TLS certificate authorities. 
+Use this method to login to a Peergos account on another instance without any reliance on DNS or the TLS certificate authorities. 
 
 1. Download a release from https://peergos.net/public/peergos/releases
 
@@ -181,7 +181,7 @@ or for the native packages:
 ```
 peergos daemon
 ```
-All the peergos data will be stored in ~/.peergos by default, which can be overridden with the environment var or arg - PEERGOS_PATH. 
+All the Peergos data will be stored in ~/.peergos by default, which can be overridden with the environment var or arg - PEERGOS_PATH. 
 
 You can then access the web interface and login via http://localhost:8000.
 
@@ -207,7 +207,7 @@ java -jar Peergos.jar daemon -generate-token true
    sudo ip address add MY.PUBLIC.IP dev eth0
 ```
 
-All the peergos data will be stored in ~/.peergos by default, which can be overridden with the environment var or arg - PEERGOS_PATH
+All the Peergos data will be stored in ~/.peergos by default, which can be overridden with the environment var or arg - PEERGOS_PATH
 
 You can then access the web interface and signup via the localhost address printed, which includes a single use signup token.
 
@@ -221,7 +221,7 @@ Note that whichever Peergos server you sign up through (your home server) will b
 If you don't set up a domain name and TLS you can still log in to your account from another Peergos instance, e.g. one you run locally on your laptop - connections are routed securely over P2P TLS1.3 streams to your home server. In this case, any writes are proxied to your home server so your data is always persisted there. If you do expose your instance via a DNS name and TLS certificate, you will need to add this parameter:
 > -public-server true
 
-If you are also using a reverse proxy like nginx to terminate TLS you will need to tell peergos which domain you are using with the following arg:
+If you are also using a reverse proxy like nginx to terminate TLS you will need to tell Peergos which domain you are using with the following arg:
 > -public-domain $YOUR_DOMAIN
 
 And the TLS certificate will also need to cover the wildcard subdomain for the applications (like the PDF viewer, text editor, calendar, and custom 3rd party apps) to work. For example, it should have A records that cover $YOUR_DOMAIN and *.$YOUR_DOMAIN
@@ -283,7 +283,7 @@ Get a docker image with:
 docker pull ghcr.io/peergos/web-ui:master
 ```
 
-Run the peergos image with:
+Run the Peergos image with:
 ```bash
 docker run --volume $(PEERGOS_PATH):/opt/peergos/data ghcr.io/peergos/web-ui:master daemon -listen-host 0.0.0.0 -public-domain $YOUR_DOMAIN_NAME -public-server true -announce-ipfs-addresses /ip4/$IP/tcp/4001,/ip4/$IP/udp/4001/quic-v1 -log-to-console true
 ```
@@ -394,7 +394,7 @@ Various operation can be done using the shell.
 java -jar Peergos.jar shell
 ```
 
-To connect to a server you will need to provide the Server address (including http/https), Username and Password.
+To connect to a server you will need to provide the server address (including http/https), username and password.
 ```shell
 Enter Server address
 > https://peergos.net
@@ -420,7 +420,7 @@ put local_path remote_path
 
 Sync
 -----
-There is a bi-directional sync client that will let you sync a native directory with a peergos directory (or several pairs of directories). The recommended way to setup syncs is to use the desktop/mobile app. Run the app and login to the browser tab it opens to http://localhost:7777, and click on the sync icon in the left side bar. From there you can choose a host and peergos folder to sync, and whether or not to sync deletes on either or both ends. 
+There is a bi-directional sync client that will let you sync a native directory with a Peergos directory (or several pairs of directories). The recommended way to setup syncs is to use the desktop/mobile app. Run the app and login to the browser tab it opens to http://localhost:7777, and click on the sync icon in the left side bar. From there you can choose a host and Peergos folder to sync, and whether or not to sync deletes on either or both ends. 
 
 If for some reason you must use the CLI then continue reading. 
 
@@ -428,12 +428,12 @@ To set this up first run:
 ```
 >> java -jar Peergos.jar sync init -peergos-url https://peergos.net
 ```
-And follow the prompts to enter your username, password and the peergos dir you want to sync with. This will output something like:
+And follow the prompts to enter your username, password and the Peergos dir you want to sync with. This will output something like:
 ```
 >> Run the sync dir command with the following args: -links secret/z59vuwzfFDomTEuyeEw7rkofcd2vt5EnVffmAy5fnQe9V9MG36ZiBVY/3615659421#QUq6mf4gz8uk -local-dirs $LOCAL_DIR
 ```
 
-Then to run the sync client with:
+Then run the sync client with:
 ```
 >> java -jar Peergos.jar sync dir -peergos-url https://peergos.net -links secret/z59vuwzfFDomTEuyeEw7rkofcd2vt5EnVffmAy5fnQe9V9MG36ZiBVY/3615659421#QUq6mf4gz8uk -local-dirs /path/to/local/dir
 ```
@@ -481,7 +481,7 @@ ant -version
 Apache Ant(TM) version 1.10.8 compiled on May 10 2020
 ```
 ### Build
-Note that this doesn't include any web ui, for the full build including the web interface build https://github.com/peergos/web-ui
+Note that this doesn't include any web ui. For the full build including the web interface build https://github.com/peergos/web-ui
 ```shell
 ant dist
 ```
