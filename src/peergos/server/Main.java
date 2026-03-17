@@ -1291,9 +1291,10 @@ public class Main extends Builder {
                                     .toURI());
                             Path binary = jar.getParent().resolve("PeergosWebView");
                             ProcessBuilder pb = new ProcessBuilder(
-                                    binary.toString(),
-                                    "" + port
+                                    binary.toString()
                             );
+                            // pass port via env var
+                            pb.environment().put("PEERGOS_PORT", "" + port);
                             pb.inheritIO();
                             Process webviewProcess = pb.start();
 
