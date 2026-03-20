@@ -9,9 +9,7 @@ import peergos.server.login.JdbcAccount;
 import peergos.server.space.JdbcUsageStore;
 import peergos.server.space.UsageStore;
 import peergos.server.sql.SqlSupplier;
-import peergos.server.storage.DeletableContentAddressedStorage;
-import peergos.server.storage.JdbcServerIdentityStore;
-import peergos.server.storage.BlockMetadataStore;
+import peergos.server.storage.*;
 import peergos.server.storage.admin.QuotaAdmin;
 import peergos.server.storage.auth.*;
 import peergos.shared.Crypto;
@@ -153,8 +151,9 @@ public class ServerAdmin {
                     JdbcUsageStore usageStore = new JdbcUsageStore(usageDb, sqlCommands);
                     JdbcIpnsAndSocial rawPointers = Builder.buildRawPointers(a,
                             Builder.getDBConnector(a, "mutable-pointers-file", dbConnectionPool));
+                    PartitionStatus partitionStatus = new JdbcPartitionStatus(Builder.getDBConnector(a, "partition-status-file"), sqlCommands);
                     DeletableContentAddressedStorage storage = Builder.buildLocalStorage(a, meta, null, null, blockAuth,
-                            ids, usageStore, rawPointers, null, crypto.hasher);
+                            ids, usageStore, rawPointers, partitionStatus, crypto.hasher);
 
                     MutablePointers pointers = UserRepository.build(storage, rawPointers, crypto.hasher);
                     QuotaAdmin quota = Builder.buildSpaceQuotas(a, storage,
