@@ -280,6 +280,65 @@ public class StorageHandler implements HttpHandler {
                     replyJson(httpExchange, jsonStream, Optional.empty());
                     break;
                 }
+                case BLOCK_PUT_BULK: {
+                    AggregatedMetrics.STORAGE_BLOCK_PUT_BULK.inc();
+                    TransactionId tid = new TransactionId(last.apply("transaction"));
+                    PublicKeyHash writerHash = PublicKeyHash.fromString(last.apply("writer"));
+                    BlockWriteGroup writes = BlockWriteGroup.fromCbor(CborObject.read(httpExchange.getRequestBody(), 2 * ContentAddressedStorage.MAX_BLOCK_SIZE));
+                    boolean isRaw = last.apply("format").equals("raw");
+
+                    // check writer is allowed to write to this server, and check their free space
+                    if (! keyFilter.apply(writerHash, writes.blocks.stream().mapToInt(x -> x.length).sum()))
+                        throw new IllegalStateException("Key not allowed to write to this server: " + writerHash);
+
+                    // Get the actual key, unless this is the initial write of the signing key during sign up
+                    // In the initial put of a signing key during sign up the key signs itself (we still check the hash
+                    // against the core node)
+                    Supplier<PublicSigningKey> fromDht = () -> {
+                        try {
+                            return dht.getSigningKey(writerHash, writerHash).get().get();
+                        } catch (Exception e) {
+                            throw new RuntimeException(e);
+                        }
+                    };
+                    Supplier<PublicSigningKey> inBandOrDht = () -> {
+                        try {
+                            PublicSigningKey candidateKey = PublicSigningKey.fromByteArray(writes.blocks.get(0));
+                            PublicKeyHash calculatedHash = ContentAddressedStorage.hashKey(candidateKey);
+                            if (calculatedHash.equals(writerHash)) {
+                                candidateKey.unsignMessage(writes.signatures.get(0));
+                                return candidateKey;
+                            }
+                        } catch (Throwable e) {
+                            // If signature is not valid then the signing key has already been written, retrieve it
+                            // This happens for the boxing key during sign up for example
+                        }
+                        return fromDht.get();
+                    };
+                    PublicSigningKey writer = writes.blocks.size() > 1 ? fromDht.get() : inBandOrDht.get();
+
+                    // verify signatures
+                    for (int i = 0; i < writes.blocks.size(); i++) {
+                        byte[] signature = writes.signatures.get(i);
+                        byte[] hash = hasher.sha256(writes.blocks.get(i)).join();
+                        byte[] unsigned = writer.unsignMessage(signature).join();
+                        if (! Arrays.equals(unsigned, hash))
+                            throw new IllegalStateException("Invalid signature for block!");
+                    }
+
+                    List<Cid> hashes = (isRaw ?
+                            dht.putRaw(ownerHash.get(), writerHash, writes.signatures, writes.blocks, tid, x -> {}) :
+                            dht.put(ownerHash.get(), writerHash, writes.signatures, writes.blocks, tid)).get();
+                    List<Object> json = hashes.stream()
+                            .map(h -> wrapHash(h))
+                            .collect(Collectors.toList());
+                    // make stream of JSON objects
+                    String jsonStream = json.stream()
+                            .map(m -> JSONParser.toString(m))
+                            .reduce("", (a, b) -> a + b);
+                    replyJson(httpExchange, jsonStream, Optional.empty());
+                    break;
+                }
                 case BLOCK_GET:{
                     AggregatedMetrics.STORAGE_BLOCK_GET.inc();
                     Cid hash = Cid.decode(args.get(0));

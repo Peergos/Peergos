@@ -302,6 +302,7 @@ public interface ContentAddressedStorage {
         public static final String LINK_GET = "link/get";
         public static final String LINK_COUNTS = "link/counts";
         public static final String BLOCK_PUT = "block/put";
+        public static final String BLOCK_PUT_BULK = "block/put/bulk";
         public static final String BLOCK_GET = "block/get";
         public static final String BLOCK_RM = "block/rm";
         public static final String BLOCK_RM_BULK = "block/rm/bulk";
@@ -502,14 +503,22 @@ public interface ContentAddressedStorage {
                                                      ProgressConsumer<Long> progressConsumer) {
             if (isPeergosServer && signatures.stream().anyMatch(s -> s == null || s.length == 0))
                 throw new IllegalStateException("Empty signature in block write!");
-            // Do up to 10 fragments per query (50 pre-auth max/ 5 browser upload connections), unless we are talking
-            // to IPFS directly or there are fewer than 10 blocks. Then upload one per query because IPFS doesn't
-            // support more than one, and to maximise use of browsers 5 connections.
-            //int FRAGMENTs_PER_QUERY = isPeergosServer ? (blocks.size() > 10 ? 10 : 1) : 1;
-            // multi fragment seems to break things, for now just use 1
-            int FRAGMENTs_PER_QUERY = isPeergosServer ? 1 : 1;
-            List<List<byte[]>> grouped = ArrayOps.group(blocks, FRAGMENTs_PER_QUERY);
-            List<List<byte[]>> groupedSignatures = ArrayOps.group(signatures, FRAGMENTs_PER_QUERY);
+            List<List<byte[]>> grouped = new ArrayList<>();
+            grouped.add(new ArrayList<>());
+            List<List<byte[]>> groupedSignatures = new ArrayList<>();
+            groupedSignatures.add(new ArrayList<>());
+            int totalSizeInGroup = 0;
+            for (int i=0; i < blocks.size(); i++) {
+                if (totalSizeInGroup + blocks.get(i).length > MAX_BLOCK_SIZE) {
+                    grouped.add(new ArrayList<>());
+                    groupedSignatures.add(new ArrayList<>());
+                    totalSizeInGroup = 0;
+                }
+                totalSizeInGroup += blocks.get(i).length;
+                grouped.get(grouped.size() - 1).add(blocks.get(i));
+                groupedSignatures.get(groupedSignatures.size() - 1).add(signatures.get(i));
+            }
+
             List<Integer> sizes = grouped.stream()
                     .map(frags -> frags.stream().mapToInt(f -> f.length).sum())
                     .collect(Collectors.toList());
@@ -543,12 +552,16 @@ public interface ContentAddressedStorage {
                     throw new IllegalStateException("Invalid block size: " + block.length
                             + ", blocks must be smaller than 1MiB!");
             }
+            int totalSize = blocks.stream().mapToInt(b -> b.length).sum();
+            if (totalSize > MAX_BLOCK_SIZE)
+                throw new IllegalStateException("Can't write group of blocks with total size bigger than " + MAX_BLOCK_SIZE);
             int timeoutMillis = blocks.size() > 1 ? 30_000 : -1;
-            return poster.postMultipart(apiPrefix + BLOCK_PUT + "?format=" + format
+            byte[] body = new BlockWriteGroup(blocks, signatures).serialize();
+            return poster.post(apiPrefix + BLOCK_PUT_BULK + "?format=" + format
                     + "&owner=" + encode(owner.toString())
                     + "&transaction=" + encode(tid.toString())
-                    + "&writer=" + encode(writer.toString())
-                    + "&signatures=" + signatures.stream().map(ArrayOps::bytesToHex).reduce("", (a, b) -> a + "," + b).substring(1), blocks, timeoutMillis)
+                    + "&writer=" + encode(writer.toString()),
+                            body, false, timeoutMillis)
                     .thenApply(bytes -> JSONParser.parseStream(new String(bytes))
                             .stream()
                             .map(json -> getObjectHash(json))
