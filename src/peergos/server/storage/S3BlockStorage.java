@@ -217,7 +217,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         this.partitionComplete = partitionStatus.isDone();
         startFlusherThread();
         new Thread(() -> blockBuffer.applyToAll((o, c) -> {
-            bulkPutPool.submit(() -> getWithBackoff(() -> {
+            flusherPool.submit(() -> getWithBackoff(() -> {
                 Optional<byte[]> block = blockBuffer.get(o, c).join();
                 if (block.isPresent()) {
                     getWithBackoff(() -> put(o, c, block.get(), true));
@@ -456,7 +456,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                     }
                     PublicKeyHash owner = p.left;
                     Cid h = p.right;
-                    bulkPutPool.submit(() -> getWithBackoff(() -> {
+                    flusherPool.submit(() -> getWithBackoff(() -> {
                         try {
                             Optional<byte[]> block = blockBuffer.get(owner, h).join();
                             if (block.isPresent()) {
@@ -1292,7 +1292,8 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         return put(owner, blocks, true, tid);
     }
 
-    private final ForkJoinPool bulkPutPool = Threads.newPool(1_000, "S3-bulk-put-");
+    private final ForkJoinPool bulkPutPool = Threads.newPool(200, "S3-bulk-put-");
+    private final ForkJoinPool flusherPool = Threads.newPool(1_000, "S3-flusher-");
 
     private CompletableFuture<List<Cid>> put(PublicKeyHash owner,
                                              List<byte[]> blocks,
