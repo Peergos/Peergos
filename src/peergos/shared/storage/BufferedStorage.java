@@ -334,11 +334,12 @@ public class BufferedStorage extends DelegatingStorage {
         }
 
         int maxBlocksPerBatch = ContentAddressedStorage.MAX_BLOCK_AUTHS;
+        int maxCborBatchSize = 1024*1024;
         List<List<OpLog.BlockWrite>> cborBatches = new ArrayList<>();
         List<List<OpLog.BlockWrite>> rawBatches = new ArrayList<>();
         List<List<OpLog.BlockWrite>> smallRawBatches = new ArrayList<>();
 
-        int cborCount = 0, rawcount = 0, smallRawCount = 0;
+        int cborSize = 0, rawcount = 0, smallRawCount = 0;
         int smallBlockMax = DirectS3BlockStore.MAX_SMALL_BLOCK_SIZE;
         if (! cborBatches.isEmpty() && ! cborBatches.get(cborBatches.size() - 1).isEmpty())
             cborBatches.add(new ArrayList<>());
@@ -347,19 +348,25 @@ public class BufferedStorage extends DelegatingStorage {
         if (! smallRawBatches.isEmpty() && ! smallRawBatches.get(rawBatches.size() - 1).isEmpty())
             smallRawBatches.add(new ArrayList<>());
         for (OpLog.BlockWrite val : forWriter) {
-            List<List<OpLog.BlockWrite>> batches = val.isRaw ? val.block.length < smallBlockMax ? smallRawBatches : rawBatches : cborBatches;
-            int count = val.isRaw ? val.block.length < smallBlockMax ? smallRawCount : rawcount : cborCount;
-            if (count % maxBlocksPerBatch == 0)
+            List<List<OpLog.BlockWrite>> batches = val.isRaw ?
+                    val.block.length < smallBlockMax ? smallRawBatches : rawBatches : cborBatches;
+            int count = val.isRaw ? val.block.length < smallBlockMax ? smallRawCount : rawcount : cborSize;
+            int maxBatchCount = val.isRaw ? maxBlocksPerBatch : maxCborBatchSize;
+            if (val.isRaw && count % maxBatchCount == 0)
                 batches.add(new ArrayList<>());
+            if (! val.isRaw && (cborBatches.isEmpty() || cborSize + val.block.length > maxCborBatchSize)) {
+                cborBatches.add(new ArrayList<>());
+                cborSize = 0;
+            }
             batches.get(batches.size() - 1).add(val);
-            count = (count + 1) % maxBlocksPerBatch;
+            count = (count + 1) % maxBatchCount;
             if (val.isRaw) {
                 if (val.block.length < smallBlockMax)
                     smallRawCount = count;
                 else
                     rawcount = count;
             } else
-                cborCount = count;
+                cborSize += val.block.length;
         }
         return Futures.combineAllInOrder(Stream.concat(
                                 rawBatches.stream().map(bs -> new Pair<>(true, bs)),
