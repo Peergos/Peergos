@@ -77,7 +77,7 @@ public class RetryStorage implements ContentAddressedStorage {
                                                 res.completeExceptionally(t);
                                                 return null;
                                             }),
-                                    jitter((maxAttempts + 1 - retriesLeft) * 1000, 500));
+                                    jitter(1000 << (maxAttempts - retriesLeft), 500 << (maxAttempts - retriesLeft)));
                         }
                         return null;
                     });

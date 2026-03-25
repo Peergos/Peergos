@@ -8,6 +8,7 @@ import peergos.shared.corenode.CoreNode;
 import peergos.shared.io.ipfs.api.JSONParser;
 import peergos.shared.mutable.MutablePointers;
 import peergos.shared.storage.ContentAddressedStorage;
+import peergos.shared.storage.RetryStorage;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -84,7 +85,7 @@ public interface SyncRunner {
                            CoreNode core,
                            Crypto crypto) {
 
-            NetworkAccess network = NetworkAccess.buildBuffered(storage, null, core, null,
+            NetworkAccess network = NetworkAccess.buildBuffered(new RetryStorage(storage, 5), null, core, null,
                     mutable, 5_000, null, null, null, null,
                     crypto.hasher, Collections.emptyList(), false);
             this.runner = new Thread(() -> {

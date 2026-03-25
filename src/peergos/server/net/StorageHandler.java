@@ -394,7 +394,7 @@ public class StorageHandler implements HttpHandler {
                     httpExchange.sendResponseHeaders(404, 0);
                 }
             }
-        } catch (Exception e) {
+        } catch (Throwable e) {
             Throwable t = Exceptions.getRootCause(e);
             if (t instanceof RateLimitException) {
                 HttpUtil.replyErrorWithCode(httpExchange, 429, Optional.ofNullable(t.getMessage()).orElse("Too Many Requests"));

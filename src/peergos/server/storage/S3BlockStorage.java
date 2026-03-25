@@ -1292,19 +1292,18 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         return put(owner, blocks, true, tid);
     }
 
-    private final ForkJoinPool bulkPutPool = Threads.newPool(200, "S3-bulk-put-");
     private final ForkJoinPool flusherPool = Threads.newPool(1_000, "S3-flusher-");
 
     private CompletableFuture<List<Cid>> put(PublicKeyHash owner,
                                              List<byte[]> blocks,
                                              boolean isRaw,
                                              TransactionId tid) {
-        List<ForkJoinTask<Cid>> puts = blocks.stream()
-                .map(b -> bulkPutPool.submit(() -> getWithBackoff(() -> b.length > DirectS3BlockStore.MAX_SMALL_BLOCK_SIZE ?
+        return Futures.of(blocks.stream()
+                .parallel()
+                .map(b -> getWithBackoff(() -> b.length > DirectS3BlockStore.MAX_SMALL_BLOCK_SIZE ?
                         put(b, isRaw, tid, owner, true) : // This should only happen from p2p requests that can't use DirectS3Blockstore
-                        putToBuffer(b, isRaw, tid, owner).join())))
-                .collect(Collectors.toList());
-        return Futures.of(puts.stream().map(f ->  f.join()).collect(Collectors.toList()));
+                        putToBuffer(b, isRaw, tid, owner).join()))
+                .collect(Collectors.toList()));
     }
 
     private CompletableFuture<Cid> putToBuffer(byte[] data, boolean isRaw, TransactionId tid, PublicKeyHash owner) {
