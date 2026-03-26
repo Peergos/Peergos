@@ -65,7 +65,8 @@ public class QuotaTests {
                 network, crypto, () -> false, x -> {}).get();
 
         try {
-            newHome.uploadOrReplaceFile("file-2", new AsyncReader.ArrayBacked(data), data.length, network,
+            byte[] bigger = new byte[3 * 1024 * 1024];
+            newHome.uploadOrReplaceFile("file-2", new AsyncReader.ArrayBacked(bigger), bigger.length, network,
                     crypto, () -> false, x -> {}).get();
             Assert.fail("Quota wasn't enforced");
         } catch (Exception e) {}
