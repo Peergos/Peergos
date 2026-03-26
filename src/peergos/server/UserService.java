@@ -1,5 +1,6 @@
 package peergos.server;
 import java.util.*;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.logging.Logger;
 
@@ -294,7 +295,13 @@ public class UserService {
         }
         addHandler(localhostServer, tlsServer, UI_URL, handler, basicAuth, local, host, nodeIds, true);
 
-        localhostServer.setExecutor(Executors.newVirtualThreadPerTaskExecutor());
+        ExecutorService executor;
+        try {
+            executor = Executors.newVirtualThreadPerTaskExecutor();
+        } catch (Throwable t) {
+            executor = Threads.newPool(handlerPoolSize, "api-handler-");
+        }
+        localhostServer.setExecutor(executor);
         localhostServer.start();
 
         if (tlsServer != null) {
