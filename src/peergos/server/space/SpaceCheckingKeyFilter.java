@@ -411,6 +411,7 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
             usage = usageStore.getUsage(username);
             usageByHour.put(username, usage);
         } else if (usage.isErrored() || usage.expectedUsage() + 10L * 1024*1024*1024 > quota) {
+            usageStore.confirmUsage(username, writer, 0, usage.isErrored());
             usageStore.addPendingUsage(username, writer, (int) usage.getPending(writer));
             usage = usageStore.getUsage(username);
             usageByHour.put(username, usage);
@@ -421,8 +422,8 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
         if ((! errored && expectedUsage + size > quota) || (errored && expectedUsage + size > quota + USAGE_TOLERANCE)) {
             long pending = usage.getPending(writer);
             usageStore.confirmUsage(username, writer, 0, true);
-            usage.setErrored(true);
             usage.confirmUsage(writer, 0);
+            usage.setErrored(true);
             LOG.info("Rejecting write for " + username);
             throw new IllegalStateException("Storage quota reached! \nUsed "
                     + usage.totalUsage() + " out of " + quota + " bytes. Rejecting write of size " + (size + pending) + ". \n" +
