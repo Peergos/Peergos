@@ -557,10 +557,10 @@ public interface ContentAddressedStorage {
                 throw new IllegalStateException("Can't write group of blocks with total size bigger than " + MAX_BLOCK_SIZE);
             int timeoutMillis = blocks.size() > 1 ? 30_000 : -1;
             byte[] body = new BlockWriteGroup(blocks, signatures).serialize();
-            return poster.post(apiPrefix + BLOCK_PUT_BULK + "?format=" + format
-                    + "&owner=" + encode(owner.toString())
-                    + "&transaction=" + encode(tid.toString())
-                    + "&writer=" + encode(writer.toString()),
+            return Futures.asyncExceptionally(() -> poster.post(apiPrefix + BLOCK_PUT_BULK + "?format=" + format
+                                    + "&owner=" + encode(owner.toString())
+                                    + "&transaction=" + encode(tid.toString())
+                                    + "&writer=" + encode(writer.toString()),
                             body, false, timeoutMillis)
                     .thenApply(bytes -> JSONParser.parseStream(new String(bytes))
                             .stream()
@@ -572,6 +572,12 @@ public interface ContentAddressedStorage {
                         if (hashes.size() != blocks.size())
                             throw new IllegalStateException("Incorrect number of hashes returned from bulk write: " + hashes.size() + " != " + blocks.size());
                         return hashes;
+                    }),
+                    t -> {
+                        String msg = t.getMessage();
+                        if (msg.contains("Storage+quota+reached"))
+                            return Futures.errored(new StorageQuotaExceededException(msg));
+                        return Futures.errored(t);
                     });
         }
 
