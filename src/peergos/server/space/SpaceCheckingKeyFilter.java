@@ -157,7 +157,7 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
                     for (PublicKeyHash newOwnedKey : newOwnedKeys) {
                         store.addWriter(writerUsage.owner, newOwnedKey);
                         processMutablePointerEvent(store, owner, newOwnedKey, MaybeMultihash.empty(),
-                                mutable.getPointerTarget(owner, newOwnedKey, dht).get().updated, mutable, dht, hasher);
+                                mutable.getPointerTarget(owner, newOwnedKey, dht).get().updated, mutable, quotas, dht, hasher);
                     }
                     HashSet<PublicKeyHash> removedOwnedKeys = new HashSet<>(writerUsage.ownedKeys());
                     removedOwnedKeys.removeAll(directOwnedKeys);
@@ -185,7 +185,7 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
      */
     private boolean processCorenodeEvent(String username, PublicKeyHash writer) {
         try {
-            processCorenodeEvent(username, writer, usageStore, dht, mutable, hasher);
+            processCorenodeEvent(username, writer, usageStore, quotaAdmin, dht, mutable, hasher);
             return true;
         } catch (Throwable e) {
             LOG.severe("Error loading storage for user: " + username);
@@ -206,18 +206,20 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
     public static void processCorenodeEvent(String username,
                                             PublicKeyHash owner,
                                             UsageStore usageStore,
+                                            QuotaAdmin quotaAdmin,
                                             DeletableContentAddressedStorage dht,
                                             MutablePointers mutable,
                                             Hasher hasher) {
         // get current set of owned keys from usage db, and traverse filesystem
         // only if a pointer has changed since last usage update
         Set<PublicKeyHash> allUserKeys = usageStore.getAllWriters(owner);
-        processCorenodeEvent(username, owner, allUserKeys, usageStore, dht, mutable, hasher);
+        processCorenodeEvent(username, owner, allUserKeys, usageStore, quotaAdmin, dht, mutable, hasher);
     }
     public static void processCorenodeEvent(String username,
                                             PublicKeyHash owner,
                                             Set<PublicKeyHash> allUserKeys,
                                             UsageStore usageStore,
+                                            QuotaAdmin quotaAdmin,
                                             DeletableContentAddressedStorage dht,
                                             MutablePointers mutable,
                                             Hasher hasher) {
@@ -227,7 +229,7 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
             usageStore.addWriter(username, writerKey);
             WriterUsage current = usageStore.getUsage(writerKey);
             MaybeMultihash updatedRoot = mutable.getPointerTarget(owner, writerKey, dht).join().updated;
-            processMutablePointerEvent(usageStore, owner, writerKey, current.target(), updatedRoot, mutable, dht, hasher);
+            processMutablePointerEvent(usageStore, owner, writerKey, current.target(), updatedRoot, mutable, quotaAdmin, dht, hasher);
         }
     }
 
@@ -255,7 +257,7 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
                     .thenApply(signer -> PointerUpdate.fromCbor(CborObject.fromByteArray(signer.get()
                             .unsignMessage(event.writerSignedBtreeRootHash).join()))).join();
             processMutablePointerEvent(usageStore, event.owner, event.writer, pointerUpdate.original, pointerUpdate.updated,
-                    mutable, dht, hasher);
+                    mutable, quotaAdmin, dht, hasher);
         } catch (Exception e) {
             LOG.log(Level.WARNING, e.getMessage(), e);
         }
@@ -267,6 +269,7 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
                                                    MaybeMultihash existingRoot,
                                                    MaybeMultihash newRoot,
                                                    MutablePointers mutable,
+                                                   QuotaAdmin quotaAdmin,
                                                    DeletableContentAddressedStorage dht,
                                                    Hasher hasher) {
         if (existingRoot.equals(newRoot))
@@ -286,7 +289,7 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
                     Set<PublicKeyHash> updatedOwned =
                             DeletableContentAddressedStorage.getDirectOwnedKeys(owner, writer, existingRoot,
                                     (h, s) -> DeletableContentAddressedStorage.getWriterData(us, owner, h, s, false, ourId, hasher, dht),  dht, hasher).join();
-                    processRemovedOwnedKeys(state, owner, updatedOwned, mutable, dht, hasher);
+                    processRemovedOwnedKeys(state, owner, updatedOwned, mutable, quotaAdmin, dht, hasher);
                 } catch (Exception e) {
                     LOG.log(Level.WARNING, e.getMessage(), e);
                 }
@@ -306,11 +309,19 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
                 for (PublicKeyHash owned : updatedOwned) {
                     state.addWriter(current.owner, owned);
                 }
-                state.confirmUsage(current.owner, writer, changeInStorage, state.getUsage(current.owner).isErrored());
+                UserUsage usage = state.getUsage(current.owner);
+                boolean initialErrored = usage.isErrored();
+                String username = current.owner;
+                long quota = getQuota(username, quotaAdmin);
+                boolean errored = initialErrored && usage.totalUsage() > quota;
+                state.confirmUsage(current.owner, writer, changeInStorage, errored);
+                UserUsage cached = getUsage(username, state);
+                cached.confirmUsage(writer, changeInStorage);
+                cached.setErrored(errored);
 
                 HashSet<PublicKeyHash> removedChildren = new HashSet<>(current.ownedKeys());
                 removedChildren.removeAll(updatedOwned);
-                processRemovedOwnedKeys(state, owner, removedChildren, mutable, dht, hasher);
+                processRemovedOwnedKeys(state, owner, removedChildren, mutable, quotaAdmin, dht, hasher);
                 HashSet<PublicKeyHash> addedOwnedKeys = new HashSet<>(updatedOwned);
                 addedOwnedKeys.removeAll(current.ownedKeys());
                 state.updateWriterUsage(writer, newRoot, removedChildren, addedOwnedKeys, current.directRetainedStorage() + changeInStorage);
@@ -318,7 +329,7 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
                     state.addWriter(current.owner, added);
                     WriterUsage currentAdded = state.getUsage(added);
                     MaybeMultihash updatedRoot = mutable.getPointerTarget(owner, added, dht).join().updated;
-                    processMutablePointerEvent(state, owner, added, currentAdded.target(), updatedRoot, mutable, dht, hasher);
+                    processMutablePointerEvent(state, owner, added, currentAdded.target(), updatedRoot, mutable, quotaAdmin, dht, hasher);
                 }
                 LOG.info("Updated usage for (" + owner + ", " + writer + ") from " + current.directRetainedStorage() + ", adding " + changeInStorage);
             }
@@ -331,12 +342,13 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
                                                 PublicKeyHash owner,
                                                 Set<PublicKeyHash> removed,
                                                 MutablePointers mutable,
+                                                QuotaAdmin quotaAdmin,
                                                 DeletableContentAddressedStorage dht,
                                                 Hasher hasher) {
         for (PublicKeyHash ownedKey : removed) {
             try {
                 MaybeMultihash currentTarget = mutable.getPointerTarget(owner, ownedKey, dht).get().updated;
-                processMutablePointerEvent(state, owner, ownedKey, currentTarget, MaybeMultihash.empty(), mutable, dht, hasher);
+                processMutablePointerEvent(state, owner, ownedKey, currentTarget, MaybeMultihash.empty(), mutable, quotaAdmin, dht, hasher);
             } catch (Exception e) {
                 LOG.log(Level.WARNING, e.getMessage(), e);
             }
@@ -372,56 +384,69 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
         return quotaAdmin.requestQuota(owner, signedRequest,  usage.totalUsage());
     }
 
-    private final LRUCache<Long, Map<String, Long>> quotas = new LRUCache<>(2);
-    private final LRUCache<Long, Map<String, UserUsage>> usageCache = new LRUCache<>(2);
+    private static final LRUCache<Long, Map<String, Long>> quotas = new LRUCache<>(2);
+    private static final LRUCache<Long, Map<String, UserUsage>> usageCache = new LRUCache<>(2);
 
-    public boolean allowWrite(PublicKeyHash writer, int size) {
-        String owner = usageStore.getOwner(writer);
+    private static long getQuota(String owner, QuotaAdmin quotaAdmin) {
         long timeKey = System.currentTimeMillis() / 3_600_000;
         Map<String, Long> cachedQuotas;
-        synchronized (this) {
+        synchronized (quotas) {
             cachedQuotas = quotas.computeIfAbsent(timeKey, k -> new ConcurrentHashMap<>());
         }
         Long cachedQuota = cachedQuotas.get(owner);
         long quota = cachedQuota != null ? cachedQuota : quotaAdmin.getQuota(owner);
         if (cachedQuota == null)
             cachedQuotas.put(owner, quota);
+        return quota;
+    }
 
+    private static UserUsage getUsage(String username, UsageStore usageStore) {
         UserUsage usage;
         Map<String, UserUsage> usageByHour;
         long tenMinuteKey = System.currentTimeMillis() / 600_000;
-        synchronized (this) {
+        synchronized (usageCache) {
             usageByHour = usageCache.computeIfAbsent(tenMinuteKey, k -> new ConcurrentHashMap<>());
         }
-        usage = usageByHour.get(owner);
-        if (usage == null || usage.isErrored() || usage.expectedUsage() + 10L * 1024*1024*1024 > quota) {
-            usage = usageStore.getUsage(owner);
-            usageByHour.put(owner, usage);
+        usage = usageByHour.get(username);
+        if (usage == null) {
+            usage = usageStore.getUsage(username);
+            usageByHour.put(username, usage);
+        } else if (usage.isErrored()) {
+            usage = usageStore.getUsage(username);
+            usageByHour.put(username, usage);
         }
+        return usage;
+    }
+
+    public boolean allowWrite(PublicKeyHash writer, int size) {
+        String username = usageStore.getOwner(writer);
+        long quota = getQuota(username, quotaAdmin);
+
+        UserUsage usage = getUsage(username, usageStore);
 
         long expectedUsage = usage.expectedUsage();
         boolean errored = usage.isErrored();
         if ((! errored && expectedUsage + size > quota) || (errored && expectedUsage + size > quota + USAGE_TOLERANCE)) {
             long pending = usage.getPending(writer);
-            usageStore.confirmUsage(owner, writer, 0, true);
-            LOG.info("Rejecting write for " + owner);
+            usageStore.confirmUsage(username, writer, 0, true);
+            usage.confirmUsage(writer, 0);
+            usage.setErrored(true);
+            LOG.info("Rejecting write for " + username);
             throw new IllegalStateException("Storage quota reached! \nUsed "
                     + usage.totalUsage() + " out of " + quota + " bytes. Rejecting write of size " + (size + pending) + ". \n" +
                     "Please delete some files or request more space.");
         }
-        SlidingWindowCounter writeLimit = writeLimiter.get(owner);
+        SlidingWindowCounter writeLimit = writeLimiter.get(username);
         if (writeLimit == null) {
             writeLimit = new SlidingWindowCounter(quotaUploadLimitSeconds, quota);
-            writeLimiter.put(owner, writeLimit);
+            writeLimiter.put(username, writeLimit);
         }
         if (! writeLimit.allowRequest(size))
             throw new IllegalStateException("Upload bandwidth exceeded please try again tomorrow");
-        if (errored && expectedUsage + size < quota) // clear errored (space tolerance) after successfully lowering usage
-            usageStore.confirmUsage(owner, writer, 0, false);
         try {
             usage.addPending(writer, size);
         } catch (Exception e) {
-            throw new IllegalStateException("Couldn't update pending usage for user " + owner, e);
+            throw new IllegalStateException("Couldn't update pending usage for user " + username, e);
         }
         return true;
     }

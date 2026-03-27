@@ -93,9 +93,12 @@ public class JavaPoster implements HttpPoster {
             din.close();
             int statusCode = response.statusCode();
             if (statusCode != 200) {
-                handleError(url, res, response, new IOException(resp.length == 0 ?
-                        "Unexpected Error. Status code: " + statusCode
-                        : new String(resp)));
+                if (statusCode == 502)
+                    res.completeExceptionally(new RateLimitException());
+                else
+                    handleError(url, res, response, new IOException(resp.length == 0 ?
+                            "Unexpected Error. Status code: " + statusCode
+                            : new String(resp)));
             } else {
                 res.complete(resp);
             }

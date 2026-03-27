@@ -1,6 +1,5 @@
 package peergos.server.sync;
 
-import org.peergos.config.Jsonable;
 import peergos.server.util.Args;
 import peergos.server.util.Logging;
 import peergos.shared.Crypto;
@@ -9,8 +8,7 @@ import peergos.shared.corenode.CoreNode;
 import peergos.shared.io.ipfs.api.JSONParser;
 import peergos.shared.mutable.MutablePointers;
 import peergos.shared.storage.ContentAddressedStorage;
-import peergos.shared.user.MutableTreeImpl;
-import peergos.shared.user.WriteSynchronizer;
+import peergos.shared.storage.RetryStorage;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -22,8 +20,6 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-import java.util.stream.Collectors;
-import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
 import static peergos.server.net.SyncConfigHandler.OLD_SYNC_CONFIG_FILENAME;
@@ -89,11 +85,9 @@ public interface SyncRunner {
                            CoreNode core,
                            Crypto crypto) {
 
-            WriteSynchronizer synchronizer = new WriteSynchronizer(mutable, storage, crypto.hasher);
-            MutableTreeImpl tree = new MutableTreeImpl(mutable, storage, crypto.hasher, synchronizer);
-            NetworkAccess network = new NetworkAccess(core, null, null, storage, null, Optional.empty(),
-                    mutable, tree, synchronizer, null, null, null, crypto.hasher,
-                    Collections.emptyList(), false);
+            NetworkAccess network = NetworkAccess.buildBuffered(new RetryStorage(storage, 5), null, core, null,
+                    mutable, 5_000, null, null, null, null,
+                    crypto.hasher, Collections.emptyList(), false);
             this.runner = new Thread(() -> {
                 while (true) {
                     try {

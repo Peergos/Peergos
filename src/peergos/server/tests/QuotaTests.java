@@ -5,6 +5,7 @@ import org.junit.runner.*;
 import org.junit.runners.*;
 import peergos.server.*;
 import peergos.server.util.Args;
+import peergos.server.util.Threads;
 import peergos.shared.*;
 import peergos.shared.storage.auth.*;
 import peergos.shared.user.*;
@@ -65,7 +66,8 @@ public class QuotaTests {
                 network, crypto, () -> false, x -> {}).get();
 
         try {
-            newHome.uploadOrReplaceFile("file-2", new AsyncReader.ArrayBacked(data), data.length, network,
+            byte[] bigger = new byte[3 * 1024 * 1024];
+            newHome.uploadOrReplaceFile("file-2", new AsyncReader.ArrayBacked(bigger), bigger.length, network,
                     crypto, () -> false, x -> {}).get();
             Assert.fail("Quota wasn't enforced");
         } catch (Exception e) {}
@@ -126,6 +128,7 @@ public class QuotaTests {
                 network, crypto, () -> false, x -> {}).get();
         Path filePath = PathUtil.get(username, filename);
         FileWrapper file = context.getByPath(filePath).get().get();
+        Threads.sleep(2_000);
         try {
             home = home.uploadOrReplaceFile("file-2", new AsyncReader.ArrayBacked(data), data.length,
                     network, crypto, () -> false, x -> {}).get();

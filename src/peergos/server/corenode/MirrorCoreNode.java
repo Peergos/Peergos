@@ -174,7 +174,7 @@ public class MirrorCoreNode implements CoreNode {
                         Map<PublicKeyHash, byte[]> pointers = Mirror.mirrorUser(username, Optional.empty(),
                                 Optional.of(localMirrorBats.get(localMirrorBats.size() - 1)), this, p2pMutable,
                                 null, ipfs, rawPointers, rawAccount, transactions, linkCounts, usageStore, hasher);
-                        SpaceCheckingKeyFilter.processCorenodeEvent(username, owner, pointers.keySet(), usageStore, ipfs, p2pMutable, hasher);
+                        SpaceCheckingKeyFilter.processCorenodeEvent(username, owner, pointers.keySet(), usageStore, quotas, ipfs, p2pMutable, hasher);
                         long t1 = System.currentTimeMillis();
                         LOG.info("Finished mirroring " + username + " data in " + (t1 - t0) / 1_000 + "s");
                     } catch (Exception e) {
@@ -721,7 +721,7 @@ public class MirrorCoreNode implements CoreNode {
             List<Multihash> us = List.of(ourNodeId.bareMultihash());
             Set<PublicKeyHash> allUserKeys = DeletableContentAddressedStorage.getOwnedKeysRecursive(owner, owner, p2pMutable,
                     (h, s) -> DeletableContentAddressedStorage.getWriterData(us, owner, h, s, true, ourNodeId, hasher, ipfs), ipfs, hasher).join();
-            SpaceCheckingKeyFilter.processCorenodeEvent(username, owner, allUserKeys, usageStore, ipfs, p2pMutable, hasher);
+            SpaceCheckingKeyFilter.processCorenodeEvent(username, owner, allUserKeys, usageStore, quotas, ipfs, p2pMutable, hasher);
             return Futures.of(res);
         } else // Proxy call to their target storage server
             return writeTarget.migrateUser(username, newChain, migrationTargetNode, mirrorBat, latestLinkCountUpdate, currentUsage, commitToPki);
