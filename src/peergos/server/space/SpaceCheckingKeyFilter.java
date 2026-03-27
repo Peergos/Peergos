@@ -311,10 +311,13 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
                 }
                 UserUsage usage = state.getUsage(current.owner);
                 boolean initialErrored = usage.isErrored();
-                String username = state.getOwner(writer);
+                String username = current.owner;
                 long quota = getQuota(username, quotaAdmin);
                 boolean errored = initialErrored && usage.totalUsage() > quota;
                 state.confirmUsage(current.owner, writer, changeInStorage, errored);
+                UserUsage cached = getUsage(username, state);
+                cached.confirmUsage(writer, changeInStorage);
+                cached.setErrored(errored);
 
                 HashSet<PublicKeyHash> removedChildren = new HashSet<>(current.ownedKeys());
                 removedChildren.removeAll(updatedOwned);
@@ -397,25 +400,29 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
         return quota;
     }
 
-    public boolean allowWrite(PublicKeyHash writer, int size) {
-        String username = usageStore.getOwner(writer);
-        long quota = getQuota(username, quotaAdmin);
+    private static UserUsage getUsage(String username, UsageStore usageStore) {
         UserUsage usage;
         Map<String, UserUsage> usageByHour;
         long tenMinuteKey = System.currentTimeMillis() / 600_000;
-        synchronized (this) {
+        synchronized (usageCache) {
             usageByHour = usageCache.computeIfAbsent(tenMinuteKey, k -> new ConcurrentHashMap<>());
         }
         usage = usageByHour.get(username);
         if (usage == null) {
             usage = usageStore.getUsage(username);
             usageByHour.put(username, usage);
-        } else if (usage.isErrored() || usage.expectedUsage() + 10L * 1024*1024*1024 > quota) {
-            usageStore.confirmUsage(username, writer, 0, usage.isErrored());
-            usageStore.addPendingUsage(username, writer, (int) usage.getPending(writer));
+        } else if (usage.isErrored()) {
             usage = usageStore.getUsage(username);
             usageByHour.put(username, usage);
         }
+        return usage;
+    }
+
+    public boolean allowWrite(PublicKeyHash writer, int size) {
+        String username = usageStore.getOwner(writer);
+        long quota = getQuota(username, quotaAdmin);
+
+        UserUsage usage = getUsage(username, usageStore);
 
         long expectedUsage = usage.expectedUsage();
         boolean errored = usage.isErrored();
