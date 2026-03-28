@@ -170,7 +170,7 @@ Use this method to login to a Peergos account on another instance without any re
 
 1. Download a release from https://peergos.net/public/peergos/releases
 
-2. If you download the jar, install Java - You will need Java >= 21 installed. 
+2. If you download the jar, install Java - You will need Java >= 25 installed. 
 
 3. Run Peergos with:
 
@@ -193,7 +193,7 @@ Use this method to run a new home-server (which is best with a publicly routable
 
 1. Download a release from https://peergos.net/public/peergos/releases
 
-2. Install Java - You will need Java >= 21 installed. 
+2. Install Java - You will need Java >= 25 installed. 
 
 3. Run Peergos with:
 ```
