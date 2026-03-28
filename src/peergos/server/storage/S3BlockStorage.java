@@ -1292,7 +1292,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         return put(owner, blocks, true, tid);
     }
 
-    private final ForkJoinPool flusherPool = Threads.newPool(1_000, "S3-flusher-");
+    private final ExecutorService flusherPool = Executors.newVirtualThreadPerTaskExecutor();
 
     private CompletableFuture<List<Cid>> put(PublicKeyHash owner,
                                              List<byte[]> blocks,
