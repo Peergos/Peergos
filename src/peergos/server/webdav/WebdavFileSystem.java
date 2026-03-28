@@ -27,6 +27,7 @@ import peergos.server.Builder;
 import peergos.server.Main;
 import peergos.shared.Crypto;
 import peergos.shared.NetworkAccess;
+import peergos.shared.storage.RetryStorage;
 import peergos.shared.user.UserContext;
 import peergos.shared.user.fs.AsyncReader;
 import peergos.shared.user.fs.FileWrapper;
@@ -64,7 +65,10 @@ public class WebdavFileSystem implements IWebdavStore {
     public WebdavFileSystem(String username, String password, String peergosUrl) {
         Crypto crypto = Main.initCrypto();
         try {
-            NetworkAccess network = Builder.buildJavaNetworkAccess(new URL(peergosUrl), peergosUrl.startsWith("https"), Optional.of("Peergos-" + UserService.CURRENT_VERSION + "-webdav"), Optional.empty()).join();
+            NetworkAccess unbuffered = Builder.buildJavaNetworkAccess(new URL(peergosUrl), peergosUrl.startsWith("https"), Optional.of("Peergos-" + UserService.CURRENT_VERSION + "-webdav"), Optional.empty()).join();
+            NetworkAccess network = NetworkAccess.buildBuffered(new RetryStorage(unbuffered.dhtClient, 5), unbuffered.batCave, unbuffered.coreNode, unbuffered.account,
+                    unbuffered.mutable, 5_000, unbuffered.social, unbuffered.instanceAdmin, unbuffered.spaceUsage, unbuffered.serverMessager,
+                    crypto.hasher, Collections.emptyList(), false);
             context = UserContext.signIn(username, password, Main::getMfaResponseCLI, network, crypto).join();
         } catch (Exception ex) {
             LOG.log(Level.WARNING, ex, () -> "Unable to connect to Peergos account");
