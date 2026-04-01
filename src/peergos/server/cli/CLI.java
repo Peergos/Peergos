@@ -369,10 +369,12 @@ public class CLI implements Runnable {
         } else {
             String remotePathS = cmd.hasSecondArgument() ? cmd.secondArgument() : cliContext.pwd.resolve(localPath.getFileName()).toString();
             Path remotePath = resolvedRemotePath(remotePathS);
-            byte[] data = Files.readAllBytes(localPath);
             ProgressBar pb = new ProgressBar(new AtomicLong(0), new AtomicLong(1), remotePath, localPath.getFileName().toString());
-            Consumer<Long> progressConsumer = bytesSoFar -> pb.update(writerForProgress, bytesSoFar, data.length);
-            peergosFileSystem.write(remotePath, data, progressConsumer);
+            File file = localPath.toFile();
+            long size = file.length();
+            Consumer<Long> progressConsumer = bytesSoFar -> pb.update(writerForProgress, bytesSoFar, size);
+            FileAsyncReader reader = new FileAsyncReader(file);
+            peergosFileSystem.write(remotePath, reader, size, progressConsumer);
             writerForProgress.println();
             writerForProgress.flush();
             return "Successfully uploaded " + localPath + " to remote " + remotePath;

@@ -11,6 +11,7 @@ import peergos.shared.util.*;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.io.RandomAccessFile;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -86,13 +87,21 @@ public class NativeFileSystemImpl implements FileSystem {
     }
 
     @Override
-    public void write(Path path, byte[] data, Consumer<Long> progressConsumer) {
-
+    public void write(Path path, AsyncReader data, long size, Consumer<Long> progress) {
         Path nativePath = virtualToNative(path);
         ensureCan(path.getParent(), Permission.READ);
         ensureCan(path, Permission.WRITE);
-        try {
-            Files.write(nativePath, data);
+
+        try (RandomAccessFile raf = new RandomAccessFile(nativePath.toFile(), "rw")) {
+            raf.seek(0);
+            byte[] buf = new byte[4096];
+            long done = 0;
+            while (done < size) {
+                int read = data.readIntoArray(buf, 0, (int) Math.min(buf.length, size - done)).join();
+                raf.write(buf, 0, read);
+                done += read;
+                progress.accept(Integer.toUnsignedLong(read));
+            }
         } catch (IOException ioe) {
             throw new IllegalStateException(ioe);
         }

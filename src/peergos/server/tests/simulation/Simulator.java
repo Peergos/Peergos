@@ -849,7 +849,7 @@ public class Simulator {
         CryptreeNode.setMaxChildLinkPerBlob(10);
 
         List<Pair<FileSystem, FileSystem>> fs = IntStream.range(0, nUsers)
-                .mapToObj(i -> String.format("user_%d", i))
+                .mapToObj(i -> String.format("user-%d", i))
                 .map(fsPairBuilder).collect(Collectors.toList());;
 
         FileSystems fileSystems = new FileSystems(fs, random);
