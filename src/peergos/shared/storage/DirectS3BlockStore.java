@@ -177,7 +177,7 @@ public class DirectS3BlockStore implements ContentAddressedStorage {
                         Cid targetName = keyToHash(url.base.substring(url.base.lastIndexOf("/") + 1));
                         Long size = (long) blocks.get(i).length;
                         int finalI = i;
-                        futures.add(RetryStorage.runWithRetry(3, () -> direct.put(url.base, blocks.get(finalI), url.fields))
+                        futures.add(RetryStorage.runWithRetry(7, () -> direct.put(url.base, blocks.get(finalI), url.fields))
                                 .thenApply(x -> {
                                     progressCounter.accept(size);
                                     return targetName;
