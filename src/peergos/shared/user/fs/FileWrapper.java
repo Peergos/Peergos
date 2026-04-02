@@ -1072,7 +1072,12 @@ public class FileWrapper {
                             }).thenCompose(txn -> transactions.open(p.left, c, txn)
                                             .thenCompose(r -> {
                                                 if (r.isB()) // we must clear legacy transactions which can't be resumed or ones whose parent has rotated writer
-                                                    return (r.b().isLegacy() || ! parent.writer().equals(r.b().writer()) ? Futures.of(false) : resumeFile.apply(r.b()))
+                                                    return (r.b().isLegacy() || ! parent.writer().equals(r.b().writer()) ?
+                                                            Futures.of(false) :
+                                                            (r.b().props.treeHash.isPresent() &&
+                                                                    f.hash.isPresent() &&
+                                                                    r.b().props.treeHash.get().rootHash.equals(f.hash.get().rootHash)) ?
+                                                                    Futures.of(true) : resumeFile.apply(r.b()))
                                                             .thenCompose(resume -> {
                                                                 if (resume) {
                                                                     toClose.add(r.b());
