@@ -76,7 +76,7 @@ public final class NettyPinnedHttps {
                                                         FullHttpResponse resp) {
                                 int respCode = resp.status().code();
                                 if (respCode != 200) {
-                                    if (respCode == 502 || respCode == 503)
+                                    if (respCode == 500 || respCode == 502 || respCode == 503 || respCode == 504)
                                         result.completeExceptionally(new RateLimitException());
                                     else if (respCode == 404) {
                                         result.completeExceptionally(new FileNotFoundException());
@@ -271,7 +271,7 @@ public final class NettyPinnedHttps {
                                                         FullHttpResponse resp) {
                                 int respCode = resp.status().code();
                                 if (respCode != 200) {
-                                    if (respCode == 500 || respCode == 502 || respCode == 503)
+                                    if (respCode == 500 || respCode == 502 || respCode == 503 || respCode == 504)
                                         result.completeExceptionally(new RateLimitException());
                                     else if (respCode == 404) {
                                         result.completeExceptionally(new FileNotFoundException());
