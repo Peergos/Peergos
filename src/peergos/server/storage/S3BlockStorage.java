@@ -216,20 +216,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         this.partitionStatus = partitioned;
         this.partitionComplete = partitionStatus.isDone();
         startFlusherThread();
-        new Thread(() -> blockBuffer.applyToAll((o, c) -> {
-            flusherPool.submit(() -> getWithBackoff(() -> {
-                Optional<byte[]> block = blockBuffer.get(o, c).join();
-                if (block.isPresent()) {
-                    if (! c.isRaw())
-                        cborCache.put(c, block.get());
-                    getWithBackoff(() -> put(o, c, block.get(), true));
-                    Optional<BlockMetadata> meta = blockMetadata.get(c);
-                    if (meta.isPresent())
-                        blockBuffer.delete(o, c);
-                }
-                return true;
-            }));
-        })).start();
+        new Thread(() -> blockBuffer.applyToAll((o, c) -> blocksToFlush.add(new Pair<>(o, c)))).start();
     }
 
     private boolean userPartitioningComplete() {
@@ -458,6 +445,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                     }
                     PublicKeyHash owner = p.left;
                     Cid h = p.right;
+                    flushConcurrencyLimit.acquireUninterruptibly();
                     flusherPool.submit(() -> getWithBackoff(() -> {
                         try {
                             Optional<byte[]> block = blockBuffer.get(owner, h).join();
@@ -477,6 +465,8 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                             LOG.info("Error flushing block " + h + " " + e.getMessage());
                             blocksToFlush.add(new Pair<>(owner, h));
                             throw new RuntimeException(e);
+                        } finally {
+                            flushConcurrencyLimit.release();
                         }
                     }));
                     blocksToFlush.poll();
@@ -1297,6 +1287,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
     }
 
     private final ExecutorService flusherPool = Executors.newVirtualThreadPerTaskExecutor();
+    private final Semaphore flushConcurrencyLimit = new Semaphore(250);
 
     private CompletableFuture<List<Cid>> put(PublicKeyHash owner,
                                              List<byte[]> blocks,
