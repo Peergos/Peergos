@@ -538,6 +538,8 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         if (cached != null)
             return cached + "/";
         String username = usage.getOwner(owner);
+        if (username == null)
+            return "";
         ownerToUser.put(owner, username);
         return username + "/";
     }
@@ -1311,8 +1313,12 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
             throw new IllegalStateException("Block too big for block buffer!");
         Multihash hash = new Multihash(Multihash.Type.sha2_256, Hash.sha256(data));
         Cid h = new Cid(1, isRaw ? Cid.Codec.Raw : Cid.Codec.DagCbor, hash.type, hash.getHash());
-        blocksToFlush.add(new Pair<>(owner, h));
-        return blockBuffer.put(owner, h, data).thenApply(x -> h);
+        if (! isRaw)
+            cborCache.put(h, data);
+        return blockBuffer.put(owner, h, data).thenApply(x -> {
+            blocksToFlush.add(new Pair<>(owner, h));
+            return h;
+        });
     }
 
     /** Must be atomic relative to reads of the same key
