@@ -25,6 +25,10 @@ public interface HttpPoster {
 
     CompletableFuture<byte[]> put(String url, byte[] payload, Map<String, String> headers);
 
+    default CompletableFuture<byte[]> put(String url, byte[] payload, Map<String, String> headers, int timeoutMillis) {
+        return put(url, payload, headers);
+    }
+
     CompletableFuture<byte[]> get(String url, Map<String, String> headers);
 
     default CompletableFuture<byte[]> get(String url) {

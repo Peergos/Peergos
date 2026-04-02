@@ -160,6 +160,11 @@ public class JavaPoster implements HttpPoster {
 
     @Override
     public CompletableFuture<byte[]> put(String url, byte[] body, Map<String, String> headers) {
+        return put(url, body, headers, 60_000);
+    }
+
+    @Override
+    public CompletableFuture<byte[]> put(String url, byte[] body, Map<String, String> headers, int timeoutMillis) {
         CompletableFuture<byte[]> res = new CompletableFuture<>();
         CompletableFuture.runAsync(() -> {
             HttpResponse<InputStream> response = null;
@@ -168,7 +173,7 @@ public class JavaPoster implements HttpPoster {
                 HttpRequest.Builder requestBuilder = HttpRequest.newBuilder().uri(uri);
                 userAgent.ifPresent(agent -> requestBuilder.setHeader("User-Agent", agent));
                 requestBuilder.PUT(HttpRequest.BodyPublishers.ofByteArray(body));
-                requestBuilder.timeout(Duration.ofMillis(15000));
+                requestBuilder.timeout(Duration.ofMillis(timeoutMillis));
                 for (Map.Entry<String, String> e : headers.entrySet()) {
                     if (! e.getKey().equals("Host") && ! e.getKey().equals("Content-Length"))
                         requestBuilder.setHeader(e.getKey(), e.getValue());

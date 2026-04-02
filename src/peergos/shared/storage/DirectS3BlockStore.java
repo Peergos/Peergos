@@ -177,7 +177,9 @@ public class DirectS3BlockStore implements ContentAddressedStorage {
                         Cid targetName = keyToHash(url.base.substring(url.base.lastIndexOf("/") + 1));
                         Long size = (long) blocks.get(i).length;
                         int finalI = i;
-                        futures.add(RetryStorage.runWithRetry(7, () -> direct.put(url.base, blocks.get(finalI), url.fields))
+                        // Allow at least 60s, plus 1ms per 50 bytes (~20KB/s minimum assumed throughput)
+                        int timeoutMillis = (int) Math.max(60_000, size / 50);
+                        futures.add(RetryStorage.runWithRetry(7, () -> direct.put(url.base, blocks.get(finalI), url.fields, timeoutMillis))
                                 .thenApply(x -> {
                                     progressCounter.accept(size);
                                     return targetName;
