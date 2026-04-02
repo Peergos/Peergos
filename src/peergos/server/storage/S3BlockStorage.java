@@ -220,6 +220,8 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
             flusherPool.submit(() -> getWithBackoff(() -> {
                 Optional<byte[]> block = blockBuffer.get(o, c).join();
                 if (block.isPresent()) {
+                    if (! c.isRaw())
+                        cborCache.put(c, block.get());
                     getWithBackoff(() -> put(o, c, block.get(), true));
                     Optional<BlockMetadata> meta = blockMetadata.get(c);
                     if (meta.isPresent())

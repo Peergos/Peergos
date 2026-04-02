@@ -140,6 +140,47 @@ public class FileBlockBuffer implements BlockBuffer {
     }
 
     public void applyToAll(BiConsumer<PublicKeyHash, Cid> processor) {
-        FileContentAddressedStorage.getFilesRecursive(root, processor, root);
+        // FileContentAddressedStorage.getFilesRecursive expects paths with PublicKeyHash components,
+        // but FileBlockBuffer uses root/username/shard/HASH.data. Walk the structure directly.
+        String[] topEntries = root.toFile().list();
+        if (topEntries == null) return;
+        for (String topName : topEntries) {
+            Path topPath = root.resolve(topName);
+            File topDir = topPath.toFile();
+            if (!topDir.isDirectory()) continue;
+            try {
+                // Try resolving topName as a username to get the owner's PublicKeyHash
+                PublicKeyHash ownerKey = usage.getOwnerKey(topName);
+                // Walk shard subdirectories: root/username/shard/HASH.data
+                String[] shards = topDir.list();
+                if (shards == null) continue;
+                for (String shard : shards) {
+                    File shardDir = topPath.resolve(shard).toFile();
+                    if (!shardDir.isDirectory()) continue;
+                    String[] files = shardDir.list();
+                    if (files == null) continue;
+                    for (String filename : files) {
+                        if (filename.endsWith(".data")) {
+                            try {
+                                Cid cid = DirectS3BlockStore.keyToHash(filename.substring(0, filename.length() - 5));
+                                processor.accept(ownerKey, cid);
+                            } catch (Exception e) { /* skip unrecognised files */ }
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                // Not a known username — treat as legacy shard directory: root/shard/HASH.data
+                String[] files = topDir.list();
+                if (files == null) continue;
+                for (String filename : files) {
+                    if (filename.endsWith(".data")) {
+                        try {
+                            Cid cid = DirectS3BlockStore.keyToHash(filename.substring(0, filename.length() - 5));
+                            processor.accept(null, cid);
+                        } catch (Exception ex) { /* skip unrecognised files */ }
+                    }
+                }
+            }
+        }
     }
 }
