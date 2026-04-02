@@ -410,7 +410,7 @@ public interface ContentAddressedStorage {
             return poster.postUnzip(apiPrefix + AUTH_WRITES + "?owner=" + encode(owner.toString())
                     + "&writer=" + encode(writer.toString())
                     + "&transaction=" + encode(tid.toString())
-                    + "&raw=" + isRaw, req.serialize())
+                    + "&raw=" + isRaw, req.serialize(), 60_000)
                     .thenApply(raw -> ((CborObject.CborList)CborObject.fromByteArray(raw)).value
                             .stream()
                             .map(PresignedUrl::fromCbor)

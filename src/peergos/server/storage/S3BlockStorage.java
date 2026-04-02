@@ -1165,7 +1165,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
 
     private static <V> V getWithBackoff(Supplier<V> req) {
         long sleep = 100;
-        for (int i=0; i < 20; i++) {
+        for (int i=0; i < 8; i++) {
             try {
                 return req.get();
             } catch (RateLimitException e) {
@@ -1175,7 +1175,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                 sleep *= 2;
             }
         }
-        throw new IllegalStateException("Couldn't process request because of rate limit!");
+        throw new RateLimitException();
     }
 
     @Override

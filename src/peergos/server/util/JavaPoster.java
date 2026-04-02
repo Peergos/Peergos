@@ -92,13 +92,12 @@ public class JavaPoster implements HttpPoster {
             byte[] resp = Serialize.readFully(din);
             din.close();
             int statusCode = response.statusCode();
-            if (statusCode != 200) {
-                if (statusCode == 502)
-                    res.completeExceptionally(new RateLimitException());
-                else
-                    handleError(url, res, response, new IOException(resp.length == 0 ?
-                            "Unexpected Error. Status code: " + statusCode
-                            : new String(resp)));
+            if (statusCode == 429 || statusCode == 502 || statusCode == 503 || statusCode == 504) {
+                res.completeExceptionally(new RateLimitException());
+            } else if (statusCode != 200) {
+                handleError(url, res, response, new IOException(resp.length == 0 ?
+                        "Unexpected Error. Status code: " + statusCode
+                        : new String(resp)));
             } else {
                 res.complete(resp);
             }
@@ -238,7 +237,7 @@ public class JavaPoster implements HttpPoster {
                 HttpRequest.Builder requestBuilder = HttpRequest.newBuilder().uri(uri);
                 userAgent.ifPresent(agent -> requestBuilder.setHeader("User-Agent", agent));
                 requestBuilder.GET();
-                requestBuilder.timeout(Duration.ofMillis(15000));
+                requestBuilder.timeout(Duration.ofMillis(60_000));
                 for (Map.Entry<String, String> e : headers.entrySet()) {
                     if (! e.getKey().equals("Host") && ! e.getKey().equals("Content-Length"))
                         requestBuilder.setHeader(e.getKey(), e.getValue());
@@ -257,7 +256,9 @@ public class JavaPoster implements HttpPoster {
                 byte[] resp = Serialize.readFully(din);
                 din.close();
                 int statusCode = response.statusCode();
-                if (statusCode != 200) {
+                if (statusCode == 429 || statusCode == 502 || statusCode == 503 || statusCode == 504) {
+                    res.completeExceptionally(new RateLimitException());
+                } else if (statusCode != 200) {
                     handleError(url, res, response, new IOException(resp.length == 0 ?
                             "Unexpected Error. Status code: " + statusCode
                             : new String(resp)));

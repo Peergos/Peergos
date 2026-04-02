@@ -69,7 +69,7 @@ public class HttpMutablePointers implements MutablePointersProxy {
         long t1 = System.currentTimeMillis();
         try
         {
-            return poster.postUnzip(urlPrefix + Constants.MUTABLE_POINTERS_URL + "setPointer?owner=" + owner + "&writer=" + writer, writerSignedPayload).thenApply(res -> {
+            return poster.postUnzip(urlPrefix + Constants.MUTABLE_POINTERS_URL + "setPointer?owner=" + owner + "&writer=" + writer, writerSignedPayload, 60_000).thenApply(res -> {
                 DataInputStream din = new DataInputStream(new ByteArrayInputStream(res));
                 try {
                     return din.readBoolean();
