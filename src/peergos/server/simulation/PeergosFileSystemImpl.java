@@ -56,12 +56,12 @@ public class PeergosFileSystemImpl implements FileSystem {
     }
 
     @Override
-    public void write(Path path, AsyncReader data, long size, Consumer<Long> progressConsumer) {
+    public void write(Path path, AsyncReader data, long size, Consumer<Long> progressConsumer, boolean resumeUpload) {
         FileWrapper directory = getParent(path);
         String fileName = path.getFileName().toString();
         ProgressConsumer<Long> pc  = l -> progressConsumer.accept(l);
         FileWrapper fileWrapper = directory.uploadFileJS(fileName, data, (int) (size >> 32), (int) size,
-                true, userContext.mirrorBatId(), userContext.network, userContext.crypto, pc, userContext.getTransactionService(), f -> Futures.of(false)).join();
+                true, userContext.mirrorBatId(), userContext.network, userContext.crypto, pc, userContext.getTransactionService(), f -> Futures.of(resumeUpload)).join();
     }
 
     @Override

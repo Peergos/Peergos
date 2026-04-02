@@ -374,7 +374,8 @@ public class CLI implements Runnable {
             long size = file.length();
             Consumer<Long> progressConsumer = bytesSoFar -> pb.update(writerForProgress, bytesSoFar, size);
             FileAsyncReader reader = new FileAsyncReader(file);
-            peergosFileSystem.write(remotePath, reader, size, progressConsumer);
+            boolean resumeUpload = cmd.flags.contains(Command.Flag.RESUME_UPLOAD.flag);
+            peergosFileSystem.write(remotePath, reader, size, progressConsumer, resumeUpload);
             writerForProgress.println();
             writerForProgress.flush();
             return "Successfully uploaded " + localPath + " to remote " + remotePath;

@@ -108,7 +108,8 @@ public enum Command {
     }
 
     public enum Flag {
-        SKIP_EXISTING("--skip-existing");
+        SKIP_EXISTING("--skip-existing"),
+        RESUME_UPLOAD("--resume-upload");
 
         public final String flag;
 

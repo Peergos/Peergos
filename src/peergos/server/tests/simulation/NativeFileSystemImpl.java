@@ -87,7 +87,7 @@ public class NativeFileSystemImpl implements FileSystem {
     }
 
     @Override
-    public void write(Path path, AsyncReader data, long size, Consumer<Long> progress) {
+    public void write(Path path, AsyncReader data, long size, Consumer<Long> progress, boolean resumeUpload) {
         Path nativePath = virtualToNative(path);
         ensureCan(path.getParent(), Permission.READ);
         ensureCan(path, Permission.WRITE);

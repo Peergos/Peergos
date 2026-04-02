@@ -36,14 +36,14 @@ public interface FileSystem {
         return read(path, (a,b) -> {});
     }
 
-    void write(Path path, AsyncReader data, long size, Consumer<Long> progressConsumer);
+    void write(Path path, AsyncReader data, long size, Consumer<Long> progressConsumer, boolean resumUpload);
 
     void writeSubtree(Path path, Stream<FileWrapper.FolderUploadProperties> folders, Function<FileUploadTransaction, CompletableFuture<Boolean>> resumeFile);
 
     void modify(Path path, byte[] data, Consumer<Long> progressConsumer);
 
     default void write(Path path, byte[] data) {
-        write(path, AsyncReader.build(data), data.length, l -> {});
+        write(path, AsyncReader.build(data), data.length, l -> {}, false);
     }
 
     default void modify(Path path, byte[] data) {
