@@ -9,6 +9,7 @@ import peergos.shared.util.*;
 
 import java.io.*;
 import java.net.*;
+import java.nio.charset.StandardCharsets;
 import java.net.http.*;
 import java.time.Duration;
 import java.util.*;
@@ -121,13 +122,14 @@ public class JavaPoster implements HttpPoster {
                 System.err.println("Trailer:" + trailer);
             else
                 System.err.println(e.getMessage() + " retrieving " + url);
+            String trailerDecoded = trailer.isEmpty() ? "" : URLDecoder.decode(trailer.get(), StandardCharsets.UTF_8);
             Throwable rese = trailer.isEmpty() ?
                     e :
-                    trailer.get().startsWith("PointerCAS:") ?
-                            PointerCasException.fromString(trailer.get()) :
-                            trailer.get().contains("Queue+full") ?
+                    trailerDecoded.startsWith("PointerCAS:") ?
+                            PointerCasException.fromString(trailerDecoded) :
+                            trailerDecoded.contains("Queue full") ?
                                     new RateLimitException() :
-                                    new RuntimeException(trailer.get());
+                                    new RuntimeException(trailerDecoded);
             res.completeExceptionally(rese);
         } else
             res.completeExceptionally(e);

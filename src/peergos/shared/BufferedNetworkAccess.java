@@ -196,6 +196,9 @@ public class BufferedNetworkAccess extends NetworkAccess {
                                                                     if (cause instanceof PointerCasException) {
                                                                         PointerCasException cas = (PointerCasException) cause;
                                                                         MaybeMultihash actualExisting = cas.existing;
+                                                                        // Server is already at the hash we wanted to set: a previous timed-out attempt succeeded
+                                                                        if (actualExisting.equals(u.left.currentHash))
+                                                                            return Futures.of(true);
                                                                         return WriterData.getWriterData(owner, (Cid) u.left.prevHash.get(), Optional.empty(), blockBuffer)
                                                                                 .thenCompose(original -> WriterData.getWriterData(owner, (Cid) u.left.currentHash.get(), Optional.empty(), blockBuffer)
                                                                                         .thenCompose(updated -> WriterData.getWriterData(owner, (Cid) actualExisting.get(), Optional.empty(), blockBuffer)

@@ -360,7 +360,18 @@ public class WriterData implements Cborable {
                         return CompletableFuture.completedFuture(new Snapshot(signer.publicKeyHash, committed));
                     }
                     PointerUpdate cas = new PointerUpdate(currentHash, newHash, PointerUpdate.increment(currentSequence));
-                    return mutable.setPointer(owner, signer, cas)
+                    return Futures.asyncExceptionally(
+                            () -> mutable.setPointer(owner, signer, cas),
+                            t -> {
+                                Throwable cause = Exceptions.getRootCause(t);
+                                if (cause instanceof PointerCasException) {
+                                    PointerCasException pce = (PointerCasException) cause;
+                                    // Server is already at newHash: a previous timed-out attempt succeeded
+                                    if (pce.existing.equals(newHash))
+                                        return Futures.of(true);
+                                }
+                                return Futures.errored(t);
+                            })
                             .thenApply(res -> {
                                 if (!res)
                                     throw new IllegalStateException("Mutable pointer update failed! Concurrent Modification.");
