@@ -118,10 +118,6 @@ public class JavaPoster implements HttpPoster {
         if (response != null) {
             HttpHeaders responseHeaders = response.headers();
             Optional<String> trailer = responseHeaders.firstValue("Trailer");
-            if (trailer.isPresent())
-                System.err.println("Trailer:" + trailer);
-            else
-                System.err.println(e.getMessage() + " retrieving " + url);
             String trailerDecoded = trailer.isEmpty() ? "" : URLDecoder.decode(trailer.get(), StandardCharsets.UTF_8);
             Throwable rese = trailer.isEmpty() ?
                     e :
