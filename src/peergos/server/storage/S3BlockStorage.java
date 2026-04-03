@@ -1287,7 +1287,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
     }
 
     private final ExecutorService flusherPool = Executors.newVirtualThreadPerTaskExecutor();
-    private final Semaphore flushConcurrencyLimit = new Semaphore(250);
+    private final Semaphore flushConcurrencyLimit = new Semaphore(16);
 
     private CompletableFuture<List<Cid>> put(PublicKeyHash owner,
                                              List<byte[]> blocks,
