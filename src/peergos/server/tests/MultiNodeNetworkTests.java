@@ -301,7 +301,7 @@ public class MultiNodeNetworkTests {
             node1.coreNode.migrateUser(username, existing, newStorageNodeId, mirrorBat, LocalDateTime.now(), usageVia2, true).join();
             throw new RuntimeException("Shouldn't get here!");
         } catch (CompletionException e) {
-            if (! e.getCause().getMessage().startsWith("Migration+claim+has+earlier+expiry+than+current+one"))
+            if (! e.getCause().getMessage().startsWith("Migration claim has earlier expiry than current one"))
                 throw new RuntimeException(e.getCause());
         }
 
