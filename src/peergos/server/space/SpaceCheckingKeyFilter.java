@@ -36,6 +36,7 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
     private final Hasher hasher;
     private final QuotaAdmin quotaAdmin;
     private final UsageStore usageStore;
+    private static final ExecutorService VIRTUAL_EXECUTOR = Executors.newVirtualThreadPerTaskExecutor();
     private final AtomicBoolean isRunning = new AtomicBoolean(true);
     private final BlockingQueue<MutableEvent> mutableQueue = new ArrayBlockingQueue<>(1000);
     private final long quotaUploadLimitSeconds;
@@ -89,22 +90,29 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
             long t0 = System.currentTimeMillis();
             Logging.LOG().info("Calculating space usage for " + usernames.size() + " local users...");
             long done = 0;
+            List<Future<?>> futures = new ArrayList<>();
             for (String username : usernames) {
-                Logging.LOG().info("Calculating space usage of " + username + " (" + done++ + "/" + usernames.size() + ")");
-                try {
-                    Optional<PublicKeyHash> identity = core.getPublicKeyHash(username).get();
-                    if (identity.isPresent()) {
-                        long prior = usageStore.getUsage(username).totalUsage();
-                        processCorenodeEvent(username, identity.get());
-                        long after = usageStore.getUsage(username).totalUsage();
-                        if (after != prior)
-                            LOG.info("Updated space usage of user: " + username + " to " + after);
-                    } else
-                        LOG.info("Identity key absent in pki for user: " + username);
-                } catch (Exception e) {
-                    e.printStackTrace();
-                    LOG.log(Level.WARNING, "ERROR calculating usage for user: " + username + "\n" + e.getMessage(), e);
-                }
+                final long index = done++;
+                futures.add(VIRTUAL_EXECUTOR.submit(() -> {
+                    Logging.LOG().info("Calculating space usage of " + username + " (" + index + "/" + usernames.size() + ")");
+                    try {
+                        Optional<PublicKeyHash> identity = core.getPublicKeyHash(username).get();
+                        if (identity.isPresent()) {
+                            long prior = usageStore.getUsage(username).totalUsage();
+                            processCorenodeEvent(username, identity.get());
+                            long after = usageStore.getUsage(username).totalUsage();
+                            if (after != prior)
+                                LOG.info("Updated space usage of user: " + username + " to " + after);
+                        } else
+                            LOG.info("Identity key absent in pki for user: " + username);
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                        LOG.log(Level.WARNING, "ERROR calculating usage for user: " + username + "\n" + e.getMessage(), e);
+                    }
+                }));
+            }
+            for (Future<?> f : futures) {
+                try { f.get(); } catch (Exception e) { LOG.log(Level.WARNING, e.getMessage(), e); }
             }
             usageStore.initialized();
             long t1 = System.currentTimeMillis();
@@ -175,7 +183,7 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
     public CompletableFuture<Boolean> accept(CorenodeEvent event) {
         usageStore.addUserIfAbsent(event.username);
         usageStore.addWriter(event.username, event.keyHash);
-        return CompletableFuture.supplyAsync(() -> processCorenodeEvent(event.username, event.keyHash), ForkJoinPool.commonPool());
+        return CompletableFuture.supplyAsync(() -> processCorenodeEvent(event.username, event.keyHash), VIRTUAL_EXECUTOR);
     }
 
     /** Update our view of the world because a user has changed their public key (or registered)
