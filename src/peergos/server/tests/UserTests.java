@@ -1592,7 +1592,7 @@ public abstract class UserTests {
 
     @Test
     public void publicLinkToFile() throws Exception {
-        PeergosNetworkUtils.publicLinkToFile(random, network, network);
+        PeergosNetworkUtils.publicLinkToFile(random, network, network, () -> {});
     }
 
     @Test

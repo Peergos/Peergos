@@ -117,7 +117,7 @@ public class MultiUserTests {
 
     @Test
     public void grantAndRevokeFileReadAccess() throws Exception {
-        PeergosNetworkUtils.grantAndRevokeFileReadAccess(network, network, userCount, random);
+        PeergosNetworkUtils.grantAndRevokeFileReadAccess(network, network, userCount, random, () -> {});
     }
 
     @Test
@@ -147,7 +147,7 @@ public class MultiUserTests {
 
     @Test
     public void grantAndRevokeDirReadAccess() throws Exception {
-        PeergosNetworkUtils.grantAndRevokeDirReadAccess(network, network, 2, random);
+        PeergosNetworkUtils.grantAndRevokeDirReadAccess(network, network, 2, random, () -> {});
     }
 
     @Test

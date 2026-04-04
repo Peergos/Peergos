@@ -225,7 +225,11 @@ public class PeergosNetworkUtils {
         Assert.assertTrue(receivedChildren.stream().map(FileWrapper::getName).collect(Collectors.toSet()).equals(Set.of(filename)));
     }
 
-    public static void grantAndRevokeFileReadAccess(NetworkAccess sharerNode, NetworkAccess shareeNode, int shareeCount, Random random) throws Exception {
+    public static void grantAndRevokeFileReadAccess(NetworkAccess sharerNode,
+                                                    NetworkAccess shareeNode,
+                                                    int shareeCount,
+                                                    Random random,
+                                                    Runnable updatePkis) throws Exception {
         Assert.assertTrue(0 < shareeCount);
         //sign up a user on sharerNode
 
@@ -240,6 +244,7 @@ public class PeergosNetworkUtils {
         List<UserContext> shareeUsers = getUserContextsForNode(shareeNode, random, shareeCount, shareePasswords);
 
         // friend sharer with others
+        updatePkis.run();
         friendBetweenGroups(Arrays.asList(sharerUser), shareeUsers);
 
         // upload a file to "a"'s space
@@ -774,7 +779,11 @@ public class PeergosNetworkUtils {
 
     }
 
-    public static void grantAndRevokeDirReadAccess(NetworkAccess sharerNode, NetworkAccess shareeNode, int shareeCount, Random random) throws Exception {
+    public static void grantAndRevokeDirReadAccess(NetworkAccess sharerNode,
+                                                   NetworkAccess shareeNode,
+                                                   int shareeCount,
+                                                   Random random,
+                                                   Runnable updatePkis) throws Exception {
         Assert.assertTrue(0 < shareeCount);
         CryptreeNode.setMaxChildLinkPerBlob(10);
 
@@ -788,6 +797,7 @@ public class PeergosNetworkUtils {
         List<UserContext> shareeUsers = getUserContextsForNode(shareeNode, random, shareeCount, shareePasswords);
 
         // friend sharer with others
+        updatePkis.run();
         friendBetweenGroups(Arrays.asList(sharer), shareeUsers);
 
         // friends are now connected
@@ -2584,10 +2594,14 @@ public class PeergosNetworkUtils {
         Assert.assertTrue(children.size() == shareeCount);
     }
 
-    public static void publicLinkToFile(Random random, NetworkAccess writerNode, NetworkAccess readerNode) throws Exception {
+    public static void publicLinkToFile(Random random,
+                                        NetworkAccess writerNode,
+                                        NetworkAccess readerNode,
+                                        Runnable updatePkis) throws Exception {
         String username = generateUsername(random);
         String password = "test01";
         UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, writerNode, crypto);
+        updatePkis.run();
         FileWrapper userRoot = context.getUserRoot().join();
 
         String filename = "mediumfile.bin";

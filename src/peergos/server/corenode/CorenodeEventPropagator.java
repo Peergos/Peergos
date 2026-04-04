@@ -20,7 +20,7 @@ import java.util.function.*;
  */
 public class CorenodeEventPropagator implements CoreNode {
 
-    private final CoreNode target;
+    public final CoreNode target;
     private final List<Function<? super CorenodeEvent, CompletableFuture<Boolean>>> listeners = new ArrayList<>();
 
     public CorenodeEventPropagator(CoreNode target) {

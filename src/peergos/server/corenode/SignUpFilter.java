@@ -23,7 +23,7 @@ import java.util.logging.*;
 public class SignUpFilter implements CoreNode {
     private static final Logger LOG = Logging.LOG();
 
-    private final CoreNode target;
+    public final CoreNode target;
     private final QuotaAdmin quotaStore;
     private final Multihash ourNodeId;
     private final HttpSpaceUsage space;

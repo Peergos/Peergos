@@ -4,6 +4,9 @@ import org.junit.*;
 import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
 import peergos.server.*;
+import peergos.server.corenode.CorenodeEventPropagator;
+import peergos.server.corenode.MirrorCoreNode;
+import peergos.server.corenode.SignUpFilter;
 import peergos.server.storage.*;
 import peergos.server.tests.util.*;
 import peergos.server.util.*;
@@ -207,9 +210,19 @@ public class MultiNodeNetworkTests {
         }
     }
 
+    private void updatePkis() {
+        for (ServerProcesses service : services) {
+            CoreNode core = service.localApi.coreNode;
+            CoreNode target = ((SignUpFilter) ((CorenodeEventPropagator) core).target).target;
+            if (target instanceof MirrorCoreNode)
+                ((MirrorCoreNode)target).update();
+        }
+    }
+
     @Test
     public void signUp() {
         UserContext context = ensureSignedUp(generateUsername(random), randomString(), getNode(iNode1), crypto);
+        updatePkis();
 
         for (NetworkAccess node: nodes) {
             long usage = node.spaceUsage.getUsage(context.signer.publicKeyHash,
@@ -241,6 +254,7 @@ public class MultiNodeNetworkTests {
         Multihash newStorageNodeId = node2.dhtClient.id().join();
 
         UserContext user = ensureSignedUp(username, password, node1, crypto);
+        updatePkis();
         for (int i=0; i < nPasswordChanges; i++) {
             String newPassword = randomString();
             user = ensureSignedUp(username, password, node2, crypto).changePassword(password, newPassword, UserTests::noMfa).join();
@@ -325,6 +339,7 @@ public class MultiNodeNetworkTests {
         NetworkAccess node1 = getNode(iNode1);
         NetworkAccess node2 = getNode(iNode2);
         UserContext user = ensureSignedUp(username, password, node1, crypto);
+        updatePkis();
 
         UserContext viaProxy = ensureSignedUp(username, password, node2, crypto);
 
@@ -347,6 +362,7 @@ public class MultiNodeNetworkTests {
         UserContext user = ensureSignedUp(username, password, node1, crypto);
         String evilusername = randomUsername("evil", new Random());
         UserContext evil = ensureSignedUp(evilusername, password, node1, crypto);
+        updatePkis();
 
         // try to migrate with an invalid claim chain
         UserService node2 = getService(iNode2);
@@ -380,6 +396,7 @@ public class MultiNodeNetworkTests {
         String username2 = generateUsername(random);
         String password2 = randomString();
         UserContext u2 = ensureSignedUp(username2, password2, getNode(iNode1), crypto);
+        updatePkis();
 
         u2.sendFollowRequest(username1, SymmetricKey.random()).get();
         List<FollowRequestWithCipherText> u1Requests = u1.processFollowRequests().get();
@@ -408,6 +425,7 @@ public class MultiNodeNetworkTests {
         String username1 = generateUsername(random);
         String password1 = randomString();
         UserContext u1 = ensureSignedUp(username1, password1, getNode(iNode2), crypto);
+        updatePkis();
 
         byte[] data = "G'day mate!".getBytes();
         String filename = "hey.txt";
@@ -422,18 +440,18 @@ public class MultiNodeNetworkTests {
     @Test
     public void grantAndRevokeFileReadAccess() throws Exception {
         int shareeCount = 2;
-        PeergosNetworkUtils.grantAndRevokeFileReadAccess(getNode(iNode1), getNode(iNode2), shareeCount, random);
+        PeergosNetworkUtils.grantAndRevokeFileReadAccess(getNode(iNode1), getNode(iNode2), shareeCount, random, this::updatePkis);
     }
 
     @Test
     public void grantAndRevokeDirReadAccess() throws Exception {
         int shareeCount = 2;
-        PeergosNetworkUtils.grantAndRevokeDirReadAccess(getNode(iNode1), getNode(iNode2), shareeCount, random);
+        PeergosNetworkUtils.grantAndRevokeDirReadAccess(getNode(iNode1), getNode(iNode2), shareeCount, random, this::updatePkis);
     }
 
     @Test
     public void publicLinkToFile() throws Exception {
-        PeergosNetworkUtils.publicLinkToFile(random, getNode(iNode1), getNode(iNode2));
+        PeergosNetworkUtils.publicLinkToFile(random, getNode(iNode1), getNode(iNode2), this::updatePkis);
     }
 
     @Ignore

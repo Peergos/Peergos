@@ -358,7 +358,7 @@ public class MirrorCoreNode implements CoreNode {
      *
      * @return whether there was a change
      */
-    private synchronized boolean update() {
+    public synchronized boolean update() {
         try {
             Logging.LOG().info("Starting pki update");
             Pair<CorenodeRoots, byte[]> remoteState = getPkiState();
@@ -440,10 +440,11 @@ public class MirrorCoreNode implements CoreNode {
             return Futures.of(pkiResult);
         }
 
-        if (initialized)
-            update();
         usageStore.addUserIfAbsent(username);
         usageStore.addWriter(username, chain.owner);
+        state.usernames.add(username);
+        state.reverseLookup.put(chain.owner, username);
+        state.chains.put(username, List.of(chain));
         IpfsCoreNode.applyOpLog(username, chain.owner, setupOperations, ipfs, localPointers, account, batCave);
         return Futures.of(Optional.empty());
     }
@@ -527,8 +528,7 @@ public class MirrorCoreNode implements CoreNode {
         if (! initialized)
             return writeTarget.getChain(username);
 
-        update();
-        return CompletableFuture.completedFuture(state.chains.getOrDefault(username, Collections.emptyList()));
+        return Futures.of(Collections.emptyList());
     }
 
     @Override
@@ -768,8 +768,7 @@ public class MirrorCoreNode implements CoreNode {
             return CompletableFuture.completedFuture(username);
         if (! initialized)
             return writeTarget.getUsername(key);
-        update();
-        return CompletableFuture.completedFuture(state.reverseLookup.get(key));
+        return Futures.errored(new IllegalStateException("Unknown identity key: " + key));
     }
 
     @Override
