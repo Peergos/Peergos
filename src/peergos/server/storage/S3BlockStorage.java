@@ -450,14 +450,8 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                         try {
                             Optional<byte[]> block = blockBuffer.get(owner, h).join();
                             if (block.isPresent()) {
-                                getWithBackoff(() -> put(owner, h, block.get(), true), 1_000);
-                                Optional<BlockMetadata> meta = blockMetadata.get(h);
-                                if (meta.isPresent())
-                                    blockBuffer.delete(owner, h);
-                                else {
-                                    LOG.info("Error flushing block " + h);
-                                    blocksToFlush.add(new Pair<>(owner, h));
-                                }
+                                Pair<Cid, BlockMetadata> res = getWithBackoff(() -> put(owner, h, block.get(), true), 1_000);
+                                blockBuffer.delete(owner, h);
                             } else
                                 blocksToFlush.add(new Pair<>(owner, h));
                             return true;
