@@ -450,7 +450,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                         try {
                             Optional<byte[]> block = blockBuffer.get(owner, h).join();
                             if (block.isPresent()) {
-                                getWithBackoff(() -> put(owner, h, block.get(), true));
+                                getWithBackoff(() -> put(owner, h, block.get(), true), 1_000);
                                 Optional<BlockMetadata> meta = blockMetadata.get(h);
                                 if (meta.isPresent())
                                     blockBuffer.delete(owner, h);
@@ -470,7 +470,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                         }
                     }));
                     blocksToFlush.poll();
-                    Threads.sleep(200);
+                    Threads.sleep(1000);
                 } catch (Exception e) {
                     LOG.log(Level.INFO, e.getMessage(), e);
                 }
@@ -1163,8 +1163,12 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
     }
 
     private static <V> V getWithBackoff(Supplier<V> req) {
-        long sleep = 100;
-        for (int i=0; i < 8; i++) {
+        return getWithBackoff(req, 100);
+    }
+
+    private static <V> V getWithBackoff(Supplier<V> req, long initialSleep) {
+        long sleep = initialSleep;
+        for (int i=0; i < 4; i++) {
             try {
                 return req.get();
             } catch (RateLimitException e) {
