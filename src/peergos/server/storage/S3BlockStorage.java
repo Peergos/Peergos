@@ -560,16 +560,20 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         if (owner == null) // GC until we move to user partitioned blockstores
             return;
         if (! userReadReqRateLimits.computeIfAbsent(owner, o -> new SlidingWindowCounter(60, maxUserReadRequestsPerMinute))
-                .allowRequest(readRequests))
+                .allowRequest(readRequests)) {
+            LOG.info("User read request rate limit hit: " + owner);
             throw new MajorRateLimitException("Rate Limit: User request limit exceeded. Please try again later.");
+        }
     }
 
     private void enforceUserBandwidthRateLimits(PublicKeyHash owner, long readSize) {
         if (owner == null) // GC until we move to user partitioned blockstores
             return;
         if (! userReadSizeRateLimits.computeIfAbsent(owner, o -> new SlidingWindowCounter(60, maxUserBandwidthPerMinute))
-                .allowRequest(readSize))
+                .allowRequest(readSize)) {
+            LOG.info("User bandwidth rate limit hit: " + owner);
             throw new MajorRateLimitException("Rate Limit: User bandwidth limit exceeded. Please try again later.");
+        }
     }
 
     @Override
