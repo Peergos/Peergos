@@ -311,7 +311,7 @@ public class MultiNodeNetworkTests {
             node1.coreNode.updateChain(username, existing, work, "").join();
             throw new RuntimeException("Shouldn't get here!");
         } catch (CompletionException e) {
-            if (! e.getCause().getMessage().startsWith("New%2Bclaim%2Bchain%2Bexpiry%2Bbefore%2Bexisting"))
+            if (! e.getCause().getMessage().startsWith("New claim chain expiry before existing"))
                 throw new RuntimeException(e.getCause());
         }
     }
