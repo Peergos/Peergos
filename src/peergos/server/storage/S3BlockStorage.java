@@ -470,6 +470,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                         }
                     }));
                     blocksToFlush.poll();
+                    Threads.sleep(200);
                 } catch (Exception e) {
                     LOG.log(Level.INFO, e.getMessage(), e);
                 }
@@ -1291,7 +1292,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
     }
 
     private final ExecutorService flusherPool = Executors.newVirtualThreadPerTaskExecutor();
-    private final Semaphore flushConcurrencyLimit = new Semaphore(4);
+    private final Semaphore flushConcurrencyLimit = new Semaphore(1);
 
     private CompletableFuture<List<Cid>> put(PublicKeyHash owner,
                                              List<byte[]> blocks,
