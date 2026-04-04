@@ -581,16 +581,21 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         if (! blocks.stream().allMatch(c -> c.hash.isRaw()))
             return Futures.errored(new IllegalStateException("Can only auth read for raw blocks, not cbor!"));
 
-        // verify all BATs in parallel
+        // verify all BATs concurrently
         List<CompletableFuture<BlockMetadata>> auths = blocks.stream()
-                .parallel()
                 .map(b -> getBlockMetadata(owner, b.hash)
-                        .thenApply(meta -> {
-                            String auth = b.bat.map(bat -> bat.bat.generateAuth(b.hash, id, 300, S3Request.currentDatetime(), bat.id, hasher)
-                                    .thenApply(BlockAuth::encode).join()).orElse("");
-                            if (!authoriser.allowRead(b.hash, meta.batids, id, auth).join())
-                                throw new IllegalStateException("Unauthorised!");
-                            return meta;
+                        .thenCompose(meta -> {
+                            CompletableFuture<String> authFuture = b.bat
+                                    .map(bat -> bat.bat.generateAuth(b.hash, id, 300, S3Request.currentDatetime(), bat.id, hasher)
+                                            .thenApply(BlockAuth::encode))
+                                    .orElseGet(() -> Futures.of(""));
+                            return authFuture.thenCompose(auth ->
+                                    authoriser.allowRead(b.hash, meta.batids, id, auth)
+                                            .thenApply(allowed -> {
+                                                if (!allowed)
+                                                    throw new IllegalStateException("Unauthorised!");
+                                                return meta;
+                                            }));
                         }))
                 .collect(Collectors.toList());
 
