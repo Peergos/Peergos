@@ -142,7 +142,7 @@ public class Futures {
         return runAsync(work, ForkJoinPool.commonPool());
     }
 
-    public static <V> CompletableFuture<V> runAsync(Supplier<CompletableFuture<V>> work, ForkJoinPool pool) {
+    public static <V> CompletableFuture<V> runAsync(Supplier<CompletableFuture<V>> work, ExecutorService pool) {
         CompletableFuture<V> res = new CompletableFuture<>();
         pool.execute(() -> {
             try {

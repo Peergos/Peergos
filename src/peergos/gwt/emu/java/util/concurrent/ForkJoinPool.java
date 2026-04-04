@@ -2,7 +2,7 @@ package java.util.concurrent;
 
 import jsinterop.annotations.*;
 
-public class ForkJoinPool {
+public class ForkJoinPool implements ExecutorService {
     private static final ForkJoinPool instance = new ForkJoinPool(new JSForkJoinPool());
 
     private final JSForkJoinPool pool;

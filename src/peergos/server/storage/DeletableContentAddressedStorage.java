@@ -29,7 +29,7 @@ import java.util.stream.*;
  */
 public interface DeletableContentAddressedStorage extends ContentAddressedStorage {
 
-    ForkJoinPool usagePool = Threads.newPool(100, "Usage-updater-");
+    ExecutorService usagePool = Executors.newVirtualThreadPerTaskExecutor();
 
     Stream<Pair<PublicKeyHash, Cid>> getAllBlockHashes(PublicKeyHash owner, boolean useBlockstore);
 
@@ -285,7 +285,7 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
         return getLinks(owner, block, peerids).thenCompose(links -> {
             List<CompletableFuture<Long>> subtrees = links.stream()
                     .filter(m -> ! m.isIdentity())
-                    .map(c -> Futures.runAsync(() -> getRecursiveBlockSize(owner, c, peerids)))
+                    .map(c -> Futures.runAsync(() -> getRecursiveBlockSize(owner, c, peerids), usagePool))
                     .collect(Collectors.toList());
             return getSize(owner, block)
                     .thenCompose(sizeOpt -> {
