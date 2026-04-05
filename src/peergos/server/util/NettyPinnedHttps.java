@@ -9,6 +9,8 @@ import io.netty.channel.socket.SocketChannel;
 import io.netty.channel.socket.nio.NioSocketChannel;
 import io.netty.handler.codec.http.*;
 import io.netty.handler.ssl.*;
+import io.netty.handler.timeout.ReadTimeoutException;
+import io.netty.handler.timeout.ReadTimeoutHandler;
 import io.netty.resolver.NoopAddressResolverGroup;
 import peergos.shared.storage.RateLimitException;
 import peergos.shared.util.LRUCache;
@@ -56,6 +58,7 @@ public final class NettyPinnedHttps {
         Bootstrap bootstrap = new Bootstrap()
                 .group(GROUP)
                 .channel(NioSocketChannel.class)
+                .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, 5_000)
                 .resolver(NoopAddressResolverGroup.INSTANCE)
                 .handler(new ChannelInitializer<SocketChannel>() {
                     @Override
@@ -67,6 +70,7 @@ public final class NettyPinnedHttps {
                                 uri.getHost(),
                                 uri.getPort() == -1 ? 443 : uri.getPort()));
 
+                        p.addLast(new ReadTimeoutHandler(6));
                         p.addLast(new HttpClientCodec());
                         p.addLast(new HttpObjectAggregator(2 * 1024 * 1024));
 
@@ -100,9 +104,9 @@ public final class NettyPinnedHttps {
 
                             @Override
                             public void exceptionCaught(ChannelHandlerContext ctx, Throwable t) {
-                                if (t instanceof SslClosedEngineException)
-                                    result.completeExceptionally(new RateLimitException());
-                                else if (t instanceof SocketException)
+                                if (t instanceof SslClosedEngineException
+                                        || t instanceof SocketException
+                                        || t instanceof ReadTimeoutException)
                                     result.completeExceptionally(new RateLimitException());
                                 else
                                     result.completeExceptionally(t);
@@ -155,6 +159,7 @@ public final class NettyPinnedHttps {
         Bootstrap bootstrap = new Bootstrap()
                 .group(GROUP)
                 .channel(NioSocketChannel.class)
+                .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, 5_000)
                 .resolver(NoopAddressResolverGroup.INSTANCE)
                 .handler(new ChannelInitializer<SocketChannel>() {
                     @Override
@@ -166,6 +171,7 @@ public final class NettyPinnedHttps {
                                 uri.getHost(),
                                 uri.getPort() == -1 ? 443 : uri.getPort()));
 
+                        p.addLast(new ReadTimeoutHandler(6));
                         p.addLast(new HttpClientCodec());
                         p.addLast(new HttpObjectAggregator(2 * 1024 * 1024));
 
@@ -193,9 +199,9 @@ public final class NettyPinnedHttps {
 
                             @Override
                             public void exceptionCaught(ChannelHandlerContext ctx, Throwable t) {
-                                if (t instanceof SslClosedEngineException)
-                                    result.completeExceptionally(new RateLimitException());
-                                else if (t instanceof SocketException)
+                                if (t instanceof SslClosedEngineException
+                                        || t instanceof SocketException
+                                        || t instanceof ReadTimeoutException)
                                     result.completeExceptionally(new RateLimitException());
                                 else
                                     result.completeExceptionally(t);
@@ -251,6 +257,7 @@ public final class NettyPinnedHttps {
         Bootstrap bootstrap = new Bootstrap()
                 .group(GROUP)
                 .channel(NioSocketChannel.class)
+                .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, 5_000)
                 .resolver(NoopAddressResolverGroup.INSTANCE)
                 .handler(new ChannelInitializer<SocketChannel>() {
                     @Override
@@ -262,6 +269,7 @@ public final class NettyPinnedHttps {
                                 uri.getHost(),
                                 uri.getPort() == -1 ? 443 : uri.getPort()));
 
+                        p.addLast(new ReadTimeoutHandler(6));
                         p.addLast(new HttpClientCodec());
                         p.addLast(new HttpObjectAggregator(2 * 1024 * 1024));
 
@@ -291,9 +299,9 @@ public final class NettyPinnedHttps {
 
                             @Override
                             public void exceptionCaught(ChannelHandlerContext ctx, Throwable t) {
-                                if (t instanceof SslClosedEngineException)
-                                    result.completeExceptionally(new RateLimitException());
-                                else if (t instanceof SocketException)
+                                if (t instanceof SslClosedEngineException
+                                        || t instanceof SocketException
+                                        || t instanceof ReadTimeoutException)
                                     result.completeExceptionally(new RateLimitException());
                                 else if (t.getMessage() != null && t.getMessage().contains("Connection reset"))
                                     result.completeExceptionally(new RateLimitException());
@@ -335,4 +343,3 @@ public final class NettyPinnedHttps {
         return result.join();
     }
 }
-
