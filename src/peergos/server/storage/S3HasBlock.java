@@ -33,14 +33,18 @@ import peergos.shared.storage.RamBlockCache;
 import peergos.shared.user.Account;
 import peergos.shared.util.Futures;
 
+import java.io.IOException;
 import java.net.InetSocketAddress;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.sql.Connection;
 import java.util.List;
 import java.util.Optional;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
 
 public class S3HasBlock {
-    public static void main(String[] args) {
+    public static void main(String[] args) throws IOException {
         Args a = Args.parse(args);
         Logging.init(a.with("log-to-console", "true"));
         Crypto crypto = Main.initCrypto();
@@ -63,7 +67,8 @@ public class S3HasBlock {
         JavaPoster p2pHttpProxy = Builder.buildP2pHttpProxy(a);
         ContentAddressedStorageProxy p2pHttpFallback = new ContentAddressedStorageProxy.HTTP(p2pHttpProxy);
         p2pHttpFallback = Builder.buildP2PBlockRetrieverForS3(a, usage, hasher, p2pHttpFallback);
-        S3BlockStorage s3 = new S3BlockStorage(config, List.of(Cid.decode(a.getArg("ipfs.id"))),
+        List<Cid> ids = List.of(Cid.decode(a.getArg("ipfs.id")));
+        S3BlockStorage s3 = new S3BlockStorage(config, ids,
                 BlockStoreProperties.empty(), "localhost:8000", transactions, authoriser, null, meta, usage,
                 new RamBlockCache(1024, 100),
                 new FileBlockBuffer(a.fromPeergosDir("s3-block-buffer-dir", "block-buffer"), usage),
@@ -100,5 +105,10 @@ public class S3HasBlock {
         PublicKeyHash owner = PublicKeyHash.fromString(a.getArg("owner"));
         Cid hash = Cid.decode(a.getArg("hash"));
         System.out.println("Block present " + owner + ": " + hash + " " + s3.hasBlock(owner, hash));
+        List<Multihash> peerIds = ids.stream()
+                .map(c -> (Multihash) c)
+                .collect(Collectors.toList());
+        Optional<byte[]> block = s3.getRaw(peerIds, owner, hash, Optional.empty(), ids.get(0), hasher, false, false).join();
+        Files.write(Paths.get(hash + ".data"), block.get());
     }
 }
