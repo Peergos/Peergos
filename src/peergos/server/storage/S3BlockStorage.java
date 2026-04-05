@@ -1306,6 +1306,8 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                                              List<byte[]> blocks,
                                              boolean isRaw,
                                              TransactionId tid) {
+        if (blocksToFlush.size() > 1_000)
+            throw new RateLimitException();
         return Futures.of(blocks.stream()
                 .parallel()
                 .map(b -> getWithBackoff(() -> b.length > DirectS3BlockStore.MAX_SMALL_BLOCK_SIZE ?
