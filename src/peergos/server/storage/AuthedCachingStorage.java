@@ -111,7 +111,18 @@ public class AuthedCachingStorage extends DelegatingStorage {
         }
 
         CompletableFuture<Optional<CborObject>> result = new CompletableFuture<>();
-        target.get(owner, key, bat).thenAccept(cborOpt -> {
+        CompletableFuture<Optional<CborObject>> targetFuture;
+        try {
+            targetFuture = target.get(owner, key, bat);
+        } catch (Throwable t) {
+            synchronized (pending) {
+                pending.remove(key);
+            }
+            pipe.completeExceptionally(t);
+            result.completeExceptionally(t);
+            return result;
+        }
+        targetFuture.thenAccept(cborOpt -> {
             if (cborOpt.isPresent()) {
                 byte[] value = cborOpt.get().toByteArray();
                 if (value.length > 0 && value.length < maxValueSize)
@@ -176,7 +187,17 @@ public class AuthedCachingStorage extends DelegatingStorage {
         synchronized (pendingRaw) {
             pendingRaw.put(key, pipe);
         }
-        return target.getRaw(owner, key, bat).thenApply(rawOpt -> {
+        CompletableFuture<Optional<byte[]>> targetFuture;
+        try {
+            targetFuture = target.getRaw(owner, key, bat);
+        } catch (Throwable t) {
+            synchronized (pendingRaw) {
+                pendingRaw.remove(key);
+            }
+            pipe.completeExceptionally(t);
+            return Futures.errored(t);
+        }
+        return targetFuture.thenApply(rawOpt -> {
             if (rawOpt.isPresent()) {
                 byte[] value = rawOpt.get();
                 if (value.length > 0 && value.length < maxValueSize) {
