@@ -581,22 +581,28 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         if (! blocks.stream().allMatch(c -> c.hash.isRaw()))
             return Futures.errored(new IllegalStateException("Can only auth read for raw blocks, not cbor!"));
 
-        // verify all BATs concurrently
+        // bulk-fetch all metadata in a single query, then verify BATs concurrently
+        List<Cid> hashes = blocks.stream().map(b -> b.hash).collect(Collectors.toList());
+        Map<Cid, BlockMetadata> allMeta = blockMetadata.getAll(hashes);
         List<CompletableFuture<BlockMetadata>> auths = blocks.stream()
-                .map(b -> getBlockMetadata(owner, b.hash)
-                        .thenCompose(meta -> {
-                            CompletableFuture<String> authFuture = b.bat
-                                    .map(bat -> bat.bat.generateAuth(b.hash, id, 300, S3Request.currentDatetime(), bat.id, hasher)
-                                            .thenApply(BlockAuth::encode))
-                                    .orElseGet(() -> Futures.of(""));
-                            return authFuture.thenCompose(auth ->
-                                    authoriser.allowRead(b.hash, meta.batids, id, auth)
-                                            .thenApply(allowed -> {
-                                                if (!allowed)
-                                                    throw new IllegalStateException("Unauthorised!");
-                                                return meta;
-                                            }));
-                        }))
+                .map(b -> {
+                    BlockMetadata meta = allMeta.get(b.hash);
+                    CompletableFuture<BlockMetadata> metaFuture = meta != null ?
+                            Futures.of(meta) : getBlockMetadata(owner, b.hash);
+                    return metaFuture.thenCompose(m -> {
+                        CompletableFuture<String> authFuture = b.bat
+                                .map(bat -> bat.bat.generateAuth(b.hash, id, 300, S3Request.currentDatetime(), bat.id, hasher)
+                                        .thenApply(BlockAuth::encode))
+                                .orElseGet(() -> Futures.of(""));
+                        return authFuture.thenCompose(auth ->
+                                authoriser.allowRead(b.hash, m.batids, id, auth)
+                                        .thenApply(allowed -> {
+                                            if (!allowed)
+                                                throw new IllegalStateException("Unauthorised!");
+                                            return m;
+                                        }));
+                    });
+                })
                 .collect(Collectors.toList());
 
         for (BlockMirrorCap block : blocks) {
