@@ -198,7 +198,7 @@ public class Builder {
         try {
             boolean usePostgres = a.getArg("block-metadata-db-type", "sqlite").equals("postgres");
             if (usePostgres) {
-                return new JdbcBlockMetadataStore(getPostgresConnector(a, "metadb."), new PostgresCommands());
+                return new CachingBlockMetadataStore(new JdbcBlockMetadataStore(getPostgresConnector(a, "metadb."), new PostgresCommands()), 200_000);
             } else {
                 File metaFile = a.fromPeergosDir("block-metadata-sql-file", "blockmetadata-v3.sql").toFile();
                 Connection instance = new Sqlite.UncloseableConnection(Sqlite.build(metaFile.getPath()));
