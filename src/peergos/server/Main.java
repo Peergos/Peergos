@@ -1275,6 +1275,7 @@ public class Main extends Builder {
                             ProcessBuilder pb = new ProcessBuilder(
                                     edgePath,
                                     "--app=http://localhost:" + port,
+                                    "--disable-extensions",
                                     "--user-data-dir=" + System.getenv("APPDATA") + "\\Peergos\\edge-data"
                             );
 
