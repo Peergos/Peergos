@@ -863,7 +863,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                 LOG.warning("S3 error reading " + path);
                 LOG.log(Level.WARNING, msg, e);
             } else {
-                if (! useLegacyPath && ! userPartitioningComplete())
+                if (! useLegacyPath)
                     return getRawWithoutBackoff(peerIds, owner, hash, range, enforceAuth, bat, persistP2pBlock, true);
             }
             failedBlockGets.inc();
