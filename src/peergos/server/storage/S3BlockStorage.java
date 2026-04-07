@@ -329,47 +329,43 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                                         SqliteBlockList partitionedBlocklist) {
         if (block.isIdentity())
             return;
-        // use new owner metadata column to determine if block has been moved already
-        Optional<PublicKeyHash> metaOwner = blockMetadata.getOwner(block);
-        if (metaOwner.isEmpty()) {
-            // Unfortunately we have to copy, then delete, then update metadata
-            // Check if the copy target already exists first
-            boolean alreadyMoved = partitionedBlocklist.hasBlock(username, block);
-            boolean legacyPresent = legacyBlockList.hasBlock(null, block);
-            String newVersion;
-            try {
-                if (alreadyMoved) {
-                    List<String> versions = partitionedBlocklist.getVersions(username, block);
-                    newVersion = versions.get(versions.size() - 1);
-                } else if (legacyPresent) {
-                    newVersion = copyObject(legacyHashToKey(block), hashToKey(owner, block), hasher);
-                } else {
-                    throw new IllegalStateException("User " + username + " missing block: " + legacyHashToKey(block));
-                }
-                if (legacyPresent) {
-                    if (isVersioned) {
-                        List<String> versions = legacyBlockList.getVersions(null, block);
-                        for (String version : versions) {
-                            LOG.info("S3 delete version of s3://" + bucket + "/" + legacyHashToKey(block));
-                            delete(null, new BlockVersion(block, version, true));
-                        }
-                    } else {
-                        delete(null, block);
-                    }
-                }
-
-                if (isVersioned)
-                    blockMetadata.setOwnerAndVersion(owner, block, newVersion);
-                else
-                    blockMetadata.setOwner(owner, block);
-            } catch (Exception e) {
-                String msg = e.getMessage();
-                // tolerate missing blocks
-                if (msg == null || (!msg.contains("NoSuchKey") && !msg.contains("missing block")))
-                    throw new RuntimeException(e);
-                LOG.log(Level.SEVERE, e, e::getMessage);
-                LOG.info("S3 partition missing block (user " + username + ") " + block);
+        // Unfortunately we have to copy, then delete, then update metadata
+        // Check if the copy target already exists first
+        boolean alreadyMoved = partitionedBlocklist.hasBlock(username, block);
+        boolean legacyPresent = legacyBlockList.hasBlock(null, block);
+        String newVersion;
+        try {
+            if (alreadyMoved) {
+                List<String> versions = partitionedBlocklist.getVersions(username, block);
+                newVersion = versions.get(versions.size() - 1);
+            } else if (legacyPresent) {
+                newVersion = copyObject(legacyHashToKey(block), hashToKey(owner, block), hasher);
+            } else {
+                throw new IllegalStateException("User " + username + " missing block: " + legacyHashToKey(block));
             }
+            if (legacyPresent) {
+                if (isVersioned) {
+                    List<String> versions = legacyBlockList.getVersions(null, block);
+                    for (String version : versions) {
+                        LOG.info("S3 delete version of s3://" + bucket + "/" + legacyHashToKey(block));
+                        delete(null, new BlockVersion(block, version, true));
+                    }
+                } else {
+                    delete(null, block);
+                }
+            }
+
+            if (isVersioned)
+                blockMetadata.setOwnerAndVersion(owner, block, newVersion);
+            else
+                blockMetadata.setOwner(owner, block);
+        } catch (Exception e) {
+            String msg = e.getMessage();
+            // tolerate missing blocks
+            if (msg == null || (!msg.contains("NoSuchKey") && !msg.contains("missing block")))
+                throw new RuntimeException(e);
+            LOG.log(Level.SEVERE, e, e::getMessage);
+            LOG.info("S3 partition missing block (user " + username + ") " + block);
         }
     }
 

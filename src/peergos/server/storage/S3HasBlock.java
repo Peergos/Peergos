@@ -104,11 +104,15 @@ public class S3HasBlock {
         s3.setPki(core);
         PublicKeyHash owner = PublicKeyHash.fromString(a.getArg("owner"));
         Cid hash = Cid.decode(a.getArg("hash"));
+
+        Optional<BlockMetadata> blockMetadata = meta.get(hash);
+        System.out.println("Block present in metadb " + owner + ": " + hash + " " + blockMetadata.isPresent());
+        System.out.println("Stored owner " + meta.getOwner(hash));
         System.out.println("Block present " + owner + ": " + hash + " " + s3.hasBlock(owner, hash));
         List<Multihash> peerIds = ids.stream()
                 .map(c -> (Multihash) c)
                 .collect(Collectors.toList());
-        Optional<byte[]> block = s3.getRaw(peerIds, owner, hash, Optional.empty(), ids.get(0), hasher, false, false).join();
+        Optional<byte[]> block = s3.getRaw(peerIds, null, hash, Optional.empty(), ids.get(0), hasher, false, false).join();
         Files.write(Paths.get(hash + ".data"), block.get());
     }
 }
