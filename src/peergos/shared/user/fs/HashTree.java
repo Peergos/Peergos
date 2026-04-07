@@ -8,7 +8,9 @@ import peergos.shared.util.Futures;
 
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
+import java.util.function.Function;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 import java.util.stream.LongStream;
 
 public class HashTree implements Cborable {
@@ -85,6 +87,38 @@ public class HashTree implements Cborable {
                 .thenCompose(read -> read == remaining ?
                         Futures.of(buf) :
                         readChunk(f, buf, offset + read, remaining - read));
+    }
+
+    @JsMethod
+    public static CompletableFuture<HashTree> buildParallel(Function<Integer, AsyncReader> f,
+                                                            int sizeHi,
+                                                            int sizeLow,
+                                                            Hasher hasher,
+                                                            int parallelism) {
+        long size = ((long)sizeHi) << 32 | (sizeLow & 0xFFFFFFFFL);
+        long nChunks = size == 0 ? 1 : (size + Chunk.MAX_SIZE - 1) / Chunk.MAX_SIZE;
+        long chunksPerThread = (nChunks + parallelism - 1) / parallelism;
+        int actualParallelism = (int) Math.min((nChunks + chunksPerThread - 1)/chunksPerThread, Math.min(parallelism, nChunks));
+        long chunksInLastThread = nChunks - ((actualParallelism - 1) * chunksPerThread);
+        return Futures.combineAllInOrder(IntStream.range(0, actualParallelism).mapToObj(p -> {
+                    long start = p * chunksPerThread * Chunk.MAX_SIZE;
+                    byte[] chunk = new byte[(int) Math.min(Chunk.MAX_SIZE, size)];
+                    boolean lastThread = p == actualParallelism - 1;
+                    AsyncReader reader = f.apply(p);
+                    return reader.seek(start)
+                            .thenCompose(seeked -> Futures.combineAllInOrder(LongStream.range(0,
+                                    lastThread ? chunksInLastThread : chunksPerThread).mapToObj(i -> {
+                                boolean lastOfMultiChunk = p * chunksPerThread + i == nChunks - 1 && nChunks > 1;
+                                long lastChunkSize = size % Chunk.MAX_SIZE;
+                                int remaining = lastOfMultiChunk ? (int) (lastChunkSize == 0 ? Chunk.MAX_SIZE : lastChunkSize) : chunk.length;
+                                return readChunk(seeked, lastOfMultiChunk ? new byte[remaining] : chunk, 0, remaining)
+                                        .thenCompose(data -> hasher.sha256(data));
+                            }).collect(Collectors.toList())));
+                }).collect(Collectors.toList()))
+                .thenApply(nested -> nested.stream()
+                        .flatMap(Collection::stream)
+                        .collect(Collectors.toList()))
+                .thenCompose(level1 -> build(level1, hasher));
     }
 
     @JsMethod

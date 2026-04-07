@@ -1,17 +1,17 @@
 package peergos.server.tests.util;
 
 import org.junit.Assert;
-import org.junit.Ignore;
 import org.junit.Test;
 import peergos.server.Main;
 import peergos.server.sync.FileState;
 import peergos.shared.Crypto;
+import peergos.shared.user.fs.AsyncReader;
 import peergos.shared.user.fs.Chunk;
 import peergos.shared.user.fs.HashTree;
 import peergos.shared.util.Pair;
 
-import java.nio.file.FileStore;
 import java.util.List;
+import java.util.Random;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
@@ -84,5 +84,24 @@ public class HashTreeTests {
         List<Pair<Long, Long>> diff = updated.diffRanges(old);
         Assert.assertTrue(diff.size() == 1);
         Assert.assertTrue(diff.get(0).equals(new Pair<>(diffChunk * (long)Chunk.MAX_SIZE, (diffChunk + 1)* (long)Chunk.MAX_SIZE)));
+    }
+
+    @Test
+    public void JsHashes() {
+        Random rnd = new Random(42);
+        for (int s: List.of(0, 1024,
+                5*1024*1024, 6*1024*1024,
+                10*1024*1024, 11*1024*1024,
+                40*1024*1024, 41*1024*1024,
+                80*1024*1024, 81*1024*1024,
+                150*1024*1024, 161*1024*1024
+                )) {
+            byte[] data = new byte[s];
+            rnd.nextBytes(data);
+            AsyncReader reader = AsyncReader.build(data);
+            HashTree serial = HashTree.build(reader, 0, data.length, crypto.hasher).join();
+            HashTree parallel = HashTree.buildParallel(i -> AsyncReader.build(data), 0, data.length, crypto.hasher, 8).join();
+            Assert.assertEquals(serial, parallel);
+        }
     }
 }
