@@ -273,7 +273,12 @@ public class MultiNodeNetworkTests {
 
         Multihash fragment = file.getPointer().fileAccess.toCbor().links().get(0);
         CompletableFuture<Optional<byte[]>> raw = node1.clear().dhtClient.getRaw(user.signer.publicKeyHash, (Cid) fragment, Optional.empty());
-        Assert.assertTrue(raw.isCompletedExceptionally() || raw.join().isEmpty());
+        try {
+            raw.join();
+        } catch (Exception e) {
+            // unauthorized
+        }
+        Assert.assertTrue(raw.isCompletedExceptionally());
 
         UserContext friend = ensureSignedUp(generateUsername(random), password, node1, crypto);
         friend.sendInitialFollowRequest(username).join();
