@@ -166,6 +166,9 @@ public class GarbageCollector {
         System.out.println("Checking integrity for user " + username);
         Cid homeServer = (Cid) pki.getHomeServer(username).join().get();
         PublicKeyHash owner = usage.getOwnerKey(writers.stream().findAny().get());
+        PublicKeyHash fromPki = pki.getPublicKeyHash(username).join().get();
+        if (! fromPki.equals(owner))
+            throw new IllegalStateException("Owner mismatch!");
 
         Map<PublicKeyHash, byte[]> userPointers = writers.stream()
                 .map(w -> new Pair<>(w, pointers.getPointer(w).join()))
@@ -208,6 +211,11 @@ public class GarbageCollector {
             if (meta.isPresent())
                 System.out.println("Fixed block metadata for " + cid);
         }
+        Optional<PublicKeyHash> fromMeta = metadata.getOwner((Cid) cid);
+        if (fromMeta.isPresent() && ! fromMeta.get().equals(owner) && fixMetadata) {
+            metadata.setOwner(owner, (Cid) cid);
+        }
+
         if (meta.isEmpty())
             throw new IllegalStateException("Absent block! " + cid + ", key: " + DirectS3BlockStore.hashToKey(cid));
         for (Cid link : meta.get().links) {
