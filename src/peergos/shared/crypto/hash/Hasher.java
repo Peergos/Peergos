@@ -20,6 +20,21 @@ public interface Hasher {
 
     CompletableFuture<byte[]> sha256(byte[] input);
 
+    default CompletableFuture<byte[]> sha256Section(AsyncReader reader, long start, long end) {
+        int length = (int)(end - start);
+        byte[] buf = new byte[length];
+        return reader.seek(start)
+                .thenCompose(seeked -> readFully(seeked, buf, 0, length))
+                .thenCompose(this::sha256);
+    }
+
+    private static CompletableFuture<byte[]> readFully(AsyncReader reader, byte[] buf, int offset, int remaining) {
+        if (remaining == 0)
+            return CompletableFuture.completedFuture(buf);
+        return reader.readIntoArray(buf, offset, remaining)
+                .thenCompose(n -> readFully(reader, buf, offset + n, remaining - n));
+    }
+
     CompletableFuture<byte[]> hmacSha256(byte[] secretKey, byte[] message);
 
     @SuppressWarnings("unusable-by-js")

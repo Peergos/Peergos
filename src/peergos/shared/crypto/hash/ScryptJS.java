@@ -37,6 +37,16 @@ public class ScryptJS implements Hasher {
     }
 
     @Override
+    public CompletableFuture<byte[]> sha256Section(AsyncReader reader, long start, long end) {
+        if (reader instanceof BrowserFileReader) {
+            JSFileReader jsReader = ((BrowserFileReader) reader).getReader();
+            return scriptJS.sha256FileSection(jsReader,
+                    (int)(start >> 32), (int)start, (int)(end >> 32), (int)end);
+        }
+        return Hasher.super.sha256Section(reader, start, end);
+    }
+
+    @Override
     @SuppressWarnings("unusable-by-js")
     public CompletableFuture<Multihash> hashFromStream(AsyncReader stream, long length) {
         return scriptJS.streamSha256(stream, (int) length)

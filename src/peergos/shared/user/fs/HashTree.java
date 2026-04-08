@@ -102,29 +102,25 @@ public class HashTree implements Cborable {
         int actualParallelism = (int) Math.min((nChunks + chunksPerThread - 1)/chunksPerThread, Math.min(parallelism, nChunks));
         long chunksInLastThread = nChunks - ((actualParallelism - 1) * chunksPerThread);
         return Futures.combineAllInOrder(IntStream.range(0, actualParallelism).mapToObj(p -> {
-                    long start = p * chunksPerThread * Chunk.MAX_SIZE;
-                    byte[] chunk = new byte[(int) Math.min(Chunk.MAX_SIZE, size)];
                     boolean lastThread = p == actualParallelism - 1;
                     AsyncReader reader = f.apply(p);
                     long nChunksForThread = lastThread ? chunksInLastThread : chunksPerThread;
-                    return reader.seek(start)
-                            .thenCompose(seeked -> Futures.reduceAll(
-                                    LongStream.range(0, nChunksForThread).boxed(),
-                                    new ArrayList<byte[]>(),
-                                    (hashes, i) -> {
-                                        boolean lastOfMultiChunk = p * chunksPerThread + i == nChunks - 1 && nChunks > 1;
-                                        long lastChunkSize = size % Chunk.MAX_SIZE;
-                                        int remaining = lastOfMultiChunk ? (int) (lastChunkSize == 0 ? Chunk.MAX_SIZE : lastChunkSize) : chunk.length;
-                                        return readChunk(seeked, lastOfMultiChunk ? new byte[remaining] : chunk, 0, remaining)
-                                                .thenCompose(data -> hasher.sha256(data))
-                                                .thenApply(hash -> {
-                                                    ArrayList<byte[]> next = new ArrayList<>(hashes);
-                                                    next.add(hash);
-                                                    return next;
-                                                });
-                                    },
-                                    (a, b) -> { ArrayList<byte[]> res = new ArrayList<>(a); res.addAll(b); return res; }
-                            ));
+                    return Futures.reduceAll(
+                            LongStream.range(0, nChunksForThread).boxed(),
+                            new ArrayList<byte[]>(),
+                            (hashes, i) -> {
+                                long chunkIndex = p * chunksPerThread + i;
+                                long chunkStart = chunkIndex * Chunk.MAX_SIZE;
+                                long chunkEnd = Math.min(chunkStart + Chunk.MAX_SIZE, size);
+                                return hasher.sha256Section(reader, chunkStart, chunkEnd)
+                                        .thenApply(hash -> {
+                                            ArrayList<byte[]> next = new ArrayList<>(hashes);
+                                            next.add(hash);
+                                            return next;
+                                        });
+                            },
+                            (a, b) -> { ArrayList<byte[]> res = new ArrayList<>(a); res.addAll(b); return res; }
+                    );
                 }).collect(Collectors.toList()))
                 .thenApply(nested -> nested.stream()
                         .flatMap(Collection::stream)
