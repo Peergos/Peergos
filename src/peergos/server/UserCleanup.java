@@ -1,6 +1,7 @@
 package peergos.server;
 
 import peergos.server.storage.*;
+import peergos.server.util.Args;
 import peergos.shared.*;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.*;
@@ -23,8 +24,9 @@ public class UserCleanup {
     public static void main(String[] args) throws Exception {
         Crypto crypto = Main.initCrypto();
         NetworkAccess network = Builder.buildJavaNetworkAccess(new URL("https://peergos.net"), true, Optional.empty(), Optional.empty()).get();
-        String username = args[0];
-        String password = args[1];
+        Args a = Args.parse(args);
+        String username = a.getArg("username");
+        String password = a.getArg("PEERGOS_PASSWORD");
         UserContext context = UserContext.signIn(username, password, Main::getMfaResponseCLI, network, crypto).get();
         long usage = context.getSpaceUsage(false).join();
 //        checkRawUsage(context);
