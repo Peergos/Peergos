@@ -1064,7 +1064,7 @@ public class FileWrapper {
                             return calculateMimeType(fileData, f.length, f.filename).thenCompose(mimeType -> {
                                 FileProperties props = new FileProperties(f.filename,
                                         false, false, mimeType, f.length,
-                                        now, now, false, Optional.empty(), Optional.of(crypto.random.randomBytes(32)), Optional.empty());
+                                        now, now, false, Optional.empty(), Optional.of(crypto.random.randomBytes(32)), f.hash.map(t -> t.branch(0)));
                                 return Transaction.buildFileUploadTransaction(toParent.resolve(f.filename).toString(), f.length,
                                         props, props.streamSecret.get(), SymmetricKey.random(), SymmetricKey.random(),
                                         SymmetricKey.random(), parent.signingPair(), new Location(parent.owner(), parent.writer(),
