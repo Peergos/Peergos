@@ -15,6 +15,7 @@ import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
 import peergos.shared.util.*;
 
+import java.io.Console;
 import java.net.*;
 import java.util.*;
 import java.util.stream.*;
@@ -26,7 +27,12 @@ public class UserCleanup {
         NetworkAccess network = Builder.buildJavaNetworkAccess(new URL("https://peergos.net"), true, Optional.empty(), Optional.empty()).get();
         Args a = Args.parse(args);
         String username = a.getArg("username");
-        String password = a.getArg("PEERGOS_PASSWORD");
+        Console console = System.console();
+        String password;
+        if (a.hasArg("PEERGOS_PASSWORD"))
+            password = a.getArg("PEERGOS_PASSWORD");
+        else
+            password = new String(console.readPassword("Enter password for " + username + ":"));
         UserContext context = UserContext.signIn(username, password, Main::getMfaResponseCLI, network, crypto).get();
         long usage = context.getSpaceUsage(false).join();
 //        checkRawUsage(context);
