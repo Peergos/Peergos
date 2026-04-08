@@ -1058,60 +1058,70 @@ public class FileWrapper {
                                             return atomicallyClearTransactionsAndAddToParent(Collections.emptyList(), r.right, parent, transactions, r.left, c, commitWatcher, network, crypto);
                                         });
 
-                            network.enableCommits();
-                            List<FileUploadTransaction> toClose = new ArrayList<>();
-                            LocalDateTime now = LocalDateTime.now(ZoneOffset.UTC);
-                            return calculateMimeType(fileData, f.length, f.filename).thenCompose(mimeType -> {
-                                FileProperties props = new FileProperties(f.filename,
-                                        false, false, mimeType, f.length,
-                                        now, now, false, Optional.empty(), Optional.of(crypto.random.randomBytes(32)), f.hash.map(t -> t.branch(0)));
-                                return Transaction.buildFileUploadTransaction(toParent.resolve(f.filename).toString(), f.length,
-                                        props, props.streamSecret.get(), SymmetricKey.random(), SymmetricKey.random(),
-                                        SymmetricKey.random(), parent.signingPair(), new Location(parent.owner(), parent.writer(),
-                                                crypto.random.randomBytes(32)), Optional.of(Bat.random(crypto.random)), crypto.hasher);
-                            }).thenCompose(txn -> transactions.open(p.left, c, txn)
-                                            .thenCompose(r -> {
-                                                if (r.isB()) // we must clear legacy transactions which can't be resumed or ones whose parent has rotated writer
-                                                    return (r.b().isLegacy() || ! parent.writer().equals(r.b().writer()) ?
-                                                            Futures.of(false) :
-                                                            (r.b().props.treeHash.isPresent() &&
-                                                                    f.hash.isPresent() &&
-                                                                    r.b().props.treeHash.get().rootHash.equals(f.hash.get().rootHash)) ?
-                                                                    Futures.of(true) : resumeFile.apply(r.b()))
-                                                            .thenCompose(resume -> {
-                                                                if (resume) {
-                                                                    toClose.add(r.b());
-                                                                    return parent.resumeUpload(r.b(), fileData, isCancelled, f.monitor, p.left, c, network, crypto)
-                                                                            .thenCompose(res -> fileData.reset().thenCompose(resetAgain ->
-                                                                                            parent.generateThumbnailAndUpdate(res.left, c, r.b().writeCap(), f.filename, resetAgain,
-                                                                                                    network, false, r.b().props.mimeType,
-                                                                                                    f.length, r.b().startTime(), r.b().startTime(), Optional.of(r.b().streamSecret()), f.monitor))
-                                                                                    .thenApply(s -> new Pair<>(s, res.right)));
-                                                                }
-                                                                return transactions.close(p.left, c, r.b())
-                                                                        .thenCompose(s2 -> transactions.open(s2, c, txn))
-                                                                        .thenCompose(r2 -> {
-                                                                            if (r2.isB())
-                                                                                throw new IllegalStateException("Error uploading file - concurrent upload of same file?");
-                                                                            toClose.add(txn);
-                                                                            return fileData.reset().thenCompose(reset -> parent.uploadFileSection(r2.a(), c, f.filename, reset, Optional.empty(),
-                                                                                    false, 0, f.length, f.hash, f.modifiedTime, Optional.of(txn.baseKey), Optional.of(txn.dataKey), Optional.of(txn.writeKey),
-                                                                                    f.skipExisting, f.overwriteExisting, true,
-                                                                                    network, crypto, isCancelled, f.monitor, txn.firstMapKey(),
-                                                                                    Optional.of(txn.streamSecret()), txn.firstBat, mirrorBat));
-                                                                        });
-                                                            }).thenApply(pair -> new Pair<>(pair.left, Stream.concat(p.right.stream(), pair.right.stream()).collect(Collectors.toList())));
-                                                toClose.add(txn);
-                                                return fileData.reset().thenCompose(reset -> parent.uploadFileSection(r.a(), c, f.filename, fileData, Optional.empty(), false,
-                                                                0, f.length, f.hash, f.modifiedTime, Optional.of(txn.baseKey), Optional.of(txn.dataKey), Optional.of(txn.writeKey),f.skipExisting, f.overwriteExisting, true,
-                                                                network, crypto, isCancelled, f.monitor, txn.firstMapKey(), Optional.of(txn.streamSecret()), txn.firstBat, mirrorBat))
-                                                        .thenApply(pair -> new Pair<>(pair.left, Stream.concat(p.right.stream(), pair.right.stream()).collect(Collectors.toList())));
-                                            })
-                            ).thenCompose(r -> atomicallyClearTransactionsAndAddToParent(toClose, r.right, parent, transactions, r.left, c, commitWatcher, network, crypto))
-                                    .thenApply(res -> {
-                                        fileData.close();
-                                        return res;
-                                    });
+                            // Before enabling commits, flush any directory entries accumulated from
+                            // preceeding small files into the buffer while commits are still disabled.
+                            // This ensures a subsequent auto-commit cannot permanently commit a small
+                            // file's chunk without its parent directory entry.
+                            CompletableFuture<Snapshot> preFlush = p.right.isEmpty() ?
+                                    Futures.of(p.left) :
+                                    parent.getUpdated(p.left, network)
+                                          .thenCompose(latest -> latest.addChildPointers(p.left, c, p.right, network.disableCommits(), crypto));
+                            return preFlush.thenCompose(flushedVersion -> {
+                                network.enableCommits();
+                                List<FileUploadTransaction> toClose = new ArrayList<>();
+                                LocalDateTime now = LocalDateTime.now(ZoneOffset.UTC);
+                                return calculateMimeType(fileData, f.length, f.filename).thenCompose(mimeType -> {
+                                    FileProperties props = new FileProperties(f.filename,
+                                            false, false, mimeType, f.length,
+                                            now, now, false, Optional.empty(), Optional.of(crypto.random.randomBytes(32)), f.hash.map(t -> t.branch(0)));
+                                    return Transaction.buildFileUploadTransaction(toParent.resolve(f.filename).toString(), f.length,
+                                            props, props.streamSecret.get(), SymmetricKey.random(), SymmetricKey.random(),
+                                            SymmetricKey.random(), parent.signingPair(), new Location(parent.owner(), parent.writer(),
+                                                    crypto.random.randomBytes(32)), Optional.of(Bat.random(crypto.random)), crypto.hasher);
+                                }).thenCompose(txn -> transactions.open(flushedVersion, c, txn)
+                                                .thenCompose(r -> {
+                                                    if (r.isB()) // we must clear legacy transactions which can't be resumed or ones whose parent has rotated writer
+                                                        return (r.b().isLegacy() || ! parent.writer().equals(r.b().writer()) ?
+                                                                Futures.of(false) :
+                                                                (r.b().props.treeHash.isPresent() &&
+                                                                        f.hash.isPresent() &&
+                                                                        r.b().props.treeHash.get().rootHash.equals(f.hash.get().rootHash)) ?
+                                                                        Futures.of(true) : resumeFile.apply(r.b()))
+                                                                .thenCompose(resume -> {
+                                                                    if (resume) {
+                                                                        toClose.add(r.b());
+                                                                        return parent.resumeUpload(r.b(), fileData, isCancelled, f.monitor, flushedVersion, c, network, crypto)
+                                                                                .thenCompose(res -> fileData.reset().thenCompose(resetAgain ->
+                                                                                                parent.generateThumbnailAndUpdate(res.left, c, r.b().writeCap(), f.filename, resetAgain,
+                                                                                                        network, false, r.b().props.mimeType,
+                                                                                                        f.length, r.b().startTime(), r.b().startTime(), Optional.of(r.b().streamSecret()), f.monitor))
+                                                                                        .thenApply(s -> new Pair<>(s, res.right)));
+                                                                    }
+                                                                    return transactions.close(flushedVersion, c, r.b())
+                                                                            .thenCompose(s2 -> transactions.open(s2, c, txn))
+                                                                            .thenCompose(r2 -> {
+                                                                                if (r2.isB())
+                                                                                    throw new IllegalStateException("Error uploading file - concurrent upload of same file?");
+                                                                                toClose.add(txn);
+                                                                                return fileData.reset().thenCompose(reset -> parent.uploadFileSection(r2.a(), c, f.filename, reset, Optional.empty(),
+                                                                                        false, 0, f.length, f.hash, f.modifiedTime, Optional.of(txn.baseKey), Optional.of(txn.dataKey), Optional.of(txn.writeKey),
+                                                                                        f.skipExisting, f.overwriteExisting, true,
+                                                                                        network, crypto, isCancelled, f.monitor, txn.firstMapKey(),
+                                                                                        Optional.of(txn.streamSecret()), txn.firstBat, mirrorBat));
+                                                                            });
+                                                                }).thenApply(pair -> new Pair<>(pair.left, pair.right.stream().collect(Collectors.toList())));
+                                                    toClose.add(txn);
+                                                    return fileData.reset().thenCompose(reset -> parent.uploadFileSection(r.a(), c, f.filename, fileData, Optional.empty(), false,
+                                                                    0, f.length, f.hash, f.modifiedTime, Optional.of(txn.baseKey), Optional.of(txn.dataKey), Optional.of(txn.writeKey), f.skipExisting, f.overwriteExisting, true,
+                                                                    network, crypto, isCancelled, f.monitor, txn.firstMapKey(), Optional.of(txn.streamSecret()), txn.firstBat, mirrorBat))
+                                                            .thenApply(pair -> new Pair<>(pair.left, pair.right.stream().collect(Collectors.toList())));
+                                                })
+                                ).thenCompose(r -> atomicallyClearTransactionsAndAddToParent(toClose, r.right, parent, transactions, r.left, c, commitWatcher, network, crypto))
+                                        .thenApply(res -> {
+                                            fileData.close();
+                                            return res;
+                                        });
+                            });
                         },
                         (a, b) -> new Pair<>(b.left, Stream.concat(a.right.stream(), b.right.stream()).collect(Collectors.toList())))
                 .thenCompose(r -> atomicallyClearTransactionsAndAddToParent(Collections.emptyList(), r.right, parent, transactions, r.left, c, commitWatcher, network, crypto)),
