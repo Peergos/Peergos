@@ -7,6 +7,7 @@ import peergos.shared.MaybeMultihash;
 import peergos.shared.storage.*;
 
 import java.io.*;
+import java.util.*;
 import java.util.concurrent.*;
 
 public interface MutableTree {
@@ -39,6 +40,18 @@ public interface MutableTree {
      * @throws IOException
      */
     CompletableFuture<MaybeMultihash> get(WriterData base, PublicKeyHash owner, PublicKeyHash writer, byte[] mapKey);
+
+    /**
+     * Check presence of multiple map keys in a single CHAMP traversal context,
+     * sharing any cached block fetches across all lookups.
+     *
+     * @param base    WriterData at the current mutable pointer for the writer
+     * @param owner
+     * @param writer
+     * @param mapKeys ordered list of keys to look up
+     * @return list of booleans, same order as mapKeys
+     */
+    CompletableFuture<List<Boolean>> getAll(WriterData base, PublicKeyHash owner, PublicKeyHash writer, List<byte[]> mapKeys);
 
     /**
      *

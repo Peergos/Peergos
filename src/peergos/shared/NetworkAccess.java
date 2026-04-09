@@ -848,6 +848,14 @@ public class NetworkAccess {
                 .thenApply(valueHash -> valueHash.isPresent());
     }
 
+    public CompletableFuture<List<Boolean>> chunksArePresent(Snapshot current,
+                                                             PublicKeyHash owner,
+                                                             PublicKeyHash writer,
+                                                             List<byte[]> mapKeys) {
+        CommittedWriterData version = current.get(writer);
+        return tree.getAll(version.props.get(), owner, writer, mapKeys);
+    }
+
     public static CompletableFuture<List<FragmentWithHash>> downloadFragments(PublicKeyHash owner,
                                                                               List<Cid> hashes,
                                                                               List<BatWithId> bats,

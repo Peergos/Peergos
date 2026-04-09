@@ -15,6 +15,7 @@ import peergos.shared.util.*;
 
 import java.util.concurrent.*;
 import java.util.function.*;
+import java.util.stream.*;
 
 public class MutableTreeImpl implements MutableTree {
 	private static final Logger LOG = Logger.getGlobal();
@@ -68,6 +69,16 @@ public class MutableTreeImpl implements MutableTree {
                 .thenApply(maybe -> LOGGING ?
                         log(maybe, "TREE.get (" + ArrayOps.bytesToHex(mapKey)
                                 + ", root="+base.tree.get()+" => " + maybe) : maybe);
+    }
+
+    @Override
+    public CompletableFuture<List<Boolean>> getAll(WriterData base, PublicKeyHash owner, PublicKeyHash writer, List<byte[]> mapKeys) {
+        if (! base.tree.isPresent())
+            throw new IllegalStateException("Tree root not present for " + writer);
+        return ChampWrapper.create(owner, (Cid)base.tree.get(), Optional.empty(), hasher, dht, writeHasher, c -> (CborObject.CborMerkleLink)c)
+                .thenCompose(champ -> Futures.combineAllInOrder(mapKeys.stream()
+                        .map(key -> champ.get(key).thenApply(Optional::isPresent))
+                        .collect(Collectors.toList())));
     }
 
     @Override

@@ -722,7 +722,8 @@ public class FileWrapper {
         RelativeCapability fromParent = writableFilePointer().relativise(txn.writeCap());
         FileProperties props = txn.props;
         // first find how many chunks were already uploaded, then seek reader to that offset and continue
-        return findFirstAbsentChunkIndex(0, txn.streamSecret(), txn.getFirstLocation(), s, network, crypto)
+        long totalChunks = (txn.size() + Chunk.MAX_SIZE - 1) / Chunk.MAX_SIZE;
+        return findFirstAbsentChunkIndex(txn.streamSecret(), txn.getFirstLocation(), totalChunks, s, network, crypto)
                 .thenCompose(startChunkIndex -> {
                     monitor.accept(startChunkIndex * Chunk.MAX_SIZE);
                     FileUploader uploader = new FileUploader(txn.targetFilename(), data, startChunkIndex*Chunk.MAX_SIZE,
@@ -734,12 +735,97 @@ public class FileWrapper {
                         Optional.of(props.isDirectory), Optional.of(props.mimeType), Optional.of(props.created)))));
     }
 
-    private CompletableFuture<Long> findFirstAbsentChunkIndex(long currentIndex, byte[] streamSecret, Location currentLoc, Snapshot s, NetworkAccess network, Crypto crypto) {
-        return network.chunkIsPresent(s, currentLoc.owner, currentLoc.writer, currentLoc.getMapKey())
-                .thenCompose(present -> present ?
-                        FileProperties.calculateNextMapKey(streamSecret, currentLoc.getMapKey(), Optional.empty(), crypto.hasher)
-                                .thenCompose(p -> findFirstAbsentChunkIndex(currentIndex + 1, streamSecret, currentLoc.withMapKey(p.left), s, network, crypto)) :
-                        Futures.of(currentIndex));
+    // 8-ary search: PROBE_COUNT probes per CHAMP call, narrowing the range by ~8x each round.
+    private static final int PROBE_COUNT = 8;
+
+    /**
+     * Finds the first chunk index in [0, totalChunks] that has not yet been uploaded, using an
+     * 8-ary search so each round issues PROBE_COUNT lookups in a single ChampWrapper call and
+     * narrows the range by ~8x.
+     *
+     * The first call probes at chunk 0, totalChunks/8, 2*totalChunks/8, ..., 7*totalChunks/8
+     * simultaneously — chunk 0 is included so no separate round-trip is needed even when
+     * the upload has not started yet.
+     *
+     * Key derivation is cumulative left-to-right so total hash work is O(totalChunks).
+     */
+    private CompletableFuture<Long> findFirstAbsentChunkIndex(byte[] streamSecret,
+                                                              Location firstLoc,
+                                                              long totalChunks,
+                                                              Snapshot s,
+                                                              NetworkAccess network,
+                                                              Crypto crypto) {
+        if (totalChunks == 0)
+            return Futures.of(0L);
+        Function<List<byte[]>, CompletableFuture<List<Boolean>>> lookup =
+                keys -> network.chunksArePresent(s, firstLoc.owner, firstLoc.writer, keys);
+        return binarySearchAbsentChunk(streamSecret, firstLoc.getMapKey(), 0L, totalChunks,
+                firstLoc.getMapKey(), lookup, crypto.hasher);
+    }
+
+    /**
+     * 8-ary search step.  Invariant: the answer is in [lo, hi], chunk[hi] is absent.
+     * chunk[lo] is included as the first probe (probe[0] = lo) so an absent first chunk
+     * is detected immediately without any prior invariant assumption.
+     *
+     * probeIndices[i] = lo + i * rangeSize / batchSize  (i = 0..batchSize-1)
+     * → probe[0] = lo, probe[1] ≈ lo + 1/8 range, …, probe[7] ≈ lo + 7/8 range.
+     */
+    public static CompletableFuture<Long> binarySearchAbsentChunk(byte[] streamSecret,
+                                                           byte[] firstMapKey,
+                                                           long lo,
+                                                           long hi,
+                                                           byte[] loKey,
+                                                           Function<List<byte[]>, CompletableFuture<List<Boolean>>> lookup,
+                                                           Hasher hasher) {
+        if (lo >= hi)
+            return Futures.of(lo);
+
+        long rangeSize = hi - lo;
+        int batchSize = (int) Math.min(rangeSize, PROBE_COUNT);
+
+        long[] probeIndices = new long[batchSize];
+        for (int i = 0; i < batchSize; i++)
+            probeIndices[i] = lo + (long) i * rangeSize / batchSize;
+        // probe[0] = lo; probe[batchSize-1] = lo+(batchSize-1)*rangeSize/batchSize < hi ✓
+
+        byte[][] keys = new byte[batchSize][];
+        keys[0] = loKey;  // 0 steps from lo — no derivation needed
+        return deriveKeysForProbes(streamSecret, loKey, lo, probeIndices, 1, keys, hasher)
+                .thenCompose(ks -> lookup.apply(Arrays.asList(ks))
+                        .thenCompose(presentFlags -> {
+                            for (int i = 0; i < batchSize; i++) {
+                                if (!presentFlags.get(i)) {
+                                    if (i == 0) return Futures.of(lo);  // chunk lo itself is absent
+                                    // probe[i-1] present, probe[i] absent → answer in (probe[i-1], probe[i]]
+                                    return binarySearchAbsentChunk(streamSecret, firstMapKey,
+                                            probeIndices[i - 1], probeIndices[i], ks[i - 1], lookup, hasher);
+                                }
+                            }
+                            // All probes present → advance lo to last probe; guard against rangeSize=1 loop
+                            long newLo = probeIndices[batchSize - 1];
+                            if (newLo + 1 >= hi) return Futures.of(hi);
+                            return binarySearchAbsentChunk(streamSecret, firstMapKey,
+                                    newLo, hi, ks[batchSize - 1], lookup, hasher);
+                        }));
+    }
+
+    /** Derives map keys for each probe index cumulatively, reusing the key from the previous probe. */
+    private static CompletableFuture<byte[][]> deriveKeysForProbes(byte[] streamSecret,
+                                                                    byte[] prevKey,
+                                                                    long prevIndex,
+                                                                    long[] probeIndices,
+                                                                    int pos,
+                                                                    byte[][] keys,
+                                                                    Hasher hasher) {
+        if (pos == probeIndices.length)
+            return Futures.of(keys);
+        long steps = probeIndices[pos] - prevIndex;
+        return FileProperties.calculateMapKey(streamSecret, prevKey, Optional.empty(), steps * Chunk.MAX_SIZE, hasher)
+                .thenCompose(kp -> {
+                    keys[pos] = kp.left;
+                    return deriveKeysForProbes(streamSecret, kp.left, probeIndices[pos], probeIndices, pos + 1, keys, hasher);
+                });
     }
 
     @JsMethod
