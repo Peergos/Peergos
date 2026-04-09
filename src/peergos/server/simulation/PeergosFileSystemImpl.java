@@ -67,7 +67,7 @@ public class PeergosFileSystemImpl implements FileSystem {
     @Override
     public void writeSubtree(Path path, Stream<FileWrapper.FolderUploadProperties> folders, Function<FileUploadTransaction, CompletableFuture<Boolean>> resumeFile) {
         FileWrapper parentDir = getPath(path);
-        parentDir.uploadSubtree(folders, userContext.mirrorBatId(), userContext.network, userContext.crypto, userContext.getTransactionService(), resumeFile, () -> true).join();
+        parentDir.uploadSubtree(folders, userContext.mirrorBatId(), userContext.network, userContext.crypto, userContext.getTransactionService(), resumeFile, f -> Futures.of(true), () -> true).join();
     }
 
     @Override

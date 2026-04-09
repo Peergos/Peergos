@@ -75,7 +75,7 @@ public class SmallFileBenchmark {
                 .map(n -> new FileWrapper.FileUploadProperties(n, () -> AsyncReader.build(data), 0, data.length, Optional.empty(), Optional.empty(), false, false, progressCounter))
                 .collect(Collectors.toList());
         userRoot.uploadSubtree(Stream.of(new FileWrapper.FolderUploadProperties(Collections.emptyList(), files)),
-                userRoot.mirrorBatId(), context.network, crypto, context.getTransactionService(), f -> Futures.of(false), () -> true).join();
+                userRoot.mirrorBatId(), context.network, crypto, context.getTransactionService(), f -> Futures.of(false), f -> Futures.of(true), () -> true).join();
         long duration = System.currentTimeMillis() - start;
         System.err.printf("UPLOAD("+names.size()+") duration: %d mS, av: %d mS\n", duration, (duration) / names.size());
         Assert.assertTrue("Correct progress", progressReceived.stream().mapToLong(i -> i).sum() == data.length * names.size());

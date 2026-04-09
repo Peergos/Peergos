@@ -171,7 +171,7 @@ public class PeergosNetworkUtils {
                 new FileWrapper.FolderUploadProperties(List.of(subdirName, "nested"), files)
         );
         destFolder.get().uploadSubtree(upload,
-                Optional.empty(), network, crypto, shareeUser.getTransactionService(), x -> Futures.of(false), () -> true).join();
+                Optional.empty(), network, crypto, shareeUser.getTransactionService(), x -> Futures.of(false), f -> Futures.of(true), () -> true).join();
 
         // check sharer can see folder
         Optional<FileWrapper> foundFolder = sharerUser.getByPath(sharedPath.resolve(subdirName)).join();
