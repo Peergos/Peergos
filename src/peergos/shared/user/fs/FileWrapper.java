@@ -1051,10 +1051,19 @@ public class FileWrapper {
 
         // Pre-load the existing children of this directory in one parallel batch so we
         // can compare hashes without a per-file CHAMP lookup inside the reduce loop.
+        // We must NOT use parent.getChildren(Set<String>) here because uploadFolder
+        // runs inside applyComplexUpdate which already holds the WriteSynchronizer
+        // lock; that path calls getAllChildrenCapabilities() → withWriter() →
+        // getValue() which tries to re-acquire the same lock, causing an async
+        // deadlock.  CryptreeNode.getChildren(Snapshot,...) traverses all CHAMP
+        // chunks using the provided Snapshot directly and never calls withWriter(),
+        // so it is safe to call while the lock is held.
         Set<String> filenames = sortedChildren.stream().map(f -> f.filename).collect(Collectors.toSet());
-        return parent.getChildren(filenames, crypto.hasher, network, true)
+        RetrievedCapability parentRc = parent.getPointer();
+        return parentRc.fileAccess.getChildren(parent.version, crypto.hasher, network, parentRc.capability)
                 .thenApply(existing -> existing.stream()
-                        .collect(Collectors.toMap(FileWrapper::getName, fw -> fw.getFileProperties())))
+                        .filter(rc -> filenames.contains(rc.getProperties().name))
+                        .collect(Collectors.toMap(rc -> rc.getProperties().name, RetrievedCapability::getProperties)))
                 .thenCompose(existingByName -> Futures.reduceAll(groupedChildren, identity, (id, group) -> Futures.reduceAll(group, id,
                         (p, f) -> {
                             // Fast path: compare hash against the pre-loaded remote state before
