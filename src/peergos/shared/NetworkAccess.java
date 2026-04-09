@@ -851,9 +851,27 @@ public class NetworkAccess {
     public CompletableFuture<List<Boolean>> chunksArePresent(Snapshot current,
                                                              PublicKeyHash owner,
                                                              PublicKeyHash writer,
-                                                             List<byte[]> mapKeys) {
-        CommittedWriterData version = current.get(writer);
-        return tree.getAll(version.props.get(), owner, writer, mapKeys);
+                                                             List<Pair<byte[], Optional<Bat>>> mapKeysAndBats) {
+        CommittedWriterData base = current.get(writer);
+        if (base.props.isEmpty() || base.props.get().tree.isEmpty())
+            return Futures.of(mapKeysAndBats.stream().map(k -> false).collect(Collectors.toList()));
+        Cid root = (Cid) base.props.get().tree.get();
+        return Futures.combineAllInOrder(mapKeysAndBats.stream()
+                        .map(p -> p.right.map(b -> b.calculateId(hasher)
+                                        .thenApply(id -> Optional.of(new BatWithId(b, id.id))))
+                                .orElse(Futures.of(Optional.<BatWithId>empty()))
+                                .thenApply(bid -> new ChunkMirrorCap(p.left, bid)))
+                        .collect(Collectors.toList()))
+                .thenCompose(caps -> getLastCommittedRoot(writer, base)
+                        .thenCompose(committedRoot -> Futures.asyncExceptionally(
+                                () -> dhtClient.getChampLookup(owner, root, caps, committedRoot),
+                                t -> dhtClient.getChampLookup(owner, root, caps, committedRoot, hasher)))
+                        .thenCompose(blocks -> LocalRamStorage.build(hasher, blocks))
+                        .thenCompose(bstore -> ChampWrapper.create(owner, root, Optional.empty(),
+                                x -> Futures.of(x.data), bstore, hasher, c -> (CborObject.CborMerkleLink) c))
+                        .thenCompose(champ -> Futures.combineAllInOrder(mapKeysAndBats.stream()
+                                .map(p -> champ.get(p.left).thenApply(Optional::isPresent))
+                                .collect(Collectors.toList()))));
     }
 
     public static CompletableFuture<List<FragmentWithHash>> downloadFragments(PublicKeyHash owner,
