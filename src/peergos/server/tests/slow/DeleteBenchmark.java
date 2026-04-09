@@ -71,7 +71,7 @@ public class DeleteBenchmark {
                 .collect(Collectors.toList());
         String dirName = "folder";
         userRoot.uploadSubtree(Stream.of(new FileWrapper.FolderUploadProperties(Arrays.asList(dirName), files)),
-                userRoot.mirrorBatId(), context.network, crypto, context.getTransactionService(), f -> Futures.of(false), () -> true).join();
+                userRoot.mirrorBatId(), context.network, crypto, context.getTransactionService(), f -> Futures.of(false), f -> Futures.of(true), () -> true).join();
         Path dirPath = PathUtil.get(username, dirName);
         FileWrapper folder = context.getByPath(dirPath).join().get();
 
@@ -97,7 +97,7 @@ public class DeleteBenchmark {
                 .collect(Collectors.toList());
         String dirName = "folder";
         userRoot.uploadSubtree(Stream.of(new FileWrapper.FolderUploadProperties(Arrays.asList(dirName), files)),
-                userRoot.mirrorBatId(), context.network, crypto, context.getTransactionService(), f -> Futures.of(false), () -> true).join();
+                userRoot.mirrorBatId(), context.network, crypto, context.getTransactionService(), f -> Futures.of(false), f -> Futures.of(true), () -> true).join();
         Path dirPath = PathUtil.get(username, dirName);
         FileWrapper folder = context.getByPath(dirPath).join().get();
 

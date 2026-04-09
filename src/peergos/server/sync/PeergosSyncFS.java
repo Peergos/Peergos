@@ -250,7 +250,7 @@ public class PeergosSyncFS implements SyncFilesystem {
     public void uploadSubtree(Stream<FileWrapper.FolderUploadProperties> directories) {
         FileWrapper base = context.getByPath(root).join().get();
         Optional<BatId> mirrorBat = base.mirrorBatId();
-        base.uploadSubtree(directories, mirrorBat, context.network, context.crypto, context.getTransactionService(), x -> Futures.of(false), () -> true).join();
+        base.uploadSubtree(directories, mirrorBat, context.network, context.crypto, context.getTransactionService(), x -> Futures.of(false), f -> Futures.of(true), () -> true).join();
     }
 
     @Override

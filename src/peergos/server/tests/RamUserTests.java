@@ -223,7 +223,7 @@ public class RamUserTests extends UserTests {
         FileWrapper.FolderUploadProperties folderProps = new FileWrapper.FolderUploadProperties(convert(remoteRelativeDir), files);
         List<FileWrapper.FolderUploadProperties> folders = new ArrayList<>();
         folders.add(folderProps);
-        context.getUserRoot().join().uploadSubtree(folders.stream(), context.mirrorBatId(), context.network, crypto, context.getTransactionService(), x -> Futures.of(true), () -> true).join();
+        context.getUserRoot().join().uploadSubtree(folders.stream(), context.mirrorBatId(), context.network, crypto, context.getTransactionService(), x -> Futures.of(true), f -> Futures.of(true), () -> true).join();
 
         String appName = "pandoc";
         String installAppFromFolder = context.username + "/" + appName;
@@ -368,7 +368,7 @@ public class RamUserTests extends UserTests {
         try {
             FileWrapper.FileUploadProperties fileUpload = new FileWrapper.FileUploadProperties("somefile", () -> thrower, 0, size, Optional.empty(), Optional.empty(), false, false, x -> {});
             FileWrapper.FolderUploadProperties dirUploads = new FileWrapper.FolderUploadProperties(Arrays.asList(username), Arrays.asList(fileUpload));
-            userRoot.uploadSubtree(Stream.of(dirUploads), context.mirrorBatId(), network, crypto, txns, f -> Futures.of(false), () -> true).join();
+            userRoot.uploadSubtree(Stream.of(dirUploads), context.mirrorBatId(), network, crypto, txns, f -> Futures.of(false), f -> Futures.of(true), () -> true).join();
         } catch (Exception e) {}
         try {
             context.getUserRoot().join().uploadFileJS("anotherfile", thrower, 0, size, false,
@@ -415,7 +415,7 @@ public class RamUserTests extends UserTests {
         try {
             FileWrapper.FileUploadProperties fileUpload = new FileWrapper.FileUploadProperties("somefile", () -> thrower, 0, size, Optional.empty(), Optional.empty(), false, false, x -> {});
             FileWrapper.FolderUploadProperties dirUploads = new FileWrapper.FolderUploadProperties(Arrays.asList(subdir), Arrays.asList(fileUpload));
-            userRoot.uploadSubtree(Stream.of(dirUploads), context.mirrorBatId(), network, crypto, txns, f -> Futures.of(false), () -> true).join();
+            userRoot.uploadSubtree(Stream.of(dirUploads), context.mirrorBatId(), network, crypto, txns, f -> Futures.of(false), f -> Futures.of(true), () -> true).join();
         } catch (Exception e) {}
         long usageAfterFail = context.getSpaceUsage(false).join();
         if (usageAfterFail <= throwAtIndex) { // give server a chance to recalculate usage
