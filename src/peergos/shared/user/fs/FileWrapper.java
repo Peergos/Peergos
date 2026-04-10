@@ -2585,12 +2585,16 @@ public CompletableFuture<Boolean> copyTo(FileWrapper target, UserContext context
                                     .thenCompose(updatedVersion -> {
                                         if (! chunk.isDirectory())
                                             return CompletableFuture.completedFuture(updatedVersion);
-                                        return chunk.getDirectChildrenCapabilities(currentCap, updatedVersion, network).thenCompose(childCaps ->
-                                                Futures.reduceAll(childCaps,
-                                                        updatedVersion,
-                                                        (v, cap) -> deleteAllChunks((WritableAbsoluteCapability) cap.cap, ourSigner,
-                                                                tid, hasher, network, v, committer),
-                                                        (x, y) -> y));
+                                        return chunk.getDirectChildrenCapabilities(currentCap, updatedVersion, network).thenCompose(childCaps -> {
+                                            List<AbsoluteCapability> childCapList = childCaps.stream()
+                                                    .map(c -> c.cap).collect(Collectors.toList());
+                                            return network.retrieveAllMetadata(childCapList, updatedVersion)
+                                                    .thenCompose(ignored -> Futures.reduceAll(childCaps,
+                                                            updatedVersion,
+                                                            (v, cap) -> deleteAllChunks((WritableAbsoluteCapability) cap.cap, ourSigner,
+                                                                    tid, hasher, network, v, committer),
+                                                            (x, y) -> y));
+                                        });
                                     })
                                     .thenCompose(s -> removeSigningKey(ourSigner, signer, currentCap.owner, network, s, committer));
                         }));

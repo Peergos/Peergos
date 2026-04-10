@@ -822,21 +822,45 @@ public class NetworkAccess {
                                                                 SigningPrivateKeyAndPublicHash writer,
                                                                 List<byte[]> mapKeys,
                                                                 TransactionId tid) {
+        if (mapKeys.isEmpty())
+            return Futures.of(current);
         CommittedWriterData version = current.get(writer);
-        List<CompletableFuture<Pair<byte[], MaybeMultihash>>> withValues = mapKeys.stream()
-                .parallel()
-                .map(mapKey -> tree.get(version.props.get(), owner, writer.publicKeyHash, mapKey)
-                        .thenApply(valueHash -> new Pair<>(mapKey, valueHash)))
+        if (version.props.isEmpty() || version.props.get().tree.isEmpty())
+            return Futures.of(current);
+        Cid root = (Cid) version.props.get().tree.get();
+        List<ChunkMirrorCap> caps = mapKeys.stream()
+                .map(k -> new ChunkMirrorCap(k, Optional.empty()))
                 .collect(Collectors.toList());
-        return Futures.reduceAll(withValues, version.props,
-                        (wd, f) -> f.thenCompose(p -> p.right.isPresent() ?
-                                tree.remove(wd.get(), owner, writer, p.left, p.right, tid).thenApply(Optional::of) :
-                                Futures.of(wd)),
-                        (a, b) -> b)
-                .thenCompose(wd -> wd.equals(version.props) ?
-                        Futures.of(current) :
-                        committer.commit(owner, writer, wd, version, tid))
-                .thenApply(committed -> current.withVersion(writer.publicKeyHash, committed.get(writer)));
+        List<List<ChunkMirrorCap>> grouped = new ArrayList<>();
+        int groupSize = ContentAddressedStorage.MAX_CHAMP_GETS;
+        for (int i = 0; i < caps.size(); i += groupSize)
+            grouped.add(caps.subList(i, Math.min(i + groupSize, caps.size())));
+        return getLastCommittedRoot(writer.publicKeyHash, version)
+                .thenCompose(committedRoot -> Futures.combineAllInOrder(grouped.stream()
+                        .map(group -> Futures.asyncExceptionally(
+                                () -> dhtClient.getChampLookup(owner, root, group, committedRoot),
+                                t -> dhtClient.getChampLookup(owner, root, group, committedRoot, hasher)))
+                        .collect(Collectors.toList())))
+                .thenApply(all -> all.stream().flatMap(List::stream).collect(Collectors.toList()))
+                .thenCompose(blocks -> LocalRamStorage.build(hasher, blocks))
+                .thenCompose(bstore -> ChampWrapper.create(owner, root, Optional.empty(),
+                        x -> Futures.of(x.data), bstore, hasher, c -> (CborObject.CborMerkleLink) c))
+                .thenCompose(localChamp -> {
+                    List<CompletableFuture<Pair<byte[], MaybeMultihash>>> withValues = mapKeys.stream()
+                            .map(mapKey -> localChamp.get(mapKey)
+                                    .thenApply(opt -> new Pair<>(mapKey,
+                                            opt.map(x -> MaybeMultihash.of(x.target)).orElse(MaybeMultihash.empty()))))
+                            .collect(Collectors.toList());
+                    return Futures.reduceAll(withValues, version.props,
+                                    (wd, f) -> f.thenCompose(p -> p.right.isPresent() ?
+                                            tree.remove(wd.get(), owner, writer, p.left, p.right, tid).thenApply(Optional::of) :
+                                            Futures.of(wd)),
+                                    (a, b) -> b)
+                            .thenCompose(wd -> wd.equals(version.props) ?
+                                    Futures.of(current) :
+                                    committer.commit(owner, writer, wd, version, tid))
+                            .thenApply(committed -> current.withVersion(writer.publicKeyHash, committed.get(writer)));
+                });
     }
 
     public CompletableFuture<Boolean> chunkIsPresent(Snapshot current,
