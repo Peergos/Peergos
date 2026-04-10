@@ -223,27 +223,28 @@ public class JdbcUsageStore implements UsageStore {
     @Override
     public UserUsage getUsage(String username) {
         try (Connection conn = getConnection();
-             PreparedStatement search = conn.prepareStatement("SELECT pu.writer_id, pu.pending_bytes, uu.total_bytes, uu.errored " +
-                     "FROM userusage uu, pendingusage pu, users u " +
-                     "WHERE uu.user_id = pu.user_id AND uu.user_id = u.id AND u.name = ?;");
-             PreparedStatement writerSearch = conn.prepareStatement("SELECT key_hash FROM writers WHERE id = ?;")) {
-            search.setString(1, username);
-            ResultSet resultSet = search.executeQuery();
+             PreparedStatement totalSearch = conn.prepareStatement(
+                     "SELECT uu.total_bytes, uu.errored FROM userusage uu " +
+                     "INNER JOIN users u ON uu.user_id = u.id WHERE u.name = ?;");
+             PreparedStatement pendingSearch = conn.prepareStatement(
+                     "SELECT w.key_hash, pu.pending_bytes FROM pendingusage pu " +
+                     "INNER JOIN writers w ON pu.writer_id = w.id " +
+                     "INNER JOIN users u ON pu.user_id = u.id WHERE u.name = ?;")) {
+            totalSearch.setString(1, username);
+            ResultSet totalRes = totalSearch.executeQuery();
+            if (! totalRes.next())
+                return new UserUsage(0, false, new HashMap<>());
+            long totalBytes = totalRes.getLong(1);
+            boolean errored = totalRes.getBoolean(2);
+
+            pendingSearch.setString(1, username);
+            ResultSet resultSet = pendingSearch.executeQuery();
             Map<PublicKeyHash, Long> pending = new HashMap<>();
-            long totalBytes = -1;
-            boolean errored = false;
             while (resultSet.next()) {
-                writerSearch.setInt(1, resultSet.getInt(1));
-                ResultSet writerRes = writerSearch.executeQuery();
-                writerRes.next();
-                PublicKeyHash writer = PublicKeyHash.decode(writerRes.getBytes(1));
+                PublicKeyHash writer = PublicKeyHash.decode(resultSet.getBytes(1));
                 long pendingBytes = resultSet.getLong(2);
                 if (pendingBytes > 0)
                     pending.put(writer, pendingBytes);
-                if (totalBytes == -1) {
-                    totalBytes = resultSet.getLong(3);
-                    errored = resultSet.getBoolean(4);
-                }
             }
             return new UserUsage(totalBytes, errored, pending);
         } catch (SQLException sqe) {

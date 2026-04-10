@@ -275,31 +275,34 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
                                                    Hasher hasher) {
         if (existingRoot.equals(newRoot))
             return;
-        WriterUsage current = state.getUsage(writer);
-        if (current == null)
-            throw new IllegalStateException("Unknown writer key hash: " + writer);
         Cid ourId = dht.id().join();
         List<Multihash> us = List.of(ourId.bareMultihash());
-        if (! newRoot.isPresent()) {
-            LOG.info("Removing usage for (" + owner + ", " + writer + ") from " + current.directRetainedStorage());
-            state.confirmUsage(current.owner, writer, -current.directRetainedStorage(), state.getUsage(current.owner).isErrored());
-            state.updateWriterUsage(writer, MaybeMultihash.empty(), Collections.emptySet(), Collections.emptySet(), 0);
-            if (existingRoot.isPresent()) {
-                try {
-                    // subtract data size from orphaned child keys (this assumes the keys form a tree without dupes)
-                    Set<PublicKeyHash> updatedOwned =
-                            DeletableContentAddressedStorage.getDirectOwnedKeys(owner, writer, existingRoot,
-                                    (h, s) -> DeletableContentAddressedStorage.getWriterData(us, owner, h, s, false, ourId, hasher, dht),  dht, hasher).join();
-                    processRemovedOwnedKeys(state, owner, updatedOwned, mutable, quotaAdmin, dht, hasher);
-                } catch (Exception e) {
-                    LOG.log(Level.WARNING, e.getMessage(), e);
+        synchronized (getWriterLock(writer)) {
+            // Re-read inside the lock to get a consistent view; another thread may have already processed this change
+            WriterUsage current = state.getUsage(writer);
+            if (current == null)
+                throw new IllegalStateException("Unknown writer key hash: " + writer);
+            if (current.target().equals(newRoot))
+                return; // already processed by another thread
+            if (! newRoot.isPresent()) {
+                LOG.info("Removing usage for (" + owner + ", " + writer + ") from " + current.directRetainedStorage());
+                state.confirmUsage(current.owner, writer, -current.directRetainedStorage(), state.getUsage(current.owner).isErrored());
+                state.updateWriterUsage(writer, MaybeMultihash.empty(), Collections.emptySet(), Collections.emptySet(), 0);
+                if (existingRoot.isPresent()) {
+                    try {
+                        // subtract data size from orphaned child keys (this assumes the keys form a tree without dupes)
+                        Set<PublicKeyHash> updatedOwned =
+                                DeletableContentAddressedStorage.getDirectOwnedKeys(owner, writer, existingRoot,
+                                        (h, s) -> DeletableContentAddressedStorage.getWriterData(us, owner, h, s, false, ourId, hasher, dht),  dht, hasher).join();
+                        processRemovedOwnedKeys(state, owner, updatedOwned, mutable, quotaAdmin, dht, hasher);
+                    } catch (Exception e) {
+                        LOG.log(Level.WARNING, e.getMessage(), e);
+                    }
                 }
+                return;
             }
-            return;
-        }
 
-        try {
-            synchronized (current) {
+            try {
                 long t0 = System.nanoTime();
                 long changeInStorage = dht.getChangeInContainedSize(owner, current.target().toOptional().map(c -> (Cid) c), (Cid) newRoot.get()).get();
                 long t1 = System.nanoTime();
@@ -333,9 +336,9 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
                     processMutablePointerEvent(state, owner, added, currentAdded.target(), updatedRoot, mutable, quotaAdmin, dht, hasher);
                 }
                 LOG.info("Updated usage for (" + owner + ", " + writer + ") from " + current.directRetainedStorage() + ", adding " + changeInStorage);
+            } catch (Exception e) {
+                Exceptions.getRootCause(e).printStackTrace();
             }
-        } catch (Exception e) {
-            Exceptions.getRootCause(e).printStackTrace();
         }
     }
 
@@ -387,6 +390,11 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
 
     private static final LRUCache<Long, Map<String, Long>> quotas = new LRUCache<>(2);
     private static final LRUCache<Long, Map<String, UserUsage>> usageCache = new LRUCache<>(2);
+    private static final ConcurrentHashMap<PublicKeyHash, Object> writerLocks = new ConcurrentHashMap<>();
+
+    private static Object getWriterLock(PublicKeyHash writer) {
+        return writerLocks.computeIfAbsent(writer, k -> new Object());
+    }
 
     private static long getQuota(String owner, QuotaAdmin quotaAdmin) {
         long timeKey = System.currentTimeMillis() / 3_600_000;
