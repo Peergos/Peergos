@@ -828,26 +828,11 @@ public class NetworkAccess {
         if (version.props.isEmpty() || version.props.get().tree.isEmpty())
             return Futures.of(current);
         Cid root = (Cid) version.props.get().tree.get();
-        List<ChunkMirrorCap> caps = mapKeys.stream()
-                .map(k -> new ChunkMirrorCap(k, Optional.empty()))
-                .collect(Collectors.toList());
-        List<List<ChunkMirrorCap>> grouped = new ArrayList<>();
-        int groupSize = ContentAddressedStorage.MAX_CHAMP_GETS;
-        for (int i = 0; i < caps.size(); i += groupSize)
-            grouped.add(caps.subList(i, Math.min(i + groupSize, caps.size())));
-        return getLastCommittedRoot(writer.publicKeyHash, version)
-                .thenCompose(committedRoot -> Futures.combineAllInOrder(grouped.stream()
-                        .map(group -> Futures.asyncExceptionally(
-                                () -> dhtClient.getChampLookup(owner, root, group, committedRoot),
-                                t -> dhtClient.getChampLookup(owner, root, group, committedRoot, hasher)))
-                        .collect(Collectors.toList())))
-                .thenApply(all -> all.stream().flatMap(List::stream).collect(Collectors.toList()))
-                .thenCompose(blocks -> LocalRamStorage.build(hasher, blocks))
-                .thenCompose(bstore -> ChampWrapper.create(owner, root, Optional.empty(),
-                        x -> Futures.of(x.data), bstore, hasher, c -> (CborObject.CborMerkleLink) c))
-                .thenCompose(localChamp -> {
+        return ChampWrapper.create(owner, root, Optional.empty(),
+                x -> Futures.of(x.data), dhtClient, hasher, c -> (CborObject.CborMerkleLink) c)
+                .thenCompose(champ -> {
                     List<CompletableFuture<Pair<byte[], MaybeMultihash>>> withValues = mapKeys.stream()
-                            .map(mapKey -> localChamp.get(mapKey)
+                            .map(mapKey -> champ.get(mapKey)
                                     .thenApply(opt -> new Pair<>(mapKey,
                                             opt.map(x -> MaybeMultihash.of(x.target)).orElse(MaybeMultihash.empty()))))
                             .collect(Collectors.toList());
