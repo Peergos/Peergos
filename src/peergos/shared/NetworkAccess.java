@@ -820,20 +820,65 @@ public class NetworkAccess {
                                                                 Committer committer,
                                                                 PublicKeyHash owner,
                                                                 SigningPrivateKeyAndPublicHash writer,
-                                                                List<byte[]> mapKeys,
+                                                                List<Pair<byte[], Optional<Bat>>> mapKeysAndBats,
                                                                 TransactionId tid) {
-        if (mapKeys.isEmpty())
+        if (mapKeysAndBats.isEmpty())
             return Futures.of(current);
         CommittedWriterData version = current.get(writer);
         if (version.props.isEmpty() || version.props.get().tree.isEmpty())
             return Futures.of(current);
         Cid root = (Cid) version.props.get().tree.get();
-        return ChampWrapper.create(owner, root, Optional.empty(),
-                x -> Futures.of(x.data), dhtClient, hasher, c -> (CborObject.CborMerkleLink) c)
-                .thenCompose(champ -> {
-                    List<CompletableFuture<Pair<byte[], MaybeMultihash>>> withValues = mapKeys.stream()
-                            .map(mapKey -> champ.get(mapKey)
-                                    .thenApply(opt -> new Pair<>(mapKey,
+        return Futures.combineAllInOrder(mapKeysAndBats.stream()
+                        .map(p -> p.right.map(b -> b.calculateId(hasher)
+                                        .thenApply(id -> Optional.of(new BatWithId(b, id.id))))
+                                .orElse(Futures.of(Optional.<BatWithId>empty()))
+                                .thenApply(bid -> new ChunkMirrorCap(p.left, bid)))
+                        .collect(Collectors.toList()))
+                .thenCompose(caps -> {
+                    List<List<ChunkMirrorCap>> grouped = new ArrayList<>();
+                    for (int i = 0; i < caps.size(); i += ContentAddressedStorage.MAX_CHAMP_GETS)
+                        grouped.add(caps.subList(i, Math.min(i + ContentAddressedStorage.MAX_CHAMP_GETS, caps.size())));
+                    // Resolve the committed CHAMP root so the batch server call uses a root it knows about.
+                    // BufferedStorage.getChampLookup bypasses per-cap processing when root is not in the buffer.
+                    return getLastCommittedRoot(writer.publicKeyHash, version)
+                            .thenCompose(committedWdHash -> committedWdHash.isPresent() ?
+                                    dhtClient.get(owner, committedWdHash.get(), Optional.empty())
+                                            .thenApply(opt -> opt.map(WriterData::fromCbor)
+                                                    .flatMap(wd -> wd.tree.map(t -> (Cid) t))
+                                                    .orElse(root)) :
+                                    Futures.of(root))
+                            .thenCompose(serverRoot -> Futures.combineAllInOrder(grouped.stream()
+                                    .map(group -> Futures.asyncExceptionally(
+                                            () -> dhtClient.getChampLookup(owner, serverRoot, group, Optional.empty()),
+                                            t -> dhtClient.getChampLookup(owner, serverRoot, group, Optional.empty(), hasher)))
+                                    .collect(Collectors.toList())))
+                            .thenApply(all -> all.stream().flatMap(List::stream).collect(Collectors.toList()))
+                            .thenCompose(blocks -> LocalRamStorage.build(hasher, blocks))
+                            .thenCompose(bstore -> {
+                                // Combined storage: pre-fetched committed blocks (fast) with dhtClient fallback
+                                // for any buffered nodes (new CHAMP nodes from previous deletions in this session).
+                                ContentAddressedStorage combined = new DelegatingStorage(dhtClient) {
+                                    @Override
+                                    public CompletableFuture<Optional<byte[]>> getRaw(PublicKeyHash o, Cid hash, Optional<BatWithId> bat) {
+                                        return bstore.getRaw(o, hash, bat)
+                                                .thenCompose(opt -> opt.isPresent() ? Futures.of(opt) : dhtClient.getRaw(o, hash, bat));
+                                    }
+                                    @Override
+                                    public ContentAddressedStorage directToOrigin() {
+                                        return dhtClient.directToOrigin();
+                                    }
+                                    @Override
+                                    public CompletableFuture<Optional<CborObject>> get(PublicKeyHash o, Cid hash, Optional<BatWithId> bat) {
+                                        return getRaw(o, hash, bat).thenApply(opt -> opt.map(CborObject::fromByteArray));
+                                    }
+                                };
+                                return ChampWrapper.create(owner, root, Optional.empty(),
+                                        x -> Futures.of(x.data), combined, hasher, c -> (CborObject.CborMerkleLink) c);
+                            })
+                            .thenCompose(champ -> {
+                    List<CompletableFuture<Pair<byte[], MaybeMultihash>>> withValues = mapKeysAndBats.stream()
+                            .map(p -> champ.get(p.left)
+                                    .thenApply(opt -> new Pair<>(p.left,
                                             opt.map(x -> MaybeMultihash.of(x.target)).orElse(MaybeMultihash.empty()))))
                             .collect(Collectors.toList());
                     return Futures.reduceAll(withValues, version.props,
@@ -846,15 +891,7 @@ public class NetworkAccess {
                                     committer.commit(owner, writer, wd, version, tid))
                             .thenApply(committed -> current.withVersion(writer.publicKeyHash, committed.get(writer)));
                 });
-    }
-
-    public CompletableFuture<Boolean> chunkIsPresent(Snapshot current,
-                                                     PublicKeyHash owner,
-                                                     PublicKeyHash writer,
-                                                     byte[] mapKey) {
-        CommittedWriterData version = current.get(writer);
-        return tree.get(version.props.get(), owner, writer, mapKey)
-                .thenApply(valueHash -> valueHash.isPresent());
+        });
     }
 
     public CompletableFuture<List<Boolean>> chunksArePresent(Snapshot current,

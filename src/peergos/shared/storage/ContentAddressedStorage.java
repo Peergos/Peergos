@@ -194,7 +194,10 @@ public interface ContentAddressedStorage {
                                                            List<ChunkMirrorCap> caps,
                                                            Optional<Cid> committedRoot,
                                                            Hasher hasher) {
-        CachingStorage cache = new CachingStorage(this, 100, 1024 * 1024);
+        // Cache must hold all path nodes for every cap: depth * caps + value blocks.
+        // With BIT_WIDTH=3 (branching=8) and up to MAX_CHAMP_GETS caps, depth can reach ~10,
+        // so caps.size() * 16 gives a safe upper bound with room to spare.
+        CachingStorage cache = new CachingStorage(this, Math.max(100, caps.size() * 16), 1024 * 1024);
         return Futures.combineAll(caps.stream().map(cap -> Futures.asyncExceptionally(
                                 () -> ChampWrapper.create(owner, root, Optional.empty(), x -> Futures.of(x.data), cache, hasher, c -> (CborObject.CborMerkleLink) c),
                                 t -> getChampRoot(committedRoot, root, owner, cache)
