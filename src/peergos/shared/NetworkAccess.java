@@ -505,30 +505,47 @@ public class NetworkAccess {
                                                 Futures.asyncExceptionally(
                                                         () -> dhtClient.getChampLookup(owner, (Cid) v.get(writer).props.get().tree.get(), group, committedRoot),
                                                         t -> dhtClient.getChampLookup(owner, (Cid) v.get(writer).props.get().tree.get(), group, committedRoot, hasher)
-                                                )).collect(Collectors.toList())))
-                                        .thenApply(all -> all.stream().flatMap(List::stream).collect(Collectors.toList()))
-                                        .thenCompose(blocks -> LocalRamStorage.build(hasher, blocks))
-                                        .thenCompose(fromBlocks -> {
-                                            List<CompletableFuture<Either<RetrievedCapability, AbsoluteCapability>>> all = remaining.stream()
-                                                    .map(link -> current.withWriter(link.owner, link.writer, this)
-                                                            .thenCompose(version -> getMetadata(version.get(link.writer), link, Optional.empty(), fromBlocks, hasher, cache)
-                                                                    .thenApply(copt -> copt.isPresent() ?
-                                                                            Either.<RetrievedCapability, AbsoluteCapability>a(new RetrievedCapability(link, copt.get())) :
-                                                                            Either.<RetrievedCapability, AbsoluteCapability>b(link))))
-                                                    .collect(Collectors.toList());
+                                                )).collect(Collectors.toList()))
+                                                .thenApply(all -> all.stream().flatMap(List::stream).collect(Collectors.toList()))
+                                                .thenCompose(blocks -> LocalRamStorage.build(hasher, blocks))
+                                                .thenCompose(fromBlocks -> {
+                                                    // combined: pre-fetched committed blocks first (fast path),
+                                                    // then dhtClient (BufferedStorage) for any buffered nodes.
+                                                    ContentAddressedStorage combined = new DelegatingStorage(dhtClient) {
+                                                        @Override
+                                                        public CompletableFuture<Optional<byte[]>> getRaw(PublicKeyHash o, Cid hash, Optional<BatWithId> bat) {
+                                                            return fromBlocks.getRaw(o, hash, bat)
+                                                                    .thenCompose(opt -> opt.isPresent() ? Futures.of(opt) : dhtClient.getRaw(o, hash, bat));
+                                                        }
+                                                        @Override
+                                                        public ContentAddressedStorage directToOrigin() {
+                                                            return dhtClient.directToOrigin();
+                                                        }
+                                                        @Override
+                                                        public CompletableFuture<Optional<CborObject>> get(PublicKeyHash o, Cid hash, Optional<BatWithId> bat) {
+                                                            return getRaw(o, hash, bat).thenApply(opt -> opt.map(CborObject::fromByteArray));
+                                                        }
+                                                    };
+                                                    List<CompletableFuture<Either<RetrievedCapability, AbsoluteCapability>>> all = remaining.stream()
+                                                            .map(link -> current.withWriter(link.owner, link.writer, this)
+                                                                    .thenCompose(version -> getMetadata(version.get(link.writer), link, committedRoot, combined, hasher, cache)
+                                                                            .thenApply(copt -> copt.isPresent() ?
+                                                                                    Either.<RetrievedCapability, AbsoluteCapability>a(new RetrievedCapability(link, copt.get())) :
+                                                                                    Either.<RetrievedCapability, AbsoluteCapability>b(link))))
+                                                            .collect(Collectors.toList());
 
-                                            return Futures.combineAll(all)
-                                                    .thenApply(res -> new Pair<>(
-                                                            Stream.concat(res.stream()
-                                                                                    .filter(Either::isA)
-                                                                                    .map(e -> e.a()),
-                                                                            fromCache.stream())
-                                                                    .collect(Collectors.toList()),
-                                                            res.stream()
-                                                                    .filter(Either::isB)
-                                                                    .map(e -> e.b())
-                                                                    .collect(Collectors.toList())));
-                                        });
+                                                    return Futures.combineAll(all)
+                                                            .thenApply(res -> new Pair<>(
+                                                                    Stream.concat(res.stream()
+                                                                                            .filter(Either::isA)
+                                                                                            .map(e -> e.a()),
+                                                                                    fromCache.stream())
+                                                                            .collect(Collectors.toList()),
+                                                                    res.stream()
+                                                                            .filter(Either::isB)
+                                                                            .map(e -> e.b())
+                                                                            .collect(Collectors.toList())));
+                                                }));
                             });
                 });
     }
@@ -684,26 +701,43 @@ public class NetworkAccess {
                             () -> dhtClient.getChampLookup(cap.owner, (Cid) root, Arrays.asList(new ChunkMirrorCap(cap.getMapKey(), bat)), committedRoot),
                             t -> dhtClient.getChampLookup(cap.owner, (Cid) root, Arrays.asList(new ChunkMirrorCap(cap.getMapKey(), bat)), committedRoot, hasher)
                     ).thenCompose(blocks -> LocalRamStorage.build(hasher, blocks))
-                            .thenCompose(bstore -> Futures.asyncExceptionally(
-                                            () -> ChampWrapper.create(cap.owner, (Cid) root, Optional.empty(), x -> Futures.of(x.data), bstore, hasher, c -> (CborObject.CborMerkleLink) c),
-                                            t -> dhtClient.getChampRoot(committedRoot, (Cid) root, cap.owner, dhtClient)
-                                                    .thenCompose(champRoot -> ChampWrapper.create(cap.owner, champRoot, Optional.empty(), x -> Futures.of(x.data), bstore, hasher, c -> (CborObject.CborMerkleLink) c))
-                                    )
-                                    .thenCompose(tree -> tree.get(cap.getMapKey()))
-                                    .thenApply(c -> c.map(x -> x.target))
-                                    .thenCompose(btreeValue -> {
-                                        if (btreeValue.isPresent()) {
-                                            return bstore.get(cap.owner, (Cid) btreeValue.get(), bat)
-                                                    .thenApply(value -> value.map(cbor -> CryptreeNode.fromCbor(cbor, cap.rBaseKey, btreeValue.get())))
-                                                    .thenApply(res -> {
-                                                        if (res.isPresent())
-                                                            cache.put(cacheKey, res);
-                                                        return res;
-                                                    });
-                                        }
-                                        cache.put(cacheKey, Optional.empty());
-                                        return CompletableFuture.completedFuture(Optional.empty());
-                                    }));
+                            .thenCompose(bstore -> {
+                                // Use bstore (pre-fetched blocks, fast) with dhtClient as fallback for
+                                // any buffered intermediate CHAMP nodes not returned by getChampLookup.
+                                ContentAddressedStorage champStorage = new DelegatingStorage(dhtClient) {
+                                    @Override
+                                    public CompletableFuture<Optional<byte[]>> getRaw(PublicKeyHash o, Cid hash, Optional<BatWithId> b) {
+                                        return bstore.getRaw(o, hash, b)
+                                                .thenCompose(opt -> opt.isPresent() ? Futures.of(opt) : dhtClient.getRaw(o, hash, b));
+                                    }
+                                    @Override
+                                    public ContentAddressedStorage directToOrigin() { return dhtClient.directToOrigin(); }
+                                    @Override
+                                    public CompletableFuture<Optional<CborObject>> get(PublicKeyHash o, Cid hash, Optional<BatWithId> b) {
+                                        return getRaw(o, hash, b).thenApply(opt -> opt.map(CborObject::fromByteArray));
+                                    }
+                                };
+                                return Futures.asyncExceptionally(
+                                        () -> ChampWrapper.create(cap.owner, (Cid) root, Optional.empty(), x -> Futures.of(x.data), champStorage, hasher, c -> (CborObject.CborMerkleLink) c),
+                                        t -> dhtClient.getChampRoot(committedRoot, (Cid) root, cap.owner, dhtClient)
+                                                .thenCompose(champRoot -> ChampWrapper.create(cap.owner, champRoot, Optional.empty(), x -> Futures.of(x.data), champStorage, hasher, c -> (CborObject.CborMerkleLink) c))
+                                )
+                                        .thenCompose(tree -> tree.get(cap.getMapKey()))
+                                        .thenApply(c -> c.map(x -> x.target))
+                                        .thenCompose(btreeValue -> {
+                                            if (btreeValue.isPresent()) {
+                                                return champStorage.get(cap.owner, (Cid) btreeValue.get(), bat)
+                                                        .thenApply(value -> value.map(cbor -> CryptreeNode.fromCbor(cbor, cap.rBaseKey, btreeValue.get())))
+                                                        .thenApply(res -> {
+                                                            if (res.isPresent())
+                                                                cache.put(cacheKey, res);
+                                                            return res;
+                                                        });
+                                            }
+                                            cache.put(cacheKey, Optional.empty());
+                                            return CompletableFuture.completedFuture(Optional.empty());
+                                        });
+                            });
                 });
     }
 
@@ -838,19 +872,13 @@ public class NetworkAccess {
                     List<List<ChunkMirrorCap>> grouped = new ArrayList<>();
                     for (int i = 0; i < caps.size(); i += ContentAddressedStorage.MAX_CHAMP_GETS)
                         grouped.add(caps.subList(i, Math.min(i + ContentAddressedStorage.MAX_CHAMP_GETS, caps.size())));
-                    // Resolve the committed CHAMP root so the batch server call uses a root it knows about.
-                    // BufferedStorage.getChampLookup bypasses per-cap processing when root is not in the buffer.
+                    // Pass the committed WriterData CID as committedRoot so BufferedStorage can resolve
+                    // the committed CHAMP root when the current root is still in the write buffer.
                     return getLastCommittedRoot(writer.publicKeyHash, version)
-                            .thenCompose(committedWdHash -> committedWdHash.isPresent() ?
-                                    dhtClient.get(owner, committedWdHash.get(), Optional.empty())
-                                            .thenApply(opt -> opt.map(WriterData::fromCbor)
-                                                    .flatMap(wd -> wd.tree.map(t -> (Cid) t))
-                                                    .orElse(root)) :
-                                    Futures.of(root))
-                            .thenCompose(serverRoot -> Futures.combineAllInOrder(grouped.stream()
+                            .thenCompose(committedWdHash -> Futures.combineAllInOrder(grouped.stream()
                                     .map(group -> Futures.asyncExceptionally(
-                                            () -> dhtClient.getChampLookup(owner, serverRoot, group, Optional.empty()),
-                                            t -> dhtClient.getChampLookup(owner, serverRoot, group, Optional.empty(), hasher)))
+                                            () -> dhtClient.getChampLookup(owner, root, group, committedWdHash),
+                                            t -> dhtClient.getChampLookup(owner, root, group, committedWdHash, hasher)))
                                     .collect(Collectors.toList())))
                             .thenApply(all -> all.stream().flatMap(List::stream).collect(Collectors.toList()))
                             .thenCompose(blocks -> LocalRamStorage.build(hasher, blocks))
@@ -913,8 +941,25 @@ public class NetworkAccess {
                                 () -> dhtClient.getChampLookup(owner, root, caps, committedRoot),
                                 t -> dhtClient.getChampLookup(owner, root, caps, committedRoot, hasher)))
                         .thenCompose(blocks -> LocalRamStorage.build(hasher, blocks))
-                        .thenCompose(bstore -> ChampWrapper.create(owner, root, Optional.empty(),
-                                x -> Futures.of(x.data), bstore, hasher, c -> (CborObject.CborMerkleLink) c))
+                        .thenCompose(bstore -> {
+                            ContentAddressedStorage combined = new DelegatingStorage(dhtClient) {
+                                @Override
+                                public CompletableFuture<Optional<byte[]>> getRaw(PublicKeyHash o, Cid hash, Optional<BatWithId> bat) {
+                                    return bstore.getRaw(o, hash, bat)
+                                            .thenCompose(opt -> opt.isPresent() ? Futures.of(opt) : dhtClient.getRaw(o, hash, bat));
+                                }
+                                @Override
+                                public ContentAddressedStorage directToOrigin() {
+                                    return dhtClient.directToOrigin();
+                                }
+                                @Override
+                                public CompletableFuture<Optional<CborObject>> get(PublicKeyHash o, Cid hash, Optional<BatWithId> bat) {
+                                    return getRaw(o, hash, bat).thenApply(opt -> opt.map(CborObject::fromByteArray));
+                                }
+                            };
+                            return ChampWrapper.create(owner, root, Optional.empty(),
+                                    x -> Futures.of(x.data), combined, hasher, c -> (CborObject.CborMerkleLink) c);
+                        })
                         .thenCompose(champ -> Futures.combineAllInOrder(mapKeysAndBats.stream()
                                 .map(p -> champ.get(p.left).thenApply(Optional::isPresent))
                                 .collect(Collectors.toList()))));

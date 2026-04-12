@@ -201,7 +201,7 @@ public interface ContentAddressedStorage {
         return Futures.combineAll(caps.stream().map(cap -> Futures.asyncExceptionally(
                                 () -> ChampWrapper.create(owner, root, Optional.empty(), x -> Futures.of(x.data), cache, hasher, c -> (CborObject.CborMerkleLink) c),
                                 t -> getChampRoot(committedRoot, root, owner, cache)
-                                        .thenCompose(champRoot -> ChampWrapper.create(owner, root, Optional.empty(), x -> Futures.of(x.data), cache, hasher, c -> (CborObject.CborMerkleLink) c))
+                                        .thenCompose(champRoot -> ChampWrapper.create(owner, champRoot, Optional.empty(), x -> Futures.of(x.data), cache, hasher, c -> (CborObject.CborMerkleLink) c))
                         )
                         .thenCompose(tree -> tree.get(cap.mapKey))
                         .thenApply(c -> c.map(x -> x.target).map(MaybeMultihash::of).orElse(MaybeMultihash.empty()))

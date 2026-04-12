@@ -102,6 +102,15 @@ public class BufferedStorage extends DelegatingStorage {
                     ).thenApply(remoteBlocks -> {
                         List<byte[]> all = new ArrayList<>(localBlocks);
                         all.addAll(remoteBlocks);
+                        // The remote call used committedChampRoot (not root), so the buffered
+                        // root block itself is absent from remoteBlocks. Include it so that any
+                        // caller building a LocalRamStorage from these blocks can serve
+                        // ChampWrapper.create(root, ..., fromBlocks) without "Champ root not present".
+                        synchronized (storage) {
+                            OpLog.BlockWrite rootWrite = storage.get(root);
+                            if (rootWrite != null)
+                                all.add(rootWrite.block);
+                        }
                         return all;
                     });
                 });
