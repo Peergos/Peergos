@@ -70,22 +70,110 @@ public class BufferedStorage extends DelegatingStorage {
                                                           Cid root,
                                                           List<ChunkMirrorCap> caps,
                                                           Optional<Cid> committedRoot) {
-        if (isEmpty())
+        if (isEmpty() || ! hasBufferedBlock(root))
             return Futures.asyncExceptionally(
                     () -> target.getChampLookup(owner, root, caps, committedRoot),
                     t -> getChampRoot(committedRoot, root, owner, this)
                             .thenCompose(updatedRoot -> target.getChampLookup(owner, updatedRoot, caps, Optional.empty()))
                     );
-        // If we are in a write transaction try to perform a local champ lookup from the buffer,
-        // falling back to a direct champ get
-        //TODO collect all missing lookups into a single remote bulk get
-        return Futures.combineAllInOrder(caps.stream().map(cap -> Futures.asyncExceptionally(
-                () -> getChampLookup(owner, root, cap.mapKey, cap.bat, committedRoot, hasher),
-                t -> target.getChampLookup(owner, root, Arrays.asList(cap), committedRoot)
-        )).collect(Collectors.toList()))
-                .thenApply(res ->res.stream()
-                .flatMap(Collection::stream)
-                .collect(Collectors.toList()));
+        // If we are in a write transaction, first try local traversal for all caps using only
+        // buffered blocks (no HTTP). Caps that can't be resolved locally are then batched into
+        // a single remote call instead of making one HTTP call per cap.
+        List<CompletableFuture<Optional<List<byte[]>>>> localAttempts = caps.stream()
+                .map(cap -> tryLocalChampLookup(owner, root, cap.mapKey, cap.bat))
+                .collect(Collectors.toList());
+        return Futures.combineAllInOrder(localAttempts)
+                .thenCompose(localResults -> {
+                    List<byte[]> localBlocks = new ArrayList<>();
+                    List<ChunkMirrorCap> remoteCaps = new ArrayList<>();
+                    for (int i = 0; i < localResults.size(); i++) {
+                        if (localResults.get(i).isPresent())
+                            localBlocks.addAll(localResults.get(i).get());
+                        else
+                            remoteCaps.add(caps.get(i));
+                    }
+                    if (remoteCaps.isEmpty())
+                        return Futures.of(localBlocks);
+                    // Single batch HTTP call for all caps that couldn't be resolved from the buffer
+                    return Futures.asyncExceptionally(
+                            () -> getChampRoot(committedRoot, root, owner, this)
+                                    .thenCompose(champRoot -> target.getChampLookup(owner, champRoot, remoteCaps, Optional.empty())),
+                            t -> target.getChampLookup(owner, root, remoteCaps, committedRoot)
+                    ).thenApply(remoteBlocks -> {
+                        List<byte[]> all = new ArrayList<>(localBlocks);
+                        all.addAll(remoteBlocks);
+                        // The remote call used committedChampRoot (not root), so the buffered
+                        // root block itself is absent from remoteBlocks. Include it so that any
+                        // caller building a LocalRamStorage from these blocks can serve
+                        // ChampWrapper.create(root, ..., fromBlocks) without "Champ root not present".
+                        synchronized (storage) {
+                            OpLog.BlockWrite rootWrite = storage.get(root);
+                            if (rootWrite != null)
+                                all.add(rootWrite.block);
+                        }
+                        return all;
+                    });
+                });
+    }
+
+    /** Try a CHAMP lookup for a single key using only buffered blocks — no HTTP fallback.
+     *  Returns Optional.empty() if any required block is absent from the buffer. */
+    private CompletableFuture<Optional<List<byte[]>>> tryLocalChampLookup(PublicKeyHash owner, Cid root,
+                                                                           byte[] champKey, Optional<BatWithId> bat) {
+        BlockCache bufferOnlyCache = new BlockCache() {
+            final Map<Cid, byte[]> localCache = new HashMap<>();
+
+            @Override
+            public CompletableFuture<Boolean> put(Cid hash, byte[] data) {
+                localCache.put(hash, data);
+                return Futures.of(true);
+            }
+
+            @Override
+            public CompletableFuture<Optional<byte[]>> get(Cid hash) {
+                synchronized (storage) {
+                    return Futures.of(Optional.ofNullable(storage.get(hash))
+                            .map(b -> b.block)
+                            .or(() -> Optional.ofNullable(localCache.get(hash))));
+                }
+            }
+
+            @Override
+            public boolean hasBlock(Cid hash) {
+                synchronized (storage) {
+                    return storage.containsKey(hash) || localCache.containsKey(hash);
+                }
+            }
+
+            @Override
+            public CompletableFuture<Boolean> clear() {
+                throw new IllegalStateException("Unimplemented!");
+            }
+
+            @Override
+            public long getMaxSize() { return 0; }
+
+            @Override
+            public void setMaxSize(long maxSizeBytes) {}
+        };
+        LocalOnlyStorage pureLocal = new LocalOnlyStorage(bufferOnlyCache,
+                () -> Futures.errored(new RuntimeException("block not in buffer")), hasher);
+        CachingStorage cache = new CachingStorage(pureLocal, 100, 1024 * 1024);
+        return Futures.asyncExceptionally(
+                () -> Futures.asyncExceptionally(
+                        () -> ChampWrapper.create(owner, root, Optional.empty(), x -> Futures.of(x.data), cache, hasher, c -> (CborObject.CborMerkleLink) c),
+                        t -> getChampRoot(Optional.empty(), root, owner, pureLocal)
+                                .thenCompose(champRoot -> ChampWrapper.create(owner, champRoot, Optional.empty(), x -> Futures.of(x.data), cache, hasher, c -> (CborObject.CborMerkleLink) c))
+                )
+                .thenCompose(tree -> tree.get(champKey))
+                .thenApply(c -> c.map(x -> x.target).map(MaybeMultihash::of).orElse(MaybeMultihash.empty()))
+                .thenCompose(btreeValue -> {
+                    if (btreeValue.isPresent())
+                        return cache.get(owner, (Cid) btreeValue.get(), bat);
+                    return Futures.of(Optional.empty());
+                })
+                .thenApply(x -> Optional.of(new ArrayList<>(cache.getCached()))),
+                t -> Futures.of(Optional.empty()));
     }
 
     public CompletableFuture<List<byte[]>> getChampLookup(PublicKeyHash owner,
