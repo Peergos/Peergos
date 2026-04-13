@@ -14,6 +14,7 @@ import java.io.*;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.function.*;
+import java.util.stream.*;
 
 public class ChampWrapper<V extends Cborable> implements ImmutableTree<V>
 {
@@ -127,6 +128,30 @@ public class ChampWrapper<V extends Cborable> implements ImmutableTree<V>
         return keyHasher.apply(key)
                 .thenCompose(keyHash -> root.left.remove(owner, writer, key, keyHash, 0, existing,
                         BIT_WIDTH, MAX_HASH_COLLISIONS_PER_LEVEL, mirrorBat, tid, storage, writeHasher, root.right))
+                .thenCompose(newRoot -> commit(writer, newRoot));
+    }
+
+    public CompletableFuture<Multihash> removeAll(
+            PublicKeyHash owner,
+            SigningPrivateKeyAndPublicHash writer,
+            List<Pair<byte[], Optional<V>>> keysAndExpected,
+            Optional<BatId> mirrorBat,
+            TransactionId tid) {
+        if (keysAndExpected.isEmpty())
+            return CompletableFuture.completedFuture(root.right);
+        List<CompletableFuture<Pair<ByteArrayWrapper, byte[]>>> hashFutures = keysAndExpected.stream()
+                .map(p -> {
+                    ByteArrayWrapper key = new ByteArrayWrapper(p.left);
+                    return keyHasher.apply(key).thenApply(h -> new Pair<>(key, h));
+                })
+                .collect(Collectors.toList());
+        Map<ByteArrayWrapper, Optional<V>> expectedMap = new HashMap<>();
+        for (Pair<byte[], Optional<V>> p : keysAndExpected)
+            expectedMap.put(new ByteArrayWrapper(p.left), p.right);
+        return Futures.combineAllInOrder(hashFutures)
+                .thenCompose(keysAndHashes ->
+                    root.left.removeAll(owner, writer, keysAndHashes, expectedMap, 0, BIT_WIDTH,
+                            MAX_HASH_COLLISIONS_PER_LEVEL, mirrorBat, tid, storage, writeHasher, root.right))
                 .thenCompose(newRoot -> commit(writer, newRoot));
     }
 

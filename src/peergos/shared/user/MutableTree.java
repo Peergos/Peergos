@@ -7,7 +7,9 @@ import peergos.shared.MaybeMultihash;
 import peergos.shared.storage.*;
 
 import java.io.*;
+import java.util.List;
 import java.util.concurrent.*;
+import peergos.shared.util.Pair;
 
 public interface MutableTree {
 
@@ -54,5 +56,15 @@ public interface MutableTree {
                                          byte[] mapKey,
                                          MaybeMultihash existing,
                                          TransactionId tid);
+
+    /**
+     * Remove all specified keys from the writer's CHAMP in a single batch operation.
+     * Substantially faster than N individual {@link #remove} calls.
+     */
+    CompletableFuture<WriterData> removeAll(WriterData base,
+                                             PublicKeyHash owner,
+                                             SigningPrivateKeyAndPublicHash sharingKey,
+                                             List<Pair<byte[], MaybeMultihash>> keysAndExisting,
+                                             TransactionId tid);
 
 }
