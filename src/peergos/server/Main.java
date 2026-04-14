@@ -747,11 +747,7 @@ public class Main extends Builder {
             return false;
         if ("localhost".equalsIgnoreCase(host) || "127.0.0.1".equals(host) || "::1".equals(host) || "[::1]".equals(host))
             return true;
-        try {
-            return InetAddress.getByName(host).isLoopbackAddress();
-        } catch (Exception e) {
-            return false;
-        }
+        return false;
     }
 
     private static String getAppServerUrl(Args args) {
