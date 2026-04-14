@@ -196,11 +196,16 @@ public class DirectorySync {
                     String username = remoteDir.getName(0).toString();
                     PublicKeyHash owner = network.coreNode.getPublicKeyHash(username).join().get();
                     PeergosSyncFS remote = buildRemote(links.get(i), network, crypto);
-                    SyncFilesystem local = localBuilder.apply(localDirs.get(i));
-                    syncDir(local, remote, syncLocalDeletes.get(i), syncRemoteDeletes.get(i),
-                            owner, network, syncedState, maxDownloadParallelism, minFreeSpacePercent, crypto, status::isCancelled, LOG);
-                    long t1 = System.currentTimeMillis();
-                    LOG.accept("Dir sync took " + (t1 - t0) / 1000 + "s");
+                    if (! Paths.get(localDirs.get(i)).toFile().exists()) {
+                        LOG.accept("Local dir does not exist! Please remove and recreate the sync.");
+                        errored = true;
+                    } else {
+                        SyncFilesystem local = localBuilder.apply(localDirs.get(i));
+                        syncDir(local, remote, syncLocalDeletes.get(i), syncRemoteDeletes.get(i),
+                                owner, network, syncedState, maxDownloadParallelism, minFreeSpacePercent, crypto, status::isCancelled, LOG);
+                        long t1 = System.currentTimeMillis();
+                        LOG.accept("Dir sync took " + (t1 - t0) / 1000 + "s");
+                    }
                 } catch (Exception e) {
                     errored = true;
                     ERROR.accept(e);

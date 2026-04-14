@@ -240,7 +240,7 @@ public class GarbageCollector {
                                BlockMetadataStore metadata,
                                TriFunction<Long, Long, Long, CompletableFuture<Boolean>> deleteConfirm,
                                boolean listFromBlockstore) {
-        System.out.println("Starting blockstore garbage collection on node " + storage.id().join() + "...");
+        LOG.info("Starting blockstore garbage collection on node " + storage.id().join() + "...");
         List<Pair<String, PublicKeyHash>> allUsers = usage.getAllOwners()
                 .stream()
                 .sorted(Comparator.comparing(a -> a.left))
@@ -252,7 +252,7 @@ public class GarbageCollector {
         for (Pair<String, PublicKeyHash> p : allUsers) {
             PublicKeyHash owner = p.right;
             String username = p.left;
-            System.out.println("Starting GC for " + username);
+            LOG.info("Starting GC for " + username);
             // TODO check if user snapshot hasn't changed and short circuit
 
             // TODO: do GC in O(1) RAM with a bloom filter?: mark into bloom. Then list and check bloom to delete.
@@ -273,11 +273,11 @@ public class GarbageCollector {
             listBlocks(owner, reachability, inRdb, listFromBlockstore, storage, metadata);
             long t1 = System.nanoTime();
             long nBlocks = reachability.size();
-            System.out.println("Listing " + nBlocks + " blocks took " + (t1 - t0) / 1_000_000_000 + "s");
+            LOG.info("Listing " + nBlocks + " blocks took " + (t1 - t0) / 1_000_000_000 + "s");
 
             List<Cid> pending = storage.getOpenTransactionBlocks(owner);
             long t2 = System.nanoTime();
-            System.out.println("Listing " + pending.size() + " pending blocks took " + (t2 - t1) / 1_000_000_000 + "s");
+            LOG.info("Listing " + pending.size() + " pending blocks took " + (t2 - t1) / 1_000_000_000 + "s");
 
             // This pointers call must happen AFTER the block and pending listing for correctness
             // Todo specialise this call to only return owners from DB
@@ -292,7 +292,7 @@ public class GarbageCollector {
                         }})
                     .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
             long t3 = System.nanoTime();
-            System.out.println("Listing " + allPointers.size() + " pointers took " + (t3 - t2) / 1_000_000_000 + "s");
+            LOG.info("Listing " + allPointers.size() + " pointers took " + (t3 - t2) / 1_000_000_000 + "s");
 
             // Get the current roots from the usage store which shouldn't be GC'd until usage has been updated
             List<Triple<Multihash, String, PublicKeyHash>> usageRoots = usage.getAllTargets(username);
@@ -306,7 +306,7 @@ public class GarbageCollector {
             usageMarked.forEach(f -> f.join());
             long t4 = System.nanoTime();
             long reachableAfterUsage = totalReachable.get();
-            System.out.println("Marking " + reachableAfterUsage + " reachable from " + usageRoots.size() + " usage roots took " + (t4 - t3) / 1_000_000_000 + "s");
+            LOG.info("Marking " + reachableAfterUsage + " reachable from " + usageRoots.size() + " usage roots took " + (t4 - t3) / 1_000_000_000 + "s");
 
             Set<Multihash> fromUsage = new HashSet<>(usageRoots.size());
             fromUsage.addAll(usageRoots.stream().map(r -> r.left).collect(Collectors.toSet()));
@@ -317,11 +317,11 @@ public class GarbageCollector {
             markPool.shutdown();
 
             long t5 = System.nanoTime();
-            System.out.println("Marking " + (totalReachable.get() - reachableAfterUsage) + " reachable from " + rootsProcessed + " pointers took " + (t5 - t4) / 1_000_000_000 + "s");
+            LOG.info("Marking " + (totalReachable.get() - reachableAfterUsage) + " reachable from " + rootsProcessed + " pointers took " + (t5 - t4) / 1_000_000_000 + "s");
             reachability.setReachable(pending, totalReachable);
 
             long t6 = System.nanoTime();
-            System.out.println("Marking " + pending.size() + " pending blocks reachable took " + (t6 - t5) / 1_000_000_000 + "s");
+            LOG.info("Marking " + pending.size() + " pending blocks reachable took " + (t6 - t5) / 1_000_000_000 + "s");
 
             // Save pointers snapshot
             snapshotSaver.apply(allPointers.entrySet().stream()).join();
@@ -354,8 +354,8 @@ public class GarbageCollector {
             metadata.compact();
             reachability.compact();
             long t9 = System.nanoTime();
-            System.out.println("Deleting blocks took " + (t8 - t7) / 1_000_000_000 + "s");
-            System.out.println("GC complete. Freed " + deletedCborBlocks + " cbor blocks and " + deletedRawBlocks +
+            LOG.info("Deleting blocks took " + (t8 - t7) / 1_000_000_000 + "s");
+            LOG.info("GC complete. Freed " + deletedCborBlocks + " cbor blocks and " + deletedRawBlocks +
                     " raw blocks, total duration: " + (t8 - t7 + t6 - t0) / 1_000_000_000 + "s, metadata.compact took " + (t9 - t8) / 1_000_000_000 + "s");
         }
     }
