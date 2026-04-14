@@ -54,7 +54,7 @@ public class MirrorCoreNode implements CoreNode {
     private final Optional<BatWithId> instanceBat;
     private final Hasher hasher;
     private final Crypto crypto;
-    private final ForkJoinPool mirrorPool = Threads.newPool(1, "Mirror-");
+    private final ExecutorService mirrorPool = Threads.newPool(1, "Mirror-");
 
     private volatile CorenodeState state;
     private final Path statePath;

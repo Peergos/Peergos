@@ -129,7 +129,7 @@ public class S3BucketSync {
         Map<String, String> targetKeys = getFileHashes(dest, h);
         AtomicInteger skipped = new AtomicInteger(0);
         Set<String> done = new HashSet<>();
-        ForkJoinPool pool = Threads.newPool(parallelism, "S3-copy-");
+        ForkJoinPool pool = Threads.newFJPool(parallelism, "S3-copy-");
         System.out.println("Syncing objects...");
         Files.walkFileTree(source, new FileVisitor<>() {
             @Override

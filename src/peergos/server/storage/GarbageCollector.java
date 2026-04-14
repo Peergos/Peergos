@@ -298,7 +298,7 @@ public class GarbageCollector {
             List<Triple<Multihash, String, PublicKeyHash>> usageRoots = usage.getAllTargets(username);
 
             int markParallelism = 10;
-            ForkJoinPool markPool = Threads.newPool(markParallelism, "GC-mark-");
+            ForkJoinPool markPool = Threads.newFJPool(markParallelism, "GC-mark-");
             AtomicLong totalReachable = new AtomicLong(0);
             List<ForkJoinTask<Boolean>> usageMarked = usageRoots.stream()
                     .map(r -> markPool.submit(() -> markReachable(owner, storage, (Cid) r.left, r.middle, reachability, metadata, totalReachable)))
@@ -338,7 +338,7 @@ public class GarbageCollector {
 
             int deleteParallelism = 4;
             long t7 = System.nanoTime();
-            ForkJoinPool pool = Threads.newPool(deleteParallelism, "GC-delete-");
+            ForkJoinPool pool = Threads.newFJPool(deleteParallelism, "GC-delete-");
             AtomicLong progressCounter = new AtomicLong(0);
             List<ForkJoinTask<Pair<Long, Long>>> futures = new ArrayList<>();
             reachability.getUnreachable(toDel -> futures.add(pool.submit(() ->

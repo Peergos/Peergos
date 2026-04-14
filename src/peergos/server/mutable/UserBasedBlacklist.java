@@ -28,7 +28,7 @@ public class UserBasedBlacklist implements PublicKeyBlackList {
     private final DeletableContentAddressedStorage dht;
     private final Hasher hasher;
     private final Path source;
-    private final ForkJoinPool pool = Threads.newPool(1, "User-blocklist-");
+    private final ExecutorService pool = Threads.newPool(1, "User-blocklist-");
     private long lastModified, lastReloaded;
 
     public UserBasedBlacklist(Path source,

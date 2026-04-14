@@ -276,7 +276,7 @@ public class GCTests {
 
         int nUsers = 1;
         int nRawBlocks = 1 << 9;
-        ForkJoinPool listPool = Threads.newPool(2, "GC-list-");
+        ForkJoinPool listPool = Threads.newFJPool(2, "GC-list-");
         List<ForkJoinTask<Cid>> futs = IntStream.range(0, nUsers)
                 .mapToObj(i -> listPool.submit(() -> generateTree(i, nRawBlocks,
                         blocks ->  reachability.addBlocks(blocks.stream().map(c ->  new BlockVersion(c, null, true)).collect(Collectors.toList())),
@@ -291,7 +291,7 @@ public class GCTests {
         Assert.assertTrue(size > 0);
 
         int markParallelism = 10;
-        ForkJoinPool markPool = Threads.newPool(markParallelism, "GC-mark-");
+        ForkJoinPool markPool = Threads.newFJPool(markParallelism, "GC-mark-");
         AtomicLong totalReachable = new AtomicLong(0);
         List<ForkJoinTask<Boolean>> usageMarked = roots.stream()
                 .map(r -> markPool.submit(() -> {

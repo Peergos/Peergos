@@ -119,7 +119,7 @@ public class S3BucketCopy {
                                   Hasher h) {
         System.out.println("Listing destination bucket...");
         Set<String> targetKeys = getFilenames(dest, client, h);
-        ForkJoinPool pool = Threads.newPool(parallelism, "S3-copy-");
+        ForkJoinPool pool = Threads.newFJPool(parallelism, "S3-copy-");
         boolean sameHost = source.regionEndpoint.equals(dest.regionEndpoint);
         System.out.println("Copying objects...");
         applyToAllInRange(obj -> {

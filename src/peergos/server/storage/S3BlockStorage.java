@@ -156,7 +156,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
     private final boolean partitionComplete;
     private final JdbcBatCave bats;
     private CoreNode pki;
-    ForkJoinPool mirrorPool = Threads.newPool(30, "S3-Mirror-");
+    ForkJoinPool mirrorPool = Threads.newFJPool(30, "S3-Mirror-");
 
     public S3BlockStorage(S3Config config,
                           List<Cid> ids,

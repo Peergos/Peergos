@@ -28,7 +28,7 @@ public class Threads {
         }
     }
 
-    private static ForkJoinPool newFJPool(int threads, String threadNamePrefix) {
+    public static ForkJoinPool newFJPool(int threads, String threadNamePrefix) {
         return new ForkJoinPool(threads, getThreadFactory(threadNamePrefix), new Thread.UncaughtExceptionHandler() {
             @Override
             public void uncaughtException(Thread thread, Throwable t) {
