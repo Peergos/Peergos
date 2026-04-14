@@ -762,7 +762,7 @@ public class Main extends Builder {
             URL target = new URL(serverUrl);
             boolean secureLoopback = "http".equalsIgnoreCase(target.getProtocol()) && isLoopbackHost(target.getHost());
             if (! "https".equalsIgnoreCase(target.getProtocol()) && ! secureLoopback)
-                System.err.println("Warning: desktop/proxy mode should use https, or http only for a loopback self-hosted server. Proceeding with " + serverUrl);
+                throw new IllegalStateException("Warning: desktop/proxy mode should use https, or http only for a loopback self-hosted server: " + serverUrl);
             return serverUrl;
         } catch (MalformedURLException e) {
             throw new IllegalStateException("Invalid server-url: " + serverUrl, e);

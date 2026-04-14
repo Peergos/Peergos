@@ -44,11 +44,7 @@ public class ConfigHandler implements HttpHandler {
             return false;
         if ("localhost".equalsIgnoreCase(host) || "127.0.0.1".equals(host) || "::1".equals(host) || "[::1]".equals(host))
             return true;
-        try {
-            return InetAddress.getByName(host).isLoopbackAddress();
-        } catch (Exception e) {
             return false;
-        }
     }
 
     private static String validateServerUrl(String serverUrl) {
