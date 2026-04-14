@@ -187,6 +187,16 @@ You can then access the web interface and login via http://localhost:8000.
 
 In this mode of operation all your writes are proxied directly to your home server. The local instance caches any blocks you access for faster subsequent access. 
 
+If you are using the packaged desktop app, or the default `peergos` launcher on macOS, you can point it at a self-hosted instance with:
+```bash
+peergos -server-url https://YOUR_PEERGOS_SERVER_DOMAIN
+```
+To make that persistent for the desktop app, add the following to `~/.peergos/config`:
+```ini
+server-url = https://YOUR_PEERGOS_SERVER_DOMAIN
+```
+For security, prefer `https` for remote servers, and only use plain `http` for loopback addresses such as `http://localhost:8000`.
+
 Usage - self hosting
 -----
 Use this method to run a new home-server (which is best with a publicly routable IP, and always on machine) to create accounts on or migrate accounts to.

@@ -92,6 +92,7 @@ public class UserService {
     public final GarbageCollector gc; // not exposed
     private final Optional<BlockCache> blockCache;
     private final Optional<SyncProperties> syncProps;
+    private final Optional<LocalAppProperties> localAppProps;
     private HttpServer localhostServer;
 
     public UserService(ContentAddressedStorage storage,
@@ -105,7 +106,8 @@ public class UserService {
                        SpaceUsage usage,
                        ServerMessager serverMessages,
                        GarbageCollector gc,
-                       Optional<SyncProperties> syncProps) {
+                       Optional<SyncProperties> syncProps,
+                       Optional<LocalAppProperties> localAppProps) {
         this.storage = storage;
         this.bats = bats;
         this.crypto = crypto;
@@ -119,6 +121,7 @@ public class UserService {
         this.gc = gc;
         this.blockCache = storage.getBlockCache();
         this.syncProps = syncProps;
+        this.localAppProps = localAppProps;
     }
 
     public static class TlsProperties {
@@ -127,6 +130,16 @@ public class UserService {
         public TlsProperties(String hostname, String keyfilePassword) {
             this.hostname = hostname;
             this.keyfilePassword = keyfilePassword;
+        }
+    }
+
+    public static class LocalAppProperties {
+        public final Path peergosDir;
+        public final String currentServerUrl;
+
+        public LocalAppProperties(Path peergosDir, String currentServerUrl) {
+            this.peergosDir = peergosDir;
+            this.currentServerUrl = currentServerUrl;
         }
     }
 
@@ -284,7 +297,7 @@ public class UserService {
             addHandler(localhostServer, null, "/" + Constants.STOP,
                     new StopHandler(), basicAuth, local, host, nodeIds, false);
             blockCache.ifPresent(cache -> addHandler(localhostServer, null, "/" + Constants.CONFIG,
-                    new ConfigHandler(cache),
+                    new ConfigHandler(cache, localAppProps),
                     basicAuth, local, host, nodeIds, false));
             syncProps.ifPresent(props -> {
                 SyncConfigHandler sync = new SyncConfigHandler(props.config, props.peergosDir, props.syncer, storage, mutable, props.hostDirs, coreNode, crypto);

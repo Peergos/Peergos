@@ -90,6 +90,7 @@ public class Main extends Builder {
     public static final Command.Arg ARG_ANNOUNCE_ADDRESSES = new Command.Arg("ipfs-announce-addresses",
             "Comma separated list of extra announce multi-addresses. e.g. a public NAT address with port forwarding: /ip4/$IP/tcp/4001", false);
     public static final Command.Arg ARG_HTTP_PROXY = new Command.Arg("http_proxy", "Use a http proxy for all requests, format host:port", false);
+    public static final Command.Arg ARG_SERVER_URL = new Command.Arg("server-url", "Address of the remote Peergos or self-hosted server to use in app/proxy mode", false);
 
     public static final Command.Arg LISTEN_HOST = new Command.Arg("listen-host", "The hostname/interface to listen on", true, "localhost");
     public static final Command.Arg QUOTA_UPLOAD_LIMIT_SECONDS = new Command.Arg("quota-upload-limit-seconds", "The minimum time period during which a user is allowed to upload their total quota, in seconds. Faster uploads will be rejected.", false, "86400");
@@ -645,12 +646,12 @@ public class Main extends Builder {
                     Crypto crypto = JavaCrypto.init();
                     PublicSigningKey.addProvider(PublicSigningKey.Type.Ed25519, crypto.signer);
                     ThumbnailGenerator.setInstance(new JavaImageThumbnailer());
-                    URL target = new URL(a.getArg("peergos-url", "https://peergos.net"));
+                    URL target = new URL(getAppServerUrl(a));
                     Optional<ProxySelector> proxy = ProxyChooser.build(a);
                     if (proxy.isPresent())
                         System.out.println("Using http proxy " + proxy.get());
                     JavaPoster poster = new JavaPoster(target,
-                            ! target.getHost().equals("localhost"),
+                            ! isLoopbackHost(target.getHost()),
                             Optional.empty(),
                             Optional.of("Peergos-" + UserService.CURRENT_VERSION + "-proxy"),
                             proxy);
@@ -701,7 +702,8 @@ public class Main extends Builder {
 
                     SyncProperties sync = new SyncProperties(syncConfig, peergosDir, syncer, syncDirChooser);
                     UserService server = new UserService(withoutS3, offlineBats, crypto, offlineCorenode, offlineAccounts,
-                            httpSocial, pointerCache, admin, httpUsage, serverMessager, null, Optional.of(sync));
+                            httpSocial, pointerCache, admin, httpUsage, serverMessager, null, Optional.of(sync),
+                            Optional.of(new UserService.LocalAppProperties(peergosDir, getAppServerUrl(a))));
 
                     InetSocketAddress localAPIAddress = new InetSocketAddress("localhost", port);
                     List<String> appSubdomains = Arrays.asList("markup-viewer,calendar,code-editor,pdf".split(","));
@@ -717,6 +719,7 @@ public class Main extends Builder {
                 }
             },
             Arrays.asList(
+                    ARG_SERVER_URL,
                     new Command.Arg("peergos-url", "Address of the Peergos server", false, "https://peergos.net"),
                     ARG_HTTP_PROXY,
                     new Command.Arg("port", "Localhost server port", true, "7777"),
@@ -737,6 +740,48 @@ public class Main extends Builder {
         } catch (Exception e) {
             return false;
         }
+    }
+
+    private static boolean isLoopbackHost(String host) {
+        if (host == null || host.isEmpty())
+            return false;
+        if ("localhost".equalsIgnoreCase(host) || "127.0.0.1".equals(host) || "::1".equals(host) || "[::1]".equals(host))
+            return true;
+        return false;
+    }
+
+    private static String getAppServerUrl(Args args) {
+        String serverUrl = args.getArg(ARG_SERVER_URL.name, args.getArg("peergos-url", null));
+        if (serverUrl == null)
+            serverUrl = readSavedServerUrl(args.getPeergosDir()).orElse("https://peergos.net");
+        try {
+            URL target = new URL(serverUrl);
+            boolean secureLoopback = "http".equalsIgnoreCase(target.getProtocol()) && isLoopbackHost(target.getHost());
+            if (! "https".equalsIgnoreCase(target.getProtocol()) && ! secureLoopback)
+                throw new IllegalStateException("Warning: desktop/proxy mode should use https, or http only for a loopback self-hosted server: " + serverUrl);
+            return serverUrl;
+        } catch (MalformedURLException e) {
+            throw new IllegalStateException("Invalid server-url: " + serverUrl, e);
+        }
+    }
+
+    private static Optional<String> readSavedServerUrl(Path peergosDir) {
+        try {
+            Path configFile = peergosDir.resolve("config");
+            if (! Files.exists(configFile))
+                return Optional.empty();
+            for (String line : Files.readAllLines(configFile)) {
+                String trimmed = line.trim();
+                if (trimmed.startsWith("server-url") || trimmed.startsWith("peergos-url")) {
+                    String[] parts = trimmed.split("=", 2);
+                    if (parts.length == 2 && ! parts[1].trim().isEmpty())
+                        return Optional.of(parts[1].trim());
+                }
+            }
+        } catch (IOException e) {
+            // Config unreadable — fall through to default
+        }
+        return Optional.empty();
     }
 
     private static PublicKeyHash getPkiKey(PublicKeyHash pkiOwnerIdentity,
@@ -948,10 +993,11 @@ public class Main extends Builder {
                     Either.b(new HostDirChooser.Flatpak()) :
                     Either.a(new HostDirEnumerator.Java());
             SyncProperties sync = new SyncProperties(syncConfig, a.getPeergosDir(), syncer, syncDirChooser);
+            Optional<UserService.LocalAppProperties> noConfigApi = Optional.empty();
             UserService localAPI = new UserService(cachingStorage, p2pBats, crypto, corePropagator, verifyingAccount,
-                    p2pSocial, p2mMutable, storageAdmin, p2pSpaceUsage, serverMessages, gc, Optional.of(sync));
+                    p2pSocial, p2mMutable, storageAdmin, p2pSpaceUsage, serverMessages, gc, Optional.of(sync), noConfigApi);
             UserService p2pAPI = new UserService(cachingStorage, p2pBats, crypto, corePropagator, verifyingAccount,
-                    p2pSocial, p2mMutable, storageAdmin, p2pSpaceUsage, serverMessages, gc, Optional.empty());
+                    p2pSocial, p2mMutable, storageAdmin, p2pSpaceUsage, serverMessages, gc, Optional.empty(), noConfigApi);
             InetSocketAddress localAPIAddress = userAPIAddress;
             InetSocketAddress p2pAPIAddress = new InetSocketAddress("localhost", localP2PApi.getTCPPort());
 
@@ -1216,6 +1262,8 @@ public class Main extends Builder {
                     System.out.println("Run with -help to show options");
 
                 try {
+                    if (args.hasArg(ARG_SERVER_URL.name))
+                        args = args.with("peergos-url", getAppServerUrl(args));
                     // By default we run a proxy instance and open it in the browser
                     // Check if proxy is already running and stop it if the version is different
                     int port = args.getInt("port", 7777);
@@ -1324,7 +1372,10 @@ public class Main extends Builder {
                     throw new RuntimeException(e);
                 }
             },
-            Collections.emptyList(),
+            Arrays.asList(
+                    ARG_SERVER_URL,
+                    new Command.Arg("port", "Localhost server port for app/proxy mode", false, "7777")
+            ),
             Arrays.asList(
                     PEERGOS,
                     SHELL,
