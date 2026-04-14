@@ -99,6 +99,11 @@ public class Champ<V extends Cborable> implements Cborable {
     private final Function<Cborable, V> fromCbor;
     public final Optional<BatId> mirrorBat;
 
+    // Package-private accessors used by ChampRemoveAll (kept out of Champ.java to avoid
+    // inflating the file size seen by GWT's Eclipse JDT lambda-copy heuristic).
+    HashPrefixPayload<V>[] getContents() { return contents; }
+    Function<Cborable, V> getFromCbor()  { return fromCbor; }
+
     public Champ(BitSet dataMap, BitSet nodeMap, HashPrefixPayload<V>[] contents, Function<Cborable, V> fromCbor, Optional<BatId> mirrorBat) {
         this.dataMap = dataMap;
         this.nodeMap = nodeMap;
@@ -114,7 +119,7 @@ public class Champ<V extends Cborable> implements Cborable {
         return new Champ<V>(dataMap, nodeMap, contents, fromCbor, newMirrorBat);
     }
 
-    private int keyCount() {
+    int keyCount() {
         int count = 0;
         for (HashPrefixPayload<V> payload : contents) {
             if (! payload.isShard())
@@ -123,7 +128,7 @@ public class Champ<V extends Cborable> implements Cborable {
         return count;
     }
 
-    private int nodeCount() {
+    int nodeCount() {
         int count = 0;
         for (HashPrefixPayload<V> payload : contents)
             if (payload.isShard())
@@ -132,7 +137,7 @@ public class Champ<V extends Cborable> implements Cborable {
         return count;
     }
 
-    private static int mask(byte[] hash, int depth, int nbits) {
+    static int mask(byte[] hash, int depth, int nbits) {
         int index = (depth * nbits) / 8;
         int shift = (depth * nbits) % 8;
         int lowBits = Math.min(nbits, 8 - shift);
@@ -143,7 +148,7 @@ public class Champ<V extends Cborable> implements Cborable {
                 ((val2 & ((1 << hiBits) - 1)) << lowBits);
     }
 
-    private static int getIndex(BitSet bitmap, int bitpos) {
+    static int getIndex(BitSet bitmap, int bitpos) {
         int total = 0;
         for (int i = 0; i < bitpos;) {
             int next = bitmap.nextSetBit(i);
@@ -222,7 +227,7 @@ public class Champ<V extends Cborable> implements Cborable {
         return CompletableFuture.completedFuture(Optional.empty());
     }
 
-    private Champ<V> withMirrorBat(Optional<BatId> mirrorBat, int depth) {
+    Champ<V> withMirrorBat(Optional<BatId> mirrorBat, int depth) {
         if (depth > 0 || mirrorBat.isEmpty())
             return this;
         return new Champ<>(dataMap, nodeMap, contents, fromCbor, mirrorBat);
@@ -551,11 +556,10 @@ public class Champ<V extends Cborable> implements Cborable {
     }
 
     /**
-     * Remove all specified keys from the CHAMP in a single recursive descent,
-     * substantially faster than N individual {@link #remove} calls.
-     *
-     * @param keysAndHashes each pair is (key, hash-of-key)
-     * @param expectedValues maps key → expected current value; unused for CAS here, reserved for callers
+     * Remove all specified keys in a single recursive descent.
+     * The implementation lives in {@link ChampRemoveAll} to keep this file small — GWT's Eclipse
+     * JDT copies the source file once per lambda it resolves, so large files with many lambdas
+     * cause quadratic memory use during type inference.
      */
     public CompletableFuture<Pair<Champ<V>, Multihash>> removeAll(
             PublicKeyHash owner,
@@ -570,204 +574,8 @@ public class Champ<V extends Cborable> implements Cborable {
             ContentAddressedStorage storage,
             Hasher writeHasher,
             Multihash ourHash) {
-
-        if (keysAndHashes.isEmpty())
-            return CompletableFuture.completedFuture(new Pair<>(this, ourHash));
-
-        // Group keys by bitpos at the current depth
-        Map<Integer, List<Pair<ByteArrayWrapper, byte[]>>> byBitpos = new HashMap<>();
-        for (Pair<ByteArrayWrapper, byte[]> kh : keysAndHashes) {
-            int bitpos = mask(kh.right, depth, bitWidth);
-            byBitpos.computeIfAbsent(bitpos, k -> new ArrayList<>()).add(kh);
-        }
-
-        // Phase 1: Process inline data removals; build new data section in ascending bitpos order.
-        BitSet newDataMap = new BitSet();
-        Map<Integer, HashPrefixPayload<V>> newDataByBitpos = new LinkedHashMap<>();
-        {
-            int di = 0;
-            for (int bp = dataMap.nextSetBit(0); bp >= 0; bp = dataMap.nextSetBit(bp + 1)) {
-                HashPrefixPayload<V> payload = contents[di++];
-                List<Pair<ByteArrayWrapper, byte[]>> toRemove = byBitpos.get(bp);
-                if (toRemove == null) {
-                    newDataMap.set(bp);
-                    newDataByBitpos.put(bp, payload);
-                } else {
-                    Set<ByteArrayWrapper> removing = new HashSet<>();
-                    for (Pair<ByteArrayWrapper, byte[]> kh : toRemove) removing.add(kh.left);
-                    List<KeyElement<V>> remaining = new ArrayList<>();
-                    for (KeyElement<V> elem : payload.mappings)
-                        if (!removing.contains(elem.key)) remaining.add(elem);
-                    if (!remaining.isEmpty()) {
-                        newDataMap.set(bp);
-                        newDataByBitpos.put(bp, new HashPrefixPayload<>(remaining.toArray(new KeyElement[0])));
-                    }
-                }
-            }
-        }
-
-        // Phase 2: Collect nodeMap hits for async processing.
-        Map<Integer, List<Pair<ByteArrayWrapper, byte[]>>> nodeMapHits = new HashMap<>();
-        for (Map.Entry<Integer, List<Pair<ByteArrayWrapper, byte[]>>> e : byBitpos.entrySet())
-            if (nodeMap.get(e.getKey()))
-                nodeMapHits.put(e.getKey(), e.getValue());
-
-        if (nodeMapHits.isEmpty()) {
-            // Only data changes — build and write updated node.
-            return buildAndWrite(owner, writer, newDataMap, newDataByBitpos,
-                    BitSet.valueOf(nodeMap.toByteArray()), Collections.emptyMap(),
-                    mirrorBat, depth, storage, writeHasher, tid);
-        }
-
-        // Phase 3: Recurse into affected children in parallel.
-        // Named helper methods are used instead of inline lambdas to keep the lambda nesting
-        // shallow — GWT's Eclipse JDT copies the source file once per lambda copy during type
-        // inference, so deeply-nested lambdas cause an O(file_size * 2^depth) memory blowup.
-        List<CompletableFuture<Pair<Integer, Pair<Champ<V>, Multihash>>>> childFutures = new ArrayList<>();
-        for (Map.Entry<Integer, List<Pair<ByteArrayWrapper, byte[]>>> e : nodeMapHits.entrySet()) {
-            childFutures.add(recurseChild(e.getKey(), e.getValue(), owner, writer,
-                    expectedValues, depth, bitWidth, maxCollisions, mirrorBat, tid, storage, writeHasher));
-        }
-
-        // Phase 4: Integrate child results — also extracted to avoid deep lambda nesting.
-        return Futures.combineAllInOrder(childFutures)
-                .thenCompose(results -> integrateChildResults(results, newDataMap, newDataByBitpos,
-                        maxCollisions, owner, writer, mirrorBat, depth, storage, writeHasher, tid));
-    }
-
-    /** Phase 3 helper: fetch one child node and recurse removeAll into it. */
-    private CompletableFuture<Pair<Integer, Pair<Champ<V>, Multihash>>> recurseChild(
-            int bp,
-            List<Pair<ByteArrayWrapper, byte[]>> childKeys,
-            PublicKeyHash owner,
-            SigningPrivateKeyAndPublicHash writer,
-            Map<ByteArrayWrapper, Optional<V>> expectedValues,
-            int depth,
-            int bitWidth,
-            int maxCollisions,
-            Optional<BatId> mirrorBat,
-            TransactionId tid,
-            ContentAddressedStorage storage,
-            Hasher writeHasher) {
-        int nodeIdx = contents.length - 1 - getIndex(nodeMap, bp);
-        Multihash childHash = contents[nodeIdx].link.get();
-        return storage.get(owner, (Cid) childHash, Optional.empty())
-                .thenCompose(rawOpt -> recurseIntoChild(rawOpt, childKeys, childHash,
-                        owner, writer, expectedValues, depth, bitWidth, maxCollisions,
-                        mirrorBat, tid, storage, writeHasher))
-                .thenApply(result -> new Pair<>(bp, result));
-    }
-
-    /** Inner helper: deserialise the child block and invoke removeAll on it. */
-    private CompletableFuture<Pair<Champ<V>, Multihash>> recurseIntoChild(
-            Optional<CborObject> rawOpt,
-            List<Pair<ByteArrayWrapper, byte[]>> childKeys,
-            Multihash childHash,
-            PublicKeyHash owner,
-            SigningPrivateKeyAndPublicHash writer,
-            Map<ByteArrayWrapper, Optional<V>> expectedValues,
-            int depth,
-            int bitWidth,
-            int maxCollisions,
-            Optional<BatId> mirrorBat,
-            TransactionId tid,
-            ContentAddressedStorage storage,
-            Hasher writeHasher) {
-        Champ<V> child = Champ.fromCbor(rawOpt.get(), fromCbor);
-        return child.removeAll(owner, writer, childKeys, expectedValues, depth + 1,
-                bitWidth, maxCollisions, mirrorBat, tid, storage, writeHasher, childHash);
-    }
-
-    /** Phase 4 helper: classify each child result and build the updated node. */
-    private CompletableFuture<Pair<Champ<V>, Multihash>> integrateChildResults(
-            List<Pair<Integer, Pair<Champ<V>, Multihash>>> childResults,
-            BitSet newDataMap,
-            Map<Integer, HashPrefixPayload<V>> newDataByBitpos,
-            int maxCollisions,
-            PublicKeyHash owner,
-            SigningPrivateKeyAndPublicHash writer,
-            Optional<BatId> mirrorBat,
-            int depth,
-            ContentAddressedStorage storage,
-            Hasher writeHasher,
-            TransactionId tid) {
-        BitSet newNodeMap = BitSet.valueOf(nodeMap.toByteArray());
-        Map<Integer, MaybeMultihash> nodeUpdates = new HashMap<>();
-        for (Pair<Integer, Pair<Champ<V>, Multihash>> r : childResults) {
-            int bp = r.left;
-            Champ<V> newChild = r.right.left;
-            Multihash newChildHash = r.right.right;
-            if (newChild.keyCount() == 0 && newChild.nodeCount() == 0) {
-                // Child became empty — remove it entirely.
-                newNodeMap.set(bp, false);
-            } else if (newChild.nodeCount() == 0 && newChild.keyCount() <= maxCollisions) {
-                // Child is inlineable — migrate into data section.
-                newNodeMap.set(bp, false);
-                newDataMap.set(bp);
-                newDataByBitpos.put(bp, new HashPrefixPayload<>(collectAllMappings(newChild)));
-            } else {
-                // Update the child link.
-                nodeUpdates.put(bp, MaybeMultihash.of(newChildHash));
-            }
-        }
-        return buildAndWrite(owner, writer, newDataMap, newDataByBitpos,
-                newNodeMap, nodeUpdates, mirrorBat, depth, storage, writeHasher, tid);
-    }
-
-    /**
-     * Assemble a new CHAMP node from the supplied data and node sections and write it to storage.
-     * {@code nodeUpdates} maps bitpos → updated child link for changed children; unchanged children
-     * are read directly from {@code this.contents} using {@code this.nodeMap}.
-     */
-    private CompletableFuture<Pair<Champ<V>, Multihash>> buildAndWrite(
-            PublicKeyHash owner,
-            SigningPrivateKeyAndPublicHash writer,
-            BitSet newDataMap,
-            Map<Integer, HashPrefixPayload<V>> newDataByBitpos,
-            BitSet newNodeMap,
-            Map<Integer, MaybeMultihash> nodeUpdates,
-            Optional<BatId> mirrorBat,
-            int depth,
-            ContentAddressedStorage storage,
-            Hasher writeHasher,
-            TransactionId tid) {
-
-        // Data payloads in ascending bitpos order
-        List<HashPrefixPayload<V>> dataPayloads = new ArrayList<>();
-        for (int bp = newDataMap.nextSetBit(0); bp >= 0; bp = newDataMap.nextSetBit(bp + 1))
-            dataPayloads.add(newDataByBitpos.get(bp));
-
-        // Node links in ascending bitpos order (stored reversed at end of contents)
-        List<MaybeMultihash> nodeLinks = new ArrayList<>();
-        for (int bp = newNodeMap.nextSetBit(0); bp >= 0; bp = newNodeMap.nextSetBit(bp + 1)) {
-            if (nodeUpdates.containsKey(bp)) {
-                nodeLinks.add(nodeUpdates.get(bp));
-            } else {
-                // Unchanged node — look up original position via this.nodeMap / this.contents
-                nodeLinks.add(contents[contents.length - 1 - getIndex(nodeMap, bp)].link);
-            }
-        }
-
-        int D = dataPayloads.size(), N = nodeLinks.size();
-        HashPrefixPayload<V>[] fc = new HashPrefixPayload[D + N];
-        for (int i = 0; i < D; i++) fc[i] = dataPayloads.get(i);
-        // Node entries at end in REVERSE bitpos order (first bitpos ↔ last index)
-        for (int i = 0; i < N; i++) fc[D + N - 1 - i] = new HashPrefixPayload<>(nodeLinks.get(i));
-
-        Champ<V> updated = new Champ<>(newDataMap, newNodeMap, fc, fromCbor, mirrorBat).withMirrorBat(mirrorBat, depth);
-        return storage.put(owner, writer, updated.serialize(), writeHasher, tid)
-                .thenApply(h -> new Pair<>(updated, h));
-    }
-
-    /** Collect all inline key-element mappings from a node that has no child nodes. */
-    @SuppressWarnings("unchecked")
-    private KeyElement<V>[] collectAllMappings(Champ<V> node) {
-        List<KeyElement<V>> all = new ArrayList<>();
-        for (HashPrefixPayload<V> payload : node.contents)
-            if (!payload.isShard())
-                Collections.addAll(all, payload.mappings);
-        all.sort(Comparator.comparing(x -> x.key));
-        return all.toArray(new KeyElement[0]);
+        return ChampRemoveAll.removeAll(this, owner, writer, keysAndHashes, expectedValues,
+                depth, bitWidth, maxCollisions, mirrorBat, tid, storage, writeHasher, ourHash);
     }
 
     private Champ<V> copyAndMigrateFromNodeToInline(final int bitpos, final Champ<V> node) {
