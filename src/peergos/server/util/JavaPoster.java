@@ -18,6 +18,7 @@ import java.util.zip.*;
 
 public class JavaPoster implements HttpPoster {
 
+    private static final ExecutorService reqPool = Threads.newPool(100, "JavaPoster");
     private final URL dht;
     private final boolean useGet;
     private final Optional<String> basicAuth;
@@ -205,7 +206,7 @@ public class JavaPoster implements HttpPoster {
             } catch (Exception e) {
                 res.completeExceptionally(e);
             }
-        }, ForkJoinPool.commonPool());
+        }, reqPool);
         return res;
     }
 
@@ -272,7 +273,7 @@ public class JavaPoster implements HttpPoster {
             } catch (Exception e) {
                 res.completeExceptionally(e);
             }
-        }, ForkJoinPool.commonPool());
+        }, reqPool);
         return res;
     }
 

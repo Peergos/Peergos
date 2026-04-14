@@ -15,7 +15,20 @@ public class Threads {
         };
     }
 
-    public static ForkJoinPool newPool(int threads, String threadNamePrefix) {
+    public static ExecutorService newPool(int threads, String threadNamePrefix) {
+        boolean isAndroid = "The Android Project".equals(System.getProperty("java.vm.vendor"));
+        if (isAndroid)
+            return newFJPool(threads, threadNamePrefix);
+        else {
+            try {
+                return Executors.newVirtualThreadPerTaskExecutor();
+            } catch (Throwable t) {
+                return newFJPool(threads, threadNamePrefix);
+            }
+        }
+    }
+
+    private static ForkJoinPool newFJPool(int threads, String threadNamePrefix) {
         return new ForkJoinPool(threads, getThreadFactory(threadNamePrefix), new Thread.UncaughtExceptionHandler() {
             @Override
             public void uncaughtException(Thread thread, Throwable t) {

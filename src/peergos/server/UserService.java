@@ -308,17 +308,7 @@ public class UserService {
         }
         addHandler(localhostServer, tlsServer, UI_URL, handler, basicAuth, local, host, nodeIds, true);
 
-        boolean isAndroid = "The Android Project".equals(System.getProperty("java.vm.vendor"));
-        ExecutorService executor;
-        if (isAndroid)
-            executor = Threads.newPool(handlerPoolSize, "api-handler-");
-        else {
-            try {
-                executor = Executors.newVirtualThreadPerTaskExecutor();
-            } catch (Throwable t) {
-                executor = Threads.newPool(handlerPoolSize, "api-handler-");
-            }
-        }
+        ExecutorService executor = Threads.newPool(handlerPoolSize, "api-handler-");
         localhostServer.setExecutor(executor);
         localhostServer.start();
 
