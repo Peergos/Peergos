@@ -15,6 +15,7 @@ import peergos.shared.util.*;
 
 import java.util.concurrent.*;
 import java.util.function.*;
+import java.util.stream.*;
 
 public class MutableTreeImpl implements MutableTree {
 	private static final Logger LOG = Logger.getGlobal();
@@ -84,5 +85,22 @@ public class MutableTreeImpl implements MutableTree {
                 .thenApply(root -> LOGGING ? log(root, "TREE.rm " + writer.publicKeyHash + " :== ("
                         + ArrayOps.bytesToHex(mapKey) + ", " + existing + ") CAS(" + base.tree.get() + ", " + root + ")") : root)
                 .thenApply(newTreeRoot -> base.withChamp(newTreeRoot));
+    }
+
+    @Override
+    public CompletableFuture<WriterData> removeAll(WriterData base,
+                                                    PublicKeyHash owner,
+                                                    SigningPrivateKeyAndPublicHash writer,
+                                                    List<Pair<byte[], MaybeMultihash>> keysAndExisting,
+                                                    TransactionId tid) {
+        if (! base.tree.isPresent())
+            throw new IllegalStateException("Tree root not present!");
+        List<Pair<byte[], Optional<CborObject.CborMerkleLink>>> champKeys = keysAndExisting.stream()
+                .map(p -> new Pair<>(p.left, p.right.map(CborObject.CborMerkleLink::new)))
+                .collect(Collectors.toList());
+        return ChampWrapper.create(owner, (Cid) base.tree.get(), Optional.empty(), hasher, dht, writeHasher,
+                        c -> (CborObject.CborMerkleLink) c)
+                .thenCompose(tree -> tree.removeAll(owner, writer, champKeys, Optional.empty(), tid))
+                .thenApply(base::withChamp);
     }
 }

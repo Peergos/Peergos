@@ -2585,15 +2585,51 @@ public CompletableFuture<Boolean> copyTo(FileWrapper target, UserContext context
                                     .thenCompose(updatedVersion -> {
                                         if (! chunk.isDirectory())
                                             return CompletableFuture.completedFuture(updatedVersion);
-                                        return chunk.getDirectChildrenCapabilities(currentCap, updatedVersion, network).thenCompose(childCaps -> {
+                                        return chunk.getDirectChildrenCapabilities(currentCap, current, network).thenCompose(childCaps -> {
                                             List<AbsoluteCapability> childCapList = childCaps.stream()
                                                     .map(c -> c.cap).collect(Collectors.toList());
-                                            return network.retrieveAllMetadata(childCapList, updatedVersion)
-                                                    .thenCompose(ignored -> Futures.reduceAll(childCaps,
-                                                            updatedVersion,
-                                                            (v, cap) -> deleteAllChunks((WritableAbsoluteCapability) cap.cap, ourSigner,
-                                                                    tid, hasher, network, v, committer),
-                                                            (x, y) -> y));
+                                            return network.retrieveAllMetadata(childCapList, current)
+                                                    .thenCompose(retrieved -> {
+                                                        Map<ByteArrayWrapper, RetrievedCapability> retrievedMap = new HashMap<>();
+                                                        for (RetrievedCapability rc : retrieved.left)
+                                                            retrievedMap.put(new ByteArrayWrapper(rc.capability.getMapKey()), rc);
+
+                                                        List<NamedAbsoluteCapability> otherCaps = new ArrayList<>();
+                                                        List<CompletableFuture<List<Pair<byte[], Optional<Bat>>>>> locationFutures = new ArrayList<>();
+                                                        Map<ByteArrayWrapper, MaybeMultihash> knownValues = new HashMap<>();
+
+                                                        for (NamedAbsoluteCapability namedCap : childCaps) {
+                                                            WritableAbsoluteCapability wcap = (WritableAbsoluteCapability) namedCap.cap;
+                                                            RetrievedCapability rc = retrievedMap.get(new ByteArrayWrapper(wcap.getMapKey()));
+                                                            if (rc != null) {
+                                                                FileProperties childProps = rc.getProperties();
+                                                                boolean isNormalFile = !rc.fileAccess.isDirectory() && childProps.streamSecret.isPresent();
+                                                                SigningPrivateKeyAndPublicHash childSigner = rc.fileAccess.getSigner(wcap.rBaseKey, wcap.wBaseKey.get(), Optional.of(ourSigner));
+                                                                if (isNormalFile && childSigner.publicKeyHash.equals(ourSigner.publicKeyHash)) {
+                                                                    MaybeMultihash hash = rc.fileAccess.committedHash();
+                                                                    if (hash.isPresent())
+                                                                        knownValues.put(new ByteArrayWrapper(wcap.getMapKey()), hash);
+                                                                    locationFutures.add(getAllChunkLocations(wcap.getMapKey(), wcap.bat, childProps.streamSecret.get(), childProps.chunkCount(), hasher));
+                                                                    continue;
+                                                                }
+                                                            }
+                                                            otherCaps.add(namedCap);
+                                                        }
+
+                                                        return Futures.combineAllInOrder(locationFutures)
+                                                                .thenCompose(allLocLists -> {
+                                                                    List<Pair<byte[], Optional<Bat>>> allLocs = allLocLists.stream()
+                                                                            .flatMap(List::stream)
+                                                                            .collect(Collectors.toList());
+                                                                    CompletableFuture<Snapshot> batchDone = allLocs.isEmpty() ?
+                                                                            Futures.of(updatedVersion) :
+                                                                            network.deleteAllChunksIfPresent(updatedVersion, committer, currentCap.owner, ourSigner, allLocs, knownValues, tid);
+                                                                    return batchDone.thenCompose(v -> Futures.reduceAll(otherCaps, v,
+                                                                            (s, cap) -> deleteAllChunks((WritableAbsoluteCapability) cap.cap, ourSigner,
+                                                                                    tid, hasher, network, s, committer),
+                                                                            (x, y) -> y));
+                                                                });
+                                                    });
                                         });
                                     })
                                     .thenCompose(s -> removeSigningKey(ourSigner, signer, currentCap.owner, network, s, committer));
@@ -2644,48 +2680,67 @@ public CompletableFuture<Boolean> copyTo(FileWrapper target, UserContext context
         parent.setModified();
         network.disableCommits();
         PublicKeyHash owner = parent.owner();
-        return network.synchronizer.applyComplexUpdate(owner, parent.signingPair(),
+        SigningPrivateKeyAndPublicHash parentSigner = parent.signingPair();
+        // Partition children before the lambda so we can look up CHAMP values using the
+        // pre-removeChildren snapshot (v2). Plain files sharing the parent's writer can be
+        // batch-deleted; directories, links, and cross-writer files are handled per-child.
+        Map<Boolean, List<FileWrapper>> partitioned = childrenToDelete.stream()
+                .collect(Collectors.partitioningBy(f -> !f.isDirectory() && !f.isLink()
+                        && f.getFileProperties() != null
+                        && f.getFileProperties().streamSecret.isPresent()
+                        && f.writableFilePointer().writer.equals(parentSigner.publicKeyHash)));
+        List<FileWrapper> batchableFiles = partitioned.get(true);
+        List<FileWrapper> otherChildren = partitioned.get(false);
+        return network.synchronizer.applyComplexUpdate(owner, parentSigner,
                 (version, c) -> version.withWriter(owner, parent.writer(), network)
-                .thenCompose(v2 -> parent.pointer.fileAccess
-                        .removeChildren(v2, c, childrenToDelete.stream()
-                                        .map(f -> f.isLink() ? f.linkPointer.get().capability : f.getPointer().capability)
-                                        .collect(Collectors.toList()), parent.writableFilePointer(),
-                                parent.entryWriter, network, context.crypto.random, hasher))
-                        .thenCompose(v3 -> {
-                            SigningPrivateKeyAndPublicHash parentSigner = parent.signingPair();
-                            // Partition children: plain files sharing the parent's writer can be batch-deleted
-                            // in a single deleteAllChunksIfPresent call (50 caps per getChampLookup batch).
-                            // Directories, links, and files with a different writer are handled per-child.
-                            Map<Boolean, List<FileWrapper>> partitioned = childrenToDelete.stream()
-                                    .collect(Collectors.partitioningBy(f -> !f.isDirectory() && !f.isLink()
-                                            && f.getFileProperties() != null
-                                            && f.getFileProperties().streamSecret.isPresent()
-                                            && f.writableFilePointer().writer.equals(parentSigner.publicKeyHash)));
-                            List<FileWrapper> batchableFiles = partitioned.get(true);
-                            List<FileWrapper> otherChildren = partitioned.get(false);
-
-                            // Compute all chunk locations for batchable files (pure crypto, no network calls)
-                            return Futures.combineAllInOrder(batchableFiles.stream()
-                                            .map(f -> {
-                                                WritableAbsoluteCapability cap = f.writableFilePointer();
-                                                FileProperties props = f.getFileProperties();
-                                                return getAllChunkLocations(cap.getMapKey(), cap.bat,
-                                                        props.streamSecret.get(), props.chunkCount(), hasher);
-                                            })
-                                            .collect(Collectors.toList()))
-                                    .thenApply(allLocs -> allLocs.stream().flatMap(List::stream).collect(Collectors.toList()))
-                                    .thenCompose(allKeys -> allKeys.isEmpty() ? Futures.of(v3) :
-                                            IpfsTransaction.call(owner,
-                                                    tid -> network.deleteAllChunksIfPresent(v3, c, owner, parentSigner, allKeys, tid),
-                                                    network.dhtClient))
-                                    .thenCompose(v4 -> context.isSecretLink() ? Futures.of(v4) :
-                                            Futures.reduceAll(batchableFiles, v4,
-                                                    (s, f) -> context.sharedWithCache.clearSharedWith(parentPath.resolve(f.getName()), s, c, network),
-                                                    (a, b) -> a.mergeAndOverwriteWith(b)))
-                                    .thenCompose(v4 -> Futures.reduceAll(otherChildren, v4,
-                                            (s, f) -> deleteChild(owner, parent, parentPath, f, s, c, context),
-                                            (a, b) -> a.mergeAndOverwriteWith(b)));
-                        }))
+                .thenCompose(v2 -> {
+                    // Look up committed CHAMP values for batchable files BEFORE removeChildren
+                    // changes the CHAMP root.  retrieveAllMetadata uses the CryptreeCache —
+                    // if the directory was recently displayed this costs 0 network calls (cache
+                    // hits).  The returned RetrievedCapability objects are proper Java objects
+                    // whose committedHash() is guaranteed to return the correct CID, avoiding a
+                    // second bulk getChampLookup round-trip inside deleteAllChunksIfPresent.
+                    // CIDs from R0 remain valid for CAS at R1/R2 because removeChildren only
+                    // updates directory chunk entries, not individual file entries.
+                    return network.retrieveAllMetadata(
+                                    batchableFiles.stream()
+                                            .map(f -> (AbsoluteCapability) f.writableFilePointer())
+                                            .collect(Collectors.toList()), v2)
+                            .thenCompose(retrieved -> {
+                                Map<ByteArrayWrapper, MaybeMultihash> knownValues = new HashMap<>();
+                                for (RetrievedCapability rc : retrieved.left) {
+                                    MaybeMultihash hash = rc.fileAccess.committedHash();
+                                    if (hash.isPresent())
+                                        knownValues.put(new ByteArrayWrapper(rc.capability.getMapKey()), hash);
+                                }
+                                return parent.pointer.fileAccess
+                                        .removeChildren(v2, c, childrenToDelete.stream()
+                                                        .map(f -> f.isLink() ? f.linkPointer.get().capability : f.getPointer().capability)
+                                                        .collect(Collectors.toList()),
+                                                parent.writableFilePointer(),
+                                                parent.entryWriter, network, context.crypto.random, hasher)
+                                        .thenCompose(v3 -> Futures.combineAllInOrder(batchableFiles.stream()
+                                                        .map(f -> {
+                                                            WritableAbsoluteCapability cap = f.writableFilePointer();
+                                                            FileProperties props = f.getFileProperties();
+                                                            return getAllChunkLocations(cap.getMapKey(), cap.bat,
+                                                                    props.streamSecret.get(), props.chunkCount(), hasher);
+                                                        })
+                                                        .collect(Collectors.toList()))
+                                                .thenApply(allLocs -> allLocs.stream().flatMap(List::stream).collect(Collectors.toList()))
+                                                .thenCompose(allKeys -> allKeys.isEmpty() ? Futures.of(v3) :
+                                                        IpfsTransaction.call(owner,
+                                                                tid -> network.deleteAllChunksIfPresent(v3, c, owner, parentSigner, allKeys, knownValues, tid),
+                                                                network.dhtClient))
+                                                .thenCompose(v4 -> context.isSecretLink() ? Futures.of(v4) :
+                                                        Futures.reduceAll(batchableFiles, v4,
+                                                                (s, f) -> context.sharedWithCache.clearSharedWith(parentPath.resolve(f.getName()), s, c, network),
+                                                                (a, b) -> a.mergeAndOverwriteWith(b)))
+                                                .thenCompose(v4 -> Futures.reduceAll(otherChildren, v4,
+                                                        (s, f) -> deleteChild(owner, parent, parentPath, f, s, c, context),
+                                                        (a, b) -> a.mergeAndOverwriteWith(b))));
+                            });
+                }))
                 .thenCompose(s -> parent.getUpdated(s, network));
     }
 

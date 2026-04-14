@@ -476,6 +476,127 @@ public class ChampTests {
         }
     }
 
+    @Test
+    public void bulkDelete() throws Exception {
+        RAMStorage storage = new RAMStorage(crypto.hasher);
+        int bitWidth = 5;
+        int maxCollisions = 3;
+        SigningPrivateKeyAndPublicHash user = createUser(storage, crypto);
+        PublicKeyHash owner = user.publicKeyHash;
+        Random r = new Random(42);
+
+        Supplier<Multihash> randomHash = () -> {
+            byte[] hash = new byte[32];
+            r.nextBytes(hash);
+            return new Multihash(Multihash.Type.sha2_256, hash);
+        };
+        TransactionId tid = storage.startTransaction(owner).get();
+
+        int nKeys = 1000;
+        List<ByteArrayWrapper> keys = new ArrayList<>();
+        List<CborObject.CborMerkleLink> values = new ArrayList<>();
+
+        Champ<CborObject.CborMerkleLink> current = Champ.empty(c -> (CborObject.CborMerkleLink) c);
+        Multihash currentHash = storage.put(owner, user, current.serialize(), writeHasher, tid).get();
+
+        for (int i = 0; i < nKeys; i++) {
+            ByteArrayWrapper key = new ByteArrayWrapper(randomHash.get().toBytes());
+            CborObject.CborMerkleLink value = new CborObject.CborMerkleLink(randomHash.get());
+            Pair<Champ<CborObject.CborMerkleLink>, Multihash> updated = current.put(owner, user, key,
+                    hasher.apply(key).join(), 0, Optional.empty(), Optional.of(value),
+                    bitWidth, maxCollisions, Optional.empty(), hasher, tid, storage, writeHasher, currentHash).get();
+            current = updated.left;
+            currentHash = updated.right;
+            keys.add(key);
+            values.add(value);
+        }
+        Assert.assertEquals(nKeys, (long) current.size(owner, 0, storage).get());
+
+        Map<ByteArrayWrapper, Optional<CborObject.CborMerkleLink>> expectedAll = new HashMap<>();
+        for (int i = 0; i < nKeys; i++) expectedAll.put(keys.get(i), Optional.of(values.get(i)));
+
+        // --- Full bulk delete ---
+        List<Pair<ByteArrayWrapper, byte[]>> allKeysAndHashes = keys.stream()
+                .map(k -> new Pair<>(k, hasher.apply(k).join()))
+                .collect(Collectors.toList());
+
+        Pair<Champ<CborObject.CborMerkleLink>, Multihash> afterBulk = current.removeAll(owner, user,
+                allKeysAndHashes, expectedAll, 0, bitWidth, maxCollisions, Optional.empty(),
+                tid, storage, writeHasher, currentHash).get();
+
+        Assert.assertEquals("tree must be empty after full bulk delete", 0L,
+                (long) afterBulk.left.size(owner, 0, storage).get());
+        for (ByteArrayWrapper key : keys) {
+            Optional<CborObject.CborMerkleLink> res = afterBulk.left.get(owner, key,
+                    hasher.apply(key).join(), 0, bitWidth, storage).get();
+            Assert.assertEquals(Optional.empty(), res);
+        }
+
+        // Root must match the result of sequential removes (canonical structure)
+        Champ<CborObject.CborMerkleLink> seqCurrent = current;
+        Multihash seqHash = currentHash;
+        for (int i = 0; i < nKeys; i++) {
+            ByteArrayWrapper key = keys.get(i);
+            seqCurrent = seqCurrent.remove(owner, user, key, hasher.apply(key).join(), 0,
+                    Optional.of(values.get(i)), bitWidth, maxCollisions, Optional.empty(),
+                    tid, storage, writeHasher, seqHash).get().left;
+            seqHash = seqCurrent.equals(Champ.empty(c -> (CborObject.CborMerkleLink) c))
+                    ? seqHash  // will be recomputed below
+                    : seqHash; // placeholder — we just need the final seqHash
+        }
+        // Recompute seqHash properly
+        seqCurrent = current;
+        seqHash = currentHash;
+        for (int i = 0; i < nKeys; i++) {
+            ByteArrayWrapper key = keys.get(i);
+            Pair<Champ<CborObject.CborMerkleLink>, Multihash> step = seqCurrent.remove(owner, user,
+                    key, hasher.apply(key).join(), 0, Optional.of(values.get(i)),
+                    bitWidth, maxCollisions, Optional.empty(), tid, storage, writeHasher, seqHash).get();
+            seqCurrent = step.left;
+            seqHash = step.right;
+        }
+        Assert.assertEquals("full bulkDelete root must match sequential remove", seqHash, afterBulk.right);
+
+        // --- Partial bulk delete: remove the first half, keep the second half ---
+        int half = nKeys / 2;
+        List<Pair<ByteArrayWrapper, byte[]>> partialKeysAndHashes = keys.subList(0, half).stream()
+                .map(k -> new Pair<>(k, hasher.apply(k).join()))
+                .collect(Collectors.toList());
+        Map<ByteArrayWrapper, Optional<CborObject.CborMerkleLink>> partialExpected = new HashMap<>();
+        for (int i = 0; i < half; i++) partialExpected.put(keys.get(i), Optional.of(values.get(i)));
+
+        Pair<Champ<CborObject.CborMerkleLink>, Multihash> afterPartial = current.removeAll(owner, user,
+                partialKeysAndHashes, partialExpected, 0, bitWidth, maxCollisions, Optional.empty(),
+                tid, storage, writeHasher, currentHash).get();
+
+        Assert.assertEquals("size must be half after partial bulk delete", (long) half,
+                (long) afterPartial.left.size(owner, 0, storage).get());
+
+        for (int i = 0; i < half; i++) {
+            Optional<CborObject.CborMerkleLink> res = afterPartial.left.get(owner, keys.get(i),
+                    hasher.apply(keys.get(i)).join(), 0, bitWidth, storage).get();
+            Assert.assertEquals("deleted key must be absent", Optional.empty(), res);
+        }
+        for (int i = half; i < nKeys; i++) {
+            Optional<CborObject.CborMerkleLink> res = afterPartial.left.get(owner, keys.get(i),
+                    hasher.apply(keys.get(i)).join(), 0, bitWidth, storage).get();
+            Assert.assertEquals("kept key must still be present", Optional.of(values.get(i)), res);
+        }
+
+        // Partial bulk-remove root must match sequential removes of the same keys
+        Champ<CborObject.CborMerkleLink> seqPartial = current;
+        Multihash seqPartialHash = currentHash;
+        for (int i = 0; i < half; i++) {
+            ByteArrayWrapper key = keys.get(i);
+            Pair<Champ<CborObject.CborMerkleLink>, Multihash> step = seqPartial.remove(owner, user,
+                    key, hasher.apply(key).join(), 0, Optional.of(values.get(i)),
+                    bitWidth, maxCollisions, Optional.empty(), tid, storage, writeHasher, seqPartialHash).get();
+            seqPartial = step.left;
+            seqPartialHash = step.right;
+        }
+        Assert.assertEquals("partial bulkDelete root must match sequential remove", seqPartialHash, afterPartial.right);
+    }
+
     private static byte[] randomKey(byte[] startingWith, int extraBytes, Random r) {
         byte[] suffix = new byte[extraBytes];
         r.nextBytes(suffix);
