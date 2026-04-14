@@ -106,22 +106,6 @@ public class UserService {
                        SpaceUsage usage,
                        ServerMessager serverMessages,
                        GarbageCollector gc,
-                       Optional<SyncProperties> syncProps) {
-        this(storage, bats, crypto, coreNode, account, social, mutable, controller, usage, serverMessages, gc,
-                syncProps, Optional.empty());
-    }
-
-    public UserService(ContentAddressedStorage storage,
-                       BatCave bats,
-                       Crypto crypto,
-                       CoreNode coreNode,
-                       Account account,
-                       SocialNetwork social,
-                       MutablePointers mutable,
-                       InstanceAdmin controller,
-                       SpaceUsage usage,
-                       ServerMessager serverMessages,
-                       GarbageCollector gc,
                        Optional<SyncProperties> syncProps,
                        Optional<LocalAppProperties> localAppProps) {
         this.storage = storage;

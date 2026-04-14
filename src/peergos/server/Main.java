@@ -997,10 +997,11 @@ public class Main extends Builder {
                     Either.b(new HostDirChooser.Flatpak()) :
                     Either.a(new HostDirEnumerator.Java());
             SyncProperties sync = new SyncProperties(syncConfig, a.getPeergosDir(), syncer, syncDirChooser);
+            Optional<UserService.LocalAppProperties> noConfigApi = Optional.empty();
             UserService localAPI = new UserService(cachingStorage, p2pBats, crypto, corePropagator, verifyingAccount,
-                    p2pSocial, p2mMutable, storageAdmin, p2pSpaceUsage, serverMessages, gc, Optional.of(sync));
+                    p2pSocial, p2mMutable, storageAdmin, p2pSpaceUsage, serverMessages, gc, Optional.of(sync), noConfigApi);
             UserService p2pAPI = new UserService(cachingStorage, p2pBats, crypto, corePropagator, verifyingAccount,
-                    p2pSocial, p2mMutable, storageAdmin, p2pSpaceUsage, serverMessages, gc, Optional.empty());
+                    p2pSocial, p2mMutable, storageAdmin, p2pSpaceUsage, serverMessages, gc, Optional.empty(), noConfigApi);
             InetSocketAddress localAPIAddress = userAPIAddress;
             InetSocketAddress p2pAPIAddress = new InetSocketAddress("localhost", localP2PApi.getTCPPort());
 
