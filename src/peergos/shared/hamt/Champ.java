@@ -620,48 +620,98 @@ public class Champ<V extends Cborable> implements Cborable {
         }
 
         // Phase 3: Recurse into affected children in parallel.
+        // Named helper methods are used instead of inline lambdas to keep the lambda nesting
+        // shallow — GWT's Eclipse JDT copies the source file once per lambda copy during type
+        // inference, so deeply-nested lambdas cause an O(file_size * 2^depth) memory blowup.
         List<CompletableFuture<Pair<Integer, Pair<Champ<V>, Multihash>>>> childFutures = new ArrayList<>();
         for (Map.Entry<Integer, List<Pair<ByteArrayWrapper, byte[]>>> e : nodeMapHits.entrySet()) {
-            final int bp = e.getKey();
-            final List<Pair<ByteArrayWrapper, byte[]>> childKeys = e.getValue();
-            int nodeIdx = contents.length - 1 - getIndex(nodeMap, bp);
-            Multihash childHash = contents[nodeIdx].link.get();
-            childFutures.add(
-                storage.get(owner, (Cid) childHash, Optional.empty())
-                    .thenCompose(rawOpt -> {
-                        Champ<V> child = Champ.fromCbor(rawOpt.get(), fromCbor);
-                        return child.removeAll(owner, writer, childKeys, expectedValues, depth + 1,
-                                bitWidth, maxCollisions, mirrorBat, tid, storage, writeHasher, childHash);
-                    })
-                    .thenApply(result -> new Pair<>(bp, result))
-            );
+            childFutures.add(recurseChild(e.getKey(), e.getValue(), owner, writer,
+                    expectedValues, depth, bitWidth, maxCollisions, mirrorBat, tid, storage, writeHasher));
         }
 
+        // Phase 4: Integrate child results — also extracted to avoid deep lambda nesting.
         return Futures.combineAllInOrder(childFutures)
-                .thenCompose(childResults -> {
-                    // Phase 4: Integrate child results into data/node sections.
-                    BitSet newNodeMap = BitSet.valueOf(nodeMap.toByteArray());
-                    Map<Integer, MaybeMultihash> nodeUpdates = new HashMap<>();
-                    for (Pair<Integer, Pair<Champ<V>, Multihash>> r : childResults) {
-                        int bp = r.left;
-                        Champ<V> newChild = r.right.left;
-                        Multihash newChildHash = r.right.right;
-                        if (newChild.keyCount() == 0 && newChild.nodeCount() == 0) {
-                            // Child became empty — remove it entirely.
-                            newNodeMap.set(bp, false);
-                        } else if (newChild.nodeCount() == 0 && newChild.keyCount() <= maxCollisions) {
-                            // Child is inlineable — migrate into data section.
-                            newNodeMap.set(bp, false);
-                            newDataMap.set(bp);
-                            newDataByBitpos.put(bp, new HashPrefixPayload<>(collectAllMappings(newChild)));
-                        } else {
-                            // Update the child link.
-                            nodeUpdates.put(bp, MaybeMultihash.of(newChildHash));
-                        }
-                    }
-                    return buildAndWrite(owner, writer, newDataMap, newDataByBitpos,
-                            newNodeMap, nodeUpdates, mirrorBat, depth, storage, writeHasher, tid);
-                });
+                .thenCompose(results -> integrateChildResults(results, newDataMap, newDataByBitpos,
+                        maxCollisions, owner, writer, mirrorBat, depth, storage, writeHasher, tid));
+    }
+
+    /** Phase 3 helper: fetch one child node and recurse removeAll into it. */
+    private CompletableFuture<Pair<Integer, Pair<Champ<V>, Multihash>>> recurseChild(
+            int bp,
+            List<Pair<ByteArrayWrapper, byte[]>> childKeys,
+            PublicKeyHash owner,
+            SigningPrivateKeyAndPublicHash writer,
+            Map<ByteArrayWrapper, Optional<V>> expectedValues,
+            int depth,
+            int bitWidth,
+            int maxCollisions,
+            Optional<BatId> mirrorBat,
+            TransactionId tid,
+            ContentAddressedStorage storage,
+            Hasher writeHasher) {
+        int nodeIdx = contents.length - 1 - getIndex(nodeMap, bp);
+        Multihash childHash = contents[nodeIdx].link.get();
+        return storage.get(owner, (Cid) childHash, Optional.empty())
+                .thenCompose(rawOpt -> recurseIntoChild(rawOpt, childKeys, childHash,
+                        owner, writer, expectedValues, depth, bitWidth, maxCollisions,
+                        mirrorBat, tid, storage, writeHasher))
+                .thenApply(result -> new Pair<>(bp, result));
+    }
+
+    /** Inner helper: deserialise the child block and invoke removeAll on it. */
+    private CompletableFuture<Pair<Champ<V>, Multihash>> recurseIntoChild(
+            Optional<CborObject> rawOpt,
+            List<Pair<ByteArrayWrapper, byte[]>> childKeys,
+            Multihash childHash,
+            PublicKeyHash owner,
+            SigningPrivateKeyAndPublicHash writer,
+            Map<ByteArrayWrapper, Optional<V>> expectedValues,
+            int depth,
+            int bitWidth,
+            int maxCollisions,
+            Optional<BatId> mirrorBat,
+            TransactionId tid,
+            ContentAddressedStorage storage,
+            Hasher writeHasher) {
+        Champ<V> child = Champ.fromCbor(rawOpt.get(), fromCbor);
+        return child.removeAll(owner, writer, childKeys, expectedValues, depth + 1,
+                bitWidth, maxCollisions, mirrorBat, tid, storage, writeHasher, childHash);
+    }
+
+    /** Phase 4 helper: classify each child result and build the updated node. */
+    private CompletableFuture<Pair<Champ<V>, Multihash>> integrateChildResults(
+            List<Pair<Integer, Pair<Champ<V>, Multihash>>> childResults,
+            BitSet newDataMap,
+            Map<Integer, HashPrefixPayload<V>> newDataByBitpos,
+            int maxCollisions,
+            PublicKeyHash owner,
+            SigningPrivateKeyAndPublicHash writer,
+            Optional<BatId> mirrorBat,
+            int depth,
+            ContentAddressedStorage storage,
+            Hasher writeHasher,
+            TransactionId tid) {
+        BitSet newNodeMap = BitSet.valueOf(nodeMap.toByteArray());
+        Map<Integer, MaybeMultihash> nodeUpdates = new HashMap<>();
+        for (Pair<Integer, Pair<Champ<V>, Multihash>> r : childResults) {
+            int bp = r.left;
+            Champ<V> newChild = r.right.left;
+            Multihash newChildHash = r.right.right;
+            if (newChild.keyCount() == 0 && newChild.nodeCount() == 0) {
+                // Child became empty — remove it entirely.
+                newNodeMap.set(bp, false);
+            } else if (newChild.nodeCount() == 0 && newChild.keyCount() <= maxCollisions) {
+                // Child is inlineable — migrate into data section.
+                newNodeMap.set(bp, false);
+                newDataMap.set(bp);
+                newDataByBitpos.put(bp, new HashPrefixPayload<>(collectAllMappings(newChild)));
+            } else {
+                // Update the child link.
+                nodeUpdates.put(bp, MaybeMultihash.of(newChildHash));
+            }
+        }
+        return buildAndWrite(owner, writer, newDataMap, newDataByBitpos,
+                newNodeMap, nodeUpdates, mirrorBat, depth, storage, writeHasher, tid);
     }
 
     /**
