@@ -269,7 +269,6 @@ public final class NettyPinnedHttps {
                                 uri.getHost(),
                                 uri.getPort() == -1 ? 443 : uri.getPort()));
 
-                        p.addLast(new ReadTimeoutHandler(6));
                         p.addLast(new HttpClientCodec());
                         p.addLast(new HttpObjectAggregator(2 * 1024 * 1024));
 
