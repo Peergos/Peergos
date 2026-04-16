@@ -19,6 +19,7 @@ import java.util.zip.*;
 public class JavaPoster implements HttpPoster {
 
     private static final ExecutorService reqPool = Threads.newPool(100, "JavaPoster");
+    private static final Semaphore http2Streams = new Semaphore(50);
     private final URL dht;
     private final boolean useGet;
     private final Optional<String> basicAuth;
@@ -86,7 +87,12 @@ public class JavaPoster implements HttpPoster {
                 requestBuilder.setHeader("Authorization", basicAuth.get());
 
             HttpRequest request  = requestBuilder.build();
-            response = client.send(request, HttpResponse.BodyHandlers.ofInputStream());
+            http2Streams.acquire();
+            try {
+                response = client.send(request, HttpResponse.BodyHandlers.ofInputStream());
+            } finally {
+                http2Streams.release();
+            }
             HttpHeaders responseHeaders = response.headers();
             Optional<String> contentEncodingOpt = responseHeaders.firstValue("content-encoding");
             boolean isGzipped = contentEncodingOpt.isPresent() && "gzip".equals(contentEncodingOpt.get());
@@ -180,7 +186,12 @@ public class JavaPoster implements HttpPoster {
                     requestBuilder.setHeader("Authorization", basicAuth.get());
 
                 HttpRequest request = requestBuilder.build();
-                response = client.send(request, HttpResponse.BodyHandlers.ofInputStream());
+                http2Streams.acquire();
+                try {
+                    response = client.send(request, HttpResponse.BodyHandlers.ofInputStream());
+                } finally {
+                    http2Streams.release();
+                }
                 HttpHeaders responseHeaders = response.headers();
                 Optional<String> contentEncodingOpt = responseHeaders.firstValue("content-encoding");
                 boolean isGzipped = contentEncodingOpt.isPresent() && "gzip".equals(contentEncodingOpt.get());
@@ -245,7 +256,12 @@ public class JavaPoster implements HttpPoster {
                     requestBuilder.setHeader("Authorization", basicAuth.get());
 
                 HttpRequest request = requestBuilder.build();
-                response = client.send(request, HttpResponse.BodyHandlers.ofInputStream());
+                http2Streams.acquire();
+                try {
+                    response = client.send(request, HttpResponse.BodyHandlers.ofInputStream());
+                } finally {
+                    http2Streams.release();
+                }
                 HttpHeaders responseHeaders = response.headers();
                 Optional<String> contentEncodingOpt = responseHeaders.firstValue("content-encoding");
                 boolean isGzipped = contentEncodingOpt.isPresent() && "gzip".equals(contentEncodingOpt.get());
