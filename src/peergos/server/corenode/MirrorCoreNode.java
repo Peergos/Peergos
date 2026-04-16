@@ -27,6 +27,7 @@ import java.nio.file.*;
 import java.time.*;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.*;
 import java.util.function.*;
 import java.util.logging.*;
 import java.util.stream.*;
@@ -59,6 +60,7 @@ public class MirrorCoreNode implements CoreNode {
     private volatile CorenodeState state;
     private final Path statePath;
     private volatile boolean running = true, initialized = false;
+    private final AtomicBoolean updating = new AtomicBoolean(false);
 
     public MirrorCoreNode(CoreNode writeTarget,
                           JdbcAccount rawAccount,
@@ -338,17 +340,20 @@ public class MirrorCoreNode implements CoreNode {
     }
 
     private Pair<CorenodeRoots, byte[]> getPkiState() {
-        byte[] pkiIdPointer = p2pMutable.getPointer(pkiPeerId, pkiOwnerIdentity, pkiOwnerIdentity).join().get();
+        byte[] pkiIdPointer = p2pMutable.getPointer(pkiPeerId, pkiOwnerIdentity, pkiOwnerIdentity)
+                .orTimeout(30, TimeUnit.SECONDS).join().get();
         PointerUpdate fresh = MutablePointers.parsePointerTarget(pkiIdPointer, pkiOwnerIdentity, pkiOwnerIdentity, ipfs).join();
         MaybeMultihash newPeergosRoot = fresh.updated;
 
         CommittedWriterData currentPeergosWd = IpfsCoreNode.getWriterData(List.of(pkiPeerId), pkiOwnerIdentity,
-                (Cid)newPeergosRoot.get(), fresh.sequence, ourNodeId, hasher, ipfs).join();
+                (Cid)newPeergosRoot.get(), fresh.sequence, ourNodeId, hasher, ipfs)
+                .orTimeout(30, TimeUnit.SECONDS).join();
         PublicKeyHash pkiKey = currentPeergosWd.props.get().namedOwnedKeys.get("pki").ownedKey;
         if (pkiKey == null)
             throw new IllegalStateException("No pki key on owner: " + pkiOwnerIdentity);
 
-        byte[] newPointer = p2pMutable.getPointer(pkiPeerId, pkiOwnerIdentity, pkiKey).join().get();
+        byte[] newPointer = p2pMutable.getPointer(pkiPeerId, pkiOwnerIdentity, pkiKey)
+                .orTimeout(30, TimeUnit.SECONDS).join().get();
         PointerUpdate pkiUpdateCas = MutablePointers.parsePointerTarget(newPointer, pkiOwnerIdentity, pkiKey, ipfs).join();
         MaybeMultihash currentPkiRoot = pkiUpdateCas.updated;
         return new Pair<>(new CorenodeRoots(pkiOwnerIdentity, pkiKey, newPeergosRoot, currentPkiRoot), newPointer);
@@ -358,7 +363,9 @@ public class MirrorCoreNode implements CoreNode {
      *
      * @return whether there was a change
      */
-    public synchronized boolean update() {
+    public boolean update() {
+        if (!updating.compareAndSet(false, true))
+            return false;
         try {
             Logging.LOG().info("Starting pki update");
             Pair<CorenodeRoots, byte[]> remoteState = getPkiState();
@@ -387,12 +394,14 @@ public class MirrorCoreNode implements CoreNode {
             // explicitly get other direct blocks, in theory need recursive mirror, but this is complete here
             if (updatedTree.isPresent()) {
                 CommittedWriterData currentWd = IpfsCoreNode.getWriterData(pkiStorageProviders,
-                        pkiOwnerIdentity, (Cid) remote.pkiKeyTarget.get(), Optional.empty(), ourNodeId, hasher, ipfs).join();
+                        pkiOwnerIdentity, (Cid) remote.pkiKeyTarget.get(), Optional.empty(), ourNodeId, hasher, ipfs)
+                        .orTimeout(30, TimeUnit.SECONDS).join();
                 List<Multihash> toAdd = currentWd.props.get().toCbor().links().stream()
                         .filter(h -> updatedTree.map(m -> !m.equals(h)).orElse(true))
                         .collect(Collectors.toList());
                 for (Multihash m : toAdd) {
-                    ipfs.get(pkiStorageProviders, pkiOwnerIdentity, (Cid) m, Optional.empty(), ourNodeId, hasher, true).join();
+                    ipfs.get(pkiStorageProviders, pkiOwnerIdentity, (Cid) m, Optional.empty(), ourNodeId, hasher, true)
+                            .orTimeout(30, TimeUnit.SECONDS).join();
                 }
             }
 
@@ -401,20 +410,24 @@ public class MirrorCoreNode implements CoreNode {
                         Optional<CborObject.CborMerkleLink> newVal = t.right;
                         if (newVal.isPresent()) {
                             transactions.addBlock(newVal.get().target, tid, pkiOwnerIdentity);
-                            ipfs.get(pkiStorageProviders, pkiOwnerIdentity, (Cid) newVal.get().target, Optional.empty(), ourNodeId, hasher, true).join();
+                            ipfs.get(pkiStorageProviders, pkiOwnerIdentity, (Cid) newVal.get().target, Optional.empty(), ourNodeId, hasher, true)
+                                    .orTimeout(30, TimeUnit.SECONDS).join();
                         }
                     };
             IpfsCoreNode.applyToDiff(pkiStorageProviders, ourNodeId, pkiOwnerIdentity, currentTree, updatedTree, 0, IpfsCoreNode::keyHash,
                     Collections.emptyList(), Collections.emptyList(),
-                    consumer, ChampWrapper.BIT_WIDTH, ipfs, hasher, c -> (CborObject.CborMerkleLink)c).get();
+                    consumer, ChampWrapper.BIT_WIDTH, ipfs, hasher, c -> (CborObject.CborMerkleLink)c)
+                    .orTimeout(2, TimeUnit.MINUTES).join();
 
             // now update the mappings
             IpfsCoreNode.updateAllMappings(pkiStorageProviders, pkiOwnerIdentity, current.roots.pkiKeyTarget,
                     remote.pkiKeyTarget, ourNodeId, hasher, ipfs, updated.chains, updated.reverseLookup, updated.usernames);
 
             // 'pin' the new pki version
-            Optional<byte[]> existingPointer = rawPointers.getPointer(remote.pkiKey).join();
-            rawPointers.setPointer(remote.pkiKey, existingPointer, remoteState.right).join();
+            Optional<byte[]> existingPointer = rawPointers.getPointer(remote.pkiKey)
+                    .orTimeout(30, TimeUnit.SECONDS).join();
+            rawPointers.setPointer(remote.pkiKey, existingPointer, remoteState.right)
+                    .orTimeout(30, TimeUnit.SECONDS).join();
             transactions.closeTransaction(pkiOwnerIdentity, tid);
 
             state = updated;
@@ -422,6 +435,8 @@ public class MirrorCoreNode implements CoreNode {
             return true;
         } catch (Exception e) {
             throw new RuntimeException(e.getMessage(), e);
+        } finally {
+            updating.set(false);
         }
     }
 

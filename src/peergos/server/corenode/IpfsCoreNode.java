@@ -257,7 +257,8 @@ public class IpfsCoreNode implements CoreNode {
             Function<Cborable, CborObject.CborMerkleLink> fromCbor = c -> (CborObject.CborMerkleLink)c;
             IpfsCoreNode.applyToDiff(peerIds, ourId, owner, currentTree, updatedTree, 0, IpfsCoreNode::keyHash,
                     Collections.emptyList(), Collections.emptyList(),
-                    consumer, ChampWrapper.BIT_WIDTH, ipfs, hasher, fromCbor).get();
+                    consumer, ChampWrapper.BIT_WIDTH, ipfs, hasher, fromCbor)
+                    .orTimeout(2, TimeUnit.MINUTES).join();
         } catch (Exception e) {
             throw new RuntimeException(e.getMessage(), e);
         }
@@ -275,7 +276,8 @@ public class IpfsCoreNode implements CoreNode {
                                      Cid ourId,
                                      Hasher hasher) {
         try {
-            Optional<CborObject> cborOpt = ipfs.get(peerIds, owner, (Cid)newValue.get().target, Optional.empty(), ourId, hasher, true).get();
+            Optional<CborObject> cborOpt = ipfs.get(peerIds, owner, (Cid)newValue.get().target, Optional.empty(), ourId, hasher, true)
+                    .orTimeout(30, TimeUnit.SECONDS).join();
             if (!cborOpt.isPresent()) {
                 LOG.severe("Couldn't retrieve new claim chain from " + newValue);
                 return;
@@ -288,7 +290,8 @@ public class IpfsCoreNode implements CoreNode {
             String username = new String(key.data);
 
             if (oldValue.isPresent()) {
-                Optional<CborObject> existingCborOpt = ipfs.get(peerIds, owner, (Cid)oldValue.get().target, Optional.empty(), ourId, hasher, true).get();
+                Optional<CborObject> existingCborOpt = ipfs.get(peerIds, owner, (Cid)oldValue.get().target, Optional.empty(), ourId, hasher, true)
+                        .orTimeout(30, TimeUnit.SECONDS).join();
                 if (!existingCborOpt.isPresent()) {
                     LOG.severe("Couldn't retrieve existing claim chain from " + newValue);
                     return;
@@ -297,7 +300,7 @@ public class IpfsCoreNode implements CoreNode {
                         .map(UserPublicKeyLink::fromCbor)
                         .collect(Collectors.toList());
                 // Check legality
-                UserPublicKeyLink.merge(existingChain, updatedChain, ipfs).get();
+                UserPublicKeyLink.merge(existingChain, updatedChain, ipfs).orTimeout(30, TimeUnit.SECONDS).join();
             }
 
             for (UserPublicKeyLink link : updatedChain) {
