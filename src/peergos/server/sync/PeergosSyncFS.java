@@ -329,6 +329,7 @@ public class PeergosSyncFS implements SyncFilesystem {
     private void applyToSubtree(Path basePath, FileWrapper base, Consumer<FileProps> onFile, Consumer<FileProps> onDir) {
         Set<NamedAbsoluteCapability> childCaps = base.getChildrenCapabilities(context.crypto.hasher, context.network).join();
         AtomicLong directChildCount = new AtomicLong(0);
+        List<Pair<Path, FileWrapper>> subdirs = Collections.synchronizedList(new ArrayList<>());
         base.getChildrenFromCaps(childCaps, children -> {
             directChildCount.addAndGet(children.size());
             for (FileWrapper child : children) {
@@ -340,11 +341,13 @@ public class PeergosSyncFS implements SyncFilesystem {
                     onFile.accept(childProps);
                 } else {
                     onDir.accept(childProps);
-                    applyToSubtree(childPath, child, onFile, onDir);
+                    subdirs.add(new Pair<>(childPath, child));
                 }
             }
         }, context.crypto.hasher, context.network).join();
         if (directChildCount.get() != childCaps.size())
             throw new IllegalStateException("Couldn't retrieve all " + childCaps.size() + " children for " + basePath);
+        for (Pair<Path, FileWrapper> subdir : subdirs)
+            applyToSubtree(subdir.left, subdir.right, onFile, onDir);
     }
 }
