@@ -19,7 +19,7 @@ import java.util.zip.*;
 public class JavaPoster implements HttpPoster {
 
     private static final ExecutorService reqPool = Threads.newPool(100, "JavaPoster");
-    private static final Semaphore http2Streams = new Semaphore(50);
+    private final Semaphore http2Streams = new Semaphore(50);
     private final URL dht;
     private final boolean useGet;
     private final Optional<String> basicAuth;
