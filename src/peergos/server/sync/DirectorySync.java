@@ -196,7 +196,8 @@ public class DirectorySync {
                     String username = remoteDir.getName(0).toString();
                     PublicKeyHash owner = network.coreNode.getPublicKeyHash(username).join().get();
                     PeergosSyncFS remote = buildRemote(links.get(i), network, crypto);
-                    if (! Paths.get(localDirs.get(i)).toFile().exists()) {
+                    boolean isAndroid = "The Android Project".equals(System.getProperty("java.vm.vendor"));
+                    if (! isAndroid && ! Paths.get(localDirs.get(i)).toFile().exists()) {
                         LOG.accept("Local dir does not exist! Please remove and recreate the sync.");
                         errored = true;
                     } else {
