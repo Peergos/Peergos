@@ -3,6 +3,7 @@ package peergos.server.tests;
 import org.junit.*;
 import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
+import org.junit.Assume;
 import peergos.server.*;
 import peergos.server.corenode.CorenodeEventPropagator;
 import peergos.server.corenode.MirrorCoreNode;
@@ -210,6 +211,11 @@ public class MultiNodeNetworkTests {
         }
     }
 
+    private static void assumeNotWindows() {
+        Assume.assumeFalse("IPFS p2p between localhost nodes is unreliable on Windows",
+                System.getProperty("os.name", "").toLowerCase().contains("windows"));
+    }
+
     private void updatePkis() {
         for (ServerProcesses service : services) {
             CoreNode core = service.localApi.coreNode;
@@ -244,6 +250,7 @@ public class MultiNodeNetworkTests {
     }
 
     public void migrate(int nPasswordChanges) {
+        assumeNotWindows();
         if (iNode1 == 0 || iNode2 == 0)
             return; // Don't test migration to/from pki node
         String username = generateUsername(random);
@@ -337,6 +344,7 @@ public class MultiNodeNetworkTests {
 
     @Test
     public void largeP2pWrites() {
+        assumeNotWindows();
         if (iNode1 == 0 || iNode2 == 0)
             return; // Don't test to/from pki node
         String username = generateUsername(random);
@@ -395,6 +403,7 @@ public class MultiNodeNetworkTests {
 
     @Test
     public void internodeFriends() throws Exception {
+        assumeNotWindows();
         String username1 = generateUsername(random);
         String password1 = randomString();
         UserContext u1 = ensureSignedUp(username1, password1, getNode(iNode2), crypto);
@@ -427,6 +436,7 @@ public class MultiNodeNetworkTests {
 
     @Test
     public void writeViaUnrelatedNode() throws Exception {
+        assumeNotWindows();
         String username1 = generateUsername(random);
         String password1 = randomString();
         UserContext u1 = ensureSignedUp(username1, password1, getNode(iNode2), crypto);
@@ -444,18 +454,21 @@ public class MultiNodeNetworkTests {
 
     @Test
     public void grantAndRevokeFileReadAccess() throws Exception {
+        assumeNotWindows();
         int shareeCount = 2;
         PeergosNetworkUtils.grantAndRevokeFileReadAccess(getNode(iNode1), getNode(iNode2), shareeCount, random, this::updatePkis);
     }
 
     @Test
     public void grantAndRevokeDirReadAccess() throws Exception {
+        assumeNotWindows();
         int shareeCount = 2;
         PeergosNetworkUtils.grantAndRevokeDirReadAccess(getNode(iNode1), getNode(iNode2), shareeCount, random, this::updatePkis);
     }
 
     @Test
     public void publicLinkToFile() throws Exception {
+        assumeNotWindows();
         PeergosNetworkUtils.publicLinkToFile(random, getNode(iNode1), getNode(iNode2), this::updatePkis);
     }
 
