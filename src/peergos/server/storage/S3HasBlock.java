@@ -112,7 +112,8 @@ public class S3HasBlock {
         List<Multihash> peerIds = ids.stream()
                 .map(c -> (Multihash) c)
                 .collect(Collectors.toList());
-        Optional<byte[]> block = s3.getRaw(peerIds, null, hash, Optional.empty(), ids.get(0), hasher, false, false).join();
+        boolean useOwner = a.getBoolean("use-owner");
+        Optional<byte[]> block = s3.getRaw(peerIds, useOwner ? owner : null, hash, Optional.empty(), ids.get(0), hasher, false, false).join();
         Files.write(Paths.get(hash + ".data"), block.get());
     }
 }
