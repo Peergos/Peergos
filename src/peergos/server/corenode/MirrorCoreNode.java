@@ -367,7 +367,6 @@ public class MirrorCoreNode implements CoreNode {
         if (!updating.compareAndSet(false, true))
             return false;
         try {
-            Logging.LOG().info("Starting pki update");
             Pair<CorenodeRoots, byte[]> remoteState = getPkiState();
             CorenodeRoots remote = remoteState.left;
             CorenodeState current = state;
@@ -375,7 +374,6 @@ public class MirrorCoreNode implements CoreNode {
                     remote.pkiOwnerTarget.equals(current.roots.pkiOwnerTarget) &&
                     remote.pkiKey.equals(current.roots.pkiKey) &&
                     remote.pkiKeyTarget.equals(current.roots.pkiKeyTarget)) {
-                Logging.LOG().info("pki up-to-date");
                 return false;
             }
 
