@@ -102,7 +102,8 @@ public class S3HasBlock {
                 rawSocial, usage, userQuotas, rawAccount, batStore, account, linkCounts, crypto);
 
         s3.setPki(core);
-        PublicKeyHash owner = PublicKeyHash.fromString(a.getArg("owner"));
+        String username = a.getArg("username");
+        PublicKeyHash owner = core.getPublicKeyHash(username).join().get();
         Cid hash = Cid.decode(a.getArg("hash"));
 
         Optional<BlockMetadata> blockMetadata = meta.get(hash);
