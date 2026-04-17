@@ -1022,11 +1022,7 @@ public class Main extends Builder {
             p2pAPI.initAndStart(p2pAPIAddress, nodeIds, Optional.empty(), publicHostname, blockstoreDomains, frameDomains, appSubdomains,
                     a.getBoolean("include-csp", true), basicAuth, webroot, Optional.empty(), useWebAssetCache, isPublicServer, maxConnectionQueue, handlerThreads);
 
-            if (! isPki && useIPFS) {
-                // ipfs-nucleus doesn't implement swarm. We may reinstate these in the bootstrap list in the future
-//                int pkiNodeSwarmPort = a.getInt("pki.node.swarm.port");
-//                InetAddress pkiNodeIpAddress = InetAddress.getByName(a.getArg("pki.node.ipaddress"));
-//                ipfsWrapper.connectToNode(new InetSocketAddress(pkiNodeIpAddress, pkiNodeSwarmPort), pkiServerNodeId);
+            if (! isPki) {
                 if (core instanceof MirrorCoreNode)
                     ((MirrorCoreNode) core).start();
             }
