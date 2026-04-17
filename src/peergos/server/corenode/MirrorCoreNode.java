@@ -540,10 +540,7 @@ public class MirrorCoreNode implements CoreNode {
         List<UserPublicKeyLink> chain = state.chains.get(username);
         if (chain != null)
             return CompletableFuture.completedFuture(chain);
-        if (! initialized)
-            return writeTarget.getChain(username);
-
-        return Futures.of(Collections.emptyList());
+        return writeTarget.getChain(username);
     }
 
     @Override
