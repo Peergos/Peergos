@@ -256,7 +256,9 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                             .collect(Collectors.toList())));
                     LOG.info(legacyBlocklist.size() + " legacy blocks remaining");
                     LOG.info("Listing partitioned blocks");
-                    getPartitionedVersions(partitionedBlocklist::addBlocks);
+                    applyToAllVersions("", Optional.empty(), vs -> partitionedBlocklist.addBlocks(vs.stream()
+                            .filter(v -> v.username != null)
+                            .collect(Collectors.toList())), x -> {});
                     LOG.info(partitionedBlocklist.size() + " partitioned blocks.");
                     List<Triple<Multihash, String, PublicKeyHash>> allTargets = usage.getAllTargets()
                             .stream()
@@ -1498,10 +1500,6 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                         .collect(Collectors.toList())),
                 vs -> res.accept(vs.stream().map(v -> new BlockVersion(v.cid, v.version, v.isLatest))
                         .collect(Collectors.toList())));
-    }
-
-    private void getPartitionedVersions(Consumer<List<UserBlockVersion>> res) {
-        applyToAllVersions("", Optional.of("B"), res, res);
     }
 
     private List<Pair<PublicKeyHash, Cid>> getFiles(Optional<PublicKeyHash> owner, long maxReturned) {
