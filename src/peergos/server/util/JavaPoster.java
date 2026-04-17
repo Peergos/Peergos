@@ -33,12 +33,12 @@ public class JavaPoster implements HttpPoster {
         this.userAgent = userAgent;
         if (proxy.isEmpty())
             client = HttpClient.newBuilder()
-                    .connectTimeout(Duration.ofMillis(1_000))
+                    .connectTimeout(Duration.ofMillis(10_000))
                     .build();
         else
             client = HttpClient.newBuilder()
                     .proxy(proxy.get())
-                    .connectTimeout(Duration.ofMillis(1_000))
+                    .connectTimeout(Duration.ofMillis(10_000))
                     .build();
     }
 

@@ -64,8 +64,6 @@ public class RetryStorage implements ContentAddressedStorage {
                             res.completeExceptionally(e);
                         } else if (e instanceof HttpFileNotFoundException) {
                             res.completeExceptionally(e);
-                        } else if (e instanceof ConnectException) {
-                            res.completeExceptionally(e);
                         } else if (e instanceof MajorRateLimitException) {
                             res.completeExceptionally(e);
                         } else if (e.getMessage() != null && e.getMessage().contains("Champ+root+not+present")) {
