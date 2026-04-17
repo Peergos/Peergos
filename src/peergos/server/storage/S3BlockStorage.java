@@ -1624,21 +1624,161 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                                             Consumer<List<UserBlockVersion>> processor,
                                             Consumer<List<UserBlockVersion>> deleteProcessor) {
         String minFirst = startKey.map(k -> k.isEmpty() ? "" : k.substring(0, 1)).orElse("");
-        List<String> subPrefixes = KEY_FIRST_CHARS.stream()
-                .filter(c -> minFirst.isEmpty() || c.compareTo(minFirst) >= 0)
-                .map(c -> prefix + c)
-                .collect(Collectors.toList());
 
-        ForkJoinPool pool = Threads.newFJPool(Math.min(LIST_PARALLELISM, subPrefixes.size()), "S3-List-");
+        // Work queue: each entry is (keyMarker, versionIdMarker, endKey) using full S3 keys.
+        // endKey is exclusive and enforced client-side; Optional.empty() means scan to end of folder.
+        LinkedBlockingQueue<Triple<Optional<String>, Optional<String>, Optional<String>>> workQueue = new LinkedBlockingQueue<>();
+
+        // Seed with N initial non-overlapping ranges covering the keyspace
+        List<String> bounds = KEY_FIRST_CHARS.stream()
+                .filter(c -> minFirst.isEmpty() || c.compareTo(minFirst) >= 0)
+                .map(c -> folder + prefix + c)
+                .collect(Collectors.toList());
+        for (int i = 0; i < bounds.size(); i++) {
+            Optional<String> end = (i + 1 < bounds.size()) ? Optional.of(bounds.get(i + 1)) : Optional.empty();
+            workQueue.add(new Triple<>(Optional.of(bounds.get(i)), Optional.empty(), end));
+        }
+
+        AtomicInteger inFlight = new AtomicInteger(workQueue.size());
+        CompletableFuture<Void> done = new CompletableFuture<>();
+
+        ForkJoinPool pool = Threads.newFJPool(LIST_PARALLELISM, "S3-List-");
         try {
-            List<CompletableFuture<Void>> tasks = subPrefixes.stream()
-                    .map(sp -> CompletableFuture.runAsync(
-                            () -> applyToAllVersions(sp, Optional.empty(), processor, deleteProcessor),
-                            pool))
-                    .collect(Collectors.toList());
-            CompletableFuture.allOf(tasks.toArray(new CompletableFuture[0])).join();
+            for (int i = 0; i < LIST_PARALLELISM; i++)
+                pool.execute(() -> listWorker(workQueue, inFlight, done, processor, deleteProcessor));
+            done.join();
         } finally {
             pool.shutdown();
+        }
+    }
+
+    /** Returns a key strictly between start and end, or empty if no such key can be constructed. */
+    private static Optional<String> lexMidpoint(Optional<String> start, Optional<String> end) {
+        String a = start.orElse("");
+        if (end.isEmpty()) {
+            return Optional.of(a + KEY_FIRST_CHARS.get(KEY_FIRST_CHARS.size() / 2));
+        }
+        String b = end.get();
+        if (a.compareTo(b) >= 0) return Optional.empty();
+        int i = 0;
+        while (i < a.length() && i < b.length() && a.charAt(i) == b.charAt(i))
+            i++;
+        if (i < b.length()) {
+            char ce = b.charAt(i);
+            char cs = (i < a.length()) ? a.charAt(i) : (char)(ce - 1);
+            if (ce > cs + 1)
+                return Optional.of(a.substring(0, i) + (char)((cs + ce) / 2));
+        }
+        // Characters are adjacent or a is a prefix of b: append a middle character to a
+        String candidate = a + KEY_FIRST_CHARS.get(KEY_FIRST_CHARS.size() / 2);
+        return (candidate.compareTo(b) < 0) ? Optional.of(candidate) : Optional.empty();
+    }
+
+    private void listWorker(
+            LinkedBlockingQueue<Triple<Optional<String>, Optional<String>, Optional<String>>> workQueue,
+            AtomicInteger inFlight,
+            CompletableFuture<Void> done,
+            Consumer<List<UserBlockVersion>> processor,
+            Consumer<List<UserBlockVersion>> deleteProcessor) {
+        while (!done.isDone()) {
+            Triple<Optional<String>, Optional<String>, Optional<String>> task;
+            try {
+                task = workQueue.poll(100, TimeUnit.MILLISECONDS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return;
+            }
+            if (task == null) {
+                if (inFlight.get() == 0) break;
+                continue;
+            }
+            Optional<String> keyMarker = task.left;
+            Optional<String> versionIdMarker = task.middle;
+            Optional<String> endKey = task.right;
+
+            S3AdminRequests.ListObjectVersionsReply result = null;
+            try {
+                int sleep = 100;
+                while (result == null) {
+                    try {
+                        result = S3AdminRequests.listObjectVersions(folder, 1_000, keyMarker, versionIdMarker,
+                                ZonedDateTime.now(), host, region, storageClass, accessKeyId, secretKey, url -> getWithBackoff(() -> {
+                                    try {
+                                        return HttpUtil.get(url);
+                                    } catch (IOException e) {
+                                        throw new RuntimeException(e);
+                                    }
+                                }), S3AdminRequests.builder::get, useHttps, hasher);
+                    } catch (Exception e) {
+                        Throwable cause = getRootCause(e);
+                        boolean rateLimited = cause instanceof RateLimitException
+                                || cause instanceof SocketTimeoutException
+                                || cause instanceof SSLException
+                                || cause instanceof SocketException
+                                || isRateLimitedException(e);
+                        if (rateLimited) {
+                            Threads.sleep(sleep);
+                            sleep *= 2;
+                        } else {
+                            done.completeExceptionally(e);
+                            return;
+                        }
+                    }
+                }
+
+                final Optional<String> finalEndKey = endKey;
+                boolean rangeHasMore = result.isTruncated
+                        && result.nextKeyMarker.isPresent()
+                        && (endKey.isEmpty() || result.nextKeyMarker.get().compareTo(endKey.get()) < 0);
+
+                if (rangeHasMore) {
+                    Optional<String> nextKey = result.nextKeyMarker;
+                    Optional<String> nextVid = result.nextVersionIdMarker;
+                    Optional<String> continuationEnd = endKey;
+
+                    // When the queue is empty, workers may be idle: split the remaining range
+                    // at a lexicographic midpoint and donate the far half to the queue
+                    if (workQueue.isEmpty()) {
+                        Optional<String> mid = lexMidpoint(nextKey, endKey);
+                        if (mid.isPresent()) {
+                            inFlight.incrementAndGet();
+                            workQueue.add(new Triple<>(mid, Optional.empty(), endKey));
+                            continuationEnd = mid;
+                        }
+                    }
+
+                    // Enqueue continuation BEFORE processing data so another worker can immediately
+                    // start the next S3 request, overlapping with this worker's data processing
+                    inFlight.incrementAndGet();
+                    workQueue.add(new Triple<>(nextKey, nextVid, continuationEnd));
+                }
+
+                List<UserBlockVersion> versions = result.versions.stream()
+                        .filter(omv -> !omv.key.endsWith("/"))
+                        .filter(omv -> finalEndKey.isEmpty() || omv.key.compareTo(finalEndKey.get()) < 0)
+                        .map(omv -> {
+                            Pair<String, Cid> userBlock = keyToHash(omv.key);
+                            return new UserBlockVersion(userBlock.left, userBlock.right, omv.version, omv.isLatest);
+                        })
+                        .collect(Collectors.toList());
+                processor.accept(versions);
+                List<UserBlockVersion> deletes = result.deletes.stream()
+                        .filter(dm -> !dm.key.endsWith("/"))
+                        .filter(dm -> finalEndKey.isEmpty() || dm.key.compareTo(finalEndKey.get()) < 0)
+                        .map(dm -> {
+                            Pair<String, Cid> userBlock = keyToHash(dm.key);
+                            return new UserBlockVersion(userBlock.left, userBlock.right, dm.version, dm.isLatest);
+                        })
+                        .collect(Collectors.toList());
+                deleteProcessor.accept(deletes);
+                LOG.log(Level.FINE, "Next key marker: " + result.nextKeyMarker);
+            } catch (Exception e) {
+                if (!done.isDone()) done.completeExceptionally(e);
+                return;
+            } finally {
+                if (inFlight.decrementAndGet() == 0)
+                    done.complete(null);
+            }
         }
     }
 
