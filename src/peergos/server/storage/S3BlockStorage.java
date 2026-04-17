@@ -343,6 +343,10 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
             } else if (legacyPresent) {
                 newVersion = copyObject(legacyHashToKey(block), hashToKey(owner, block), hasher);
             } else {
+                // check if it is a new block written since the listing
+                boolean newlyWrittenBlock = getWithBackoff(() -> hasBlockWithoutBackoff(owner, block, false));
+                if (newlyWrittenBlock)
+                    return;
                 throw new IllegalStateException("User " + username + " missing block: " + legacyHashToKey(block));
             }
             if (legacyPresent) {
