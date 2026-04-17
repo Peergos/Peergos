@@ -48,6 +48,15 @@ import java.util.stream.*;
 public class S3BlockStorage implements DeletableContentAddressedStorage {
 
     private static final Logger LOG = Logger.getGlobal();
+    private static final int LIST_PARALLELISM = 64;
+    private static final List<String> KEY_FIRST_CHARS;
+    static {
+        List<String> chars = new ArrayList<>(62);
+        for (char c = '0'; c <= '9'; c++) chars.add(String.valueOf(c));
+        for (char c = 'A'; c <= 'Z'; c++) chars.add(String.valueOf(c));
+        for (char c = 'a'; c <= 'z'; c++) chars.add(String.valueOf(c));
+        KEY_FIRST_CHARS = Collections.unmodifiableList(chars);
+    }
     private static final List<String> RETRY_S3_CODES = List.of("RequestError","RequestTimeout","Throttling"
             ,"ThrottlingException","RequestLimitExceeded","RequestThrottled","InternalError","ExpiredToken","ExpiredTokenException","SlowDown");
     
@@ -256,7 +265,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                             .collect(Collectors.toList())));
                     LOG.info(legacyBlocklist.size() + " legacy blocks remaining");
                     LOG.info("Listing partitioned blocks");
-                    applyToAllVersions("", Optional.empty(), vs -> partitionedBlocklist.addBlocks(vs.stream()
+                    applyToAllVersionsParallel("", Optional.empty(), vs -> partitionedBlocklist.addBlocks(vs.stream()
                             .filter(v -> v.username != null)
                             .collect(Collectors.toList())), x -> {});
                     LOG.info(partitionedBlocklist.size() + " partitioned blocks.");
@@ -1608,6 +1617,29 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                 }
             }
         } while (result == null || result.isTruncated);
+    }
+
+    private void applyToAllVersionsParallel(String prefix,
+                                            Optional<String> startKey,
+                                            Consumer<List<UserBlockVersion>> processor,
+                                            Consumer<List<UserBlockVersion>> deleteProcessor) {
+        String minFirst = startKey.map(k -> k.isEmpty() ? "" : k.substring(0, 1)).orElse("");
+        List<String> subPrefixes = KEY_FIRST_CHARS.stream()
+                .filter(c -> minFirst.isEmpty() || c.compareTo(minFirst) >= 0)
+                .map(c -> prefix + c)
+                .collect(Collectors.toList());
+
+        ForkJoinPool pool = Threads.newFJPool(Math.min(LIST_PARALLELISM, subPrefixes.size()), "S3-List-");
+        try {
+            List<CompletableFuture<Void>> tasks = subPrefixes.stream()
+                    .map(sp -> CompletableFuture.runAsync(
+                            () -> applyToAllVersions(sp, Optional.empty(), processor, deleteProcessor),
+                            pool))
+                    .collect(Collectors.toList());
+            CompletableFuture.allOf(tasks.toArray(new CompletableFuture[0])).join();
+        } finally {
+            pool.shutdown();
+        }
     }
 
     @Override
