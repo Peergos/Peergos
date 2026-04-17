@@ -171,7 +171,7 @@ public class MultiNodeNetworkTests {
             Args normalNode = UserTests.buildArgs()
                     .with(Main.PEERGOS_PATH, Files.createTempDirectory("peergos-mnnt-" + System.nanoTime()).toString())
                     .with("useIPFS", "true")
-                    .with("async-bootstrap", "true")
+                    .with("async-bootstrap", "false")
                     .with("enable-gc", "true")
                     .with("port", "" + peergosPort)
                     .with("pki-node-id", pkiNodeId.toString())
