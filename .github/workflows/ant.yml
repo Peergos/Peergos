@@ -18,7 +18,7 @@ jobs:
       uses: actions/setup-java@v4
       with:
         distribution: temurin
-        java-version: 21
+        java-version: 25
     - name: Build with Ant
       run: ant -noinput -buildfile build.xml dist
     - name: GWT build
