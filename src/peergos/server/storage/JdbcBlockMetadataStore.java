@@ -64,7 +64,6 @@ public class JdbcBlockMetadataStore implements BlockMetadataStore {
                 if (!f.getMessage().contains("duplicate column"))
                     throw new RuntimeException(f);
             }
-            commands.createTable("CREATE INDEX IF NOT EXISTS blockmetadata_owner ON blockmetadata (owner);", conn);
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
