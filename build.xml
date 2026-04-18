@@ -120,6 +120,7 @@
       <jvmarg value="-Xmx4g"/>
       <jvmarg value="-Djava.library.path=native-lib"/>
       <jvmarg value="--enable-native-access=ALL-UNNAMED"/>
+      <jvmarg value="--sun-misc-unsafe-memory-access=allow"/>
       <classpath>
 	<fileset dir="lib-build">
 	  <include name="**/*.jar"/>
