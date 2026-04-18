@@ -119,6 +119,7 @@
     <junit fork="true" printsummary="true" haltonfailure="no">
       <jvmarg value="-Xmx4g"/>
       <jvmarg value="-Djava.library.path=native-lib"/>
+      <jvmarg value="--enable-native-access=ALL-UNNAMED"/>
       <classpath>
 	<fileset dir="lib-build">
 	  <include name="**/*.jar"/>
