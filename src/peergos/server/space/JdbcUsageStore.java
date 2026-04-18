@@ -347,8 +347,7 @@ public class JdbcUsageStore implements UsageStore {
     public Set<PublicKeyHash> getAllWriters(String owner) {
         try (Connection conn = getConnection();
              PreparedStatement query = conn.prepareStatement("SELECT writers.key_hash FROM writers " +
-                     "INNER JOIN ownedkeys ON writers.id=ownedkeys.owned_id " +
-                     "INNER JOIN writerusage ON ownedkeys.parent_id=writerusage.writer_id " +
+                     "INNER JOIN writerusage ON writers.id=writerusage.writer_id " +
                      "INNER JOIN users ON writerusage.user_id=users.id WHERE users.name=?;")) {
             query.setString(1, owner);
 
