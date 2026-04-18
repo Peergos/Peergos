@@ -262,10 +262,10 @@ public class GarbageCollector {
                     .resolve("reachability-" + username + ".sqlite");
             reachabilityDbFile.getParent().toFile().mkdirs();
             SqliteBlockReachability reachability = SqliteBlockReachability.createReachabilityDb(reachabilityDbFile);
-            reachability.clearReachable();
             // First build a bloom (infini) filter of the block versions in RDB
             // then use this to efficiently filter the blockstore listing
-            long nMetaBlocks = metadata.size(owner);
+            long nMetaBlocks = reachability.size();
+            reachability.clearReachable();
             CidVersionInfiniFilter inRdb = CidVersionInfiniFilter.build(nMetaBlocks, 0.0001);
             reachability.applyToAllVersions(versions -> versions.forEach(inRdb::add));
             // Versions are only relevant for versioned S3 buckets, otherwise version is null
