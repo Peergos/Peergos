@@ -280,16 +280,10 @@ public class GarbageCollector {
             LOG.info("Listing " + pending.size() + " pending blocks took " + (t2 - t1) / 1_000_000_000 + "s");
 
             // This pointers call must happen AFTER the block and pending listing for correctness
-            // Todo specialise this call to only return owners from DB
-            Map<PublicKeyHash, byte[]> allPointers = pointers.getAllEntries()
-                    .entrySet()
-                    .stream()
-                    .filter(e -> {
-                        try {
-                            return owner.equals(usage.getOwnerKey(e.getKey()));
-                        } catch (IllegalStateException f) {
-                            return false;
-                        }})
+            Set<PublicKeyHash> writers = usage.getAllWriters(username);
+            Map<PublicKeyHash, byte[]> allPointers = writers.stream()
+                    .flatMap(w -> pointers.getPointer(w).join()
+                            .map(d -> Map.entry(w, d)).stream())
                     .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
             long t3 = System.nanoTime();
             LOG.info("Listing " + allPointers.size() + " pointers took " + (t3 - t2) / 1_000_000_000 + "s");
