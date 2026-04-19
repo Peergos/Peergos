@@ -83,6 +83,11 @@ public class MultiNodeNetworkTests {
     @AfterClass
     public static void cleanup() {
         try {Thread.sleep(2000);}catch (InterruptedException e) {}
+        for (ServerProcesses service : services) {
+            try { service.localApi.stop(); } catch (Exception e) {}
+            try { if (service.p2pApi != null) service.p2pApi.stop(); } catch (Exception e) {}
+            try { if (service.ipfs != null) service.ipfs.stop(); } catch (Exception e) {}
+        }
         for (Args toClean : argsToCleanUp) {
             Path peergosDir = toClean.fromPeergosDir("", "");
             System.out.println("Deleting " + peergosDir);
