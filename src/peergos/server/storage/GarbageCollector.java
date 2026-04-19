@@ -168,7 +168,7 @@ public class GarbageCollector {
         PublicKeyHash owner = usage.getOwnerKey(writers.stream().findAny().get());
         PublicKeyHash fromPki = pki.getPublicKeyHash(username).join().get();
         if (! fromPki.equals(owner))
-            throw new IllegalStateException("Owner mismatch!");
+            throw new IllegalStateException("Owner mismatch! " + owner + " != " + fromPki);
 
         Map<PublicKeyHash, byte[]> userPointers = writers.stream()
                 .map(w -> new Pair<>(w, pointers.getPointer(w).join()))
