@@ -311,9 +311,13 @@ public class GarbageCollector {
             if (snapshotFile.toFile().exists()) {
                 try {
                     PointerSnapshot loaded = PointerSnapshot.fromCbor(CborObject.fromByteArray(Files.readAllBytes(snapshotFile)));
-                    PointerSnapshot initialUsageRoots = new PointerSnapshot(usage.getAllTargets(username)
-                            .stream()
-                            .collect(Collectors.toMap(t -> t.right, t -> t.left)));
+                    Set<PublicKeyHash> initialWriters = usage.getAllWriters(username);
+                    Map<PublicKeyHash, Multihash> allPointers = initialWriters.stream()
+                            .flatMap(w -> pointers.getPointer(w).join()
+                                    .flatMap(d -> parsePointerTarget(owner, w, d, storage)
+                                            .map(m -> Map.entry(w, m))).stream())
+                            .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+                    PointerSnapshot initialUsageRoots = new PointerSnapshot(allPointers);
                     if (loaded.equals(initialUsageRoots)) {
                         LOG.info("No changes for " + username);
                         continue;
@@ -416,8 +420,11 @@ public class GarbageCollector {
                 LOG.info("Deleting blocks took " + (t8 - t7) / 1_000_000_000 + "s");
             }
             // save snapshot to file
-            PointerSnapshot gcedVersion = new PointerSnapshot(usageRoots.stream()
-                    .collect(Collectors.toMap(t -> t.right, t -> t.left)));
+            Map<PublicKeyHash, Multihash> allPointerTargets = allPointers.entrySet()
+                    .stream()
+                    .flatMap(e -> parsePointerTarget(owner, e.getKey(), e.getValue(), storage).map(m -> Map.entry(e.getKey(), m)).stream())
+                    .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+            PointerSnapshot gcedVersion = new PointerSnapshot(allPointerTargets);
             try {
                 Files.write(snapshotFile, gcedVersion.serialize(), StandardOpenOption.TRUNCATE_EXISTING);
             } catch (IOException e) {
@@ -426,6 +433,16 @@ public class GarbageCollector {
             LOG.info("GC complete. Freed " + deletedCborBlocks + " cbor blocks and " + deletedRawBlocks +
                     " raw blocks, total duration: " + (t8 - t7 + t6 - t0) / 1_000_000_000 + "s, metadata.compact took " + (t9 - t8) / 1_000_000_000 + "s");
         }
+    }
+
+    private static MaybeMultihash parsePointerTarget(PublicKeyHash owner,
+                                                     PublicKeyHash writerHash,
+                                                     byte[] signedRawCas,
+                                                     DeletableContentAddressedStorage storage) {
+        PublicSigningKey writer = getWithBackoff(() -> storage.getSigningKey(owner, writerHash).join().get());
+        byte[] bothHashes = writer.unsignMessage(signedRawCas).join();
+        PointerUpdate cas = PointerUpdate.fromCbor(CborObject.fromByteArray(bothHashes));
+        return cas.updated;
     }
 
     private static boolean markReachable(PublicKeyHash owner,
@@ -438,10 +455,7 @@ public class GarbageCollector {
                                          BlockMetadataStore metadata,
                                          AtomicLong totalReachable) {
         try {
-            PublicSigningKey writer = getWithBackoff(() -> storage.getSigningKey(null, writerHash).join().get());
-            byte[] bothHashes = writer.unsignMessage(signedRawCas).join();
-            PointerUpdate cas = PointerUpdate.fromCbor(CborObject.fromByteArray(bothHashes));
-            MaybeMultihash updated = cas.updated;
+            MaybeMultihash updated = parsePointerTarget(owner, writerHash, signedRawCas, storage);
             if (updated.isPresent() && !done.contains(updated.get())) {
                 markReachable(owner, storage, true, new ArrayList<>(1000), (Cid) updated.get(), reachability, metadata, () -> getUsername(writerHash, usage), totalReachable);
                 return true;
