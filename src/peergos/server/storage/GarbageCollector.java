@@ -277,7 +277,8 @@ public class GarbageCollector {
 
             List<Cid> pending = storage.getOpenTransactionBlocks(owner);
             long t2 = System.nanoTime();
-            LOG.info("Listing " + pending.size() + " pending blocks took " + (t2 - t1) / 1_000_000_000 + "s");
+            if (! pending.isEmpty())
+                LOG.info("Listing " + pending.size() + " pending blocks took " + (t2 - t1) / 1_000_000_000 + "s");
 
             // This pointers call must happen AFTER the block and pending listing for correctness
             Set<PublicKeyHash> writers = usage.getAllWriters(username);
@@ -311,11 +312,13 @@ public class GarbageCollector {
             markPool.shutdown();
 
             long t5 = System.nanoTime();
-            LOG.info("Marking " + (totalReachable.get() - reachableAfterUsage) + " reachable from " + rootsProcessed + " pointers took " + (t5 - t4) / 1_000_000_000 + "s");
+            if (totalReachable.get() - reachableAfterUsage > 0)
+                LOG.info("Marking " + (totalReachable.get() - reachableAfterUsage) + " reachable from " + rootsProcessed + " pointers took " + (t5 - t4) / 1_000_000_000 + "s");
             reachability.setReachable(pending, totalReachable);
 
             long t6 = System.nanoTime();
-            LOG.info("Marking " + pending.size() + " pending blocks reachable took " + (t6 - t5) / 1_000_000_000 + "s");
+            if (! pending.isEmpty())
+                LOG.info("Marking " + pending.size() + " pending blocks reachable took " + (t6 - t5) / 1_000_000_000 + "s");
 
             // Save pointers snapshot
             snapshotSaver.apply(allPointers.entrySet().stream()).join();
@@ -348,7 +351,9 @@ public class GarbageCollector {
             metadata.compact();
             reachability.compact();
             long t9 = System.nanoTime();
-            LOG.info("Deleting blocks took " + (t8 - t7) / 1_000_000_000 + "s");
+            if (cborDelCount.get() + rawDelCount.get() > 0) {
+                LOG.info("Deleting blocks took " + (t8 - t7) / 1_000_000_000 + "s");
+            }
             LOG.info("GC complete. Freed " + deletedCborBlocks + " cbor blocks and " + deletedRawBlocks +
                     " raw blocks, total duration: " + (t8 - t7 + t6 - t0) / 1_000_000_000 + "s, metadata.compact took " + (t9 - t8) / 1_000_000_000 + "s");
         }
