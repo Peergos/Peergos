@@ -14,6 +14,7 @@ import peergos.shared.mutable.*;
 import peergos.shared.storage.*;
 import peergos.shared.util.*;
 
+import java.io.IOException;
 import java.nio.file.*;
 import java.util.*;
 import java.util.concurrent.*;
@@ -224,6 +225,48 @@ public class GarbageCollector {
         }
     }
 
+    private static class PointerSnapshot implements Cborable {
+
+        public final Map<PublicKeyHash, Multihash> roots;
+
+        public PointerSnapshot(Map<PublicKeyHash, Multihash> roots) {
+            this.roots = roots;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (o == null || getClass() != o.getClass()) return false;
+            PointerSnapshot that = (PointerSnapshot) o;
+            return Objects.equals(roots, that.roots);
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hashCode(roots);
+        }
+
+        @Override
+        public CborObject toCbor() {
+            return new CborObject.CborList(roots.entrySet()
+                .stream()
+                .sorted(Comparator.comparing(Map.Entry::getKey))
+                .flatMap(e -> Stream.of(e.getKey().toCbor(), new CborObject.CborMerkleLink(e.getValue())))
+                .collect(Collectors.toList()));
+        }
+
+        public static PointerSnapshot fromCbor(Cborable cbor) {
+            if (! (cbor instanceof CborObject.CborList))
+                throw new IllegalStateException("Invalid cbor for PointerSnapshot!");
+            CborObject.CborList list = (CborObject.CborList) cbor;
+            if (list.value.size() % 2 != 0)
+                throw new IllegalStateException("Invalid cbor list length for PointerSnapshot!");
+            HashMap<PublicKeyHash, Multihash> res = new HashMap<>();
+            for (int i=0; i < list.value.size()/2; i++)
+                res.put(list.get(2*i, PublicKeyHash::fromCbor), list.get(2*i + 1, c -> ((CborObject.CborMerkleLink)c).target));
+            return new PointerSnapshot(res);
+        }
+    }
+
     /** The result of this method is a snapshot of the mutable pointers that is consistent with the blocks store
      * after GC has completed (saved to a file which can be independently backed up).
      *
@@ -261,6 +304,24 @@ public class GarbageCollector {
             Path reachabilityDbFile = reachabilityDbDir.resolve("reachability")
                     .resolve("reachability-" + username + ".sqlite");
             reachabilityDbFile.getParent().toFile().mkdirs();
+            Path snapshotFile = reachabilityDbDir.resolve("pointer-snapshots")
+                    .resolve(username + ".cbor");
+            snapshotFile.getParent().toFile().mkdirs();
+            // load snapshot
+            if (snapshotFile.toFile().exists()) {
+                try {
+                    PointerSnapshot loaded = PointerSnapshot.fromCbor(CborObject.fromByteArray(Files.readAllBytes(snapshotFile)));
+                    PointerSnapshot initialUsageRoots = new PointerSnapshot(usage.getAllTargets(username)
+                            .stream()
+                            .collect(Collectors.toMap(t -> t.right, t -> t.left)));
+                    if (loaded.equals(initialUsageRoots)) {
+                        LOG.info("No changes for " + username);
+                        continue;
+                    }
+                } catch (IOException e) {
+                    LOG.log(Level.WARNING, e, e::getMessage);
+                }
+            }
             SqliteBlockReachability reachability = SqliteBlockReachability.createReachabilityDb(reachabilityDbFile);
             // First build a bloom (infini) filter of the block versions in RDB
             // then use this to efficiently filter the blockstore listing
@@ -353,6 +414,14 @@ public class GarbageCollector {
             long t9 = System.nanoTime();
             if (cborDelCount.get() + rawDelCount.get() > 0) {
                 LOG.info("Deleting blocks took " + (t8 - t7) / 1_000_000_000 + "s");
+            }
+            // save snapshot to file
+            PointerSnapshot gcedVersion = new PointerSnapshot(usageRoots.stream()
+                    .collect(Collectors.toMap(t -> t.right, t -> t.left)));
+            try {
+                Files.write(snapshotFile, gcedVersion.serialize(), StandardOpenOption.TRUNCATE_EXISTING);
+            } catch (IOException e) {
+                LOG.log(Level.WARNING, e, e::getMessage);
             }
             LOG.info("GC complete. Freed " + deletedCborBlocks + " cbor blocks and " + deletedRawBlocks +
                     " raw blocks, total duration: " + (t8 - t7 + t6 - t0) / 1_000_000_000 + "s, metadata.compact took " + (t9 - t8) / 1_000_000_000 + "s");
