@@ -105,35 +105,49 @@ public class GCTests {
         Assert.assertTrue(links.isPresent());
         Assert.assertTrue(links.get().contains(leaf));
 
-        // add a new version of the leaf block, and check it is kept and the original is deleted
+        // Add a new leaf
+        Cid leaf2 = randomRaw(r);
+        byte[] raw2 = new CborObject.CborList(Stream.of(leaf, leaf2)
+                .map(CborObject.CborMerkleLink::new).toList()
+        ).serialize();
+        Cid root2 = new Cid(1, Cid.Codec.DagCbor, Multihash.Type.sha2_256, Hash.sha256(raw2));
+        storage.add(writer, leaf2);
+        BlockVersion rootV1b = storage.add(writer, root2);
+        metadb.put(writer, root2, rootV1b.version, raw2);
+        byte[] signedCas2 = signer.signMessage(new PointerUpdate(MaybeMultihash.of(root), MaybeMultihash.of(root2), Optional.of(1L)).serialize()).join();
+        pointers.setPointer(writer, Optional.of(signedCas), signedCas2).join();
+        // add a new version of the original leaf block, and check it is kept and the original is deleted
         BlockVersion leafV2 = storage.add(writer, leaf);
         gc.collect(s -> Futures.of(true));
-        Assert.assertEquals(2, storage.storage.values().stream().map(Map::size).mapToInt(i -> i).sum());
+        Assert.assertEquals(4, storage.storage.values().stream().map(Map::size).mapToInt(i -> i).sum());
         List<BlockVersion> versions2 = new ArrayList<>();
         storage.getAllBlockHashVersions(writer, versions2::addAll);
-        Assert.assertEquals(2, versions2.size());
+        Assert.assertEquals(3, versions2.size());
         Assert.assertTrue(versions2.contains(leafV2));
-        Optional<List<Cid>> links2 = rdb.getLinks(root);
+        Optional<List<Cid>> links2 = rdb.getLinks(root2);
         Assert.assertTrue(links2.isPresent());
         Assert.assertTrue(links2.get().contains(leaf));
 
         // now add a new version of the root
-        BlockVersion rootV2 = storage.add(writer, root);
+        BlockVersion rootV2 = storage.add(writer, root2);
+        // delete snapshot to force a GC for user
+        Files.delete(dir.resolve("pointer-snapshots")
+                .resolve(username + ".cbor"));
         gc.collect(s -> Futures.of(true));
-        Assert.assertEquals(2, storage.storage.values().stream().map(Map::size).mapToInt(i -> i).sum());
+        Assert.assertEquals(4, storage.storage.values().stream().map(Map::size).mapToInt(i -> i).sum());
         List<BlockVersion> versions3 = new ArrayList<>();
         storage.getAllBlockHashVersions(writer, versions3::addAll);
-        Assert.assertEquals(2, versions3.size());
+        Assert.assertEquals(3, versions3.size());
         Assert.assertTrue(versions3.contains(rootV2));
-        Optional<List<Cid>> links3 = rdb.getLinks(root);
+        Optional<List<Cid>> links3 = rdb.getLinks(root2);
         Assert.assertTrue(links3.isPresent());
         Assert.assertTrue(links3.get().contains(leaf));
 
         gc.collect(s -> Futures.of(true));
-        Assert.assertEquals(2, storage.storage.values().stream().map(Map::size).mapToInt(i -> i).sum());
+        Assert.assertEquals(4, storage.storage.values().stream().map(Map::size).mapToInt(i -> i).sum());
         List<BlockVersion> versions4 = new ArrayList<>();
         storage.getAllBlockHashVersions(writer, versions4::addAll);
-        Assert.assertEquals(2, versions4.size());
+        Assert.assertEquals(3, versions4.size());
         Assert.assertTrue(versions4.contains(rootV2));
     }
 
