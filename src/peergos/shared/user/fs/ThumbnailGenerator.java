@@ -1,5 +1,7 @@
 package peergos.shared.user.fs;
 
+import peergos.server.user.JavaImageThumbnailer;
+
 import java.util.*;
 import java.io.*;
 
@@ -17,6 +19,10 @@ public class ThumbnailGenerator {
 
     public static synchronized void setInstance(Generator instance) {
         ThumbnailGenerator.instance = instance;
+    }
+
+    public static void initJava() {
+        setInstance(new JavaImageThumbnailer());
     }
 
     public static synchronized Generator get() {

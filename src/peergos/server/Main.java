@@ -21,7 +21,6 @@ import peergos.server.storage.auth.*;
 import peergos.server.sync.DirectorySync;
 import peergos.server.sync.SyncConfig;
 import peergos.server.sync.SyncRunner;
-import peergos.server.user.JavaImageThumbnailer;
 import peergos.shared.*;
 import peergos.server.corenode.*;
 import peergos.server.fuse.*;
@@ -644,7 +643,7 @@ public class Main extends Builder {
                 try {
                     Crypto crypto = JavaCrypto.init();
                     PublicSigningKey.addProvider(PublicSigningKey.Type.Ed25519, crypto.signer);
-                    ThumbnailGenerator.setInstance(new JavaImageThumbnailer());
+                    ThumbnailGenerator.initJava();
                     URL target = new URL(getAppServerUrl(a));
                     Optional<ProxySelector> proxy = ProxyChooser.build(a);
                     if (proxy.isPresent())
@@ -802,7 +801,7 @@ public class Main extends Builder {
         try {
             Crypto crypto = initCrypto();
             PublicSigningKey.addProvider(PublicSigningKey.Type.Ed25519, crypto.signer);
-            ThumbnailGenerator.setInstance(new JavaImageThumbnailer());
+            ThumbnailGenerator.initJava();
             Hasher hasher = crypto.hasher;
             PublicSigningKey.addProvider(PublicSigningKey.Type.Ed25519, crypto.signer);
 
@@ -1168,7 +1167,7 @@ public class Main extends Builder {
 
             Crypto crypto = initCrypto();
             PublicSigningKey.addProvider(PublicSigningKey.Type.Ed25519, crypto.signer);
-            ThumbnailGenerator.setInstance(new JavaImageThumbnailer());
+            ThumbnailGenerator.initJava();
             UserContext userContext = UserContext.signIn(username, password, Main::getMfaResponseCLI, network, crypto).join();
             PeergosFS peergosFS = new PeergosFS(userContext);
             FuseProcess fuseProcess = new FuseProcess(peergosFS, path);
