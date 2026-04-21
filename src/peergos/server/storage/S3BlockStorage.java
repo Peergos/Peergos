@@ -1511,7 +1511,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
 
     @Override
     public void getAllRawBlockVersions(PublicKeyHash owner, Consumer<List<BlockVersion>> res) {
-        applyToAllVersions(ownerToPrefix(owner) + "AFK", Optional.empty(),
+        applyToAllVersionsParallel(ownerToPrefix(owner) + "AFK", Optional.empty(),
                 vs -> res.accept(vs.stream().map(v -> new BlockVersion(v.cid, v.version, v.isLatest))
                         .collect(Collectors.toList())),
                 vs -> res.accept(vs.stream().map(v -> new BlockVersion(v.cid, v.version, v.isLatest))
@@ -1519,7 +1519,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
     }
 
     private void getFileVersions(PublicKeyHash owner, Consumer<List<BlockVersion>> res) {
-        applyToAllVersions(ownerToPrefix(owner) + (owner == null ? "A" : ""), Optional.empty(),
+        applyToAllVersionsParallel(ownerToPrefix(owner) + (owner == null ? "A" : ""), Optional.empty(),
                 vs -> res.accept(vs.stream().map(v -> new BlockVersion(v.cid, v.version, v.isLatest))
                         .collect(Collectors.toList())),
                 vs -> res.accept(vs.stream().map(v -> new BlockVersion(v.cid, v.version, v.isLatest))
