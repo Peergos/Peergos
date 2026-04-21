@@ -257,17 +257,18 @@ public class CLI implements Runnable {
 
             AsyncReader reader = peergosFileSystem.reader(remotePath);
             byte[] buf = new byte[Chunk.MAX_SIZE];
-            FileOutputStream fout = new FileOutputStream(localPath.toFile());
-            long fileSize = stat.fileProperties().size;
-            for (long offset = 0; offset < fileSize;) {
-                int read = reader.readIntoArray(buf, 0, Math.min(buf.length, (int) (fileSize - offset))).join();
-                fout.write(buf, 0, read);
-                offset += read;
-                progressConsumer.accept(offset, fileSize);
+            try (FileOutputStream fout = new FileOutputStream(localPath.toFile())) {
+                long fileSize = stat.fileProperties().size;
+                for (long offset = 0; offset < fileSize;) {
+                    int read = reader.readIntoArray(buf, 0, Math.min(buf.length, (int) (fileSize - offset))).join();
+                    fout.write(buf, 0, read);
+                    offset += read;
+                    progressConsumer.accept(offset, fileSize);
+                }
+                writerForProgress.println();
+                writerForProgress.flush();
+                return "Downloaded " + remotePath + " to " + localPath;
             }
-            writerForProgress.println();
-            writerForProgress.flush();
-            return "Downloaded " + remotePath + " to " + localPath;
         }
     }
 
