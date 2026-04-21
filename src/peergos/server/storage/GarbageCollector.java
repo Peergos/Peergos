@@ -426,7 +426,7 @@ public class GarbageCollector {
                     .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
             PointerSnapshot gcedVersion = new PointerSnapshot(allPointerTargets);
             try {
-                Files.write(snapshotFile, gcedVersion.serialize(), StandardOpenOption.TRUNCATE_EXISTING);
+                Files.write(snapshotFile, gcedVersion.serialize(), StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
             } catch (IOException e) {
                 LOG.log(Level.WARNING, e, e::getMessage);
             }
