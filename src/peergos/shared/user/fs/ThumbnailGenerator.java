@@ -1,7 +1,5 @@
 package peergos.shared.user.fs;
 
-import peergos.server.user.JavaImageThumbnailer;
-
 import java.util.*;
 import java.io.*;
 
