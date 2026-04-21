@@ -21,10 +21,6 @@ public class ThumbnailGenerator {
         ThumbnailGenerator.instance = instance;
     }
 
-    public static void initJava() {
-        setInstance(new JavaImageThumbnailer());
-    }
-
     public static synchronized Generator get() {
         if (instance == null)
             throw new IllegalStateException("Thumbnail generator hasn't been set!");

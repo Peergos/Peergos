@@ -643,7 +643,7 @@ public class Main extends Builder {
                 try {
                     Crypto crypto = JavaCrypto.init();
                     PublicSigningKey.addProvider(PublicSigningKey.Type.Ed25519, crypto.signer);
-                    ThumbnailGenerator.initJava();
+                    JvmThumbnailer.initJava();
                     URL target = new URL(getAppServerUrl(a));
                     Optional<ProxySelector> proxy = ProxyChooser.build(a);
                     if (proxy.isPresent())
@@ -801,7 +801,7 @@ public class Main extends Builder {
         try {
             Crypto crypto = initCrypto();
             PublicSigningKey.addProvider(PublicSigningKey.Type.Ed25519, crypto.signer);
-            ThumbnailGenerator.initJava();
+            JvmThumbnailer.initJava();
             Hasher hasher = crypto.hasher;
             PublicSigningKey.addProvider(PublicSigningKey.Type.Ed25519, crypto.signer);
 
@@ -1167,7 +1167,7 @@ public class Main extends Builder {
 
             Crypto crypto = initCrypto();
             PublicSigningKey.addProvider(PublicSigningKey.Type.Ed25519, crypto.signer);
-            ThumbnailGenerator.initJava();
+            JvmThumbnailer.initJava();
             UserContext userContext = UserContext.signIn(username, password, Main::getMfaResponseCLI, network, crypto).join();
             PeergosFS peergosFS = new PeergosFS(userContext);
             FuseProcess fuseProcess = new FuseProcess(peergosFS, path);
