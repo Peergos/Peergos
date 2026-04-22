@@ -166,6 +166,7 @@ public class ServerAdmin {
 
                     // set quota to 0
                     quota.removeQuota(username);
+                    Set<PublicKeyHash> fromUsage = usageStore.getAllWriters(username);
 
                     // get and verify all owned keys, then set them all to empty targets, children first
                     Optional<PublicKeyHash> idOpt = core.getPublicKeyHash(username).join();
@@ -174,7 +175,12 @@ public class ServerAdmin {
                         return true;
                     }
                     PublicKeyHash id = idOpt.get();
-                    deleteOwnedKeys(id, pointers, rawPointers, storage, crypto);
+                    try {
+                        deleteOwnedKeys(id, pointers, rawPointers, storage, crypto);
+                    } catch (Exception e) {}
+                    for (PublicKeyHash w : fromUsage) {
+                        rawPointers.removePointer(w);
+                    }
                     // Now delete all usage roots
                     usageStore.removeUser(username);
                     System.out.println("Finished deleting user " + username);
