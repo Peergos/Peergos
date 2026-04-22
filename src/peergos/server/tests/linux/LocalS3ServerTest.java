@@ -1,4 +1,4 @@
-package peergos.server.tests;
+package peergos.server.tests.linux;
 
 import org.junit.*;
 import peergos.server.*;
