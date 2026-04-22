@@ -171,6 +171,10 @@ public class ServerAdmin {
                     // get and verify all owned keys, then set them all to empty targets, children first
                     Optional<PublicKeyHash> idOpt = core.getPublicKeyHash(username).join();
                     if (idOpt.isEmpty()) {
+                        for (PublicKeyHash w : fromUsage) {
+                            rawPointers.removePointer(w);
+                        }
+                        usageStore.removeUser(username);
                         System.out.println("User " + username + " doesn't exist");
                         return true;
                     }
