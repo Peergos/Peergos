@@ -19,16 +19,15 @@ import java.net.*;
 import java.nio.file.*;
 import java.util.*;
 
-/** To run these tests download minio + mc to /usr/local/bin as in the github action. Then run with
- *  export MINIO_ROOT_USER=test
- *  export MINIO_ROOT_PASSWORD=testdslocal
- *  minio server ~/minio
- *  mc alias set minio 'http://local-s3.localhost:9000' 'test' 'testdslocal'
- *  mc mb ~/minio/local-s3
- */
 public class S3UserTests extends UserTests {
 
     private static Random random = new Random(1);
+
+    private static final String S3_BUCKET = "local-s3";
+    private static final String S3_ACCESS_KEY = "test";
+    private static final String S3_SECRET_KEY = "testdslocal";
+    private static LocalS3Server localS3;
+    private static int s3Port;
 
     private static Args pkiArgs = buildArgs()
             .with("useIPFS", "true")
@@ -36,13 +35,14 @@ public class S3UserTests extends UserTests {
             .removeArg(IpfsWrapper.IPFS_BOOTSTRAP_NODES); // no bootstrapping
 
     private static Args withS3(Args in) {
-        return in.with("s3.bucket", "local-s3")
-                .with("s3.region", "local")
-                .with("s3.region.endpoint", "localhost:9000")
+        S3Config cfg = LocalS3Server.getConfig(S3_BUCKET, S3_ACCESS_KEY, S3_SECRET_KEY, s3Port);
+        return in.with("s3.bucket", cfg.bucket)
+                .with("s3.region", cfg.region)
+                .with("s3.region.endpoint", cfg.regionEndpoint)
                 .with("direct-s3-writes", "true")
                 .with("authed-s3-reads", "true")
-                .with("s3.accessKey", "test")
-                .with("s3.secretKey", "testdslocal")
+                .with("s3.accessKey", cfg.accessKey)
+                .with("s3.secretKey", cfg.secretKey)
                 .with("allow-external-login", "true");
     }
 
@@ -63,6 +63,12 @@ public class S3UserTests extends UserTests {
 
     @BeforeClass
     public static void init() throws Exception {
+        // start local S3 server
+        s3Port = TestPorts.getPort();
+        Path s3Dir = Files.createTempDirectory("peergos-s3-test");
+        localS3 = new LocalS3Server(s3Dir, S3_BUCKET, S3_ACCESS_KEY, S3_SECRET_KEY, s3Port);
+        localS3.start();
+
         // start pki node
         ServerProcesses pki = Main.PKI_INIT.main(pkiArgs);
         PublicKeyHash peergosId = pki.localApi.coreNode.getPublicKeyHash("peergos").join().get();
@@ -128,6 +134,8 @@ public class S3UserTests extends UserTests {
     @AfterClass
     public static void cleanup() {
         try {Thread.sleep(2000);}catch (InterruptedException e) {}
+        if (localS3 != null)
+            localS3.stop();
         argsToCleanUp.add(pkiArgs);
         for (Args toClean : argsToCleanUp) {
             Path peergosDir = toClean.fromPeergosDir("", "");
