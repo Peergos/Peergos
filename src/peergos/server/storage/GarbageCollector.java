@@ -283,6 +283,7 @@ public class GarbageCollector {
                                BlockMetadataStore metadata,
                                TriFunction<Long, Long, Long, CompletableFuture<Boolean>> deleteConfirm,
                                boolean listFromBlockstore) {
+        long ts0 = System.currentTimeMillis();
         LOG.info("Starting blockstore garbage collection on node " + storage.id().join() + "...");
         List<Pair<String, PublicKeyHash>> allUsers = usage.getAllOwners()
                 .stream()
@@ -433,6 +434,8 @@ public class GarbageCollector {
             LOG.info("GC complete. Freed " + deletedCborBlocks + " cbor blocks and " + deletedRawBlocks +
                     " raw blocks, total duration: " + (t8 - t7 + t6 - t0) / 1_000_000_000 + "s, metadata.compact took " + (t9 - t8) / 1_000_000_000 + "s");
         }
+        long ts1 = System.currentTimeMillis();
+        LOG.info("Finished complete GC in " + (ts1 - ts0)/1_000 + "s");
     }
 
     private static MaybeMultihash parsePointerTarget(PublicKeyHash owner,
