@@ -1630,25 +1630,63 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         } while (result == null || result.isTruncated);
     }
 
+    public interface S3VersionLister {
+        S3AdminRequests.ListObjectVersionsReply list(Optional<String> keyMarker, Optional<String> versionIdMarker);
+    }
+
+    /** Compute the initial (keyMarker, endKey) ranges that together cover exactly the keys starting with
+     *  folder+prefix, with no leakage beyond the prefix. Each range is seeded at a different first character
+     *  so workers can list in parallel without overlap.
+     */
+    public static List<Pair<Optional<String>, Optional<String>>> computeInitialRanges(String folder, String prefix, String minFirst) {
+        // The first key that sorts after everything starting with (folder+prefix).
+        // For an empty prefix, there is no upper bound (list the whole bucket).
+        String fullPrefix = folder + prefix;
+        Optional<String> prefixEndKey = prefix.isEmpty() ? Optional.empty() :
+                Optional.of(fullPrefix.substring(0, fullPrefix.length() - 1) +
+                        (char)(fullPrefix.charAt(fullPrefix.length() - 1) + 1));
+
+        List<String> bounds = KEY_FIRST_CHARS.stream()
+                .filter(c -> minFirst.isEmpty() || c.compareTo(minFirst) >= 0)
+                .map(c -> folder + prefix + c)
+                .collect(Collectors.toList());
+        List<Pair<Optional<String>, Optional<String>>> ranges = new ArrayList<>(bounds.size());
+        for (int i = 0; i < bounds.size(); i++) {
+            Optional<String> end = (i + 1 < bounds.size()) ? Optional.of(bounds.get(i + 1)) : prefixEndKey;
+            ranges.add(new Pair<>(Optional.of(bounds.get(i)), end));
+        }
+        return ranges;
+    }
+
     private void applyToAllVersionsParallel(String prefix,
                                             Optional<String> startKey,
                                             Consumer<List<UserBlockVersion>> processor,
                                             Consumer<List<UserBlockVersion>> deleteProcessor) {
+        applyToAllVersionsParallel(prefix, startKey, processor, deleteProcessor,
+                (keyMarker, versionIdMarker) -> S3AdminRequests.listObjectVersions(folder, 1_000, keyMarker, versionIdMarker,
+                        ZonedDateTime.now(), host, region, storageClass, accessKeyId, secretKey, url -> getWithBackoff(() -> {
+                            try {
+                                return HttpUtil.get(url);
+                            } catch (IOException e) {
+                                throw new RuntimeException(e);
+                            }
+                        }), S3AdminRequests.builder::get, useHttps, hasher));
+    }
+
+    void applyToAllVersionsParallel(String prefix,
+                                    Optional<String> startKey,
+                                    Consumer<List<UserBlockVersion>> processor,
+                                    Consumer<List<UserBlockVersion>> deleteProcessor,
+                                    S3VersionLister lister) {
         String minFirst = startKey.map(k -> k.isEmpty() ? "" : k.substring(0, 1)).orElse("");
 
         // Work queue: each entry is (keyMarker, versionIdMarker, endKey) using full S3 keys.
         // endKey is exclusive and enforced client-side; Optional.empty() means scan to end of folder.
         LinkedBlockingQueue<Triple<Optional<String>, Optional<String>, Optional<String>>> workQueue = new LinkedBlockingQueue<>();
 
-        // Seed with N initial non-overlapping ranges covering the keyspace
-        List<String> bounds = KEY_FIRST_CHARS.stream()
-                .filter(c -> minFirst.isEmpty() || c.compareTo(minFirst) >= 0)
-                .map(c -> folder + prefix + c)
-                .collect(Collectors.toList());
-        for (int i = 0; i < bounds.size(); i++) {
-            Optional<String> end = (i + 1 < bounds.size()) ? Optional.of(bounds.get(i + 1)) : Optional.empty();
-            workQueue.add(new Triple<>(Optional.of(bounds.get(i)), Optional.empty(), end));
-        }
+        List<Pair<Optional<String>, Optional<String>>> ranges = computeInitialRanges(folder, prefix, minFirst);
+        for (Pair<Optional<String>, Optional<String>> range : ranges)
+            workQueue.add(new Triple<>(range.left, Optional.empty(), range.right));
 
         AtomicInteger inFlight = new AtomicInteger(workQueue.size());
         CompletableFuture<Void> done = new CompletableFuture<>();
@@ -1656,7 +1694,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         ForkJoinPool pool = Threads.newFJPool(LIST_PARALLELISM, "S3-List-");
         try {
             for (int i = 0; i < LIST_PARALLELISM; i++)
-                pool.execute(() -> listWorker(workQueue, inFlight, done, processor, deleteProcessor));
+                pool.execute(() -> listWorker(workQueue, inFlight, done, processor, deleteProcessor, lister));
             done.join();
         } finally {
             pool.shutdown();
@@ -1690,7 +1728,8 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
             AtomicInteger inFlight,
             CompletableFuture<Void> done,
             Consumer<List<UserBlockVersion>> processor,
-            Consumer<List<UserBlockVersion>> deleteProcessor) {
+            Consumer<List<UserBlockVersion>> deleteProcessor,
+            S3VersionLister lister) {
         while (!done.isDone()) {
             Triple<Optional<String>, Optional<String>, Optional<String>> task;
             try {
@@ -1712,14 +1751,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                 int sleep = 100;
                 while (result == null) {
                     try {
-                        result = S3AdminRequests.listObjectVersions(folder, 1_000, keyMarker, versionIdMarker,
-                                ZonedDateTime.now(), host, region, storageClass, accessKeyId, secretKey, url -> getWithBackoff(() -> {
-                                    try {
-                                        return HttpUtil.get(url);
-                                    } catch (IOException e) {
-                                        throw new RuntimeException(e);
-                                    }
-                                }), S3AdminRequests.builder::get, useHttps, hasher);
+                        result = lister.list(keyMarker, versionIdMarker);
                     } catch (Exception e) {
                         Throwable cause = getRootCause(e);
                         boolean rateLimited = cause instanceof RateLimitException
