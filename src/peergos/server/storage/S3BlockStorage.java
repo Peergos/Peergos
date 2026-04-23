@@ -1348,6 +1348,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         Cid h = new Cid(1, isRaw ? Cid.Codec.Raw : Cid.Codec.DagCbor, hash.type, hash.getHash());
         if (! isRaw)
             cborCache.put(h, data);
+        transactions.addBlock(h, tid, owner);
         return blockBuffer.put(owner, h, data).thenApply(x -> {
             blocksToFlush.add(new Pair<>(owner, h));
             return h;
