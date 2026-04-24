@@ -108,7 +108,7 @@ public class LazyInputStreamCombiner implements AsyncReader {
         AbsoluteCapability nextChunkCap = bufferedChunks.get(lastBufferedChunkInSequence).right;
 
         long finalBufferedChunk = lastBufferedChunkInSequence;
-        LOG.info("Prefetching " + finalCount + " chunks, starting from chunk " + (lastBufferedChunkInSequence / Chunk.MAX_SIZE + 1));
+//        LOG.info("Prefetching " + finalCount + " chunks, starting from chunk " + (lastBufferedChunkInSequence / Chunk.MAX_SIZE + 1));
         FileProperties.calculateSubsequentMapKeys(streamSecret.get(), nextChunkCap.getMapKey(), nextChunkCap.bat, finalCount - 1, crypto.hasher)
                 .thenAccept(mapKeys -> parallelChunksDownload(finalCount, finalBufferedChunk, mapKeys, nextChunkCap));
     }
