@@ -20,6 +20,8 @@ import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
@@ -29,9 +31,12 @@ import java.util.stream.Stream;
 
 public class PeergosSyncFS implements SyncFilesystem {
     private static final Logger LOG = Logging.LOG();
+    private static final int MAX_CHAMP_GETS = peergos.shared.storage.ContentAddressedStorage.MAX_CHAMP_GETS;
+    private static final int MAX_CONCURRENT_BATCH_FETCHES = 20;
 
     private final UserContext context;
     private final Path root;
+    private final Semaphore fetchSemaphore = new Semaphore(MAX_CONCURRENT_BATCH_FETCHES);
 
     public PeergosSyncFS(UserContext context, Path root) {
         this.context = context;
@@ -330,7 +335,7 @@ public class PeergosSyncFS implements SyncFilesystem {
         Set<NamedAbsoluteCapability> childCaps = base.getChildrenCapabilities(context.crypto.hasher, context.network).join();
         AtomicLong directChildCount = new AtomicLong(0);
         List<Pair<Path, FileWrapper>> subdirs = Collections.synchronizedList(new ArrayList<>());
-        base.getChildrenFromCaps(childCaps, children -> {
+        Consumer<Set<FileWrapper>> collector = children -> {
             directChildCount.addAndGet(children.size());
             for (FileWrapper child : children) {
                 Path childPath = basePath.resolve(child.getName());
@@ -344,7 +349,23 @@ public class PeergosSyncFS implements SyncFilesystem {
                     subdirs.add(new Pair<>(childPath, child));
                 }
             }
-        }, context.crypto.hasher, context.network).join();
+        };
+        // Partition caps into batches of MAX_CHAMP_GETS so each getChildrenFromCaps call
+        // makes exactly one network request, and bound concurrency with the semaphore.
+        List<NamedAbsoluteCapability> capList = new ArrayList<>(childCaps);
+        List<CompletableFuture<Boolean>> futures = new ArrayList<>();
+        for (int i = 0; i < capList.size(); i += MAX_CHAMP_GETS) {
+            Set<NamedAbsoluteCapability> batch = new HashSet<>(capList.subList(i, Math.min(i + MAX_CHAMP_GETS, capList.size())));
+            try {
+                fetchSemaphore.acquire();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new RuntimeException(e);
+            }
+            futures.add(base.getChildrenFromCaps(batch, collector, context.crypto.hasher, context.network)
+                    .whenComplete((r, e) -> fetchSemaphore.release()));
+        }
+        Futures.combineAllInOrder(futures).join();
         if (directChildCount.get() != childCaps.size())
             throw new IllegalStateException("Couldn't retrieve all " + childCaps.size() + " children for " + basePath);
         for (Pair<Path, FileWrapper> subdir : subdirs)
