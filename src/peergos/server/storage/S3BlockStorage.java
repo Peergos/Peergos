@@ -545,7 +545,14 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         if (cached != null)
             return cached + "/";
         String username = usage.getOwner(owner);
-        if (username == null)
+        if (username == null) {
+            try {
+                username = pki.getUsername(owner).join();
+            } catch (Exception e) {
+                // key not in PKI
+            }
+        }
+        if (username == null || username.isEmpty())
             return "";
         ownerToUser.put(owner, username);
         return username + "/";
