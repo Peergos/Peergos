@@ -285,7 +285,7 @@ public class FileBlockCache implements BlockCache {
     private AtomicBoolean cleaning = new AtomicBoolean(false);
 
     public void ensureWithinSizeLimit(long maxSize) {
-        if (totalSize.get() <= maxSize/2 || cleaning.get())
+        if (totalSize.get() <= maxSize || cleaning.get())
             return;
         if (! cleaning.compareAndSet(false, true))
             return;
