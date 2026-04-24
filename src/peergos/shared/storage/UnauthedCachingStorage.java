@@ -224,7 +224,7 @@ public class UnauthedCachingStorage extends DelegatingStorage {
                                 retrieved.forEach(f -> cache.put(f.hash.get(), f.fragment.data));
                                 return IntStream.range(0, hashes.size())
                                         .mapToObj(i -> new FragmentWithHash(cached.get(i).map(Fragment::new)
-                                                .orElse(retrieved.stream()
+                                                .orElseGet(() -> retrieved.stream()
                                                         .filter(f -> f.hash.get().equals(hashes.get(i)))
                                                         .findFirst()
                                                         .orElseThrow(() -> new IllegalStateException("Missing fragment: " + hashes.get(i)))
