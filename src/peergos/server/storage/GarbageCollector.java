@@ -168,8 +168,14 @@ public class GarbageCollector {
         Cid homeServer = (Cid) pki.getHomeServer(username).join().get();
         PublicKeyHash owner = usage.getOwnerKey(writers.stream().findAny().get());
         PublicKeyHash fromPki = pki.getPublicKeyHash(username).join().get();
-        if (! fromPki.equals(owner))
-            throw new IllegalStateException("Owner mismatch! " + owner + " != " + fromPki);
+        if (! fromPki.equals(owner)) {
+            List<PublicKeyHash> identityKeys = pki.getChain(username).join()
+                    .stream()
+                    .map(c -> c.owner)
+                    .toList();
+            System.out.println("Owner mismatch! " + owner + " != " + fromPki);
+            System.out.println("PKI chain " + identityKeys);
+        }
 
         Map<PublicKeyHash, byte[]> userPointers = writers.stream()
                 .map(w -> new Pair<>(w, pointers.getPointer(w).join()))
