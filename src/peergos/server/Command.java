@@ -92,7 +92,7 @@ public class Command<V> {
                 + params.stream()
                         .map(e -> "\t"+ e.name + ": "+ e.description)
                         .collect(Collectors.joining(System.lineSeparator()))
-                + (subCommands.size() > 0 ? System.lineSeparator() + "Sub commands:" + System.lineSeparator() : "")
+                + (subCommands.size() > 0 ? System.lineSeparator() + "Sub commands (run -help on a sub command to see more):" + System.lineSeparator() : "")
                 + subCommands.entrySet().stream()
                 .reduce("",
                         (acc , e) -> acc + "\t" + e.getKey() + ": " + e.getValue().description + System.lineSeparator(),
