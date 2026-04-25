@@ -19,15 +19,15 @@ import peergos.shared.crypto.hash.PublicKeyHash;
 import peergos.shared.io.ipfs.Cid;
 import peergos.shared.login.mfa.MultiFactorAuthMethod;
 import peergos.shared.mutable.MutablePointers;
-import peergos.shared.storage.ContentAddressedStorage;
+import peergos.shared.storage.auth.Bat;
+import peergos.shared.storage.auth.BatId;
+import peergos.shared.storage.auth.BatWithId;
 import peergos.shared.user.CommittedWriterData;
-import peergos.shared.user.WriterData;
 import peergos.shared.util.ArrayOps;
 
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.*;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Supplier;
 
@@ -232,6 +232,28 @@ public class ServerAdmin {
             Arrays.asList()
     );
 
+    public static final Command<Boolean> GENERATE = new Command<>("generate",
+            "Generate a new BAT to use with -instance-bat on a server to mirror user data on another server",
+            a -> {
+                Crypto crypto = Main.initCrypto();
+                Bat bat = Bat.random(crypto.random);
+                BatId id = bat.calculateId(crypto.hasher).join();
+                BatWithId both = new BatWithId(bat, id.id);
+                String arg = both.encode();
+                System.out.println("Generate new BAT and id: " + arg);
+                return true;
+            },
+            Arrays.asList(),
+            Arrays.asList()
+    );
+
+    public static final Command<Boolean> BAT = new Command<>("bat",
+            "BAT utilities",
+            a -> true,
+            Arrays.asList(),
+            Arrays.asList(GENERATE)
+    );
+
     public static final Command<Boolean> STORAGE = new Command<>("storage",
             "Operations on storage",
             a -> true,
@@ -246,6 +268,6 @@ public class ServerAdmin {
                 return null;
             },
             Arrays.asList(),
-            Arrays.asList(STORAGE, MFA, DELETE)
+            Arrays.asList(BAT, STORAGE, MFA, DELETE)
     );
 }
