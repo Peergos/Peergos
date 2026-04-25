@@ -1253,7 +1253,8 @@ public class Main extends Builder {
                 if (args.hasArg("version")) {
                     VERSION.main(args);
                 } else
-                    System.out.println("Run with -help to show options");
+                    System.out.println("Run with -help to show options, \n" +
+                            "or to see options for a sub command run with $command -help");
 
                 try {
                     if (args.hasArg(ARG_SERVER_URL.name))
