@@ -81,8 +81,10 @@ public class Command<V> {
                 .map(e -> e.name)
                 .filter(e -> ! args.hasArg(e))
                 .findFirst();
-        if (missing.isPresent())
-            throw new IllegalStateException(name +" requires argument "+ missing.get());
+        if (missing.isPresent()) {
+            System.err.println(name + " requires argument " + missing.get() + " run with -" + missing.get() + " $VALUE");
+            System.exit(-1);
+        }
     }
 
     public String helpMessage() {
