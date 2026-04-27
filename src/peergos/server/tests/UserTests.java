@@ -26,6 +26,7 @@ import peergos.shared.crypto.asymmetric.mlkem.HybridCurve25519MLKEMPublicKey;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.crypto.symmetric.*;
 import peergos.server.*;
+import peergos.shared.hamt.ChampWrapper;
 import peergos.shared.io.ipfs.Cid;
 import peergos.shared.io.ipfs.Multihash;
 import peergos.shared.io.ipfs.bases.Charsets;
@@ -2302,6 +2303,110 @@ public abstract class UserTests {
         Assert.assertTrue("File truncated", nonZeroBytes == bytes.length);
 
 
+    }
+
+    @Test
+    public void deleteWithOwnSubtreeWriterLeavesNoOrphanedChampEntries() throws Exception {
+        String username = generateUsername();
+        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, "test01", network, crypto);
+        FileWrapper userRoot = context.getUserRoot().get();
+
+        // Create toDelete/ and give it its own signing key (writer W) so this becomes a
+        // multi-writer delete
+        userRoot.mkdir("toDelete", context.network, false, userRoot.mirrorBatId(), context.crypto).get();
+        String toDeletePath = "/" + username + "/toDelete";
+        context.shareWriteAccessWith(PathUtil.get(toDeletePath), Collections.emptySet()).join();
+
+        // Upload files after shareWriteAccessWith so they live in W's CHAMP, not P's.
+        FileWrapper freshToDelete = context.getByPath(toDeletePath).get().get();
+        byte[] data = "hello".getBytes();
+        uploadFileSection(freshToDelete, "a.txt", new AsyncReader.ArrayBacked(data), 0, data.length,
+                context.network, context.crypto, l -> {}).get();
+        uploadFileSection(freshToDelete, "b.txt", new AsyncReader.ArrayBacked(data), 0, data.length,
+                context.network, context.crypto, l -> {}).get();
+
+        // Build a network backed by the same storage but with a mutable-pointer layer that
+        // throws after the FIRST successful setPointer call, simulating a crash between the
+        // two sequential writer pointer updates in BufferedNetworkAccess.commit().
+        AtomicInteger pointerCommits = new AtomicInteger(0);
+        MutablePointers failAfterFirst = new MutablePointers() {
+            @Override
+            public CompletableFuture<Optional<byte[]>> getPointer(PublicKeyHash owner, PublicKeyHash writer) {
+                return service.mutable.getPointer(owner, writer);
+            }
+            @Override
+            public CompletableFuture<Boolean> setPointer(PublicKeyHash owner, PublicKeyHash writer, byte[] signed) {
+                if (pointerCommits.incrementAndGet() > 1)
+                    return Futures.errored(new RuntimeException("Simulated crash after 1st pointer commit"));
+                return service.mutable.setPointer(owner, writer, signed);
+            }
+            @Override
+            public MutablePointers clearCache() {
+                return this;
+            }
+        };
+        NetworkAccess deleteNetwork = NetworkAccess.buildBuffered(service.storage, service.bats,
+                service.coreNode, service.account, failAfterFirst, 0, service.social,
+                service.controller, service.usage, service.serverMessages,
+                crypto.hasher, Arrays.asList("peergos"), false);
+        UserContext deleteContext = PeergosNetworkUtils.ensureSignedUp(username, "test01", deleteNetwork, crypto);
+
+        FileWrapper deleteParent = deleteContext.getByPath("/" + username).get().get();
+        FileWrapper deleteToDelete = deleteContext.getByPath(toDeletePath).get().get();
+        PublicKeyHash owner = deleteParent.owner();
+        PublicKeyHash writerW = deleteToDelete.writer();
+
+        // Run the actual delete — it must throw after the first pointer commit.
+        try {
+            FileWrapper.deleteChildren(deleteParent, Collections.singleton(deleteToDelete),
+                    PathUtil.get("/" + username), deleteContext).get();
+            Assert.fail("Expected delete to fail after first pointer commit");
+        } catch (ExecutionException expected) { }
+
+        // Enumerate all CHAMP entries committed for writer W
+        Set<ByteArrayWrapper> champKeysW = getAllChampKeys(owner, writerW, deleteContext);
+
+        // Enumerate every map key reachable by DFS from the filesystem root
+        FileWrapper updatedRoot = deleteContext.getByPath("/" + username).get().get();
+        Set<ByteArrayWrapper> reachableKeys = collectReachableMapKeys(updatedRoot,
+                deleteContext.crypto.hasher, deleteContext.network);
+
+        // Any key in W's CHAMP not reachable from the filesystem root is an orphan
+        Set<ByteArrayWrapper> orphaned = new HashSet<>(champKeysW);
+        orphaned.removeAll(reachableKeys);
+
+        Assert.assertTrue("No orphaned CHAMP entries in W's tree after partial delete",
+                orphaned.isEmpty());
+    }
+
+    private static Set<ByteArrayWrapper> getAllChampKeys(PublicKeyHash owner, PublicKeyHash writer, UserContext ctx) {
+        WriterData wd = WriterData.getWriterData(owner, writer, ctx.network.mutable, ctx.network.dhtClient).join().props.get();
+        if (!wd.tree.isPresent())
+            return Collections.emptySet();
+        Set<ByteArrayWrapper> keys = new HashSet<>();
+        ChampWrapper.create(owner, (Cid) wd.tree.get(), Optional.empty(),
+                k -> Futures.of(k.data),
+                ctx.network.dhtClient, ctx.crypto.hasher,
+                c -> (CborObject.CborMerkleLink) c).join()
+                .applyToAllMappings(owner, pair -> {
+                    keys.add(pair.left);
+                    return Futures.of(true);
+                }).join();
+        return keys;
+    }
+
+    private static Set<ByteArrayWrapper> collectReachableMapKeys(FileWrapper f, Hasher hasher, NetworkAccess network) {
+        Set<ByteArrayWrapper> result = new HashSet<>();
+        result.add(new ByteArrayWrapper(f.getPointer().capability.getMapKey()));
+        if (f.isDirectory()) {
+            try {
+                f.getChildren(hasher, network).join()
+                        .forEach(child -> result.addAll(collectReachableMapKeys(child, hasher, network)));
+            } catch (Exception e) {
+                // directory entry exists in listing but its blocks are gone — dead reference, not orphan
+            }
+        }
+        return result;
     }
 
     public static String randomString() {
