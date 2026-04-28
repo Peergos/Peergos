@@ -113,9 +113,13 @@ public class JdbcIpnsAndSocial {
     }
 
     private Connection getConnection() {
+        return getConnection(true);
+    }
+
+    private Connection getConnection(boolean autoCommit) {
         Connection connection = conn.get();
         try {
-            connection.setAutoCommit(true);
+            connection.setAutoCommit(autoCommit);
             connection.setTransactionIsolation(Connection.TRANSACTION_SERIALIZABLE);
             return connection;
         } catch (SQLException e) {
@@ -229,9 +233,8 @@ public class JdbcIpnsAndSocial {
     }
 
     public synchronized CompletableFuture<Boolean> setPointers(List<Optional<byte[]>> existing, List<SignedPointerUpdate> updates) {
-        Connection conn = this.conn.get();
+        Connection conn = getConnection(false);
         try {
-            conn.setAutoCommit(false);
             conn.setTransactionIsolation(Connection.TRANSACTION_SERIALIZABLE);
             if (existing.size() != updates.size())
                 throw new IllegalStateException("Argument mismatch!");
