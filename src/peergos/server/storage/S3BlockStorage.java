@@ -1146,7 +1146,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                 List<Cid> newLinks = addedLinks.get(i).links;
                 List<Cid> existingLinks = i >= removed.size() ?
                         Collections.emptyList() :
-                        getLinks(owner, removed.get(i), Arrays.asList(ourNodeId)).join().stream()
+                        getLinks(owner, removed.get(i), peerIds).join().stream()
                                 .filter(c -> !c.isIdentity())
                                 .collect(Collectors.toList());
                 while (retrieverPool.getQueuedSubmissionCount() > 30)
