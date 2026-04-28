@@ -3,6 +3,7 @@ package peergos.server.net;
 import com.sun.net.httpserver.*;
 import peergos.server.*;
 import peergos.server.util.*;
+import peergos.shared.cbor.CborObject;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.mutable.*;
 import peergos.shared.util.*;
@@ -42,7 +43,6 @@ public class MutationHandler implements HttpHandler {
 
         Map<String, List<String>> params = HttpUtil.parseQuery(exchange.getRequestURI().getQuery());
         PublicKeyHash owner = PublicKeyHash.fromString(params.get("owner").get(0));
-        PublicKeyHash writer = PublicKeyHash.fromString(params.get("writer").get(0));
         try {
             if (! HttpUtil.allowedQuery(exchange, isPublicServer)) {
                 exchange.sendResponseHeaders(405, 0);
@@ -50,17 +50,28 @@ public class MutationHandler implements HttpHandler {
             }
 
             switch (method) {
-                case "setPointer":
+                case "setPointer": {
                     AggregatedMetrics.MUTABLE_POINTERS_SET.inc();
+                    PublicKeyHash writer = PublicKeyHash.fromString(params.get("writer").get(0));
                     byte[] signedPayload = Serialize.readFully(din, 1024);
                     boolean isAdded = mutable.setPointer(owner, writer, signedPayload).get();
                     dout.writeBoolean(isAdded);
                     break;
-                case "getPointer":
+                }
+                case "setPointers": {
+                    AggregatedMetrics.MUTABLE_POINTERS_SET.inc();
+                    MultiWriterCommit updates = MultiWriterCommit.fromCbor(CborObject.read(din, 1024*1024));
+                    boolean isAdded = mutable.setPointers(owner, updates.updates).get();
+                    dout.writeBoolean(isAdded);
+                    break;
+                }
+                case "getPointer": {
                     AggregatedMetrics.MUTABLE_POINTERS_GET.inc();
+                    PublicKeyHash writer = PublicKeyHash.fromString(params.get("writer").get(0));
                     byte[] metadataBlob = mutable.getPointer(owner, writer).get().orElse(new byte[0]);
                     dout.write(metadataBlob);
                     break;
+                }
                 default:
                     throw new IOException("Unknown method in mutable pointers!");
             }

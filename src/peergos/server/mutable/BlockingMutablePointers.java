@@ -5,6 +5,7 @@ import peergos.shared.mutable.*;
 
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.stream.*;
 
 public class BlockingMutablePointers implements MutablePointers {
     private final MutablePointers source;
@@ -22,6 +23,18 @@ public class BlockingMutablePointers implements MutablePointers {
         CompletableFuture<Boolean> res = new CompletableFuture<>();
         res.completeExceptionally(new IllegalStateException("This Peergos subspace has been banned from this server"));
         return res;
+    }
+
+    @Override
+    public CompletableFuture<Boolean> setPointers(PublicKeyHash owner, List<SignedPointerUpdate> updates) {
+        for (SignedPointerUpdate u : updates) {
+            if (!blacklist.isAllowed(u.writer)) {
+                CompletableFuture<Boolean> res = new CompletableFuture<>();
+                res.completeExceptionally(new IllegalStateException("This Peergos subspace has been banned from this server"));
+                return res;
+            }
+        }
+        return source.setPointers(owner, updates);
     }
 
     @Override

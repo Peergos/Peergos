@@ -69,6 +69,11 @@ public class RetryMutablePointers implements MutablePointers {
     }
 
     @Override
+    public CompletableFuture<Boolean> setPointers(PublicKeyHash owner, List<SignedPointerUpdate> updates) {
+        return runWithRetry(() -> target.setPointers(owner, updates));
+    }
+
+    @Override
     public CompletableFuture<Optional<byte[]>> getPointer(PublicKeyHash owner, PublicKeyHash writer) {
         return runWithRetry(() -> target.getPointer(owner, writer));
     }

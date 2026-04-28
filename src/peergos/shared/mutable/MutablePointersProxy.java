@@ -29,4 +29,6 @@ public interface MutablePointersProxy extends MutablePointers {
      */
     CompletableFuture<Optional<byte[]>> getPointer(Multihash targetServerId, PublicKeyHash owner, PublicKeyHash writer);
 
+    CompletableFuture<Boolean> setPointers(Multihash targetServerId, PublicKeyHash owner, List<SignedPointerUpdate> updates);
+
 }

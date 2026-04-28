@@ -10,6 +10,7 @@ import peergos.shared.util.*;
 import java.io.*;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.stream.*;
 
 public class HttpMutablePointers implements MutablePointersProxy {
 	private static final Logger LOG = Logger.getLogger(HttpMutablePointers.class.getName());
@@ -107,6 +108,31 @@ public class HttpMutablePointers implements MutablePointersProxy {
             if (LOGGING)
                 LOG.info("HttpMutablePointers.get took " + (t2 -t1) + "mS for (" + owner + ", " + writer + ")");
         }
+    }
+
+    @Override
+    public CompletableFuture<Boolean> setPointers(PublicKeyHash owner, List<SignedPointerUpdate> updates) {
+        return setPointers(directUrlPrefix, direct, owner, updates);
+    }
+
+    @Override
+    public CompletableFuture<Boolean> setPointers(Multihash targetId, PublicKeyHash owner, List<SignedPointerUpdate> updates) {
+        return setPointers(getProxyUrlPrefix(targetId), p2p, owner, updates);
+    }
+
+    private CompletableFuture<Boolean> setPointers(String urlPrefix,
+                                                   HttpPoster poster,
+                                                   PublicKeyHash owner,
+                                                   List<SignedPointerUpdate> updates) {
+        return poster.postUnzip(urlPrefix + Constants.MUTABLE_POINTERS_URL + "setPointers?owner=" + owner,
+                new MultiWriterCommit(updates).serialize(), 60_000).thenApply(res -> {
+            DataInputStream din = new DataInputStream(new ByteArrayInputStream(res));
+            try {
+                return din.readBoolean();
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+        });
     }
 
     @Override

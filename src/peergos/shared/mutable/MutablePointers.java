@@ -12,6 +12,7 @@ import peergos.shared.util.*;
 
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.stream.*;
 
 public interface MutablePointers {
 
@@ -23,6 +24,11 @@ public interface MutablePointers {
      * @return True when successfully completed
      */
     CompletableFuture<Boolean> setPointer(PublicKeyHash owner, PublicKeyHash writer, byte[] writerSignedBtreeRootHash);
+
+    /** Atomically update the hashes for a set of writers under the same owner.
+     *  All updates succeed or none do.
+     */
+    CompletableFuture<Boolean> setPointers(PublicKeyHash owner, List<SignedPointerUpdate> updates);
 
     default CompletableFuture<Boolean> setPointer(PublicKeyHash owner, SigningPrivateKeyAndPublicHash writer, PointerUpdate casUpdate) {
         return writer.secret.signMessage(casUpdate.serialize())

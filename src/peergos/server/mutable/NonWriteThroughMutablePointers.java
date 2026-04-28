@@ -4,9 +4,11 @@ import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.mutable.*;
 import peergos.shared.storage.*;
+import peergos.shared.util.*;
 
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.stream.*;
 
 public class NonWriteThroughMutablePointers implements MutablePointers {
 
@@ -49,6 +51,27 @@ public class NonWriteThroughMutablePointers implements MutablePointers {
         } catch (Exception e) {
             throw new RuntimeException(e.getMessage(), e);
         }
+    }
+
+    @Override
+    public CompletableFuture<Boolean> setPointers(PublicKeyHash owner, List<SignedPointerUpdate> updates) {
+        // Validate all updates first (all-or-nothing), then apply
+        try {
+            for (SignedPointerUpdate u : updates) {
+                if (!modifications.containsKey(u.writer)) {
+                    Optional<byte[]> existing = source.getPointer(owner, u.writer).get();
+                    existing.ifPresent(val -> modifications.put(u.writer, val));
+                }
+                Optional<PublicSigningKey> opt = storage.getSigningKey(owner, u.writer).get();
+                if (!opt.isPresent())
+                    throw new IllegalStateException("Couldn't retrieve signing key!");
+                MutablePointers.isValidUpdate(opt.get(), Optional.ofNullable(modifications.get(u.writer)), u.signed).get();
+            }
+        } catch (Exception e) {
+            throw new RuntimeException(e.getMessage(), e);
+        }
+        updates.forEach(u -> modifications.put(u.writer, u.signed));
+        return Futures.of(true);
     }
 
     @Override

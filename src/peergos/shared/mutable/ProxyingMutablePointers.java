@@ -31,6 +31,15 @@ public class ProxyingMutablePointers implements MutablePointers {
     }
 
     @Override
+    public CompletableFuture<Boolean> setPointers(PublicKeyHash owner, List<SignedPointerUpdate> updates) {
+        return Proxy.redirectCall(core,
+                serverIds,
+                owner,
+                () -> local.setPointers(owner, updates),
+                target -> p2p.setPointers(target, owner, updates));
+    }
+
+    @Override
     public CompletableFuture<Optional<byte[]>> getPointer(PublicKeyHash owner, PublicKeyHash writer) {
         return Proxy.redirectCall(core,
                 serverIds,

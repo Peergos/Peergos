@@ -17,6 +17,7 @@ import peergos.shared.util.*;
 
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.stream.*;
 
 public class UserRepository implements SocialNetwork, MutablePointers {
     public static final int MAX_POINTER_SIZE = TweetNaCl.SIGNATURE_SIZE_BYTES + 2 + 2*36 + 9; // Signature overhead + 2 cids + 2 (cbor list[3]) + cbor long
@@ -95,6 +96,46 @@ public class UserRepository implements SocialNetwork, MutablePointers {
                             }
                         }));
 
+    }
+
+    @Override
+    public CompletableFuture<Boolean> setPointers(PublicKeyHash owner, List<SignedPointerUpdate> updates) {
+        // Validate all signatures and CAS constraints concurrently, then write atomically.
+        List<CompletableFuture<Optional<byte[]>>> validations = updates.stream()
+                .map(u -> validateUpdate(owner, u))
+                .collect(Collectors.toList());
+        return Futures.combineAllInOrder(validations)
+                .thenCompose(current -> store.setPointers(current, updates));
+    }
+
+    private CompletableFuture<Optional<byte[]>> validateUpdate(PublicKeyHash owner, SignedPointerUpdate u) {
+        return getPointer(owner, u.writer)
+                .thenCompose(current -> ipfs.getSigningKey(owner, u.writer)
+                        .thenCompose(writerOpt -> {
+                            try {
+                                if (u.signed.length > MAX_POINTER_SIZE)
+                                    throw new IllegalStateException("Pointer update too big! " + u.signed.length);
+                                if (!writerOpt.isPresent())
+                                    throw new IllegalStateException("Couldn't retrieve writer key from ipfs with hash " + u.writer);
+                                PublicSigningKey writerKey = writerOpt.get();
+                                byte[] bothHashes = writerKey.unsignMessage(u.signed).join();
+                                PointerUpdate cas = PointerUpdate.fromCbor(CborObject.fromByteArray(bothHashes));
+                                return MutablePointers.isValidUpdate(writerKey, current, cas.original, cas.sequence)
+                                        .thenCompose(x -> {
+                                            if (cas.updated.isPresent()) {
+                                                Multihash newHash = cas.updated.get();
+                                                CommittedWriterData newWriterData = DeletableContentAddressedStorage
+                                                        .getWriterData(us, owner, (Cid) newHash, cas.sequence, false, (Cid) us.get(0), hasher, ipfs).join();
+                                                if (!newWriterData.props.get().controller.equals(u.writer))
+                                                    throw new IllegalStateException("WriterData controller mismatch for " + u.writer);
+                                            }
+                                            return Futures.of(current);
+                                        });
+                            } catch (TweetNaCl.InvalidSignatureException e) {
+                                System.err.println("Invalid signature during setPointers for writer: " + u.writer);
+                                return Futures.<Optional<byte[]>>errored(e);
+                            }
+                        }));
     }
 
     @Override

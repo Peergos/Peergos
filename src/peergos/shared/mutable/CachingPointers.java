@@ -85,6 +85,24 @@ public class CachingPointers implements MutablePointers {
     }
 
     @Override
+    public CompletableFuture<Boolean> setPointers(PublicKeyHash owner, List<SignedPointerUpdate> updates) {
+        synchronized (cache) {
+            updates.forEach(u -> cache.remove(u.writer));
+        }
+        synchronized (targetCache) {
+            updates.forEach(u -> targetCache.remove(u.writer));
+        }
+        return target.setPointers(owner, updates).thenApply(res -> {
+            if (res) {
+                synchronized (cache) {
+                    updates.forEach(u -> cache.put(u.writer, new Pair<>(Optional.of(u.signed), System.currentTimeMillis())));
+                }
+            }
+            return res;
+        });
+    }
+
+    @Override
     public MutablePointers clearCache() {
         synchronized (cache) {
             cache.clear();
