@@ -35,6 +35,22 @@ public class MutableEventPropagator implements MutablePointers {
     }
 
     @Override
+    public CompletableFuture<Boolean> setPointers(PublicKeyHash owner, List<SignedPointerUpdate> updates) {
+        return target.setPointers(owner, updates)
+                .thenApply(res -> {
+                    if (res) {
+                        for (SignedPointerUpdate u : updates) {
+                            MutableEvent event = new MutableEvent(owner, u.writer, u.signed);
+                            for (Consumer<? super MutableEvent> listener : listeners) {
+                                listener.accept(event);
+                            }
+                        }
+                    }
+                    return res;
+                });
+    }
+
+    @Override
     public CompletableFuture<Optional<byte[]>> getPointer(PublicKeyHash owner, PublicKeyHash writer) {
         return target.getPointer(owner, writer);
     }

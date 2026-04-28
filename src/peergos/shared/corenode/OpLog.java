@@ -44,6 +44,12 @@ public class OpLog implements Cborable, Account, MutablePointers, ContentAddress
     }
 
     @Override
+    public synchronized CompletableFuture<Boolean> setPointers(PublicKeyHash owner, List<SignedPointerUpdate> updates) {
+        updates.forEach(u -> operations.add(Either.a(new PointerWrite(u.writer, u.signed))));
+        return Futures.of(true);
+    }
+
+    @Override
     public CompletableFuture<Optional<byte[]>> getPointer(PublicKeyHash owner, PublicKeyHash writer) {
         for (int i= operations.size() - 1; i>=0; i--) {
             Either<PointerWrite, BlockWrite> op = operations.get(i);

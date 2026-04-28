@@ -2341,6 +2341,13 @@ public abstract class UserTests {
                 return service.mutable.setPointer(owner, writer, signed);
             }
             @Override
+            public CompletableFuture<Boolean> setPointers(PublicKeyHash owner, List<SignedPointerUpdate> updates) {
+                // Simulate an old server: apply sequentially, crashing after the first commit
+                return Futures.reduceAll(updates, true,
+                        (b, u) -> setPointer(owner, u.writer, u.signed),
+                        (a, b) -> a && b);
+            }
+            @Override
             public MutablePointers clearCache() {
                 return this;
             }

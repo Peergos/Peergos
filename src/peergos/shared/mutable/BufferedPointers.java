@@ -136,6 +136,11 @@ public class BufferedPointers implements MutablePointers {
         throw new IllegalStateException("Shouldn't get here!");
     }
 
+    @Override
+    public CompletableFuture<Boolean> setPointers(PublicKeyHash owner, List<SignedPointerUpdate> updates) {
+        throw new IllegalStateException("Shouldn't get here!");
+    }
+
     public List<Cid> getRoots() {
         synchronized (writerUpdates) {
             return writerUpdates.stream()
@@ -160,6 +165,10 @@ public class BufferedPointers implements MutablePointers {
     @Override
     public MutablePointers clearCache() {
         return new BufferedPointers(target.clearCache());
+    }
+
+    public void recordCommitted(List<WriterUpdate> updates) {
+        updates.forEach(u -> lastCommits.put(u.writer, u));
     }
 
     public void clear() {
