@@ -440,7 +440,10 @@ public class Builder {
         }
         return new MirrorCoreNode(toPki, rawAccount, bats, account, proxingMutable,
                         localStorage, rawPointers, localPointers, transactions, localSocial, usageStore, quotas, linkCounts, pkiServerId, peergosId,
-                        a.fromPeergosDir("pki-mirror-state-path","pki-state.cbor"), instanceBat, crypto);
+                        a.fromPeergosDir("pki-mirror-state-path","pki-state.cbor"), instanceBat,
+                a.getOptionalArg("unlisted-usernames")
+                        .map(arg -> Arrays.asList(arg.split(",")))
+                        .orElse(Collections.emptyList()), crypto);
     }
 
     public static JdbcIpnsAndSocial buildRawPointers(Args a, Supplier<Connection> dbConnectionPool) {

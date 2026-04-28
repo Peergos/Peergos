@@ -176,6 +176,7 @@ public class Main extends Builder {
                     new Command.Arg("public-server", "Are we a public server? (allow http GETs to API)", false, "false"),
                     new Command.Arg("run-gateway", "Run a local Peergos gateway", false),
                     new Command.Arg("gateway-port", "Port to run a local gateway on", false, "9000"),
+                    new Command.Arg("unlisted-usernames", "List of usernames removed from the auto-complete", false),
                     new Command.Arg("app-dev-target", "URL for app assets for localhost app development", false),
                     new Command.Arg("collect-metrics", "Export aggregated metrics", false, "false"),
                     new Command.Arg("metrics.address", "Listen address for serving aggregated metrics", false, "localhost"),

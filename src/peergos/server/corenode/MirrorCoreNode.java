@@ -56,6 +56,7 @@ public class MirrorCoreNode implements CoreNode {
     private final Hasher hasher;
     private final Crypto crypto;
     private final ExecutorService mirrorPool = Threads.newPool(1, "Mirror-");
+    private final List<String> unlistedUsernames;
 
     private volatile CorenodeState state;
     private final Path statePath;
@@ -79,6 +80,7 @@ public class MirrorCoreNode implements CoreNode {
                           PublicKeyHash pkiOwnerIdentity,
                           Path statePath,
                           Optional<BatWithId> instanceBat,
+                          List<String> unlistedUsernames,
                           Crypto crypto) {
         this.writeTarget = writeTarget;
         this.rawAccount = rawAccount;
@@ -98,6 +100,7 @@ public class MirrorCoreNode implements CoreNode {
         this.statePath = statePath;
         this.ourNodeId = ipfs.id().join();
         this.instanceBat = instanceBat;
+        this.unlistedUsernames = unlistedUsernames;
         this.hasher = crypto.hasher;
         this.crypto = crypto;
         try {
@@ -420,6 +423,7 @@ public class MirrorCoreNode implements CoreNode {
             // now update the mappings
             IpfsCoreNode.updateAllMappings(pkiStorageProviders, pkiOwnerIdentity, current.roots.pkiKeyTarget,
                     remote.pkiKeyTarget, ourNodeId, hasher, ipfs, updated.chains, updated.reverseLookup, updated.usernames);
+            updated.usernames.removeAll(unlistedUsernames);
 
             // 'pin' the new pki version
             Optional<byte[]> existingPointer = rawPointers.getPointer(remote.pkiKey)
