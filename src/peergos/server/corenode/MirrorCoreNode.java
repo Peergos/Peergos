@@ -110,6 +110,7 @@ public class MirrorCoreNode implements CoreNode {
             // load empty
             this.state = CorenodeState.buildEmpty(pkiOwnerIdentity, pkiOwnerIdentity, MaybeMultihash.empty(), MaybeMultihash.empty());
         }
+        this.state.reverseLookup.put(pkiOwnerIdentity, "peergos");
     }
 
     @Override
