@@ -165,7 +165,9 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
     private final boolean partitionComplete;
     private final JdbcBatCave bats;
     private CoreNode pki;
-    ForkJoinPool mirrorPool = Threads.newFJPool(30, "S3-Mirror-");
+    private static final int MIRROR_PARALLELISM = 30;
+    private final Semaphore mirrorSemaphore = new Semaphore(MIRROR_PARALLELISM);
+    private final Semaphore mirrorTreeSemaphore = new Semaphore(MIRROR_PARALLELISM);
 
     public S3BlockStorage(S3Config config,
                           List<Cid> ids,
@@ -1012,22 +1014,42 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         }
         skippedCount.addAndGet(present.size());
 
-        List<ForkJoinTask<Optional<BlockMetadata>>> futs = hashes.stream()
-                .filter(h -> ! present.containsKey(h))
-                .map(c -> mirrorPool.submit(() -> {
+        List<Cid> missing = hashes.stream().filter(h -> !present.containsKey(h)).toList();
+        ConcurrentHashMap<Cid, BlockMetadata> fetched = new ConcurrentHashMap<>();
+        AtomicReference<Throwable> firstError = new AtomicReference<>();
+
+        List<Thread> threads = missing.stream().map(c -> Thread.ofVirtual().start(() -> {
+            try {
+                mirrorSemaphore.acquire();
+                try {
                     long count = retrievalCount.incrementAndGet();
                     if (count % 100 == 0 || count == 1)
-                        LOG.info("User " + username + ": retrieved " + String.format("%,d", count) + " blocks, of total size " + String.format("%,d", retrievalSize.get()));
-                    return RetryStorage.runWithRetry(10, () -> p2pHttpFallback.getRaw(peers.get(0), owner, c, mirrorBat)
-                            .thenApply(bo -> bo.map(b -> {
-                                retrievalSize.addAndGet(b.length);
-                                return RetryStorage.runWithRetry(5, () -> Futures.of(checkAndAddBlock(owner, c, b))).join();
-                            }))).join();
-                }))
-                .toList();
-        return Stream.concat(
-                        present.values().stream(),
-                        futs.stream().map(f -> f.join().get()))
+                        LOG.info("User " + username + ": retrieved " + String.format("%,d", count) + " blocks, of total size " + String.format("%,d", retrievalSize.get()) + (count == 1 ? " " + c : ""));
+                    Optional<byte[]> bo = RetryStorage.runWithRetry(10, () ->
+                            p2pHttpFallback.getRaw(peers.get(0), owner, c, mirrorBat)).join();
+                    if (bo.isEmpty())
+                        throw new IllegalStateException("Block not available from remote: " + c);
+                    byte[] b = bo.get();
+                    retrievalSize.addAndGet(b.length);
+                    BlockMetadata meta = RetryStorage.runWithRetry(5,
+                            () -> Futures.of(checkAndAddBlock(owner, c, b))).join();
+                    fetched.put(c, meta);
+                } finally {
+                    mirrorSemaphore.release();
+                }
+            } catch (Throwable t) {
+                firstError.compareAndSet(null, t);
+            }
+        })).toList();
+
+        for (Thread t : threads) {
+            try { t.join(); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+        }
+
+        if (firstError.get() != null)
+            throw new RuntimeException("Mirror block fetch failed", firstError.get());
+
+        return Stream.concat(present.values().stream(), missing.stream().map(fetched::get))
                 .toList();
     }
 
@@ -1074,59 +1096,73 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         AtomicLong skippedBlockCount = new AtomicLong(0);
         AtomicLong blockCount = new AtomicLong(0);
         AtomicLong totalSize = new AtomicLong(0);
-        return bulkMirror(owner, writer, peerIds, existingLinks, newLinks, mirrorBat, ourNodeId,
+        bulkMirror(owner, writer, peerIds, existingLinks, newLinks, mirrorBat, ourNodeId,
                 (p, o, h, m) -> bulkGetBlocks(p, username, o, h, m, skippedBlockCount, blockCount, totalSize),
-                (w, bs, size) -> usage.addPendingUsage(username, writer, size), mirrorPool)
-                .thenApply(cs -> {
-                    while (! mirrorPool.isQuiescent())
-                        try {Thread.sleep(1_000);} catch (InterruptedException e) {}
-                    if (blockCount.get() > 0) {
-                        LOG.info("Mirrored " + String.format("%,d", blockCount.get()) + " blocks, taking " +
-                                String.format("%,d", totalSize.get()) + " bytes");
-                    }
-                    return cs;
-                });
+                (w, bs, size) -> usage.addPendingUsage(username, writer, size));
+        if (blockCount.get() > 0) {
+            LOG.info("Mirrored " + String.format("%,d", blockCount.get()) + " blocks, taking " +
+                    String.format("%,d", totalSize.get()) + " bytes");
+        }
+        return Futures.of(newLinks);
     }
 
-    private CompletableFuture<List<Cid>> bulkMirror(PublicKeyHash owner,
-                                                    PublicKeyHash writer,
-                                                    List<Multihash> peerIds,
-                                                    List<Cid> existing,
-                                                    List<Cid> updated,
-                                                    Optional<BatWithId> mirrorBat,
-                                                    Cid ourNodeId,
-                                                    P2pBlockGet retriever,
-                                                    NewBlocksProcessor newBlockProcessor,
-                                                    ForkJoinPool retrieverPool) {
+    private void bulkMirror(PublicKeyHash owner,
+                            PublicKeyHash writer,
+                            List<Multihash> peerIds,
+                            List<Cid> existing,
+                            List<Cid> updated,
+                            Optional<BatWithId> mirrorBat,
+                            Cid ourNodeId,
+                            P2pBlockGet retriever,
+                            NewBlocksProcessor newBlockProcessor) {
         if (updated.isEmpty())
-            return Futures.of(updated);
+            return;
         Set<Cid> common = new HashSet<>(existing);
         common.retainAll(updated);
 
         List<Cid> removed = existing.stream()
-                .filter(x -> ! common.contains(x))
-                .filter(c -> ! c.isIdentity())
+                .filter(x -> !common.contains(x))
+                .filter(c -> !c.isIdentity())
                 .collect(Collectors.toList());
         List<Cid> added = updated.stream()
-                .filter(x -> ! common.contains(x))
-                .filter(c -> ! c.isIdentity())
+                .filter(x -> !common.contains(x))
+                .filter(c -> !c.isIdentity())
                 .collect(Collectors.toList());
 
         List<BlockMetadata> addedLinks = retriever.bulkGet(peerIds, owner, added, mirrorBat);
         newBlockProcessor.process(writer, added, addedLinks.stream().mapToInt(p -> p.size).sum());
+
+        List<Thread> childThreads = new ArrayList<>();
+        AtomicReference<Throwable> firstError = new AtomicReference<>();
+
         if (removed.isEmpty()) {
             List<Cid> allCbor = addedLinks.stream()
                     .map(p -> p.links)
                     .flatMap(Collection::stream)
                     .filter(c -> !c.isIdentity() && !c.isRaw())
                     .collect(Collectors.toList());
-            for (int i=0; i < allCbor.size();) {
+            for (int i = 0; i < allCbor.size();) {
                 int end = Math.min(allCbor.size(), i + 100);
-                while (retrieverPool.getQueuedSubmissionCount() > 30)
-                    try {Thread.sleep(100);} catch (InterruptedException e) {}
-                int fI = i;
-                retrieverPool.submit(() -> bulkMirror(owner, writer, peerIds, Collections.emptyList(),
-                        allCbor.subList(fI, end), mirrorBat, ourNodeId, retriever, newBlockProcessor, retrieverPool));
+                List<Cid> batch = allCbor.subList(i, end);
+                if (mirrorTreeSemaphore.tryAcquire()) {
+                    childThreads.add(Thread.ofVirtual().start(() -> {
+                        try {
+                            bulkMirror(owner, writer, peerIds, Collections.emptyList(),
+                                    batch, mirrorBat, ourNodeId, retriever, newBlockProcessor);
+                        } catch (Throwable t) {
+                            firstError.compareAndSet(null, t);
+                        } finally {
+                            mirrorTreeSemaphore.release();
+                        }
+                    }));
+                } else {
+                    try {
+                        bulkMirror(owner, writer, peerIds, Collections.emptyList(),
+                                batch, mirrorBat, ourNodeId, retriever, newBlockProcessor);
+                    } catch (Throwable t) {
+                        firstError.compareAndSet(null, t);
+                    }
+                }
                 i = end;
             }
             List<Cid> allRaw = addedLinks.stream()
@@ -1134,12 +1170,27 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                     .flatMap(Collection::stream)
                     .filter(c -> !c.isIdentity() && c.isRaw())
                     .collect(Collectors.toList());
-            for (int i=0; i < allRaw.size();i++) {
-                int fI = i;
-                while (retrieverPool.getQueuedSubmissionCount() > 30)
-                    try {Thread.sleep(100);} catch (InterruptedException e) {}
-                retrieverPool.submit(() -> bulkMirror(owner, writer, peerIds, Collections.emptyList(),
-                        allRaw.subList(fI, fI+1), mirrorBat, ourNodeId, retriever, newBlockProcessor, retrieverPool));
+            for (int i = 0; i < allRaw.size(); i++) {
+                List<Cid> single = allRaw.subList(i, i + 1);
+                if (mirrorTreeSemaphore.tryAcquire()) {
+                    childThreads.add(Thread.ofVirtual().start(() -> {
+                        try {
+                            bulkMirror(owner, writer, peerIds, Collections.emptyList(),
+                                    single, mirrorBat, ourNodeId, retriever, newBlockProcessor);
+                        } catch (Throwable t) {
+                            firstError.compareAndSet(null, t);
+                        } finally {
+                            mirrorTreeSemaphore.release();
+                        }
+                    }));
+                } else {
+                    try {
+                        bulkMirror(owner, writer, peerIds, Collections.emptyList(),
+                                single, mirrorBat, ourNodeId, retriever, newBlockProcessor);
+                    } catch (Throwable t) {
+                        firstError.compareAndSet(null, t);
+                    }
+                }
             }
         } else {
             for (int i = 0; i < added.size(); i++) {
@@ -1149,13 +1200,33 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                         getLinks(owner, removed.get(i), peerIds).join().stream()
                                 .filter(c -> !c.isIdentity())
                                 .collect(Collectors.toList());
-                while (retrieverPool.getQueuedSubmissionCount() > 30)
-                    try {Thread.sleep(100);} catch (InterruptedException e) {}
-                retrieverPool.submit(() -> bulkMirror(owner, writer, peerIds, existingLinks, newLinks, mirrorBat,
-                        ourNodeId, retriever, newBlockProcessor, retrieverPool));
+                if (mirrorTreeSemaphore.tryAcquire()) {
+                    childThreads.add(Thread.ofVirtual().start(() -> {
+                        try {
+                            bulkMirror(owner, writer, peerIds, existingLinks, newLinks,
+                                    mirrorBat, ourNodeId, retriever, newBlockProcessor);
+                        } catch (Throwable t) {
+                            firstError.compareAndSet(null, t);
+                        } finally {
+                            mirrorTreeSemaphore.release();
+                        }
+                    }));
+                } else {
+                    try {
+                        bulkMirror(owner, writer, peerIds, existingLinks, newLinks,
+                                mirrorBat, ourNodeId, retriever, newBlockProcessor);
+                    } catch (Throwable t) {
+                        firstError.compareAndSet(null, t);
+                    }
+                }
             }
         }
-        return Futures.of(updated);
+
+        for (Thread t : childThreads) {
+            try { t.join(); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+        }
+        if (firstError.get() != null)
+            throw new RuntimeException("Mirror subtree failed", firstError.get());
     }
 
     @Override
