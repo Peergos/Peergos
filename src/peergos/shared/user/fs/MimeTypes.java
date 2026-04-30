@@ -141,7 +141,7 @@ public class MimeTypes {
         if (equalArrays(start, TIFF2))
             return "image/tiff";
 
-        if (equalArrays(start, 4, MP4)) {
+        if (start[0] == 0 && equalArrays(start, 4, MP4)) {
             if (equalArrays(start, 8, ISO2)
                     || equalArrays(start, 8, ISOM)
                     || equalArrays(start, 8, DASH)
@@ -163,6 +163,7 @@ public class MimeTypes {
                 return "video/quicktime";
             if (equalArrays(start, 8, THREEGP))
                 return "video/3gpp";
+            return "video/mp4";
         }
         if (equalArrays(start, 4, QT2))
                 return "video/quicktime";
