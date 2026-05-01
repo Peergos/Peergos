@@ -141,7 +141,7 @@ public class MimeTypes {
         if (equalArrays(start, TIFF2))
             return "image/tiff";
 
-        if (start[0] == 0 && equalArrays(start, 4, MP4)) {
+        if (start != null && start.length > 0 && start[0] == 0 && equalArrays(start, 4, MP4)) {
             if (equalArrays(start, 8, ISO2)
                     || equalArrays(start, 8, ISOM)
                     || equalArrays(start, 8, DASH)
