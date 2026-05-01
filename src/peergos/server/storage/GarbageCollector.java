@@ -34,24 +34,27 @@ public class GarbageCollector {
     private final AtomicBoolean running = new AtomicBoolean(false);
     private final Path reachabilityDbDir;
     private final TriFunction<Long, Long, Long, CompletableFuture<Boolean>> deleteConfirm;
+    private final Function<String, CompletableFuture<Boolean>> deleteUserConfirm;
 
     public GarbageCollector(DeletableContentAddressedStorage storage,
                             JdbcIpnsAndSocial pointers,
                             UsageStore usage,
                             Path reachabilityDbDir,
                             TriFunction<Long, Long, Long, CompletableFuture<Boolean>> deleteConfirm,
+                            Function<String, CompletableFuture<Boolean>> deleteUserConfirm,
                             boolean listRawFromBlockstore) {
         this.storage = storage;
         this.pointers = pointers;
         this.usage = usage;
         this.reachabilityDbDir = reachabilityDbDir;
         this.deleteConfirm = deleteConfirm;
+        this.deleteUserConfirm = deleteUserConfirm;
         this.listRawFromBlockstore = listRawFromBlockstore;
         this.metadata = storage.getBlockMetadataStore().orElseGet(RamBlockMetadataStore::new);
     }
 
     public synchronized void collect(Function<Stream<Map.Entry<PublicKeyHash, byte[]>>, CompletableFuture<Boolean>> snapshotSaver) {
-        collect(storage, pointers, usage, reachabilityDbDir, snapshotSaver, metadata, deleteConfirm, listRawFromBlockstore);
+        collect(storage, pointers, usage, reachabilityDbDir, snapshotSaver, metadata, deleteConfirm, deleteUserConfirm, listRawFromBlockstore);
     }
 
     public void stop() {
@@ -273,6 +276,32 @@ public class GarbageCollector {
         }
     }
 
+    /** Remove pointers for deleted users, allowing their blocks to be GC'd
+     *
+     */
+    public static void collectPointers(JdbcIpnsAndSocial pointers,
+                                       UsageStore usage,
+                                       Function<String, CompletableFuture<Boolean>> deleteUserConfirm,
+                                       List<Pair<String, PublicKeyHash>> allUsers) {
+        for (Pair<String, PublicKeyHash> user : allUsers) {
+            PublicKeyHash identity = user.right;
+            String username = user.left;
+            WriterUsage wUsage = usage.getUsage(identity);
+            if (wUsage.target().isPresent()) {
+                continue;
+            }
+
+            if (! deleteUserConfirm.apply(username).join())
+                continue;
+            LOG.info("Removing pointers for deleted user: " + username);
+            Set<PublicKeyHash> writers = usage.getAllWriters(username);
+            for (PublicKeyHash writer : writers) {
+                pointers.removePointer(writer);
+            }
+            LOG.info("Removed all pointers for deleted user: " + username);
+        }
+    }
+
     /** The result of this method is a snapshot of the mutable pointers that is consistent with the blocks store
      * after GC has completed (saved to a file which can be independently backed up).
      *
@@ -288,6 +317,7 @@ public class GarbageCollector {
                                Function<Stream<Map.Entry<PublicKeyHash, byte[]>>, CompletableFuture<Boolean>> snapshotSaver,
                                BlockMetadataStore metadata,
                                TriFunction<Long, Long, Long, CompletableFuture<Boolean>> deleteConfirm,
+                               Function<String, CompletableFuture<Boolean>> deleteUserConfirm,
                                boolean listFromBlockstore) {
         long ts0 = System.currentTimeMillis();
         LOG.info("Starting blockstore garbage collection on node " + storage.id().join() + "...");
@@ -296,6 +326,7 @@ public class GarbageCollector {
                 .sorted(Comparator.comparing(a -> a.left))
                 .distinct()
                 .collect(Collectors.toList());
+        collectPointers(pointers, usage, deleteUserConfirm, allUsers);
         Set<String> currentUsers = allUsers.stream().map(p -> p.left).collect(Collectors.toSet());
         if (currentUsers.size() != allUsers.size())
             throw new IllegalStateException("Duplicate username getting all owners!");

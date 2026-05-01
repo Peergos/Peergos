@@ -1250,7 +1250,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
 
     private void collectGarbage(JdbcIpnsAndSocial pointers, UsageStore usage, BlockMetadataStore metadata, boolean listFromBlockstore) {
         GarbageCollector.collect(this, pointers, usage, Paths.get(""),
-                x -> Futures.of(true), metadata, this::confirmDeleteBlocks, listFromBlockstore);
+                x -> Futures.of(true), metadata, this::confirmDeleteBlocks, this::confirmDeleteUser, listFromBlockstore);
     }
 
     private CompletableFuture<Boolean> confirmDeleteBlocks(long cborCount, long rawCount, long total) {
@@ -1263,6 +1263,14 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
             return Futures.of(true);
         }
         System.out.println("Delete " + cborCount + " cbor blocks and " + rawCount + " raw blocks out of " + total + ", " + ((cborCount + rawCount) * 100 / total) + "% (Y/N)");
+        String confirm = System.console().readLine();
+        if (confirm.equals("Y"))
+            return Futures.of(true);
+        return Futures.of(false);
+    }
+
+    private CompletableFuture<Boolean> confirmDeleteUser(String username) {
+        System.out.println("Delete " + username + " pointers. (Y/N)");
         String confirm = System.console().readLine();
         if (confirm.equals("Y"))
             return Futures.of(true);
