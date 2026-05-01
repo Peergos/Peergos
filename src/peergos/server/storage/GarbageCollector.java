@@ -298,10 +298,21 @@ public class GarbageCollector {
                     continue;
             }
 
+            Set<PublicKeyHash> writers = usage.getAllWriters(username);
+            boolean hasData = false;
+            for (PublicKeyHash writer : writers) {
+                Optional<Multihash> root = pointers.getPointer(writer).join()
+                        .flatMap(b -> MutablePointers.parsePointerTarget(idSigned.get(), identity, writer, storage)
+                                .join().updated.toOptional());
+                if (root.isPresent())
+                    hasData = true;
+            }
+            if (! hasData)
+                continue;
+
             if (! deleteUserConfirm.apply(username).join())
                 continue;
             LOG.info("Removing pointers for deleted user: " + username);
-            Set<PublicKeyHash> writers = usage.getAllWriters(username);
             for (PublicKeyHash writer : writers) {
                 pointers.removePointer(writer);
             }
