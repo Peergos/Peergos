@@ -281,6 +281,7 @@ public class GarbageCollector {
      */
     public static void collectPointers(JdbcIpnsAndSocial pointers,
                                        UsageStore usage,
+                                       ContentAddressedStorage storage,
                                        Function<String, CompletableFuture<Boolean>> deleteUserConfirm,
                                        List<Pair<String, PublicKeyHash>> allUsers) {
         for (Pair<String, PublicKeyHash> user : allUsers) {
@@ -289,6 +290,12 @@ public class GarbageCollector {
             WriterUsage wUsage = usage.getUsage(identity);
             if (wUsage.target().isPresent()) {
                 continue;
+            }
+            Optional<byte[]> idSigned = pointers.getPointer(identity).join();
+            if (idSigned.isPresent()) {
+                PointerUpdate pointer = MutablePointers.parsePointerTarget(idSigned.get(), identity, identity, storage).join();
+                if (pointer.updated.isPresent())
+                    continue;
             }
 
             if (! deleteUserConfirm.apply(username).join())
@@ -326,7 +333,7 @@ public class GarbageCollector {
                 .sorted(Comparator.comparing(a -> a.left))
                 .distinct()
                 .collect(Collectors.toList());
-        collectPointers(pointers, usage, deleteUserConfirm, allUsers);
+        collectPointers(pointers, usage, storage, deleteUserConfirm, allUsers);
         Set<String> currentUsers = allUsers.stream().map(p -> p.left).collect(Collectors.toSet());
         if (currentUsers.size() != allUsers.size())
             throw new IllegalStateException("Duplicate username getting all owners!");
