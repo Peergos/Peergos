@@ -357,13 +357,13 @@ public class GarbageCollector {
                             .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
                     PointerSnapshot initialUsageRoots = new PointerSnapshot(allPointers);
                     if (loaded.equals(initialUsageRoots)) {
-                        LOG.info("No changes for " + username);
                         continue;
                     }
                 } catch (IOException e) {
                     LOG.log(Level.WARNING, e, e::getMessage);
                 }
             }
+            LOG.info("Starting GC for " + username);
             SqliteBlockReachability reachability = SqliteBlockReachability.createReachabilityDb(reachabilityDbFile);
             // First build a bloom (infini) filter of the block versions in RDB
             // then use this to efficiently filter the blockstore listing
