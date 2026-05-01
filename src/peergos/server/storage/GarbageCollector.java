@@ -344,7 +344,7 @@ public class GarbageCollector {
                 .sorted(Comparator.comparing(a -> a.left))
                 .distinct()
                 .collect(Collectors.toList());
-        collectPointers(pointers, usage, storage, deleteUserConfirm, allUsers);
+//        collectPointers(pointers, usage, storage, deleteUserConfirm, allUsers);
         Set<String> currentUsers = allUsers.stream().map(p -> p.left).collect(Collectors.toSet());
         if (currentUsers.size() != allUsers.size())
             throw new IllegalStateException("Duplicate username getting all owners!");
