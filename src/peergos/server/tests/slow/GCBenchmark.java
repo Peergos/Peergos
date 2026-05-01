@@ -6,6 +6,7 @@ import peergos.server.corenode.*;
 import peergos.server.space.*;
 import peergos.server.sql.*;
 import peergos.server.storage.*;
+import peergos.server.tests.RamPki;
 import peergos.shared.*;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.*;
@@ -47,7 +48,7 @@ public class GCBenchmark {
             storage.closeTransaction(owner, tid).join();
         }
 
-        GarbageCollector.collect(storage, pointers, usage, Paths.get("reachability.sql"), s -> Futures.of(true),
+        GarbageCollector.collect(storage, pointers, usage, new RamPki(), Paths.get("reachability.sql"), s -> Futures.of(true),
                 new RamBlockMetadataStore(), (cd, rd, c) -> Futures.of(true), u -> Futures.of(true), false);
     }
 

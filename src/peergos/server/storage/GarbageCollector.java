@@ -29,6 +29,7 @@ public class GarbageCollector {
     private final DeletableContentAddressedStorage storage;
     private final JdbcIpnsAndSocial pointers;
     private final UsageStore usage;
+    private final CoreNode core;
     private final BlockMetadataStore metadata;
     private final boolean listRawFromBlockstore;
     private final AtomicBoolean running = new AtomicBoolean(false);
@@ -39,6 +40,7 @@ public class GarbageCollector {
     public GarbageCollector(DeletableContentAddressedStorage storage,
                             JdbcIpnsAndSocial pointers,
                             UsageStore usage,
+                            CoreNode core,
                             Path reachabilityDbDir,
                             TriFunction<Long, Long, Long, CompletableFuture<Boolean>> deleteConfirm,
                             Function<String, CompletableFuture<Boolean>> deleteUserConfirm,
@@ -46,6 +48,7 @@ public class GarbageCollector {
         this.storage = storage;
         this.pointers = pointers;
         this.usage = usage;
+        this.core = core;
         this.reachabilityDbDir = reachabilityDbDir;
         this.deleteConfirm = deleteConfirm;
         this.deleteUserConfirm = deleteUserConfirm;
@@ -54,7 +57,7 @@ public class GarbageCollector {
     }
 
     public synchronized void collect(Function<Stream<Map.Entry<PublicKeyHash, byte[]>>, CompletableFuture<Boolean>> snapshotSaver) {
-        collect(storage, pointers, usage, reachabilityDbDir, snapshotSaver, metadata, deleteConfirm, deleteUserConfirm, listRawFromBlockstore);
+        collect(storage, pointers, usage, core, reachabilityDbDir, snapshotSaver, metadata, deleteConfirm, deleteUserConfirm, listRawFromBlockstore);
     }
 
     public void stop() {
@@ -282,6 +285,7 @@ public class GarbageCollector {
     public static void collectPointers(JdbcIpnsAndSocial pointers,
                                        UsageStore usage,
                                        ContentAddressedStorage storage,
+                                       CoreNode core,
                                        Function<String, CompletableFuture<Boolean>> deleteUserConfirm,
                                        List<Pair<String, PublicKeyHash>> allUsers) {
         for (Pair<String, PublicKeyHash> user : allUsers) {
@@ -296,6 +300,16 @@ public class GarbageCollector {
                 PointerUpdate pointer = MutablePointers.parsePointerTarget(idSigned.get(), identity, identity, storage).join();
                 if (pointer.updated.isPresent())
                     continue;
+            }
+            Optional<PublicKeyHash> pkiIdOpt = core.getPublicKeyHash(username).join();
+            if (pkiIdOpt.isPresent()) {
+                PublicKeyHash idFromPki = pkiIdOpt.get();
+                Optional<byte[]> idPkiSigned = pointers.getPointer(idFromPki).join();
+                if (idPkiSigned.isPresent()) {
+                    PointerUpdate pointer = MutablePointers.parsePointerTarget(idPkiSigned.get(), idFromPki, idFromPki, storage).join();
+                    if (pointer.updated.isPresent())
+                        continue;
+                }
             }
 
             Set<PublicKeyHash> writers = usage.getAllWriters(username);
@@ -331,6 +345,7 @@ public class GarbageCollector {
     public static void collect(DeletableContentAddressedStorage storage,
                                JdbcIpnsAndSocial pointers,
                                UsageStore usage,
+                               CoreNode core,
                                Path reachabilityDbDir,
                                Function<Stream<Map.Entry<PublicKeyHash, byte[]>>, CompletableFuture<Boolean>> snapshotSaver,
                                BlockMetadataStore metadata,
@@ -344,15 +359,13 @@ public class GarbageCollector {
                 .sorted(Comparator.comparing(a -> a.left))
                 .distinct()
                 .collect(Collectors.toList());
-//        collectPointers(pointers, usage, storage, deleteUserConfirm, allUsers);
+//        collectPointers(pointers, usage, storage, core, deleteUserConfirm, allUsers);
         Set<String> currentUsers = allUsers.stream().map(p -> p.left).collect(Collectors.toSet());
         if (currentUsers.size() != allUsers.size())
             throw new IllegalStateException("Duplicate username getting all owners!");
         for (Pair<String, PublicKeyHash> p : allUsers) {
             PublicKeyHash owner = p.right;
             String username = p.left;
-            LOG.info("Starting GC for " + username);
-            // TODO check if user snapshot hasn't changed and short circuit
 
             // TODO: do GC in O(1) RAM with a bloom filter?: mark into bloom. Then list and check bloom to delete.
             storage.clearOldTransactions(owner, System.currentTimeMillis() - 24*3600*1000L);

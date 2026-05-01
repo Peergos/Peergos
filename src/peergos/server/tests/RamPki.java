@@ -21,7 +21,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 
-class RamPki implements CoreNode {
+public class RamPki implements CoreNode {
     final Map<PublicKeyHash, String> reverseLookup = new HashMap<>();
 
     @Override

@@ -1248,8 +1248,12 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         transactions.clearOldTransactions(owner, cutoffMillis);
     }
 
-    private void collectGarbage(JdbcIpnsAndSocial pointers, UsageStore usage, BlockMetadataStore metadata, boolean listFromBlockstore) {
-        GarbageCollector.collect(this, pointers, usage, Paths.get(""),
+    private void collectGarbage(JdbcIpnsAndSocial pointers,
+                                UsageStore usage,
+                                CoreNode core,
+                                BlockMetadataStore metadata,
+                                boolean listFromBlockstore) {
+        GarbageCollector.collect(this, pointers, usage, core, Paths.get(""),
                 x -> Futures.of(true), metadata, this::confirmDeleteBlocks, this::confirmDeleteUser, listFromBlockstore);
     }
 
@@ -2043,7 +2047,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
             return;
         }
         System.out.println("Performing GC on S3 block store...");
-        s3.collectGarbage(rawPointers, usage, meta, versioned);
+        s3.collectGarbage(rawPointers, usage, core, meta, versioned);
     }
 
     @Override
