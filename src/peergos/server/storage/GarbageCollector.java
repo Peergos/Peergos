@@ -302,7 +302,7 @@ public class GarbageCollector {
             boolean hasData = false;
             for (PublicKeyHash writer : writers) {
                 Optional<Multihash> root = pointers.getPointer(writer).join()
-                        .flatMap(b -> MutablePointers.parsePointerTarget(idSigned.get(), identity, writer, storage)
+                        .flatMap(b -> MutablePointers.parsePointerTarget(b, identity, writer, storage)
                                 .join().updated.toOptional());
                 if (root.isPresent())
                     hasData = true;
