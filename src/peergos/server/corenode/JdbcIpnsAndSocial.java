@@ -266,6 +266,8 @@ public class JdbcIpnsAndSocial {
             conn.setAutoCommit(true);
             return CompletableFuture.completedFuture(true);
         } catch (SQLException sqe) {
+            try { conn.rollback(); } catch (SQLException ignored) {}
+            try { conn.setAutoCommit(true); } catch (SQLException ignored) {}
             try { conn.rollback(); conn.setAutoCommit(true); } catch (SQLException ignored) {}
             LOG.log(Level.WARNING, sqe.getMessage(), sqe);
             return Futures.errored(new RuntimeException(sqe));
