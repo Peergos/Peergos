@@ -810,8 +810,6 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         if (hash.isIdentity())
             return Futures.of(Optional.of(new Pair<>(hash.getHash(), null)));
         if (noReads) {
-            if (peerIds.stream().anyMatch(p -> ids.stream().anyMatch(us -> us.bareMultihash().equals(p.bareMultihash()))))
-                throw new IllegalStateException("Reads from Glacier are disabled!");
             return p2pHttpFallback.getRaw(peerIds.get(0), owner, hash, bat).thenApply(res -> {
                 if (res.isPresent() && persistP2pBlock) {
                     if (hash.isRaw())
