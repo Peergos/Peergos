@@ -62,7 +62,11 @@ public class TrieNodeImpl implements TrieNode {
         // There may be an entry point further down the tree, but it will have <= permission than this one, unless this is read only
         if (value.isPresent() && (value.get().pointer.isWritable() || !children.containsKey(elements[0])))
             return network.retrieveEntryPoint(value.get())
-                    .thenCompose(dir -> dir.get().getDescendentByPath(finalPath, hasher, network));
+                    .thenCompose(dir -> dir.isPresent() ?
+                            dir.get().getDescendentByPath(finalPath, hasher, network) :
+                            children.containsKey(elements[0]) ?
+                                    children.get(elements[0]).getByPath(finalPath.substring(elements[0].length()), hasher, network) :
+                                    Futures.of(Optional.empty()));
         if (!children.containsKey(elements[0]))
             return CompletableFuture.completedFuture(Optional.empty());
         return children.get(elements[0]).getByPath(finalPath.substring(elements[0].length()), hasher, network);
