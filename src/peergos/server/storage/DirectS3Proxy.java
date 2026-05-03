@@ -72,8 +72,6 @@ public class DirectS3Proxy implements ContentAddressedStorageProxy {
 
     @Override
     public CompletableFuture<Optional<byte[]>> getRaw(Multihash targetServerId, PublicKeyHash owner, Cid hash, Optional<BatWithId> bat) {
-        if (! remoteId.equals(targetServerId))
-            throw new IllegalStateException("Can only proxy to the target instance!");
         if (hash.isIdentity())
             return Futures.of(Optional.of(hash.getHash()));
         return getWithBackoff(() -> getRawWithoutBackoff(List.of(targetServerId), owner, hash, startWithLegacyPath))
