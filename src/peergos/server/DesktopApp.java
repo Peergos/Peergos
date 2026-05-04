@@ -28,9 +28,9 @@ public class DesktopApp {
                     System.exit(0);
                 });
             } else if (isWindows) {
-                String edgePath = "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe";
+                String edgePath = "C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe";
                 if (!new File(edgePath).exists()) {
-                    edgePath = "C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe";
+                    edgePath = "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe";
                 }
 
                 ProcessBuilder pb = new ProcessBuilder(
