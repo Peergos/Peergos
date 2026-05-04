@@ -1094,15 +1094,20 @@ public class DirectorySync {
                     Optional<HashBranch> remoteHash = props.meta.get().getFileProperties().treeHash;
                     if (!remoteHash.isPresent()) {
                         // collect new hashes to set in bulk later
-                        toUpdate.add(new Triple<>(relPath, props.meta.get(), hashTree));
-                        downloadedSize.addAndGet(props.size);
-                        if (downloadedSize.get() > 100 * 1024 * 1024L) {
+                        List<Triple<String, FileWrapper, HashTree>> flush = null;
+                        synchronized (toUpdate) {
+                            toUpdate.add(new Triple<>(relPath, props.meta.get(), hashTree));
+                            if (downloadedSize.addAndGet(props.size) > 100 * 1024 * 1024L) {
+                                flush = new ArrayList<>(toUpdate);
+                                toUpdate.clear();
+                                downloadedSize.set(0);
+                            }
+                        }
+                        if (flush != null) {
                             // set hashes inline if we've downloaded a lot of data to avoid cache thrashing if there is
                             // an exception. This way we continue to make progress.
-                            log("REMOTE: Updating " + toUpdate.size() + " hashes: " + toUpdate.stream().limit(10).map(p -> p.left).collect(Collectors.toList()));
-                            fs.setHashes(toUpdate);
-                            toUpdate.clear();
-                            downloadedSize.set(0);
+                            log("REMOTE: Updating " + flush.size() + " hashes: " + flush.stream().limit(10).map(p -> p.left).collect(Collectors.toList()));
+                            fs.setHashes(flush);
                         }
                     }
                 }

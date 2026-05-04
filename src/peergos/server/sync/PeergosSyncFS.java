@@ -368,7 +368,10 @@ public class PeergosSyncFS implements SyncFilesystem {
         Futures.combineAllInOrder(futures).join();
         if (directChildCount.get() != childCaps.size())
             throw new IllegalStateException("Couldn't retrieve all " + childCaps.size() + " children for " + basePath);
+        List<CompletableFuture<Void>> subdirFutures = new ArrayList<>();
         for (Pair<Path, FileWrapper> subdir : subdirs)
-            applyToSubtree(subdir.left, subdir.right, onFile, onDir);
+            subdirFutures.add(CompletableFuture.runAsync(
+                    () -> applyToSubtree(subdir.left, subdir.right, onFile, onDir)));
+        Futures.combineAllInOrder(subdirFutures).join();
     }
 }
