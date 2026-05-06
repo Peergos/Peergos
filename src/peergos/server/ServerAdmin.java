@@ -5,31 +5,43 @@ import peergos.server.corenode.IpfsCoreNode;
 import peergos.server.corenode.JdbcIpnsAndSocial;
 import peergos.server.corenode.UserRepository;
 import peergos.server.crypto.hash.ScryptJava;
+import peergos.server.login.AccountWithStorage;
 import peergos.server.login.JdbcAccount;
 import peergos.server.space.JdbcUsageStore;
 import peergos.server.space.UsageStore;
+import peergos.server.space.WriterUsage;
+import peergos.server.sql.PostgresCommands;
 import peergos.server.sql.SqlSupplier;
+import peergos.server.sql.SqliteCommands;
 import peergos.server.storage.*;
 import peergos.server.storage.admin.QuotaAdmin;
 import peergos.server.storage.auth.*;
+import peergos.server.util.JavaPoster;
 import peergos.shared.Crypto;
+import peergos.shared.MaybeMultihash;
 import peergos.shared.corenode.CoreNode;
 import peergos.shared.corenode.HTTPCoreNode;
 import peergos.shared.crypto.hash.PublicKeyHash;
 import peergos.shared.io.ipfs.Cid;
+import peergos.shared.io.ipfs.Multihash;
 import peergos.shared.login.mfa.MultiFactorAuthMethod;
+import peergos.shared.mutable.HttpMutablePointers;
 import peergos.shared.mutable.MutablePointers;
+import peergos.shared.mutable.MutablePointersProxy;
 import peergos.shared.storage.auth.Bat;
 import peergos.shared.storage.auth.BatId;
 import peergos.shared.storage.auth.BatWithId;
+import peergos.shared.user.Account;
 import peergos.shared.user.CommittedWriterData;
 import peergos.shared.util.ArrayOps;
 
+import java.net.InetSocketAddress;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
 
 public class ServerAdmin {
     public static final Command.Arg ARG_USERNAME =
@@ -232,6 +244,82 @@ public class ServerAdmin {
             Arrays.asList()
     );
 
+    public static final Command<Boolean> RECALCULATE = new Command<>("recalculate",
+            "Recalculate storage usage for a user",
+            a -> {
+            try {
+                Builder.disableLog();
+                IpfsCoreNode.disableLog();
+                ScryptJava.disableLog();
+                HTTPCoreNode.disableLog();
+                Crypto crypto = Main.initCrypto();
+                String username = a.getArg("username");
+                BlockMetadataStore meta = Builder.buildBlockMetadata(a);
+                boolean usePostgres = a.getBoolean("use-postgres", false);
+                SqlSupplier sqlCommands = usePostgres ?
+                        new PostgresCommands() :
+                        new SqliteCommands();
+                Supplier<Connection> dbConnectionPool = Main.getDBConnector(a, "space-usage-sql-file");
+                UsageStore usage = new JdbcUsageStore(dbConnectionPool, sqlCommands);
+                Supplier<Connection> statusDb = Main.getDBConnector(a, "partition-status-file");
+                PartitionStatus partitionStatus = new JdbcPartitionStatus(statusDb, sqlCommands);
+                JdbcIpnsAndSocial rawPointers = Builder.buildRawPointers(a,
+                        Builder.getDBConnector(a, "mutable-pointers-file", dbConnectionPool));
+                JdbcBatCave batStore = new JdbcBatCave(Builder.getDBConnector(a, "bat-store", dbConnectionPool), sqlCommands);
+                TransactionStore transactions = Builder.buildTransactionStore(a, dbConnectionPool);
+                BlockRequestAuthoriser blockAuth = Builder.blockAuthoriser(a, batStore, crypto.hasher);
+                JdbcServerIdentityStore ids = JdbcServerIdentityStore.build(Builder.getDBConnector(a, "serverids-file", dbConnectionPool), sqlCommands, crypto);
+                DeletableContentAddressedStorage storage = Builder.buildLocalStorage(a, meta, batStore, transactions, blockAuth,
+                        ids, usage, rawPointers, partitionStatus, crypto.hasher);
+                MutablePointers localPointers = UserRepository.build(storage, rawPointers, crypto.hasher);
+                Multihash pkiServerNodeId = Builder.getPkiServerId(a);
+                String listeningHost = a.getArg(Main.LISTEN_HOST.name, "localhost");
+                JavaPoster p2pHttpProxy = Builder.buildP2pHttpProxy(a);
+                MutablePointersProxy proxingMutable = new HttpMutablePointers(p2pHttpProxy, pkiServerNodeId);
+                JdbcIpnsAndSocial rawSocial = new JdbcIpnsAndSocial(Builder.getDBConnector(a, "social-sql-file", dbConnectionPool), sqlCommands);
+                int webPort = a.getInt("port");
+                InetSocketAddress userAPIAddress = new InetSocketAddress(listeningHost, webPort);
+                boolean localhostApi = userAPIAddress.getHostName().equals("localhost");
+                QuotaAdmin userQuotas = Main.buildSpaceQuotas(a, storage,
+                        Main.getDBConnector(a, "space-requests-sql-file", dbConnectionPool),
+                        Main.getDBConnector(a, "quotas-sql-file", dbConnectionPool), false, localhostApi);
+                Optional<String> tlsHostname = a.hasArg("tls.keyfile.password") ? Optional.of(listeningHost) : Optional.empty();
+                Optional<String> publicHostname = tlsHostname.isPresent() ? tlsHostname : a.getOptionalArg("public-domain");
+                Origin origin = new Origin(publicHostname.map(host -> (Main.isLanIP(host) ? "http://" : "https://") + host).orElse("http://localhost:" + webPort));
+                String rpId = publicHostname.orElse("localhost");
+                JdbcAccount rawAccount = new JdbcAccount(Builder.getDBConnector(a, "account-sql-file", dbConnectionPool), sqlCommands, origin, rpId);
+                Account account = new AccountWithStorage(storage, localPointers, rawAccount);
+                LinkRetrievalCounter linkCounts = new JdbcLinkRetrievalcounter(Main.getDBConnector(a, "link-counts-sql-file", dbConnectionPool), sqlCommands);
+                CoreNode core = Builder.buildCorenode(a, storage, transactions, rawPointers, localPointers, proxingMutable,
+                        rawSocial, usage, userQuotas, rawAccount, batStore, account, linkCounts, crypto);
+
+                PublicKeyHash id = core.getPublicKeyHash(username).join().get();
+                Set<PublicKeyHash> writers = usage.getAllWriters(username);
+                for (PublicKeyHash writer : writers) {
+                    WriterUsage wUsage = usage.getUsage(writer);
+                    MaybeMultihash target = wUsage.target();
+                    long currentUsage = wUsage.directRetainedStorage();
+                    if (! target.isPresent()) {
+                        if (currentUsage > 0) {
+                            usage.confirmUsage(username, writer, -currentUsage, false);
+                        }
+                        continue;
+                    }
+                    long fresh = storage.getRecursiveBlockSize(id, (Cid) target.get(), storage.ids().join().stream().map(c -> (Cid) c).collect(Collectors.toList())).join();
+                    if (fresh != currentUsage) {
+                        System.out.println("Updating usage for " + writer + " from " + currentUsage + " to " + fresh);
+                        usage.confirmUsage(username, writer, fresh - currentUsage, false);
+                    }
+                }
+                return true;
+            } catch (SQLException e) {
+                throw new RuntimeException(e);
+            }
+            },
+            Arrays.asList(new Command.Arg("username", "The username to recalculate usage for", true)),
+            Arrays.asList()
+    );
+
     public static final Command<Boolean> GENERATE = new Command<>("generate",
             "Generate a new BAT to use with -instance-bat on a server to mirror user data on another server",
             a -> {
@@ -258,7 +346,7 @@ public class ServerAdmin {
             "Operations on storage",
             a -> true,
             Arrays.asList(),
-            Arrays.asList(STATS)
+            Arrays.asList(STATS, RECALCULATE)
     );
 
     public static final Command<Boolean> SERVER_ADMIN = new Command<>("admin",
