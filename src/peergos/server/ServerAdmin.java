@@ -303,7 +303,7 @@ public class ServerAdmin {
                     MaybeMultihash target = wUsage.target();
                     long currentWriterUsage = wUsage.directRetainedStorage();
                     long fresh = target.isPresent() ?
-                            storage.getRecursiveBlockSize(id, (Cid) target.get(), storageIds).join() : 0;
+                            storage.getRecursiveBlockSizeSync(id, (Cid) target.get(), storageIds) : 0;
                     freshTotal += fresh;
                     if (fresh != currentWriterUsage) {
                         System.out.println("Updating writer usage for " + writer + " from " + currentWriterUsage + " to " + fresh);

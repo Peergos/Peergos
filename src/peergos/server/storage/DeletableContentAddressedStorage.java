@@ -281,6 +281,20 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
      */
     CompletableFuture<List<Cid>> getLinks(PublicKeyHash owner, Cid root, List<Multihash> peerids);
 
+    default long getRecursiveBlockSizeSync(PublicKeyHash owner, Cid root, List<Multihash> peerids) {
+        long total = 0;
+        Deque<Cid> queue = new ArrayDeque<>();
+        queue.push(root);
+        while (!queue.isEmpty()) {
+            Cid block = queue.pop();
+            if (block.isIdentity()) continue;
+            total += getSize(owner, block).join().orElse(0);
+            List<Cid> links = getLinks(owner, block, peerids).join();
+            links.stream().filter(c -> !c.isIdentity()).forEach(queue::push);
+        }
+        return total;
+    }
+
     default CompletableFuture<Long> getRecursiveBlockSize(PublicKeyHash owner, Cid block, List<Multihash> peerids) {
         return getLinks(owner, block, peerids).thenCompose(links -> {
             List<CompletableFuture<Long>> subtrees = links.stream()
