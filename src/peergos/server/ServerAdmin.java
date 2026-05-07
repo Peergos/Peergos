@@ -28,6 +28,7 @@ import peergos.shared.login.mfa.MultiFactorAuthMethod;
 import peergos.shared.mutable.HttpMutablePointers;
 import peergos.shared.mutable.MutablePointers;
 import peergos.shared.mutable.MutablePointersProxy;
+import peergos.shared.storage.ContentAddressedStorage;
 import peergos.shared.storage.auth.Bat;
 import peergos.shared.storage.auth.BatId;
 import peergos.shared.storage.auth.BatWithId;
@@ -292,15 +293,36 @@ public class ServerAdmin {
                 LinkRetrievalCounter linkCounts = new JdbcLinkRetrievalcounter(Main.getDBConnector(a, "link-counts-sql-file", dbConnectionPool), sqlCommands);
                 CoreNode core = Builder.buildCorenode(a, storage, transactions, rawPointers, localPointers, proxingMutable,
                         rawSocial, usage, userQuotas, rawAccount, batStore, account, linkCounts, crypto);
+                storage.setPki(core);
 
                 PublicKeyHash id = core.getPublicKeyHash(username).join().get();
+                Deque<PublicKeyHash> queue = new ArrayDeque<>();
+                queue.push(id);
+                Set<PublicKeyHash> reachable = new HashSet<>();
+                Map<PublicKeyHash, Set<PublicKeyHash>> children = new HashMap<>();
+                while (! queue.isEmpty()) {
+                    PublicKeyHash writer = queue.pop();
+                    reachable.add(writer);
+                    Set<PublicKeyHash> owned = DeletableContentAddressedStorage.getDirectOwnedKeys(id,
+                            writer,
+                            localPointers,
+                            (h, s) -> ContentAddressedStorage.getWriterData(id, h, s, storage),
+                            storage,
+                            crypto.hasher).join();
+                    queue.addAll(owned);
+                    children.put(writer, owned);
+                    System.out.println(writer + " children: " + owned);
+                }
                 Set<PublicKeyHash> writers = usage.getAllWriters(username);
                 long currentTotal = usage.getUsage(username).totalUsage();
                 long freshTotal = 0;
                 List<Multihash> storageIds = storage.ids().join().stream().map(c -> (Cid) c).collect(Collectors.toList());
                 for (PublicKeyHash writer : writers) {
                     WriterUsage wUsage = usage.getUsage(writer);
-                    MaybeMultihash target = wUsage.target();
+                    System.out.println(writer + " usage: " + wUsage.directRetainedStorage() + ", reachable: " + reachable.contains(writer));
+                    MaybeMultihash target = localPointers.getPointerTarget(id, writer, storage).join().updated;
+                    if (! target.equals(wUsage.target()))
+                        System.out.println("Different target in pointers! Recalculating usage");
                     long currentWriterUsage = wUsage.directRetainedStorage();
                     long fresh = target.isPresent() ?
                             storage.getRecursiveBlockSizeSync(id, (Cid) target.get(), storageIds) : 0;

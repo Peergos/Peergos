@@ -37,7 +37,6 @@ public class HttpMutablePointers implements MutablePointersProxy {
      */
     public HttpMutablePointers(HttpPoster p2p, Multihash targetNodeID)
     {
-        LOG.info("Creating proxying Http Mutable Pointers API at " + p2p);
         this.directUrlPrefix = getProxyUrlPrefix(targetNodeID);
         this.direct = p2p;
         this.p2p = p2p;
