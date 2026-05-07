@@ -296,18 +296,7 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
     }
 
     default CompletableFuture<Long> getRecursiveBlockSize(PublicKeyHash owner, Cid block, List<Multihash> peerids) {
-        return getLinks(owner, block, peerids).thenCompose(links -> {
-            List<CompletableFuture<Long>> subtrees = links.stream()
-                    .filter(m -> ! m.isIdentity())
-                    .map(c -> Futures.runAsync(() -> getRecursiveBlockSize(owner, c, peerids), usagePool))
-                    .collect(Collectors.toList());
-            return getSize(owner, block)
-                    .thenCompose(sizeOpt -> {
-                        CompletableFuture<Long> reduced = Futures.reduceAll(subtrees,
-                                0L, (t, fut) -> fut.thenApply(x -> x + t), (a, b) -> a + b);
-                        return reduced.thenApply(sum -> sum + sizeOpt.orElse(0));
-                    });
-        });
+        return Futures.runAsync(() -> CompletableFuture.completedFuture(getRecursiveBlockSizeSync(owner, block, peerids)), usagePool);
     }
 
     default CompletableFuture<Long> getChangeInContainedSize(PublicKeyHash owner, Optional<Cid> original, Cid updated) {
@@ -346,13 +335,14 @@ public interface DeletableContentAddressedStorage extends ContentAddressedStorag
     }
 
     private CompletableFuture<Long> getAllRecursiveSizes(PublicKeyHash owner, List<Cid> roots) {
-        List<CompletableFuture<Long>> allSizes = roots.stream()
-                .map(c -> Futures.runAsync(() -> getRecursiveBlockSize(owner, c, Arrays.asList(id().join())), usagePool))
-                .collect(Collectors.toList());
-        return Futures.reduceAll(allSizes,
-                0L,
-                (s, f) -> f.thenApply(size -> size + s),
-                (a, b) -> a + b);
+        return Futures.runAsync(() -> {
+            List<Multihash> peerIds = Arrays.asList(id().join());
+            long total = 0;
+            for (Cid root : roots) {
+                total += getRecursiveBlockSizeSync(owner, root, peerIds);
+            }
+            return CompletableFuture.completedFuture(total);
+        }, usagePool);
     }
 
     private CompletableFuture<Long> getSizeDiff(PublicKeyHash owner, List<Pair<Cid, Cid>> pairs) {
