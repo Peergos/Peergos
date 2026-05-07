@@ -295,22 +295,29 @@ public class ServerAdmin {
 
                 PublicKeyHash id = core.getPublicKeyHash(username).join().get();
                 Set<PublicKeyHash> writers = usage.getAllWriters(username);
+                long currentTotal = usage.getUsage(username).totalUsage();
+                long freshTotal = 0;
+                List<Multihash> storageIds = storage.ids().join().stream().map(c -> (Cid) c).collect(Collectors.toList());
                 for (PublicKeyHash writer : writers) {
                     WriterUsage wUsage = usage.getUsage(writer);
                     MaybeMultihash target = wUsage.target();
-                    long currentUsage = wUsage.directRetainedStorage();
-                    if (! target.isPresent()) {
-                        if (currentUsage > 0) {
-                            usage.confirmUsage(username, writer, -currentUsage, false);
-                        }
-                        continue;
+                    long currentWriterUsage = wUsage.directRetainedStorage();
+                    long fresh = target.isPresent() ?
+                            storage.getRecursiveBlockSize(id, (Cid) target.get(), storageIds).join() : 0;
+                    freshTotal += fresh;
+                    if (fresh != currentWriterUsage) {
+                        System.out.println("Updating writer usage for " + writer + " from " + currentWriterUsage + " to " + fresh);
+                        usage.updateWriterUsage(writer, target, Collections.emptySet(), Collections.emptySet(), fresh);
                     }
-                    long fresh = storage.getRecursiveBlockSize(id, (Cid) target.get(), storage.ids().join().stream().map(c -> (Cid) c).collect(Collectors.toList())).join();
-                    if (fresh != currentUsage) {
-                        System.out.println("Updating usage for " + writer + " from " + currentUsage + " to " + fresh);
-                        usage.confirmUsage(username, writer, fresh - currentUsage, false);
-                    }
+                    usage.confirmUsage(username, writer, 0, false);
                 }
+                long correction = freshTotal - currentTotal;
+                if (correction != 0) {
+                    System.out.println("Correcting total usage for " + username + " from " + currentTotal + " to " + freshTotal);
+                    PublicKeyHash anyWriter = writers.iterator().next();
+                    usage.confirmUsage(username, anyWriter, correction, false);
+                }
+                System.exit(0);
                 return true;
             } catch (SQLException e) {
                 throw new RuntimeException(e);
