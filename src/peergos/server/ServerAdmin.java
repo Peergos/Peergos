@@ -328,7 +328,7 @@ public class ServerAdmin {
                             storage.getRecursiveBlockSizeSync(id, (Cid) target.get(), storageIds) : 0;
                     freshTotal += fresh;
                     if (fresh != currentWriterUsage) {
-                        System.out.println("Updating writer usage for " + writer + " from " + currentWriterUsage + " to " + fresh);
+                        System.out.println("Updating writer usage for " + writer + " from " + currentWriterUsage + " to " + fresh + "(" + fresh/1_000_000_000L + " GB)");
                         usage.updateWriterUsage(writer, target, Collections.emptySet(), Collections.emptySet(), fresh);
                     }
                     usage.confirmUsage(username, writer, 0, false);
