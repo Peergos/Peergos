@@ -1534,12 +1534,16 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         Optional<BlockMetadata> meta = blockMetadata.get(root);
         if (meta.isPresent())
             return Futures.of(meta.get().links);
-        return getBlockMetadata(owner, root)
+        return getBlockMetadata(owner, root, peerids)
                 .thenApply(res -> res.links);
     }
 
     @Override
     public CompletableFuture<BlockMetadata> getBlockMetadata(PublicKeyHash owner, Cid h) {
+        return getBlockMetadata(owner, h, peerIds);
+    }
+
+    public CompletableFuture<BlockMetadata> getBlockMetadata(PublicKeyHash owner, Cid h, List<Multihash> peerIds) {
         if (h.isIdentity())
             return Futures.of(new BlockMetadata(0, CborObject.getLinks(h, h.getHash()), Bat.getBlockBats(h, h.getHash())));
         Optional<BlockMetadata> cached = blockMetadata.get(h);
