@@ -120,4 +120,198 @@ public class JdbcUsageStoreTests {
         Assert.assertEquals("Usage should be 0 after deleting all data", 0, usage.totalUsage());
         Assert.assertFalse("Usage must not be negative after delete", usage.totalUsage() < 0);
     }
+
+    /** CAS from NULL target succeeds and updates total_bytes atomically */
+    @Test
+    public void atomicUpdateFromNullSucceeds() throws Exception {
+        Crypto crypto = Main.initCrypto();
+        Connection db = new Sqlite.UncloseableConnection(Sqlite.build(":memory:"));
+        JdbcUsageStore store = new JdbcUsageStore(() -> db, new SqliteCommands());
+        store.addUserIfAbsent("alice");
+        PublicKeyHash writer = new PublicKeyHash(Cid.buildCidV1(Cid.Codec.DagCbor, Multihash.Type.id, crypto.random.randomBytes(36)));
+        store.addWriter("alice", writer);
+        MaybeMultihash newTarget = MaybeMultihash.of(Cid.buildCidV1(Cid.Codec.DagCbor, Multihash.Type.id, new byte[]{1}));
+
+        boolean updated = store.updateWriterUsageAtomically(writer, MaybeMultihash.empty(), newTarget,
+                Collections.emptySet(), Collections.emptySet(), 1000, 1000, false);
+
+        Assert.assertTrue(updated);
+        Assert.assertEquals(newTarget, store.getUsage(writer).target());
+        Assert.assertEquals(1000, store.getUsage(writer).directRetainedStorage());
+        Assert.assertEquals(1000, store.getUsage("alice").totalUsage());
+    }
+
+    /** CAS fails when provided old target doesn't match stored target; DB is unchanged */
+    @Test
+    public void atomicUpdateCasFailsOnWrongOldTarget() throws Exception {
+        Crypto crypto = Main.initCrypto();
+        Connection db = new Sqlite.UncloseableConnection(Sqlite.build(":memory:"));
+        JdbcUsageStore store = new JdbcUsageStore(() -> db, new SqliteCommands());
+        store.addUserIfAbsent("alice");
+        PublicKeyHash writer = new PublicKeyHash(Cid.buildCidV1(Cid.Codec.DagCbor, Multihash.Type.id, crypto.random.randomBytes(36)));
+        store.addWriter("alice", writer);
+        MaybeMultihash target1 = MaybeMultihash.of(Cid.buildCidV1(Cid.Codec.DagCbor, Multihash.Type.id, new byte[]{1}));
+        MaybeMultihash target2 = MaybeMultihash.of(Cid.buildCidV1(Cid.Codec.DagCbor, Multihash.Type.id, new byte[]{2}));
+        store.updateWriterUsageAtomically(writer, MaybeMultihash.empty(), target1,
+                Collections.emptySet(), Collections.emptySet(), 1000, 1000, false);
+
+        // Supply wrong old target (empty instead of target1)
+        boolean updated = store.updateWriterUsageAtomically(writer, MaybeMultihash.empty(), target2,
+                Collections.emptySet(), Collections.emptySet(), 500, 500, false);
+
+        Assert.assertFalse(updated);
+        Assert.assertEquals(target1, store.getUsage(writer).target());
+        Assert.assertEquals(1000, store.getUsage(writer).directRetainedStorage());
+        Assert.assertEquals(1000, store.getUsage("alice").totalUsage());
+    }
+
+    /** Successful CAS update from one non-null target to another */
+    @Test
+    public void atomicUpdateFromNonNullSucceeds() throws Exception {
+        Crypto crypto = Main.initCrypto();
+        Connection db = new Sqlite.UncloseableConnection(Sqlite.build(":memory:"));
+        JdbcUsageStore store = new JdbcUsageStore(() -> db, new SqliteCommands());
+        store.addUserIfAbsent("alice");
+        PublicKeyHash writer = new PublicKeyHash(Cid.buildCidV1(Cid.Codec.DagCbor, Multihash.Type.id, crypto.random.randomBytes(36)));
+        store.addWriter("alice", writer);
+        MaybeMultihash target1 = MaybeMultihash.of(Cid.buildCidV1(Cid.Codec.DagCbor, Multihash.Type.id, new byte[]{1}));
+        MaybeMultihash target2 = MaybeMultihash.of(Cid.buildCidV1(Cid.Codec.DagCbor, Multihash.Type.id, new byte[]{2}));
+        store.updateWriterUsageAtomically(writer, MaybeMultihash.empty(), target1,
+                Collections.emptySet(), Collections.emptySet(), 1000, 1000, false);
+
+        boolean updated = store.updateWriterUsageAtomically(writer, target1, target2,
+                Collections.emptySet(), Collections.emptySet(), 1500, 500, false);
+
+        Assert.assertTrue(updated);
+        Assert.assertEquals(target2, store.getUsage(writer).target());
+        Assert.assertEquals(1500, store.getUsage(writer).directRetainedStorage());
+        Assert.assertEquals(1500, store.getUsage("alice").totalUsage());
+    }
+
+    /** Deleting a writer atomically clears target and subtracts its size from total */
+    @Test
+    public void atomicDeleteResetsToZero() throws Exception {
+        Crypto crypto = Main.initCrypto();
+        Connection db = new Sqlite.UncloseableConnection(Sqlite.build(":memory:"));
+        JdbcUsageStore store = new JdbcUsageStore(() -> db, new SqliteCommands());
+        store.addUserIfAbsent("alice");
+        PublicKeyHash writer = new PublicKeyHash(Cid.buildCidV1(Cid.Codec.DagCbor, Multihash.Type.id, crypto.random.randomBytes(36)));
+        store.addWriter("alice", writer);
+        MaybeMultihash target1 = MaybeMultihash.of(Cid.buildCidV1(Cid.Codec.DagCbor, Multihash.Type.id, new byte[]{1}));
+        store.updateWriterUsageAtomically(writer, MaybeMultihash.empty(), target1,
+                Collections.emptySet(), Collections.emptySet(), 1000, 1000, false);
+
+        boolean updated = store.updateWriterUsageAtomically(writer, target1, MaybeMultihash.empty(),
+                Collections.emptySet(), Collections.emptySet(), 0, -1000, false);
+
+        Assert.assertTrue(updated);
+        Assert.assertEquals(MaybeMultihash.empty(), store.getUsage(writer).target());
+        Assert.assertEquals(0, store.getUsage(writer).directRetainedStorage());
+        Assert.assertEquals(0, store.getUsage("alice").totalUsage());
+    }
+
+    /** Pending bytes are cleared to zero on a successful atomic update */
+    @Test
+    public void pendingUsageResetOnAtomicUpdate() throws Exception {
+        Crypto crypto = Main.initCrypto();
+        Connection db = new Sqlite.UncloseableConnection(Sqlite.build(":memory:"));
+        JdbcUsageStore store = new JdbcUsageStore(() -> db, new SqliteCommands());
+        store.addUserIfAbsent("alice");
+        PublicKeyHash writer = new PublicKeyHash(Cid.buildCidV1(Cid.Codec.DagCbor, Multihash.Type.id, crypto.random.randomBytes(36)));
+        store.addWriter("alice", writer);
+        store.addPendingUsage("alice", writer, 500);
+        Assert.assertEquals(500, store.getUsage("alice").getPending(writer));
+        MaybeMultihash target1 = MaybeMultihash.of(Cid.buildCidV1(Cid.Codec.DagCbor, Multihash.Type.id, new byte[]{1}));
+
+        store.updateWriterUsageAtomically(writer, MaybeMultihash.empty(), target1,
+                Collections.emptySet(), Collections.emptySet(), 1000, 1000, false);
+
+        Assert.assertEquals(0, store.getUsage("alice").getPending(writer));
+    }
+
+    /** Pending bytes are preserved when CAS fails */
+    @Test
+    public void pendingUsageNotResetOnFailedCas() throws Exception {
+        Crypto crypto = Main.initCrypto();
+        Connection db = new Sqlite.UncloseableConnection(Sqlite.build(":memory:"));
+        JdbcUsageStore store = new JdbcUsageStore(() -> db, new SqliteCommands());
+        store.addUserIfAbsent("alice");
+        PublicKeyHash writer = new PublicKeyHash(Cid.buildCidV1(Cid.Codec.DagCbor, Multihash.Type.id, crypto.random.randomBytes(36)));
+        store.addWriter("alice", writer);
+        MaybeMultihash target1 = MaybeMultihash.of(Cid.buildCidV1(Cid.Codec.DagCbor, Multihash.Type.id, new byte[]{1}));
+        MaybeMultihash target2 = MaybeMultihash.of(Cid.buildCidV1(Cid.Codec.DagCbor, Multihash.Type.id, new byte[]{2}));
+        store.updateWriterUsageAtomically(writer, MaybeMultihash.empty(), target1,
+                Collections.emptySet(), Collections.emptySet(), 1000, 1000, false);
+        store.addPendingUsage("alice", writer, 500);
+
+        // CAS with wrong old target
+        store.updateWriterUsageAtomically(writer, MaybeMultihash.empty(), target2,
+                Collections.emptySet(), Collections.emptySet(), 500, 500, false);
+
+        Assert.assertEquals(500, store.getUsage("alice").getPending(writer));
+    }
+
+    /** Owned keys added in atomic update are visible via getUsage */
+    @Test
+    public void atomicUpdateAddsOwnedKey() throws Exception {
+        Crypto crypto = Main.initCrypto();
+        Connection db = new Sqlite.UncloseableConnection(Sqlite.build(":memory:"));
+        JdbcUsageStore store = new JdbcUsageStore(() -> db, new SqliteCommands());
+        store.addUserIfAbsent("alice");
+        PublicKeyHash writer = new PublicKeyHash(Cid.buildCidV1(Cid.Codec.DagCbor, Multihash.Type.id, crypto.random.randomBytes(36)));
+        PublicKeyHash owned = new PublicKeyHash(Cid.buildCidV1(Cid.Codec.DagCbor, Multihash.Type.id, crypto.random.randomBytes(36)));
+        store.addWriter("alice", writer);
+        store.addWriter("alice", owned);
+        MaybeMultihash target1 = MaybeMultihash.of(Cid.buildCidV1(Cid.Codec.DagCbor, Multihash.Type.id, new byte[]{1}));
+
+        store.updateWriterUsageAtomically(writer, MaybeMultihash.empty(), target1,
+                Collections.emptySet(), Set.of(owned), 1000, 1000, false);
+
+        Assert.assertTrue(store.getUsage(writer).ownedKeys().contains(owned));
+    }
+
+    /** Owned keys removed in atomic update are no longer visible via getUsage */
+    @Test
+    public void atomicUpdateRemovesOwnedKey() throws Exception {
+        Crypto crypto = Main.initCrypto();
+        Connection db = new Sqlite.UncloseableConnection(Sqlite.build(":memory:"));
+        JdbcUsageStore store = new JdbcUsageStore(() -> db, new SqliteCommands());
+        store.addUserIfAbsent("alice");
+        PublicKeyHash writer = new PublicKeyHash(Cid.buildCidV1(Cid.Codec.DagCbor, Multihash.Type.id, crypto.random.randomBytes(36)));
+        PublicKeyHash owned = new PublicKeyHash(Cid.buildCidV1(Cid.Codec.DagCbor, Multihash.Type.id, crypto.random.randomBytes(36)));
+        store.addWriter("alice", writer);
+        store.addWriter("alice", owned);
+        MaybeMultihash target1 = MaybeMultihash.of(Cid.buildCidV1(Cid.Codec.DagCbor, Multihash.Type.id, new byte[]{1}));
+        MaybeMultihash target2 = MaybeMultihash.of(Cid.buildCidV1(Cid.Codec.DagCbor, Multihash.Type.id, new byte[]{2}));
+        store.updateWriterUsageAtomically(writer, MaybeMultihash.empty(), target1,
+                Collections.emptySet(), Set.of(owned), 1000, 1000, false);
+
+        store.updateWriterUsageAtomically(writer, target1, target2,
+                Set.of(owned), Collections.emptySet(), 1500, 500, false);
+
+        Assert.assertFalse(store.getUsage(writer).ownedKeys().contains(owned));
+    }
+
+    /** Owned keys are not changed when the CAS fails */
+    @Test
+    public void ownedKeysNotModifiedOnFailedCas() throws Exception {
+        Crypto crypto = Main.initCrypto();
+        Connection db = new Sqlite.UncloseableConnection(Sqlite.build(":memory:"));
+        JdbcUsageStore store = new JdbcUsageStore(() -> db, new SqliteCommands());
+        store.addUserIfAbsent("alice");
+        PublicKeyHash writer = new PublicKeyHash(Cid.buildCidV1(Cid.Codec.DagCbor, Multihash.Type.id, crypto.random.randomBytes(36)));
+        PublicKeyHash owned = new PublicKeyHash(Cid.buildCidV1(Cid.Codec.DagCbor, Multihash.Type.id, crypto.random.randomBytes(36)));
+        store.addWriter("alice", writer);
+        store.addWriter("alice", owned);
+        MaybeMultihash target1 = MaybeMultihash.of(Cid.buildCidV1(Cid.Codec.DagCbor, Multihash.Type.id, new byte[]{1}));
+        MaybeMultihash target2 = MaybeMultihash.of(Cid.buildCidV1(Cid.Codec.DagCbor, Multihash.Type.id, new byte[]{2}));
+        store.updateWriterUsageAtomically(writer, MaybeMultihash.empty(), target1,
+                Collections.emptySet(), Set.of(owned), 1000, 1000, false);
+
+        // CAS with wrong old target - should not remove the owned key
+        store.updateWriterUsageAtomically(writer, MaybeMultihash.empty(), target2,
+                Set.of(owned), Collections.emptySet(), 1500, 500, false);
+
+        Assert.assertTrue(store.getUsage(writer).ownedKeys().contains(owned));
+    }
 }

@@ -31,6 +31,21 @@ public interface WriterUsageStore {
                            Set<PublicKeyHash> addedOwnedKeys,
                            long retainedStorage);
 
+    /**
+     * Atomically update writer size/target AND user total_bytes in a single SQL statement,
+     * using a CAS on the writer's current target to prevent double-counting under concurrent access.
+     *
+     * @return true if the CAS succeeded (update applied), false if the target had already changed
+     */
+    boolean updateWriterUsageAtomically(PublicKeyHash writer,
+                                        MaybeMultihash oldTarget,
+                                        MaybeMultihash newTarget,
+                                        Set<PublicKeyHash> removedOwnedKeys,
+                                        Set<PublicKeyHash> addedOwnedKeys,
+                                        long newDirectSize,
+                                        long delta,
+                                        boolean errored);
+
     // return current usage root, and username
     List<Triple<Multihash, String, PublicKeyHash>> getAllTargets();
 

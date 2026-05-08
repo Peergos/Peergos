@@ -553,25 +553,13 @@ public class JdbcUsageStore implements UsageStore {
 
     }
 
-    @Override
-    public void updateWriterUsage(PublicKeyHash writer,
-                                  MaybeMultihash target,
-                                  Set<PublicKeyHash> removedOwnedKeys,
-                                  Set<PublicKeyHash> addedOwnedKeys,
-                                  long retainedStorage) {
-        try (Connection conn = getConnection(true, false);
-             PreparedStatement insert = conn.prepareStatement("UPDATE writerusage SET target=?, direct_size=? WHERE writer_id = ?;");
-             PreparedStatement writerSelect = conn.prepareStatement("SELECT id FROM writers WHERE key_hash = ?;");
+    private void updateOwnedKeys(int writerId,
+                                 Set<PublicKeyHash> removedOwnedKeys,
+                                 Set<PublicKeyHash> addedOwnedKeys,
+                                 Connection conn) throws SQLException {
+        try (PreparedStatement writerSelect = conn.prepareStatement("SELECT id FROM writers WHERE key_hash = ?;");
              PreparedStatement deleteOwned = conn.prepareStatement("DELETE FROM ownedkeys WHERE owned_id = ?;");
              PreparedStatement insertOwned = conn.prepareStatement("INSERT INTO ownedkeys (parent_id, owned_id) VALUES(?, ?);")) {
-            int writerId = getWriterId(writer, conn);
-            insert.setBytes(1, target.isPresent() ? target.get().toBytes() : null);
-            insert.setLong(2, retainedStorage);
-            insert.setInt(3, writerId);
-            int count = insert.executeUpdate();
-            if (count != 1)
-                throw new IllegalStateException("Didn't update one record!");
-
             for (PublicKeyHash removed : removedOwnedKeys) {
                 writerSelect.setBytes(1, removed.toBytes());
                 ResultSet writerRes = writerSelect.executeQuery();
@@ -580,7 +568,6 @@ public class JdbcUsageStore implements UsageStore {
                 deleteOwned.setInt(1, ownedId);
                 deleteOwned.executeUpdate();
             }
-
             for (PublicKeyHash added : addedOwnedKeys) {
                 writerSelect.setBytes(1, added.toBytes());
                 ResultSet writerRes = writerSelect.executeQuery();
@@ -590,9 +577,91 @@ public class JdbcUsageStore implements UsageStore {
                 insertOwned.setInt(2, ownedId);
                 insertOwned.execute();
             }
+        }
+    }
+
+    @Override
+    public void updateWriterUsage(PublicKeyHash writer,
+                                  MaybeMultihash target,
+                                  Set<PublicKeyHash> removedOwnedKeys,
+                                  Set<PublicKeyHash> addedOwnedKeys,
+                                  long retainedStorage) {
+        try (Connection conn = getConnection(true, false);
+             PreparedStatement insert = conn.prepareStatement("UPDATE writerusage SET target=?, direct_size=? WHERE writer_id = ?;")) {
+            int writerId = getWriterId(writer, conn);
+            insert.setBytes(1, target.isPresent() ? target.get().toBytes() : null);
+            insert.setLong(2, retainedStorage);
+            insert.setInt(3, writerId);
+            int count = insert.executeUpdate();
+            if (count != 1)
+                throw new IllegalStateException("Didn't update one record!");
+            updateOwnedKeys(writerId, removedOwnedKeys, addedOwnedKeys, conn);
         } catch (SQLException sqe) {
             LOG.log(Level.WARNING, sqe.getMessage(), sqe);
             throw new RuntimeException(sqe);
+        }
+    }
+
+    @Override
+    public boolean updateWriterUsageAtomically(PublicKeyHash writer,
+                                               MaybeMultihash oldTarget,
+                                               MaybeMultihash newTarget,
+                                               Set<PublicKeyHash> removedOwnedKeys,
+                                               Set<PublicKeyHash> addedOwnedKeys,
+                                               long newDirectSize,
+                                               long delta,
+                                               boolean errored) {
+        Connection conn = getConnection(false, true);
+        try {
+            conn.setAutoCommit(false);
+            int writerId = getWriterId(writer, conn);
+
+            try (PreparedStatement casUpdate = conn.prepareStatement(
+                    "UPDATE writerusage SET direct_size=?, target=? WHERE writer_id=? AND target IS NOT DISTINCT FROM ?")) {
+                casUpdate.setLong(1, newDirectSize);
+                casUpdate.setBytes(2, newTarget.isPresent() ? newTarget.get().toBytes() : null);
+                casUpdate.setInt(3, writerId);
+                casUpdate.setBytes(4, oldTarget.isPresent() ? oldTarget.get().toBytes() : null);
+                int count = casUpdate.executeUpdate();
+                if (count == 0) {
+                    conn.rollback();
+                    return false;
+                }
+            }
+
+            long userId;
+            try (PreparedStatement getUser = conn.prepareStatement(
+                    "SELECT user_id FROM writerusage WHERE writer_id=?")) {
+                getUser.setInt(1, writerId);
+                ResultSet rs = getUser.executeQuery();
+                rs.next();
+                userId = rs.getLong(1);
+            }
+
+            try (PreparedStatement updateUsage = conn.prepareStatement(
+                    "UPDATE userusage SET total_bytes=total_bytes+?, errored=? WHERE user_id=?")) {
+                updateUsage.setLong(1, delta);
+                updateUsage.setBoolean(2, errored);
+                updateUsage.setLong(3, userId);
+                updateUsage.executeUpdate();
+            }
+
+            try (PreparedStatement resetPending = conn.prepareStatement(
+                    "UPDATE pendingusage SET pending_bytes=0 WHERE writer_id=? AND user_id=?")) {
+                resetPending.setInt(1, writerId);
+                resetPending.setLong(2, userId);
+                resetPending.executeUpdate();
+            }
+
+            updateOwnedKeys(writerId, removedOwnedKeys, addedOwnedKeys, conn);
+            conn.commit();
+            return true;
+        } catch (Exception e) {
+            try { conn.rollback(); } catch (SQLException re) { LOG.log(Level.WARNING, re.getMessage(), re); }
+            LOG.log(Level.WARNING, e.getMessage(), e);
+            throw e instanceof RuntimeException ? (RuntimeException) e : new RuntimeException(e);
+        } finally {
+            try { conn.setAutoCommit(true); conn.close(); } catch (SQLException e) { LOG.log(Level.WARNING, e.getMessage(), e); }
         }
     }
 

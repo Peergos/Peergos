@@ -149,7 +149,6 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
                     Logging.LOG().info("Root hash changed from " + writerUsage.target() + " to " + rootHash);
                     long updatedSize = dht.getRecursiveBlockSize(owner, (Cid)rootHash.get(), us).get();
                     long deltaUsage = updatedSize - writerUsage.directRetainedStorage();
-                    store.confirmUsage(writerUsage.owner, writerKey, deltaUsage, store.getUsage(writerUsage.owner).isErrored());
                     Set<PublicKeyHash> directOwnedKeys = DeletableContentAddressedStorage.getDirectOwnedKeys(owner, writerKey, mutable,
                             (h, s) -> DeletableContentAddressedStorage.getWriterData(us, owner, h, s, false, ourId, hasher, dht), dht, hasher).join();
                     List<PublicKeyHash> newOwnedKeys = directOwnedKeys.stream()
@@ -162,8 +161,11 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
                     }
                     HashSet<PublicKeyHash> removedOwnedKeys = new HashSet<>(writerUsage.ownedKeys());
                     removedOwnedKeys.removeAll(directOwnedKeys);
-                    store.updateWriterUsage(writerKey, rootHash, removedOwnedKeys, new HashSet<>(newOwnedKeys), updatedSize);
-                    Logging.LOG().info("Updated space used by " + writerKey + " to " + updatedSize);
+                    boolean updated = store.updateWriterUsageAtomically(writerKey, writerUsage.target(), rootHash,
+                            removedOwnedKeys, new HashSet<>(newOwnedKeys), updatedSize, deltaUsage,
+                            store.getUsage(writerUsage.owner).isErrored());
+                    if (updated)
+                        Logging.LOG().info("Updated space used by " + writerKey + " to " + updatedSize);
                 }
             } catch (Throwable t) {
                 Logging.LOG().log(Level.WARNING, "Failed calculating usage for " + (tmpUsage == null ? writerKey : tmpUsage.owner), t);
@@ -286,8 +288,9 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
                 return; // already processed by another thread
             if (! newRoot.isPresent()) {
                 LOG.info("Removing usage for (" + owner + ", " + writer + ") from " + current.directRetainedStorage());
-                state.confirmUsage(current.owner, writer, -current.directRetainedStorage(), state.getUsage(current.owner).isErrored());
-                state.updateWriterUsage(writer, MaybeMultihash.empty(), Collections.emptySet(), Collections.emptySet(), 0);
+                state.updateWriterUsageAtomically(writer, current.target(), MaybeMultihash.empty(),
+                        Collections.emptySet(), Collections.emptySet(), 0,
+                        -current.directRetainedStorage(), state.getUsage(current.owner).isErrored());
                 if (existingRoot.isPresent()) {
                     try {
                         // subtract data size from orphaned child keys (this assumes the keys form a tree without dupes)
@@ -318,17 +321,20 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
                 String username = current.owner;
                 long quota = getQuota(username, quotaAdmin);
                 boolean errored = initialErrored && usage.totalUsage() > quota;
-                state.confirmUsage(current.owner, writer, changeInStorage, errored);
-                UserUsage cached = getUsage(username, state);
-                cached.confirmUsage(writer, changeInStorage);
-                cached.setErrored(errored);
 
                 HashSet<PublicKeyHash> removedChildren = new HashSet<>(current.ownedKeys());
                 removedChildren.removeAll(updatedOwned);
                 processRemovedOwnedKeys(state, owner, removedChildren, mutable, quotaAdmin, dht, hasher);
                 HashSet<PublicKeyHash> addedOwnedKeys = new HashSet<>(updatedOwned);
                 addedOwnedKeys.removeAll(current.ownedKeys());
-                state.updateWriterUsage(writer, newRoot, removedChildren, addedOwnedKeys, current.directRetainedStorage() + changeInStorage);
+                boolean updated = state.updateWriterUsageAtomically(writer, current.target(), newRoot,
+                        removedChildren, addedOwnedKeys,
+                        current.directRetainedStorage() + changeInStorage, changeInStorage, errored);
+                if (updated) {
+                    UserUsage cached = getUsage(username, state);
+                    cached.confirmUsage(writer, changeInStorage);
+                    cached.setErrored(errored);
+                }
                 for (PublicKeyHash added : addedOwnedKeys) {
                     state.addWriter(current.owner, added);
                     WriterUsage currentAdded = state.getUsage(added);
