@@ -23,7 +23,8 @@ public class Multihash implements Comparable<Multihash> {
         sha2_512(0x13, 64),
         sha3(0x14, 64),
         blake2b(0x40, 64),
-        blake2s(0x41, 32);
+        blake2s(0x41, 32),
+        blake3(0x1e, 32);
 
         public int index, length;
 
