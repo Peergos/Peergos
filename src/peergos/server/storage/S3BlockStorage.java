@@ -1208,7 +1208,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                 List<Cid> newLinks = addedLinks.get(i).links;
                 List<Cid> existingLinks = i >= removed.size() ?
                         Collections.emptyList() :
-                        getLinks(owner, removed.get(i), peerIds).join().stream()
+                        getLinks(owner, removed.get(i), peerIds, mirrorBat).join().stream()
                                 .filter(c -> !c.isIdentity())
                                 .collect(Collectors.toList());
                 if (mirrorTreeSemaphore.tryAcquire()) {
@@ -1529,21 +1529,31 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
 
     @Override
     public CompletableFuture<List<Cid>> getLinks(PublicKeyHash owner, Cid root, List<Multihash> peerids) {
+        return getLinks(owner, root, peerids, Optional.empty());
+    }
+
+    public CompletableFuture<List<Cid>> getLinks(PublicKeyHash owner,
+                                                 Cid root,
+                                                 List<Multihash> peerids,
+                                                 Optional<BatWithId> bat) {
         if (root.isRaw())
             return CompletableFuture.completedFuture(Collections.emptyList());
         Optional<BlockMetadata> meta = blockMetadata.get(root);
         if (meta.isPresent())
             return Futures.of(meta.get().links);
-        return getBlockMetadata(owner, root, peerids)
+        return getBlockMetadata(owner, root, peerids, bat)
                 .thenApply(res -> res.links);
     }
 
     @Override
     public CompletableFuture<BlockMetadata> getBlockMetadata(PublicKeyHash owner, Cid h) {
-        return getBlockMetadata(owner, h, peerIds);
+        return getBlockMetadata(owner, h, peerIds, Optional.empty());
     }
 
-    public CompletableFuture<BlockMetadata> getBlockMetadata(PublicKeyHash owner, Cid h, List<Multihash> peerIds) {
+    public CompletableFuture<BlockMetadata> getBlockMetadata(PublicKeyHash owner,
+                                                             Cid h,
+                                                             List<Multihash> peerIds,
+                                                             Optional<BatWithId> bat) {
         if (h.isIdentity())
             return Futures.of(new BlockMetadata(0, CborObject.getLinks(h, h.getHash()), Bat.getBlockBats(h, h.getHash())));
         Optional<BlockMetadata> cached = blockMetadata.get(h);
@@ -1551,7 +1561,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
             return Futures.of(cached.get());
         Optional<Pair<byte[], String>> data = getRaw(peerIds, owner, h, h.isRaw() ?
                 Optional.of(new Pair<>(0, Bat.MAX_RAW_BLOCK_PREFIX_SIZE - 1)) :
-                Optional.empty(), false, Optional.empty(), false).join();
+                Optional.empty(), false, bat, false).join();
         if (data.isEmpty())
             throw new IllegalStateException("Block not present locally: " + h);
         byte[] bloc = data.get().left;
