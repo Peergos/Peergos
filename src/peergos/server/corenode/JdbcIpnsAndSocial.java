@@ -232,47 +232,37 @@ public class JdbcIpnsAndSocial {
         }
     }
 
-    public synchronized CompletableFuture<Boolean> setPointers(List<Optional<byte[]>> existing, List<SignedPointerUpdate> updates) {
-        Connection conn = getConnection(false);
-        try {
-            conn.setTransactionIsolation(Connection.TRANSACTION_SERIALIZABLE);
-            if (existing.size() != updates.size())
-                throw new IllegalStateException("Argument mismatch!");
-            for (int i=0; i < updates.size(); i++) {
-                SignedPointerUpdate u = updates.get(i);
-                String writerKey = new String(Base64.getEncoder().encode(u.writer.serialize()));
-                Optional<byte[]> current = existing.get(i);
-                if (current.isPresent()) {
-                    try (PreparedStatement stmt = conn.prepareStatement(IPNS_UPDATE)) {
-                        stmt.setString(1, new String(Base64.getEncoder().encode(u.signed)));
-                        stmt.setString(2, writerKey);
-                        stmt.setString(3, new String(Base64.getEncoder().encode(current.get())));
-                        int changed = stmt.executeUpdate();
-                        if (changed == 0) {
-                            conn.rollback();
-                            conn.setAutoCommit(true);
-                            return CompletableFuture.completedFuture(false);
-                        }
-                    }
-                } else {
-                    try (PreparedStatement stmt = conn.prepareStatement(IPNS_CREATE)) {
-                        stmt.setString(1, writerKey);
-                        stmt.setString(2, new String(Base64.getEncoder().encode(u.signed)));
-                        stmt.executeUpdate();
-                    }
-                }
-            }
-            conn.commit();
-            conn.setAutoCommit(true);
+    public CompletableFuture<Boolean> setPointers(List<Optional<byte[]>> existing, List<SignedPointerUpdate> updates) {
+        if (existing.size() != updates.size())
+            throw new IllegalStateException("Argument mismatch!");
+        if (updates.isEmpty())
             return CompletableFuture.completedFuture(true);
+        String valuesClause = IntStream.range(0, updates.size()).mapToObj(i -> "(?, ?, ?)").collect(Collectors.joining(", "));
+        String sql = "WITH vals(writingkey, new_hash, expected_hash) AS (VALUES " + valuesClause + "), " +
+                "cas_ok AS (SELECT COUNT(*) = (SELECT COUNT(*) FROM vals) AS all_ok " +
+                "FROM vals v LEFT JOIN metadatablobs m ON m.writingkey = v.writingkey " +
+                "WHERE (v.expected_hash IS NULL AND m.writingkey IS NULL) " +
+                "OR (v.expected_hash IS NOT NULL AND m.hash = v.expected_hash)) " +
+                "INSERT INTO metadatablobs (writingkey, hash) " +
+                "SELECT v.writingkey, v.new_hash FROM vals v WHERE (SELECT all_ok FROM cas_ok) " +
+                "ON CONFLICT(writingkey) DO UPDATE SET hash = EXCLUDED.hash " +
+                "WHERE (SELECT all_ok FROM cas_ok) RETURNING writingkey";
+        try (Connection conn = getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+            for (int i = 0; i < updates.size(); i++) {
+                SignedPointerUpdate u = updates.get(i);
+                Optional<byte[]> existingCas = existing.get(i);
+                stmt.setString(3 * i + 1, new String(Base64.getEncoder().encode(u.writer.serialize())));
+                stmt.setString(3 * i + 2, new String(Base64.getEncoder().encode(u.signed)));
+                stmt.setString(3 * i + 3, existingCas.map(b -> new String(Base64.getEncoder().encode(b))).orElse(null));
+            }
+            ResultSet rs = stmt.executeQuery();
+            int count = 0;
+            while (rs.next()) count++;
+            return CompletableFuture.completedFuture(count == updates.size());
         } catch (SQLException sqe) {
-            try { conn.rollback(); } catch (SQLException ignored) {}
-            try { conn.setAutoCommit(true); } catch (SQLException ignored) {}
-            try { conn.rollback(); conn.setAutoCommit(true); } catch (SQLException ignored) {}
             LOG.log(Level.WARNING, sqe.getMessage(), sqe);
             return Futures.errored(new RuntimeException(sqe));
-        } finally {
-            try { conn.close(); } catch (SQLException ignored) {}
         }
     }
 
