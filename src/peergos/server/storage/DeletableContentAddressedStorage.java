@@ -29,7 +29,7 @@ import java.util.stream.*;
  */
 public interface DeletableContentAddressedStorage extends ContentAddressedStorage {
 
-    ExecutorService usagePool = Executors.newVirtualThreadPerTaskExecutor();
+    ExecutorService usagePool = Threads.newPool(4, "Usage-updater");
 
     Stream<Pair<PublicKeyHash, Cid>> getAllBlockHashes(PublicKeyHash owner, boolean useBlockstore);
 
