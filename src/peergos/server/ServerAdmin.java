@@ -327,11 +327,10 @@ public class ServerAdmin {
                     long fresh = target.isPresent() ?
                             storage.getRecursiveBlockSizeSync(id, (Cid) target.get(), storageIds) : 0;
                     freshTotal += fresh;
-                    if (fresh != currentWriterUsage) {
+                    if (fresh != currentWriterUsage)
                         System.out.println("Updating writer usage for " + writer + " from " + currentWriterUsage + " to " + fresh + "(" + fresh/1_000_000_000L + " GB)");
-                        usage.updateWriterUsage(writer, target, Collections.emptySet(), Collections.emptySet(), fresh);
-                    }
-                    usage.confirmUsage(username, writer, 0, false);
+                    usage.updateWriterUsageAtomically(writer, wUsage.target(), target,
+                            Collections.emptySet(), Collections.emptySet(), fresh, 0, false);
                 }
                 long correction = freshTotal - currentTotal;
                 if (correction != 0) {

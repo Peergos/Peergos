@@ -581,28 +581,6 @@ public class JdbcUsageStore implements UsageStore {
     }
 
     @Override
-    public void updateWriterUsage(PublicKeyHash writer,
-                                  MaybeMultihash target,
-                                  Set<PublicKeyHash> removedOwnedKeys,
-                                  Set<PublicKeyHash> addedOwnedKeys,
-                                  long retainedStorage) {
-        try (Connection conn = getConnection(true, false);
-             PreparedStatement insert = conn.prepareStatement("UPDATE writerusage SET target=?, direct_size=? WHERE writer_id = ?;")) {
-            int writerId = getWriterId(writer, conn);
-            insert.setBytes(1, target.isPresent() ? target.get().toBytes() : null);
-            insert.setLong(2, retainedStorage);
-            insert.setInt(3, writerId);
-            int count = insert.executeUpdate();
-            if (count != 1)
-                throw new IllegalStateException("Didn't update one record!");
-            updateOwnedKeys(writerId, removedOwnedKeys, addedOwnedKeys, conn);
-        } catch (SQLException sqe) {
-            LOG.log(Level.WARNING, sqe.getMessage(), sqe);
-            throw new RuntimeException(sqe);
-        }
-    }
-
-    @Override
     public boolean updateWriterUsageAtomically(PublicKeyHash writer,
                                                MaybeMultihash oldTarget,
                                                MaybeMultihash newTarget,

@@ -25,8 +25,8 @@ public class JdbcUsageStoreTests {
         store.addWriter(username, owner);
         PublicKeyHash writer = new PublicKeyHash(Cid.buildCidV1(Cid.Codec.DagCbor, Multihash.Type.id, crypto.random.randomBytes(36)));
         store.addWriter(username, writer);
-        store.updateWriterUsage(owner, MaybeMultihash.empty(), Collections.emptySet(), Set.of(writer), 0);
-        store.updateWriterUsage(owner, MaybeMultihash.empty(), Collections.emptySet(), Set.of(owner), 0);
+        store.updateWriterUsageAtomically(owner, MaybeMultihash.empty(), MaybeMultihash.empty(), Collections.emptySet(), Set.of(writer), 0, 0, false);
+        store.updateWriterUsageAtomically(owner, MaybeMultihash.empty(), MaybeMultihash.empty(), Collections.emptySet(), Set.of(owner), 0, 0, false);
 
         Set<PublicKeyHash> allWriters = store.getAllWriters(owner);
         Assert.assertTrue(allWriters.size() == 2);

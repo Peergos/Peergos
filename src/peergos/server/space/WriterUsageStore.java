@@ -25,12 +25,6 @@ public interface WriterUsageStore {
 
     String getOwner(PublicKeyHash writer);
 
-    void updateWriterUsage(PublicKeyHash writer,
-                           MaybeMultihash target,
-                           Set<PublicKeyHash> removedOwnedKeys,
-                           Set<PublicKeyHash> addedOwnedKeys,
-                           long retainedStorage);
-
     /**
      * Atomically update writer size/target AND user total_bytes in a single SQL statement,
      * using a CAS on the writer's current target to prevent double-counting under concurrent access.
