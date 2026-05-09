@@ -432,7 +432,14 @@ public class MirrorCoreNode implements CoreNode {
             rawPointers.setPointer(remote.pkiKey, existingPointer, remoteState.right)
                     .orTimeout(30, TimeUnit.SECONDS).join();
             transactions.closeTransaction(pkiOwnerIdentity, tid);
-
+            // Preserve any entries added to state concurrently by signup() that may have been
+            // missed if they were put into current.chains during or after the putAll in load().
+            current.chains.forEach(updated.chains::putIfAbsent);
+            current.reverseLookup.forEach(updated.reverseLookup::putIfAbsent);
+            for (String u : current.usernames) {
+                if (! updated.chains.containsKey(u))
+                    updated.usernames.add(u);
+            }
             state = updated;
             Logging.LOG().info("... finished updating pki mirror state.");
             return true;
