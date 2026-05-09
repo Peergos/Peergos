@@ -294,6 +294,7 @@ public class ServerAdmin {
                 CoreNode core = Builder.buildCorenode(a, storage, transactions, rawPointers, localPointers, proxingMutable,
                         rawSocial, usage, userQuotas, rawAccount, batStore, account, linkCounts, crypto);
                 storage.setPki(core);
+                boolean pointerGC = a.getBoolean("pointer-gc", false);
 
                 PublicKeyHash id = core.getPublicKeyHash(username).join().get();
                 Deque<PublicKeyHash> queue = new ArrayDeque<>();
@@ -320,7 +321,7 @@ public class ServerAdmin {
                 for (PublicKeyHash writer : writers) {
                     WriterUsage wUsage = usage.getUsage(writer);
                     boolean isReachable = reachable.contains(writer);
-                    if (! isReachable)
+                    if (! isReachable && pointerGC)
                         rawPointers.removePointer(writer);
                     System.out.println(writer + " usage: " + wUsage.directRetainedStorage() + ", reachable: " + isReachable);
                     MaybeMultihash target = localPointers.getPointerTarget(id, writer, storage).join().updated;
