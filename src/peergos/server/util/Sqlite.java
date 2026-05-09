@@ -113,7 +113,9 @@ public class Sqlite {
 
         @Override
         public void setTransactionIsolation(int i) throws SQLException {
-            target.setTransactionIsolation(i);
+            // In non-shared-cache SQLite (our usage), PRAGMA read_uncommitted is a no-op.
+            // Forwarding the call executes it as a SQL statement, which causes SQLITE_BUSY
+            // when another thread has a statement in progress on this shared connection.
         }
 
         @Override
