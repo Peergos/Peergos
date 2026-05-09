@@ -88,7 +88,8 @@ public class GCTests {
         String username = "user";
         usage.addUserIfAbsent(username);
         usage.addWriter(username, writer);
-        usage.updateWriterUsage(writer, MaybeMultihash.of(randomCbor(new Random(42))), Collections.emptySet(), Collections.emptySet(), 1024*1024);
+        usage.updateWriterUsageAtomically(writer, MaybeMultihash.empty(), MaybeMultihash.of(randomCbor(new Random(42))),
+                Collections.emptySet(), Collections.emptySet(), 1024*1024, 0, false);
         usage.confirmUsage(username, writer, 10*1024*1024, false);
 
         verifyAllReachableBlocksArePresent(pointers, metadb, storage);
@@ -172,7 +173,8 @@ public class GCTests {
         String username = "user";
         usage.addUserIfAbsent(username);
         usage.addWriter(username, writer);
-        usage.updateWriterUsage(writer, MaybeMultihash.of(randomCbor(new Random(42))), Collections.emptySet(), Collections.emptySet(), 1024*1024);
+        usage.updateWriterUsageAtomically(writer, MaybeMultihash.empty(), MaybeMultihash.of(randomCbor(new Random(42))),
+                Collections.emptySet(), Collections.emptySet(), 1024*1024, 0, false);
         usage.confirmUsage(username, writer, 10*1024*1024, false);
         List<Pair<String, PublicKeyHash>> owners = usage.getAllOwners();
         Assert.assertTrue(! owners.isEmpty());
@@ -183,7 +185,8 @@ public class GCTests {
                 (b, kids) -> metadb.put(writer, b, null, new BlockMetadata(10, kids, Collections.emptyList())));
         byte[] signedCas = signer.signMessage(new PointerUpdate(MaybeMultihash.empty(), MaybeMultihash.of(root), Optional.of(1L)).serialize()).join();
         pointers.setPointer(writer, Optional.empty(), signedCas).join();
-        usage.updateWriterUsage(writer, MaybeMultihash.of(root), Collections.emptySet(), Collections.emptySet(), 1024*1024);
+        usage.updateWriterUsageAtomically(writer, MaybeMultihash.of(randomCbor(new Random(42))), MaybeMultihash.of(root),
+                Collections.emptySet(), Collections.emptySet(), 1024*1024, 0, false);
 
         verifyAllReachableBlocksArePresent(pointers, metadb, storage);
 
@@ -222,7 +225,8 @@ public class GCTests {
         Assert.assertEquals(bigSize, Files.size(dbFile));
 
         // Remove root so everything is GC'd and test db file size decreases
-        usage.updateWriterUsage(writer, MaybeMultihash.empty(), Collections.emptySet(), Collections.emptySet(), 1024*1024);
+        usage.updateWriterUsageAtomically(writer, MaybeMultihash.of(root), MaybeMultihash.empty(),
+                Collections.emptySet(), Collections.emptySet(), 1024*1024, 0, false);
         boolean setPointer = pointers.setPointer(writer, Optional.of(signedCas), signer.signMessage(new PointerUpdate(MaybeMultihash.of(root), MaybeMultihash.empty(), Optional.of(2L)).serialize()).join()).join();
         gc.collect(s -> Futures.of(true));
         long emptySize = Files.size(dbFile);
@@ -238,7 +242,8 @@ public class GCTests {
         byte[] signedCas2 = signer2.signMessage(new PointerUpdate(MaybeMultihash.empty(), MaybeMultihash.of(root2), Optional.of(1L)).serialize()).join();
         pointers.setPointer(writer2, Optional.empty(), signedCas2).join();
         usage.addWriter("user2", writer2);
-        usage.updateWriterUsage(writer2, MaybeMultihash.of(root2), Collections.emptySet(), Collections.emptySet(), 1024*1024);
+        usage.updateWriterUsageAtomically(writer2, MaybeMultihash.empty(), MaybeMultihash.of(root2),
+                Collections.emptySet(), Collections.emptySet(), 1024*1024, 0, false);
 
         gc.collect(s -> Futures.of(true));
         verifyAllReachableBlocksArePresent(pointers, metadb, storage);

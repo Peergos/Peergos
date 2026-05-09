@@ -294,6 +294,7 @@ public class ServerAdmin {
                 CoreNode core = Builder.buildCorenode(a, storage, transactions, rawPointers, localPointers, proxingMutable,
                         rawSocial, usage, userQuotas, rawAccount, batStore, account, linkCounts, crypto);
                 storage.setPki(core);
+                boolean pointerGC = a.getBoolean("pointer-gc", false);
 
                 PublicKeyHash id = core.getPublicKeyHash(username).join().get();
                 Deque<PublicKeyHash> queue = new ArrayDeque<>();
@@ -319,7 +320,10 @@ public class ServerAdmin {
                 List<Multihash> storageIds = storage.ids().join().stream().map(c -> (Cid) c).collect(Collectors.toList());
                 for (PublicKeyHash writer : writers) {
                     WriterUsage wUsage = usage.getUsage(writer);
-                    System.out.println(writer + " usage: " + wUsage.directRetainedStorage() + ", reachable: " + reachable.contains(writer));
+                    boolean isReachable = reachable.contains(writer);
+                    if (! isReachable && pointerGC)
+                        rawPointers.removePointer(writer);
+                    System.out.println(writer + " usage: " + wUsage.directRetainedStorage() + ", reachable: " + isReachable);
                     MaybeMultihash target = localPointers.getPointerTarget(id, writer, storage).join().updated;
                     if (! target.equals(wUsage.target()))
                         System.out.println("Different target in pointers! Recalculating usage");
@@ -327,11 +331,10 @@ public class ServerAdmin {
                     long fresh = target.isPresent() ?
                             storage.getRecursiveBlockSizeSync(id, (Cid) target.get(), storageIds) : 0;
                     freshTotal += fresh;
-                    if (fresh != currentWriterUsage) {
+                    if (fresh != currentWriterUsage)
                         System.out.println("Updating writer usage for " + writer + " from " + currentWriterUsage + " to " + fresh + "(" + fresh/1_000_000_000L + " GB)");
-                        usage.updateWriterUsage(writer, target, Collections.emptySet(), Collections.emptySet(), fresh);
-                    }
-                    usage.confirmUsage(username, writer, 0, false);
+                    usage.updateWriterUsageAtomically(writer, wUsage.target(), target,
+                            Collections.emptySet(), Collections.emptySet(), fresh, 0, false);
                 }
                 long correction = freshTotal - currentTotal;
                 if (correction != 0) {
