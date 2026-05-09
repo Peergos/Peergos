@@ -589,23 +589,19 @@ public class JdbcUsageStore implements UsageStore {
                                                long newDirectSize,
                                                long delta,
                                                boolean errored) {
-        Connection conn = getConnection(false, true);
-        try {
-            conn.setAutoCommit(false);
+        try (Connection conn = getConnection(true, false)) {
             int writerId = getWriterId(writer, conn);
-
+            int casCount;
             try (PreparedStatement casUpdate = conn.prepareStatement(
                     "UPDATE writerusage SET direct_size=?, target=? WHERE writer_id=? AND target IS NOT DISTINCT FROM ?")) {
                 casUpdate.setLong(1, newDirectSize);
                 casUpdate.setBytes(2, newTarget.isPresent() ? newTarget.get().toBytes() : null);
                 casUpdate.setInt(3, writerId);
                 casUpdate.setBytes(4, oldTarget.isPresent() ? oldTarget.get().toBytes() : null);
-                int count = casUpdate.executeUpdate();
-                if (count == 0) {
-                    conn.rollback();
-                    return false;
-                }
+                casCount = casUpdate.executeUpdate();
             }
+            if (casCount == 0)
+                return false;
 
             long userId;
             try (PreparedStatement getUser = conn.prepareStatement(
@@ -632,14 +628,10 @@ public class JdbcUsageStore implements UsageStore {
             }
 
             updateOwnedKeys(writerId, removedOwnedKeys, addedOwnedKeys, conn);
-            conn.commit();
             return true;
-        } catch (Exception e) {
-            try { conn.rollback(); } catch (SQLException re) { LOG.log(Level.WARNING, re.getMessage(), re); }
-            LOG.log(Level.WARNING, e.getMessage(), e);
-            throw e instanceof RuntimeException ? (RuntimeException) e : new RuntimeException(e);
-        } finally {
-            try { conn.setAutoCommit(true); conn.close(); } catch (SQLException e) { LOG.log(Level.WARNING, e.getMessage(), e); }
+        } catch (SQLException sqe) {
+            LOG.log(Level.WARNING, sqe.getMessage(), sqe);
+            throw new RuntimeException(sqe);
         }
     }
 
