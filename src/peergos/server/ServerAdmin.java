@@ -319,7 +319,10 @@ public class ServerAdmin {
                 List<Multihash> storageIds = storage.ids().join().stream().map(c -> (Cid) c).collect(Collectors.toList());
                 for (PublicKeyHash writer : writers) {
                     WriterUsage wUsage = usage.getUsage(writer);
-                    System.out.println(writer + " usage: " + wUsage.directRetainedStorage() + ", reachable: " + reachable.contains(writer));
+                    boolean isReachable = reachable.contains(writer);
+                    if (! isReachable)
+                        rawPointers.removePointer(writer);
+                    System.out.println(writer + " usage: " + wUsage.directRetainedStorage() + ", reachable: " + isReachable);
                     MaybeMultihash target = localPointers.getPointerTarget(id, writer, storage).join().updated;
                     if (! target.equals(wUsage.target()))
                         System.out.println("Different target in pointers! Recalculating usage");
