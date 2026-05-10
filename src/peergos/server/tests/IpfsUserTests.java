@@ -97,6 +97,11 @@ public class IpfsUserTests extends UserTests {
         List<Cid> open = transactionStore.getOpenTransactionBlocks(context.signer.publicKeyHash);
         Assert.assertTrue(open.isEmpty());
         long usageAfter = context.getSpaceUsage(false).join();
+        while (usageAfter > usageBefore) { // Allow time for server to process delete event
+            Threads.sleep(1_000);
+            usageAfter = context.getSpaceUsage(false).join();
+        }
+
         Assert.assertTrue(usageAfter == usageBefore);
         gc();
         long sizeAfterDelete = getBlockstoreSize();

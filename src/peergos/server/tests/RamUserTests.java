@@ -438,6 +438,11 @@ public class RamUserTests extends UserTests {
         // clean the partial upload
         context.cleanPartialUploads(t -> true).join();
         long usageAfterCleanup = context.getSpaceUsage(false).join();
+        while (usageAfterCleanup >= usageAfterDelete) { // Allow time for server to process cleanup event
+            Thread.sleep(1_000);
+            usageAfterCleanup = context.getSpaceUsage(false).join();
+        }
+
         Assert.assertTrue(usageAfterCleanup < usageAfterDelete);
     }
 
