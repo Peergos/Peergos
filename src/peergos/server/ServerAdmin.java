@@ -36,7 +36,10 @@ import peergos.shared.user.Account;
 import peergos.shared.user.CommittedWriterData;
 import peergos.shared.util.ArrayOps;
 
+import java.io.IOException;
 import java.net.InetSocketAddress;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.*;
@@ -321,8 +324,14 @@ public class ServerAdmin {
                 for (PublicKeyHash writer : writers) {
                     WriterUsage wUsage = usage.getUsage(writer);
                     boolean isReachable = reachable.contains(writer);
-                    if (! isReachable && pointerGC)
-                        rawPointers.removePointer(writer);
+                    if (! isReachable && pointerGC) {
+                        Optional<byte[]> pointer = rawPointers.getPointer(writer).join();
+                        if (pointer.isPresent()) {
+                            System.out.println("Removing pointer: " + writer);
+                            Files.write(Paths.get(username + "-" + writer + ".removed-pointer"), pointer.get());
+                            rawPointers.removePointer(writer);
+                        }
+                    }
                     System.out.println(writer + " usage: " + wUsage.directRetainedStorage() + ", reachable: " + isReachable);
                     MaybeMultihash target = localPointers.getPointerTarget(id, writer, storage).join().updated;
                     if (! target.equals(wUsage.target()))
@@ -344,7 +353,7 @@ public class ServerAdmin {
                 }
                 System.exit(0);
                 return true;
-            } catch (SQLException e) {
+            } catch (SQLException | IOException e) {
                 throw new RuntimeException(e);
             }
             },
