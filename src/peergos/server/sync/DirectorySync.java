@@ -332,7 +332,7 @@ public class DirectorySync {
                     if (! remoteFS.exists(p)) {
                         try {
                             LOG.accept("REMOTE: Uploading " + file.relPath + " " + progress);
-                            HashTree hashTree = localFS.hashFile(p, Optional.empty(), file.relPath, syncedVersions);
+                            HashTree hashTree = localFS.hashFile(p, Optional.empty(), file.relPath, syncedVersions, file.size);
                             LocalDateTime modified = LocalDateTime.ofInstant(Instant.ofEpochSecond(file.modifiedTime / 1000, 0), ZoneOffset.UTC);
                             CopyOp op = new CopyOp(false, localFS.resolve(file.relPath),
                                     remoteFS.resolve(file.relPath), new FileState(file.relPath, file.modifiedTime, file.size, hashTree), null,
@@ -347,8 +347,8 @@ public class DirectorySync {
                             throw new RuntimeException(e);
                         }
                     } else {
-                        HashTree remoteHash = remoteFS.hashFile(p, Optional.empty(), file.relPath, syncedVersions);
-                        HashTree localHash = localFS.hashFile(p, Optional.empty(), file.relPath, syncedVersions);
+                        HashTree remoteHash = remoteFS.hashFile(p, Optional.empty(), file.relPath, syncedVersions, file.size);
+                        HashTree localHash = localFS.hashFile(p, Optional.empty(), file.relPath, syncedVersions, file.size);
                         if (localHash.equals(remoteHash)) {
                             syncedVersions.add(new FileState(file.relPath, file.modifiedTime, file.size, localHash));
                             progress.doneFile();
@@ -1091,7 +1091,7 @@ public class DirectorySync {
                 if (props.meta.isPresent())
                     version.update(props.meta.get().version);
             } else {
-                HashTree hashTree = fs.hashFile(PathUtil.get(props.relPath), props.meta, relPath, synced);
+                HashTree hashTree = fs.hashFile(PathUtil.get(props.relPath), props.meta, relPath, synced, props.size);
                 if (props.meta.isPresent()) {
                     version.update(props.meta.get().version);
                     Optional<HashBranch> remoteHash = props.meta.get().getFileProperties().treeHash;

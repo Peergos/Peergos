@@ -78,7 +78,7 @@ public interface SyncFilesystem {
 
     Optional<Thumbnail> getThumbnail(Path p);
 
-    HashTree hashFile(Path p, Optional<FileWrapper> meta, String relativePath, SyncState syncedState);
+    HashTree hashFile(Path p, Optional<FileWrapper> meta, String relativePath, SyncState syncedState, long size);
 
     /**
      *

@@ -264,7 +264,7 @@ public class PeergosSyncFS implements SyncFilesystem {
     }
 
     @Override
-    public HashTree hashFile(Path p, Optional<FileWrapper> meta, String relativePath, SyncState syncedVersions) {
+    public HashTree hashFile(Path p, Optional<FileWrapper> meta, String relativePath, SyncState syncedVersions, long fileSize) {
         FileWrapper f = meta.orElseGet(() -> context.getByPath(root.resolve(p)).join().get());
         FileProperties props = f.getFileProperties();
         if (props.treeHash.isPresent()) {

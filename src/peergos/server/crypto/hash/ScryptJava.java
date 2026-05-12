@@ -168,7 +168,10 @@ public class ScryptJava implements Hasher {
     }
 
     public static HashTree hashFile(Path p, Hasher hasher) {
-        long size = p.toFile().length();
+        return hashFile(p, hasher, p.toFile().length());
+    }
+
+    public static HashTree hashFile(Path p, Hasher hasher, long size) {
         List<byte[]> chunkHashes = parallelHashChunks(() -> {
             try {
                 return new FileInputStream(p.toFile());
