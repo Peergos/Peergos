@@ -59,7 +59,8 @@ public interface HostDirChooser {
             String docId = m.group(1);
             try {
                 Process p = new ProcessBuilder(
-                    "gdbus", "call", "--session",
+                        "flatpak-spawn", "--host",
+                        "gdbus", "call", "--session",
                     "--dest", "org.freedesktop.portal.Documents",
                     "--object-path", "/org/freedesktop/portal/documents",
                     "--method", "org.freedesktop.portal.Documents.Info",
