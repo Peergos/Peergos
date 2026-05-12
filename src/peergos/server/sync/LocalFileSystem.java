@@ -12,7 +12,9 @@ import peergos.shared.util.Triple;
 
 import java.io.*;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
@@ -238,12 +240,21 @@ public class LocalFileSystem implements SyncFilesystem {
     private void applyToSubtree(Path start, Consumer<FileProps> file, Consumer<FileProps> dir) throws IOException {
         try (Stream<Path> stream = Files.list(start)) {
             stream.forEach(c -> {
+                BasicFileAttributes attrs;
+                try {
+                    attrs = Files.readAttributes(c, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
+                } catch (IOException e) {
+                    LOG.warn("Could not read attributes for {}: {}", c, e.getMessage());
+                    return;
+                }
+                if (attrs.isSymbolicLink())
+                    return;
                 String relPath = root.relativize(start.resolve(c.getFileName())).normalize().toString();
                 String canonicalRelPath = hasBackSlashes ? relPath.replaceAll("\\\\", "/") : relPath;
-                FileProps props = new FileProps(canonicalRelPath, c.toFile().lastModified() / 1000 * 1000, c.toFile().length(), Optional.empty());
-                if (Files.isRegularFile(c)) {
+                FileProps props = new FileProps(canonicalRelPath, attrs.lastModifiedTime().toMillis() / 1000 * 1000, attrs.size(), Optional.empty());
+                if (attrs.isRegularFile()) {
                     file.accept(props);
-                } else if (Files.isDirectory(c)) {
+                } else if (attrs.isDirectory()) {
                     dir.accept(props);
                     try {
                         applyToSubtree(start.resolve(c.getFileName()), file, dir);
