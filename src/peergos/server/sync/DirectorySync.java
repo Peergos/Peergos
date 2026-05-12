@@ -198,7 +198,10 @@ public class DirectorySync {
                     PeergosSyncFS remote = buildRemote(links.get(i), network, crypto);
                     boolean isAndroid = "The Android Project".equals(System.getProperty("java.vm.vendor"));
                     if (! isAndroid && ! Paths.get(localDirs.get(i)).toFile().exists()) {
-                        LOG.accept("Local dir does not exist! Please remove and recreate the sync.");
+                        boolean isFlatpak = System.getenv("FLATPAK_ID") != null;
+                        LOG.accept(isFlatpak ?
+                                "Restart Peergos to start syncing " + localDirs.get(i) :
+                                "Local dir does not exist! Please remove and recreate the sync.");
                         errored = true;
                     } else {
                         SyncFilesystem local = localBuilder.apply(localDirs.get(i));

@@ -696,8 +696,6 @@ public class Main extends Builder {
 
                     SyncRunner.ThreadBased syncer = new SyncRunner.ThreadBased(a, withoutS3, pointerCache, offlineCorenode, crypto);
                     boolean flatpak = a.hasArg("flatpak");
-                    if (flatpak)
-                        syncConfig = migratePortalPaths(syncConfig);
                     Either<HostDirEnumerator, HostDirChooser> syncDirChooser = flatpak ?
                             Either.b(new HostDirChooser.Flatpak()) :
                             Either.a(new HostDirEnumerator.Java());
@@ -750,39 +748,6 @@ public class Main extends Builder {
         if ("localhost".equalsIgnoreCase(host) || "127.0.0.1".equals(host) || "::1".equals(host) || "[::1]".equals(host))
             return true;
         return false;
-    }
-
-    // Resolve any document-portal FUSE paths stored in the config to real host paths.
-    // On first run the real path bind mount won't exist yet (flatpak override only takes
-    // effect on next launch), so we grant the permission but keep the portal path in the
-    // config for this session. On the next launch the bind mount is present and we update.
-    private static SyncConfig migratePortalPaths(SyncConfig config) {
-        List<String> resolved = new java.util.ArrayList<>(config.localDirs);
-        boolean changed = false;
-        for (int i = 0; i < resolved.size(); i++) {
-            String real = HostDirChooser.Flatpak.resolveDocPortalPath(resolved.get(i));
-            if (! real.equals(resolved.get(i))) {
-                try {
-                    new ProcessBuilder(
-                        "flatpak-spawn", "--host",
-                        "flatpak", "override", "--user",
-                        "--filesystem=" + real,
-                        HostDirChooser.Flatpak.getAppId()
-                    ).start().waitFor();
-                } catch (Exception e) {
-                    System.err.println("Warning: could not grant flatpak permission for " + real + ": " + e.getMessage());
-                }
-                if (new java.io.File(real).exists()) {
-                    resolved.set(i, real);
-                    changed = true;
-                }
-            }
-        }
-        if (! changed)
-            return config;
-        return new SyncConfig(resolved, config.remotePaths, config.links,
-                config.syncLocalDeletes, config.syncRemoteDeletes,
-                config.maxDownloadParallelism, config.minFreeSpacePercent);
     }
 
     private static String getAppServerUrl(Args args) {
@@ -1024,8 +989,6 @@ public class Main extends Builder {
                             SyncConfig.fromArgs(Args.parse(new String[]{"-run-once", "true"}, Optional.of(oldSyncConfig), false)):
                             SyncConfig.fromArgs(a);
             boolean flatpak = a.hasArg("flatpak");
-            if (flatpak)
-                syncConfig = migratePortalPaths(syncConfig);
             Either<HostDirEnumerator, HostDirChooser> syncDirChooser = flatpak ?
                     Either.b(new HostDirChooser.Flatpak()) :
                     Either.a(new HostDirEnumerator.Java());
