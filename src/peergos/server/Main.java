@@ -696,6 +696,8 @@ public class Main extends Builder {
 
                     SyncRunner.ThreadBased syncer = new SyncRunner.ThreadBased(a, withoutS3, pointerCache, offlineCorenode, crypto);
                     boolean flatpak = a.hasArg("flatpak");
+                    if (flatpak)
+                        HostDirChooser.Flatpak.cleanupPortalOverrides();
                     Either<HostDirEnumerator, HostDirChooser> syncDirChooser = flatpak ?
                             Either.b(new HostDirChooser.Flatpak()) :
                             Either.a(new HostDirEnumerator.Java());
@@ -989,6 +991,8 @@ public class Main extends Builder {
                             SyncConfig.fromArgs(Args.parse(new String[]{"-run-once", "true"}, Optional.of(oldSyncConfig), false)):
                             SyncConfig.fromArgs(a);
             boolean flatpak = a.hasArg("flatpak");
+            if (flatpak)
+                HostDirChooser.Flatpak.cleanupPortalOverrides();
             Either<HostDirEnumerator, HostDirChooser> syncDirChooser = flatpak ?
                     Either.b(new HostDirChooser.Flatpak()) :
                     Either.a(new HostDirEnumerator.Java());
