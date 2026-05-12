@@ -3006,8 +3006,7 @@ public class UserContext {
 
     @JsMethod
     public CompletableFuture<Snapshot> cleanPartialUploads() {
-        // clear any partial upload started more than a day ago
-        return cleanPartialUploads(t -> t.startTimeEpochMillis() < System.currentTimeMillis() - 24*3600_000L);
+        return cleanPartialUploads(t -> true);
     }
 
     public CompletableFuture<Snapshot> cleanPartialUploads(Predicate<Transaction> filter) {
