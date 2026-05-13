@@ -5,8 +5,8 @@ import peergos.server.Main;
 import peergos.server.UserService;
 import peergos.server.net.ProxyChooser;
 import peergos.server.storage.FileBlockCache;
-import peergos.server.user.JavaImageThumbnailer;
 import peergos.server.util.Args;
+import peergos.server.util.JvmThumbnailer;
 import peergos.server.util.Logging;
 import peergos.server.util.Threads;
 import peergos.shared.Crypto;
@@ -84,7 +84,7 @@ public class DirectorySync {
             Optional<ProxySelector> proxy = ProxyChooser.build(args);
             NetworkAccess network = Builder.buildJavaNetworkAccess(serverURL, address.startsWith("https"), Optional.of("Peergos-" + UserService.CURRENT_VERSION + "-sync"), proxy).join()
                     .withStorage(s -> new UnauthedCachingStorage(s, new FileBlockCache(args.fromPeergosDir("block-cache-dir", "block-cache"), blockCacheSizeBytes), crypto.hasher));
-            ThumbnailGenerator.setInstance(new JavaImageThumbnailer());
+            JvmThumbnailer.initJava();
             List<String> links = new ArrayList<>(Arrays.asList(args.getArg("links").split(",")));
             List<String> localDirs = new ArrayList<>(Arrays.asList(args.getArg("local-dirs").split(",")));
             List<Boolean> syncLocalDeletes = args.hasArg("sync-local-deletes") ?

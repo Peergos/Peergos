@@ -17,6 +17,7 @@ import java.nio.file.Path;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -211,7 +212,21 @@ public class LocalFileSystem implements SyncFilesystem {
 
     @Override
     public Optional<Thumbnail> getThumbnail(Path p) {
-        return ThumbnailGenerator.getVideo().generateVideoThumbnail(root.resolve(p).toFile());
+        Path fullPath = root.resolve(p);
+        try {
+            byte[] start = new byte[MimeTypes.HEADER_BYTES_TO_IDENTIFY_MIME_TYPE];
+            int read;
+            try (InputStream in = Files.newInputStream(fullPath)) {
+                read = in.read(start);
+            }
+            String mimeType = MimeTypes.calculateMimeType(read > 0 ?
+                    Arrays.copyOf(start, read) :
+                    start,
+                    fullPath.getFileName().toString());
+            if (mimeType.startsWith("image/"))
+                return ThumbnailGenerator.get().generateThumbnail(Files.readAllBytes(fullPath));
+        } catch (Exception e) {}
+        return ThumbnailGenerator.getVideo().generateVideoThumbnail(fullPath.toFile());
     }
 
     @Override

@@ -93,7 +93,7 @@ public class MimeTypes {
     public static final int CBOR_PEERGOS_EMAIL_INT = 18;
     final static int[] CBOR_PEERGOS_EMAIL = new int[]{0x82 /* cbor list with 2 elements*/, CBOR_PEERGOS_EMAIL_INT};
 
-    final static int HEADER_BYTES_TO_IDENTIFY_MIME_TYPE = 40;
+    public static final int HEADER_BYTES_TO_IDENTIFY_MIME_TYPE = 40;
 
     final static Map<String, String> TEXT_MIMETYPES = Stream.of(
                     new Pair<>("md", "md"),

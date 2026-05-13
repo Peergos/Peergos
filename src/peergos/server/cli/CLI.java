@@ -873,7 +873,7 @@ public class CLI implements Runnable {
         CRYPTO = Main.initCrypto();
         PublicSigningKey.addProvider(PublicSigningKey.Type.Ed25519, CRYPTO.signer);
         disableLogSpam();
-        ThumbnailGenerator.setInstance(new JavaImageThumbnailer());
+        JvmThumbnailer.initJava();
         Logging.LOG().setLevel(Level.WARNING);
         CLIContext cliContext = buildContextFromCLI(args);
         new CLI(cliContext).run();
