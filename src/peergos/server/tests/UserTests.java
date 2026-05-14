@@ -217,14 +217,18 @@ public abstract class UserTests {
     }
 
     @Test
-    public void singleSignUp() {
+    public void singleSignUp() throws InterruptedException,TimeoutException {
         // This is to ensure a user can't accidentally sign up rather than login and overwrite all their data
         String username = generateUsername();
         String password = "password";
         PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
         CompletableFuture<UserContext> secondSignup = UserContext.signUp(username, password, "", network, crypto);
-
-        Assert.assertTrue("Second sign up fails", secondSignup.isCompletedExceptionally());
+        try {
+            secondSignup.get(10, TimeUnit.SECONDS);
+            Assert.fail("Second sign up should fail");
+        } catch (ExecutionException e) {
+            // expected: signup should fail
+        }
     }
 
     public static CompletableFuture<MultiFactorAuthResponse> noMfa(MultiFactorAuthRequest req) {
