@@ -66,58 +66,59 @@ public class JavaPoster implements HttpPoster {
 
     private CompletableFuture<byte[]> post(String url, byte[] payload, boolean unzip, Map<String, String> headers, int timeoutMillis) {
         CompletableFuture<byte[]> res = new CompletableFuture<>();
-        HttpResponse<InputStream> response = null;
-        try
-        {
-            URI uri = URI.create(buildURL(url).toString());
-            HttpRequest.Builder requestBuilder = HttpRequest.newBuilder().uri(uri);
-            userAgent.ifPresent(agent -> requestBuilder.setHeader("User-Agent", agent));
-            if (payload.length == 0) {
-                requestBuilder.POST(HttpRequest.BodyPublishers.noBody());
-            } else {
-                requestBuilder.POST(HttpRequest.BodyPublishers.ofByteArray(payload));
-            }
-            if (timeoutMillis >= 0)
-                requestBuilder.timeout(Duration.ofMillis(timeoutMillis));
-            for (Map.Entry<String, String> e : headers.entrySet()) {
-                if (! e.getKey().equals("Host") && ! e.getKey().equals("Content-Length"))
-                    requestBuilder.setHeader(e.getKey(), e.getValue());
-            }
-            if (basicAuth.isPresent())
-                requestBuilder.setHeader("Authorization", basicAuth.get());
-
-            HttpRequest request  = requestBuilder.build();
-            http2Streams.acquire();
+        CompletableFuture.runAsync(() -> {
+            HttpResponse<InputStream> response = null;
             try {
-                response = client.send(request, HttpResponse.BodyHandlers.ofInputStream());
-            } finally {
-                http2Streams.release();
+                URI uri = URI.create(buildURL(url).toString());
+                HttpRequest.Builder requestBuilder = HttpRequest.newBuilder().uri(uri);
+                userAgent.ifPresent(agent -> requestBuilder.setHeader("User-Agent", agent));
+                if (payload.length == 0) {
+                    requestBuilder.POST(HttpRequest.BodyPublishers.noBody());
+                } else {
+                    requestBuilder.POST(HttpRequest.BodyPublishers.ofByteArray(payload));
+                }
+                if (timeoutMillis >= 0)
+                    requestBuilder.timeout(Duration.ofMillis(timeoutMillis));
+                for (Map.Entry<String, String> e : headers.entrySet()) {
+                    if (! e.getKey().equals("Host") && ! e.getKey().equals("Content-Length"))
+                        requestBuilder.setHeader(e.getKey(), e.getValue());
+                }
+                if (basicAuth.isPresent())
+                    requestBuilder.setHeader("Authorization", basicAuth.get());
+
+                HttpRequest request = requestBuilder.build();
+                http2Streams.acquire();
+                try {
+                    response = client.send(request, HttpResponse.BodyHandlers.ofInputStream());
+                } finally {
+                    http2Streams.release();
+                }
+                HttpHeaders responseHeaders = response.headers();
+                Optional<String> contentEncodingOpt = responseHeaders.firstValue("content-encoding");
+                boolean isGzipped = contentEncodingOpt.isPresent() && "gzip".equals(contentEncodingOpt.get());
+                DataInputStream din = new DataInputStream(isGzipped && unzip ? new GZIPInputStream(response.body()) : response.body());
+                byte[] resp = Serialize.readFully(din);
+                din.close();
+                int statusCode = response.statusCode();
+                if (statusCode == 429 || statusCode == 502 || statusCode == 503 || statusCode == 504) {
+                    res.completeExceptionally(new RateLimitException());
+                } else if (statusCode != 200) {
+                    handleError(url, res, response, new IOException(resp.length == 0 ?
+                            "Unexpected Error. Status code: " + statusCode
+                            : new String(resp)));
+                } else {
+                    res.complete(resp);
+                }
+            } catch (HttpTimeoutException e) {
+                res.completeExceptionally(new SocketTimeoutException("Socket timeout on: " + dht.toString() + url));
+            } catch (InterruptedException ex) {
+                res.completeExceptionally(new RuntimeException(ex));
+            } catch (IOException e) {
+                handleError(url, res, response, e);
+            } catch (Exception e) {
+                res.completeExceptionally(e);
             }
-            HttpHeaders responseHeaders = response.headers();
-            Optional<String> contentEncodingOpt = responseHeaders.firstValue("content-encoding");
-            boolean isGzipped = contentEncodingOpt.isPresent() && "gzip".equals(contentEncodingOpt.get());
-            DataInputStream din = new DataInputStream(isGzipped && unzip ? new GZIPInputStream(response.body()) : response.body());
-            byte[] resp = Serialize.readFully(din);
-            din.close();
-            int statusCode = response.statusCode();
-            if (statusCode == 429 || statusCode == 502 || statusCode == 503 || statusCode == 504) {
-                res.completeExceptionally(new RateLimitException());
-            } else if (statusCode != 200) {
-                handleError(url, res, response, new IOException(resp.length == 0 ?
-                        "Unexpected Error. Status code: " + statusCode
-                        : new String(resp)));
-            } else {
-                res.complete(resp);
-            }
-        } catch (HttpTimeoutException e) {
-            res.completeExceptionally(new SocketTimeoutException("Socket timeout on: " + dht.toString() + url));
-        } catch (InterruptedException ex) {
-            res.completeExceptionally(new RuntimeException(ex));
-        } catch (IOException e) {
-            handleError(url, res, response, e);
-        } catch (Exception e) {
-            res.completeExceptionally(e);
-        }
+        }, reqPool);
         return res;
     }
 
