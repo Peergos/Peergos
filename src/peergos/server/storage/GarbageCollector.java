@@ -181,6 +181,29 @@ public class GarbageCollector {
                     .toList();
             System.out.println("Owner mismatch! " + owner + " != " + fromPki);
             System.out.println("PKI chain " + identityKeys);
+            System.out.println("writers from usage: " + writers);
+            Queue<PublicKeyHash> queue = new LinkedBlockingQueue<>();
+            queue.add(fromPki);
+            System.out.println("From pki:");
+            while (! queue.isEmpty()) {
+                PublicKeyHash parent = queue.poll();
+                PublicSigningKey writer = getWithBackoff(() -> storage.getSigningKey(null, parent).join().get());
+                byte[] bothHashes = writer.unsignMessage(pointers.getPointer(parent).join().get()).join();
+                PointerUpdate cas = PointerUpdate.fromCbor(CborObject.fromByteArray(bothHashes));
+                List<Cid> ids = storage.ids().join();
+                List<Multihash> peerIds = ids.stream().map(m -> (Multihash) m).collect(Collectors.toList());
+                Set<PublicKeyHash> kids = DeletableContentAddressedStorage.getDirectOwnedKeys(fromPki, parent,
+                        cas.updated,
+                        (c, s) -> DeletableContentAddressedStorage.getWriterData(peerIds, fromPki, c, s, false, ids.get(ids.size() - 1), h, storage), storage, h).join();
+                for (PublicKeyHash kid : kids) {
+                    System.out.println(parent + " owns " + kid);
+                    queue.add(kid);
+                }
+            }
+            System.out.println("From usage:");
+            for (PublicKeyHash writer : writers) {
+                System.out.println(usage.getOwnerKey(writer) + " owns " + writer);
+            }
         }
 
         Map<PublicKeyHash, byte[]> userPointers = writers.stream()
