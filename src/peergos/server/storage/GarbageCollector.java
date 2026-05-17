@@ -172,14 +172,14 @@ public class GarbageCollector {
         Set<Multihash> done = new HashSet<>();
         System.out.println("Checking integrity for user " + username);
         Cid homeServer = (Cid) pki.getHomeServer(username).join().get();
-        PublicKeyHash owner = usage.getOwnerKey(writers.stream().findAny().get());
+        PublicKeyHash fromUsage = usage.getOwnerKey(writers.stream().findAny().get());
         PublicKeyHash fromPki = pki.getPublicKeyHash(username).join().get();
-        if (! fromPki.equals(owner)) {
+        if (! fromPki.equals(fromUsage)) {
             List<PublicKeyHash> identityKeys = pki.getChain(username).join()
                     .stream()
                     .map(c -> c.owner)
                     .toList();
-            System.out.println("Owner mismatch! " + owner + " != " + fromPki);
+            System.out.println("Owner mismatch! " + fromUsage + " != " + fromPki);
             System.out.println("PKI chain " + identityKeys);
             System.out.println("writers from usage: " + writers);
             Queue<PublicKeyHash> queue = new LinkedBlockingQueue<>();
@@ -188,7 +188,12 @@ public class GarbageCollector {
             while (! queue.isEmpty()) {
                 PublicKeyHash parent = queue.poll();
                 PublicSigningKey writer = getWithBackoff(() -> storage.getSigningKey(null, parent).join().get());
-                byte[] bothHashes = writer.unsignMessage(pointers.getPointer(parent).join().get()).join();
+                Optional<byte[]> pointer = pointers.getPointer(parent).join();
+                if (pointer.isEmpty()) {
+                    System.out.println("No pointer for " + parent);
+                    continue;
+                }
+                byte[] bothHashes = writer.unsignMessage(pointer.get()).join();
                 PointerUpdate cas = PointerUpdate.fromCbor(CborObject.fromByteArray(bothHashes));
                 List<Cid> ids = storage.ids().join();
                 List<Multihash> peerIds = ids.stream().map(m -> (Multihash) m).collect(Collectors.toList());
@@ -218,7 +223,7 @@ public class GarbageCollector {
             if (updated.isPresent() && !done.contains(updated.get())) {
                 done.add(updated.get());
                 try {
-                    traverseDag(owner, updated.get(), homeServer, metadata, done, fixMetadata, storage, h);
+                    traverseDag(fromPki, updated.get(), homeServer, metadata, done, fixMetadata, storage, h);
                 } catch (Exception e) {
                     String msg = "Error marking reachable for user: " + username + ", writer " + writerHash + " " + e.getMessage();
                     System.err.println(msg);
