@@ -28,24 +28,28 @@ public class DesktopApp {
                     System.exit(0);
                 });
             } else if (isWindows) {
-                String edgePath = "C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe";
-                if (!new File(edgePath).exists()) {
-                    edgePath = "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe";
+                Path jar = Path.of(Main.class.getProtectionDomain()
+                        .getCodeSource()
+                        .getLocation()
+                        .toURI());
+                Path webviewExe = jar.getParent().resolve("PeergosWebView.exe");
+                if (webviewExe.toFile().exists()) {
+                    ProcessBuilder pb = new ProcessBuilder(webviewExe.toString());
+                    pb.environment().put("PEERGOS_PORT", "" + port);
+                    pb.inheritIO();
+                    Process webviewProcess = pb.start();
+                    webviewProcess.onExit().thenAccept(done -> {
+                        if (done.exitValue() == 0) {
+                            System.out.println("WebView closed, shutting down...");
+                            System.exit(0);
+                        } else {
+                            // WebView2 runtime not installed — fall back to Edge
+                            launchWindowsFallback(port, api);
+                        }
+                    });
+                } else {
+                    launchWindowsFallback(port, api);
                 }
-
-                ProcessBuilder pb = new ProcessBuilder(
-                        edgePath,
-                        "--app=http://localhost:" + port,
-                        "--disable-extensions",
-                        "--user-data-dir=" + System.getenv("APPDATA") + "\\Peergos\\edge-data"
-                );
-
-                Process edgeProcess = pb.start();
-
-                edgeProcess.onExit().thenAccept(done -> {
-                    System.out.println("Edge closed, shutting down...");
-                    System.exit(0);
-                });
             } else if (isMacOS) {
                 Path jar = Path.of(Main.class.getProtectionDomain()
                         .getCodeSource()
@@ -78,6 +82,31 @@ public class DesktopApp {
                 if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.BROWSE))
                     Desktop.getDesktop().browse(api);
             t.printStackTrace();
+            System.out.println("Please open http://localhost:" + port + " in your browser.");
+        }
+    }
+
+    private static void launchWindowsFallback(int port, URI api) {
+        String edgePath = "C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe";
+        if (!new File(edgePath).exists())
+            edgePath = "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe";
+        try {
+            ProcessBuilder pb = new ProcessBuilder(
+                    edgePath,
+                    "--app=http://localhost:" + port,
+                    "--disable-extensions",
+                    "--user-data-dir=" + System.getenv("APPDATA") + "\\Peergos\\edge-data"
+            );
+            Process edgeProcess = pb.start();
+            edgeProcess.onExit().thenAccept(done -> {
+                System.out.println("Edge closed, shutting down...");
+                System.exit(0);
+            });
+        } catch (Throwable t) {
+            try {
+                if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.BROWSE))
+                    Desktop.getDesktop().browse(api);
+            } catch (Throwable ignored) {}
             System.out.println("Please open http://localhost:" + port + " in your browser.");
         }
     }
