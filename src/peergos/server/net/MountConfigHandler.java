@@ -168,11 +168,8 @@ public class MountConfigHandler implements HttpHandler {
 
             } else if (action.equals("disable")) {
                 disableMount();
-                MountConfig config = readConfig();
-                saveConfig(new MountConfig(false, config.peergosUsername, config.peergosPassword,
-                        config.webdavUsername, config.webdavPassword, config.webdavPort, config.authType));
+                peergosDir.resolve(MountConfig.FILENAME).toFile().delete();
                 exchange.sendResponseHeaders(200, 0);
-
             } else {
                 LOG.info("Unknown mount config action: " + action);
                 exchange.sendResponseHeaders(404, 0);
