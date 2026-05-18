@@ -30,9 +30,11 @@ public class WebdavServer {
     private static final String VERSION= "0.1";
     private static final Logger logger = Logging.LOG();
 
-    public static Server start(Args args) {
-        int port = args.getInt("webdav.port", 8090);
-        logger.info( "Starting WEBDAV server version: " + VERSION + " on port: " + port);
+    public static Server startNonBlocking(int port,
+                                          String webdavUser, String webdavPassword,
+                                          String peergosUser, String peergosPassword,
+                                          String peergosUrl, String authScheme) {
+        logger.info("Starting WEBDAV server version: " + VERSION + " on port: " + port);
         Crypto crypto = Main.initCrypto();
         PublicSigningKey.addProvider(PublicSigningKey.Type.Ed25519, crypto.signer);
         JvmThumbnailer.initJava();
@@ -41,18 +43,12 @@ public class WebdavServer {
         connector.setPort(port);
         server.setConnectors(new Connector[] {connector});
 
-        String webdavUser = args.getArg("webdav.username");
-        String webdavPWD = args.getArg("PEERGOS_WEBDAV_PASSWORD");
-        String username = args.getArg("username");
-        String password = args.getArg("PEERGOS_PASSWORD");
-        Optional<String> authorization = args.getOptionalArg("webdav.authorization.scheme");
-
         //info from:
         //https://stackoverflow.com/questions/44263651/hashloginservice-and-jetty9
         //https://git.eclipse.org/c/jetty/org.eclipse.jetty.project.git/tree/examples/embedded/src/main/java/org/eclipse/jetty/embedded/SecuredHelloHandler.java
         HashLoginService loginService = new HashLoginService("MyRealm");
         UserStore userStore = new UserStore();
-        userStore.addUser(webdavUser, new Password(webdavPWD), new String[] { "user"});
+        userStore.addUser(webdavUser, new Password(webdavPassword), new String[] { "user"});
         loginService.setUserStore(userStore);
         server.addBean(loginService);
 
@@ -69,14 +65,14 @@ public class WebdavServer {
         mapping.setConstraint(constraint);
 
         security.setConstraintMappings(Collections.singletonList(mapping));
-        if (authorization.isEmpty() || authorization.get().toLowerCase().equals("digest")) {
-            logger.info( "Using DIGEST authorization");
+        if (authScheme == null || authScheme.toLowerCase().equals("digest")) {
+            logger.info("Using DIGEST authorization");
             security.setAuthenticator(new DigestAuthenticator());
-        } else if(authorization.get().toLowerCase().equals("basic")) {
-            logger.info( "Using BASIC authorization");
+        } else if (authScheme.toLowerCase().equals("basic")) {
+            logger.info("Using BASIC authorization");
             security.setAuthenticator(new BasicAuthenticator());
         } else {
-            throw new RuntimeException("Unknown authorization scheme:" + authorization.get());
+            throw new RuntimeException("Unknown authorization scheme:" + authScheme);
         }
         security.setLoginService(loginService);
 
@@ -84,17 +80,33 @@ public class WebdavServer {
         context.setContextPath("/");
         security.setHandler(context);
 
-        ServletHolder holderDef = new ServletHolder("default", new WebdavServlet(username, password, args.getArg("peergos-url")));
+        ServletHolder holderDef = new ServletHolder("default", new WebdavServlet(peergosUser, peergosPassword, peergosUrl));
         holderDef.setInitParameter("rootpath","");
         context.addServlet(holderDef,"/*");
 
         try {
             server.start();
             System.out.println("Webdav bridge started and ready to use at localhost:" + port);
-            server.join();
             return server;
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
+    }
+
+    public static Server start(Args args) {
+        int port = args.getInt("webdav.port", 8090);
+        String webdavUser = args.getArg("webdav.username");
+        String webdavPWD = args.getArg("PEERGOS_WEBDAV_PASSWORD");
+        String username = args.getArg("username");
+        String password = args.getArg("PEERGOS_PASSWORD");
+        String authScheme = args.getOptionalArg("webdav.authorization.scheme").orElse("digest");
+        String peergosUrl = args.getArg("peergos-url");
+        Server server = startNonBlocking(port, webdavUser, webdavPWD, username, password, peergosUrl, authScheme);
+        try {
+            server.join();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+        return server;
     }
 }

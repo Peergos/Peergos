@@ -93,6 +93,7 @@ public class UserService {
     private final Optional<BlockCache> blockCache;
     private final Optional<SyncProperties> syncProps;
     private final Optional<LocalAppProperties> localAppProps;
+    private final Optional<MountProperties> mountProps;
     private HttpServer localhostServer;
 
     public UserService(ContentAddressedStorage storage,
@@ -107,7 +108,8 @@ public class UserService {
                        ServerMessager serverMessages,
                        GarbageCollector gc,
                        Optional<SyncProperties> syncProps,
-                       Optional<LocalAppProperties> localAppProps) {
+                       Optional<LocalAppProperties> localAppProps,
+                       Optional<MountProperties> mountProps) {
         this.storage = storage;
         this.bats = bats;
         this.crypto = crypto;
@@ -122,6 +124,7 @@ public class UserService {
         this.blockCache = storage.getBlockCache();
         this.syncProps = syncProps;
         this.localAppProps = localAppProps;
+        this.mountProps = mountProps;
     }
 
     public static class TlsProperties {
@@ -304,6 +307,12 @@ public class UserService {
                 sync.start();
                 addHandler(localhostServer, null, "/" + Constants.SYNC,
                         sync, basicAuth, local, host, nodeIds, false);
+            });
+            mountProps.ifPresent(props -> {
+                MountConfigHandler mount = new MountConfigHandler(props);
+                mount.start();
+                addHandler(localhostServer, null, "/" + Constants.MOUNT,
+                        mount, basicAuth, local, host, nodeIds, false);
             });
         }
         addHandler(localhostServer, tlsServer, UI_URL, handler, basicAuth, local, host, nodeIds, true);
