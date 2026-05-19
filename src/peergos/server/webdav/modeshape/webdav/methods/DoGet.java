@@ -30,6 +30,8 @@ import java.text.DateFormat;
 import java.util.Arrays;
 import java.util.Locale;
 import java.util.logging.Level;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public class DoGet extends DoHead {
 
@@ -43,8 +45,11 @@ public class DoGet extends DoHead {
 
     }
 
+    private static final Pattern RANGE_PATTERN = Pattern.compile("bytes=(\\d*)-(\\d*)");
+
     @Override
     protected void doBody( ITransaction transaction,
+                           HttpServletRequest req,
                            HttpServletResponse resp,
                            String path ) {
 
@@ -60,13 +65,48 @@ public class DoGet extends DoHead {
                 resp.sendError(WebdavStatus.SC_METHOD_NOT_ALLOWED);
                 return;
             }
-            OutputStream out = resp.getOutputStream();
+            long fileSize = so.getResourceLength();
+            long rangeStart = 0;
+            long rangeEnd = fileSize - 1;
+            boolean isRangeRequest = false;
+            String rangeHeader = req.getHeader("Range");
+            if (rangeHeader != null) {
+                Matcher m = RANGE_PATTERN.matcher(rangeHeader.trim());
+                if (m.matches()) {
+                    String startStr = m.group(1);
+                    String endStr = m.group(2);
+                    if (startStr.isEmpty()) {
+                        // suffix range: bytes=-N means last N bytes
+                        long suffixLen = Long.parseLong(endStr);
+                        rangeStart = Math.max(0, fileSize - suffixLen);
+                        rangeEnd = fileSize - 1;
+                    } else {
+                        rangeStart = Long.parseLong(startStr);
+                        rangeEnd = endStr.isEmpty() ? fileSize - 1 : Long.parseLong(endStr);
+                    }
+                    if (rangeStart > rangeEnd || rangeStart >= fileSize) {
+                        resp.setHeader("Content-Range", "bytes */" + fileSize);
+                        resp.sendError(HttpServletResponse.SC_REQUESTED_RANGE_NOT_SATISFIABLE);
+                        return;
+                    }
+                    rangeEnd = Math.min(rangeEnd, fileSize - 1);
+                    isRangeRequest = true;
+                }
+            }
+            long serveLength = rangeEnd - rangeStart + 1;
             Pair<AsyncReader, Long> reader = store.getResourceContent(transaction, path);
             AsyncReader in = reader.left;
             try {
+                if (isRangeRequest) {
+                    resp.setStatus(HttpServletResponse.SC_PARTIAL_CONTENT);
+                    resp.setHeader("Content-Range", "bytes " + rangeStart + "-" + rangeEnd + "/" + fileSize);
+                    resp.setHeader("Content-Length", String.valueOf(serveLength));
+                    in = (AsyncReader) in.seek(rangeStart).join();
+                }
+                OutputStream out = resp.getOutputStream();
                 byte[] copyBuffer = new byte[BUF_SIZE];
-                long remaining = reader.right;
-                while (remaining > 0 ) {
+                long remaining = serveLength;
+                while (remaining > 0) {
                     int read = in.readIntoArray(copyBuffer, 0, (int)Math.min(remaining, copyBuffer.length)).join();
                     remaining -= read;
                     out.write(copyBuffer, 0, read);
@@ -80,8 +120,8 @@ public class DoGet extends DoHead {
                     logger.log(Level.WARNING, e, () -> "Closing InputStream causes Exception!");
                 }
                 try {
-                    out.flush();
-                    out.close();
+                    resp.getOutputStream().flush();
+                    resp.getOutputStream().close();
                 } catch (Exception e) {
                     logger.log(Level.WARNING, e, () -> "Flushing OutputStream causes Exception!");
                 }

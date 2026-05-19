@@ -39,11 +39,14 @@ public class MountConfigHandler implements HttpHandler {
     public void start() {
         MountConfig config = readConfig();
         if (config.enabled) {
-            try {
-                enableMount(config);
-            } catch (IOException e) {
-                LOG.log(Level.WARNING, "Failed to restore WebDAV mount on startup", e);
-            }
+            mountError.set(null);
+            ForkJoinPool.commonPool().execute(() -> {
+                try { enableMount(config); }
+                catch (Exception e) {
+                    LOG.log(Level.WARNING, "Failed to restore WebDAV mount on startup", e);
+                    mountError.set(e.getMessage());
+                }
+            });
         }
     }
 

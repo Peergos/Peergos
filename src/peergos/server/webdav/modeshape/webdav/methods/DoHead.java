@@ -134,7 +134,8 @@ public class DoHead extends AbstractMethod {
                                 }
                             }
 
-                            doBody(transaction, resp, path);
+                            resp.setHeader("Accept-Ranges", "bytes");
+                            doBody(transaction, req, resp, path);
                         }
                     } else {
                         folderBody(transaction, path, resp, req);
@@ -171,6 +172,7 @@ public class DoHead extends AbstractMethod {
 
     @SuppressWarnings( "unused" )
     protected void doBody( ITransaction transaction,
+                           HttpServletRequest req,
                            HttpServletResponse resp,
                            String path ) throws IOException {
         // no body for HEAD

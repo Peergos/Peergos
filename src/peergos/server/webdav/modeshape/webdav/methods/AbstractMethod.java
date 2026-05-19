@@ -148,6 +148,12 @@ public abstract class AbstractMethod implements IMethodExecutor {
         if ((result == null) || (result.equals(""))) {
             result = "/";
         }
+        // Windows WebDAV maps \\host@port\DavWWWRoot → HTTP path /DavWWWRoot/...
+        // Strip this prefix so requests resolve against the Peergos root.
+        if (result.startsWith("/DavWWWRoot")) {
+            result = result.substring("/DavWWWRoot".length());
+            if (result.isEmpty()) result = "/";
+        }
         return result;
     }
 

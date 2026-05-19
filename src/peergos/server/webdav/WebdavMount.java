@@ -59,12 +59,30 @@ public class WebdavMount implements Closeable {
         return new WebdavMount(mountPoint, () -> runSilent(host("umount", mountPoint)));
     }
 
+    private static void ensureWindowsWebDavReady() throws IOException {
+        boolean running = false;
+        try {
+            running = capture(host("sc.exe", "query", "WebClient")).contains("RUNNING");
+        } catch (IOException ignored) {}
+
+        if (!running) {
+            // WebClient is trigger-started on Win 10/11; if it's still stopped, start it via UAC.
+            runSilent(host("powershell", "-Command",
+                    "Start-Process cmd.exe -ArgumentList '/c net start WebClient' -Verb RunAs -Wait"));
+            try { Thread.sleep(2000); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+            try { running = capture(host("sc.exe", "query", "WebClient")).contains("RUNNING"); }
+            catch (IOException ignored) {}
+            if (!running)
+                throw new IOException("WebClient service could not be started. " +
+                        "Please run as Administrator: net start WebClient");
+        }
+    }
+
     private static WebdavMount mountWindows(int port, String user, String pass) throws IOException {
-        // Digest auth (the WebDAV server default) is supported by WebClient with no registry changes.
-        // WebClient on Win 10/11 is trigger-started and auto-launches when net use is called.
+        ensureWindowsWebDavReady();
         Set<String> before = driveLetters();
         String unc = "\\\\localhost@" + port + "\\DavWWWRoot";
-        runChecked(host("net", "use", "*", unc, "/user:" + user, pass, "/persistent:no"));
+        runChecked(host("net", "use", "*", unc, pass, "/user:" + user, "/persistent:no"));
         Set<String> after = driveLetters();
         after.removeAll(before);
         if (after.isEmpty())

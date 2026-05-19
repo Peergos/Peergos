@@ -248,7 +248,7 @@ public class WebdavFileSystem implements IWebdavStore {
                                                       String uri ) throws WebdavException {
         LOG.fine("PeergosFileSystem.getResourceContent(" + uri + ")");
         Path path = new File(uri).toPath();
-        Optional<FileWrapper> fw = context.getByPath(path.toString()).join();
+        Optional<FileWrapper> fw = getByPath(path);
         if (fw.isEmpty() || fw.get().isDirectory() || fw.get().getFileProperties().isHidden) {
             throw new WebdavException("cannot find file: " + uri);
         }
@@ -265,7 +265,7 @@ public class WebdavFileSystem implements IWebdavStore {
     public long getResourceLength( ITransaction transaction,
                                    String uri) throws WebdavException {
         Path path = new File(uri).toPath();
-        Optional<FileWrapper> fw = context.getByPath(path.toString()).join();
+        Optional<FileWrapper> fw = getByPath(path);
         if (fw.isEmpty() || fw.get().isDirectory() || fw.get().getFileProperties().isHidden) {
             throw new WebdavException("cannot find file: " + uri);
         }
@@ -277,7 +277,7 @@ public class WebdavFileSystem implements IWebdavStore {
                                         String uri ) {
         StoredObject so = null;
         Path path = new File(uri).toPath();
-        Optional<FileWrapper> fwOpt = context.getByPath(path.toString()).join();
+        Optional<FileWrapper> fwOpt = getByPath(path);
         if (fwOpt.isPresent() && fwOpt.get().isRoot()) {
             so = new StoredObject();
             so.setFolder(true);

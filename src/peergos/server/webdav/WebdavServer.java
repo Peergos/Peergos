@@ -21,7 +21,7 @@ import peergos.server.util.Args;
 import peergos.shared.Crypto;
 import peergos.shared.crypto.asymmetric.PublicSigningKey;
 
-import java.util.Collections;
+import java.util.List;
 import java.util.Optional;
 import java.util.logging.Logger;
 
@@ -40,6 +40,7 @@ public class WebdavServer {
         JvmThumbnailer.initJava();
         Server server = new Server();
         ServerConnector connector = new ServerConnector(server);
+        connector.setHost("127.0.0.1");
         connector.setPort(port);
         server.setConnectors(new Connector[] {connector});
 
@@ -64,7 +65,17 @@ public class WebdavServer {
         mapping.setPathSpec("/*");
         mapping.setConstraint(constraint);
 
-        security.setConstraintMappings(Collections.singletonList(mapping));
+        // Allow unauthenticated OPTIONS so Windows WebClient can discover DAV capabilities
+        Constraint optionsConstraint = new Constraint();
+        optionsConstraint.setName("options");
+        optionsConstraint.setAuthenticate(false);
+
+        ConstraintMapping optionsMapping = new ConstraintMapping();
+        optionsMapping.setMethod("OPTIONS");
+        optionsMapping.setPathSpec("/*");
+        optionsMapping.setConstraint(optionsConstraint);
+
+        security.setConstraintMappings(List.of(optionsMapping, mapping));
         if (authScheme == null || authScheme.toLowerCase().equals("digest")) {
             logger.info("Using DIGEST authorization");
             security.setAuthenticator(new DigestAuthenticator());
