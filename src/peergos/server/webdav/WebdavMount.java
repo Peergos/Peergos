@@ -65,10 +65,24 @@ public class WebdavMount implements Closeable {
             running = capture(host("sc.exe", "query", "WebClient")).contains("RUNNING");
         } catch (IOException ignored) {}
 
-        if (!running) {
-            // WebClient is trigger-started on Win 10/11; if it's still stopped, start it via UAC.
+        boolean fileSizeOk = false;
+        try {
+            String val = capture(host("reg.exe", "query",
+                    "HKLM\\SYSTEM\\CurrentControlSet\\Services\\WebClient\\Parameters",
+                    "/v", "FileSizeLimitInBytes")).trim();
+            // Default is 0x2FAF080 (50MB); we want 0xFFFFFFFF (4GB)
+            fileSizeOk = val.contains("0xffffffff") || val.contains("0xFFFFFFFF");
+        } catch (IOException ignored) {}
+
+        if (!running || !fileSizeOk) {
+            String startCmd = running ? "" : "net start WebClient & ";
+            String fileSizeCmd = fileSizeOk ? "" :
+                    "reg add HKLM\\SYSTEM\\CurrentControlSet\\Services\\WebClient\\Parameters" +
+                    " /v FileSizeLimitInBytes /t REG_DWORD /d 4294967295 /f & " +
+                    "net stop WebClient & net start WebClient";
+            String elevatedCmd = (startCmd + fileSizeCmd).replaceAll("& $", "").trim();
             runSilent(host("powershell", "-Command",
-                    "Start-Process cmd.exe -ArgumentList '/c net start WebClient' -Verb RunAs -Wait"));
+                    "Start-Process cmd.exe -ArgumentList '/c " + elevatedCmd + "' -Verb RunAs -Wait"));
             try { Thread.sleep(2000); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
             try { running = capture(host("sc.exe", "query", "WebClient")).contains("RUNNING"); }
             catch (IOException ignored) {}
