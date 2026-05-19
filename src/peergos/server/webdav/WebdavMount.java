@@ -82,12 +82,22 @@ public class WebdavMount implements Closeable {
         ensureWindowsWebDavReady();
         String unc = "\\\\localhost@" + port + "\\Peergos";
         Set<String> before = driveLetters();
-        runChecked(host("net", "use", "*", unc, pass, "/user:" + user, "/persistent:no"));
-        Set<String> after = driveLetters();
-        after.removeAll(before);
-        if (after.isEmpty())
-            throw new IOException("net use succeeded but no new drive letter appeared");
-        final String mountedLetter = after.iterator().next();
+        String letter = null;
+        if (!before.contains("P:")) {
+            try {
+                runChecked(host("net", "use", "P:", unc, pass, "/user:" + user, "/persistent:no"));
+                letter = "P:";
+            } catch (IOException ignored) {}
+        }
+        if (letter == null) {
+            runChecked(host("net", "use", "*", unc, pass, "/user:" + user, "/persistent:no"));
+            Set<String> after = driveLetters();
+            after.removeAll(before);
+            if (after.isEmpty())
+                throw new IOException("net use succeeded but no new drive letter appeared");
+            letter = after.iterator().next();
+        }
+        final String mountedLetter = letter;
         LOG.info("WebDAV mounted at " + mountedLetter);
         // Set a clean label so Explorer shows "Peergos" instead of "Peergos (\\localhost@port\Peergos)".
         // HKCU write requires no UAC elevation.
