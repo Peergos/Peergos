@@ -81,7 +81,7 @@ public class WebdavMount implements Closeable {
     private static WebdavMount mountWindows(int port, String user, String pass) throws IOException {
         ensureWindowsWebDavReady();
         Set<String> before = driveLetters();
-        String unc = "\\\\localhost@" + port + "\\DavWWWRoot";
+        String unc = "\\\\localhost@" + port + "\\Peergos";
         runChecked(host("net", "use", "*", unc, pass, "/user:" + user, "/persistent:no"));
         Set<String> after = driveLetters();
         after.removeAll(before);
