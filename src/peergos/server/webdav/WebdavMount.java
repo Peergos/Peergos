@@ -80,16 +80,20 @@ public class WebdavMount implements Closeable {
 
     private static WebdavMount mountWindows(int port, String user, String pass) throws IOException {
         ensureWindowsWebDavReady();
-        Set<String> before = driveLetters();
         String unc = "\\\\localhost@" + port + "\\Peergos";
+        Set<String> before = driveLetters();
         runChecked(host("net", "use", "*", unc, pass, "/user:" + user, "/persistent:no"));
         Set<String> after = driveLetters();
         after.removeAll(before);
         if (after.isEmpty())
             throw new IOException("net use succeeded but no new drive letter appeared");
-        String letter = after.iterator().next();
-        LOG.info("WebDAV mounted at " + letter);
-        return new WebdavMount(letter, () -> runSilent(host("net", "use", letter, "/delete", "/yes")));
+        final String mountedLetter = after.iterator().next();
+        LOG.info("WebDAV mounted at " + mountedLetter);
+        // Set a clean label so Explorer shows "Peergos" instead of "Peergos (\\localhost@port\Peergos)".
+        // HKCU write requires no UAC elevation.
+        String regKey = "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\MountPoints2\\##localhost@" + port + "#Peergos";
+        runSilent(host("reg.exe", "add", regKey, "/v", "_LabelFromReg", "/t", "REG_SZ", "/d", "Peergos", "/f"));
+        return new WebdavMount(mountedLetter, () -> runSilent(host("net", "use", mountedLetter, "/delete", "/yes")));
     }
 
     private static Set<String> driveLetters() {
