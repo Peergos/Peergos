@@ -209,11 +209,12 @@ public class FileContentAddressedStorage implements DeletableContentAddressedSto
                                              List<byte[]> blocks,
                                              boolean isRaw,
                                              TransactionId tid) {
+        String username = owner != null && pki != null ? pki.getUsername(owner).join() : null;
         try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
 
             List<CompletableFuture<Cid>> futures = blocks.stream()
                     .map(b -> CompletableFuture.supplyAsync(
-                            () -> put(b, isRaw, tid, owner),
+                            () -> put(b, isRaw, tid, owner, username),
                             executor
                     ))
                     .toList();
@@ -239,6 +240,19 @@ public class FileContentAddressedStorage implements DeletableContentAddressedSto
                 .resolve(key.substring(key.length() - 3, key.length() - 1))
                 .resolve(key + ".data");
         return path;
+    }
+
+    private Path getFilePath(String username, Cid h) {
+        String key = DirectS3BlockStore.hashToKey(h);
+        if (username == null) { // legacy block lookup
+            return PathUtil.get("")
+                .resolve(key.substring(key.length() - 3, key.length() - 1))
+                .resolve(key + ".data");
+        }
+        return PathUtil.get("")
+                .resolve(username)
+                .resolve(key.substring(key.length() - 3, key.length() - 1))
+                .resolve(key + ".data");
     }
 
     private static Path getLegacyFilePath(Cid h) {
@@ -398,11 +412,11 @@ public class FileContentAddressedStorage implements DeletableContentAddressedSto
                 );
     }
 
-    public Cid put(byte[] data, boolean isRaw, TransactionId tid, PublicKeyHash owner) {
+    private Cid put(byte[] data, boolean isRaw, TransactionId tid, PublicKeyHash owner, String username) {
         try {
             Cid cid = new Cid(CID_V1, isRaw ? Cid.Codec.Raw : Cid.Codec.DagCbor,
                     Multihash.Type.sha2_256, RAMStorage.hash(data));
-            Path filePath = getFilePath(owner, cid);
+            Path filePath = getFilePath(username, cid);
             Path target = root.resolve(filePath);
             Path parent = target.getParent();
             File parentDir = parent.toFile();
