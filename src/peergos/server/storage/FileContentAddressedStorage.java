@@ -210,20 +210,22 @@ public class FileContentAddressedStorage implements DeletableContentAddressedSto
                                              boolean isRaw,
                                              TransactionId tid) {
         String username = owner != null && pki != null ? pki.getUsername(owner).join() : null;
+        Cid.Codec codec = isRaw ? Cid.Codec.Raw : Cid.Codec.DagCbor;
+        List<Cid> cids = blocks.stream()
+                .map(b -> new Cid(CID_V1, codec, Multihash.Type.sha2_256, RAMStorage.hash(b)))
+                .toList();
+        transactions.addBlocks(new ArrayList<>(cids), tid, owner);
         try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
 
-            List<CompletableFuture<Cid>> futures = blocks.stream()
-                    .map(b -> CompletableFuture.supplyAsync(
-                            () -> put(b, isRaw, tid, owner, username),
+            List<CompletableFuture<Void>> futures = IntStream.range(0, blocks.size())
+                    .mapToObj(i -> CompletableFuture.runAsync(
+                            () -> writeBlock(blocks.get(i), cids.get(i), username),
                             executor
                     ))
                     .toList();
 
             return CompletableFuture.allOf(futures.toArray(CompletableFuture[]::new))
-                    .thenApply(v -> futures.stream()
-                            .map(CompletableFuture::join)
-                            .toList()
-                    );
+                    .thenApply(v -> cids);
         }
     }
 
@@ -412,10 +414,8 @@ public class FileContentAddressedStorage implements DeletableContentAddressedSto
                 );
     }
 
-    private Cid put(byte[] data, boolean isRaw, TransactionId tid, PublicKeyHash owner, String username) {
+    private void writeBlock(byte[] data, Cid cid, String username) {
         try {
-            Cid cid = new Cid(CID_V1, isRaw ? Cid.Codec.Raw : Cid.Codec.DagCbor,
-                    Multihash.Type.sha2_256, RAMStorage.hash(data));
             Path filePath = getFilePath(username, cid);
             Path target = root.resolve(filePath);
             Path parent = target.getParent();
@@ -432,9 +432,7 @@ public class FileContentAddressedStorage implements DeletableContentAddressedSto
                         throw new IllegalStateException("Could not make " + someParent.toString() + ", ancestor of " + parentDir.toString() + " writable");
                 }
             }
-            transactions.addBlock(cid, tid, owner);
             Files.write(target, data, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.CREATE, StandardOpenOption.WRITE);
-            return cid;
         } catch (IOException e) {
             throw new RuntimeException(e.getMessage(), e);
         }

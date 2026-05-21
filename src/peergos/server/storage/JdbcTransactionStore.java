@@ -78,6 +78,30 @@ public class JdbcTransactionStore implements TransactionStore {
     }
 
     @Override
+    public void addBlocks(List<Multihash> hashes, TransactionId tid, PublicKeyHash owner) {
+        if (hashes.isEmpty())
+            return;
+        try (Connection conn = getConnection();
+             PreparedStatement insert = conn.prepareStatement(commands.insertTransactionCommand())) {
+            conn.setAutoCommit(false);
+            long now = System.currentTimeMillis();
+            String tidStr = tid.toString();
+            String ownerStr = owner.toString();
+            for (Multihash hash : hashes) {
+                insert.setString(1, tidStr);
+                insert.setString(2, ownerStr);
+                insert.setString(3, hash.toString());
+                insert.setLong(4, now);
+                insert.addBatch();
+            }
+            insert.executeBatch();
+            conn.commit();
+        } catch (SQLException sqe) {
+            LOG.log(Level.WARNING, sqe.getMessage(), sqe);
+        }
+    }
+
+    @Override
     public void closeTransaction(PublicKeyHash owner, TransactionId tid) {
         try (Connection conn = getConnection();
              PreparedStatement delete = conn.prepareStatement(DELETE_TRANSACTION)) {

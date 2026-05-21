@@ -64,4 +64,23 @@ public class TransactionsStoreTests {
         List<Cid> empty = store.getOpenTransactionBlocks(owner);
         Assert.assertTrue("All blocks removed", empty.isEmpty());
     }
+
+    @Test
+    public void bulk() {
+        Cid multihash = hashToCid(new byte[2], true);
+        PublicKeyHash owner = new PublicKeyHash(multihash);
+        TransactionId tid = store.startTransaction(owner);
+        List<Multihash> pending = new ArrayList<>();
+        for (int i=0; i < 20; i++) {
+            Cid block = hashToCid(new byte[]{(byte) i}, false);
+            pending.add(block);
+        }
+        store.addBlocks(pending, tid, owner);
+        List<Cid> uncommitted = store.getOpenTransactionBlocks(owner);
+        Assert.assertTrue("All blocks present", uncommitted.containsAll(pending));
+
+        store.closeTransaction(owner, tid);
+        List<Cid> empty = store.getOpenTransactionBlocks(owner);
+        Assert.assertTrue("All blocks removed", empty.isEmpty());
+    }
 }

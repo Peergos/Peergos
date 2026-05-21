@@ -12,6 +12,8 @@ public interface TransactionStore {
 
     void addBlock(Multihash hash, TransactionId tid, PublicKeyHash owner);
 
+    void addBlocks(List<Multihash> hashes, TransactionId tid, PublicKeyHash owner);
+
     void closeTransaction(PublicKeyHash owner, TransactionId tid);
 
     List<Cid> getOpenTransactionBlocks(PublicKeyHash owner);
