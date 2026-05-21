@@ -83,7 +83,6 @@ public class JdbcTransactionStore implements TransactionStore {
             return;
         try (Connection conn = getConnection();
              PreparedStatement insert = conn.prepareStatement(commands.insertTransactionCommand())) {
-            conn.setAutoCommit(false);
             long now = System.currentTimeMillis();
             String tidStr = tid.toString();
             String ownerStr = owner.toString();
@@ -92,10 +91,8 @@ public class JdbcTransactionStore implements TransactionStore {
                 insert.setString(2, ownerStr);
                 insert.setString(3, hash.toString());
                 insert.setLong(4, now);
-                insert.addBatch();
+                insert.executeUpdate();
             }
-            insert.executeBatch();
-            conn.commit();
         } catch (SQLException sqe) {
             LOG.log(Level.WARNING, sqe.getMessage(), sqe);
         }
