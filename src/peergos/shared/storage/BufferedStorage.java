@@ -456,25 +456,32 @@ public class BufferedStorage extends DelegatingStorage {
             } else
                 cborSize += val.block.length;
         }
-        return Futures.combineAllInOrder(Stream.concat(
-                                rawBatches.stream().map(bs -> new Pair<>(true, bs)),
-                                Stream.concat(
-                                        smallRawBatches.stream().map(bs -> new Pair<>(true, bs)),
-                                        cborBatches.stream().map(bs -> new Pair<>(false, bs))))
-                        .filter(p -> ! p.right.isEmpty())
-                        .map(p -> p.left ?
-                                target.putRaw(owner, writer,
-                                                p.right.stream().map(w -> w.signature).collect(Collectors.toList()),
-                                                p.right.stream().map(w -> w.block).collect(Collectors.toList()), tid, x-> {})
-                                        .thenApply(res -> {
-                                            p.right.stream().forEach(w ->  w.progressMonitor.ifPresent(m -> m.accept((long)w.block.length)));
-                                            return res;
-                                        }) :
-                                target.put(owner, writer,
-                                        p.right.stream().map(w -> w.signature).collect(Collectors.toList()),
-                                        p.right.stream().map(w -> w.block).collect(Collectors.toList()), tid))
-                        .collect(Collectors.toList()))
-                .thenApply(a -> true);
+        int MAX_CONCURRENT_BATCH_UPLOADS = 4;
+        Semaphore semaphore = new Semaphore(MAX_CONCURRENT_BATCH_UPLOADS);
+        List<CompletableFuture<List<Cid>>> futures = new ArrayList<>();
+        for (Pair<Boolean, List<OpLog.BlockWrite>> p : Stream.concat(
+                        rawBatches.stream().map(bs -> new Pair<>(true, bs)),
+                        Stream.concat(
+                                smallRawBatches.stream().map(bs -> new Pair<>(true, bs)),
+                                cborBatches.stream().map(bs -> new Pair<>(false, bs))))
+                .filter(p -> !p.right.isEmpty())
+                .collect(Collectors.toList())) {
+            semaphore.acquireUninterruptibly();
+            CompletableFuture<List<Cid>> batch = p.left ?
+                    target.putRaw(owner, writer,
+                            p.right.stream().map(w -> w.signature).collect(Collectors.toList()),
+                            p.right.stream().map(w -> w.block).collect(Collectors.toList()), tid, x -> {})
+                            .thenApply(res -> {
+                                p.right.forEach(w -> w.progressMonitor.ifPresent(m -> m.accept((long) w.block.length)));
+                                return res;
+                            }) :
+                    target.put(owner, writer,
+                            p.right.stream().map(w -> w.signature).collect(Collectors.toList()),
+                            p.right.stream().map(w -> w.block).collect(Collectors.toList()), tid);
+            batch.whenComplete((r, t) -> semaphore.release());
+            futures.add(batch);
+        }
+        return Futures.combineAllInOrder(futures).thenApply(a -> true);
     }
 
     public BufferedStorage clone() {
