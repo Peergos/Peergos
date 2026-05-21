@@ -209,9 +209,21 @@ public class FileContentAddressedStorage implements DeletableContentAddressedSto
                                              List<byte[]> blocks,
                                              boolean isRaw,
                                              TransactionId tid) {
-        return CompletableFuture.completedFuture(blocks.stream()
-                .map(b -> put(b, isRaw, tid, owner))
-                .collect(Collectors.toList()));
+        try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
+
+            List<CompletableFuture<Cid>> futures = blocks.stream()
+                    .map(b -> CompletableFuture.supplyAsync(
+                            () -> put(b, isRaw, tid, owner),
+                            executor
+                    ))
+                    .toList();
+
+            return CompletableFuture.allOf(futures.toArray(CompletableFuture[]::new))
+                    .thenApply(v -> futures.stream()
+                            .map(CompletableFuture::join)
+                            .toList()
+                    );
+        }
     }
 
     private Path getFilePath(PublicKeyHash owner, Cid h) {
