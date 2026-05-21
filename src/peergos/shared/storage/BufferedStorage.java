@@ -457,7 +457,7 @@ public class BufferedStorage extends DelegatingStorage {
                 cborSize += val.block.length;
         }
         int MAX_CONCURRENT_BATCH_UPLOADS = 4;
-        Semaphore semaphore = new Semaphore(MAX_CONCURRENT_BATCH_UPLOADS);
+        AsyncSemaphore semaphore = new AsyncSemaphore(MAX_CONCURRENT_BATCH_UPLOADS);
         List<CompletableFuture<List<Cid>>> futures = new ArrayList<>();
         for (Pair<Boolean, List<OpLog.BlockWrite>> p : Stream.concat(
                         rawBatches.stream().map(bs -> new Pair<>(true, bs)),
@@ -466,8 +466,7 @@ public class BufferedStorage extends DelegatingStorage {
                                 cborBatches.stream().map(bs -> new Pair<>(false, bs))))
                 .filter(p -> !p.right.isEmpty())
                 .collect(Collectors.toList())) {
-            semaphore.acquireUninterruptibly();
-            CompletableFuture<List<Cid>> batch = p.left ?
+            CompletableFuture<List<Cid>> work = semaphore.acquire().thenCompose(v -> p.left ?
                     target.putRaw(owner, writer,
                             p.right.stream().map(w -> w.signature).collect(Collectors.toList()),
                             p.right.stream().map(w -> w.block).collect(Collectors.toList()), tid, x -> {})
@@ -477,9 +476,9 @@ public class BufferedStorage extends DelegatingStorage {
                             }) :
                     target.put(owner, writer,
                             p.right.stream().map(w -> w.signature).collect(Collectors.toList()),
-                            p.right.stream().map(w -> w.block).collect(Collectors.toList()), tid);
-            batch.whenComplete((r, t) -> semaphore.release());
-            futures.add(batch);
+                            p.right.stream().map(w -> w.block).collect(Collectors.toList()), tid));
+            work.exceptionally(t -> { semaphore.release(); return null; });
+            futures.add(work.thenApply(r -> { semaphore.release(); return r; }));
         }
         return Futures.combineAllInOrder(futures).thenApply(a -> true);
     }
