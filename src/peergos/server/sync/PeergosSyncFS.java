@@ -1,6 +1,7 @@
 package peergos.server.sync;
 
 import peergos.server.util.Logging;
+import peergos.server.util.Threads;
 import peergos.shared.crypto.hash.PublicKeyHash;
 import peergos.shared.storage.auth.Bat;
 import peergos.shared.storage.auth.BatId;
@@ -35,7 +36,7 @@ public class PeergosSyncFS implements SyncFilesystem {
     private static final Logger LOG = Logging.LOG();
     private static final int MAX_CHAMP_GETS = peergos.shared.storage.ContentAddressedStorage.MAX_CHAMP_GETS;
     private static final int MAX_CONCURRENT_BATCH_FETCHES = 20;
-    private static final Executor VIRTUAL_THREADS = Executors.newVirtualThreadPerTaskExecutor();
+    private static final Executor SUBTREE_TRAVERSER = Threads.newBlockingPool();
     private final UserContext context;
     private final Path root;
     private final Semaphore fetchSemaphore = new Semaphore(MAX_CONCURRENT_BATCH_FETCHES);
@@ -373,7 +374,7 @@ public class PeergosSyncFS implements SyncFilesystem {
         List<CompletableFuture<Void>> subdirFutures = new ArrayList<>();
         for (Pair<Path, FileWrapper> subdir : subdirs)
             subdirFutures.add(CompletableFuture.runAsync(
-                    () -> applyToSubtree(subdir.left, subdir.right, onFile, onDir), VIRTUAL_THREADS));
+                    () -> applyToSubtree(subdir.left, subdir.right, onFile, onDir), SUBTREE_TRAVERSER));
         Futures.combineAllInOrder(subdirFutures).join();
     }
 }

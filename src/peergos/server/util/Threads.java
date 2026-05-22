@@ -15,6 +15,21 @@ public class Threads {
         };
     }
 
+    /** For tasks that block internally (e.g. call .join()). Uses virtual threads where available,
+     *  falls back to a cached thread pool on Android so blocking never exhausts a ForkJoinPool. */
+    public static ExecutorService newBlockingPool() {
+        boolean isAndroid = "The Android Project".equals(System.getProperty("java.vm.vendor"));
+        if (isAndroid)
+            return Executors.newCachedThreadPool();
+        else {
+            try {
+                return Executors.newVirtualThreadPerTaskExecutor();
+            } catch (Throwable t) {
+                return Executors.newCachedThreadPool();
+            }
+        }
+    }
+
     public static ExecutorService newPool(int threads, String threadNamePrefix) {
         boolean isAndroid = "The Android Project".equals(System.getProperty("java.vm.vendor"));
         if (isAndroid)
