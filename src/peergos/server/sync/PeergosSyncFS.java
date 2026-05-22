@@ -21,6 +21,8 @@ import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
+import java.util.concurrent.Executors;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
@@ -33,7 +35,7 @@ public class PeergosSyncFS implements SyncFilesystem {
     private static final Logger LOG = Logging.LOG();
     private static final int MAX_CHAMP_GETS = peergos.shared.storage.ContentAddressedStorage.MAX_CHAMP_GETS;
     private static final int MAX_CONCURRENT_BATCH_FETCHES = 20;
-
+    private static final Executor VIRTUAL_THREADS = Executors.newVirtualThreadPerTaskExecutor();
     private final UserContext context;
     private final Path root;
     private final Semaphore fetchSemaphore = new Semaphore(MAX_CONCURRENT_BATCH_FETCHES);
@@ -371,7 +373,7 @@ public class PeergosSyncFS implements SyncFilesystem {
         List<CompletableFuture<Void>> subdirFutures = new ArrayList<>();
         for (Pair<Path, FileWrapper> subdir : subdirs)
             subdirFutures.add(CompletableFuture.runAsync(
-                    () -> applyToSubtree(subdir.left, subdir.right, onFile, onDir)));
+                    () -> applyToSubtree(subdir.left, subdir.right, onFile, onDir), VIRTUAL_THREADS));
         Futures.combineAllInOrder(subdirFutures).join();
     }
 }
