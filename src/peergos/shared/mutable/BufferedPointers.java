@@ -96,12 +96,29 @@ public class BufferedPointers implements MutablePointers {
                     mergedTargets.add(last.currentHash);
                     writerUpdates.set(writerUpdates.size() - 1, new WriterUpdate(writer, last.prevHash, newHash, last.currentSequence));
                 } else {
-                    writerUpdates.add(new WriterUpdate(writer, prevHash, newHash, PointerUpdate.increment(prevSequence)));
+                    // This is only valid because of atomic multi-writer commits with setPointers
+                    int existingIdx = -1;
+                    for (int i = writerUpdates.size() - 2; i >= 0; i--) {
+                        if (writerUpdates.get(i).writer.equals(writer)) {
+                            existingIdx = i;
+                            break;
+                        }
+                    }
+                    if (existingIdx >= 0) {
+                        WriterUpdate existing = writerUpdates.get(existingIdx);
+                        mergedTargets.add(existing.currentHash);
+                        writerUpdates.set(existingIdx, new WriterUpdate(writer, existing.prevHash, newHash, existing.currentSequence));
+                    } else {
+                        writerUpdates.add(new WriterUpdate(writer, prevHash, newHash, PointerUpdate.increment(prevSequence)));
+                    }
                 }
             }
-            WriterUpdate last = writerUpdates.get(writerUpdates.size() - 1);
-            latest.put(w.publicKeyHash, last);
-            return new PointerUpdate(last.prevHash, last.currentHash, last.currentSequence);
+            WriterUpdate result = writerUpdates.stream()
+                    .filter(u -> u.writer.equals(writer))
+                    .findFirst()
+                    .orElseThrow();
+            latest.put(w.publicKeyHash, result);
+            return new PointerUpdate(result.prevHash, result.currentHash, result.currentSequence);
         }
     }
 

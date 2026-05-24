@@ -2391,7 +2391,10 @@ public abstract class UserTests {
     }
 
     private static Set<ByteArrayWrapper> getAllChampKeys(PublicKeyHash owner, PublicKeyHash writer, UserContext ctx) {
-        WriterData wd = WriterData.getWriterData(owner, writer, ctx.network.mutable, ctx.network.dhtClient).join().props.get();
+        PointerUpdate ptr = ctx.network.mutable.getPointerTarget(owner, writer, ctx.network.dhtClient).join();
+        if (!ptr.updated.isPresent())
+            return Collections.emptySet();
+        WriterData wd = WriterData.getWriterData(owner, (Cid) ptr.updated.get(), ptr.sequence, ctx.network.dhtClient).join().props.get();
         if (!wd.tree.isPresent())
             return Collections.emptySet();
         Set<ByteArrayWrapper> keys = new HashSet<>();
