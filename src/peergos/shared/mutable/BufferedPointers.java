@@ -116,7 +116,7 @@ public class BufferedPointers implements MutablePointers {
             WriterUpdate result = writerUpdates.stream()
                     .filter(u -> u.writer.equals(writer))
                     .findFirst()
-                    .orElseThrow();
+                    .get();
             latest.put(w.publicKeyHash, result);
             return new PointerUpdate(result.prevHash, result.currentHash, result.currentSequence);
         }
