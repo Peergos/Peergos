@@ -251,7 +251,7 @@ public class BufferedNetworkAccess extends NetworkAccess {
                                         }),
                                         t -> {
                                             Throwable cause = Exceptions.getRootCause(t);
-                                            if (!(cause instanceof PointerCasException))
+                                            if (writers.size() > 1 || !(cause instanceof PointerCasException))
                                                 return Futures.errored(t);
                                             return Futures.reduceAll(writes.stream(), true,
                                                     (a, u) -> commitPointerWithMerge(owner, u, writers, tid),
