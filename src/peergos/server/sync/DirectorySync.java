@@ -21,6 +21,7 @@ import peergos.shared.login.mfa.MultiFactorAuthResponse;
 import peergos.shared.mutable.HttpMutablePointers;
 import peergos.shared.social.HttpSocialNetwork;
 import peergos.shared.storage.HttpSpaceUsage;
+import peergos.shared.storage.RetryStorage;
 import peergos.shared.storage.UnauthedCachingStorage;
 import peergos.shared.user.LinkProperties;
 import peergos.shared.user.Snapshot;
@@ -82,8 +83,11 @@ public class DirectorySync {
                     Long.parseLong(cacheSize.substring(0, cacheSize.length() - 1)) * 1024L * 1024 * 1024 :
                     Long.parseLong(cacheSize);
             Optional<ProxySelector> proxy = ProxyChooser.build(args);
-            NetworkAccess network = Builder.buildJavaNetworkAccess(serverURL, address.startsWith("https"), Optional.of("Peergos-" + UserService.CURRENT_VERSION + "-sync"), proxy).join()
+            NetworkAccess java = Builder.buildJavaNetworkAccess(serverURL, address.startsWith("https"), Optional.of("Peergos-" + UserService.CURRENT_VERSION + "-sync"), proxy).join()
                     .withStorage(s -> new UnauthedCachingStorage(s, new FileBlockCache(args.fromPeergosDir("block-cache-dir", "block-cache"), blockCacheSizeBytes), crypto.hasher));
+            NetworkAccess network = NetworkAccess.buildBuffered(new RetryStorage(java.dhtClient, 5), null, java.coreNode, null,
+                    java.mutable, 5_000, null, null, null, null,
+                    crypto.hasher, Collections.emptyList(), false);
             JvmThumbnailer.initJava();
             List<String> links = new ArrayList<>(Arrays.asList(args.getArg("links").split(",")));
             List<String> localDirs = new ArrayList<>(Arrays.asList(args.getArg("local-dirs").split(",")));
