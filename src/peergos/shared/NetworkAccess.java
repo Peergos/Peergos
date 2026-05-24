@@ -662,6 +662,8 @@ public class NetworkAccess {
                                             Futures.of(p))
                                     .thenApply(p -> p.left)
                                     .thenCompose(rcs -> {
+                                        if (rcs.isEmpty())
+                                            throw new IllegalStateException("Unable to retrieve " + link.getProperties().name + " (dangling reference)");
                                         RetrievedCapability rc = rcs.get(0);
                                         FileProperties props = rc.getProperties();
                                         if (!props.isLink)
