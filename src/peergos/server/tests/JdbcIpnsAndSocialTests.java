@@ -129,6 +129,33 @@ public class JdbcIpnsAndSocialTests {
     }
 
     @Test
+    public void batchUpdateFailsAtomicallyWhenOnePointerConcurrentlyModified() throws Exception {
+        Crypto crypto = Main.initCrypto();
+        PublicKeyHash w1 = key(crypto), w2 = key(crypto);
+        byte[] v1 = {1}, v2 = {2};
+        byte[] v1Concurrent = {99};   // written by the concurrent updater
+        byte[] v1Batch = {10}, v2Batch = {20}; // what the batch intended to write
+
+        // Establish initial state for both writers
+        db.setPointers(List.of(Optional.empty(), Optional.empty()),
+                List.of(new SignedPointerUpdate(w1, v1), new SignedPointerUpdate(w2, v2))).join();
+
+        // Concurrent writer changes w1 while our batch has already read v1 as the expected value
+        boolean concurrentOk = db.setPointers(List.of(Optional.of(v1)),
+                List.of(new SignedPointerUpdate(w1, v1Concurrent))).join();
+        Assert.assertTrue(concurrentOk);
+
+        // The batch arrives with a stale expected value for w1 — CAS must reject the whole batch
+        boolean batchResult = db.setPointers(
+                List.of(Optional.of(v1), Optional.of(v2)),
+                List.of(new SignedPointerUpdate(w1, v1Batch), new SignedPointerUpdate(w2, v2Batch))).join();
+
+        Assert.assertFalse("Batch must fail when one pointer was concurrently modified", batchResult);
+        Assert.assertArrayEquals("w1 should retain the concurrent value", v1Concurrent, db.getPointer(w1).join().get());
+        Assert.assertArrayEquals("w2 must not be updated when the batch fails atomically", v2, db.getPointer(w2).join().get());
+    }
+
+    @Test
     public void getPointerReturnsEmptyForUnknownKey() throws Exception {
         Crypto crypto = Main.initCrypto();
         PublicKeyHash unknown = key(crypto);
