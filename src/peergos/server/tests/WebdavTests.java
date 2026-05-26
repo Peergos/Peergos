@@ -39,7 +39,7 @@ public class WebdavTests {
     }
 
     private String generateUsername() {
-        return "test" + Math.abs(random.nextInt() % 1_000_000);
+        return "webdav-test" + Math.abs(random.nextInt() % 1_000_000);
     }
 
     @Test
