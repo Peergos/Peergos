@@ -65,10 +65,9 @@ public class WebdavFileSystem implements IWebdavStore {
     public WebdavFileSystem(String username, String password, String peergosUrl) {
         Crypto crypto = Main.initCrypto();
         try {
-            NetworkAccess unbuffered = Builder.buildJavaNetworkAccess(new URL(peergosUrl), peergosUrl.startsWith("https"), Optional.of("Peergos-" + UserService.CURRENT_VERSION + "-webdav"), Optional.empty()).join();
-            NetworkAccess network = NetworkAccess.buildBuffered(new RetryStorage(unbuffered.dhtClient, 5), unbuffered.batCave, unbuffered.coreNode, unbuffered.account,
-                    unbuffered.mutable, 5_000, unbuffered.social, unbuffered.instanceAdmin, unbuffered.spaceUsage, unbuffered.serverMessager,
-                    crypto.hasher, Collections.emptyList(), false);
+            Optional<String> userAgent = Optional.of("Peergos-" + UserService.CURRENT_VERSION + "-webdav");
+            NetworkAccess network = Builder.buildJavaNetworkAccess(new URL(peergosUrl),
+                    peergosUrl.startsWith("https"), userAgent, Optional.empty()).join();
             context = UserContext.signIn(username, password, Main::getMfaResponseCLI, network, crypto).join();
         } catch (Exception ex) {
             LOG.log(Level.WARNING, ex, () -> "Unable to connect to Peergos account");
