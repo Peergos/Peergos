@@ -30,6 +30,7 @@ public class MountConfigHandler implements HttpHandler {
     private final AtomicReference<Server> webdavServer = new AtomicReference<>(null);
     private final AtomicReference<WebdavMount> activeMount = new AtomicReference<>(null);
     private final AtomicReference<String> mountError = new AtomicReference<>(null);
+    private final AtomicReference<String> activePeergosUsername = new AtomicReference<>("");
 
     public MountConfigHandler(MountProperties props) {
         this.peergosDir = props.peergosDir;
@@ -76,6 +77,7 @@ public class MountConfigHandler implements HttpHandler {
                 config.webdavPassword, config.peergosUsername, config.peergosPassword,
                 peergosUrl, config.authType);
         webdavServer.set(server);
+        activePeergosUsername.set(config.peergosUsername);
         WebdavMount mount = WebdavMount.mount(config.webdavPort, config.webdavUsername, config.webdavPassword);
         activeMount.set(mount);
     }
@@ -90,6 +92,7 @@ public class MountConfigHandler implements HttpHandler {
                 LOG.log(Level.WARNING, "Error stopping WebDAV server", e);
             }
         }
+        activePeergosUsername.set("");
     }
 
     private static String generateToken() {
@@ -129,14 +132,15 @@ public class MountConfigHandler implements HttpHandler {
 
             if (action.equals("get-config")) {
                 MountConfig config = readConfig();
+                WebdavMount mount = activeMount.get();
+                boolean mountActive = mount != null;
                 Map<String, Object> json = new LinkedHashMap<>();
-                json.put("enabled", config.enabled);
-                json.put("peergosUsername", config.peergosUsername);
+                json.put("enabled", mountActive || config.enabled);
+                json.put("peergosUsername", mountActive ? activePeergosUsername.get() : config.peergosUsername);
                 json.put("webdavUsername", config.webdavUsername);
                 json.put("webdavPort", config.webdavPort);
                 json.put("authType", config.authType);
-                WebdavMount mount = activeMount.get();
-                json.put("mountPoint", mount != null ? mount.getMountPoint() : "");
+                json.put("mountPoint", mountActive ? mount.getMountPoint() : "");
                 String err = mountError.get();
                 if (err != null) json.put("error", err);
                 byte[] res = JSONParser.toString(json).getBytes(StandardCharsets.UTF_8);
@@ -148,6 +152,7 @@ public class MountConfigHandler implements HttpHandler {
                         new String(Serialize.readFully(exchange.getRequestBody())));
                 String peergosUsername = (String) body.get("peergosUsername");
                 String peergosPassword = (String) body.get("peergosPassword");
+                boolean autoMount = body.get("autoMount") instanceof Boolean ? (Boolean) body.get("autoMount") : true;
                 String authType = "digest";
                 String webdavUsername = generateToken();
                 String webdavPassword = generateToken();
@@ -156,7 +161,7 @@ public class MountConfigHandler implements HttpHandler {
                 disableMount();
                 MountConfig config = new MountConfig(true, peergosUsername, peergosPassword,
                         webdavUsername, webdavPassword, webdavPort, authType);
-                saveConfig(config);
+                if (autoMount) saveConfig(config);
                 // Native mount can block (e.g. gio mount on Linux awaits D-Bus); run in background
                 // and let the UI poll get-config for the mount point.
                 mountError.set(null);
