@@ -1,11 +1,14 @@
 package peergos.server.tests;
 
+import org.eclipse.jetty.server.Server;
 import org.junit.*;
 import org.junit.runner.*;
 import org.junit.runners.*;
 import peergos.server.*;
 import peergos.server.storage.*;
+import peergos.server.tests.util.TestPorts;
 import peergos.server.util.*;
+import peergos.server.webdav.WebdavServer;
 import peergos.shared.*;
 import peergos.shared.io.ipfs.*;
 import peergos.shared.user.*;
@@ -14,6 +17,9 @@ import peergos.shared.util.*;
 
 import java.io.*;
 import java.net.*;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.nio.file.*;
 import java.util.*;
 
@@ -107,5 +113,71 @@ public class IpfsUserTests extends UserTests {
         long sizeAfterDelete = getBlockstoreSize();
         long diff = sizeAfterDelete - sizeBefore;
         Assert.assertTrue(diff < 20*1024); // Why not equal?
+    }
+
+    @Test
+    public void webdavUploadDownloadAndListing() throws Exception {
+        String username = generateUsername();
+        String password = "testpassword";
+        PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
+
+        int webdavPort = TestPorts.getPort();
+        String webdavUser = "webdavtestuser";
+        String webdavPass = "webdavtestpass";
+        String peergosUrl = "http://localhost:" + getArgs().getInt("port");
+
+        Server webdavServer = WebdavServer.startNonBlocking(webdavPort, webdavUser, webdavPass,
+                username, password, peergosUrl, "basic");
+        try {
+            String auth = "Basic " + Base64.getEncoder().encodeToString((webdavUser + ":" + webdavPass).getBytes());
+            HttpClient client = HttpClient.newHttpClient();
+            String base = "http://localhost:" + webdavPort;
+
+            // Directory listing via PROPFIND on root
+            HttpResponse<String> propfind = client.send(
+                    HttpRequest.newBuilder(URI.create(base + "/" + username + "/"))
+                            .method("PROPFIND", HttpRequest.BodyPublishers.noBody())
+                            .header("Authorization", auth)
+                            .header("Depth", "1")
+                            .build(),
+                    HttpResponse.BodyHandlers.ofString());
+            Assert.assertEquals("PROPFIND root should return 207 Multi-Status", 207, propfind.statusCode());
+
+            // Upload a file via PUT
+            byte[] fileContent = "Hello Peergos WebDAV!".getBytes();
+            String filePath = "/" + username + "/test-webdav.txt";
+            HttpResponse<String> put = client.send(
+                    HttpRequest.newBuilder(URI.create(base + filePath))
+                            .PUT(HttpRequest.BodyPublishers.ofByteArray(fileContent))
+                            .header("Authorization", auth)
+                            .header("Content-Type", "text/plain")
+                            .build(),
+                    HttpResponse.BodyHandlers.ofString());
+            Assert.assertTrue("PUT should return 201 or 204: " + put.statusCode(), put.statusCode() == 201 || put.statusCode() == 204);
+
+            // Download the file via GET and verify content
+            HttpResponse<byte[]> get = client.send(
+                    HttpRequest.newBuilder(URI.create(base + filePath))
+                            .GET()
+                            .header("Authorization", auth)
+                            .build(),
+                    HttpResponse.BodyHandlers.ofByteArray());
+            Assert.assertEquals("GET should return 200", 200, get.statusCode());
+            Assert.assertArrayEquals("Downloaded content must match uploaded content", fileContent, get.body());
+
+            // Directory listing should now include the uploaded file
+            HttpResponse<String> propfind2 = client.send(
+                    HttpRequest.newBuilder(URI.create(base + "/" + username + "/"))
+                            .method("PROPFIND", HttpRequest.BodyPublishers.noBody())
+                            .header("Authorization", auth)
+                            .header("Depth", "1")
+                            .build(),
+                    HttpResponse.BodyHandlers.ofString());
+            Assert.assertEquals(207, propfind2.statusCode());
+            Assert.assertTrue("Directory listing should contain uploaded filename",
+                    propfind2.body().contains("test-webdav.txt"));
+        } finally {
+            webdavServer.stop();
+        }
     }
 }
