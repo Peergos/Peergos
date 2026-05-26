@@ -103,6 +103,27 @@
     </copy>
   </target>
 
+  <target name="single.test" depends="compile,dist">
+    <junit fork="true" printsummary="true" haltonfailure="no">
+      <jvmarg value="-Xmx4g"/>
+      <jvmarg value="-Djava.library.path=native-lib"/>
+      <jvmarg value="--enable-native-access=ALL-UNNAMED"/>
+      <jvmarg value="--sun-misc-unsafe-memory-access=allow"/>
+      <classpath>
+       <fileset dir="lib-build">
+         <include name="**/*.jar"/>
+       </fileset>
+       <fileset dir="lib">
+         <include name="**/*.jar"/>
+       </fileset>
+       <pathelement location="${build}" />
+      </classpath>
+      <formatter type="xml" />
+      <test name="${test.class}" methods="${test.method}" todir="${test.reports}" if="test.method"/>
+      <test name="${test.class}" todir="${test.reports}" unless="test.method"/>
+    </junit>
+  </target>
+
   <target name="test" depends="parallel_test">
     <exec executable="java" failonerror="true">
       <arg value="PrintTestErrors.java"/>
