@@ -8,6 +8,7 @@ import peergos.server.*;
 import peergos.server.storage.*;
 import peergos.server.tests.util.TestPorts;
 import peergos.server.util.*;
+import peergos.server.webdav.WebdavMount;
 import peergos.server.webdav.WebdavServer;
 import peergos.shared.*;
 import peergos.shared.io.ipfs.*;
@@ -198,6 +199,50 @@ public class IpfsUserTests extends UserTests {
             Assert.assertEquals(207, propfind3.statusCode());
             Assert.assertTrue("Directory listing should contain new subdirectory",
                     propfind3.body().contains("test-subdir"));
+        } finally {
+            webdavServer.stop();
+        }
+    }
+
+    @Test
+    public void webdavMountReadWrite() throws Exception {
+        String os = System.getProperty("os.name").toLowerCase();
+        if (!os.contains("linux") && !os.contains("windows"))
+            return;
+
+        String username = generateUsername();
+        String password = "testpassword";
+        PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
+
+        int webdavPort = TestPorts.getPort();
+        String webdavUser = "webdavmountuser";
+        String webdavPass = "webdavmountpass";
+        String peergosUrl = "http://localhost:" + getArgs().getInt("port");
+
+        Server webdavServer = WebdavServer.startNonBlocking(webdavPort, webdavUser, webdavPass,
+                username, password, peergosUrl, "basic");
+        try (WebdavMount mount = WebdavMount.mount(webdavPort, webdavUser, webdavPass)) {
+            Path home = Path.of(mount.getMountPoint()).resolve(username);
+
+            // Write a file via Files API
+            byte[] content = "Hello from mounted WebDAV!".getBytes();
+            Path file = home.resolve("mount-test.txt");
+            Files.write(file, content);
+
+            // Read it back and verify
+            byte[] read = Files.readAllBytes(file);
+            Assert.assertArrayEquals("File content must round-trip through mount", content, read);
+
+            // Create a subdirectory
+            Path subdir = home.resolve("mount-subdir");
+            Files.createDirectory(subdir);
+            Assert.assertTrue("Subdirectory should exist after mkdir", subdir.toFile().isDirectory());
+
+            // Write a file inside the subdirectory
+            Path subfile = subdir.resolve("nested.txt");
+            byte[] subContent = "Nested file content".getBytes();
+            Files.write(subfile, subContent);
+            Assert.assertArrayEquals("Nested file content must round-trip", subContent, Files.readAllBytes(subfile));
         } finally {
             webdavServer.stop();
         }
