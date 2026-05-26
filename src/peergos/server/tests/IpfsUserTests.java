@@ -176,6 +176,28 @@ public class IpfsUserTests extends UserTests {
             Assert.assertEquals(207, propfind2.statusCode());
             Assert.assertTrue("Directory listing should contain uploaded filename",
                     propfind2.body().contains("test-webdav.txt"));
+
+            // Create a subdirectory via MKCOL
+            String dirPath = "/" + username + "/test-subdir";
+            HttpResponse<String> mkcol = client.send(
+                    HttpRequest.newBuilder(URI.create(base + dirPath))
+                            .method("MKCOL", HttpRequest.BodyPublishers.noBody())
+                            .header("Authorization", auth)
+                            .build(),
+                    HttpResponse.BodyHandlers.ofString());
+            Assert.assertEquals("MKCOL should return 201: " + mkcol.statusCode(), 201, mkcol.statusCode());
+
+            // PROPFIND on root should now list the new subdirectory
+            HttpResponse<String> propfind3 = client.send(
+                    HttpRequest.newBuilder(URI.create(base + "/" + username + "/"))
+                            .method("PROPFIND", HttpRequest.BodyPublishers.noBody())
+                            .header("Authorization", auth)
+                            .header("Depth", "1")
+                            .build(),
+                    HttpResponse.BodyHandlers.ofString());
+            Assert.assertEquals(207, propfind3.statusCode());
+            Assert.assertTrue("Directory listing should contain new subdirectory",
+                    propfind3.body().contains("test-subdir"));
         } finally {
             webdavServer.stop();
         }
