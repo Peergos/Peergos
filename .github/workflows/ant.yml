@@ -37,6 +37,7 @@ jobs:
       if: matrix.os == 'windows-latest'
       shell: powershell
       run: |
+        DISM /Online /Enable-Feature /FeatureName:WebClient /All /NoRestart
         Set-Service WebClient -StartupType Manual
         Start-Service WebClient
         Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Services\WebClient\Parameters' -Name FileSizeLimitInBytes -Value 0xFFFFFFFF -Type DWord -Force
