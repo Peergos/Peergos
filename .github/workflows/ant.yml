@@ -22,9 +22,17 @@ jobs:
       run: ant -noinput -buildfile build.xml dist
     - name: GWT build
       run: ant -noinput -buildfile build.xml gwtc
-    - name: install fuse 2
-      run: sudo apt install libfuse2
+    - name: install fuse 2 and gvfs
       if: matrix.os == 'ubuntu-latest'
+      run: |
+        sudo apt install -y libfuse2 gvfs gvfs-backends gvfs-fuse dbus-x11
+        mkdir -p /run/user/$(id -u)
+        eval $(dbus-launch --sh-syntax)
+        echo "DBUS_SESSION_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS" >> $GITHUB_ENV
+        gvfsd &
+        sleep 1
+        gvfsd-fuse /run/user/$(id -u)/gvfs &
+        sleep 2
     - name: Run tests
       timeout-minutes: 120
       run: ant -noinput -buildfile build.xml test
