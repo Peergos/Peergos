@@ -17,7 +17,7 @@ package peergos.server.webdav;
 
 import org.peergos.util.Pair;
 import peergos.server.UserService;
-import peergos.server.net.ProxyChooser;
+import peergos.server.storage.DeletableContentAddressedStorage;
 import peergos.server.util.Logging;
 import peergos.server.webdav.modeshape.webdav.ITransaction;
 import peergos.server.webdav.modeshape.webdav.IWebdavStore;
@@ -27,7 +27,11 @@ import peergos.server.Builder;
 import peergos.server.Main;
 import peergos.shared.Crypto;
 import peergos.shared.NetworkAccess;
-import peergos.shared.storage.RetryStorage;
+import peergos.shared.crypto.hash.Hasher;
+import peergos.shared.crypto.hash.PublicKeyHash;
+import peergos.shared.mutable.MutablePointers;
+import peergos.shared.storage.ContentAddressedStorage;
+import peergos.shared.user.CommittedWriterData;
 import peergos.shared.user.UserContext;
 import peergos.shared.user.fs.AsyncReader;
 import peergos.shared.user.fs.FileWrapper;
@@ -37,15 +41,17 @@ import peergos.shared.util.PathUtil;
 import peergos.shared.util.Futures;
 
 import java.io.*;
-import java.net.ProxySelector;
 import java.net.URL;
 import java.nio.file.Path;
 import java.security.Principal;
 import java.time.ZoneOffset;
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
+import java.util.function.BiFunction;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /**
  * Integration with Peergos File system
@@ -59,6 +65,7 @@ import java.util.stream.Collectors;
 public class WebdavFileSystem implements IWebdavStore {
 
     private static final Logger LOG = Logging.LOG();
+    private static final String PEERGOS_NS = "https://peergos.org/ns/dav";
 
     private final UserContext context;
 
@@ -73,6 +80,59 @@ public class WebdavFileSystem implements IWebdavStore {
             LOG.log(Level.WARNING, ex, () -> "Unable to connect to Peergos account");
             throw new IllegalStateException("Unable to connect to Peergos account: ", ex);
         }
+    }
+
+    /**
+     * Returns a snapshot of all writers visible in the current user's file tree as
+     * { writerPublicKeyHash.toString() -> hex-encoded signed pointer bytes }.
+     * Used by the macOS File Provider extension as a sync anchor to detect changes.
+     */
+    public Map<String, String> getWriterSnapshot() {
+        PublicKeyHash owner = context.signer.publicKeyHash;
+        ContentAddressedStorage dht = context.network.dhtClient;
+        MutablePointers mutable = context.network.mutable;
+        Hasher hasher = context.crypto.hasher;
+        CommittedWriterData.Retriever retriever =
+                (h, s) -> ContentAddressedStorage.getWriterData(owner, h, s, dht);
+        Map<PublicKeyHash, byte[]> raw = getUserSnapshotRecursive(
+                owner, owner, Collections.emptyMap(), mutable, dht, hasher, retriever).join();
+        HexFormat hex = HexFormat.of();
+        Map<String, String> result = new LinkedHashMap<>();
+        raw.forEach((writer, bytes) -> result.put(writer.toString(), hex.formatHex(bytes)));
+        return result;
+    }
+
+    private static CompletableFuture<Map<PublicKeyHash, byte[]>> getUserSnapshotRecursive(
+            PublicKeyHash owner,
+            PublicKeyHash writer,
+            Map<PublicKeyHash, byte[]> alreadyDone,
+            MutablePointers mutable,
+            ContentAddressedStorage dht,
+            Hasher hasher,
+            CommittedWriterData.Retriever retriever) {
+        return DeletableContentAddressedStorage.getDirectOwnedKeys(owner, writer, mutable, retriever, dht, hasher)
+                .thenCompose(directOwned -> {
+                    Set<PublicKeyHash> newKeys = directOwned.stream()
+                            .filter(h -> !alreadyDone.containsKey(h))
+                            .collect(Collectors.toSet());
+                    Map<PublicKeyHash, byte[]> done = new HashMap<>(alreadyDone);
+                    return mutable.getPointer(owner, writer).thenCompose(val -> {
+                        if (val.isPresent())
+                            done.put(writer, val.get());
+                        BiFunction<Map<PublicKeyHash, byte[]>, PublicKeyHash,
+                                CompletableFuture<Map<PublicKeyHash, byte[]>>> composer =
+                                (a, w) -> getUserSnapshotRecursive(owner, w, a, mutable, dht, hasher, retriever)
+                                        .thenApply(ws -> Stream.concat(
+                                                ws.entrySet().stream().filter(e -> !a.containsKey(e.getKey())),
+                                                a.entrySet().stream())
+                                                .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue)));
+                        return Futures.reduceAll(newKeys, done, composer,
+                                (a, b) -> Stream.concat(
+                                        a.entrySet().stream().filter(e -> !b.containsKey(e.getKey())),
+                                        b.entrySet().stream())
+                                        .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue)));
+                    });
+                });
     }
 
     @Override
@@ -307,13 +367,20 @@ public class WebdavFileSystem implements IWebdavStore {
     @Override
     public Map<String, Object> getCustomProperties( ITransaction transaction,
                                                     String resourceUri ) {
-        LOG.fine("PeergosFileSystem.getCustomProperties(" + resourceUri + ")");
-        return Collections.emptyMap();
+        Path path = new File(resourceUri).toPath();
+        Optional<FileWrapper> fwOpt = getByPath(path);
+        if (fwOpt.isEmpty() || fwOpt.get().isDirectory() || fwOpt.get().getFileProperties().isHidden)
+            return Collections.emptyMap();
+        FileWrapper fw = fwOpt.get();
+        Map<String, Object> props = new LinkedHashMap<>();
+        fw.getFileProperties().treeHash.ifPresent(h -> props.put(PEERGOS_NS + ":treehash", h.toString()));
+        props.put(PEERGOS_NS + ":writerKey", fw.writer().toString());
+        return props;
     }
 
     @Override
     public Map<String, String> getCustomNamespaces( ITransaction transaction,
                                                     String resourceUri ) {
-        return Collections.emptyMap();
+        return Collections.singletonMap(PEERGOS_NS, "P");
     }
 }

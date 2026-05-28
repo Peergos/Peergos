@@ -366,7 +366,7 @@ public class DoPropfind extends AbstractMethod {
                 generatedXML.writeElement("DAV::propstat", XMLWriter.OPENING);
                 generatedXML.writeElement("DAV::prop", XMLWriter.OPENING);
 
-                writeCustomProperties(transaction, generatedXML, path, true, propertiesVector);
+                Set<String> writtenCustomProps = writeCustomProperties(transaction, generatedXML, path, true, propertiesVector);
 
                 Enumeration<String> properties = propertiesVector.elements();
 
@@ -374,7 +374,9 @@ public class DoPropfind extends AbstractMethod {
 
                     String property = properties.nextElement();
 
-                    if (property.equals("DAV::creationdate")) {
+                    if (writtenCustomProps.contains(property)) {
+                        // already written by writeCustomProperties
+                    } else if (property.equals("DAV::creationdate")) {
                         generatedXML.writeProperty("DAV::creationdate", creationdate);
                     } else if (property.equals("DAV::displayname")) {
                         generatedXML.writeElement("DAV::displayname", XMLWriter.OPENING);
@@ -596,28 +598,28 @@ public class DoPropfind extends AbstractMethod {
         lo = null;
     }
 
-    private void writeCustomProperties( ITransaction transaction,
-                                        XMLWriter generatedXML,
-                                        String path,
-                                        boolean includeValue,
-                                        Vector<String> propertiesFilter ) {
+    private Set<String> writeCustomProperties( ITransaction transaction,
+                                               XMLWriter generatedXML,
+                                               String path,
+                                               boolean includeValue,
+                                               Vector<String> propertiesFilter ) {
         Map<String, Object> customProperties = store.getCustomProperties(transaction, path);
-        if (customProperties.isEmpty()) {
-            return;
-        }
+        if (customProperties.isEmpty())
+            return Collections.emptySet();
+        Set<String> written = new HashSet<>();
         for (String propertyName : customProperties.keySet()) {
-            if (propertiesFilter != null && !propertiesFilter.contains(propertyName)) {
+            if (propertiesFilter != null && !propertiesFilter.contains(propertyName))
                 continue;
-            }
+            written.add(propertyName);
             if (includeValue) {
                 generatedXML.writeElement(propertyName, XMLWriter.OPENING);
-                final String value = customProperties.get(propertyName).toString();
-                generatedXML.writeData(value);
+                generatedXML.writeData(customProperties.get(propertyName).toString());
                 generatedXML.writeElement(propertyName, XMLWriter.CLOSING);
             } else {
                 generatedXML.writeElement(propertyName, XMLWriter.NO_CONTENT);
             }
         }
+        return written;
     }
 
     private boolean ignoreRequest( String userAgent, String requestPath ) {

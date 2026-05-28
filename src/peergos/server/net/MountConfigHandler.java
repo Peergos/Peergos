@@ -4,6 +4,7 @@ import com.sun.net.httpserver.*;
 import org.eclipse.jetty.server.Server;
 import peergos.server.MountProperties;
 import peergos.server.webdav.MountConfig;
+import peergos.server.webdav.WebdavFileSystem;
 import peergos.server.webdav.WebdavMount;
 import peergos.server.webdav.WebdavServer;
 import peergos.server.util.HttpUtil;
@@ -73,13 +74,32 @@ public class MountConfigHandler implements HttpHandler {
     }
 
     private void enableMount(MountConfig config) throws IOException {
+        WebdavFileSystem fs = new WebdavFileSystem(config.peergosUsername, config.peergosPassword, peergosUrl);
         Server server = WebdavServer.startNonBlocking(config.webdavPort, config.webdavUsername,
-                config.webdavPassword, config.peergosUsername, config.peergosPassword,
-                peergosUrl, config.authType);
+                config.webdavPassword, fs, config.authType);
         webdavServer.set(server);
         activePeergosUsername.set(config.peergosUsername);
+        writeAppGroupConfig(config);
         WebdavMount mount = WebdavMount.mount(config.webdavPort, config.webdavUsername, config.webdavPassword);
         activeMount.set(mount);
+    }
+
+    private static void writeAppGroupConfig(MountConfig config) {
+        if (!System.getProperty("os.name", "").toLowerCase().startsWith("mac")) return;
+        try {
+            Path appGroupDir = Path.of(System.getProperty("user.home"),
+                    "Library", "Group Containers", "group.org.peergos.PeergosMount");
+            Files.createDirectories(appGroupDir);
+            Map<String, Object> json = new LinkedHashMap<>();
+            json.put("port", config.webdavPort);
+            json.put("webdavUsername", config.webdavUsername);
+            json.put("webdavPassword", config.webdavPassword);
+            json.put("peergosUsername", config.peergosUsername);
+            Files.write(appGroupDir.resolve("webdav-config.json"),
+                    JSONParser.toString(json).getBytes(StandardCharsets.UTF_8));
+        } catch (IOException e) {
+            LOG.log(Level.WARNING, "Failed to write App Group config", e);
+        }
     }
 
     private void disableMount() {
@@ -93,6 +113,11 @@ public class MountConfigHandler implements HttpHandler {
             }
         }
         activePeergosUsername.set("");
+        if (System.getProperty("os.name", "").toLowerCase().startsWith("mac")) {
+            Path.of(System.getProperty("user.home"),
+                    "Library", "Group Containers", "group.org.peergos.PeergosMount",
+                    "webdav-config.json").toFile().delete();
+        }
     }
 
     private static String generateToken() {

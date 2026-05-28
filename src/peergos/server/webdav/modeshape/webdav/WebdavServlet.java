@@ -37,6 +37,10 @@ public class WebdavServlet extends WebDavServletBean {
         webdavStore = new WebdavFileSystem(username, password, peergosUrl);
     }
 
+    public WebdavServlet(WebdavFileSystem fs) {
+        webdavStore = fs;
+    }
+
     @Override
     public void init() throws ServletException {
 

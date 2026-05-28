@@ -21,8 +21,16 @@ import peergos.server.util.Args;
 import peergos.shared.Crypto;
 import peergos.shared.crypto.asymmetric.PublicSigningKey;
 
+import jakarta.servlet.http.HttpServlet;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import peergos.shared.io.ipfs.api.JSONParser;
+
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Optional;
+import java.util.Map;
 import java.util.logging.Logger;
 
 public class WebdavServer {
@@ -30,10 +38,28 @@ public class WebdavServer {
     private static final String VERSION= "0.1";
     private static final Logger logger = Logging.LOG();
 
+    /** Overload used by MountConfigHandler when it holds its own WebdavFileSystem reference. */
+    public static Server startNonBlocking(int port,
+                                          String webdavUser, String webdavPassword,
+                                          WebdavFileSystem fs,
+                                          String authScheme) {
+        return startWithServlet(port, webdavUser, webdavPassword, authScheme,
+                new WebdavServlet(fs), fs);
+    }
+
     public static Server startNonBlocking(int port,
                                           String webdavUser, String webdavPassword,
                                           String peergosUser, String peergosPassword,
                                           String peergosUrl, String authScheme) {
+        return startWithServlet(port, webdavUser, webdavPassword, authScheme,
+                new WebdavServlet(peergosUser, peergosPassword, peergosUrl), null);
+    }
+
+    private static Server startWithServlet(int port,
+                                           String webdavUser, String webdavPassword,
+                                           String authScheme,
+                                           WebdavServlet servlet,
+                                           WebdavFileSystem snapshotFs) {
         logger.info("Starting WEBDAV server version: " + VERSION + " on port: " + port);
         Crypto crypto = Main.initCrypto();
         PublicSigningKey.addProvider(PublicSigningKey.Type.Ed25519, crypto.signer);
@@ -91,7 +117,12 @@ public class WebdavServer {
         context.setContextPath("/");
         security.setHandler(context);
 
-        ServletHolder holderDef = new ServletHolder("default", new WebdavServlet(peergosUser, peergosPassword, peergosUrl));
+        if (snapshotFs != null) {
+            context.addServlet(new ServletHolder("snapshot", new SnapshotServlet(snapshotFs)),
+                    "/peergos/v0/mount/snapshot");
+        }
+
+        ServletHolder holderDef = new ServletHolder("default", servlet);
         holderDef.setInitParameter("rootpath","");
         context.addServlet(holderDef,"/*");
 
@@ -101,6 +132,20 @@ public class WebdavServer {
             return server;
         } catch (Exception e) {
             throw new RuntimeException(e);
+        }
+    }
+
+    private static final class SnapshotServlet extends HttpServlet {
+        private final WebdavFileSystem fs;
+        SnapshotServlet(WebdavFileSystem fs) { this.fs = fs; }
+
+        @Override
+        protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws IOException {
+            Map<String, Object> snapshot = new LinkedHashMap<>(fs.getWriterSnapshot());
+            byte[] json = JSONParser.toString(snapshot).getBytes(StandardCharsets.UTF_8);
+            resp.setContentType("application/json");
+            resp.setContentLength(json.length);
+            resp.getOutputStream().write(json);
         }
     }
 
