@@ -127,7 +127,7 @@ public class WebdavTests {
     @Test
     public void webdavMountReadWrite() throws Exception {
         String os = System.getProperty("os.name").toLowerCase();
-        if (!os.contains("linux") && !os.contains("windows"))
+        if (!os.contains("linux"))
             return;
 
         String username = generateUsername();

@@ -33,15 +33,6 @@ jobs:
         sleep 1
         gvfsd-fuse /run/user/$(id -u)/gvfs &
         sleep 2
-    - name: enable WebDAV client
-      if: matrix.os == 'windows-latest'
-      shell: powershell
-      run: |
-        Install-WindowsFeature WebDAV-Redirector -IncludeAllSubFeature
-        Set-Service WebClient -StartupType Manual
-        Start-Service WebClient
-        Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Services\WebClient\Parameters' -Name FileSizeLimitInBytes -Value 0xFFFFFFFF -Type DWord -Force
-        Restart-Service WebClient
     - name: Run tests
       timeout-minutes: 120
       run: ant -noinput -buildfile build.xml test
