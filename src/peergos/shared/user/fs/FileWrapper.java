@@ -1004,6 +1004,66 @@ public class FileWrapper {
                 .thenCompose(v -> getUpdated(v, network));
     }
 
+    public CompletableFuture<FileWrapper> overwriteChangedChunks(AsyncReader newData,
+                                                                  long newSize,
+                                                                  NetworkAccess network,
+                                                                  Crypto crypto,
+                                                                  ProgressConsumer<Long> monitor) {
+        long existingSize = getSize();
+        int nChunks = newSize == 0 ? 1 : (int) ((newSize + Chunk.MAX_SIZE - 1) / Chunk.MAX_SIZE);
+        Optional<HashBranch> existingBranch = getFileProperties().treeHash;
+
+        if (existingBranch.isEmpty() || existingBranch.get().level1.isEmpty() || nChunks > 1024) {
+            return overwriteFile(newData, newSize, network, crypto, monitor);
+        }
+
+        ChunkHashList existingChunkHashes = existingBranch.get().level1.get();
+
+        return network.synchronizer.applyComplexUpdate(owner(), signingPair(),
+                (s, committer) -> clean(s, committer, network, crypto)
+                        .thenCompose(cleaned ->
+                                Futures.reduceAll(
+                                        IntStream.range(0, nChunks).boxed().collect(Collectors.toList()),
+                                        cleaned,
+                                        (state, chunkIndex) -> {
+                                            long chunkStart = (long) chunkIndex * Chunk.MAX_SIZE;
+                                            int chunkLen = (int) Math.min(Chunk.MAX_SIZE, newSize - chunkStart);
+                                            byte[] chunkBuf = new byte[chunkLen];
+                                            return readFully(newData, chunkBuf, 0, chunkLen)
+                                                    .thenCompose(ignored -> crypto.hasher.sha256(chunkBuf))
+                                                    .thenCompose(chunkHash -> {
+                                                        if (chunkIndex < existingChunkHashes.nChunks()) {
+                                                            byte[] existing = Arrays.copyOfRange(
+                                                                    existingChunkHashes.chunkHashes,
+                                                                    chunkIndex * 32, (chunkIndex + 1) * 32);
+                                                            if (Arrays.equals(existing, chunkHash))
+                                                                return Futures.of(state);
+                                                        }
+                                                        return state.left.getUpdated(state.right, network)
+                                                                .thenCompose(updated -> updated.overwriteSection(
+                                                                        state.right, committer,
+                                                                        new AsyncReader.ArrayBacked(chunkBuf),
+                                                                        chunkStart, chunkStart + chunkLen,
+                                                                        Optional.empty(), network, crypto, monitor))
+                                                                .thenApply(newSnap -> new Pair<>(state.left, newSnap));
+                                                    });
+                                        },
+                                        (a, b) -> b)
+                                        .thenCompose(finalState -> newSize >= existingSize
+                                                ? Futures.of(finalState.right)
+                                                : finalState.left.getUpdated(finalState.right, network)
+                                                        .thenCompose(f -> f.truncate(finalState.right, committer,
+                                                                newSize, network, crypto)))))
+                .thenCompose(v -> getUpdated(v, network));
+    }
+
+    private static CompletableFuture<Void> readFully(AsyncReader reader, byte[] buf, int offset, int remaining) {
+        if (remaining == 0)
+            return Futures.of(null);
+        return reader.readIntoArray(buf, offset, remaining)
+                .thenCompose(read -> readFully(reader, buf, offset + read, remaining - read));
+    }
+
     @JsMethod
     public CompletableFuture<FileWrapper> overwriteSectionJS(AsyncReader fileData,
                                                              int startHigh,

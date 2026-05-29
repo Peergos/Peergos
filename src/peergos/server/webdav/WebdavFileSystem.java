@@ -223,7 +223,15 @@ public class WebdavFileSystem implements IWebdavStore {
             throw new WebdavException("cannot find parent of file: " + uri);
         }
         try {
-            parentFolder.get().uploadOrReplaceFile(path.getFileName().toString(), readerPair.left, readerPair.right, context.network, context.crypto, () -> false, l -> {}).join();
+            Optional<FileWrapper> existingFile = getByPath(path);
+            if (existingFile.isPresent() && !existingFile.get().isDirectory()
+                    && !existingFile.get().getFileProperties().isHidden) {
+                existingFile.get().overwriteChangedChunks(readerPair.left, readerPair.right,
+                        context.network, context.crypto, l -> {}).join();
+            } else {
+                parentFolder.get().uploadOrReplaceFile(path.getFileName().toString(),
+                        readerPair.left, readerPair.right, context.network, context.crypto, () -> false, l -> {}).join();
+            }
             return readerPair.right;
         } catch (Exception e) {
             LOG.warning("PeergosFileSystem.setResourceContent(" + uri + ") failed");
