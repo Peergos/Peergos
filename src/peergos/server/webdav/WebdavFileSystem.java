@@ -251,7 +251,8 @@ public class WebdavFileSystem implements IWebdavStore {
             } else {
                 Optional<FileWrapper> existing = getByPath(path);
                 if (existing.isPresent() && !existing.get().isDirectory()
-                        && !existing.get().getFileProperties().isHidden) {
+                        && !existing.get().getFileProperties().isHidden
+                        && existing.get().getSize() > 0) {
                     existing.get().overwriteChangedChunks(readerPair.left, readerPair.right,
                             context.network, context.crypto, l -> {}).join();
                 } else {

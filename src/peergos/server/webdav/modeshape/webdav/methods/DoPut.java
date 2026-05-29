@@ -189,7 +189,7 @@ public class DoPut extends AbstractMethod {
                     }
                     long resourceLength = store.setResourceContent(transaction, path,
                             new Pair<>(new InputStreamAsyncReader(req.getInputStream()), length),
-                            start, end + 1, null, null);
+                            start, hasRange ? end + 1 : -1, null, null);
 
                     so = store.getStoredObject(transaction, path);
                     if (so == null) {
