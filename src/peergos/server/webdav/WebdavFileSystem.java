@@ -212,6 +212,17 @@ public class WebdavFileSystem implements IWebdavStore {
                                     Pair<AsyncReader, Long> readerPair,
                                     String contentType,
                                     String characterEncoding ) throws WebdavException {
+        return setResourceContent(transaction, uri, readerPair, 0, -1, contentType, characterEncoding);
+    }
+
+    @Override
+    public long setResourceContent( ITransaction transaction,
+                                    String uri,
+                                    Pair<AsyncReader, Long> readerPair,
+                                    long rangeStart,
+                                    long rangeEnd,
+                                    String contentType,
+                                    String characterEncoding ) throws WebdavException {
 
         LOG.fine("PeergosFileSystem.setResourceContent(" + uri + ")");
         Path path = new File(uri).toPath();
@@ -223,14 +234,30 @@ public class WebdavFileSystem implements IWebdavStore {
             throw new WebdavException("cannot find parent of file: " + uri);
         }
         try {
-            Optional<FileWrapper> existingFile = getByPath(path);
-            if (existingFile.isPresent() && !existingFile.get().isDirectory()
-                    && !existingFile.get().getFileProperties().isHidden) {
-                existingFile.get().overwriteChangedChunks(readerPair.left, readerPair.right,
-                        context.network, context.crypto, l -> {}).join();
+            boolean isRange = rangeEnd != -1;
+            if (isRange) {
+                // Client has already done chunk comparison; just write the specified range.
+                Optional<FileWrapper> existingFile = getByPath(path);
+                if (existingFile.isPresent() && !existingFile.get().isDirectory()
+                        && !existingFile.get().getFileProperties().isHidden) {
+                    FileWrapper fw = existingFile.get();
+                    context.network.synchronizer.applyComplexUpdate(fw.owner(), fw.signingPair(),
+                            (s, committer) -> fw.clean(s, committer, context.network, context.crypto)
+                                    .thenCompose(cleaned -> cleaned.left.overwriteSection(
+                                            cleaned.right, committer,
+                                            readerPair.left, rangeStart, rangeEnd,
+                                            Optional.empty(), context.network, context.crypto, l -> {}))).join();
+                }
             } else {
-                parentFolder.get().uploadOrReplaceFile(path.getFileName().toString(),
-                        readerPair.left, readerPair.right, context.network, context.crypto, () -> false, l -> {}).join();
+                Optional<FileWrapper> existing = getByPath(path);
+                if (existing.isPresent() && !existing.get().isDirectory()
+                        && !existing.get().getFileProperties().isHidden) {
+                    existing.get().overwriteChangedChunks(readerPair.left, readerPair.right,
+                            context.network, context.crypto, l -> {}).join();
+                } else {
+                    parentFolder.get().uploadOrReplaceFile(path.getFileName().toString(),
+                            readerPair.left, readerPair.right, context.network, context.crypto, () -> false, l -> {}).join();
+                }
             }
             return readerPair.right;
         } catch (Exception e) {
@@ -381,7 +408,11 @@ public class WebdavFileSystem implements IWebdavStore {
             return Collections.emptyMap();
         FileWrapper fw = fwOpt.get();
         Map<String, Object> props = new LinkedHashMap<>();
-        fw.getFileProperties().treeHash.ifPresent(h -> props.put(PEERGOS_NS + ":treehash", h.toString()));
+        fw.getFileProperties().treeHash.ifPresent(h -> {
+            props.put(PEERGOS_NS + ":treehash", h.toString());
+            h.level1.ifPresent(chunks -> props.put(PEERGOS_NS + ":treehash-chunks",
+                    HexFormat.of().formatHex(chunks.chunkHashes)));
+        });
         props.put(PEERGOS_NS + ":writerKey", fw.writer().toString());
         return props;
     }

@@ -164,30 +164,32 @@ public class DoPut extends AbstractMethod {
 
                     // setting resourceContent
                     Optional<String> header = Optional.ofNullable(req.getHeader("Content-Range")).map(t -> t.trim());
-                    long start=0, end=0, length=Optional.ofNullable(req.getHeader("X-Expected-Entity-Length"))
-                            .map(Long::parseLong)
-                            .orElse(0L);
-                    if (header.isPresent() && ! header.get().contains("-")) {
-                        start = Long.parseLong(header.get().substring("bytes".length()));
-                    } else if (header.isPresent()){
+                    long start = 0, end = 0;
+                    boolean hasRange = false;
+                    if (header.isPresent() && header.get().contains("-")) {
+                        // Content-Range: bytes start-end/total  (end is inclusive)
                         String[] split = header.get().split("-");
-                        start = Long.parseLong(split[0].substring("bytes".length()));
-                        if (split[1].contains("/")) {
-                            int slash = split[1].indexOf("/");
-                            end = Long.parseLong(split[1].substring(0, slash));
-                            length = Long.parseLong(split[1].substring(slash + 1));
+                        start = Long.parseLong(split[0].substring("bytes".length()).trim());
+                        String afterDash = split[1];
+                        if (afterDash.contains("/")) {
+                            end = Long.parseLong(afterDash.substring(0, afterDash.indexOf("/")));
                         } else {
-                            end = Long.parseLong(split[1]);
-                            length = end-start;
+                            end = Long.parseLong(afterDash);
                         }
+                        hasRange = true;
                     }
-                    Optional<String> lengthHeader = Optional.ofNullable(req.getHeader("Content-Length")).map(t -> t.trim());
-                    if (end == 0 && lengthHeader.isPresent()) {
-                        end = Long.parseLong(lengthHeader.get());
-                        length = end;
+                    long length;
+                    if (hasRange) {
+                        length = end - start + 1; // end is inclusive
+                    } else {
+                        length = Optional.ofNullable(req.getHeader("X-Expected-Entity-Length"))
+                                .or(() -> Optional.ofNullable(req.getHeader("Content-Length")))
+                                .map(Long::parseLong).orElse(0L);
+                        end = length;
                     }
-                    System.out.println("start, end, length = " + start + "," + end + "," + length);
-                    long resourceLength = store.setResourceContent(transaction, path, new Pair<>(new InputStreamAsyncReader(req.getInputStream()), length), null, null);
+                    long resourceLength = store.setResourceContent(transaction, path,
+                            new Pair<>(new InputStreamAsyncReader(req.getInputStream()), length),
+                            start, end + 1, null, null);
 
                     so = store.getStoredObject(transaction, path);
                     if (so == null) {

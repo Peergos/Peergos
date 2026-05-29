@@ -124,6 +124,16 @@ public interface IWebdavStore {
                              String contentType,
                              String characterEncoding );
 
+    default long setResourceContent( ITransaction transaction,
+                                     String resourceUri,
+                                     Pair<AsyncReader, Long> readerPair,
+                                     long rangeStart,
+                                     long rangeEnd,
+                                     String contentType,
+                                     String characterEncoding ) {
+        return setResourceContent(transaction, resourceUri, readerPair, contentType, characterEncoding);
+    }
+
     /**
      *
      * @param transaction indicates that the method is within the scope of a WebDAV transaction
