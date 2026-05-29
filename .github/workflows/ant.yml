@@ -25,6 +25,7 @@ jobs:
     - name: install fuse 2 and gvfs
       if: matrix.os == 'ubuntu-latest'
       run: |
+        sudo apt-get update
         sudo apt install -y libfuse2 gvfs gvfs-backends gvfs-fuse dbus-x11
         mkdir -p /run/user/$(id -u)
         eval $(dbus-launch --sh-syntax)
