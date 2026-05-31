@@ -142,7 +142,7 @@
   <target name="parallel_test" depends="compile,dist,linux_tests">
     <for
 	keepgoing="false"
-	threadCount="1"
+	threadCount="3"
 	parallel="true"
 	param="test.source.absolute">
       <path>
