@@ -87,6 +87,9 @@ public class Main extends Builder {
             "Comma separated list of extra announce multi-addresses. e.g. a public NAT address with port forwarding: /ip4/$IP/tcp/4001", false);
     public static final Command.Arg ARG_HTTP_PROXY = new Command.Arg("http_proxy", "Use a http proxy for all requests, format host:port", false);
     public static final Command.Arg ARG_SERVER_URL = new Command.Arg("server-url", "Address of the remote Peergos or self-hosted server to use in app/proxy mode", false);
+    public static final Command.Arg ARG_NATIVE_TWEETNACL_PATH = new Command.Arg("native-tweetnacl-path",
+            "Path to write the native TweetNaCl library, e.g. /opt/peergos/libtweetnacl.so. " +
+            "If not supplied a temp file is used. If the path is not writable but the file already exists, the existing file is loaded.", false);
 
     public static final Command.Arg LISTEN_HOST = new Command.Arg("listen-host", "The hostname/interface to listen on", true, "localhost");
     public static final Command.Arg QUOTA_UPLOAD_LIMIT_SECONDS = new Command.Arg("quota-upload-limit-seconds", "The minimum time period during which a user is allowed to upload their total quota, in seconds. Faster uploads will be rejected.", false, "86400");
@@ -179,7 +182,8 @@ public class Main extends Builder {
                     new Command.Arg("collect-metrics", "Export aggregated metrics", false, "false"),
                     new Command.Arg("metrics.address", "Listen address for serving aggregated metrics", false, "localhost"),
                     new Command.Arg("metrics.port", "Port for serving aggregated metrics", false, "8001"),
-                    new Command.Arg("ipfs.metrics.port", "Port for serving aggregated ipfs metrics", false)
+                    new Command.Arg("ipfs.metrics.port", "Port for serving aggregated ipfs metrics", false),
+                    ARG_NATIVE_TWEETNACL_PATH
             ).collect(Collectors.toList())
     );
 
@@ -640,7 +644,8 @@ public class Main extends Builder {
                     "            without running a daemon which exposes your IP address. ",
             a -> {
                 try {
-                    Crypto crypto = JavaCrypto.init();
+                    Optional<Path> nativeLibPath = a.getOptionalArg("native-tweetnacl-path").map(Paths::get);
+                    Crypto crypto = initCrypto(new ScryptJava(), nativeLibPath);
                     PublicSigningKey.addProvider(PublicSigningKey.Type.Ed25519, crypto.signer);
                     JvmThumbnailer.initJava();
                     URL target = new URL(getAppServerUrl(a));
@@ -725,7 +730,8 @@ public class Main extends Builder {
                     new Command.Arg("mutable-pointers-cache", "The filename for the mutable pointers cache", true, "pointer-cache.sqlite"),
                     new Command.Arg("account-cache-sql-file", "The filename for the account cache", true, "account-cache.sqlite"),
                     new Command.Arg("pki-cache-sql-file", "The filename for the pki cache", true, "pki-cache.sqlite"),
-                    new Command.Arg("bat-cache-sql-file", "The filename for the bat cache", true, "bat-cache.sqlite")
+                    new Command.Arg("bat-cache-sql-file", "The filename for the bat cache", true, "bat-cache.sqlite"),
+                    ARG_NATIVE_TWEETNACL_PATH
             ),
             Collections.emptyList()
     );
@@ -800,7 +806,8 @@ public class Main extends Builder {
 
     public static ServerProcesses startPeergos(Args a) {
         try {
-            Crypto crypto = initCrypto();
+            Optional<Path> nativeLibPath = a.getOptionalArg("native-tweetnacl-path").map(Paths::get);
+            Crypto crypto = initCrypto(new ScryptJava(), nativeLibPath);
             PublicSigningKey.addProvider(PublicSigningKey.Type.Ed25519, crypto.signer);
             JvmThumbnailer.initJava();
             Hasher hasher = crypto.hasher;

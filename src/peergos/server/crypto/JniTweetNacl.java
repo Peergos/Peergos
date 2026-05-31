@@ -11,9 +11,16 @@ import java.util.concurrent.*;
 
 public class JniTweetNacl {
 
+    private static volatile boolean loaded = false;
+
     private JniTweetNacl() {}
 
     public static JniTweetNacl build() {
+        return build(Optional.empty());
+    }
+
+    public static JniTweetNacl build(Optional<Path> libPath) {
+        load(libPath);
         return new JniTweetNacl();
     }
 
@@ -38,7 +45,9 @@ public class JniTweetNacl {
         throw new RuntimeException("Unsupported OS: " + System.getProperty("os.name"));
     }
 
-    static {
+    public static synchronized void load(Optional<Path> providedPath) {
+        if (loaded)
+            return;
         boolean isAndroid = "The Android Project".equals(System.getProperty("java.vm.vendor"));
         if (isAndroid) {
             System.loadLibrary("tweetnacl");
@@ -52,10 +61,24 @@ public class JniTweetNacl {
                 InputStream resource = JniTweetNacl.class.getResourceAsStream("/" + libPath);
                 if (resource != null) {
                     byte[] data = Serialize.readFully(resource);
-                    Path writeLibPath = Files.createTempFile("tweetnacl", ext);
-                    writeLibPath.toFile().deleteOnExit();
-                    Files.write(writeLibPath, data, StandardOpenOption.TRUNCATE_EXISTING);
-                    absoluteLibPath = writeLibPath.toAbsolutePath().toString();
+                    if (providedPath.isPresent()) {
+                        Path target = providedPath.get();
+                        try {
+                            Files.write(target, data, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
+                            absoluteLibPath = target.toAbsolutePath().toString();
+                        } catch (IOException e) {
+                            if (Files.exists(target)) {
+                                absoluteLibPath = target.toAbsolutePath().toString();
+                            } else {
+                                throw e;
+                            }
+                        }
+                    } else {
+                        Path writeLibPath = Files.createTempFile("tweetnacl", ext);
+                        writeLibPath.toFile().deleteOnExit();
+                        Files.write(writeLibPath, data, StandardOpenOption.TRUNCATE_EXISTING);
+                        absoluteLibPath = writeLibPath.toAbsolutePath().toString();
+                    }
                 } else {
                     absoluteLibPath = libPath.toAbsolutePath().toString();
                 }
@@ -65,6 +88,7 @@ public class JniTweetNacl {
                 throw new RuntimeException(t);
             }
         }
+        loaded = true;
     }
 
     public static native int crypto_box_keypair(byte[] y, byte[] x);

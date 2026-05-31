@@ -59,12 +59,16 @@ public class Builder {
     }
 
     public static Crypto initCrypto() {
-        return initCrypto(new ScryptJava());
+        return initCrypto(new ScryptJava(), Optional.empty());
     }
 
     public static Crypto initCrypto(Hasher h) {
+        return initCrypto(h, Optional.empty());
+    }
+
+    public static Crypto initCrypto(Hasher h, Optional<Path> libPath) {
         try {
-            JniTweetNacl nativeNacl = JniTweetNacl.build();
+            JniTweetNacl nativeNacl = JniTweetNacl.build(libPath);
             Salsa20Poly1305 symmetricProvider = new JniTweetNacl.Symmetric(nativeNacl);
             Ed25519 signer = new JniTweetNacl.Signer(nativeNacl);
             Curve25519 boxer = new Curve25519Java();
