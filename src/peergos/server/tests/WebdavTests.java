@@ -119,6 +119,48 @@ public class WebdavTests {
             Assert.assertEquals(207, propfind3.statusCode());
             Assert.assertTrue("Directory listing should contain new subdirectory",
                     propfind3.body().contains("test-subdir"));
+
+            // Rename: MOVE the file to a new name
+            String renamedPath = "/" + username + "/test-webdav-renamed.txt";
+            HttpResponse<String> move = client.send(
+                    HttpRequest.newBuilder(URI.create(base + filePath))
+                            .method("MOVE", HttpRequest.BodyPublishers.noBody())
+                            .header("Authorization", auth)
+                            .header("Destination", base + renamedPath)
+                            .build(),
+                    HttpResponse.BodyHandlers.ofString());
+            Assert.assertTrue("MOVE should return 201 or 204: " + move.statusCode(),
+                    move.statusCode() == 201 || move.statusCode() == 204);
+
+            HttpResponse<byte[]> getRenamedFile = client.send(
+                    HttpRequest.newBuilder(URI.create(base + renamedPath))
+                            .GET()
+                            .header("Authorization", auth)
+                            .build(),
+                    HttpResponse.BodyHandlers.ofByteArray());
+            Assert.assertEquals("GET renamed file should return 200", 200, getRenamedFile.statusCode());
+            Assert.assertArrayEquals("Renamed file content should match original", fileContent, getRenamedFile.body());
+
+            // Modify: PUT new content to the renamed file
+            byte[] modifiedContent = "Updated WebDAV content!".getBytes();
+            HttpResponse<String> putModified = client.send(
+                    HttpRequest.newBuilder(URI.create(base + renamedPath))
+                            .PUT(HttpRequest.BodyPublishers.ofByteArray(modifiedContent))
+                            .header("Authorization", auth)
+                            .header("Content-Type", "text/plain")
+                            .build(),
+                    HttpResponse.BodyHandlers.ofString());
+            Assert.assertTrue("Modify PUT should return 201 or 204: " + putModified.statusCode(),
+                    putModified.statusCode() == 201 || putModified.statusCode() == 204);
+
+            HttpResponse<byte[]> getModified = client.send(
+                    HttpRequest.newBuilder(URI.create(base + renamedPath))
+                            .GET()
+                            .header("Authorization", auth)
+                            .build(),
+                    HttpResponse.BodyHandlers.ofByteArray());
+            Assert.assertEquals("GET modified file should return 200", 200, getModified.statusCode());
+            Assert.assertArrayEquals("Modified content should match", modifiedContent, getModified.body());
         } finally {
             webdavServer.stop();
         }
@@ -164,6 +206,24 @@ public class WebdavTests {
             while (!subfile.toFile().exists() && System.currentTimeMillis() < deadline2)
                 Thread.sleep(200);
             Assert.assertArrayEquals("Nested file content must round-trip", subContent, Files.readAllBytes(subfile));
+
+            // Rename: move the top-level file to a new name
+            Path renamed = home.resolve("mount-test-renamed.txt");
+            Files.move(file, renamed);
+            long deadline3 = System.currentTimeMillis() + 10_000;
+            while (!renamed.toFile().exists() && System.currentTimeMillis() < deadline3)
+                Thread.sleep(200);
+            Assert.assertTrue("Renamed file should exist", renamed.toFile().exists());
+            Assert.assertFalse("Original file should not exist after rename", file.toFile().exists());
+            Assert.assertArrayEquals("Renamed file content should match original", content, Files.readAllBytes(renamed));
+
+            // Modify: overwrite the renamed file with new content
+            byte[] modifiedContent = "Modified mount content!".getBytes();
+            Files.write(renamed, modifiedContent);
+            long deadline4 = System.currentTimeMillis() + 10_000;
+            while (Files.readAllBytes(renamed).length != modifiedContent.length && System.currentTimeMillis() < deadline4)
+                Thread.sleep(200);
+            Assert.assertArrayEquals("Modified content must round-trip through mount", modifiedContent, Files.readAllBytes(renamed));
         } finally {
             webdavServer.stop();
         }

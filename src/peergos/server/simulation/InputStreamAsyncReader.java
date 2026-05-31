@@ -22,6 +22,7 @@ public class InputStreamAsyncReader implements AsyncReader {
     @Override
     public CompletableFuture<Integer> readIntoArray(byte[] res, int offset, int length) {
         try {
+            int originalLength = length;
             int read = is.read(res, offset, length);
             if (read < 0)
                 throw new EOFException();
@@ -35,7 +36,7 @@ public class InputStreamAsyncReader implements AsyncReader {
                 } else
                     throw new EOFException();
             }
-            return Futures.of(length);
+            return Futures.of(originalLength - length);
         } catch (IOException e) {
             throw new RuntimeException(e);
         }

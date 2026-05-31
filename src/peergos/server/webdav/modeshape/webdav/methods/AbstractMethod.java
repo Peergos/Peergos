@@ -310,7 +310,7 @@ public abstract class AbstractMethod implements IMethodExecutor {
                                   String path ) throws IOException, LockFailedException {
 
         LockedObject resourceLock = resourceLocks.getLockedObjectByPath(transaction, path);
-        if (resourceLock == null || resourceLock.isShared()) {
+        if (resourceLock == null || resourceLock.isShared() || resourceLock.hasExpired()) {
             return true;
         }
 

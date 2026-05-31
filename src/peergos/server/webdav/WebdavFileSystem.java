@@ -262,7 +262,7 @@ public class WebdavFileSystem implements IWebdavStore {
             }
             return readerPair.right;
         } catch (Exception e) {
-            LOG.warning("PeergosFileSystem.setResourceContent(" + uri + ") failed");
+            LOG.log(Level.WARNING, "PeergosFileSystem.setResourceContent(" + uri + ") failed", e);
             throw new WebdavException(e);
         }
     }

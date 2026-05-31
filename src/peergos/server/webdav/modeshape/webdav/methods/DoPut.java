@@ -203,7 +203,7 @@ public class DoPut extends AbstractMethod {
                     logger.log(Level.FINE, e, () -> "Access denied when working with " + path);
                     resp.sendError(WebdavStatus.SC_FORBIDDEN);
                 } catch (WebdavException e) {
-                    logger.log(Level.FINE, e, () -> "WebDAV exception when working with " + path);
+                    logger.log(Level.WARNING, e, () -> "WebDAV exception when working with " + path);
                     resp.sendError(WebdavStatus.SC_INTERNAL_SERVER_ERROR);
                 } finally {
                     resourceLocks.unlockTemporaryLockedObjects(transaction, path, tempLockOwner);
