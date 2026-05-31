@@ -64,8 +64,6 @@ public class Builder {
 
     public static Crypto initCrypto(Hasher h) {
         try {
-            if (! "linux".equalsIgnoreCase(System.getProperty("os.name")))
-                return JavaCrypto.init();
             JniTweetNacl nativeNacl = JniTweetNacl.build();
             Salsa20Poly1305 symmetricProvider = new JniTweetNacl.Symmetric(nativeNacl);
             Ed25519 signer = new JniTweetNacl.Signer(nativeNacl);

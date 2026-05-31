@@ -27,29 +27,41 @@ public class JniTweetNacl {
         return arch;
     }
 
+    private static String[] libInfo() {
+        String osName = System.getProperty("os.name").toLowerCase();
+        if (osName.contains("linux"))
+            return new String[]{"linux", "libtweetnacl.so", ".so"};
+        if (osName.contains("mac") || osName.contains("darwin"))
+            return new String[]{"darwin", "libtweetnacl.dylib", ".dylib"};
+        if (osName.contains("win"))
+            return new String[]{"windows", "tweetnacl.dll", ".dll"};
+        throw new RuntimeException("Unsupported OS: " + System.getProperty("os.name"));
+    }
+
     static {
-        String absoluteLibPath = "";
-        boolean isLinux = "linux".equalsIgnoreCase(System.getProperty("os.name"));
         boolean isAndroid = "The Android Project".equals(System.getProperty("java.vm.vendor"));
         if (isAndroid) {
             System.loadLibrary("tweetnacl");
         } else {
             String arch = canonicaliseArchitecture(System.getProperty("os.arch"));
+            String absoluteLibPath = "";
             try {
-                new File("native-lib").mkdirs();
-                Path writeLibPath = PathUtil.get("native-lib", "libtweetnacl.so");
-                if (! writeLibPath.toFile().exists()) {
-                    Path libPath = PathUtil.get("native-lib", "linux", arch, "libtweetnacl.so");
-                    byte[] data = Serialize.readFully(JniTweetNacl.class.getResourceAsStream("/" + libPath));
-                    Files.write(writeLibPath, data, StandardOpenOption.CREATE);
+                String[] info = libInfo();
+                String os = info[0], libName = info[1], ext = info[2];
+                Path libPath = PathUtil.get("native-lib", os, arch, libName);
+                InputStream resource = JniTweetNacl.class.getResourceAsStream("/" + libPath);
+                if (resource != null) {
+                    byte[] data = Serialize.readFully(resource);
+                    Path writeLibPath = Files.createTempFile("tweetnacl", ext);
+                    writeLibPath.toFile().deleteOnExit();
+                    Files.write(writeLibPath, data, StandardOpenOption.TRUNCATE_EXISTING);
+                    absoluteLibPath = writeLibPath.toAbsolutePath().toString();
+                } else {
+                    absoluteLibPath = libPath.toAbsolutePath().toString();
                 }
-                absoluteLibPath = writeLibPath.toFile().getAbsolutePath();
-                System.loadLibrary("tweetnacl");
+                System.load(absoluteLibPath);
             } catch (Throwable t) {
-                if (isLinux) {
-                    System.err.println("Couldn't load native crypto library at " + absoluteLibPath + ", using pure Java version...");
-                    System.err.println("To use the native Linux crypto implementation use option -Djava.library.path=native-lib");
-                }
+                System.err.println("Couldn't load native crypto library at " + absoluteLibPath);
                 throw new RuntimeException(t);
             }
         }
