@@ -2,18 +2,26 @@ package peergos.server.net;
 
 import com.sun.net.httpserver.*;
 import org.eclipse.jetty.server.Server;
+import peergos.server.Builder;
+import peergos.server.Main;
 import peergos.server.MountProperties;
+import peergos.server.cfapi.CloudFilesMount;
+import peergos.server.cfapi.WindowsVersionCheck;
 import peergos.server.webdav.MountConfig;
 import peergos.server.webdav.WebdavFileSystem;
 import peergos.server.webdav.WebdavMount;
 import peergos.server.webdav.WebdavServer;
 import peergos.server.util.HttpUtil;
 import peergos.server.util.Logging;
+import peergos.shared.Crypto;
+import peergos.shared.NetworkAccess;
 import peergos.shared.io.ipfs.api.JSONParser;
+import peergos.shared.user.UserContext;
 import peergos.shared.util.Constants;
 import peergos.shared.util.Serialize;
 
 import java.io.*;
+import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
 import java.security.SecureRandom;
@@ -30,6 +38,7 @@ public class MountConfigHandler implements HttpHandler {
     private final String peergosUrl;
     private final AtomicReference<Server> webdavServer = new AtomicReference<>(null);
     private final AtomicReference<WebdavMount> activeMount = new AtomicReference<>(null);
+    private final AtomicReference<CloudFilesMount> activeCloudMount = new AtomicReference<>(null);
     private final AtomicReference<String> mountError = new AtomicReference<>(null);
     private final AtomicReference<String> activePeergosUsername = new AtomicReference<>("");
 
@@ -73,7 +82,14 @@ public class MountConfigHandler implements HttpHandler {
         }
     }
 
-    private void enableMount(MountConfig config) throws IOException {
+    private void enableMount(MountConfig config) throws Exception {
+        if (WindowsVersionCheck.isCfApiAvailable()) {
+            UserContext context = buildContext(config);
+            CloudFilesMount mount = CloudFilesMount.mount(context);
+            activeCloudMount.set(mount);
+            activePeergosUsername.set(config.peergosUsername);
+            return;
+        }
         WebdavFileSystem fs = new WebdavFileSystem(config.peergosUsername, config.peergosPassword, peergosUrl);
         Server server = WebdavServer.startNonBlocking(config.webdavPort, config.webdavUsername,
                 config.webdavPassword, fs, config.authType);
@@ -82,6 +98,15 @@ public class MountConfigHandler implements HttpHandler {
         writeAppGroupConfig(config);
         WebdavMount mount = WebdavMount.mount(config.webdavPort, config.webdavUsername, config.webdavPassword);
         activeMount.set(mount);
+    }
+
+    private UserContext buildContext(MountConfig config) throws Exception {
+        Crypto crypto = Main.initCrypto();
+        NetworkAccess network = Builder.buildJavaNetworkAccess(
+                new URL(peergosUrl), peergosUrl.startsWith("https"),
+                Optional.of("Peergos-webdav"), Optional.empty()).join();
+        return UserContext.signIn(config.peergosUsername, config.peergosPassword,
+                Main::getMfaResponseCLI, network, crypto).join();
     }
 
     private static void writeAppGroupConfig(MountConfig config) {
@@ -103,6 +128,9 @@ public class MountConfigHandler implements HttpHandler {
     }
 
     private void disableMount() {
+        CloudFilesMount cfMount = activeCloudMount.getAndSet(null);
+        if (cfMount != null)
+            cfMount.close();
         WebdavMount mount = activeMount.getAndSet(null);
         if (mount != null)
             mount.close();
@@ -158,14 +186,17 @@ public class MountConfigHandler implements HttpHandler {
             if (action.equals("get-config")) {
                 MountConfig config = readConfig();
                 WebdavMount mount = activeMount.get();
-                boolean mountActive = mount != null;
+                CloudFilesMount cfMount = activeCloudMount.get();
+                boolean mountActive = mount != null || cfMount != null;
+                String mountPoint = cfMount != null ? cfMount.getMountPoint()
+                        : mount != null ? mount.getMountPoint() : "";
                 Map<String, Object> json = new LinkedHashMap<>();
                 json.put("enabled", mountActive || config.enabled);
                 json.put("peergosUsername", mountActive ? activePeergosUsername.get() : config.peergosUsername);
                 json.put("webdavUsername", config.webdavUsername);
                 json.put("webdavPort", config.webdavPort);
                 json.put("authType", config.authType);
-                json.put("mountPoint", mountActive ? mount.getMountPoint() : "");
+                json.put("mountPoint", mountPoint);
                 String err = mountError.get();
                 if (err != null) json.put("error", err);
                 byte[] res = JSONParser.toString(json).getBytes(StandardCharsets.UTF_8);

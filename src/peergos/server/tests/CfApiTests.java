@@ -1,0 +1,185 @@
+package peergos.server.tests;
+
+import org.junit.*;
+import org.junit.rules.TemporaryFolder;
+import peergos.server.*;
+import peergos.server.cfapi.*;
+import peergos.server.util.*;
+import peergos.shared.*;
+import peergos.shared.user.*;
+import peergos.shared.user.fs.*;
+
+import java.lang.foreign.*;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.*;
+import java.time.LocalDateTime;
+import java.util.*;
+import java.util.stream.Collectors;
+
+import static org.junit.Assert.*;
+
+public class CfApiTests {
+
+    private static final String PASSWORD = "cfapipassword123";
+    private static int WEB_PORT;
+
+    @Rule
+    public TemporaryFolder tmp = new TemporaryFolder();
+
+    private static boolean isWindows() {
+        return System.getProperty("os.name", "").toLowerCase().startsWith("windows");
+    }
+
+    @BeforeClass
+    public static void startServer() throws Exception {
+        if (!isWindows()) return;
+        Args args = UserTests.buildArgs().with("useIPFS", "false");
+        WEB_PORT = args.getInt("port");
+        Main.PKI_INIT.main(args);
+    }
+
+    // -----------------------------------------------------------------------
+    // Platform-independent tests (always run)
+    // -----------------------------------------------------------------------
+
+    @Test
+    public void versionCheckReturnsFalseOnNonWindows() {
+        if (isWindows()) return;
+        assertFalse(WindowsVersionCheck.isCfApiAvailable());
+    }
+
+    @Test
+    public void wideStringRoundTrip() {
+        String[] cases = {"", "hello", "Peergos", "/username/Documents/file.txt", "cafe"};
+        try (Arena arena = Arena.ofConfined()) {
+            for (String s : cases) {
+                MemorySegment seg = CfApi.wideString(s, arena);
+                MemorySegment info = arena.allocate(CfApi.CBI_NORMALIZED_PATH_OFF + 8);
+                info.set(ValueLayout.JAVA_LONG, CfApi.CBI_NORMALIZED_PATH_OFF, seg.address());
+                assertEquals("Round-trip failed for: " + s, s,
+                        CfApi.readWideString(info, CfApi.CBI_NORMALIZED_PATH_OFF));
+            }
+        }
+    }
+
+    @Test
+    public void fileTimeConversion() {
+        LocalDateTime epoch = LocalDateTime.of(1970, 1, 1, 0, 0, 0);
+        assertEquals(116_444_736_000_000_000L, CfApi.toFileTime(epoch));
+        assertEquals(0L, CfApi.toFileTime(null));
+        LocalDateTime ts = LocalDateTime.of(2001, 9, 9, 1, 46, 40);
+        long expected = (1_000_000_000L + 11_644_473_600L) * 10_000_000L;
+        assertEquals(expected, CfApi.toFileTime(ts));
+    }
+
+    @Test
+    public void structSizeConstants() {
+        assertTrue(CfApi.REG_SIZE      >= 48);
+        assertEquals(24, CfApi.POLICIES_SIZE);
+        assertEquals(88, CfApi.PCI_SIZE);
+        assertEquals(48, CfApi.OI_SIZE);
+        assertEquals(16, CfApi.CBR_ENTRY_SIZE);
+        assertTrue(CfApi.PCI_FS_METADATA_OFF + CfApi.FSM_FILE_SIZE_OFF + 8 <= CfApi.PCI_FILE_IDENTITY_OFF);
+    }
+
+    // -----------------------------------------------------------------------
+    // Windows-only tests
+    // -----------------------------------------------------------------------
+
+    @Test
+    public void loadCfapiDll() {
+        if (!isWindows()) return;
+        CfApi.load(); // must not throw
+    }
+
+    @Test
+    public void registerAndUnregisterSyncRoot() throws Exception {
+        if (!isWindows()) return;
+        CfApi.load();
+        Path syncRoot = tmp.newFolder("peergos-cfapi-test").toPath();
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment pathW    = CfApi.wideString(syncRoot.toString(), arena);
+            MemorySegment reg      = buildRegistration(arena);
+            MemorySegment policies = buildPolicies(arena);
+            CfApi.cfUnregisterSyncRoot(pathW); // clear any stale registration
+            int hr = CfApi.cfRegisterSyncRoot(pathW, reg, policies, CfApi.CF_REGISTER_FLAG_NONE);
+            assertEquals("CfRegisterSyncRoot", CfApi.S_OK, hr);
+            hr = CfApi.cfUnregisterSyncRoot(pathW);
+            assertEquals("CfUnregisterSyncRoot", CfApi.S_OK, hr);
+        }
+    }
+
+    @Test
+    public void mountLifecyclePlaceholdersAppear() throws Exception {
+        if (!isWindows()) return;
+        NetworkAccess network = Builder.buildLocalJavaNetworkAccess(WEB_PORT).join();
+        Crypto crypto = Main.initCrypto();
+        String user = "cfapi" + UUID.randomUUID().toString().substring(0, 8);
+        UserContext context = UserContext.signUp(user, PASSWORD, "", network, crypto).join();
+
+        byte[] content = "Hello from Peergos CF API test".getBytes(StandardCharsets.UTF_8);
+        FileWrapper home = context.getByPath("/" + context.username).join().get();
+        home.uploadOrReplaceFile("hello.txt", new AsyncReader.ArrayBacked(content), content.length,
+                context.network, context.crypto, () -> false, l -> {}).join();
+        home.uploadOrReplaceFile("world.txt", new AsyncReader.ArrayBacked(content), content.length,
+                context.network, context.crypto, () -> false, l -> {}).join();
+
+        Path syncRoot = tmp.newFolder("peergos-cf-" + user).toPath();
+        CloudFilesMount mount = CloudFilesMount.mount(context, syncRoot.toString());
+        try {
+            List<String> names = Files.list(syncRoot)
+                    .map(p -> p.getFileName().toString())
+                    .collect(Collectors.toList());
+            assertTrue("hello.txt placeholder should exist", names.contains("hello.txt"));
+            assertTrue("world.txt placeholder should exist", names.contains("world.txt"));
+
+            // Reading a placeholder triggers FETCH_DATA — content must match
+            byte[] read = Files.readAllBytes(syncRoot.resolve("hello.txt"));
+            assertArrayEquals("File content must match what was uploaded", content, read);
+        } finally {
+            mount.close();
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Struct builder helpers
+    // -----------------------------------------------------------------------
+
+    private static MemorySegment buildRegistration(Arena arena) {
+        MemorySegment reg = arena.allocate(CfApi.REG_SIZE);
+        MemorySegment nameW    = CfApi.wideString("PeergosTest", arena);
+        MemorySegment versionW = CfApi.wideString("1.0", arena);
+        UUID guid = UUID.nameUUIDFromBytes("peergos-cfapi-test".getBytes());
+        reg.set(ValueLayout.JAVA_LONG, CfApi.REG_PROVIDER_NAME_OFF,          nameW.address());
+        reg.set(ValueLayout.JAVA_LONG, CfApi.REG_PROVIDER_VERSION_OFF,       versionW.address());
+        reg.set(ValueLayout.JAVA_LONG, CfApi.REG_SYNC_ROOT_IDENTITY_OFF,     0L);
+        reg.set(ValueLayout.JAVA_INT,  CfApi.REG_SYNC_ROOT_IDENTITY_LEN_OFF, 0);
+        reg.set(ValueLayout.JAVA_LONG, CfApi.REG_FILE_IDENTITY_OFF,          0L);
+        reg.set(ValueLayout.JAVA_INT,  CfApi.REG_FILE_IDENTITY_LEN_OFF,      0);
+        writeGuid(reg, CfApi.REG_PROVIDER_CLSID_OFF, guid);
+        return reg;
+    }
+
+    private static MemorySegment buildPolicies(Arena arena) {
+        MemorySegment p = arena.allocate(CfApi.POLICIES_SIZE);
+        p.set(ValueLayout.JAVA_INT,   CfApi.POLICIES_STRUCT_SIZE_OFF,       (int) CfApi.POLICIES_SIZE);
+        p.set(ValueLayout.JAVA_SHORT, CfApi.POLICIES_HYDRATION_OFF,         CfApi.CF_HYDRATION_POLICY_PARTIAL);
+        p.set(ValueLayout.JAVA_SHORT, CfApi.POLICIES_HYDRATION_OFF   + 2,   CfApi.CF_POLICY_MODIFIER_NONE);
+        p.set(ValueLayout.JAVA_SHORT, CfApi.POLICIES_POPULATION_OFF,        CfApi.CF_POPULATION_POLICY_PARTIAL);
+        p.set(ValueLayout.JAVA_SHORT, CfApi.POLICIES_POPULATION_OFF  + 2,   CfApi.CF_POLICY_MODIFIER_NONE);
+        p.set(ValueLayout.JAVA_INT,   CfApi.POLICIES_INSYNC_OFF,            CfApi.CF_INSYNC_POLICY_NONE);
+        p.set(ValueLayout.JAVA_INT,   CfApi.POLICIES_HARDLINK_OFF,          CfApi.CF_HARDLINK_POLICY_NONE);
+        p.set(ValueLayout.JAVA_INT,   CfApi.POLICIES_PLACEHOLDER_MGMT_OFF,  0);
+        return p;
+    }
+
+    private static void writeGuid(MemorySegment seg, long offset, UUID uuid) {
+        long msb = uuid.getMostSignificantBits();
+        long lsb = uuid.getLeastSignificantBits();
+        seg.set(ValueLayout.JAVA_INT,   offset,     (int) (msb >>> 32));
+        seg.set(ValueLayout.JAVA_SHORT, offset + 4, (short) (msb >>> 16));
+        seg.set(ValueLayout.JAVA_SHORT, offset + 6, (short) msb);
+        for (int i = 0; i < 8; i++)
+            seg.set(ValueLayout.JAVA_BYTE, offset + 8 + i, (byte) (lsb >>> (56 - i * 8)));
+    }
+}
