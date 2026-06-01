@@ -316,6 +316,9 @@ public class DoPropfind extends AbstractMethod {
                     generatedXML.writeElement("DAV::resourcetype", XMLWriter.OPENING);
                     generatedXML.writeElement("DAV::collection", XMLWriter.NO_CONTENT);
                     generatedXML.writeElement("DAV::resourcetype", XMLWriter.CLOSING);
+                    long[] quota = store.getQuotaInfo(transaction);
+                    generatedXML.writeProperty("DAV::quota-used-bytes", String.valueOf(quota[0]));
+                    generatedXML.writeProperty("DAV::quota-available-bytes", String.valueOf(quota[1]));
                 }
 
                 writeSupportedLockElements(transaction, generatedXML, path);
@@ -348,6 +351,10 @@ public class DoPropfind extends AbstractMethod {
                 generatedXML.writeElement("DAV::resourcetype", XMLWriter.NO_CONTENT);
                 generatedXML.writeElement("DAV::supportedlock", XMLWriter.NO_CONTENT);
                 generatedXML.writeElement("DAV::source", XMLWriter.NO_CONTENT);
+                if (isFolder) {
+                    generatedXML.writeElement("DAV::quota-used-bytes", XMLWriter.NO_CONTENT);
+                    generatedXML.writeElement("DAV::quota-available-bytes", XMLWriter.NO_CONTENT);
+                }
 
                 generatedXML.writeElement("DAV::prop", XMLWriter.CLOSING);
                 generatedXML.writeElement("DAV::status", XMLWriter.OPENING);
@@ -422,6 +429,20 @@ public class DoPropfind extends AbstractMethod {
                         }
                     } else if (property.equals("DAV::source")) {
                         generatedXML.writeProperty("DAV::source", "");
+                    } else if (property.equals("DAV::quota-used-bytes")) {
+                        if (isFolder) {
+                            long[] quota = store.getQuotaInfo(transaction);
+                            generatedXML.writeProperty("DAV::quota-used-bytes", String.valueOf(quota[0]));
+                        } else {
+                            propertiesNotFound.addElement(property);
+                        }
+                    } else if (property.equals("DAV::quota-available-bytes")) {
+                        if (isFolder) {
+                            long[] quota = store.getQuotaInfo(transaction);
+                            generatedXML.writeProperty("DAV::quota-available-bytes", String.valueOf(quota[1]));
+                        } else {
+                            propertiesNotFound.addElement(property);
+                        }
                     } else if (property.equals("DAV::supportedlock")) {
 
                         writeSupportedLockElements(transaction, generatedXML, path);

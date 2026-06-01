@@ -68,6 +68,10 @@ public class WebdavFileSystem implements IWebdavStore {
     private static final String PEERGOS_NS = "https://peergos.org/ns/dav";
 
     private final UserContext context;
+    private volatile long cachedUsed = 0;
+    private volatile long cachedQuota = 1024L * 1024 * 1024;
+    private volatile long quotaCacheTime = 0;
+    private static final long QUOTA_CACHE_TTL_MS = 60_000;
 
     public WebdavFileSystem(String username, String password, String peergosUrl) {
         Crypto crypto = Main.initCrypto();
@@ -422,5 +426,20 @@ public class WebdavFileSystem implements IWebdavStore {
     public Map<String, String> getCustomNamespaces( ITransaction transaction,
                                                     String resourceUri ) {
         return Collections.singletonMap(PEERGOS_NS, "P");
+    }
+
+    @Override
+    public long[] getQuotaInfo( ITransaction transaction ) {
+        long now = System.currentTimeMillis();
+        if (now - quotaCacheTime > QUOTA_CACHE_TTL_MS) {
+            try {
+                cachedUsed = context.getSpaceUsage(false).join();
+                cachedQuota = context.getQuota().join();
+                quotaCacheTime = now;
+            } catch (Exception e) {
+                LOG.fine("Failed to refresh quota info: " + e.getMessage());
+            }
+        }
+        return new long[]{cachedUsed, Math.max(0, cachedQuota - cachedUsed)};
     }
 }
