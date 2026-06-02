@@ -22,7 +22,8 @@ import java.util.logging.*;
 public class CloudFilesProvider {
     private static final Logger LOG = Logging.LOG();
 
-    private static final int CHUNK_SIZE = 4 * 1024 * 1024; // 4 MB transfer chunks
+    private static final int CHUNK_SIZE   = 4 * 1024 * 1024; // 4 MB transfer chunks
+    private static final int CLUSTER_SIZE = 4096;            // CF API buffers must be padded to cluster boundary
 
     private final UserContext context;
     private final String syncRootPath;
@@ -89,7 +90,9 @@ public class CloudFilesProvider {
                     int toRead = (int) Math.min(buf.length, remaining);
                     int nRead  = reader.readIntoArray(buf, 0, toRead).join();
                     if (nRead <= 0) break;
-                    MemorySegment dataSeg = arena.allocate(nRead);
+                    // Buffer must be padded to next cluster boundary; Length stays as actual byte count.
+                    long paddedSize = ((nRead + CLUSTER_SIZE - 1) / CLUSTER_SIZE) * CLUSTER_SIZE;
+                    MemorySegment dataSeg = arena.allocate(paddedSize);
                     MemorySegment.copy(buf, 0, dataSeg, ValueLayout.JAVA_BYTE, 0, nRead);
                     transferData(arena, connectionKey, transferKey, dataSeg, offset, nRead);
                     offset    += nRead;
