@@ -90,12 +90,17 @@ public class CloudFilesProvider {
                     int toRead = (int) Math.min(buf.length, remaining);
                     int nRead  = reader.readIntoArray(buf, 0, toRead).join();
                     if (nRead <= 0) break;
-                    // CF API requires the buffer to be PAGE_SIZE-aligned in address AND
-                    // padded to the next PAGE_SIZE multiple in size; Length stays as actual byte count.
                     long paddedSize = ((nRead + CLUSTER_SIZE - 1) / CLUSTER_SIZE) * CLUSTER_SIZE;
-                    MemorySegment dataSeg = arena.allocate(paddedSize, CLUSTER_SIZE);
+                    // VirtualAlloc always returns page-aligned memory; CF API requires page-aligned buffers.
+                    MemorySegment dataSeg = CfApi.virtualAlloc(paddedSize).reinterpret(paddedSize);
+                    System.err.println("[CF] buffer addr=0x" + Long.toHexString(dataSeg.address())
+                            + " pageAligned=" + (dataSeg.address() % CLUSTER_SIZE == 0));
                     MemorySegment.copy(buf, 0, dataSeg, ValueLayout.JAVA_BYTE, 0, nRead);
-                    transferData(arena, connectionKey, transferKey, dataSeg, offset, nRead);
+                    try {
+                        transferData(connectionKey, transferKey, dataSeg, offset, nRead);
+                    } finally {
+                        CfApi.virtualFree(dataSeg);
+                    }
                     offset    += nRead;
                     remaining -= nRead;
                 }
@@ -106,8 +111,9 @@ public class CloudFilesProvider {
         }
     }
 
-    private void transferData(Arena arena, long connectionKey, long transferKey,
+    private void transferData(long connectionKey, long transferKey,
                               MemorySegment data, long offset, long length) {
+        try (Arena arena = Arena.ofConfined()) {
         MemorySegment opInfo   = buildOpInfo(arena, connectionKey, transferKey,
                 CfApi.CF_OPERATION_TYPE_TRANSFER_DATA);
         MemorySegment opParams = arena.allocate(CfApi.OP_XFER_DATA_SIZE);
@@ -121,6 +127,7 @@ public class CloudFilesProvider {
         int hr = CfApi.cfExecute(opInfo, opParams);
         System.err.println("[CF] CfExecute(TRANSFER_DATA) offset=" + offset + " length=" + length
                 + " hr=0x" + Integer.toHexString(hr));
+        } // end Arena
     }
 
     private void failTransfer(long connectionKey, long transferKey, int status) {

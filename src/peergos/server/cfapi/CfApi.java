@@ -325,6 +325,13 @@ public class CfApi {
     private static MethodHandle hCfDisconnectSyncRoot;
     private static MethodHandle hCfCreatePlaceholders;
     private static MethodHandle hCfExecute;
+    private static MethodHandle hVirtualAlloc;
+    private static MethodHandle hVirtualFree;
+
+    // MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE
+    private static final int MEM_COMMIT_RESERVE = 0x3000;
+    private static final int PAGE_READWRITE      = 0x4;
+    private static final int MEM_RELEASE         = 0x8000;
 
     public static synchronized void load() {
         if (loaded) return;
@@ -372,6 +379,21 @@ public class CfApi {
                 FunctionDescriptor.of(ValueLayout.JAVA_INT,
                         ValueLayout.ADDRESS, ValueLayout.ADDRESS));
 
+        // LPVOID VirtualAlloc(LPVOID lpAddress, SIZE_T dwSize, DWORD flAllocationType, DWORD flProtect)
+        SymbolLookup kernel32 = SymbolLookup.libraryLookup(
+                java.nio.file.Path.of(systemRoot, "System32", "kernel32.dll"), Arena.global());
+        hVirtualAlloc = linker.downcallHandle(
+                kernel32.find("VirtualAlloc").orElseThrow(),
+                FunctionDescriptor.of(ValueLayout.ADDRESS,
+                        ValueLayout.ADDRESS, ValueLayout.JAVA_LONG,
+                        ValueLayout.JAVA_INT, ValueLayout.JAVA_INT));
+
+        // BOOL VirtualFree(LPVOID lpAddress, SIZE_T dwSize, DWORD dwFreeType)
+        hVirtualFree = linker.downcallHandle(
+                kernel32.find("VirtualFree").orElseThrow(),
+                FunctionDescriptor.of(ValueLayout.JAVA_INT,
+                        ValueLayout.ADDRESS, ValueLayout.JAVA_LONG, ValueLayout.JAVA_INT));
+
         loaded = true;
     }
 
@@ -414,6 +436,24 @@ public class CfApi {
     public static int cfExecute(MemorySegment opInfo, MemorySegment opParams) {
         try {
             return (int) hCfExecute.invokeExact(opInfo, opParams);
+        } catch (Throwable t) { throw new RuntimeException(t); }
+    }
+
+    /**
+     * Allocate a page-aligned buffer via VirtualAlloc (MEM_COMMIT|MEM_RESERVE, PAGE_READWRITE).
+     * Returns a zero-initialised segment of the requested size, or NULL on failure.
+     */
+    public static MemorySegment virtualAlloc(long size) {
+        try {
+            return (MemorySegment) hVirtualAlloc.invokeExact(
+                    MemorySegment.NULL, size, MEM_COMMIT_RESERVE, PAGE_READWRITE);
+        } catch (Throwable t) { throw new RuntimeException(t); }
+    }
+
+    /** Free a buffer previously returned by virtualAlloc. */
+    public static void virtualFree(MemorySegment ptr) {
+        try {
+            hVirtualFree.invokeExact(ptr, 0L, MEM_RELEASE);
         } catch (Throwable t) { throw new RuntimeException(t); }
     }
 
