@@ -323,7 +323,11 @@ public class CfApi {
 
     public static synchronized void load() {
         if (loaded) return;
-        SymbolLookup cfapi = SymbolLookup.libraryLookup("cfapi.dll", Arena.global());
+        // cfapi.dll lives in %SystemRoot%\System32 which is not on the JVM's default library path
+        String systemRoot = System.getenv("SystemRoot");
+        if (systemRoot == null) systemRoot = "C:\\Windows";
+        java.nio.file.Path cfapiPath = java.nio.file.Path.of(systemRoot, "System32", "cfapi.dll");
+        SymbolLookup cfapi = SymbolLookup.libraryLookup(cfapiPath, Arena.global());
         Linker linker = Linker.nativeLinker();
 
         // HRESULT CfRegisterSyncRoot(LPCWSTR, const CF_SYNC_REGISTRATION*, const CF_SYNC_POLICIES*, CF_REGISTER_FLAGS)
