@@ -43,41 +43,32 @@ public class CloudFilesProvider {
     // -----------------------------------------------------------------------
 
     public void onFetchData(MemorySegment info, MemorySegment params) {
-        // Raw pointers from Windows arrive with byteSize=0; reinterpret before any field access.
+        // Raw pointers arrive with byteSize=0; reinterpret before any field access.
         info   = info.reinterpret(256);
         params = params.reinterpret(256);
-        long connectionKey;
-        long transferKey, fileSize, identityAddr, requiredOffset, requiredLength;
-        int identityLen;
+        long connectionKey = 0, transferKey = 0;
         try {
             connectionKey  = info.get(ValueLayout.JAVA_LONG, CfApi.CBI_CONNECTION_KEY_OFF);
             transferKey    = info.get(ValueLayout.JAVA_LONG, CfApi.CBI_TRANSFER_KEY_OFF);
-            fileSize       = info.get(ValueLayout.JAVA_LONG, CfApi.CBI_FILE_SIZE_OFF);
-            identityAddr   = info.get(ValueLayout.JAVA_LONG, CfApi.CBI_FILE_IDENTITY_OFF);
-            identityLen    = info.get(ValueLayout.JAVA_INT,  CfApi.CBI_FILE_IDENTITY_LEN_OFF);
-            requiredOffset = params.get(ValueLayout.JAVA_LONG, CfApi.CBP_FETCH_DATA_REQUIRED_OFFSET_OFF);
-            requiredLength = params.get(ValueLayout.JAVA_LONG, CfApi.CBP_FETCH_DATA_REQUIRED_LENGTH_OFF);
-        } catch (Exception e) {
-            LOG.log(Level.WARNING, "FETCH_DATA: failed to read callback params", e);
-            return;
-        }
+            long identityAddr  = info.get(ValueLayout.JAVA_LONG, CfApi.CBI_FILE_IDENTITY_OFF);
+            int  identityLen   = info.get(ValueLayout.JAVA_INT,  CfApi.CBI_FILE_IDENTITY_LEN_OFF);
+            long requiredOffset = params.get(ValueLayout.JAVA_LONG, CfApi.CBP_FETCH_DATA_REQUIRED_OFFSET_OFF);
+            long requiredLength = params.get(ValueLayout.JAVA_LONG, CfApi.CBP_FETCH_DATA_REQUIRED_LENGTH_OFF);
 
-        String peergosPath = pathFromIdentity(identityAddr, identityLen);
-        if (peergosPath == null) {
-            failTransfer(connectionKey, transferKey, -1);
-            return;
-        }
+            String peergosPath = pathFromIdentity(identityAddr, identityLen);
+            if (peergosPath == null) {
+                failTransfer(connectionKey, transferKey, -1);
+                return;
+            }
 
-        try {
             Optional<FileWrapper> fwOpt = context.getByPath(peergosPath).join();
             if (fwOpt.isEmpty() || fwOpt.get().isDirectory()) {
                 failTransfer(connectionKey, transferKey, -1);
                 return;
             }
-            FileWrapper fw = fwOpt.get();
+            FileWrapper fw  = fwOpt.get();
             long end = Math.min(requiredOffset + requiredLength, fw.getSize());
 
-            // Stream data in chunks, calling CfExecute(TRANSFER_DATA) for each
             try (Arena arena = Arena.ofConfined()) {
                 AsyncReader reader = fw.getInputStream(context.network, context.crypto,
                         fw.getSize(), l -> {}).join();
@@ -91,17 +82,15 @@ public class CloudFilesProvider {
                     int toRead = (int) Math.min(buf.length, remaining);
                     int nRead  = reader.readIntoArray(buf, 0, toRead).join();
                     if (nRead <= 0) break;
-
                     MemorySegment dataSeg = arena.allocate(nRead);
                     MemorySegment.copy(buf, 0, dataSeg, ValueLayout.JAVA_BYTE, 0, nRead);
-
                     transferData(arena, connectionKey, transferKey, dataSeg, offset, nRead);
                     offset    += nRead;
                     remaining -= nRead;
                 }
             }
         } catch (Exception e) {
-            LOG.log(Level.WARNING, "FETCH_DATA failed for " + peergosPath, e);
+            LOG.log(Level.WARNING, "FETCH_DATA callback error", e);
             failTransfer(connectionKey, transferKey, -1);
         }
     }
@@ -145,20 +134,13 @@ public class CloudFilesProvider {
     public void onFetchPlaceholders(MemorySegment info, MemorySegment params) {
         info   = info.reinterpret(256);
         params = params.reinterpret(256);
-        long connectionKey, transferKey;
-        String dirPath;
+        long connectionKey = 0, transferKey = 0;
         try {
             connectionKey = info.get(ValueLayout.JAVA_LONG, CfApi.CBI_CONNECTION_KEY_OFF);
             transferKey   = info.get(ValueLayout.JAVA_LONG, CfApi.CBI_TRANSFER_KEY_OFF);
-            dirPath       = CfApi.readWideString(info, CfApi.CBI_NORMALIZED_PATH_OFF);
-        } catch (Exception e) {
-            LOG.log(Level.WARNING, "FETCH_PLACEHOLDERS: failed to read callback params", e);
-            return;
-        }
+            String dirPath    = CfApi.readWideString(info, CfApi.CBI_NORMALIZED_PATH_OFF);
+            String peergosPath = normalizedToPeregos(dirPath);
 
-        // Convert the normalized Windows path back to a Peergos path
-        String peergosPath = normalizedToPeregos(dirPath);
-        try {
             Optional<FileWrapper> dirOpt = context.getByPath(peergosPath).join();
             if (dirOpt.isEmpty() || !dirOpt.get().isDirectory()) {
                 failPlaceholders(connectionKey, transferKey);
@@ -175,7 +157,7 @@ public class CloudFilesProvider {
                 transferPlaceholders(arena, connectionKey, transferKey, array, visible.size());
             }
         } catch (Exception e) {
-            LOG.log(Level.WARNING, "FETCH_PLACEHOLDERS failed for " + peergosPath, e);
+            LOG.log(Level.WARNING, "FETCH_PLACEHOLDERS callback error", e);
             failPlaceholders(connectionKey, transferKey);
         }
     }
@@ -454,7 +436,8 @@ public class CloudFilesProvider {
     private String pathFromIdentity(long identityAddr, int identityLen) {
         if (identityAddr == 0 || identityLen < 8) return null;
         MemorySegment idSeg = MemorySegment.ofAddress(identityAddr).reinterpret(identityLen);
-        long key = idSeg.get(ValueLayout.JAVA_LONG, 0);
+        // Windows does not guarantee 8-byte alignment of the identity blob pointer.
+        long key = idSeg.get(ValueLayout.JAVA_LONG.withByteAlignment(1), 0);
         return identityToPath.get(key);
     }
 
