@@ -47,7 +47,7 @@ public class CloudFilesProvider {
         info   = info.reinterpret(256);
         params = params.reinterpret(256);
         long connectionKey = 0, transferKey = 0;
-        LOG.info("FETCH_DATA callback entered");
+        System.err.println("[CF] FETCH_DATA callback entered");
         try {
             connectionKey  = info.get(ValueLayout.JAVA_LONG, CfApi.CBI_CONNECTION_KEY_OFF);
             transferKey    = info.get(ValueLayout.JAVA_LONG, CfApi.CBI_TRANSFER_KEY_OFF);
@@ -55,15 +55,15 @@ public class CloudFilesProvider {
             int  identityLen   = info.get(ValueLayout.JAVA_INT,  CfApi.CBI_FILE_IDENTITY_LEN_OFF);
             long requiredOffset = params.get(ValueLayout.JAVA_LONG, CfApi.CBP_FETCH_DATA_REQUIRED_OFFSET_OFF);
             long requiredLength = params.get(ValueLayout.JAVA_LONG, CfApi.CBP_FETCH_DATA_REQUIRED_LENGTH_OFF);
-            LOG.info("FETCH_DATA: connKey=" + connectionKey + " transferKey=" + transferKey
+            System.err.println("[CF] FETCH_DATA: connKey=" + connectionKey + " transferKey=" + transferKey
                     + " identityAddr=0x" + Long.toHexString(identityAddr)
                     + " identityLen=" + identityLen
                     + " reqOffset=" + requiredOffset + " reqLen=" + requiredLength);
 
             String peergosPath = pathFromIdentity(identityAddr, identityLen);
-            LOG.info("FETCH_DATA: peergosPath=" + peergosPath + " identityToPath.size=" + identityToPath.size());
+            System.err.println("[CF] FETCH_DATA: peergosPath=" + peergosPath + " mapSize=" + identityToPath.size());
             if (peergosPath == null) {
-                LOG.warning("FETCH_DATA: path lookup failed for identityAddr=0x" + Long.toHexString(identityAddr));
+                System.err.println("[CF] FETCH_DATA: path lookup FAILED identityAddr=0x" + Long.toHexString(identityAddr));
                 failTransfer(connectionKey, transferKey, -1);
                 return;
             }
@@ -115,7 +115,7 @@ public class CloudFilesProvider {
         opParams.set(ValueLayout.JAVA_LONG, CfApi.OP_XFER_DATA_LENGTH_OFF, length);
 
         int hr = CfApi.cfExecute(opInfo, opParams);
-        LOG.info("CfExecute(TRANSFER_DATA) offset=" + offset + " length=" + length
+        System.err.println("[CF] CfExecute(TRANSFER_DATA) offset=" + offset + " length=" + length
                 + " hr=0x" + Integer.toHexString(hr));
     }
 
@@ -223,12 +223,12 @@ public class CloudFilesProvider {
         MemorySegment array    = buildPlaceholderArray(visible, "/" + context.username, arena);
         MemorySegment processed = arena.allocate(ValueLayout.JAVA_INT);
 
-        LOG.info("CfCreatePlaceholders: syncRoot=" + syncRootPath + " count=" + visible.size()
+        System.err.println("[CF] CfCreatePlaceholders: syncRoot=" + syncRootPath + " count=" + visible.size()
                 + " names=" + visible.stream().map(f -> f.getName()).collect(java.util.stream.Collectors.joining(",")));
         int hr = CfApi.cfCreatePlaceholders(baseDirW, array, visible.size(),
                 CfApi.CF_CREATE_FLAG_NONE, processed);
         int entriesProcessed = processed.get(ValueLayout.JAVA_INT, 0);
-        LOG.info("CfCreatePlaceholders returned 0x" + Integer.toHexString(hr)
+        System.err.println("[CF] CfCreatePlaceholders hr=0x" + Integer.toHexString(hr)
                 + " entriesProcessed=" + entriesProcessed);
     }
 
