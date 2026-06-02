@@ -43,14 +43,24 @@ public class CloudFilesProvider {
     // -----------------------------------------------------------------------
 
     public void onFetchData(MemorySegment info, MemorySegment params) {
-        long connectionKey = info.get(ValueLayout.JAVA_LONG, CfApi.CBI_CONNECTION_KEY_OFF);
-        long transferKey   = info.get(ValueLayout.JAVA_LONG, CfApi.CBI_TRANSFER_KEY_OFF);
-        long fileSize      = info.get(ValueLayout.JAVA_LONG, CfApi.CBI_FILE_SIZE_OFF);
-        long identityAddr  = info.get(ValueLayout.JAVA_LONG, CfApi.CBI_FILE_IDENTITY_OFF);
-        int  identityLen   = info.get(ValueLayout.JAVA_INT,  CfApi.CBI_FILE_IDENTITY_LEN_OFF);
-
-        long requiredOffset = params.get(ValueLayout.JAVA_LONG, CfApi.CBP_FETCH_DATA_REQUIRED_OFFSET_OFF);
-        long requiredLength = params.get(ValueLayout.JAVA_LONG, CfApi.CBP_FETCH_DATA_REQUIRED_LENGTH_OFF);
+        // Raw pointers from Windows arrive with byteSize=0; reinterpret before any field access.
+        info   = info.reinterpret(256);
+        params = params.reinterpret(256);
+        long connectionKey;
+        long transferKey, fileSize, identityAddr, requiredOffset, requiredLength;
+        int identityLen;
+        try {
+            connectionKey  = info.get(ValueLayout.JAVA_LONG, CfApi.CBI_CONNECTION_KEY_OFF);
+            transferKey    = info.get(ValueLayout.JAVA_LONG, CfApi.CBI_TRANSFER_KEY_OFF);
+            fileSize       = info.get(ValueLayout.JAVA_LONG, CfApi.CBI_FILE_SIZE_OFF);
+            identityAddr   = info.get(ValueLayout.JAVA_LONG, CfApi.CBI_FILE_IDENTITY_OFF);
+            identityLen    = info.get(ValueLayout.JAVA_INT,  CfApi.CBI_FILE_IDENTITY_LEN_OFF);
+            requiredOffset = params.get(ValueLayout.JAVA_LONG, CfApi.CBP_FETCH_DATA_REQUIRED_OFFSET_OFF);
+            requiredLength = params.get(ValueLayout.JAVA_LONG, CfApi.CBP_FETCH_DATA_REQUIRED_LENGTH_OFF);
+        } catch (Exception e) {
+            LOG.log(Level.WARNING, "FETCH_DATA: failed to read callback params", e);
+            return;
+        }
 
         String peergosPath = pathFromIdentity(identityAddr, identityLen);
         if (peergosPath == null) {
@@ -133,9 +143,18 @@ public class CloudFilesProvider {
     // -----------------------------------------------------------------------
 
     public void onFetchPlaceholders(MemorySegment info, MemorySegment params) {
-        long connectionKey = info.get(ValueLayout.JAVA_LONG, CfApi.CBI_CONNECTION_KEY_OFF);
-        long transferKey   = info.get(ValueLayout.JAVA_LONG, CfApi.CBI_TRANSFER_KEY_OFF);
-        String dirPath     = CfApi.readWideString(info, CfApi.CBI_NORMALIZED_PATH_OFF);
+        info   = info.reinterpret(256);
+        params = params.reinterpret(256);
+        long connectionKey, transferKey;
+        String dirPath;
+        try {
+            connectionKey = info.get(ValueLayout.JAVA_LONG, CfApi.CBI_CONNECTION_KEY_OFF);
+            transferKey   = info.get(ValueLayout.JAVA_LONG, CfApi.CBI_TRANSFER_KEY_OFF);
+            dirPath       = CfApi.readWideString(info, CfApi.CBI_NORMALIZED_PATH_OFF);
+        } catch (Exception e) {
+            LOG.log(Level.WARNING, "FETCH_PLACEHOLDERS: failed to read callback params", e);
+            return;
+        }
 
         // Convert the normalized Windows path back to a Peergos path
         String peergosPath = normalizedToPeregos(dirPath);
@@ -227,7 +246,11 @@ public class CloudFilesProvider {
     // -----------------------------------------------------------------------
 
     public void onFileCloseCompletion(MemorySegment info, MemorySegment params) {
-        int flags = params.get(ValueLayout.JAVA_INT, CfApi.CBP_CLOSE_FLAGS_OFF);
+        info   = info.reinterpret(256);
+        params = params.reinterpret(256);
+        int flags;
+        try { flags = params.get(ValueLayout.JAVA_INT, CfApi.CBP_CLOSE_FLAGS_OFF); }
+        catch (Exception e) { LOG.log(Level.WARNING, "CLOSE_COMPLETION: failed to read params", e); return; }
         if ((flags & CfApi.CF_CALLBACK_NOTIFY_FILE_CLOSE_COMPLETION_FLAG_DELETED) != 0)
             return; // file was deleted on close — handled by DELETE callback
 
@@ -271,9 +294,15 @@ public class CloudFilesProvider {
     // -----------------------------------------------------------------------
 
     public void onDeletePlaceholder(MemorySegment info, MemorySegment params) {
-        long connectionKey = info.get(ValueLayout.JAVA_LONG, CfApi.CBI_CONNECTION_KEY_OFF);
-        long transferKey   = info.get(ValueLayout.JAVA_LONG, CfApi.CBI_TRANSFER_KEY_OFF);
-        String normalizedPath = CfApi.readWideString(info, CfApi.CBI_NORMALIZED_PATH_OFF);
+        info = info.reinterpret(256);
+        params = params.reinterpret(256);
+        long connectionKey, transferKey;
+        String normalizedPath;
+        try {
+            connectionKey = info.get(ValueLayout.JAVA_LONG, CfApi.CBI_CONNECTION_KEY_OFF);
+            transferKey   = info.get(ValueLayout.JAVA_LONG, CfApi.CBI_TRANSFER_KEY_OFF);
+            normalizedPath = CfApi.readWideString(info, CfApi.CBI_NORMALIZED_PATH_OFF);
+        } catch (Exception e) { LOG.log(Level.WARNING, "DELETE: failed to read params", e); return; }
         String peergosPath    = normalizedToPeregos(normalizedPath);
 
         // Ack first to let Windows proceed with the local delete
@@ -302,8 +331,13 @@ public class CloudFilesProvider {
     // -----------------------------------------------------------------------
 
     public void onRenamePlaceholder(MemorySegment info, MemorySegment params) {
-        long connectionKey = info.get(ValueLayout.JAVA_LONG, CfApi.CBI_CONNECTION_KEY_OFF);
-        long transferKey   = info.get(ValueLayout.JAVA_LONG, CfApi.CBI_TRANSFER_KEY_OFF);
+        info = info.reinterpret(256);
+        params = params.reinterpret(256);
+        long connectionKey, transferKey;
+        try {
+            connectionKey = info.get(ValueLayout.JAVA_LONG, CfApi.CBI_CONNECTION_KEY_OFF);
+            transferKey   = info.get(ValueLayout.JAVA_LONG, CfApi.CBI_TRANSFER_KEY_OFF);
+        } catch (Exception e) { LOG.log(Level.WARNING, "RENAME: failed to read params", e); return; }
         try (Arena arena = Arena.ofConfined()) {
             ack(arena, connectionKey, transferKey,
                 CfApi.CF_OPERATION_TYPE_ACK_RENAME_SOURCE, CfApi.STATUS_SUCCESS);
@@ -311,8 +345,13 @@ public class CloudFilesProvider {
     }
 
     public void onRenameCompletionPlaceholder(MemorySegment info, MemorySegment params) {
-        String sourcePath  = CfApi.readWideString(params, CfApi.CBP_RENAME_COMPLETION_SOURCE_PATH_OFF);
-        String targetPath  = CfApi.readWideString(info,   CfApi.CBI_NORMALIZED_PATH_OFF);
+        info   = info.reinterpret(256);
+        params = params.reinterpret(256);
+        String sourcePath, targetPath;
+        try {
+            sourcePath = CfApi.readWideString(params, CfApi.CBP_RENAME_COMPLETION_SOURCE_PATH_OFF);
+            targetPath = CfApi.readWideString(info,   CfApi.CBI_NORMALIZED_PATH_OFF);
+        } catch (Exception e) { LOG.log(Level.WARNING, "RENAME_COMPLETION: failed to read params", e); return; }
         String peergosSource = normalizedToPeregos(sourcePath);
         String peergosTarget = normalizedToPeregos(targetPath);
 
