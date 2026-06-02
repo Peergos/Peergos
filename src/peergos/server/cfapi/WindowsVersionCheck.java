@@ -4,6 +4,8 @@ import peergos.server.util.Logging;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
 
@@ -11,12 +13,24 @@ public class WindowsVersionCheck {
     private static final Logger LOG = Logging.LOG();
     private static volatile Boolean available = null;
 
-    /** CF API requires Windows 10 build 16299 (v1709, October 2017). */
+    /**
+     * Returns true only when cldapi.dll (the actual CF API DLL — note: header is cfapi.h
+     * but the binary is cldapi.dll) is present and the build is >= 16299.
+     * cldapi.dll ships with Windows 10/11 desktop but is absent on Windows Server SKUs.
+     */
     public static boolean isCfApiAvailable() {
         if (available != null) return available;
         synchronized (WindowsVersionCheck.class) {
             if (available != null) return available;
             if (!System.getProperty("os.name", "").toLowerCase().startsWith("windows")) {
+                available = false;
+                return false;
+            }
+            String systemRoot = System.getenv("SystemRoot");
+            if (systemRoot == null) systemRoot = "C:\\Windows";
+            Path dllPath = Path.of(systemRoot, "System32", "cldapi.dll");
+            if (!Files.exists(dllPath)) {
+                LOG.info("cldapi.dll not found at " + dllPath + " — CF API unavailable (Windows Server?)");
                 available = false;
                 return false;
             }

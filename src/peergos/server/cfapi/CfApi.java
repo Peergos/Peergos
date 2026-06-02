@@ -9,7 +9,8 @@ import java.lang.invoke.MethodType;
 import java.util.logging.Logger;
 
 /**
- * JDK Foreign Function & Memory (FFM) bindings for cfapi.dll.
+ * JDK Foreign Function & Memory (FFM) bindings for CldApi.dll.
+ * Note: the header is cfapi.h but the actual DLL is CldApi.dll.
  *
  * Struct layout offsets are for Windows x64 ABI.  Every offset has a comment
  * showing the corresponding C field so they can be verified against the SDK.
@@ -323,11 +324,12 @@ public class CfApi {
 
     public static synchronized void load() {
         if (loaded) return;
-        // cfapi.dll lives in %SystemRoot%\System32 which is not on the JVM's default library path
+        // The CF API header is cfapi.h but the actual DLL is CldApi.dll.
+        // Use the full path because System32 is not on the JVM's default library path.
         String systemRoot = System.getenv("SystemRoot");
         if (systemRoot == null) systemRoot = "C:\\Windows";
-        java.nio.file.Path cfapiPath = java.nio.file.Path.of(systemRoot, "System32", "cfapi.dll");
-        SymbolLookup cfapi = SymbolLookup.libraryLookup(cfapiPath, Arena.global());
+        java.nio.file.Path cldapiPath = java.nio.file.Path.of(systemRoot, "System32", "cldapi.dll");
+        SymbolLookup cfapi = SymbolLookup.libraryLookup(cldapiPath, Arena.global());
         Linker linker = Linker.nativeLinker();
 
         // HRESULT CfRegisterSyncRoot(LPCWSTR, const CF_SYNC_REGISTRATION*, const CF_SYNC_POLICIES*, CF_REGISTER_FLAGS)
