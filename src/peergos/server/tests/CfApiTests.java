@@ -150,6 +150,7 @@ public class CfApiTests {
         MemorySegment nameW    = CfApi.wideString("PeergosTest", arena);
         MemorySegment versionW = CfApi.wideString("1.0", arena);
         UUID guid = UUID.nameUUIDFromBytes("peergos-cfapi-test".getBytes());
+        reg.set(ValueLayout.JAVA_INT,  CfApi.REG_STRUCT_SIZE_OFF,            (int) CfApi.REG_SIZE);
         reg.set(ValueLayout.JAVA_LONG, CfApi.REG_PROVIDER_NAME_OFF,          nameW.address());
         reg.set(ValueLayout.JAVA_LONG, CfApi.REG_PROVIDER_VERSION_OFF,       versionW.address());
         reg.set(ValueLayout.JAVA_LONG, CfApi.REG_SYNC_ROOT_IDENTITY_OFF,     0L);

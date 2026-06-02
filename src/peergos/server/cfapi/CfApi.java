@@ -101,23 +101,27 @@ public class CfApi {
     // Struct sizes & field offsets  (Windows x64 ABI)
     // -----------------------------------------------------------------------
 
-    // CF_SYNC_REGISTRATION (size 64)
-    //   +0   PCWSTR ProviderName
-    //   +8   PCWSTR ProviderVersion
-    //  +16   LPCVOID SyncRootIdentity
-    //  +24   DWORD  SyncRootIdentityLength  [+4 pad]
-    //  +32   LPCVOID FileIdentity
-    //  +40   DWORD  FileIdentityLength       [+4 pad]
-    //  +48   GUID   ProviderClsid  (16 bytes: DWORD+WORD+WORD+BYTE[8])
-    //  +64 end (struct size = 64, no Flags field in this version)
-    public static final long REG_SIZE                         = 64;
-    public static final long REG_PROVIDER_NAME_OFF            =  0;
-    public static final long REG_PROVIDER_VERSION_OFF         =  8;
-    public static final long REG_SYNC_ROOT_IDENTITY_OFF       = 16;
-    public static final long REG_SYNC_ROOT_IDENTITY_LEN_OFF   = 24;
-    public static final long REG_FILE_IDENTITY_OFF            = 32;
-    public static final long REG_FILE_IDENTITY_LEN_OFF        = 40;
-    public static final long REG_PROVIDER_CLSID_OFF           = 48;
+    // CF_SYNC_REGISTRATION (size 72)
+    // The first field is StructSize (undocumented on MSDN but present in cfapi.h).
+    //   +0   ULONG  StructSize                [+4 pad]
+    //   +8   PCWSTR ProviderName
+    //  +16   PCWSTR ProviderVersion
+    //  +24   LPCVOID SyncRootIdentity
+    //  +32   DWORD  SyncRootIdentityLength    [+4 pad]
+    //  +40   LPCVOID FileIdentity
+    //  +48   DWORD  FileIdentityLength
+    //  +52   GUID   ProviderClsid  (16 bytes: DWORD+WORD+WORD+BYTE[8])
+    //  +68   CF_SYNC_REGISTRATION_FLAGS Flags (DWORD)
+    //  +72 end
+    public static final long REG_SIZE                         = 72;
+    public static final long REG_STRUCT_SIZE_OFF              =  0;
+    public static final long REG_PROVIDER_NAME_OFF            =  8;
+    public static final long REG_PROVIDER_VERSION_OFF         = 16;
+    public static final long REG_SYNC_ROOT_IDENTITY_OFF       = 24;
+    public static final long REG_SYNC_ROOT_IDENTITY_LEN_OFF   = 32;
+    public static final long REG_FILE_IDENTITY_OFF            = 40;
+    public static final long REG_FILE_IDENTITY_LEN_OFF        = 48;
+    public static final long REG_PROVIDER_CLSID_OFF           = 52;
 
     // CF_SYNC_POLICIES (size 24, all 4-byte fields)
     //   +0  ULONG StructSize
