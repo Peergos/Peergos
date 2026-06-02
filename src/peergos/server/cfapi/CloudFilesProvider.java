@@ -223,11 +223,13 @@ public class CloudFilesProvider {
         MemorySegment array    = buildPlaceholderArray(visible, "/" + context.username, arena);
         MemorySegment processed = arena.allocate(ValueLayout.JAVA_INT);
 
+        LOG.info("CfCreatePlaceholders: syncRoot=" + syncRootPath + " count=" + visible.size()
+                + " names=" + visible.stream().map(f -> f.getName()).collect(java.util.stream.Collectors.joining(",")));
         int hr = CfApi.cfCreatePlaceholders(baseDirW, array, visible.size(),
                 CfApi.CF_CREATE_FLAG_NONE, processed);
-        if (hr != CfApi.S_OK)
-            LOG.warning("CfCreatePlaceholders returned 0x" + Integer.toHexString(hr)
-                    + " for root seed (may already exist)");
+        int entriesProcessed = processed.get(ValueLayout.JAVA_INT, 0);
+        LOG.info("CfCreatePlaceholders returned 0x" + Integer.toHexString(hr)
+                + " entriesProcessed=" + entriesProcessed);
     }
 
     // -----------------------------------------------------------------------

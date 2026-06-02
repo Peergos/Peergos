@@ -111,15 +111,17 @@ public class CloudFilesMount implements Closeable {
 
         // -- Connect --
         MemorySegment connectionKeyOut = callbackArena.allocate(ValueLayout.JAVA_LONG);
+        LOG.info("CfConnectSyncRoot: cbTable.address=0x" + Long.toHexString(cbTable.address())
+                + " fetchDataStub=0x" + Long.toHexString(fetchDataStub.address()));
         hr = CfApi.cfConnectSyncRoot(pathW, cbTable, MemorySegment.NULL,
-                CfApi.CF_CONNECT_FLAG_REQUIRE_PROCESS_INFO | CfApi.CF_CONNECT_FLAG_REQUIRE_FULL_FILE_PATH,
+                CfApi.CF_CONNECT_FLAG_NONE,
                 connectionKeyOut);
         if (hr != CfApi.S_OK) {
             callbackArena.close();
             throw new Exception("CfConnectSyncRoot failed: 0x" + Integer.toHexString(hr));
         }
         long connectionKey = connectionKeyOut.get(ValueLayout.JAVA_LONG, 0);
-        LOG.info("CF sync root connected, key=" + connectionKey);
+        LOG.info("CF sync root connected, key=" + connectionKey + " (nonzero=" + (connectionKey != 0) + ")");
 
         // Seed top-level placeholders so Explorer shows files immediately
         try (Arena seedArena = Arena.ofConfined()) {
