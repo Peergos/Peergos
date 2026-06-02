@@ -90,9 +90,10 @@ public class CloudFilesProvider {
                     int toRead = (int) Math.min(buf.length, remaining);
                     int nRead  = reader.readIntoArray(buf, 0, toRead).join();
                     if (nRead <= 0) break;
-                    // Buffer must be padded to next cluster boundary; Length stays as actual byte count.
+                    // CF API requires the buffer to be PAGE_SIZE-aligned in address AND
+                    // padded to the next PAGE_SIZE multiple in size; Length stays as actual byte count.
                     long paddedSize = ((nRead + CLUSTER_SIZE - 1) / CLUSTER_SIZE) * CLUSTER_SIZE;
-                    MemorySegment dataSeg = arena.allocate(paddedSize);
+                    MemorySegment dataSeg = arena.allocate(paddedSize, CLUSTER_SIZE);
                     MemorySegment.copy(buf, 0, dataSeg, ValueLayout.JAVA_BYTE, 0, nRead);
                     transferData(arena, connectionKey, transferKey, dataSeg, offset, nRead);
                     offset    += nRead;
