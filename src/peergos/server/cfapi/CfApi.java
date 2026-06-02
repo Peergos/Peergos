@@ -203,39 +203,39 @@ public class CfApi {
 
     // CF_OPERATION_PARAMETERS for TRANSFER_DATA (size 40)
     //   +0   ULONG ParamSize
-    //   +4   DWORD Flags
-    //   +8   NTSTATUS CompletionStatus
-    //  +12   [4 pad]
+    //   +4   [4 pad — union requires 8-byte alignment due to LARGE_INTEGER members]
+    //   +8   DWORD Flags
+    //  +12   NTSTATUS CompletionStatus
     //  +16   LPCVOID Buffer
     //  +24   LARGE_INTEGER Offset
     //  +32   LARGE_INTEGER Length
     public static final long OP_XFER_DATA_SIZE          = 40;
     public static final long OP_PARAM_SIZE_OFF           =  0;
-    public static final long OP_XFER_DATA_FLAGS_OFF      =  4;
-    public static final long OP_XFER_DATA_STATUS_OFF     =  8;
+    public static final long OP_XFER_DATA_FLAGS_OFF      =  8;
+    public static final long OP_XFER_DATA_STATUS_OFF     = 12;
     public static final long OP_XFER_DATA_BUFFER_OFF     = 16;
     public static final long OP_XFER_DATA_OFFSET_OFF     = 24;
     public static final long OP_XFER_DATA_LENGTH_OFF     = 32;
 
     // CF_OPERATION_PARAMETERS for TRANSFER_PLACEHOLDERS (size 40)
     //   +0   ULONG ParamSize
-    //   +4   DWORD Flags
-    //   +8   NTSTATUS CompletionStatus
-    //  +12   [4 pad]
+    //   +4   [4 pad]
+    //   +8   DWORD Flags
+    //  +12   NTSTATUS CompletionStatus
     //  +16   LARGE_INTEGER PlaceholderTotalCount
     //  +24   CF_PLACEHOLDER_CREATE_INFO* PlaceholderArray
     //  +32   DWORD PlaceholderCount
     //  +36   DWORD EntriesProcessed (output)
     public static final long OP_XFER_PH_SIZE             = 40;
-    public static final long OP_XFER_PH_FLAGS_OFF        =  4;
-    public static final long OP_XFER_PH_STATUS_OFF       =  8;
+    public static final long OP_XFER_PH_FLAGS_OFF        =  8;
+    public static final long OP_XFER_PH_STATUS_OFF       = 12;
     public static final long OP_XFER_PH_TOTAL_COUNT_OFF  = 16;
     public static final long OP_XFER_PH_ARRAY_OFF        = 24;
     public static final long OP_XFER_PH_COUNT_OFF        = 32;
 
     // CF_OPERATION_PARAMETERS for ACK_DELETE / ACK_RENAME_SOURCE (size 16)
     //   +0  ULONG ParamSize
-    //   +4  [4 pad]
+    //   +4  [4 pad — same union alignment rule]
     //   +8  DWORD Flags
     //  +12  NTSTATUS CompletionStatus
     public static final long OP_ACK_SIZE           = 16;

@@ -425,6 +425,7 @@ public class CloudFilesProvider {
             long key = identityKey(fullPath);
             identityToPath.put(key, fullPath);
             byte[] idBytes = java.nio.ByteBuffer.allocate(8)
+                    .order(java.nio.ByteOrder.nativeOrder())
                     .putLong(key).array();
             MemorySegment idSeg = arena.allocate(idBytes.length);
             MemorySegment.copy(idBytes, 0, idSeg, ValueLayout.JAVA_BYTE, 0, idBytes.length);
