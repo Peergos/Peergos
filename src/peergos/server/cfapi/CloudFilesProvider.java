@@ -124,9 +124,17 @@ public class CloudFilesProvider {
         opParams.set(ValueLayout.JAVA_LONG, CfApi.OP_XFER_DATA_OFFSET_OFF, offset);
         opParams.set(ValueLayout.JAVA_LONG, CfApi.OP_XFER_DATA_LENGTH_OFF, length);
 
+        System.err.print("[CF] opInfo  @0x" + Long.toHexString(opInfo.address()) + ":");
+        for (int i = 0; i < (int) CfApi.OI_SIZE; i++)
+            System.err.printf(" %02x", opInfo.get(ValueLayout.JAVA_BYTE, i) & 0xFF);
+        System.err.println();
+        System.err.print("[CF] opParams @0x" + Long.toHexString(opParams.address()) + ":");
+        for (int i = 0; i < (int) CfApi.OP_XFER_DATA_SIZE; i++)
+            System.err.printf(" %02x", opParams.get(ValueLayout.JAVA_BYTE, i) & 0xFF);
+        System.err.println();
+
         int hr = CfApi.cfExecute(opInfo, opParams);
-        System.err.println("[CF] CfExecute(TRANSFER_DATA) offset=" + offset + " length=" + length
-                + " hr=0x" + Integer.toHexString(hr));
+        System.err.println("[CF] CfExecute(TRANSFER_DATA) hr=0x" + Integer.toHexString(hr));
         } // end Arena
     }
 
