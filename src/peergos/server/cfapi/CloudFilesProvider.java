@@ -47,6 +47,7 @@ public class CloudFilesProvider {
         info   = info.reinterpret(256);
         params = params.reinterpret(256);
         long connectionKey = 0, transferKey = 0;
+        LOG.info("FETCH_DATA callback entered");
         try {
             connectionKey  = info.get(ValueLayout.JAVA_LONG, CfApi.CBI_CONNECTION_KEY_OFF);
             transferKey    = info.get(ValueLayout.JAVA_LONG, CfApi.CBI_TRANSFER_KEY_OFF);
@@ -54,9 +55,15 @@ public class CloudFilesProvider {
             int  identityLen   = info.get(ValueLayout.JAVA_INT,  CfApi.CBI_FILE_IDENTITY_LEN_OFF);
             long requiredOffset = params.get(ValueLayout.JAVA_LONG, CfApi.CBP_FETCH_DATA_REQUIRED_OFFSET_OFF);
             long requiredLength = params.get(ValueLayout.JAVA_LONG, CfApi.CBP_FETCH_DATA_REQUIRED_LENGTH_OFF);
+            LOG.info("FETCH_DATA: connKey=" + connectionKey + " transferKey=" + transferKey
+                    + " identityAddr=0x" + Long.toHexString(identityAddr)
+                    + " identityLen=" + identityLen
+                    + " reqOffset=" + requiredOffset + " reqLen=" + requiredLength);
 
             String peergosPath = pathFromIdentity(identityAddr, identityLen);
+            LOG.info("FETCH_DATA: peergosPath=" + peergosPath + " identityToPath.size=" + identityToPath.size());
             if (peergosPath == null) {
+                LOG.warning("FETCH_DATA: path lookup failed for identityAddr=0x" + Long.toHexString(identityAddr));
                 failTransfer(connectionKey, transferKey, -1);
                 return;
             }
@@ -90,7 +97,7 @@ public class CloudFilesProvider {
                 }
             }
         } catch (Exception e) {
-            LOG.log(Level.WARNING, "FETCH_DATA callback error", e);
+            LOG.log(Level.SEVERE, "FETCH_DATA callback exception (connKey=" + connectionKey + ")", e);
             failTransfer(connectionKey, transferKey, -1);
         }
     }
@@ -108,8 +115,8 @@ public class CloudFilesProvider {
         opParams.set(ValueLayout.JAVA_LONG, CfApi.OP_XFER_DATA_LENGTH_OFF, length);
 
         int hr = CfApi.cfExecute(opInfo, opParams);
-        if (hr != CfApi.S_OK)
-            LOG.warning("CfExecute(TRANSFER_DATA) returned 0x" + Integer.toHexString(hr));
+        LOG.info("CfExecute(TRANSFER_DATA) offset=" + offset + " length=" + length
+                + " hr=0x" + Integer.toHexString(hr));
     }
 
     private void failTransfer(long connectionKey, long transferKey, int status) {
