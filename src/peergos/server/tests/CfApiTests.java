@@ -120,7 +120,7 @@ public class CfApiTests {
         byte[] content = "Hello from Peergos CF API test".getBytes(StandardCharsets.UTF_8);
         byte[] large = new byte[11*1024*1024];
         for (int i=0; i < large.length; i += content.length) {
-            System.arraycopy(content, 0, large, i, content.length);
+            System.arraycopy(content, 0, large, i, Math.min(content.length, large.length - i));
         }
         FileWrapper home = context.getByPath("/" + context.username).join().get();
         home.uploadOrReplaceFile("hello.txt", new AsyncReader.ArrayBacked(content), content.length,
