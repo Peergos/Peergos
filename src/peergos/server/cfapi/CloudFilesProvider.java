@@ -35,11 +35,15 @@ public class CloudFilesProvider {
     private final ConcurrentHashMap<Long, String> identityToPath = new ConcurrentHashMap<>();
 
     /**
-     * VirtualAlloc'd transfer buffers that CF may still be reading from after
-     * CfExecute(TRANSFER_DATA) returns. Leak them for now; a future change should
-     * implement deferred cleanup once we know CF's actual completion semantics.
+     * VirtualAlloc'd transfer buffers awaiting deferred free. CF may still be reading
+     * from them after CfExecute(TRANSFER_DATA) returns. After BUFFER_RETAIN_MS has
+     * elapsed for an entry, it's safe to VirtualFree. Swept lazily on each enqueue —
+     * no background thread.
+     * Each entry is {segment, freeAfterMillis}.
      */
-    private final java.util.List<MemorySegment> pendingBuffers = java.util.Collections.synchronizedList(new java.util.ArrayList<>());
+    private static final long BUFFER_RETAIN_MS = 30_000;
+    private final java.util.Deque<Object[]> pendingBuffers =
+            new java.util.concurrent.ConcurrentLinkedDeque<>();
 
     /**
      * Paths the local-file watcher just uploaded and converted to placeholders. The
@@ -121,8 +125,9 @@ public class CloudFilesProvider {
                     // Length = actual bytes read (Microsoft passes numberOfBytesTransfered,
                     // which for a 30-byte file is 30, NOT the padded buffer size).
                     transferData(connectionKey, transferKey, requestKey, ds, offset, nRead, fw.getSize());
-                    // Keep buffer alive (CF may read asynchronously after CfExecute returns)
-                    pendingBuffers.add(ds);
+                    // Sweep already-expired buffers, then defer this one for BUFFER_RETAIN_MS.
+                    sweepExpiredBuffers();
+                    pendingBuffers.add(new Object[]{ds, System.currentTimeMillis() + BUFFER_RETAIN_MS});
                     offset    += nRead;
                     remaining -= nRead;
                 }
@@ -130,6 +135,20 @@ public class CloudFilesProvider {
         } catch (Exception e) {
             LOG.log(Level.SEVERE, "FETCH_DATA callback exception (connKey=" + connectionKey + ")", e);
             failTransfer(connectionKey, transferKey, requestKey, -1);
+        }
+    }
+
+    private void sweepExpiredBuffers() {
+        long now = System.currentTimeMillis();
+        // Entries are added in order, so peek at head — if it's not expired, none are.
+        while (true) {
+            Object[] head = pendingBuffers.peekFirst();
+            if (head == null) return;
+            long freeAt = (long) head[1];
+            if (now < freeAt) return;
+            if (!pendingBuffers.remove(head)) return; // raced; bail
+            try { CfApi.virtualFree((MemorySegment) head[0]); }
+            catch (Exception ignored) {}
         }
     }
 
@@ -417,25 +436,25 @@ public class CloudFilesProvider {
             return;
         }
 
-        try {
-            byte[] data = Files.readAllBytes(localPath);
-            String name = localPath.getFileName().toString();
-            System.err.println("[CF] FILE_CLOSE_COMPLETION: uploading " + data.length
-                    + " bytes to " + peergosPath);
+        String name = localPath.getFileName().toString();
+        System.err.println("[CF] FILE_CLOSE_COMPLETION: uploading " + localSize
+                + " bytes to " + peergosPath);
 
-            Optional<FileWrapper> parentOpt = context.getByPath(peergosParent).join();
-            if (parentOpt.isEmpty()) {
-                System.err.println("[CF] FILE_CLOSE_COMPLETION: parent missing: " + peergosParent);
-                return;
-            }
+        Optional<FileWrapper> parentOpt = context.getByPath(peergosParent).join();
+        if (parentOpt.isEmpty()) {
+            System.err.println("[CF] FILE_CLOSE_COMPLETION: parent missing: " + peergosParent);
+            return;
+        }
 
+        try (peergos.server.simulation.FileAsyncReader reader =
+                     new peergos.server.simulation.FileAsyncReader(localPath.toFile())) {
             if (existingOpt.isPresent() && !existingOpt.get().isDirectory()) {
                 existingOpt.get().overwriteChangedChunks(
-                        AsyncReader.build(data), (long) data.length,
+                        reader, localSize,
                         context.network, context.crypto, l -> {}).join();
             } else {
                 parentOpt.get().uploadOrReplaceFile(name,
-                        AsyncReader.build(data), (long) data.length,
+                        reader, localSize,
                         context.network, context.crypto, () -> false, l -> {}).join();
             }
             System.err.println("[CF] FILE_CLOSE_COMPLETION: upload complete for " + peergosPath);
@@ -477,18 +496,20 @@ public class CloudFilesProvider {
                 return;
             }
 
-            byte[] data = Files.readAllBytes(localPath);
-            System.err.println("[CF] uploadLocalFile: uploading " + data.length
+            System.err.println("[CF] uploadLocalFile: uploading " + localSize
                     + " bytes to " + peergosPath);
             FileWrapper uploaded;
-            if (existing.isPresent() && !existing.get().isDirectory()) {
-                uploaded = existing.get().overwriteChangedChunks(
-                        AsyncReader.build(data), (long) data.length,
-                        context.network, context.crypto, l -> {}).join();
-            } else {
-                uploaded = parentOpt.get().uploadOrReplaceFile(name,
-                        AsyncReader.build(data), (long) data.length,
-                        context.network, context.crypto, () -> false, l -> {}).join();
+            try (peergos.server.simulation.FileAsyncReader reader =
+                         new peergos.server.simulation.FileAsyncReader(localPath.toFile())) {
+                if (existing.isPresent() && !existing.get().isDirectory()) {
+                    uploaded = existing.get().overwriteChangedChunks(
+                            reader, localSize,
+                            context.network, context.crypto, l -> {}).join();
+                } else {
+                    uploaded = parentOpt.get().uploadOrReplaceFile(name,
+                            reader, localSize,
+                            context.network, context.crypto, () -> false, l -> {}).join();
+                }
             }
             System.err.println("[CF] uploadLocalFile: upload complete for " + peergosPath);
 
