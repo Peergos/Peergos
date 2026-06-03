@@ -27,28 +27,48 @@ public class CfApi {
     public static final int CF_REGISTER_FLAG_UPDATE = 0x1;
 
     // CF_CONNECT_FLAGS
-    public static final int CF_CONNECT_FLAG_NONE                  = 0x0;
-    public static final int CF_CONNECT_FLAG_REQUIRE_PROCESS_INFO  = 0x2;
-    public static final int CF_CONNECT_FLAG_REQUIRE_FULL_FILE_PATH = 0x4;
+    public static final int CF_CONNECT_FLAG_NONE                          = 0x0;
+    public static final int CF_CONNECT_FLAG_REQUIRE_PROCESS_INFO          = 0x2;
+    public static final int CF_CONNECT_FLAG_REQUIRE_FULL_FILE_PATH        = 0x4;
+    public static final int CF_CONNECT_FLAG_BLOCK_SELF_IMPLICIT_HYDRATION = 0x8;
 
     // CF_CREATE_FLAGS
     public static final int CF_CREATE_FLAG_NONE          = 0x0;
     public static final int CF_CREATE_FLAG_STOP_ON_ERROR = 0x1;
 
-    // CF_OPERATION_TYPE
-    public static final int CF_OPERATION_TYPE_TRANSFER_DATA         = 1;
-    public static final int CF_OPERATION_TYPE_TRANSFER_PLACEHOLDERS = 5;
-    public static final int CF_OPERATION_TYPE_ACK_DELETE            = 7;
-    public static final int CF_OPERATION_TYPE_ACK_RENAME_SOURCE     = 8;
+    // CF_OPERATION_TYPE — 0-indexed per MSDN. We had these off by one which caused
+    // CfExecute(TRANSFER_PLACEHOLDERS) to be interpreted as ACK_DELETE → no-op,
+    // and CfExecute(TRANSFER_DATA) to be interpreted as RETRIEVE_DATA → invalid.
+    public static final int CF_OPERATION_TYPE_TRANSFER_DATA         = 0;
+    public static final int CF_OPERATION_TYPE_RETRIEVE_DATA         = 1;
+    public static final int CF_OPERATION_TYPE_ACK_DATA              = 2;
+    public static final int CF_OPERATION_TYPE_RESTART_HYDRATION     = 3;
+    public static final int CF_OPERATION_TYPE_TRANSFER_PLACEHOLDERS = 4;
+    public static final int CF_OPERATION_TYPE_ACK_DELETE            = 5;
+    public static final int CF_OPERATION_TYPE_ACK_RENAME            = 6;
 
-    // CF_CALLBACK_TYPE
-    public static final int CF_CALLBACK_TYPE_FETCH_DATA                     = 0;
-    public static final int CF_CALLBACK_TYPE_FETCH_PLACEHOLDERS             = 3;
-    public static final int CF_CALLBACK_TYPE_NOTIFY_FILE_CLOSE_COMPLETION   = 5;
-    public static final int CF_CALLBACK_TYPE_DELETE_PLACEHOLDER             = 8;
-    public static final int CF_CALLBACK_TYPE_RENAME_PLACEHOLDER             = 10;
-    public static final int CF_CALLBACK_TYPE_RENAME_COMPLETION_PLACEHOLDER  = 11;
-    public static final int CF_CALLBACK_TYPE_NONE                           = 0xFFFF_FFFF;
+    // CF_CALLBACK_TYPE — corrected to MSDN values. Previously off-by-one: we had close
+    // completion at 5 (which is actually FILE_OPEN_COMPLETION), and delete/rename at
+    // values that meant dehydrate/delete completion events.
+    public static final int CF_CALLBACK_TYPE_FETCH_DATA                       = 0;
+    public static final int CF_CALLBACK_TYPE_VALIDATE_DATA                    = 1;
+    public static final int CF_CALLBACK_TYPE_CANCEL_FETCH_DATA                = 2;
+    public static final int CF_CALLBACK_TYPE_FETCH_PLACEHOLDERS               = 3;
+    public static final int CF_CALLBACK_TYPE_CANCEL_FETCH_PLACEHOLDERS        = 4;
+    public static final int CF_CALLBACK_TYPE_NOTIFY_FILE_OPEN_COMPLETION      = 5;
+    public static final int CF_CALLBACK_TYPE_NOTIFY_FILE_CLOSE_COMPLETION     = 6;
+    public static final int CF_CALLBACK_TYPE_NOTIFY_DEHYDRATE                 = 7;
+    public static final int CF_CALLBACK_TYPE_NOTIFY_DEHYDRATE_COMPLETION      = 8;
+    public static final int CF_CALLBACK_TYPE_NOTIFY_DELETE                    = 9;
+    public static final int CF_CALLBACK_TYPE_NOTIFY_DELETE_COMPLETION         = 10;
+    public static final int CF_CALLBACK_TYPE_NOTIFY_RENAME                    = 11;
+    public static final int CF_CALLBACK_TYPE_NOTIFY_RENAME_COMPLETION         = 12;
+    public static final int CF_CALLBACK_TYPE_NONE                             = 0xFFFF_FFFF;
+
+    // CF_CALLBACK_FETCH_DATA_FLAGS
+    public static final int CF_CALLBACK_FETCH_DATA_FLAG_NONE               = 0x0;
+    public static final int CF_CALLBACK_FETCH_DATA_FLAG_RECOVERY           = 0x1;
+    public static final int CF_CALLBACK_FETCH_DATA_FLAG_EXPLICIT_HYDRATION = 0x2;
 
     // CF_CALLBACK_NOTIFY_FILE_CLOSE_COMPLETION_FLAGS
     public static final int CF_CALLBACK_NOTIFY_FILE_CLOSE_COMPLETION_FLAG_NONE    = 0x0;
@@ -67,27 +87,41 @@ public class CfApi {
     // CF_OPERATION_ACK_DELETE_FLAGS / CF_OPERATION_ACK_RENAME_SOURCE_FLAGS
     public static final int CF_OPERATION_ACK_FLAG_NONE = 0x0;
 
-    // CF_HYDRATION_POLICY_PRIMARY
-    public static final short CF_HYDRATION_POLICY_PARTIAL = 2;
-    // CF_POPULATION_POLICY_PRIMARY
-    public static final short CF_POPULATION_POLICY_PARTIAL = 2;
+    // CF_HYDRATION_POLICY_PRIMARY (MSDN values)
+    public static final short CF_HYDRATION_POLICY_PARTIAL     = 0;
+    public static final short CF_HYDRATION_POLICY_PROGRESSIVE = 1;
+    public static final short CF_HYDRATION_POLICY_FULL        = 2;
+    public static final short CF_HYDRATION_POLICY_ALWAYS_FULL = 3;
+    // CF_POPULATION_POLICY_PRIMARY (MSDN values)
+    public static final short CF_POPULATION_POLICY_PARTIAL    = 0;
+    public static final short CF_POPULATION_POLICY_FULL       = 2;
+    public static final short CF_POPULATION_POLICY_ALWAYS_FULL = 3;
 
     // Modifiers (none)
     public static final short CF_POLICY_MODIFIER_NONE = 0;
 
-    // CF_INSYNC_POLICY / CF_HARDLINK_POLICY
-    public static final int CF_INSYNC_POLICY_NONE  = 0;
+    // CF_INSYNC_POLICY (bit flags per MSDN)
+    public static final int CF_INSYNC_POLICY_NONE                            = 0x00000000;
+    public static final int CF_INSYNC_POLICY_TRACK_FILE_ALL                  = 0x0000ffff;
+    public static final int CF_INSYNC_POLICY_TRACK_DIRECTORY_ALL             = 0xffff0000;
+    public static final int CF_INSYNC_POLICY_TRACK_ALL                       = 0xffffffff;
+    public static final int CF_INSYNC_POLICY_PRESERVE_INSYNC_FOR_SYNC_ENGINE = 0x80000000;
     public static final int CF_HARDLINK_POLICY_NONE = 0;
 
     // CF_PLACEHOLDER_CREATE_FLAGS
-    public static final int CF_PLACEHOLDER_CREATE_FLAG_NONE        = 0x0;
-    public static final int CF_PLACEHOLDER_CREATE_FLAG_MARK_IN_SYNC = 0x2;
+    public static final int CF_PLACEHOLDER_CREATE_FLAG_NONE                          = 0x0;
+    public static final int CF_PLACEHOLDER_CREATE_FLAG_DISABLE_ON_DEMAND_POPULATION_P = 0x1;
+    public static final int CF_PLACEHOLDER_CREATE_FLAG_MARK_IN_SYNC                  = 0x2;
+    public static final int CF_PLACEHOLDER_CREATE_FLAG_SUPERSEDE                     = 0x4;
+    public static final int CF_PLACEHOLDER_CREATE_FLAG_ALWAYS_FULL                   = 0x8;
 
     // CF_OPERATION_TRANSFER_DATA_FLAGS
     public static final int CF_OPERATION_TRANSFER_DATA_FLAG_NONE = 0x0;
 
-    // CF_OPERATION_TRANSFER_PLACEHOLDERS_FLAGS
-    public static final int CF_OPERATION_TRANSFER_PLACEHOLDERS_FLAG_NONE = 0x0;
+    // CF_OPERATION_TRANSFER_PLACEHOLDERS_FLAGS (MSDN values)
+    public static final int CF_OPERATION_TRANSFER_PLACEHOLDERS_FLAG_NONE                       = 0x0;
+    public static final int CF_OPERATION_TRANSFER_PLACEHOLDERS_FLAG_STOP_ON_ERROR              = 0x1;
+    public static final int CF_OPERATION_TRANSFER_PLACEHOLDERS_FLAG_DISABLE_ON_DEMAND_POPULATION = 0x2;
 
     // NTSTATUS / HRESULT success
     public static final int S_OK       = 0;
@@ -184,29 +218,29 @@ public class CfApi {
     public static final long CBR_TYPE_OFF     =  0;
     public static final long CBR_CALLBACK_OFF =  8;
 
-    // CF_OPERATION_INFO (size 48)
+    // CF_OPERATION_INFO (size 48) — MSDN order: RequestKey BEFORE SyncStatus
     //   +0   ULONG StructSize
     //   +4   CF_OPERATION_TYPE Type
     //   +8   CF_CONNECTION_KEY ConnectionKey  (LONGLONG)
     //  +16   LARGE_INTEGER TransferKey
     //  +24   const GUID* CorrelationVector    (pointer, can be null)
-    //  +32   const CF_PROCESS_INFO* SyncStatus (pointer, can be null)
-    //  +40   CF_REQUEST_KEY RequestKey         (LONGLONG)
-    public static final long OI_SIZE               = 48;
-    public static final long OI_STRUCT_SIZE_OFF    =  0;
-    public static final long OI_TYPE_OFF           =  4;
-    public static final long OI_CONNECTION_KEY_OFF =  8;
-    public static final long OI_TRANSFER_KEY_OFF   = 16;
+    //  +32   CF_REQUEST_KEY RequestKey         (LONGLONG)
+    //  +40   CF_SYNC_STATUS* SyncStatus        (pointer, can be null)
+    public static final long OI_SIZE                = 48;
+    public static final long OI_STRUCT_SIZE_OFF     =  0;
+    public static final long OI_TYPE_OFF            =  4;
+    public static final long OI_CONNECTION_KEY_OFF  =  8;
+    public static final long OI_TRANSFER_KEY_OFF    = 16;
     public static final long OI_CORRELATION_VEC_OFF = 24;
-    public static final long OI_SYNC_STATUS_OFF    = 32;
-    public static final long OI_REQUEST_KEY_OFF    = 40;
+    public static final long OI_REQUEST_KEY_OFF     = 32;
+    public static final long OI_SYNC_STATUS_OFF     = 40;
 
     // CF_OPERATION_PARAMETERS for TRANSFER_DATA (size 40)
     //   +0   ULONG ParamSize
     //   +4   [4 pad — union requires 8-byte alignment due to LARGE_INTEGER members]
     //   +8   DWORD Flags
     //  +12   NTSTATUS CompletionStatus
-    //  +16   LPCVOID Buffer
+    //  +16   LPCVOID Buffer    (cfapi.h order: Buffer BEFORE Offset, confirmed by Nextcloud)
     //  +24   LARGE_INTEGER Offset
     //  +32   LARGE_INTEGER Length
     public static final long OP_XFER_DATA_SIZE          = 40;
@@ -217,21 +251,24 @@ public class CfApi {
     public static final long OP_XFER_DATA_OFFSET_OFF     = 24;
     public static final long OP_XFER_DATA_LENGTH_OFF     = 32;
 
-    // CF_OPERATION_PARAMETERS for TRANSFER_PLACEHOLDERS (size 40)
+    // CF_OPERATION_PARAMETERS for TRANSFER_PLACEHOLDERS (size 40) — MSDN documented layout.
+    // cldapi DOES use the documented field order (verified by hs_err: writing PlaceholderArray
+    // at +16 makes cldapi read TotalCount=2 from +16 as a pointer → crash reading address 2).
     //   +0   ULONG ParamSize
-    //   +4   [4 pad]
+    //   +4   [4 pad — union alignment to 8]
     //   +8   DWORD Flags
     //  +12   NTSTATUS CompletionStatus
-    //  +16   LARGE_INTEGER PlaceholderTotalCount
-    //  +24   CF_PLACEHOLDER_CREATE_INFO* PlaceholderArray
+    //  +16   LARGE_INTEGER PlaceholderTotalCount    (8 bytes, must be set to count)
+    //  +24   CF_PLACEHOLDER_CREATE_INFO* PlaceholderArray  (8 bytes)
     //  +32   DWORD PlaceholderCount
     //  +36   DWORD EntriesProcessed (output)
-    public static final long OP_XFER_PH_SIZE             = 40;
-    public static final long OP_XFER_PH_FLAGS_OFF        =  8;
-    public static final long OP_XFER_PH_STATUS_OFF       = 12;
-    public static final long OP_XFER_PH_TOTAL_COUNT_OFF  = 16;
-    public static final long OP_XFER_PH_ARRAY_OFF        = 24;
-    public static final long OP_XFER_PH_COUNT_OFF        = 32;
+    public static final long OP_XFER_PH_SIZE                  = 40;
+    public static final long OP_XFER_PH_FLAGS_OFF             =  8;
+    public static final long OP_XFER_PH_STATUS_OFF            = 12;
+    public static final long OP_XFER_PH_TOTAL_COUNT_OFF       = 16;
+    public static final long OP_XFER_PH_ARRAY_OFF             = 24;
+    public static final long OP_XFER_PH_COUNT_OFF             = 32;
+    public static final long OP_XFER_PH_ENTRIES_PROCESSED_OFF = 36;
 
     // CF_OPERATION_PARAMETERS for ACK_DELETE / ACK_RENAME_SOURCE (size 16)
     //   +0  ULONG ParamSize
@@ -295,6 +332,8 @@ public class CfApi {
     public static final long CBI_FILE_IDENTITY_LEN_OFF =  96;
     public static final long CBI_NORMALIZED_PATH_OFF   = 104;
     public static final long CBI_TRANSFER_KEY_OFF      = 112;
+    public static final long CBI_PROCESS_INFO_OFF      = 136;
+    public static final long CBI_REQUEST_KEY_OFF       = 144;
 
     // CF_CALLBACK_PARAMETERS offsets for FETCH_DATA
     //  +0   ULONG ParamSize
@@ -325,13 +364,34 @@ public class CfApi {
     private static MethodHandle hCfDisconnectSyncRoot;
     private static MethodHandle hCfCreatePlaceholders;
     private static MethodHandle hCfExecute;
+    private static MethodHandle hCfReportProviderProgress;
+    private static MethodHandle hCfHydratePlaceholder;
     private static MethodHandle hVirtualAlloc;
     private static MethodHandle hVirtualFree;
+    private static MethodHandle hCreateFileW;
+    private static MethodHandle hCloseHandle;
+    private static MethodHandle hGetProcessHeap;
+    private static MethodHandle hHeapAlloc;
+    private static MethodHandle hHeapFree;
+    private static MethodHandle hSleepEx;
 
     // MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE
     private static final int MEM_COMMIT_RESERVE = 0x3000;
     private static final int PAGE_READWRITE      = 0x4;
     private static final int MEM_RELEASE         = 0x8000;
+
+    // CreateFile constants
+    public static final int  GENERIC_READ                = 0x80000000;
+    public static final int  WRITE_DAC                   = 0x00040000;
+    public static final int  FILE_SHARE_READ             = 0x00000001;
+    public static final int  FILE_SHARE_WRITE            = 0x00000002;
+    public static final int  FILE_SHARE_DELETE           = 0x00000004;
+    public static final int  OPEN_EXISTING               = 3;
+    public static final int  FILE_FLAG_OPEN_REPARSE_POINT = 0x00200000;
+    public static final long INVALID_HANDLE_VALUE        = -1L;
+
+    // CF_HYDRATE_FLAGS
+    public static final int CF_HYDRATE_FLAG_NONE = 0x0;
 
     public static synchronized void load() {
         if (loaded) return;
@@ -379,6 +439,22 @@ public class CfApi {
                 FunctionDescriptor.of(ValueLayout.JAVA_INT,
                         ValueLayout.ADDRESS, ValueLayout.ADDRESS));
 
+        // HRESULT CfReportProviderProgress(CF_CONNECTION_KEY, CF_TRANSFER_KEY, LARGE_INTEGER total, LARGE_INTEGER completed)
+        // Both LARGE_INTEGER values are passed by value as 8-byte values on x64.
+        hCfReportProviderProgress = linker.downcallHandle(
+                cfapi.find("CfReportProviderProgress").orElseThrow(),
+                FunctionDescriptor.of(ValueLayout.JAVA_INT,
+                        ValueLayout.JAVA_LONG, ValueLayout.JAVA_LONG,
+                        ValueLayout.JAVA_LONG, ValueLayout.JAVA_LONG));
+
+        // HRESULT CfHydratePlaceholder(HANDLE, LARGE_INTEGER startingOffset, LARGE_INTEGER length, CF_HYDRATE_FLAGS)
+        // LARGE_INTEGER is 8 bytes and passed by value in a single register on x64
+        hCfHydratePlaceholder = linker.downcallHandle(
+                cfapi.find("CfHydratePlaceholder").orElseThrow(),
+                FunctionDescriptor.of(ValueLayout.JAVA_INT,
+                        ValueLayout.ADDRESS, ValueLayout.JAVA_LONG, ValueLayout.JAVA_LONG,
+                        ValueLayout.JAVA_INT));
+
         // LPVOID VirtualAlloc(LPVOID lpAddress, SIZE_T dwSize, DWORD flAllocationType, DWORD flProtect)
         SymbolLookup kernel32 = SymbolLookup.libraryLookup(
                 java.nio.file.Path.of(systemRoot, "System32", "kernel32.dll"), Arena.global());
@@ -394,7 +470,54 @@ public class CfApi {
                 FunctionDescriptor.of(ValueLayout.JAVA_INT,
                         ValueLayout.ADDRESS, ValueLayout.JAVA_LONG, ValueLayout.JAVA_INT));
 
+        // HANDLE CreateFileW(LPCWSTR, DWORD, DWORD, LPSECURITY_ATTRIBUTES, DWORD, DWORD, HANDLE)
+        hCreateFileW = linker.downcallHandle(
+                kernel32.find("CreateFileW").orElseThrow(),
+                FunctionDescriptor.of(ValueLayout.ADDRESS,
+                        ValueLayout.ADDRESS, ValueLayout.JAVA_INT, ValueLayout.JAVA_INT,
+                        ValueLayout.ADDRESS, ValueLayout.JAVA_INT, ValueLayout.JAVA_INT,
+                        ValueLayout.ADDRESS));
+
+        // BOOL CloseHandle(HANDLE)
+        hCloseHandle = linker.downcallHandle(
+                kernel32.find("CloseHandle").orElseThrow(),
+                FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS));
+
+        // HANDLE GetProcessHeap(void)
+        hGetProcessHeap = linker.downcallHandle(
+                kernel32.find("GetProcessHeap").orElseThrow(),
+                FunctionDescriptor.of(ValueLayout.ADDRESS));
+
+        // LPVOID HeapAlloc(HANDLE hHeap, DWORD dwFlags, SIZE_T dwBytes)
+        hHeapAlloc = linker.downcallHandle(
+                kernel32.find("HeapAlloc").orElseThrow(),
+                FunctionDescriptor.of(ValueLayout.ADDRESS,
+                        ValueLayout.ADDRESS, ValueLayout.JAVA_INT, ValueLayout.JAVA_LONG));
+
+        // BOOL HeapFree(HANDLE hHeap, DWORD dwFlags, LPVOID lpMem)
+        hHeapFree = linker.downcallHandle(
+                kernel32.find("HeapFree").orElseThrow(),
+                FunctionDescriptor.of(ValueLayout.JAVA_INT,
+                        ValueLayout.ADDRESS, ValueLayout.JAVA_INT, ValueLayout.ADDRESS));
+
+        // DWORD SleepEx(DWORD dwMilliseconds, BOOL bAlertable)
+        hSleepEx = linker.downcallHandle(
+                kernel32.find("SleepEx").orElseThrow(),
+                FunctionDescriptor.of(ValueLayout.JAVA_INT,
+                        ValueLayout.JAVA_INT, ValueLayout.JAVA_INT));
+
         loaded = true;
+    }
+
+    /**
+     * Sleep with alertable=TRUE to allow pending APCs (Asynchronous Procedure Calls)
+     * to fire on this thread. CF may queue APCs for hydration delivery that only
+     * execute when the thread enters an alertable wait state.
+     */
+    public static int sleepAlertable(int millis) {
+        try {
+            return (int) hSleepEx.invokeExact(millis, 1);
+        } catch (Throwable t) { throw new RuntimeException(t); }
     }
 
     // -----------------------------------------------------------------------
@@ -439,6 +562,12 @@ public class CfApi {
         } catch (Throwable t) { throw new RuntimeException(t); }
     }
 
+    public static int cfReportProviderProgress(long connectionKey, long transferKey, long total, long completed) {
+        try {
+            return (int) hCfReportProviderProgress.invokeExact(connectionKey, transferKey, total, completed);
+        } catch (Throwable t) { throw new RuntimeException(t); }
+    }
+
     /**
      * Allocate a page-aligned buffer via VirtualAlloc (MEM_COMMIT|MEM_RESERVE, PAGE_READWRITE).
      * Returns a zero-initialised segment of the requested size, or NULL on failure.
@@ -454,6 +583,65 @@ public class CfApi {
     public static void virtualFree(MemorySegment ptr) {
         try {
             hVirtualFree.invokeExact(ptr, 0L, MEM_RELEASE);
+        } catch (Throwable t) { throw new RuntimeException(t); }
+    }
+
+    /**
+     * Allocate from the process heap via Win32 HeapAlloc(GetProcessHeap(), 0, size).
+     * Matches Microsoft CloudMirror's buffer allocation for CfExecute(TRANSFER_DATA).
+     * Returns a segment of the requested size, or NULL on failure.
+     */
+    public static MemorySegment heapAlloc(long size) {
+        try {
+            MemorySegment heap = (MemorySegment) hGetProcessHeap.invokeExact();
+            MemorySegment ptr = (MemorySegment) hHeapAlloc.invokeExact(heap, 0, size);
+            return ptr.reinterpret(size);
+        } catch (Throwable t) { throw new RuntimeException(t); }
+    }
+
+    /** Free a buffer previously returned by heapAlloc. */
+    public static void heapFree(MemorySegment ptr) {
+        try {
+            MemorySegment heap = (MemorySegment) hGetProcessHeap.invokeExact();
+            hHeapFree.invokeExact(heap, 0, ptr);
+        } catch (Throwable t) { throw new RuntimeException(t); }
+    }
+
+    /**
+     * Open a placeholder file for use with CfHydratePlaceholder.
+     * WRITE_DAC satisfies CF's "READ_DATA or WRITE_DAC" requirement without triggering data
+     * hydration on open. We intentionally do NOT use FILE_FLAG_OPEN_REPARSE_POINT: that flag
+     * bypasses the CF filter driver, which causes CfExecute to return E_INVALIDARG because CF
+     * cannot associate the handle with its internal placeholder management state.
+     * Returns INVALID_HANDLE_VALUE on failure.
+     */
+    public static MemorySegment createFileForHydration(MemorySegment pathW) {
+        try {
+            return (MemorySegment) hCreateFileW.invokeExact(
+                    pathW,
+                    WRITE_DAC,
+                    FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                    MemorySegment.NULL,
+                    OPEN_EXISTING,
+                    FILE_ATTRIBUTE_NORMAL,
+                    MemorySegment.NULL);
+        } catch (Throwable t) { throw new RuntimeException(t); }
+    }
+
+    /**
+     * Explicitly hydrate a placeholder file.
+     * offset=0 and length=-1L hydrate the entire file.
+     * This fires FETCH_DATA via a non-locking path, safe to call from the same process.
+     */
+    public static int cfHydratePlaceholder(MemorySegment fileHandle, long offset, long length, int flags) {
+        try {
+            return (int) hCfHydratePlaceholder.invokeExact(fileHandle, offset, length, flags);
+        } catch (Throwable t) { throw new RuntimeException(t); }
+    }
+
+    public static boolean closeHandle(MemorySegment handle) {
+        try {
+            return (int) hCloseHandle.invokeExact(handle) != 0;
         } catch (Throwable t) { throw new RuntimeException(t); }
     }
 

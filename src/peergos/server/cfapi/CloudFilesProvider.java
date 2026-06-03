@@ -34,6 +34,13 @@ public class CloudFilesProvider {
      */
     private final ConcurrentHashMap<Long, String> identityToPath = new ConcurrentHashMap<>();
 
+    /**
+     * VirtualAlloc'd transfer buffers that CF may still be reading from after
+     * CfExecute(TRANSFER_DATA) returns. Leak them for now; a future change should
+     * implement deferred cleanup once we know CF's actual completion semantics.
+     */
+    private final java.util.List<MemorySegment> pendingBuffers = java.util.Collections.synchronizedList(new java.util.ArrayList<>());
+
     public CloudFilesProvider(UserContext context, String syncRootPath) {
         this.context = context;
         this.syncRootPath = syncRootPath;
@@ -44,34 +51,36 @@ public class CloudFilesProvider {
     // -----------------------------------------------------------------------
 
     public void onFetchData(MemorySegment info, MemorySegment params) {
-        // Raw pointers arrive with byteSize=0; reinterpret before any field access.
         info   = info.reinterpret(256);
         params = params.reinterpret(256);
-        long connectionKey = 0, transferKey = 0;
-        System.err.println("[CF] FETCH_DATA callback entered");
-        try {
-            connectionKey  = info.get(ValueLayout.JAVA_LONG, CfApi.CBI_CONNECTION_KEY_OFF);
-            transferKey    = info.get(ValueLayout.JAVA_LONG, CfApi.CBI_TRANSFER_KEY_OFF);
-            long identityAddr  = info.get(ValueLayout.JAVA_LONG, CfApi.CBI_FILE_IDENTITY_OFF);
-            int  identityLen   = info.get(ValueLayout.JAVA_INT,  CfApi.CBI_FILE_IDENTITY_LEN_OFF);
-            long requiredOffset = params.get(ValueLayout.JAVA_LONG, CfApi.CBP_FETCH_DATA_REQUIRED_OFFSET_OFF);
-            long requiredLength = params.get(ValueLayout.JAVA_LONG, CfApi.CBP_FETCH_DATA_REQUIRED_LENGTH_OFF);
-            System.err.println("[CF] FETCH_DATA: connKey=" + connectionKey + " transferKey=" + transferKey
-                    + " identityAddr=0x" + Long.toHexString(identityAddr)
-                    + " identityLen=" + identityLen
-                    + " reqOffset=" + requiredOffset + " reqLen=" + requiredLength);
+        long connectionKey  = info.get(ValueLayout.JAVA_LONG, CfApi.CBI_CONNECTION_KEY_OFF);
+        long transferKey    = info.get(ValueLayout.JAVA_LONG, CfApi.CBI_TRANSFER_KEY_OFF);
+        long requestKey     = info.get(ValueLayout.JAVA_LONG, CfApi.CBI_REQUEST_KEY_OFF);
+        long identityAddr   = info.get(ValueLayout.JAVA_LONG, CfApi.CBI_FILE_IDENTITY_OFF);
+        int  identityLen    = info.get(ValueLayout.JAVA_INT,  CfApi.CBI_FILE_IDENTITY_LEN_OFF);
+        long requiredOffset = params.get(ValueLayout.JAVA_LONG, CfApi.CBP_FETCH_DATA_REQUIRED_OFFSET_OFF);
+        long requiredLength = params.get(ValueLayout.JAVA_LONG, CfApi.CBP_FETCH_DATA_REQUIRED_LENGTH_OFF);
+        System.err.println("[CF] FETCH_DATA: connKey=" + connectionKey + " xferKey=" + transferKey
+                + " reqOff=" + requiredOffset + " reqLen=" + requiredLength);
+        // Call synchronously on the CF callback thread — CF may correlate the CfExecute
+        // back to the originating thread, so calling from a worker thread loses context.
+        doFetchData(connectionKey, transferKey, requestKey, identityAddr, identityLen, requiredOffset, requiredLength);
+    }
 
+    private void doFetchData(long connectionKey, long transferKey, long requestKey,
+                             long identityAddr, int identityLen, long requiredOffset, long requiredLength) {
+        try {
             String peergosPath = pathFromIdentity(identityAddr, identityLen);
             System.err.println("[CF] FETCH_DATA: peergosPath=" + peergosPath + " mapSize=" + identityToPath.size());
             if (peergosPath == null) {
                 System.err.println("[CF] FETCH_DATA: path lookup FAILED identityAddr=0x" + Long.toHexString(identityAddr));
-                failTransfer(connectionKey, transferKey, -1);
+                failTransfer(connectionKey, transferKey, requestKey, -1);
                 return;
             }
 
             Optional<FileWrapper> fwOpt = context.getByPath(peergosPath).join();
             if (fwOpt.isEmpty() || fwOpt.get().isDirectory()) {
-                failTransfer(connectionKey, transferKey, -1);
+                failTransfer(connectionKey, transferKey, requestKey, -1);
                 return;
             }
             FileWrapper fw  = fwOpt.get();
@@ -90,58 +99,71 @@ public class CloudFilesProvider {
                     int toRead = (int) Math.min(buf.length, remaining);
                     int nRead  = reader.readIntoArray(buf, 0, toRead).join();
                     if (nRead <= 0) break;
-                    long paddedSize = ((nRead + CLUSTER_SIZE - 1) / CLUSTER_SIZE) * CLUSTER_SIZE;
-                    // VirtualAlloc always returns page-aligned memory; CF API requires page-aligned buffers.
-                    MemorySegment dataSeg = CfApi.virtualAlloc(paddedSize).reinterpret(paddedSize);
-                    System.err.println("[CF] buffer addr=0x" + Long.toHexString(dataSeg.address())
-                            + " pageAligned=" + (dataSeg.address() % CLUSTER_SIZE == 0));
-                    MemorySegment.copy(buf, 0, dataSeg, ValueLayout.JAVA_BYTE, 0, nRead);
-                    try {
-                        transferData(connectionKey, transferKey, dataSeg, offset, nRead);
-                    } finally {
-                        CfApi.virtualFree(dataSeg);
-                    }
+                    // On Win 11 26100 CF requires page-aligned buffer (HeapAlloc 30 bytes is
+                    // not page-aligned and CF rejects with E_INVALIDARG). Also try Length=padded
+                    // (cluster-aligned) since Microsoft sends Length=numberOfBytesTransfered
+                    // which in their chunked flow is always cluster-aligned except for the very
+                    // last chunk.
+                    long padded = ((nRead + CLUSTER_SIZE - 1) / CLUSTER_SIZE) * CLUSTER_SIZE;
+                    MemorySegment ds = CfApi.virtualAlloc(padded).reinterpret(padded);
+                    MemorySegment.copy(buf, 0, ds, ValueLayout.JAVA_BYTE, 0, nRead);
+                    // Use padded length so all internal CF state machine boundaries are aligned
+                    StringBuilder hex = new StringBuilder("[CF] FETCH_DATA: nRead=" + nRead
+                            + " offset=" + offset + " buf[0..min(32,nRead)]=");
+                    int show = Math.min(32, nRead);
+                    for (int i = 0; i < show; i++) hex.append(String.format("%02x ", buf[i] & 0xff));
+                    System.err.println(hex.toString());
+                    // Length = actual bytes read (Microsoft passes numberOfBytesTransfered,
+                    // which for a 30-byte file is 30, NOT the padded buffer size).
+                    transferData(connectionKey, transferKey, requestKey, ds, offset, nRead, fw.getSize());
+                    // Keep buffer alive (CF may read asynchronously after CfExecute returns)
+                    pendingBuffers.add(ds);
                     offset    += nRead;
                     remaining -= nRead;
                 }
             }
         } catch (Exception e) {
             LOG.log(Level.SEVERE, "FETCH_DATA callback exception (connKey=" + connectionKey + ")", e);
-            failTransfer(connectionKey, transferKey, -1);
+            failTransfer(connectionKey, transferKey, requestKey, -1);
         }
     }
 
-    private void transferData(long connectionKey, long transferKey,
-                              MemorySegment data, long offset, long length) {
-        try (Arena arena = Arena.ofConfined()) {
-        MemorySegment opInfo   = buildOpInfo(arena, connectionKey, transferKey,
-                CfApi.CF_OPERATION_TYPE_TRANSFER_DATA);
-        MemorySegment opParams = arena.allocate(CfApi.OP_XFER_DATA_SIZE);
-        opParams.set(ValueLayout.JAVA_INT,  CfApi.OP_PARAM_SIZE_OFF,       (int) CfApi.OP_XFER_DATA_SIZE);
-        opParams.set(ValueLayout.JAVA_INT,  CfApi.OP_XFER_DATA_FLAGS_OFF,  CfApi.CF_OPERATION_TRANSFER_DATA_FLAG_NONE);
-        opParams.set(ValueLayout.JAVA_INT,  CfApi.OP_XFER_DATA_STATUS_OFF, CfApi.STATUS_SUCCESS);
-        opParams.set(ValueLayout.JAVA_LONG, CfApi.OP_XFER_DATA_BUFFER_OFF, data.address());
-        opParams.set(ValueLayout.JAVA_LONG, CfApi.OP_XFER_DATA_OFFSET_OFF, offset);
-        opParams.set(ValueLayout.JAVA_LONG, CfApi.OP_XFER_DATA_LENGTH_OFF, length);
-
-        System.err.print("[CF] opInfo  @0x" + Long.toHexString(opInfo.address()) + ":");
-        for (int i = 0; i < (int) CfApi.OI_SIZE; i++)
-            System.err.printf(" %02x", opInfo.get(ValueLayout.JAVA_BYTE, i) & 0xFF);
-        System.err.println();
-        System.err.print("[CF] opParams @0x" + Long.toHexString(opParams.address()) + ":");
-        for (int i = 0; i < (int) CfApi.OP_XFER_DATA_SIZE; i++)
-            System.err.printf(" %02x", opParams.get(ValueLayout.JAVA_BYTE, i) & 0xFF);
-        System.err.println();
-
-        int hr = CfApi.cfExecute(opInfo, opParams);
-        System.err.println("[CF] CfExecute(TRANSFER_DATA) hr=0x" + Integer.toHexString(hr));
-        } // end Arena
-    }
-
-    private void failTransfer(long connectionKey, long transferKey, int status) {
+    private void transferData(long connectionKey, long transferKey, long requestKey,
+                              MemorySegment data, long offset, long length, long fileSize) {
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment opInfo   = buildOpInfo(arena, connectionKey, transferKey,
-                    CfApi.CF_OPERATION_TYPE_TRANSFER_DATA);
+                    CfApi.CF_OPERATION_TYPE_TRANSFER_DATA, requestKey);
+            MemorySegment opParams = arena.allocate(CfApi.OP_XFER_DATA_SIZE);
+            opParams.set(ValueLayout.JAVA_INT,  CfApi.OP_PARAM_SIZE_OFF,       (int) CfApi.OP_XFER_DATA_SIZE);
+            opParams.set(ValueLayout.JAVA_INT,  CfApi.OP_XFER_DATA_FLAGS_OFF,  CfApi.CF_OPERATION_TRANSFER_DATA_FLAG_NONE);
+            opParams.set(ValueLayout.JAVA_INT,  CfApi.OP_XFER_DATA_STATUS_OFF, CfApi.STATUS_SUCCESS);
+            opParams.set(ValueLayout.JAVA_LONG, CfApi.OP_XFER_DATA_BUFFER_OFF, data.address());
+            opParams.set(ValueLayout.JAVA_LONG, CfApi.OP_XFER_DATA_OFFSET_OFF, offset);
+            opParams.set(ValueLayout.JAVA_LONG, CfApi.OP_XFER_DATA_LENGTH_OFF, length);
+
+            // Pre-progress: completed < total so CF doesn't consider hydration done prematurely.
+            long total = fileSize + CLUSTER_SIZE;
+            long completed = offset + CLUSTER_SIZE;
+            int progressHr = CfApi.cfReportProviderProgress(connectionKey, transferKey, total, completed);
+            System.err.println("[CF] CfReportProviderProgress(total=" + total + ", completed=" + completed
+                    + ") hr=0x" + Integer.toHexString(progressHr));
+
+            int hr = CfApi.cfExecute(opInfo, opParams);
+            System.err.println("[CF] CfExecute(TRANSFER_DATA) hr=0x" + Integer.toHexString(hr));
+
+            // If this CfExecute delivered the final chunk (offset+length == fileSize), mark
+            // the operation 100% complete so the UI popup closes and the read unblocks.
+            if (offset + length >= fileSize) {
+                int finalHr = CfApi.cfReportProviderProgress(connectionKey, transferKey, fileSize, fileSize);
+                System.err.println("[CF] CfReportProviderProgress(final 100%) hr=0x" + Integer.toHexString(finalHr));
+            }
+        }
+    }
+
+    private void failTransfer(long connectionKey, long transferKey, long requestKey, int status) {
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment opInfo   = buildOpInfo(arena, connectionKey, transferKey,
+                    CfApi.CF_OPERATION_TYPE_TRANSFER_DATA, requestKey);
             MemorySegment opParams = arena.allocate(CfApi.OP_XFER_DATA_SIZE);
             opParams.set(ValueLayout.JAVA_INT,  CfApi.OP_PARAM_SIZE_OFF,       (int) CfApi.OP_XFER_DATA_SIZE);
             opParams.set(ValueLayout.JAVA_INT,  CfApi.OP_XFER_DATA_FLAGS_OFF,  0);
@@ -160,55 +182,114 @@ public class CloudFilesProvider {
     public void onFetchPlaceholders(MemorySegment info, MemorySegment params) {
         info   = info.reinterpret(256);
         params = params.reinterpret(256);
-        long connectionKey = 0, transferKey = 0;
+        long connectionKey = 0, transferKey = 0, requestKey = 0;
+        System.err.println("[CF] FETCH_PLACEHOLDERS entered");
         try {
             connectionKey = info.get(ValueLayout.JAVA_LONG, CfApi.CBI_CONNECTION_KEY_OFF);
             transferKey   = info.get(ValueLayout.JAVA_LONG, CfApi.CBI_TRANSFER_KEY_OFF);
+            requestKey    = info.get(ValueLayout.JAVA_LONG, CfApi.CBI_REQUEST_KEY_OFF);
+
+            // Detect same-process callbacks (e.g. fired by CfConnectSyncRoot itself).
+            long processInfoAddr = info.get(ValueLayout.JAVA_LONG, CfApi.CBI_PROCESS_INFO_OFF);
+            int ourPid = (int) ProcessHandle.current().pid();
+            int callerPid = -1;
+            if (processInfoAddr != 0) {
+                callerPid = MemorySegment.ofAddress(processInfoAddr).reinterpret(16)
+                        .get(ValueLayout.JAVA_INT, 4);
+            }
+            System.err.println("[CF] FETCH_PLACEHOLDERS: processInfoAddr=0x" + Long.toHexString(processInfoAddr)
+                    + " callerPid=" + callerPid + " ourPid=" + ourPid);
+            if (processInfoAddr != 0 && callerPid == ourPid) {
+                System.err.println("[CF] FETCH_PLACEHOLDERS: same-process → fail to keep dir unpopulated");
+                failPlaceholders(connectionKey, transferKey, requestKey);
+                return;
+            }
+
             String dirPath    = CfApi.readWideString(info, CfApi.CBI_NORMALIZED_PATH_OFF);
+            System.err.println("[CF] FETCH_PLACEHOLDERS connKey=" + connectionKey
+                    + " transferKey=" + transferKey + " dirPath='" + dirPath + "'");
             String peergosPath = normalizedToPeregos(dirPath);
+            System.err.println("[CF] FETCH_PLACEHOLDERS fetching " + peergosPath);
 
             Optional<FileWrapper> dirOpt = context.getByPath(peergosPath).join();
             if (dirOpt.isEmpty() || !dirOpt.get().isDirectory()) {
-                failPlaceholders(connectionKey, transferKey);
+                System.err.println("[CF] FETCH_PLACEHOLDERS: path not found or not a dir → fail");
+                failPlaceholders(connectionKey, transferKey, requestKey);
                 return;
             }
+            int fetchFlags = params.get(ValueLayout.JAVA_INT, CfApi.CBP_FETCH_PH_FLAGS_OFF);
+            String pattern = CfApi.readWideString(params, CfApi.CBP_FETCH_PH_PATTERN_OFF);
+            System.err.println("[CF] FETCH_PLACEHOLDERS: fetchFlags=0x" + Integer.toHexString(fetchFlags)
+                    + " pattern='" + pattern + "'");
+
             Set<FileWrapper> children = dirOpt.get()
                     .getChildren(context.crypto.hasher, context.network).join();
+            // Filter out files that already have physical placeholders on disk.
+            // First FETCH_PLACEHOLDERS creates them; subsequent re-fires would error with
+            // ALREADY_EXISTS. By sending count=0 with DISABLE_ON_DEMAND_POPULATION flag,
+            // CF marks the directory as fully enumerated and stops firing the callback.
+            Path localDir = localDirPath(dirPath);
             List<FileWrapper> visible = children.stream()
                     .filter(f -> !f.getFileProperties().isHidden)
+                    .filter(f -> matchesPattern(f.getName(), pattern))
+                    .filter(f -> !java.nio.file.Files.exists(localDir.resolve(f.getName())))
                     .toList();
+            System.err.println("[CF] FETCH_PLACEHOLDERS: returning " + visible.size()
+                    + " NEW entries matching pattern '" + pattern + "'");
 
             try (Arena arena = Arena.ofConfined()) {
-                MemorySegment array = buildPlaceholderArray(visible, peergosPath, arena);
-                transferPlaceholders(arena, connectionKey, transferKey, array, visible.size());
+                MemorySegment array = visible.isEmpty()
+                        ? MemorySegment.NULL
+                        : buildPlaceholderArray(visible, peergosPath, arena);
+                transferPlaceholders(arena, connectionKey, transferKey, requestKey, array, visible.size());
             }
         } catch (Exception e) {
             LOG.log(Level.WARNING, "FETCH_PLACEHOLDERS callback error", e);
-            failPlaceholders(connectionKey, transferKey);
+            failPlaceholders(connectionKey, transferKey, requestKey);
         }
     }
 
-    private void transferPlaceholders(Arena arena, long connectionKey, long transferKey,
+    private void transferPlaceholders(Arena arena, long connectionKey, long transferKey, long requestKey,
                                       MemorySegment array, int count) {
         MemorySegment opInfo   = buildOpInfo(arena, connectionKey, transferKey,
-                CfApi.CF_OPERATION_TYPE_TRANSFER_PLACEHOLDERS);
+                CfApi.CF_OPERATION_TYPE_TRANSFER_PLACEHOLDERS, requestKey);
         MemorySegment opParams = arena.allocate(CfApi.OP_XFER_PH_SIZE);
-        opParams.set(ValueLayout.JAVA_INT,  CfApi.OP_PARAM_SIZE_OFF,          (int) CfApi.OP_XFER_PH_SIZE);
-        opParams.set(ValueLayout.JAVA_INT,  CfApi.OP_XFER_PH_FLAGS_OFF,       CfApi.CF_OPERATION_TRANSFER_PLACEHOLDERS_FLAG_NONE);
-        opParams.set(ValueLayout.JAVA_INT,  CfApi.OP_XFER_PH_STATUS_OFF,      CfApi.STATUS_SUCCESS);
-        opParams.set(ValueLayout.JAVA_LONG, CfApi.OP_XFER_PH_TOTAL_COUNT_OFF, (long) count);
-        opParams.set(ValueLayout.JAVA_LONG, CfApi.OP_XFER_PH_ARRAY_OFF,       array.address());
-        opParams.set(ValueLayout.JAVA_INT,  CfApi.OP_XFER_PH_COUNT_OFF,       count);
+        opParams.set(ValueLayout.JAVA_INT,  CfApi.OP_PARAM_SIZE_OFF,            (int) CfApi.OP_XFER_PH_SIZE);
+        opParams.set(ValueLayout.JAVA_INT,  CfApi.OP_XFER_PH_FLAGS_OFF,         CfApi.CF_OPERATION_TRANSFER_PLACEHOLDERS_FLAG_DISABLE_ON_DEMAND_POPULATION);
+        opParams.set(ValueLayout.JAVA_INT,  CfApi.OP_XFER_PH_STATUS_OFF,        CfApi.STATUS_SUCCESS);
+        opParams.set(ValueLayout.JAVA_LONG, CfApi.OP_XFER_PH_ARRAY_OFF,         array == MemorySegment.NULL ? 0L : array.address());
+        opParams.set(ValueLayout.JAVA_LONG, CfApi.OP_XFER_PH_TOTAL_COUNT_OFF,   (long) count);
+        opParams.set(ValueLayout.JAVA_INT,  CfApi.OP_XFER_PH_COUNT_OFF,         count);
 
+        System.err.print("[CF] opParams(PH) @0x" + Long.toHexString(opParams.address()) + ":");
+        for (int i = 0; i < (int) CfApi.OP_XFER_PH_SIZE; i++)
+            System.err.printf(" %02x", opParams.get(ValueLayout.JAVA_BYTE, i) & 0xFF);
+        System.err.println();
         int hr = CfApi.cfExecute(opInfo, opParams);
+        int entriesProcessed = opParams.get(ValueLayout.JAVA_INT, CfApi.OP_XFER_PH_ENTRIES_PROCESSED_OFF);
+        System.err.println("[CF] CfExecute(TRANSFER_PLACEHOLDERS) hr=0x" + Integer.toHexString(hr)
+                + " entriesProcessed=" + entriesProcessed);
+        if (array != MemorySegment.NULL) {
+            for (int i = 0; i < count; i++) {
+                long base = CfApi.PCI_SIZE * i;
+                int resultHr = array.get(ValueLayout.JAVA_INT, base + CfApi.PCI_RESULT_OFF);
+                long createUsn = array.get(ValueLayout.JAVA_LONG, base + CfApi.PCI_CREATE_USN_OFF);
+                System.err.println("[CF] Placeholder[" + i + "] Result=0x" + Integer.toHexString(resultHr)
+                        + " CreateUsn=" + createUsn);
+            }
+        }
+        java.io.File[] physical = new java.io.File(syncRootPath).listFiles();
+        System.err.println("[CF] Physical files after TRANSFER_PLACEHOLDERS: "
+                + (physical == null ? "null" : java.util.Arrays.stream(physical)
+                        .map(java.io.File::getName).collect(java.util.stream.Collectors.joining(", "))));
         if (hr != CfApi.S_OK)
             LOG.warning("CfExecute(TRANSFER_PLACEHOLDERS) returned 0x" + Integer.toHexString(hr));
     }
 
-    private void failPlaceholders(long connectionKey, long transferKey) {
+    private void failPlaceholders(long connectionKey, long transferKey, long requestKey) {
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment opInfo   = buildOpInfo(arena, connectionKey, transferKey,
-                    CfApi.CF_OPERATION_TYPE_TRANSFER_PLACEHOLDERS);
+                    CfApi.CF_OPERATION_TYPE_TRANSFER_PLACEHOLDERS, requestKey);
             MemorySegment opParams = arena.allocate(CfApi.OP_XFER_PH_SIZE);
             opParams.set(ValueLayout.JAVA_INT,  CfApi.OP_PARAM_SIZE_OFF,     (int) CfApi.OP_XFER_PH_SIZE);
             opParams.set(ValueLayout.JAVA_INT,  CfApi.OP_XFER_PH_FLAGS_OFF,  0);
@@ -249,11 +330,31 @@ public class CloudFilesProvider {
         int entriesProcessed = processed.get(ValueLayout.JAVA_INT, 0);
         System.err.println("[CF] CfCreatePlaceholders hr=0x" + Integer.toHexString(hr)
                 + " entriesProcessed=" + entriesProcessed);
+        // Verify physical files are visible on the real filesystem after creation.
+        java.io.File[] physicalFiles = new java.io.File(syncRootPath).listFiles();
+        System.err.println("[CF] Physical files in syncRoot after CfCreatePlaceholders: "
+                + (physicalFiles == null ? "null" : java.util.Arrays.stream(physicalFiles)
+                        .map(java.io.File::getName).collect(java.util.stream.Collectors.joining(", "))));
     }
 
     // -----------------------------------------------------------------------
     // NOTIFY_FILE_CLOSE_COMPLETION — write back modified files
     // -----------------------------------------------------------------------
+
+    // CF requires these to be registered (matching Nextcloud's pattern) for the hydration
+    // state machine to advance. We log only — CF handles the actual semantics.
+
+    public void onValidateData(MemorySegment info, MemorySegment params) {
+        System.err.println("[CF] VALIDATE_DATA callback");
+    }
+
+    public void onCancelFetchData(MemorySegment info, MemorySegment params) {
+        System.err.println("[CF] CANCEL_FETCH_DATA callback");
+    }
+
+    public void onFileOpenCompletion(MemorySegment info, MemorySegment params) {
+        System.err.println("[CF] FILE_OPEN_COMPLETION callback");
+    }
 
     public void onFileCloseCompletion(MemorySegment info, MemorySegment params) {
         info   = info.reinterpret(256);
@@ -306,18 +407,19 @@ public class CloudFilesProvider {
     public void onDeletePlaceholder(MemorySegment info, MemorySegment params) {
         info = info.reinterpret(256);
         params = params.reinterpret(256);
-        long connectionKey, transferKey;
+        long connectionKey, transferKey, requestKey;
         String normalizedPath;
         try {
             connectionKey = info.get(ValueLayout.JAVA_LONG, CfApi.CBI_CONNECTION_KEY_OFF);
             transferKey   = info.get(ValueLayout.JAVA_LONG, CfApi.CBI_TRANSFER_KEY_OFF);
+            requestKey    = info.get(ValueLayout.JAVA_LONG, CfApi.CBI_REQUEST_KEY_OFF);
             normalizedPath = CfApi.readWideString(info, CfApi.CBI_NORMALIZED_PATH_OFF);
         } catch (Exception e) { LOG.log(Level.WARNING, "DELETE: failed to read params", e); return; }
         String peergosPath    = normalizedToPeregos(normalizedPath);
 
         // Ack first to let Windows proceed with the local delete
         try (Arena arena = Arena.ofConfined()) {
-            ack(arena, connectionKey, transferKey,
+            ack(arena, connectionKey, transferKey, requestKey,
                 CfApi.CF_OPERATION_TYPE_ACK_DELETE, CfApi.STATUS_SUCCESS);
         }
 
@@ -343,14 +445,15 @@ public class CloudFilesProvider {
     public void onRenamePlaceholder(MemorySegment info, MemorySegment params) {
         info = info.reinterpret(256);
         params = params.reinterpret(256);
-        long connectionKey, transferKey;
+        long connectionKey, transferKey, requestKey;
         try {
             connectionKey = info.get(ValueLayout.JAVA_LONG, CfApi.CBI_CONNECTION_KEY_OFF);
             transferKey   = info.get(ValueLayout.JAVA_LONG, CfApi.CBI_TRANSFER_KEY_OFF);
+            requestKey    = info.get(ValueLayout.JAVA_LONG, CfApi.CBI_REQUEST_KEY_OFF);
         } catch (Exception e) { LOG.log(Level.WARNING, "RENAME: failed to read params", e); return; }
         try (Arena arena = Arena.ofConfined()) {
-            ack(arena, connectionKey, transferKey,
-                CfApi.CF_OPERATION_TYPE_ACK_RENAME_SOURCE, CfApi.STATUS_SUCCESS);
+            ack(arena, connectionKey, transferKey, requestKey,
+                CfApi.CF_OPERATION_TYPE_ACK_RENAME, CfApi.STATUS_SUCCESS);
         }
     }
 
@@ -412,6 +515,9 @@ public class CloudFilesProvider {
             // Relative file name pointer
             MemorySegment nameW = CfApi.wideString(props.name, arena);
             array.set(ValueLayout.JAVA_LONG, base + CfApi.PCI_RELATIVE_FILE_NAME_OFF, nameW.address());
+            System.err.println("[CF] buildPlaceholderArray[" + i + "] name='" + props.name
+                    + "' nameW=0x" + Long.toHexString(nameW.address())
+                    + " array=0x" + Long.toHexString(array.address()));
 
             // FS metadata — FILE_BASIC_INFO
             long fbiBase = base + CfApi.PCI_FS_METADATA_OFF + CfApi.FSM_BASIC_INFO_OFF;
@@ -442,14 +548,13 @@ public class CloudFilesProvider {
             array.set(ValueLayout.JAVA_LONG, base + CfApi.PCI_FILE_IDENTITY_OFF,     idSeg.address());
             array.set(ValueLayout.JAVA_INT,  base + CfApi.PCI_FILE_IDENTITY_LEN_OFF, idBytes.length);
 
-            // Flags
             array.set(ValueLayout.JAVA_INT, base + CfApi.PCI_FLAGS_OFF,
                     CfApi.CF_PLACEHOLDER_CREATE_FLAG_MARK_IN_SYNC);
         }
         return array;
     }
 
-    private MemorySegment buildOpInfo(Arena arena, long connectionKey, long transferKey, int opType) {
+    private MemorySegment buildOpInfo(Arena arena, long connectionKey, long transferKey, int opType, long requestKey) {
         MemorySegment seg = arena.allocate(CfApi.OI_SIZE);
         seg.set(ValueLayout.JAVA_INT,  CfApi.OI_STRUCT_SIZE_OFF,    (int) CfApi.OI_SIZE);
         seg.set(ValueLayout.JAVA_INT,  CfApi.OI_TYPE_OFF,           opType);
@@ -457,7 +562,7 @@ public class CloudFilesProvider {
         seg.set(ValueLayout.JAVA_LONG, CfApi.OI_TRANSFER_KEY_OFF,   transferKey);
         seg.set(ValueLayout.JAVA_LONG, CfApi.OI_CORRELATION_VEC_OFF, 0L);
         seg.set(ValueLayout.JAVA_LONG, CfApi.OI_SYNC_STATUS_OFF,    0L);
-        seg.set(ValueLayout.JAVA_LONG, CfApi.OI_REQUEST_KEY_OFF,    0L);
+        seg.set(ValueLayout.JAVA_LONG, CfApi.OI_REQUEST_KEY_OFF,    requestKey);
         return seg;
     }
 
@@ -469,16 +574,60 @@ public class CloudFilesProvider {
         return identityToPath.get(key);
     }
 
+    private static boolean matchesPattern(String name, String pattern) {
+        if (pattern == null || pattern.isEmpty() || pattern.equals("*"))
+            return true;
+        // CF passes Windows-style glob with * and ?. Convert to regex.
+        StringBuilder rx = new StringBuilder("^");
+        for (int i = 0; i < pattern.length(); i++) {
+            char c = pattern.charAt(i);
+            switch (c) {
+                case '*': rx.append(".*"); break;
+                case '?': rx.append("."); break;
+                case '.': case '\\': case '(': case ')': case '[': case ']':
+                case '{': case '}': case '+': case '|': case '^': case '$':
+                    rx.append('\\').append(c); break;
+                default: rx.append(c);
+            }
+        }
+        rx.append("$");
+        return name.matches("(?i)" + rx.toString());
+    }
+
+    private Path localDirPath(String normalizedPath) {
+        // Convert volume-relative NormalizedPath to an absolute local filesystem Path.
+        if (normalizedPath == null || normalizedPath.isEmpty())
+            return Path.of(syncRootPath);
+        String volRelRoot = syncRootPath.replaceFirst("^[A-Za-z]:", "").replace('\\', '/');
+        String norm = normalizedPath.replace('\\', '/');
+        if (norm.equalsIgnoreCase(volRelRoot) || !norm.toLowerCase().startsWith(volRelRoot.toLowerCase() + "/"))
+            return Path.of(syncRootPath);
+        String rel = norm.substring(volRelRoot.length() + 1).replace('/', java.io.File.separatorChar);
+        return Path.of(syncRootPath).resolve(rel);
+    }
+
     private String normalizedToPeregos(String normalizedPath) {
-        // NormalizedPath from CF API is relative to the sync root (e.g. "\Documents\file.txt").
-        // Map to /<username>/relative/path.
-        String rel = normalizedPath.replace('\\', '/');
-        if (rel.startsWith("/")) rel = rel.substring(1);
+        // NormalizedPath from CF API is volume-relative (e.g. "\Users\...\syncroot\sub\file.txt"),
+        // NOT relative to the sync root.  Strip the sync-root prefix to get the in-root path.
+        // syncRootPath is absolute ("C:\Users\...\syncroot") — strip the drive letter for comparison.
+        if (normalizedPath == null || normalizedPath.isEmpty()) {
+            return "/" + context.username;
+        }
+        String volRelRoot = syncRootPath.replaceFirst("^[A-Za-z]:", "").replace('\\', '/');
+        String norm = normalizedPath.replace('\\', '/');
+        String rel;
+        if (norm.equalsIgnoreCase(volRelRoot)) {
+            rel = ""; // listing the sync root directory itself
+        } else if (norm.toLowerCase().startsWith(volRelRoot.toLowerCase() + "/")) {
+            rel = norm.substring(volRelRoot.length() + 1);
+        } else {
+            rel = ""; // fallback to root (e.g. empty NormalizedPath)
+        }
         return rel.isEmpty() ? "/" + context.username : "/" + context.username + "/" + rel;
     }
 
-    private void ack(Arena arena, long connectionKey, long transferKey, int opType, int status) {
-        MemorySegment opInfo   = buildOpInfo(arena, connectionKey, transferKey, opType);
+    private void ack(Arena arena, long connectionKey, long transferKey, long requestKey, int opType, int status) {
+        MemorySegment opInfo   = buildOpInfo(arena, connectionKey, transferKey, opType, requestKey);
         MemorySegment opParams = arena.allocate(CfApi.OP_ACK_SIZE);
         opParams.set(ValueLayout.JAVA_INT, CfApi.OP_PARAM_SIZE_OFF, (int) CfApi.OP_ACK_SIZE);
         opParams.set(ValueLayout.JAVA_INT, CfApi.OP_ACK_FLAGS_OFF,  CfApi.CF_OPERATION_ACK_FLAG_NONE);

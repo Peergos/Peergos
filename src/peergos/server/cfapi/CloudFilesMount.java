@@ -47,6 +47,14 @@ public class CloudFilesMount implements Closeable {
 
         Files.createDirectories(Path.of(syncRootPath));
 
+        // Register the sync root with the Windows shell BEFORE calling CfRegisterSyncRoot.
+        // Without HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer\\SyncRootManager\\<id>
+        // entries, the shell doesn't recognize our provider and CF silently drops hydration
+        // deliveries (CfExecute returns S_OK but data never reaches the requesting process).
+        // Discovered by comparing with Nextcloud's createSyncRootRegistryKeys.
+        String syncRootId = registerSyncRootInShell(syncRootPath, context.username);
+        System.err.println("[CF] Registered syncRootId in shell: " + syncRootId);
+
         // Arena for the sync root registration structs (registration is persistent)
         Arena globalArena = Arena.ofAuto();
 
@@ -69,11 +77,11 @@ public class CloudFilesMount implements Closeable {
         // -- CF_SYNC_POLICIES --
         MemorySegment policies = globalArena.allocate(CfApi.POLICIES_SIZE);
         policies.set(ValueLayout.JAVA_INT,   CfApi.POLICIES_STRUCT_SIZE_OFF,  (int) CfApi.POLICIES_SIZE);
-        policies.set(ValueLayout.JAVA_SHORT, CfApi.POLICIES_HYDRATION_OFF,    CfApi.CF_HYDRATION_POLICY_PARTIAL);
+        policies.set(ValueLayout.JAVA_SHORT, CfApi.POLICIES_HYDRATION_OFF,    CfApi.CF_HYDRATION_POLICY_FULL);
         policies.set(ValueLayout.JAVA_SHORT, CfApi.POLICIES_HYDRATION_OFF + 2, CfApi.CF_POLICY_MODIFIER_NONE);
         policies.set(ValueLayout.JAVA_SHORT, CfApi.POLICIES_POPULATION_OFF,   CfApi.CF_POPULATION_POLICY_PARTIAL);
         policies.set(ValueLayout.JAVA_SHORT, CfApi.POLICIES_POPULATION_OFF + 2, CfApi.CF_POLICY_MODIFIER_NONE);
-        policies.set(ValueLayout.JAVA_INT,   CfApi.POLICIES_INSYNC_OFF,       CfApi.CF_INSYNC_POLICY_NONE);
+        policies.set(ValueLayout.JAVA_INT,   CfApi.POLICIES_INSYNC_OFF,       CfApi.CF_INSYNC_POLICY_PRESERVE_INSYNC_FOR_SYNC_ENGINE);
         policies.set(ValueLayout.JAVA_INT,   CfApi.POLICIES_HARDLINK_OFF,     CfApi.CF_HARDLINK_POLICY_NONE);
         policies.set(ValueLayout.JAVA_INT,   CfApi.POLICIES_PLACEHOLDER_MGMT_OFF, 0);
 
@@ -91,30 +99,43 @@ public class CloudFilesMount implements Closeable {
         // callbackArena must outlive the connection — closed in CloudFilesMount.close()
         Arena callbackArena = Arena.ofShared();
 
-        MemorySegment fetchDataStub             = CfApi.upcallStub(provider::onFetchData,                   callbackArena);
-        MemorySegment fetchPlaceholdersStub      = CfApi.upcallStub(provider::onFetchPlaceholders,            callbackArena);
-        MemorySegment closeCompletionStub         = CfApi.upcallStub(provider::onFileCloseCompletion,         callbackArena);
-        MemorySegment deletePlaceholderStub       = CfApi.upcallStub(provider::onDeletePlaceholder,           callbackArena);
-        MemorySegment renamePlaceholderStub       = CfApi.upcallStub(provider::onRenamePlaceholder,           callbackArena);
-        MemorySegment renameCompletionStub        = CfApi.upcallStub(provider::onRenameCompletionPlaceholder, callbackArena);
+        MemorySegment fetchDataStub          = CfApi.upcallStub(provider::onFetchData,                  callbackArena);
+        MemorySegment validateDataStub       = CfApi.upcallStub(provider::onValidateData,               callbackArena);
+        MemorySegment cancelFetchDataStub    = CfApi.upcallStub(provider::onCancelFetchData,            callbackArena);
+        MemorySegment fetchPlaceholdersStub  = CfApi.upcallStub(provider::onFetchPlaceholders,          callbackArena);
+        MemorySegment openCompletionStub     = CfApi.upcallStub(provider::onFileOpenCompletion,         callbackArena);
+        MemorySegment closeCompletionStub    = CfApi.upcallStub(provider::onFileCloseCompletion,        callbackArena);
+        MemorySegment deletePlaceholderStub  = CfApi.upcallStub(provider::onDeletePlaceholder,          callbackArena);
+        MemorySegment renamePlaceholderStub  = CfApi.upcallStub(provider::onRenamePlaceholder,          callbackArena);
+        MemorySegment renameCompletionStub   = CfApi.upcallStub(provider::onRenameCompletionPlaceholder, callbackArena);
 
         // CF_CALLBACK_REGISTRATION array terminated with CF_CALLBACK_TYPE_NONE sentinel
-        MemorySegment cbTable = callbackArena.allocate(CfApi.CBR_ENTRY_SIZE * 7);
+        MemorySegment cbTable = callbackArena.allocate(CfApi.CBR_ENTRY_SIZE * 10);
 
         writeCbEntry(cbTable, 0, CfApi.CF_CALLBACK_TYPE_FETCH_DATA,                    fetchDataStub);
-        writeCbEntry(cbTable, 1, CfApi.CF_CALLBACK_TYPE_FETCH_PLACEHOLDERS,            fetchPlaceholdersStub);
-        writeCbEntry(cbTable, 2, CfApi.CF_CALLBACK_TYPE_NOTIFY_FILE_CLOSE_COMPLETION,  closeCompletionStub);
-        writeCbEntry(cbTable, 3, CfApi.CF_CALLBACK_TYPE_DELETE_PLACEHOLDER,            deletePlaceholderStub);
-        writeCbEntry(cbTable, 4, CfApi.CF_CALLBACK_TYPE_RENAME_PLACEHOLDER,            renamePlaceholderStub);
-        writeCbEntry(cbTable, 5, CfApi.CF_CALLBACK_TYPE_RENAME_COMPLETION_PLACEHOLDER, renameCompletionStub);
-        writeCbEntry(cbTable, 6, CfApi.CF_CALLBACK_TYPE_NONE,                          MemorySegment.NULL);
+        writeCbEntry(cbTable, 1, CfApi.CF_CALLBACK_TYPE_VALIDATE_DATA,                 validateDataStub);
+        writeCbEntry(cbTable, 2, CfApi.CF_CALLBACK_TYPE_CANCEL_FETCH_DATA,             cancelFetchDataStub);
+        writeCbEntry(cbTable, 3, CfApi.CF_CALLBACK_TYPE_FETCH_PLACEHOLDERS,            fetchPlaceholdersStub);
+        writeCbEntry(cbTable, 4, CfApi.CF_CALLBACK_TYPE_NOTIFY_FILE_OPEN_COMPLETION,   openCompletionStub);
+        writeCbEntry(cbTable, 5, CfApi.CF_CALLBACK_TYPE_NOTIFY_FILE_CLOSE_COMPLETION,  closeCompletionStub);
+        writeCbEntry(cbTable, 6, CfApi.CF_CALLBACK_TYPE_NOTIFY_DELETE,                 deletePlaceholderStub);
+        writeCbEntry(cbTable, 7, CfApi.CF_CALLBACK_TYPE_NOTIFY_RENAME,                 renamePlaceholderStub);
+        writeCbEntry(cbTable, 8, CfApi.CF_CALLBACK_TYPE_NOTIFY_RENAME_COMPLETION,      renameCompletionStub);
+        writeCbEntry(cbTable, 9, CfApi.CF_CALLBACK_TYPE_NONE,                          MemorySegment.NULL);
 
         // -- Connect --
         MemorySegment connectionKeyOut = callbackArena.allocate(ValueLayout.JAVA_LONG);
         System.err.println("[CF] CfConnectSyncRoot: cbTable=0x" + Long.toHexString(cbTable.address())
                 + " fetchDataStub=0x" + Long.toHexString(fetchDataStub.address()));
-        hr = CfApi.cfConnectSyncRoot(pathW, cbTable, MemorySegment.NULL,
-                CfApi.CF_CONNECT_FLAG_NONE,
+        // REQUIRE_PROCESS_INFO: needed to detect same-process FETCH_PLACEHOLDERS (fired on
+        // CfConnectSyncRoot) so we can fail them immediately and keep the directory unpopulated
+        // for external processes. Previously crashed with wrong OP_XFER_PH_SIZE (40 vs 32);
+        // safe now that the correct struct size is used.
+        // CallbackContext: Nextcloud passes their vfs instance pointer. Pass a non-NULL value
+        // (the cbTable address itself works as a unique identifier) — CF may require this to
+        // properly route the callback's state machine internally.
+        hr = CfApi.cfConnectSyncRoot(pathW, cbTable, cbTable,
+                CfApi.CF_CONNECT_FLAG_REQUIRE_PROCESS_INFO | CfApi.CF_CONNECT_FLAG_REQUIRE_FULL_FILE_PATH,
                 connectionKeyOut);
         if (hr != CfApi.S_OK) {
             callbackArena.close();
@@ -122,11 +143,6 @@ public class CloudFilesMount implements Closeable {
         }
         long connectionKey = connectionKeyOut.get(ValueLayout.JAVA_LONG, 0);
         System.err.println("[CF] Connected key=" + connectionKey);
-
-        // Seed top-level placeholders so Explorer shows files immediately
-        try (Arena seedArena = Arena.ofConfined()) {
-            provider.seedRootPlaceholders(seedArena);
-        }
 
         CloudFilesMount m = new CloudFilesMount(syncRootPath, connectionKey, callbackArena);
         Runtime.getRuntime().addShutdownHook(new Thread(m::close, "CF unmount"));
@@ -136,6 +152,39 @@ public class CloudFilesMount implements Closeable {
     // -----------------------------------------------------------------------
     // Cleanup
     // -----------------------------------------------------------------------
+
+    /**
+     * Explicitly hydrate a placeholder so the same process can read its content.
+     *
+     * CfHydratePlaceholder may deliver the FETCH_DATA callback synchronously on the
+     * calling thread via a Windows APC. If the caller is a JVM-managed thread that is
+     * already in "native" state (inside the downcall), the re-entrant upcall causes an
+     * illegal JVM thread-state transition and crashes the VM. Running the hydration on a
+     * dedicated platform thread that has no prior JVM-downcall context on its stack keeps
+     * any APC-delivered upcall on a clean thread, avoiding the crash.
+     */
+    public void hydratePlaceholder(String relativeName) throws Exception {
+        java.nio.file.Path fullPath = java.nio.file.Path.of(syncRootPath).resolve(relativeName);
+        // Open the file on the calling thread; the HANDLE is process-wide.
+        MemorySegment handle;
+        try (Arena arena = Arena.ofConfined()) {
+            handle = CfApi.createFileForHydration(CfApi.wideString(fullPath.toString(), arena));
+        }
+        if (handle.address() == CfApi.INVALID_HANDLE_VALUE)
+            throw new Exception("CreateFile failed for " + relativeName);
+        try {
+            long addr = handle.address();
+            int[] hr = {0};
+            Thread.ofPlatform().start(() ->
+                hr[0] = CfApi.cfHydratePlaceholder(
+                        MemorySegment.ofAddress(addr), 0L, -1L, CfApi.CF_HYDRATE_FLAG_NONE)
+            ).join();
+            if (hr[0] != CfApi.S_OK)
+                throw new Exception("CfHydratePlaceholder failed: 0x" + Integer.toHexString(hr[0]));
+        } finally {
+            CfApi.closeHandle(handle);
+        }
+    }
 
     @Override
     public void close() {
@@ -154,6 +203,56 @@ public class CloudFilesMount implements Closeable {
     // -----------------------------------------------------------------------
     // Struct helpers
     // -----------------------------------------------------------------------
+
+    /**
+     * Register the sync root in the Windows shell registry so CF recognises us as a real
+     * cloud provider. Without this, CfExecute calls succeed but hydrated data is silently
+     * dropped. Mirrors Nextcloud's createSyncRootRegistryKeys() and what
+     * StorageProviderSyncRootManager::Register does under the hood.
+     *
+     * Returns the syncRootId we registered.
+     */
+    private static String registerSyncRootInShell(String syncRootPath, String accountName) throws Exception {
+        String sid = currentUserSid();
+        // syncRootId format: ProviderName!SID!AccountName!FolderAlias
+        // FolderAlias is a unique per-folder identifier; using the path hash keeps it unique
+        String folderAlias = Integer.toHexString(syncRootPath.hashCode());
+        String syncRootId = PROVIDER_NAME + "!" + sid + "!" + accountName + "!" + folderAlias;
+        // MSDN explicitly says HKLM for SyncRootManager (not HKCU). Requires admin to write.
+        String baseKey = "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer\\SyncRootManager\\" + syncRootId;
+
+        // Required values per Microsoft's "Integrate a cloud storage provider" docs:
+        // - Flags (DWORD): 0x14 = SHOW_SIBLING_DISPLAY_NAME | HIDE_LIBRARY (typical values)
+        // - DisplayNameResource (REG_EXPAND_SZ)
+        // - IconResource (REG_EXPAND_SZ)
+        // - UserSyncRoots\<SID> (REG_SZ, value = sync root path)
+        regAdd(baseKey, "Flags", "REG_DWORD", "0x14");
+        regAdd(baseKey, "DisplayNameResource", "REG_EXPAND_SZ", "Peergos");
+        regAdd(baseKey, "IconResource", "REG_EXPAND_SZ",
+                System.getenv("SystemRoot") + "\\System32\\imageres.dll,-1043");
+        regAdd(baseKey + "\\UserSyncRoots", sid, "REG_SZ", syncRootPath);
+        return syncRootId;
+    }
+
+    private static void regAdd(String key, String valueName, String type, String value) throws Exception {
+        ProcessBuilder pb = new ProcessBuilder("reg", "add", key, "/v", valueName, "/t", type, "/d", value, "/f");
+        pb.redirectErrorStream(true);
+        Process p = pb.start();
+        String out = new String(p.getInputStream().readAllBytes());
+        if (!p.waitFor(10, java.util.concurrent.TimeUnit.SECONDS) || p.exitValue() != 0)
+            throw new Exception("reg add failed for " + key + " " + valueName + ": " + out.trim());
+    }
+
+    private static String currentUserSid() throws Exception {
+        ProcessBuilder pb = new ProcessBuilder("powershell", "-NoProfile", "-NonInteractive",
+                "-Command", "[System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value");
+        pb.redirectErrorStream(true);
+        Process p = pb.start();
+        String sid = new String(p.getInputStream().readAllBytes()).trim();
+        p.waitFor(10, java.util.concurrent.TimeUnit.SECONDS);
+        if (sid.isEmpty()) throw new Exception("Failed to get current user SID");
+        return sid;
+    }
 
     private static void writeCbEntry(MemorySegment table, int index, int type, MemorySegment fn) {
         long base = CfApi.CBR_ENTRY_SIZE * index;
