@@ -328,7 +328,57 @@ public class CfApiTests {
                         context.getByPath(oldPath).join().isPresent());
             }
 
-            // Step 7 — delete world.txt and verify Peergos no longer has it.
+            // Step 7 — modify uploaded.bin in place (same size, different content). This
+            // exercises the mtime-based dirty-bit path in onFileCloseCompletion: same size
+            // means the cheap size-mismatch check doesn't fire, so the handler falls back
+            // to comparing local mtime vs Peergos mtime to decide whether to upload.
+            // uploaded.bin is 11 MB = 3 chunks of 5/5/~1 MB. Overwriting only the FIRST
+            // chunk's bytes should re-upload chunk 0 (~5 MB) — chunks 1 & 2 are unchanged
+            // and should be skipped by Peergos's chunk-level SHA-256 dedup.
+            String modifiedName = "uploaded.bin";
+            {
+                String src = syncRoot.resolve(modifiedName).toString().replace("'", "''");
+                byte[] marker = "PEERGOS_INPLACE_MARKER".getBytes(StandardCharsets.UTF_8);
+                StringBuilder bytesLit = new StringBuilder();
+                for (int i = 0; i < marker.length; i++) {
+                    if (i > 0) bytesLit.append(',');
+                    bytesLit.append(marker[i] & 0xFF);
+                }
+                System.err.println("[TEST] In-place overwriting first " + marker.length
+                        + " bytes of " + modifiedName);
+                int exit = runPs(
+                        "$bytes = [byte[]](" + bytesLit + "); " +
+                        "$fs = [IO.File]::OpenWrite('" + src + "'); " +
+                        "try { $fs.Seek(0, 'Begin') | Out-Null; $fs.Write($bytes, 0, $bytes.Length) } " +
+                        "finally { $fs.Close() }");
+                assertEquals("in-place modify failed", 0, exit);
+
+                String peergosPath = "/" + context.username + "/" + modifiedName;
+                long expectedSize = 11L * 1024 * 1024;
+                // Poll until Peergos shows the new first-bytes marker (size is unchanged).
+                waitFor(120_000, () -> {
+                    Optional<FileWrapper> u = context.getByPath(peergosPath).join();
+                    if (u.isEmpty() || u.get().getSize() != expectedSize) return false;
+                    try {
+                        byte[] data = Serialize.readFully(u.get(), crypto, network).join();
+                        return data.length >= marker.length
+                                && java.util.Arrays.equals(
+                                        java.util.Arrays.copyOfRange(data, 0, marker.length),
+                                        marker);
+                    } catch (Exception e) { return false; }
+                });
+                FileWrapper updated = context.getByPath(peergosPath).join().orElseThrow();
+                assertEquals("uploaded.bin size should be unchanged", expectedSize, updated.getSize());
+
+                byte[] roundTripped = Serialize.readFully(updated, crypto, network).join();
+                byte[] head = java.util.Arrays.copyOfRange(roundTripped, 0, marker.length);
+                assertArrayEquals("marker should be at start of uploaded.bin in Peergos",
+                        marker, head);
+                System.err.println("[TEST] uploaded.bin in-place modification verified ("
+                        + marker.length + " bytes at offset 0, total " + roundTripped.length + ")");
+            }
+
+            // Step 8 — delete world.txt and verify Peergos no longer has it.
             {
                 String src = syncRoot.resolve("world.txt").toString().replace("'", "''");
                 System.err.println("[TEST] Delete world.txt");

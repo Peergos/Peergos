@@ -73,17 +73,39 @@ public class CloudFilesProvider {
         int  identityLen    = info.get(ValueLayout.JAVA_INT,  CfApi.CBI_FILE_IDENTITY_LEN_OFF);
         long requiredOffset = params.get(ValueLayout.JAVA_LONG, CfApi.CBP_FETCH_DATA_REQUIRED_OFFSET_OFF);
         long requiredLength = params.get(ValueLayout.JAVA_LONG, CfApi.CBP_FETCH_DATA_REQUIRED_LENGTH_OFF);
+        // Path fallback: identityToPath is in-memory only and lost across JVM restarts.
+        // If the identity lookup misses, derive the peergos path from the normalized path
+        // CF gives us (CBI_NORMALIZED_PATH_OFF) — same conversion the other callbacks use.
+        String normalizedPath = CfApi.readWideString(info, CfApi.CBI_NORMALIZED_PATH_OFF);
         System.err.println("[CF] FETCH_DATA: connKey=" + connectionKey + " xferKey=" + transferKey
                 + " reqOff=" + requiredOffset + " reqLen=" + requiredLength);
         // Call synchronously on the CF callback thread — CF may correlate the CfExecute
         // back to the originating thread, so calling from a worker thread loses context.
-        doFetchData(connectionKey, transferKey, requestKey, identityAddr, identityLen, requiredOffset, requiredLength);
+        doFetchData(connectionKey, transferKey, requestKey, identityAddr, identityLen,
+                normalizedPath, requiredOffset, requiredLength);
     }
 
     private void doFetchData(long connectionKey, long transferKey, long requestKey,
-                             long identityAddr, int identityLen, long requiredOffset, long requiredLength) {
+                             long identityAddr, int identityLen,
+                             String normalizedPath,
+                             long requiredOffset, long requiredLength) {
         try {
             String peergosPath = pathFromIdentity(identityAddr, identityLen);
+            if (peergosPath == null) {
+                // Fallback: identityToPath was lost (e.g., JVM restart after the placeholder
+                // was already created on disk). Reconstruct the path from the normalized path
+                // CF passed in. Re-register the mapping so subsequent fetches hit the cache.
+                peergosPath = normalizedToPeregos(normalizedPath);
+                System.err.println("[CF] FETCH_DATA: identity miss, derived peergosPath="
+                        + peergosPath + " from normalizedPath=" + normalizedPath);
+                if (peergosPath != null && identityLen == 8 && identityAddr != 0) {
+                    try {
+                        long key = MemorySegment.ofAddress(identityAddr).reinterpret(8)
+                                .get(ValueLayout.JAVA_LONG, 0);
+                        identityToPath.put(key, peergosPath);
+                    } catch (Exception ignored) {}
+                }
+            }
             System.err.println("[CF] FETCH_DATA: peergosPath=" + peergosPath + " mapSize=" + identityToPath.size());
             if (peergosPath == null) {
                 System.err.println("[CF] FETCH_DATA: path lookup FAILED identityAddr=0x" + Long.toHexString(identityAddr));
@@ -417,19 +439,40 @@ public class CloudFilesProvider {
         catch (Exception e) { LOG.log(Level.WARNING, "CLOSE_COMPLETION: size read failed", e); return; }
         System.err.println("[CF] FILE_CLOSE_COMPLETION: localSize=" + localSize);
 
-        // A close callback can fire for events that don't represent a finished write — e.g.
-        // an open-for-read that we serviced via FETCH_DATA and the caller then closed. Only
-        // write back when this side actually owns fresh data: the file has non-zero size and
-        // either doesn't yet exist in Peergos or its size differs from what's on disk.
+        // CF doesn't tell us whether the close followed a write or just a read. We use the
+        // local mtime as a cheap dirty-bit: when we materialise a placeholder via
+        // TRANSFER_PLACEHOLDERS we stamp the local file with Peergos's stored mtime, so a
+        // pristine placeholder has localMtime == peergosMtime. A local write bumps localMtime;
+        // a read leaves it unchanged. So:
+        //   size differs                 → user definitely wrote → upload
+        //   size matches, localMtime >   → user probably wrote → upload (chunk-dedup decides)
+        //   size matches, localMtime ≤   → no write detected → skip
+        // overwriteChangedChunks does chunk-level SHA-256 dedup, so a false positive only
+        // costs a local hash scan, not upload bandwidth.
         String peergosParent = peergosPath.substring(0, peergosPath.lastIndexOf('/'));
         Optional<FileWrapper> existingOpt;
         try { existingOpt = context.getByPath(peergosPath).join(); }
         catch (Exception e) { LOG.log(Level.WARNING, "CLOSE_COMPLETION: lookup failed", e); return; }
         if (existingOpt.isPresent() && !existingOpt.get().isDirectory()
                 && existingOpt.get().getSize() == localSize) {
-            System.err.println("[CF] FILE_CLOSE_COMPLETION: peergos size matches disk ("
-                    + localSize + "), no write-back needed");
-            return;
+            LocalDateTime peergosMtime = existingOpt.get().getFileProperties().modified;
+            LocalDateTime localMtime;
+            try {
+                localMtime = LocalDateTime.ofInstant(
+                        Files.getLastModifiedTime(localPath).toInstant(),
+                        java.time.ZoneOffset.UTC);
+            } catch (Exception e) {
+                LOG.log(Level.WARNING, "CLOSE_COMPLETION: mtime read failed", e);
+                return;
+            }
+            if (peergosMtime != null && !localMtime.isAfter(peergosMtime)) {
+                System.err.println("[CF] FILE_CLOSE_COMPLETION: size+mtime match (peergos="
+                        + peergosMtime + " local=" + localMtime + "), no write-back needed");
+                return;
+            }
+            System.err.println("[CF] FILE_CLOSE_COMPLETION: size matches but localMtime="
+                    + localMtime + " > peergosMtime=" + peergosMtime
+                    + " → handing to overwriteChangedChunks (chunk-level dedup)");
         }
         if (localSize == 0) {
             System.err.println("[CF] FILE_CLOSE_COMPLETION: local file empty, skipping write-back");
@@ -538,15 +581,17 @@ public class CloudFilesProvider {
     }
 
     private void convertToPlaceholder(Path localPath, FileWrapper uploaded, String peergosPath) {
-        // The convert itself triggers FILE_CLOSE_COMPLETION on the convert handle. Record
-        // the path so the close handler short-circuits and we don't re-upload.
-        recentlyUploaded.put(localPath.toString(), Boolean.TRUE);
+        // The convert opens the file with dwDesiredAccess=0 (query only) and closes it
+        // before returning. In practice CF does NOT fire FILE_CLOSE_COMPLETION for that
+        // handle (probably because no FILE_*_DATA access was requested), so no pre-mark is
+        // needed in recentlyUploaded. If a close-completion ever does fire, the
+        // size + mtime check in onFileCloseCompletion will skip it (post-upload Peergos
+        // mtime is later than the user's local-write mtime).
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment pathW = CfApi.wideString(localPath.toString(), arena);
             MemorySegment handle = CfApi.createFileForConvert(pathW);
             if (handle.address() == CfApi.INVALID_HANDLE_VALUE) {
                 System.err.println("[CF] convertToPlaceholder: CreateFile failed for " + localPath);
-                recentlyUploaded.remove(localPath.toString());
                 return;
             }
             try {
@@ -561,14 +606,11 @@ public class CloudFilesProvider {
                         CfApi.CF_CONVERT_FLAG_MARK_IN_SYNC);
                 System.err.println("[CF] convertToPlaceholder hr=0x"
                         + Integer.toHexString(hr) + " path=" + localPath);
-                if (hr != CfApi.S_OK)
-                    recentlyUploaded.remove(localPath.toString());
             } finally {
                 CfApi.closeHandle(handle);
             }
         } catch (Exception e) {
             LOG.log(Level.WARNING, "convertToPlaceholder failed for " + localPath, e);
-            recentlyUploaded.remove(localPath.toString());
         }
     }
 
