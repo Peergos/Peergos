@@ -118,10 +118,16 @@ public class CfApiTests {
         UserContext context = UserContext.signUp(user, PASSWORD, "", network, crypto).join();
 
         byte[] content = "Hello from Peergos CF API test".getBytes(StandardCharsets.UTF_8);
+        byte[] large = new byte[11*1024*1024];
+        for (int i=0; i < large.length; i += content.length) {
+            System.arraycopy(content, 0, large, i, content.length);
+        }
         FileWrapper home = context.getByPath("/" + context.username).join().get();
         home.uploadOrReplaceFile("hello.txt", new AsyncReader.ArrayBacked(content), content.length,
                 context.network, context.crypto, () -> false, l -> {}).join();
         home.getUpdated(network).join().uploadOrReplaceFile("world.txt", new AsyncReader.ArrayBacked(content), content.length,
+                context.network, context.crypto, () -> false, l -> {}).join();
+        home.getUpdated(network).join().uploadOrReplaceFile("big.txt", new AsyncReader.ArrayBacked(large), large.length,
                 context.network, context.crypto, () -> false, l -> {}).join();
 
         Path syncRoot = tmp.newFolder("peergos-cf-" + user).toPath();
@@ -159,6 +165,28 @@ public class CfApiTests {
             // Get-Content is a simpler read path with fewer Win32 layers in between.
             {
                 String srcPath = syncRoot.resolve("hello.txt").toString().replace("'", "''");
+                System.err.println("[TEST] Reading '" + srcPath + "' via Get-Content");
+                ProcessBuilder pb = new ProcessBuilder(
+                        "powershell", "-NoProfile", "-NonInteractive",
+                        "-ExecutionPolicy", "Bypass",
+                        "-Command",
+                        "Get-Content -LiteralPath '" + srcPath + "' -Raw -ErrorAction Stop");
+                pb.redirectErrorStream(true);
+                Process proc = pb.start();
+                String psOutput = new String(proc.getInputStream().readAllBytes());
+                boolean done = proc.waitFor(30, java.util.concurrent.TimeUnit.SECONDS);
+                System.err.println("[TEST] Get-Content exit=" + (done ? proc.exitValue() : "TIMEOUT")
+                        + " output=[" + psOutput.trim() + "]");
+                assertTrue("Get-Content timed out", done);
+                assertEquals("Get-Content failed (output: " + psOutput.trim() + ")",
+                        0, proc.exitValue());
+                assertEquals("File content must match what was uploaded",
+                        new String(content).trim(), psOutput.trim());
+            }
+
+            // Step 2 — read large.txt
+            {
+                String srcPath = syncRoot.resolve("large.txt").toString().replace("'", "''");
                 System.err.println("[TEST] Reading '" + srcPath + "' via Get-Content");
                 ProcessBuilder pb = new ProcessBuilder(
                         "powershell", "-NoProfile", "-NonInteractive",
