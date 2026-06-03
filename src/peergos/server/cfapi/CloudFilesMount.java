@@ -189,10 +189,11 @@ public class CloudFilesMount implements Closeable {
                     if (!(ctx instanceof Path)) continue;
                     Path full = syncRoot.resolve((Path) ctx);
                     try {
-                        if (!Files.exists(full) || Files.isDirectory(full)) continue;
-                        long size = Files.size(full);
-                        if (size == 0) continue;
-                        pending.put(full, System.currentTimeMillis() + STABLE_MS);
+                        if (!Files.exists(full)) continue;
+                        // Directories: forward immediately so the provider can mkdir in Peergos.
+                        // Files: wait for size to stabilize so we don't upload partial writes.
+                        if (Files.isDirectory(full) || Files.size(full) > 0)
+                            pending.put(full, System.currentTimeMillis() + STABLE_MS);
                     } catch (Exception ignored) {}
                 }
                 key.reset();

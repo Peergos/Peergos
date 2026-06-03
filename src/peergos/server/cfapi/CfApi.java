@@ -44,8 +44,9 @@ public class CfApi {
     public static final int CF_OPERATION_TYPE_ACK_DATA              = 2;
     public static final int CF_OPERATION_TYPE_RESTART_HYDRATION     = 3;
     public static final int CF_OPERATION_TYPE_TRANSFER_PLACEHOLDERS = 4;
-    public static final int CF_OPERATION_TYPE_ACK_DELETE            = 5;
-    public static final int CF_OPERATION_TYPE_ACK_RENAME            = 6;
+    public static final int CF_OPERATION_TYPE_ACK_DEHYDRATE         = 5;
+    public static final int CF_OPERATION_TYPE_ACK_DELETE            = 6;
+    public static final int CF_OPERATION_TYPE_ACK_RENAME            = 7;
 
     // CF_CALLBACK_TYPE — corrected to MSDN values. Previously off-by-one: we had close
     // completion at 5 (which is actually FILE_OPEN_COMPLETION), and delete/rename at
@@ -218,22 +219,25 @@ public class CfApi {
     public static final long CBR_TYPE_OFF     =  0;
     public static final long CBR_CALLBACK_OFF =  8;
 
-    // CF_OPERATION_INFO (size 48) — MSDN order: RequestKey BEFORE SyncStatus
+    // CF_OPERATION_INFO (size 48) — MSDN order: SyncStatus BEFORE RequestKey.
     //   +0   ULONG StructSize
     //   +4   CF_OPERATION_TYPE Type
     //   +8   CF_CONNECTION_KEY ConnectionKey  (LONGLONG)
     //  +16   LARGE_INTEGER TransferKey
     //  +24   const GUID* CorrelationVector    (pointer, can be null)
-    //  +32   CF_REQUEST_KEY RequestKey         (LONGLONG)
-    //  +40   CF_SYNC_STATUS* SyncStatus        (pointer, can be null)
+    //  +32   CF_SYNC_STATUS* SyncStatus        (pointer, can be null)
+    //  +40   CF_REQUEST_KEY RequestKey         (LONGLONG)
+    // (Previously had these swapped, which worked for TRANSFER_DATA/PLACEHOLDERS but
+    // crashed cldapi during ACK_RENAME/ACK_DELETE — cldapi dereferenced our requestKey
+    // value as the SyncStatus pointer.)
     public static final long OI_SIZE                = 48;
     public static final long OI_STRUCT_SIZE_OFF     =  0;
     public static final long OI_TYPE_OFF            =  4;
     public static final long OI_CONNECTION_KEY_OFF  =  8;
     public static final long OI_TRANSFER_KEY_OFF    = 16;
     public static final long OI_CORRELATION_VEC_OFF = 24;
-    public static final long OI_REQUEST_KEY_OFF     = 32;
-    public static final long OI_SYNC_STATUS_OFF     = 40;
+    public static final long OI_SYNC_STATUS_OFF     = 32;
+    public static final long OI_REQUEST_KEY_OFF     = 40;
 
     // CF_OPERATION_PARAMETERS for TRANSFER_DATA (size 40)
     //   +0   ULONG ParamSize

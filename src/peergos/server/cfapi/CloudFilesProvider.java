@@ -451,15 +451,20 @@ public class CloudFilesProvider {
      */
     public void uploadLocalFile(Path localPath) {
         try {
-            if (!Files.exists(localPath) || Files.isDirectory(localPath)) return;
-            long localSize = Files.size(localPath);
-            if (localSize == 0) return;
+            if (!Files.exists(localPath)) return;
 
             String name        = localPath.getFileName().toString();
             String relative    = Path.of(syncRootPath).relativize(localPath).toString()
                     .replace(java.io.File.separatorChar, '/');
             String peergosPath = "/" + context.username + "/" + relative;
             String peergosParent = peergosPath.substring(0, peergosPath.lastIndexOf('/'));
+
+            if (Files.isDirectory(localPath)) {
+                createPeergosDirectory(name, peergosPath, peergosParent);
+                return;
+            }
+            long localSize = Files.size(localPath);
+            if (localSize == 0) return;
 
             Optional<FileWrapper> existing = context.getByPath(peergosPath).join();
             if (existing.isPresent() && !existing.get().isDirectory()
@@ -488,11 +493,26 @@ public class CloudFilesProvider {
             System.err.println("[CF] uploadLocalFile: upload complete for " + peergosPath);
 
             // Convert the local file to a CF placeholder so subsequent reads go through
-            // FETCH_DATA (we serve from Peergos) and so CF tracks it as managed content
-            // rather than a regular local file. Mirrors Nextcloud's post-upload step.
+            // FETCH_DATA and CF fires NOTIFY_RENAME / NOTIFY_DELETE for managed files.
             convertToPlaceholder(localPath, uploaded, peergosPath);
         } catch (Exception e) {
             LOG.log(Level.WARNING, "uploadLocalFile failed for " + localPath, e);
+        }
+    }
+
+    private void createPeergosDirectory(String name, String peergosPath, String peergosParent) {
+        Optional<FileWrapper> existing = context.getByPath(peergosPath).join();
+        if (existing.isPresent()) return;
+        Optional<FileWrapper> parentOpt = context.getByPath(peergosParent).join();
+        if (parentOpt.isEmpty()) {
+            System.err.println("[CF] mkdir: parent missing: " + peergosParent);
+            return;
+        }
+        try {
+            parentOpt.get().mkdir(name, context.network, false, Optional.empty(), context.crypto).join();
+            System.err.println("[CF] mkdir: created " + peergosPath);
+        } catch (Exception e) {
+            LOG.log(Level.WARNING, "mkdir failed for " + peergosPath, e);
         }
     }
 
@@ -536,6 +556,7 @@ public class CloudFilesProvider {
     // -----------------------------------------------------------------------
 
     public void onDeletePlaceholder(MemorySegment info, MemorySegment params) {
+        System.err.println("[CF] NOTIFY_DELETE entered");
         info = info.reinterpret(256);
         params = params.reinterpret(256);
         long connectionKey, transferKey, requestKey;
@@ -574,6 +595,7 @@ public class CloudFilesProvider {
     // -----------------------------------------------------------------------
 
     public void onRenamePlaceholder(MemorySegment info, MemorySegment params) {
+        System.err.println("[CF] NOTIFY_RENAME entered");
         info = info.reinterpret(256);
         params = params.reinterpret(256);
         long connectionKey, transferKey, requestKey;
@@ -582,13 +604,17 @@ public class CloudFilesProvider {
             transferKey   = info.get(ValueLayout.JAVA_LONG, CfApi.CBI_TRANSFER_KEY_OFF);
             requestKey    = info.get(ValueLayout.JAVA_LONG, CfApi.CBI_REQUEST_KEY_OFF);
         } catch (Exception e) { LOG.log(Level.WARNING, "RENAME: failed to read params", e); return; }
+        System.err.println("[CF] NOTIFY_RENAME connKey=" + connectionKey
+                + " xferKey=" + transferKey + " reqKey=" + requestKey);
         try (Arena arena = Arena.ofConfined()) {
             ack(arena, connectionKey, transferKey, requestKey,
                 CfApi.CF_OPERATION_TYPE_ACK_RENAME, CfApi.STATUS_SUCCESS);
         }
+        System.err.println("[CF] NOTIFY_RENAME ack sent");
     }
 
     public void onRenameCompletionPlaceholder(MemorySegment info, MemorySegment params) {
+        System.err.println("[CF] NOTIFY_RENAME_COMPLETION entered");
         info   = info.reinterpret(256);
         params = params.reinterpret(256);
         String sourcePath, targetPath;
@@ -599,22 +625,40 @@ public class CloudFilesProvider {
         String peergosSource = normalizedToPeregos(sourcePath);
         String peergosTarget = normalizedToPeregos(targetPath);
 
+        System.err.println("[CF] NOTIFY_RENAME_COMPLETION src=" + peergosSource
+                + " tgt=" + peergosTarget);
+
+        // Suppress the upcoming FILE_CLOSE_COMPLETION on the target — the OS fires it for
+        // the rename's "open new name" handle, and without this short-circuit our close
+        // handler would treat the renamed file as a brand-new local file and re-upload it.
+        recentlyUploaded.put(Path.of(syncRootPath).resolve(
+                peergosTarget.substring(peergosTarget.indexOf('/', 1) + 1)
+                              .replace('/', java.io.File.separatorChar)).toString(), Boolean.TRUE);
+
         try {
             Optional<FileWrapper> fwOpt = context.getByPath(peergosSource).join();
-            if (fwOpt.isEmpty()) return;
+            if (fwOpt.isEmpty()) {
+                System.err.println("[CF] NOTIFY_RENAME_COMPLETION: source not found in peergos: "
+                        + peergosSource);
+                return;
+            }
             String sourceParent = peergosSource.substring(0, peergosSource.lastIndexOf('/'));
             String targetParent = peergosTarget.substring(0, peergosTarget.lastIndexOf('/'));
             String targetName   = peergosTarget.substring(peergosTarget.lastIndexOf('/') + 1);
             Optional<FileWrapper> sourceParentOpt = context.getByPath(sourceParent).join();
             Optional<FileWrapper> targetParentOpt = context.getByPath(targetParent).join();
-            if (sourceParentOpt.isEmpty() || targetParentOpt.isEmpty()) return;
+            if (sourceParentOpt.isEmpty() || targetParentOpt.isEmpty()) {
+                System.err.println("[CF] NOTIFY_RENAME_COMPLETION: parents missing src="
+                        + sourceParentOpt.isPresent() + " tgt=" + targetParentOpt.isPresent());
+                return;
+            }
 
             if (sourceParent.equals(targetParent)) {
-                // rename in place
+                System.err.println("[CF] NOTIFY_RENAME_COMPLETION: in-place rename to " + targetName);
                 fwOpt.get().rename(targetName, targetParentOpt.get(),
                         PathUtil.get(peergosSource), context).join();
             } else {
-                // move to different directory
+                System.err.println("[CF] NOTIFY_RENAME_COMPLETION: moveTo " + targetParent);
                 fwOpt.get().moveTo(targetParentOpt.get(), sourceParentOpt.get(),
                         PathUtil.get(peergosSource), context, () -> peergos.shared.util.Futures.of(true)).join();
             }
@@ -625,9 +669,11 @@ public class CloudFilesProvider {
                     return peergosTarget + v.substring(peergosSource.length());
                 return v;
             });
-            LOG.fine("Renamed " + peergosSource + " -> " + peergosTarget);
+            System.err.println("[CF] NOTIFY_RENAME_COMPLETION: done " + peergosSource
+                    + " -> " + peergosTarget);
         } catch (Exception e) {
             LOG.log(Level.WARNING, "Rename failed " + peergosSource + " -> " + peergosTarget, e);
+            System.err.println("[CF] NOTIFY_RENAME_COMPLETION FAILED: " + e);
         }
     }
 

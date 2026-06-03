@@ -259,8 +259,111 @@ public class CfApiTests {
                 System.err.println("[TEST] uploaded.bin round trip OK ("
                         + upload.length + " bytes)");
             }
+
+            // Step 4 — mkdir inside the mount and verify the directory shows up in Peergos.
+            String subdirName = "subdir";
+            {
+                String subdirLocal = syncRoot.resolve(subdirName).toString().replace("'", "''");
+                System.err.println("[TEST] mkdir '" + subdirLocal + "'");
+                int exit = runPs("New-Item -ItemType Directory -Path '" + subdirLocal
+                        + "' -Force | Out-Null");
+                assertEquals("New-Item mkdir failed", 0, exit);
+                waitFor(60_000, () -> {
+                    Optional<FileWrapper> d = context.getByPath(
+                            "/" + context.username + "/" + subdirName).join();
+                    return d.isPresent() && d.get().isDirectory();
+                });
+                Optional<FileWrapper> d = context.getByPath(
+                        "/" + context.username + "/" + subdirName).join();
+                assertTrue(subdirName + " should be a directory in Peergos",
+                        d.isPresent() && d.get().isDirectory());
+            }
+
+            // Rename / move / delete need CF-managed placeholders so cldapi fires the
+            // NOTIFY_RENAME / NOTIFY_DELETE callbacks our provider already handles. The
+            // three files created via uploadOrReplaceFile + TRANSFER_PLACEHOLDERS at the
+            // start of the test (hello.txt, large.txt, world.txt) are real placeholders;
+            // uploaded.bin (Step 3) was written locally and never converted, so its
+            // rename would skip CF entirely.
+
+            // Step 5 — rename hello.txt to renamed.txt.
+            String renamedName = "renamed.txt";
+            {
+                String src = syncRoot.resolve("hello.txt").toString().replace("'", "''");
+                System.err.println("[TEST] Rename hello.txt -> " + renamedName);
+                int exit = runPs("Rename-Item -LiteralPath '" + src
+                        + "' -NewName '" + renamedName + "' -ErrorAction Stop");
+                assertEquals("Rename-Item failed", 0, exit);
+                waitFor(60_000, () -> {
+                    Optional<FileWrapper> r = context.getByPath(
+                            "/" + context.username + "/" + renamedName).join();
+                    Optional<FileWrapper> orig = context.getByPath(
+                            "/" + context.username + "/hello.txt").join();
+                    return r.isPresent() && orig.isEmpty();
+                });
+                assertTrue(renamedName + " should exist in Peergos",
+                        context.getByPath("/" + context.username + "/" + renamedName).join().isPresent());
+                assertFalse("hello.txt should be gone from Peergos",
+                        context.getByPath("/" + context.username + "/hello.txt").join().isPresent());
+            }
+
+            // Step 6 — move large.txt into subdir/ and verify the move in Peergos.
+            {
+                String src  = syncRoot.resolve("large.txt").toString().replace("'", "''");
+                String dest = syncRoot.resolve(subdirName).resolve("large.txt").toString().replace("'", "''");
+                System.err.println("[TEST] Move large.txt -> " + subdirName + "/large.txt");
+                int exit = runPs("Move-Item -LiteralPath '" + src
+                        + "' -Destination '" + dest + "' -ErrorAction Stop");
+                assertEquals("Move-Item failed", 0, exit);
+                String newPath = "/" + context.username + "/" + subdirName + "/large.txt";
+                String oldPath = "/" + context.username + "/large.txt";
+                waitFor(60_000, () -> {
+                    Optional<FileWrapper> n = context.getByPath(newPath).join();
+                    Optional<FileWrapper> o = context.getByPath(oldPath).join();
+                    return n.isPresent() && o.isEmpty();
+                });
+                assertTrue("large.txt should exist under subdir/ in Peergos",
+                        context.getByPath(newPath).join().isPresent());
+                assertFalse("large.txt should be gone from old location in Peergos",
+                        context.getByPath(oldPath).join().isPresent());
+            }
+
+            // Step 7 — delete world.txt and verify Peergos no longer has it.
+            {
+                String src = syncRoot.resolve("world.txt").toString().replace("'", "''");
+                System.err.println("[TEST] Delete world.txt");
+                int exit = runPs("Remove-Item -LiteralPath '" + src + "' -Force -ErrorAction Stop");
+                assertEquals("Remove-Item failed", 0, exit);
+                String p = "/" + context.username + "/world.txt";
+                waitFor(60_000, () -> context.getByPath(p).join().isEmpty());
+                assertTrue("world.txt should be gone from Peergos",
+                        context.getByPath(p).join().isEmpty());
+            }
         } finally {
             mount.close();
+        }
+    }
+
+    private static int runPs(String command) throws Exception {
+        ProcessBuilder pb = new ProcessBuilder(
+                "powershell", "-NoProfile", "-NonInteractive",
+                "-ExecutionPolicy", "Bypass",
+                "-Command", command);
+        pb.redirectErrorStream(true);
+        Process p = pb.start();
+        String out = new String(p.getInputStream().readAllBytes());
+        boolean done = p.waitFor(60, java.util.concurrent.TimeUnit.SECONDS);
+        System.err.println("[TEST] ps exit=" + (done ? p.exitValue() : "TIMEOUT")
+                + (out.isEmpty() ? "" : " out=[" + out.trim() + "]"));
+        if (!done) { p.destroyForcibly(); return -1; }
+        return p.exitValue();
+    }
+
+    private static void waitFor(long timeoutMs, java.util.function.BooleanSupplier cond) throws Exception {
+        long deadline = System.currentTimeMillis() + timeoutMs;
+        while (System.currentTimeMillis() < deadline) {
+            if (cond.getAsBoolean()) return;
+            Thread.sleep(500);
         }
     }
 
