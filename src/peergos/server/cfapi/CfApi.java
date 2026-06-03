@@ -129,8 +129,18 @@ public class CfApi {
     public static final int STATUS_SUCCESS = 0;
 
     // FILE_ATTRIBUTE flags
-    public static final int FILE_ATTRIBUTE_DIRECTORY = 0x10;
-    public static final int FILE_ATTRIBUTE_NORMAL    = 0x80;
+    public static final int FILE_ATTRIBUTE_DIRECTORY              = 0x10;
+    public static final int FILE_ATTRIBUTE_NORMAL                 = 0x80;
+    public static final int FILE_ATTRIBUTE_OFFLINE                = 0x1000;
+    public static final int FILE_ATTRIBUTE_RECALL_ON_OPEN         = 0x40000;
+    public static final int FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS  = 0x400000;
+    public static final int INVALID_FILE_ATTRIBUTES               = 0xFFFFFFFF;
+    /** Bitmask: any of these set means the file/dir is a cloud placeholder we shouldn't
+     *  force-enumerate or read locally. */
+    public static final int CF_PLACEHOLDER_ATTRIBUTES_MASK =
+            FILE_ATTRIBUTE_OFFLINE
+            | FILE_ATTRIBUTE_RECALL_ON_OPEN
+            | FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS;
 
     // -----------------------------------------------------------------------
     // Struct sizes & field offsets  (Windows x64 ABI)
@@ -374,6 +384,7 @@ public class CfApi {
     private static MethodHandle hVirtualAlloc;
     private static MethodHandle hVirtualFree;
     private static MethodHandle hCreateFileW;
+    private static MethodHandle hGetFileAttributesW;
     private static MethodHandle hCloseHandle;
     private static MethodHandle hGetProcessHeap;
     private static MethodHandle hHeapAlloc;
@@ -494,6 +505,14 @@ public class CfApi {
         // BOOL CloseHandle(HANDLE)
         hCloseHandle = linker.downcallHandle(
                 kernel32.find("CloseHandle").orElseThrow(),
+                FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS));
+
+        // DWORD GetFileAttributesW(LPCWSTR lpFileName)
+        // Returns the file attribute bitfield, or INVALID_FILE_ATTRIBUTES (0xFFFFFFFF) on failure.
+        // Reading attributes does NOT trigger CF hydration / placeholder enumeration — safe to
+        // call on every directory at mount time.
+        hGetFileAttributesW = linker.downcallHandle(
+                kernel32.find("GetFileAttributesW").orElseThrow(),
                 FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS));
 
         // HANDLE GetProcessHeap(void)
@@ -687,6 +706,22 @@ public class CfApi {
         try {
             return (int) hCloseHandle.invokeExact(handle) != 0;
         } catch (Throwable t) { throw new RuntimeException(t); }
+    }
+
+    /** Returns Win32 file attributes for the given path, or INVALID_FILE_ATTRIBUTES on error. */
+    public static int getFileAttributes(java.nio.file.Path path) {
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment pathW = wideString(path.toString(), arena);
+            return (int) hGetFileAttributesW.invokeExact(pathW);
+        } catch (Throwable t) { throw new RuntimeException(t); }
+    }
+
+    /** True if the path is a CF placeholder (offline / recall-on-* bits set). Reads attributes
+     *  via GetFileAttributesW, which does NOT trigger hydration or directory enumeration. */
+    public static boolean isPlaceholder(java.nio.file.Path path) {
+        int attrs = getFileAttributes(path);
+        if (attrs == INVALID_FILE_ATTRIBUTES) return false;
+        return (attrs & CF_PLACEHOLDER_ATTRIBUTES_MASK) != 0;
     }
 
     // -----------------------------------------------------------------------

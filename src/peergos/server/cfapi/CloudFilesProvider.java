@@ -99,9 +99,9 @@ public class CloudFilesProvider {
             FileWrapper fw  = fwOpt.get();
             long end = Math.min(requiredOffset + requiredLength, fw.getSize());
 
-            try (Arena arena = Arena.ofConfined()) {
-                AsyncReader reader = fw.getInputStream(context.network, context.crypto,
-                        fw.getSize(), l -> {}).join();
+            try (Arena arena = Arena.ofConfined();
+                 AsyncReader reader = fw.getInputStream(context.network, context.crypto,
+                         fw.getSize(), l -> {}).join()) {
                 if (requiredOffset > 0)
                     reader.seek(requiredOffset).join();
 
@@ -620,11 +620,28 @@ public class CloudFilesProvider {
         info = info.reinterpret(256);
         params = params.reinterpret(256);
         long connectionKey, transferKey, requestKey;
+        String targetPath;
         try {
             connectionKey = info.get(ValueLayout.JAVA_LONG, CfApi.CBI_CONNECTION_KEY_OFF);
             transferKey   = info.get(ValueLayout.JAVA_LONG, CfApi.CBI_TRANSFER_KEY_OFF);
             requestKey    = info.get(ValueLayout.JAVA_LONG, CfApi.CBI_REQUEST_KEY_OFF);
+            targetPath    = CfApi.readWideString(params, CfApi.CBP_RENAME_TARGET_PATH_OFF);
         } catch (Exception e) { LOG.log(Level.WARNING, "RENAME: failed to read params", e); return; }
+
+        // Pre-suppress the FILE_CLOSE_COMPLETION that the OS will fire on the rename target.
+        // NOTIFY_RENAME fires BEFORE the actual rename happens, so the target's close-completion
+        // can't have raced yet. By contrast, populating recentlyUploaded in NOTIFY_RENAME_COMPLETION
+        // is too late: the target's close-completion runs on a different thread and may complete
+        // an upload before our completion handler reaches the put().
+        try {
+            String drive  = syncRootPath.substring(0, 2);
+            Path localTarget = Path.of(drive + targetPath);
+            recentlyUploaded.put(localTarget.toString(), Boolean.TRUE);
+            System.err.println("[CF] NOTIFY_RENAME pre-marked target=" + localTarget);
+        } catch (Exception e) {
+            LOG.log(Level.WARNING, "RENAME: failed to pre-mark target", e);
+        }
+
         System.err.println("[CF] NOTIFY_RENAME connKey=" + connectionKey
                 + " xferKey=" + transferKey + " reqKey=" + requestKey);
         try (Arena arena = Arena.ofConfined()) {

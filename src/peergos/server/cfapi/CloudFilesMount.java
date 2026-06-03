@@ -4,6 +4,7 @@ import peergos.server.util.Logging;
 import peergos.shared.user.UserContext;
 
 import java.io.Closeable;
+import java.io.IOException;
 import java.lang.foreign.*;
 import java.nio.file.*;
 import java.util.UUID;
@@ -156,9 +157,8 @@ public class CloudFilesMount implements Closeable {
         // upload them to Peergos. Debounce a little so we don't fire on every byte of a write.
         java.nio.file.WatchService ws = java.nio.file.FileSystems.getDefault().newWatchService();
         Path syncRootP = Path.of(syncRootPath);
-        syncRootP.register(ws,
-                java.nio.file.StandardWatchEventKinds.ENTRY_CREATE,
-                java.nio.file.StandardWatchEventKinds.ENTRY_MODIFY);
+        // The watcher registers the sync root and every existing subdir on startup, and
+        // every newly-created subdir as it appears — see registerRecursive() in runWatcher.
         CloudFilesMount[] holder = new CloudFilesMount[1];
         Thread wt = new Thread(() -> runWatcher(ws, syncRootP, provider, () -> holder[0] != null && holder[0].watcherRunning),
                 "CF local file watcher");
@@ -174,26 +174,43 @@ public class CloudFilesMount implements Closeable {
     private static void runWatcher(java.nio.file.WatchService ws, Path syncRoot,
                                    CloudFilesProvider provider,
                                    java.util.function.BooleanSupplier running) {
-        // Coalesce bursts of write events: each path's upload kicks off only once size has
-        // stayed stable for STABLE_MS, so we don't repeatedly upload a partially-written file.
+        // Coalesce bursts of write events: each path's upload kicks off only once size+mtime
+        // have stayed stable for STABLE_MS, so we don't repeatedly upload a partially-written
+        // file. After upload the path is left out of `inflight` so subsequent edits trigger
+        // another upload — content-fingerprint dedup happens in CloudFilesProvider.
         long STABLE_MS = 750;
         java.util.Map<Path, Long> pending = new java.util.concurrent.ConcurrentHashMap<>();
-        java.util.Set<Path> uploaded = java.util.concurrent.ConcurrentHashMap.newKeySet();
+        // Tracks which paths currently have an upload running so we don't double-fire while
+        // join() is blocked. Bounded — uses peergos's LRU cache.
+        java.util.Map<Path, Boolean> inflight = java.util.Collections.synchronizedMap(
+                new peergos.shared.util.LRUCache<>(1024));
+        // Recurse: register existing subdirs and any new ones the watcher discovers, so
+        // edits inside subdir/ also fire CREATE/MODIFY.
+        registerRecursive(ws, syncRoot);
         while (running.getAsBoolean()) {
             java.nio.file.WatchKey key;
             try { key = ws.poll(200, java.util.concurrent.TimeUnit.MILLISECONDS); }
             catch (InterruptedException e) { Thread.currentThread().interrupt(); return; }
             if (key != null) {
+                Path dir = (Path) key.watchable();
                 for (java.nio.file.WatchEvent<?> ev : key.pollEvents()) {
                     Object ctx = ev.context();
                     if (!(ctx instanceof Path)) continue;
-                    Path full = syncRoot.resolve((Path) ctx);
+                    Path full = dir.resolve((Path) ctx);
                     try {
                         if (!Files.exists(full)) continue;
-                        // Directories: forward immediately so the provider can mkdir in Peergos.
-                        // Files: wait for size to stabilize so we don't upload partial writes.
-                        if (Files.isDirectory(full) || Files.size(full) > 0)
+                        // A new directory: register it for events too so files dropped inside
+                        // get picked up. Then forward the dir create to Peergos via the pending
+                        // queue (immediate, no STABLE_MS wait — dirs have no "in-progress" state).
+                        if (Files.isDirectory(full)) {
+                            try { full.register(ws,
+                                    java.nio.file.StandardWatchEventKinds.ENTRY_CREATE,
+                                    java.nio.file.StandardWatchEventKinds.ENTRY_MODIFY); }
+                            catch (Exception ignored) {}
+                            pending.put(full, System.currentTimeMillis());
+                        } else if (Files.size(full) > 0) {
                             pending.put(full, System.currentTimeMillis() + STABLE_MS);
+                        }
                     } catch (Exception ignored) {}
                 }
                 key.reset();
@@ -204,10 +221,41 @@ public class CloudFilesMount implements Closeable {
                 if (now < e.getValue()) continue;
                 Path p = e.getKey();
                 it.remove();
-                if (!uploaded.add(p)) continue; // already uploaded once
+                if (inflight.putIfAbsent(p, Boolean.TRUE) != null) continue;
                 try { provider.uploadLocalFile(p); }
                 catch (Exception ex) { LOG.log(Level.WARNING, "watcher upload failed: " + p, ex); }
+                finally { inflight.remove(p); }
             }
+        }
+    }
+
+    /**
+     * Register {@code root} and every existing non-placeholder subdirectory with the
+     * WatchService.
+     *
+     * Placeholder directories (any of FILE_ATTRIBUTE_OFFLINE / RECALL_ON_DATA_ACCESS /
+     * RECALL_ON_OPEN set) are still registered so we'll catch later edits to their
+     * direct children, but we SKIP_SUBTREE on them to avoid forcing NTFS to enumerate
+     * their contents — that enumeration would trigger one FETCH_PLACEHOLDERS callback
+     * per dir, and one Peergos directory listing per callback. The check uses
+     * GetFileAttributesW which doesn't trigger hydration.
+     */
+    private static void registerRecursive(java.nio.file.WatchService ws, Path root) {
+        try {
+            Files.walkFileTree(root, new java.nio.file.SimpleFileVisitor<Path>() {
+                @Override
+                public java.nio.file.FileVisitResult preVisitDirectory(Path dir,
+                        java.nio.file.attribute.BasicFileAttributes attrs) throws IOException {
+                    dir.register(ws,
+                            java.nio.file.StandardWatchEventKinds.ENTRY_CREATE,
+                            java.nio.file.StandardWatchEventKinds.ENTRY_MODIFY);
+                    return CfApi.isPlaceholder(dir)
+                            ? java.nio.file.FileVisitResult.SKIP_SUBTREE
+                            : java.nio.file.FileVisitResult.CONTINUE;
+                }
+            });
+        } catch (IOException e) {
+            LOG.log(Level.WARNING, "watcher: recursive register failed at " + root, e);
         }
     }
 
