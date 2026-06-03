@@ -203,7 +203,7 @@ public class CfApiTests {
                 assertEquals("Get-Content failed (output: " + psOutput.trim() + ")",
                         0, proc.exitValue());
                 assertEquals("File content must match what was uploaded",
-                        new String(content).trim(), psOutput.trim());
+                        new String(large).trim(), psOutput.trim());
             }
         } finally {
             mount.close();
