@@ -127,7 +127,7 @@ public class CfApiTests {
                 context.network, context.crypto, () -> false, l -> {}).join();
         home.getUpdated(network).join().uploadOrReplaceFile("world.txt", new AsyncReader.ArrayBacked(content), content.length,
                 context.network, context.crypto, () -> false, l -> {}).join();
-        home.getUpdated(network).join().uploadOrReplaceFile("big.txt", new AsyncReader.ArrayBacked(large), large.length,
+        home.getUpdated(network).join().uploadOrReplaceFile("large.txt", new AsyncReader.ArrayBacked(large), large.length,
                 context.network, context.crypto, () -> false, l -> {}).join();
 
         Path syncRoot = tmp.newFolder("peergos-cf-" + user).toPath();
