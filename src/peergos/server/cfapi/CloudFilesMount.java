@@ -22,11 +22,17 @@ public class CloudFilesMount implements Closeable {
     private final String syncRootPath;
     private final long   connectionKey;
     private final Arena  callbackArena;   // keeps upcall stubs alive
+    private final Thread watcherThread;
+    private final java.nio.file.WatchService watchService;
+    private volatile boolean watcherRunning = true;
 
-    private CloudFilesMount(String syncRootPath, long connectionKey, Arena callbackArena) {
+    private CloudFilesMount(String syncRootPath, long connectionKey, Arena callbackArena,
+                            Thread watcherThread, java.nio.file.WatchService watchService) {
         this.syncRootPath  = syncRootPath;
         this.connectionKey = connectionKey;
         this.callbackArena = callbackArena;
+        this.watcherThread = watcherThread;
+        this.watchService  = watchService;
     }
 
     public String getMountPoint() {
@@ -144,9 +150,64 @@ public class CloudFilesMount implements Closeable {
         long connectionKey = connectionKeyOut.get(ValueLayout.JAVA_LONG, 0);
         System.err.println("[CF] Connected key=" + connectionKey);
 
-        CloudFilesMount m = new CloudFilesMount(syncRootPath, connectionKey, callbackArena);
+        // CF only fires NOTIFY_FILE_CLOSE_COMPLETION for placeholders it already tracks.
+        // For files created locally inside the sync root by other processes (e.g. Copy-Item),
+        // we get no callback at all — so run a WatchService to detect new/modified files and
+        // upload them to Peergos. Debounce a little so we don't fire on every byte of a write.
+        java.nio.file.WatchService ws = java.nio.file.FileSystems.getDefault().newWatchService();
+        Path syncRootP = Path.of(syncRootPath);
+        syncRootP.register(ws,
+                java.nio.file.StandardWatchEventKinds.ENTRY_CREATE,
+                java.nio.file.StandardWatchEventKinds.ENTRY_MODIFY);
+        CloudFilesMount[] holder = new CloudFilesMount[1];
+        Thread wt = new Thread(() -> runWatcher(ws, syncRootP, provider, () -> holder[0] != null && holder[0].watcherRunning),
+                "CF local file watcher");
+        wt.setDaemon(true);
+
+        CloudFilesMount m = new CloudFilesMount(syncRootPath, connectionKey, callbackArena, wt, ws);
+        holder[0] = m;
+        wt.start();
         Runtime.getRuntime().addShutdownHook(new Thread(m::close, "CF unmount"));
         return m;
+    }
+
+    private static void runWatcher(java.nio.file.WatchService ws, Path syncRoot,
+                                   CloudFilesProvider provider,
+                                   java.util.function.BooleanSupplier running) {
+        // Coalesce bursts of write events: each path's upload kicks off only once size has
+        // stayed stable for STABLE_MS, so we don't repeatedly upload a partially-written file.
+        long STABLE_MS = 750;
+        java.util.Map<Path, Long> pending = new java.util.concurrent.ConcurrentHashMap<>();
+        java.util.Set<Path> uploaded = java.util.concurrent.ConcurrentHashMap.newKeySet();
+        while (running.getAsBoolean()) {
+            java.nio.file.WatchKey key;
+            try { key = ws.poll(200, java.util.concurrent.TimeUnit.MILLISECONDS); }
+            catch (InterruptedException e) { Thread.currentThread().interrupt(); return; }
+            if (key != null) {
+                for (java.nio.file.WatchEvent<?> ev : key.pollEvents()) {
+                    Object ctx = ev.context();
+                    if (!(ctx instanceof Path)) continue;
+                    Path full = syncRoot.resolve((Path) ctx);
+                    try {
+                        if (!Files.exists(full) || Files.isDirectory(full)) continue;
+                        long size = Files.size(full);
+                        if (size == 0) continue;
+                        pending.put(full, System.currentTimeMillis() + STABLE_MS);
+                    } catch (Exception ignored) {}
+                }
+                key.reset();
+            }
+            long now = System.currentTimeMillis();
+            for (java.util.Iterator<java.util.Map.Entry<Path, Long>> it = pending.entrySet().iterator(); it.hasNext(); ) {
+                java.util.Map.Entry<Path, Long> e = it.next();
+                if (now < e.getValue()) continue;
+                Path p = e.getKey();
+                it.remove();
+                if (!uploaded.add(p)) continue; // already uploaded once
+                try { provider.uploadLocalFile(p); }
+                catch (Exception ex) { LOG.log(Level.WARNING, "watcher upload failed: " + p, ex); }
+            }
+        }
     }
 
     // -----------------------------------------------------------------------
@@ -188,6 +249,11 @@ public class CloudFilesMount implements Closeable {
 
     @Override
     public void close() {
+        watcherRunning = false;
+        try { if (watchService != null) watchService.close(); } catch (Exception ignored) {}
+        if (watcherThread != null) {
+            try { watcherThread.join(2000); } catch (InterruptedException ignored) {}
+        }
         try {
             int hr = CfApi.cfDisconnectSyncRoot(connectionKey);
             if (hr != CfApi.S_OK)

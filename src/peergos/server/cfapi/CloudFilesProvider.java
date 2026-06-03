@@ -41,6 +41,15 @@ public class CloudFilesProvider {
      */
     private final java.util.List<MemorySegment> pendingBuffers = java.util.Collections.synchronizedList(new java.util.ArrayList<>());
 
+    /**
+     * Paths the local-file watcher just uploaded and converted to placeholders. The
+     * conversion fires FILE_CLOSE_COMPLETION (CF treats the convert as a placeholder
+     * lifecycle event), and any subsequent edit would also fire the close callback —
+     * so we de-dup against this map to avoid uploading the same bytes twice.
+     */
+    private final java.util.Map<String, Boolean> recentlyUploaded =
+            java.util.Collections.synchronizedMap(new peergos.shared.util.LRUCache<>(1024));
+
     public CloudFilesProvider(UserContext context, String syncRootPath) {
         this.context = context;
         this.syncRootPath = syncRootPath;
@@ -108,11 +117,7 @@ public class CloudFilesProvider {
                     MemorySegment ds = CfApi.virtualAlloc(padded).reinterpret(padded);
                     MemorySegment.copy(buf, 0, ds, ValueLayout.JAVA_BYTE, 0, nRead);
                     // Use padded length so all internal CF state machine boundaries are aligned
-                    StringBuilder hex = new StringBuilder("[CF] FETCH_DATA: nRead=" + nRead
-                            + " offset=" + offset + " buf[0..min(32,nRead)]=");
-                    int show = Math.min(32, nRead);
-                    for (int i = 0; i < show; i++) hex.append(String.format("%02x ", buf[i] & 0xff));
-                    System.err.println(hex.toString());
+                    System.err.println("[CF] FETCH_DATA: nRead=" + nRead + " offset=" + offset);
                     // Length = actual bytes read (Microsoft passes numberOfBytesTransfered,
                     // which for a 30-byte file is 30, NOT the padded buffer size).
                     transferData(connectionKey, transferKey, requestKey, ds, offset, nRead, fw.getSize());
@@ -362,41 +367,167 @@ public class CloudFilesProvider {
         int flags;
         try { flags = params.get(ValueLayout.JAVA_INT, CfApi.CBP_CLOSE_FLAGS_OFF); }
         catch (Exception e) { LOG.log(Level.WARNING, "CLOSE_COMPLETION: failed to read params", e); return; }
-        if ((flags & CfApi.CF_CALLBACK_NOTIFY_FILE_CLOSE_COMPLETION_FLAG_DELETED) != 0)
+        if ((flags & CfApi.CF_CALLBACK_NOTIFY_FILE_CLOSE_COMPLETION_FLAG_DELETED) != 0) {
+            System.err.println("[CF] FILE_CLOSE_COMPLETION: file deleted, skipping");
             return; // file was deleted on close — handled by DELETE callback
+        }
 
         String normalizedPath = CfApi.readWideString(info, CfApi.CBI_NORMALIZED_PATH_OFF);
         String peergosPath    = normalizedToPeregos(normalizedPath);
-        Path   localPath      = Path.of(syncRootPath).resolve(
-                normalizedPath.replace('/', java.io.File.separatorChar)
-                              .replaceFirst("^\\\\", ""));
+        // normalizedPath is an absolute path within the volume ("\Users\...\file.txt").
+        // Reattach the drive letter from syncRootPath ("C:") to form a full path.
+        String drive  = syncRootPath.substring(0, 2); // e.g. "C:"
+        Path   localPath = Path.of(drive + normalizedPath);
 
-        if (!Files.exists(localPath) || Files.isDirectory(localPath))
+        System.err.println("[CF] FILE_CLOSE_COMPLETION: normalizedPath='" + normalizedPath
+                + "' peergosPath='" + peergosPath + "' localPath='" + localPath + "' flags=0x"
+                + Integer.toHexString(flags));
+
+        if (recentlyUploaded.remove(localPath.toString()) != null) {
+            System.err.println("[CF] FILE_CLOSE_COMPLETION: just uploaded by watcher, skipping");
             return;
+        }
+
+        if (!Files.exists(localPath) || Files.isDirectory(localPath)) {
+            System.err.println("[CF] FILE_CLOSE_COMPLETION: localPath missing or directory, skipping");
+            return;
+        }
+
+        long localSize;
+        try { localSize = Files.size(localPath); }
+        catch (Exception e) { LOG.log(Level.WARNING, "CLOSE_COMPLETION: size read failed", e); return; }
+        System.err.println("[CF] FILE_CLOSE_COMPLETION: localSize=" + localSize);
+
+        // A close callback can fire for events that don't represent a finished write — e.g.
+        // an open-for-read that we serviced via FETCH_DATA and the caller then closed. Only
+        // write back when this side actually owns fresh data: the file has non-zero size and
+        // either doesn't yet exist in Peergos or its size differs from what's on disk.
+        String peergosParent = peergosPath.substring(0, peergosPath.lastIndexOf('/'));
+        Optional<FileWrapper> existingOpt;
+        try { existingOpt = context.getByPath(peergosPath).join(); }
+        catch (Exception e) { LOG.log(Level.WARNING, "CLOSE_COMPLETION: lookup failed", e); return; }
+        if (existingOpt.isPresent() && !existingOpt.get().isDirectory()
+                && existingOpt.get().getSize() == localSize) {
+            System.err.println("[CF] FILE_CLOSE_COMPLETION: peergos size matches disk ("
+                    + localSize + "), no write-back needed");
+            return;
+        }
+        if (localSize == 0) {
+            System.err.println("[CF] FILE_CLOSE_COMPLETION: local file empty, skipping write-back");
+            return;
+        }
 
         try {
-            byte[] data  = Files.readAllBytes(localPath);
-            String name  = localPath.getFileName().toString();
-            String parent = peergosPath.substring(0, peergosPath.lastIndexOf('/'));
+            byte[] data = Files.readAllBytes(localPath);
+            String name = localPath.getFileName().toString();
+            System.err.println("[CF] FILE_CLOSE_COMPLETION: uploading " + data.length
+                    + " bytes to " + peergosPath);
 
-            Optional<FileWrapper> parentOpt = context.getByPath(parent).join();
-            if (parentOpt.isEmpty()) return;
+            Optional<FileWrapper> parentOpt = context.getByPath(peergosParent).join();
+            if (parentOpt.isEmpty()) {
+                System.err.println("[CF] FILE_CLOSE_COMPLETION: parent missing: " + peergosParent);
+                return;
+            }
 
-            Optional<FileWrapper> existing = context.getByPath(peergosPath).join();
-            if (existing.isPresent() && !existing.get().isDirectory()) {
-                // overwrite existing file
-                existing.get().overwriteChangedChunks(
+            if (existingOpt.isPresent() && !existingOpt.get().isDirectory()) {
+                existingOpt.get().overwriteChangedChunks(
                         AsyncReader.build(data), (long) data.length,
                         context.network, context.crypto, l -> {}).join();
             } else {
-                // new file — upload
                 parentOpt.get().uploadOrReplaceFile(name,
                         AsyncReader.build(data), (long) data.length,
                         context.network, context.crypto, () -> false, l -> {}).join();
             }
-            LOG.fine("Uploaded " + peergosPath + " (" + data.length + " bytes)");
+            System.err.println("[CF] FILE_CLOSE_COMPLETION: upload complete for " + peergosPath);
         } catch (Exception e) {
             LOG.log(Level.WARNING, "Write-back failed for " + peergosPath, e);
+        }
+    }
+
+    /**
+     * Upload a file that was created locally inside the sync root by some external process.
+     * CF doesn't fire FILE_CLOSE_COMPLETION for brand-new local files (only for placeholders
+     * it already manages), so a separate watcher invokes this when it detects a new file.
+     */
+    public void uploadLocalFile(Path localPath) {
+        try {
+            if (!Files.exists(localPath) || Files.isDirectory(localPath)) return;
+            long localSize = Files.size(localPath);
+            if (localSize == 0) return;
+
+            String name        = localPath.getFileName().toString();
+            String relative    = Path.of(syncRootPath).relativize(localPath).toString()
+                    .replace(java.io.File.separatorChar, '/');
+            String peergosPath = "/" + context.username + "/" + relative;
+            String peergosParent = peergosPath.substring(0, peergosPath.lastIndexOf('/'));
+
+            Optional<FileWrapper> existing = context.getByPath(peergosPath).join();
+            if (existing.isPresent() && !existing.get().isDirectory()
+                    && existing.get().getSize() == localSize)
+                return; // already in sync
+
+            Optional<FileWrapper> parentOpt = context.getByPath(peergosParent).join();
+            if (parentOpt.isEmpty()) {
+                System.err.println("[CF] uploadLocalFile: parent missing: " + peergosParent);
+                return;
+            }
+
+            byte[] data = Files.readAllBytes(localPath);
+            System.err.println("[CF] uploadLocalFile: uploading " + data.length
+                    + " bytes to " + peergosPath);
+            FileWrapper uploaded;
+            if (existing.isPresent() && !existing.get().isDirectory()) {
+                uploaded = existing.get().overwriteChangedChunks(
+                        AsyncReader.build(data), (long) data.length,
+                        context.network, context.crypto, l -> {}).join();
+            } else {
+                uploaded = parentOpt.get().uploadOrReplaceFile(name,
+                        AsyncReader.build(data), (long) data.length,
+                        context.network, context.crypto, () -> false, l -> {}).join();
+            }
+            System.err.println("[CF] uploadLocalFile: upload complete for " + peergosPath);
+
+            // Convert the local file to a CF placeholder so subsequent reads go through
+            // FETCH_DATA (we serve from Peergos) and so CF tracks it as managed content
+            // rather than a regular local file. Mirrors Nextcloud's post-upload step.
+            convertToPlaceholder(localPath, uploaded, peergosPath);
+        } catch (Exception e) {
+            LOG.log(Level.WARNING, "uploadLocalFile failed for " + localPath, e);
+        }
+    }
+
+    private void convertToPlaceholder(Path localPath, FileWrapper uploaded, String peergosPath) {
+        // The convert itself triggers FILE_CLOSE_COMPLETION on the convert handle. Record
+        // the path so the close handler short-circuits and we don't re-upload.
+        recentlyUploaded.put(localPath.toString(), Boolean.TRUE);
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment pathW = CfApi.wideString(localPath.toString(), arena);
+            MemorySegment handle = CfApi.createFileForConvert(pathW);
+            if (handle.address() == CfApi.INVALID_HANDLE_VALUE) {
+                System.err.println("[CF] convertToPlaceholder: CreateFile failed for " + localPath);
+                recentlyUploaded.remove(localPath.toString());
+                return;
+            }
+            try {
+                // Identity must match the scheme used in buildPlaceholderArray (8-byte hash
+                // of the Peergos path) so that later FETCH_DATA callbacks can look the file
+                // up in identityToPath.
+                long key = identityKey(peergosPath);
+                identityToPath.put(key, peergosPath);
+                MemorySegment idSeg = arena.allocate(8);
+                idSeg.set(ValueLayout.JAVA_LONG, 0, key);
+                int hr = CfApi.cfConvertToPlaceholder(handle, idSeg, 8,
+                        CfApi.CF_CONVERT_FLAG_MARK_IN_SYNC);
+                System.err.println("[CF] convertToPlaceholder hr=0x"
+                        + Integer.toHexString(hr) + " path=" + localPath);
+                if (hr != CfApi.S_OK)
+                    recentlyUploaded.remove(localPath.toString());
+            } finally {
+                CfApi.closeHandle(handle);
+            }
+        } catch (Exception e) {
+            LOG.log(Level.WARNING, "convertToPlaceholder failed for " + localPath, e);
+            recentlyUploaded.remove(localPath.toString());
         }
     }
 

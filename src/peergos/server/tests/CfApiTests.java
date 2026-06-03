@@ -8,6 +8,7 @@ import peergos.server.util.*;
 import peergos.shared.*;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
+import peergos.shared.util.*;
 
 import java.lang.foreign.*;
 import java.nio.charset.StandardCharsets;
@@ -195,15 +196,68 @@ public class CfApiTests {
                         "Get-Content -LiteralPath '" + srcPath + "' -Raw -ErrorAction Stop");
                 pb.redirectErrorStream(true);
                 Process proc = pb.start();
-                String psOutput = new String(proc.getInputStream().readAllBytes());
+                byte[] psBytes = proc.getInputStream().readAllBytes();
                 boolean done = proc.waitFor(30, java.util.concurrent.TimeUnit.SECONDS);
                 System.err.println("[TEST] Get-Content exit=" + (done ? proc.exitValue() : "TIMEOUT")
-                        + " output=[" + psOutput.trim() + "]");
+                        + " bytes=" + psBytes.length);
                 assertTrue("Get-Content timed out", done);
-                assertEquals("Get-Content failed (output: " + psOutput.trim() + ")",
-                        0, proc.exitValue());
+                assertEquals("Get-Content failed", 0, proc.exitValue());
                 assertEquals("File content must match what was uploaded",
-                        new String(large).trim(), psOutput.trim());
+                        new String(large).trim(), new String(psBytes).trim());
+            }
+
+            // Step 3 — write a new 11MB file INTO the mount from an external process and
+            // verify it gets uploaded back to Peergos. We stage the content in a temp file
+            // outside the sync root, then Copy-Item it in. Closing the file triggers
+            // NOTIFY_FILE_CLOSE_COMPLETION, which reads the local bytes and uploads them.
+            {
+                byte[] upload = new byte[11 * 1024 * 1024];
+                for (int i = 0; i < upload.length; i++)
+                    upload[i] = (byte) (i * 31 + 7);
+                Path stagedFile = tmp.newFile("upload-source.bin").toPath();
+                Files.write(stagedFile, upload);
+
+                String destName = "uploaded.bin";
+                String destPath = syncRoot.resolve(destName).toString().replace("'", "''");
+                String srcPath  = stagedFile.toString().replace("'", "''");
+                System.err.println("[TEST] Copying " + upload.length + " bytes from '"
+                        + srcPath + "' to '" + destPath + "'");
+                ProcessBuilder cp = new ProcessBuilder(
+                        "powershell", "-NoProfile", "-NonInteractive",
+                        "-ExecutionPolicy", "Bypass",
+                        "-Command",
+                        "Copy-Item -LiteralPath '" + srcPath + "' -Destination '" + destPath
+                                + "' -ErrorAction Stop");
+                cp.redirectErrorStream(true);
+                Process cproc = cp.start();
+                String cpOutput = new String(cproc.getInputStream().readAllBytes());
+                boolean cdone = cproc.waitFor(60, java.util.concurrent.TimeUnit.SECONDS);
+                System.err.println("[TEST] Copy-Item exit=" + (cdone ? cproc.exitValue() : "TIMEOUT")
+                        + " output=[" + cpOutput.trim() + "]");
+                assertTrue("Copy-Item timed out", cdone);
+                assertEquals("Copy-Item failed (output: " + cpOutput.trim() + ")",
+                        0, cproc.exitValue());
+
+                // Wait for the upload to land in Peergos (driven by NOTIFY_FILE_CLOSE_COMPLETION).
+                String peergosPath = "/" + context.username + "/" + destName;
+                FileWrapper uploaded = null;
+                long deadline = System.currentTimeMillis() + 60_000;
+                while (System.currentTimeMillis() < deadline) {
+                    Optional<FileWrapper> opt = context.getByPath(peergosPath).join();
+                    if (opt.isPresent() && opt.get().getSize() == upload.length) {
+                        uploaded = opt.get();
+                        break;
+                    }
+                    Thread.sleep(500);
+                }
+                assertNotNull("uploaded.bin never appeared in Peergos", uploaded);
+                assertEquals("uploaded file size mismatch", upload.length, uploaded.getSize());
+
+                byte[] roundTripped = Serialize.readFully(uploaded, crypto, network).join();
+                assertArrayEquals("uploaded.bin content mismatch after round trip",
+                        upload, roundTripped);
+                System.err.println("[TEST] uploaded.bin round trip OK ("
+                        + upload.length + " bytes)");
             }
         } finally {
             mount.close();

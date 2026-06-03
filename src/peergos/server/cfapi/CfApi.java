@@ -363,6 +363,7 @@ public class CfApi {
     private static MethodHandle hCfConnectSyncRoot;
     private static MethodHandle hCfDisconnectSyncRoot;
     private static MethodHandle hCfCreatePlaceholders;
+    private static MethodHandle hCfConvertToPlaceholder;
     private static MethodHandle hCfExecute;
     private static MethodHandle hCfReportProviderProgress;
     private static MethodHandle hCfHydratePlaceholder;
@@ -454,6 +455,14 @@ public class CfApi {
                 FunctionDescriptor.of(ValueLayout.JAVA_INT,
                         ValueLayout.ADDRESS, ValueLayout.JAVA_LONG, ValueLayout.JAVA_LONG,
                         ValueLayout.JAVA_INT));
+
+        // HRESULT CfConvertToPlaceholder(HANDLE, LPCVOID FileIdentity, DWORD FileIdentityLength,
+        //                                CF_CONVERT_FLAGS, USN* ConvertUsn, OVERLAPPED*)
+        hCfConvertToPlaceholder = linker.downcallHandle(
+                cfapi.find("CfConvertToPlaceholder").orElseThrow(),
+                FunctionDescriptor.of(ValueLayout.JAVA_INT,
+                        ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_INT,
+                        ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
 
         // LPVOID VirtualAlloc(LPVOID lpAddress, SIZE_T dwSize, DWORD flAllocationType, DWORD flProtect)
         SymbolLookup kernel32 = SymbolLookup.libraryLookup(
@@ -636,6 +645,37 @@ public class CfApi {
     public static int cfHydratePlaceholder(MemorySegment fileHandle, long offset, long length, int flags) {
         try {
             return (int) hCfHydratePlaceholder.invokeExact(fileHandle, offset, length, flags);
+        } catch (Throwable t) { throw new RuntimeException(t); }
+    }
+
+    public static final int CF_CONVERT_FLAG_NONE         = 0x00000000;
+    public static final int CF_CONVERT_FLAG_MARK_IN_SYNC = 0x00000001;
+
+    public static int cfConvertToPlaceholder(MemorySegment fileHandle, MemorySegment fileIdentity,
+                                             int fileIdentityLength, int flags) {
+        try {
+            return (int) hCfConvertToPlaceholder.invokeExact(
+                    fileHandle, fileIdentity, fileIdentityLength, flags,
+                    MemorySegment.NULL, MemorySegment.NULL);
+        } catch (Throwable t) { throw new RuntimeException(t); }
+    }
+
+    /**
+     * Open a HANDLE suitable for CfConvertToPlaceholder. Matches Nextcloud's pattern:
+     * dwDesiredAccess=0 (query only) and dwShareMode=0 (exclusive). CfConvertToPlaceholder
+     * still works because the kernel filter manipulates the placeholder state via the FCB,
+     * not the user-mode handle's access rights.
+     */
+    public static MemorySegment createFileForConvert(MemorySegment pathW) {
+        try {
+            return (MemorySegment) hCreateFileW.invokeExact(
+                    pathW,
+                    0,                       // dwDesiredAccess
+                    0,                       // dwShareMode (exclusive)
+                    MemorySegment.NULL,
+                    OPEN_EXISTING,
+                    FILE_ATTRIBUTE_NORMAL,
+                    MemorySegment.NULL);
         } catch (Throwable t) { throw new RuntimeException(t); }
     }
 
