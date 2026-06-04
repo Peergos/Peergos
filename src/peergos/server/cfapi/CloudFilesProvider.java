@@ -73,6 +73,16 @@ public class CloudFilesProvider {
         int  identityLen    = info.get(ValueLayout.JAVA_INT,  CfApi.CBI_FILE_IDENTITY_LEN_OFF);
         long requiredOffset = params.get(ValueLayout.JAVA_LONG, CfApi.CBP_FETCH_DATA_REQUIRED_OFFSET_OFF);
         long requiredLength = params.get(ValueLayout.JAVA_LONG, CfApi.CBP_FETCH_DATA_REQUIRED_LENGTH_OFF);
+        // Same-process guard: if the JVM itself reads a placeholder, CF dispatches FETCH_DATA
+        // synchronously on a CF thread. Our handler then calls context.getByPath().join(),
+        // which can deadlock if anything in-JVM is holding the Peergos synchronizer. Fail
+        // the transfer so the caller gets an error instead of hanging. Mirrors the guard in
+        // onFetchPlaceholders.
+        if (isSameProcessCaller(info)) {
+            System.err.println("[CF] FETCH_DATA: same-process caller → fail to avoid deadlock");
+            failTransfer(connectionKey, transferKey, requestKey, -1);
+            return;
+        }
         // Path fallback: identityToPath is in-memory only and lost across JVM restarts.
         // If the identity lookup misses, derive the peergos path from the normalized path
         // CF gives us (CBI_NORMALIZED_PATH_OFF) — same conversion the other callbacks use.
@@ -83,6 +93,20 @@ public class CloudFilesProvider {
         // back to the originating thread, so calling from a worker thread loses context.
         doFetchData(connectionKey, transferKey, requestKey, identityAddr, identityLen,
                 normalizedPath, requiredOffset, requiredLength);
+    }
+
+    /**
+     * Returns true if the caller PID in {@code info}'s CBI_PROCESS_INFO field matches the
+     * current JVM's PID. Used to short-circuit CF callbacks that would re-enter Peergos
+     * code paths on the same thread and risk deadlock against held synchronizer state.
+     */
+    private static boolean isSameProcessCaller(MemorySegment info) {
+        long processInfoAddr = info.get(ValueLayout.JAVA_LONG, CfApi.CBI_PROCESS_INFO_OFF);
+        if (processInfoAddr == 0) return false;
+        int callerPid = MemorySegment.ofAddress(processInfoAddr).reinterpret(16)
+                .get(ValueLayout.JAVA_INT, 4);
+        int ourPid = (int) ProcessHandle.current().pid();
+        return callerPid == ourPid;
     }
 
     private void doFetchData(long connectionKey, long transferKey, long requestKey,
@@ -236,16 +260,7 @@ public class CloudFilesProvider {
             requestKey    = info.get(ValueLayout.JAVA_LONG, CfApi.CBI_REQUEST_KEY_OFF);
 
             // Detect same-process callbacks (e.g. fired by CfConnectSyncRoot itself).
-            long processInfoAddr = info.get(ValueLayout.JAVA_LONG, CfApi.CBI_PROCESS_INFO_OFF);
-            int ourPid = (int) ProcessHandle.current().pid();
-            int callerPid = -1;
-            if (processInfoAddr != 0) {
-                callerPid = MemorySegment.ofAddress(processInfoAddr).reinterpret(16)
-                        .get(ValueLayout.JAVA_INT, 4);
-            }
-            System.err.println("[CF] FETCH_PLACEHOLDERS: processInfoAddr=0x" + Long.toHexString(processInfoAddr)
-                    + " callerPid=" + callerPid + " ourPid=" + ourPid);
-            if (processInfoAddr != 0 && callerPid == ourPid) {
+            if (isSameProcessCaller(info)) {
                 System.err.println("[CF] FETCH_PLACEHOLDERS: same-process → fail to keep dir unpopulated");
                 failPlaceholders(connectionKey, transferKey, requestKey);
                 return;
@@ -424,7 +439,7 @@ public class CloudFilesProvider {
                 + "' peergosPath='" + peergosPath + "' localPath='" + localPath + "' flags=0x"
                 + Integer.toHexString(flags));
 
-        if (recentlyUploaded.remove(localPath.toString()) != null) {
+        if (recentlyUploaded.remove(normPathKey(localPath)) != null) {
             System.err.println("[CF] FILE_CLOSE_COMPLETION: just uploaded by watcher, skipping");
             return;
         }
@@ -678,7 +693,7 @@ public class CloudFilesProvider {
         try {
             String drive  = syncRootPath.substring(0, 2);
             Path localTarget = Path.of(drive + targetPath);
-            recentlyUploaded.put(localTarget.toString(), Boolean.TRUE);
+            recentlyUploaded.put(normPathKey(localTarget), Boolean.TRUE);
             System.err.println("[CF] NOTIFY_RENAME pre-marked target=" + localTarget);
         } catch (Exception e) {
             LOG.log(Level.WARNING, "RENAME: failed to pre-mark target", e);
@@ -711,9 +726,9 @@ public class CloudFilesProvider {
         // Suppress the upcoming FILE_CLOSE_COMPLETION on the target — the OS fires it for
         // the rename's "open new name" handle, and without this short-circuit our close
         // handler would treat the renamed file as a brand-new local file and re-upload it.
-        recentlyUploaded.put(Path.of(syncRootPath).resolve(
+        recentlyUploaded.put(normPathKey(Path.of(syncRootPath).resolve(
                 peergosTarget.substring(peergosTarget.indexOf('/', 1) + 1)
-                              .replace('/', java.io.File.separatorChar)).toString(), Boolean.TRUE);
+                              .replace('/', java.io.File.separatorChar))), Boolean.TRUE);
 
         try {
             Optional<FileWrapper> fwOpt = context.getByPath(peergosSource).join();
@@ -892,6 +907,18 @@ public class CloudFilesProvider {
         int hr = CfApi.cfExecute(opInfo, opParams);
         if (hr != CfApi.S_OK)
             LOG.warning("CfExecute(ACK op=" + opType + ") returned 0x" + Integer.toHexString(hr));
+    }
+
+    /**
+     * Normalise a local path into a stable LRU key. Windows paths are case-insensitive,
+     * and CF may hand us either the standard form (C:\...) or the Win32 long-path form
+     * (\\?\C:\...) for the same file. Without normalisation, our recentlyUploaded LRU
+     * would miss for case differences or prefix differences and we'd re-upload.
+     */
+    private static String normPathKey(Path p) {
+        String s = p.toAbsolutePath().normalize().toString();
+        if (s.startsWith("\\\\?\\")) s = s.substring(4);
+        return s.toLowerCase(java.util.Locale.ROOT);
     }
 
     private static long identityKey(String path) {

@@ -25,15 +25,18 @@ public class CloudFilesMount implements Closeable {
     private final Arena  callbackArena;   // keeps upcall stubs alive
     private final Thread watcherThread;
     private final java.nio.file.WatchService watchService;
+    private final java.util.concurrent.ExecutorService uploadExecutor;
     private volatile boolean watcherRunning = true;
 
     private CloudFilesMount(String syncRootPath, long connectionKey, Arena callbackArena,
-                            Thread watcherThread, java.nio.file.WatchService watchService) {
-        this.syncRootPath  = syncRootPath;
-        this.connectionKey = connectionKey;
-        this.callbackArena = callbackArena;
-        this.watcherThread = watcherThread;
-        this.watchService  = watchService;
+                            Thread watcherThread, java.nio.file.WatchService watchService,
+                            java.util.concurrent.ExecutorService uploadExecutor) {
+        this.syncRootPath   = syncRootPath;
+        this.connectionKey  = connectionKey;
+        this.callbackArena  = callbackArena;
+        this.watcherThread  = watcherThread;
+        this.watchService   = watchService;
+        this.uploadExecutor = uploadExecutor;
     }
 
     public String getMountPoint() {
@@ -159,12 +162,23 @@ public class CloudFilesMount implements Closeable {
         Path syncRootP = Path.of(syncRootPath);
         // The watcher registers the sync root and every existing subdir on startup, and
         // every newly-created subdir as it appears — see registerRecursive() in runWatcher.
+        // The actual uploads run on a small pool so a slow upload doesn't block the watcher
+        // from draining new ENTRY_CREATE/MODIFY events.
+        int uploadParallelism = 4;
+        java.util.concurrent.ExecutorService uploadExec = java.util.concurrent.Executors.newFixedThreadPool(
+                uploadParallelism,
+                r -> {
+                    Thread t = new Thread(r, "CF upload worker");
+                    t.setDaemon(true);
+                    return t;
+                });
         CloudFilesMount[] holder = new CloudFilesMount[1];
-        Thread wt = new Thread(() -> runWatcher(ws, syncRootP, provider, () -> holder[0] != null && holder[0].watcherRunning),
+        Thread wt = new Thread(() -> runWatcher(ws, syncRootP, provider, uploadExec,
+                () -> holder[0] != null && holder[0].watcherRunning),
                 "CF local file watcher");
         wt.setDaemon(true);
 
-        CloudFilesMount m = new CloudFilesMount(syncRootPath, connectionKey, callbackArena, wt, ws);
+        CloudFilesMount m = new CloudFilesMount(syncRootPath, connectionKey, callbackArena, wt, ws, uploadExec);
         holder[0] = m;
         wt.start();
         Runtime.getRuntime().addShutdownHook(new Thread(m::close, "CF unmount"));
@@ -173,15 +187,16 @@ public class CloudFilesMount implements Closeable {
 
     private static void runWatcher(java.nio.file.WatchService ws, Path syncRoot,
                                    CloudFilesProvider provider,
+                                   java.util.concurrent.ExecutorService uploadExec,
                                    java.util.function.BooleanSupplier running) {
         // Coalesce bursts of write events: each path's upload kicks off only once size+mtime
         // have stayed stable for STABLE_MS, so we don't repeatedly upload a partially-written
-        // file. After upload the path is left out of `inflight` so subsequent edits trigger
+        // file. After upload the path is removed from `inflight` so subsequent edits trigger
         // another upload — content-fingerprint dedup happens in CloudFilesProvider.
         long STABLE_MS = 750;
         java.util.Map<Path, Long> pending = new java.util.concurrent.ConcurrentHashMap<>();
-        // Tracks which paths currently have an upload running so we don't double-fire while
-        // join() is blocked. Bounded — uses peergos's LRU cache.
+        // Tracks which paths currently have an upload running so we don't double-submit
+        // while a worker thread is busy. Bounded — uses peergos's LRU cache.
         java.util.Map<Path, Boolean> inflight = java.util.Collections.synchronizedMap(
                 new peergos.shared.util.LRUCache<>(1024));
         // Recurse: register existing subdirs and any new ones the watcher discovers, so
@@ -220,11 +235,23 @@ public class CloudFilesMount implements Closeable {
                 java.util.Map.Entry<Path, Long> e = it.next();
                 if (now < e.getValue()) continue;
                 Path p = e.getKey();
+                // If an upload is already running for this path, leave the entry in pending —
+                // a fresh modify event during the upload should retrigger another upload
+                // once the worker clears inflight. We do NOT remove + drop here.
+                if (inflight.containsKey(p)) continue;
                 it.remove();
-                if (inflight.putIfAbsent(p, Boolean.TRUE) != null) continue;
-                try { provider.uploadLocalFile(p); }
-                catch (Exception ex) { LOG.log(Level.WARNING, "watcher upload failed: " + p, ex); }
-                finally { inflight.remove(p); }
+                inflight.put(p, Boolean.TRUE);
+                try {
+                    uploadExec.submit(() -> {
+                        try { provider.uploadLocalFile(p); }
+                        catch (Exception ex) { LOG.log(Level.WARNING, "watcher upload failed: " + p, ex); }
+                        finally { inflight.remove(p); }
+                    });
+                } catch (java.util.concurrent.RejectedExecutionException rej) {
+                    // Executor shut down — clear inflight and stop.
+                    inflight.remove(p);
+                    return;
+                }
             }
         }
     }
@@ -302,6 +329,12 @@ public class CloudFilesMount implements Closeable {
         try { if (watchService != null) watchService.close(); } catch (Exception ignored) {}
         if (watcherThread != null) {
             try { watcherThread.join(2000); } catch (InterruptedException ignored) {}
+        }
+        // Drain in-flight uploads so they finish before we disconnect from CF.
+        if (uploadExecutor != null) {
+            uploadExecutor.shutdown();
+            try { uploadExecutor.awaitTermination(10, java.util.concurrent.TimeUnit.SECONDS); }
+            catch (InterruptedException ignored) { Thread.currentThread().interrupt(); }
         }
         try {
             int hr = CfApi.cfDisconnectSyncRoot(connectionKey);
