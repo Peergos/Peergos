@@ -66,17 +66,58 @@ public class CloudFilesMount implements Closeable {
     }
 
     /** Overload for testing with a custom sync root path. State DB defaults to
-     *  ~/.peergos/cf-state-<hash16>.db where the hash is derived from the sync root. */
+     *  ~/.peergos/cf-state-<hash16>.db where the hash is derived from the sync root.
+     *  Icon resolves to peergosDir/peergos.ico — extracted from the classpath resource
+     *  /peergos.ico on first run if not already present. Falls back to Windows' generic
+     *  cloud icon if neither is available. */
     public static CloudFilesMount mount(UserContext context,
                                         Path peergosDir,
                                         String syncRootPath) throws Exception {
-        return mount(context, syncRootPath, defaultStateDbPath(peergosDir, syncRootPath));
+        return mount(context, syncRootPath,
+                defaultStateDbPath(peergosDir, syncRootPath),
+                ensureIconExtracted(peergosDir));
     }
 
-    /** Full overload — used by tests that want to put the state DB in their own tempdir. */
+    /**
+     * Materialise the bundled Peergos .ico into peergosDir/peergos.ico if it isn't
+     * already there. The .ico is shipped as a classpath resource at /peergos.ico
+     * (build.xml copies it from web-ui/packager/winicon.ico into ${build}/peergos.ico).
+     * Returns the on-disk path Windows can reference from the registry, or the existing
+     * file if it was already there. Returns null if no bundled icon is available — the
+     * caller then falls back to the Windows generic cloud icon.
+     */
+    private static Path ensureIconExtracted(Path peergosDir) {
+        try {
+            Files.createDirectories(peergosDir);
+            Path target = peergosDir.resolve("peergos.ico");
+            if (Files.exists(target)) return target;
+            try (java.io.InputStream in = CloudFilesMount.class.getResourceAsStream("/peergos.ico")) {
+                if (in == null) return null;
+                Files.copy(in, target);
+                return target;
+            }
+        } catch (Exception e) {
+            LOG.log(Level.WARNING, "Failed to extract bundled peergos.ico", e);
+            return null;
+        }
+    }
+
+    /** Overload that defaults the icon to Windows' generic cloud icon. */
     public static CloudFilesMount mount(UserContext context,
                                         String syncRootPath,
                                         Path stateDbPath) throws Exception {
+        return mount(context, syncRootPath, stateDbPath, null);
+    }
+
+    /** Full overload — used by tests that want to put the state DB in their own tempdir.
+     *  @param iconPath  Optional Windows .ico to use as the sync-root icon in File Explorer
+     *                   (the badge next to "Peergos" in the tree and on the root folder).
+     *                   If null OR the file doesn't exist, falls back to imageres.dll's
+     *                   generic cloud icon. */
+    public static CloudFilesMount mount(UserContext context,
+                                        String syncRootPath,
+                                        Path stateDbPath,
+                                        Path iconPath) throws Exception {
         CfApi.load();
 
         Files.createDirectories(Path.of(syncRootPath));
@@ -86,7 +127,7 @@ public class CloudFilesMount implements Closeable {
         // entries, the shell doesn't recognize our provider and CF silently drops hydration
         // deliveries (CfExecute returns S_OK but data never reaches the requesting process).
         // Discovered by comparing with Nextcloud's createSyncRootRegistryKeys.
-        String syncRootId = registerSyncRootInShell(syncRootPath, context.username);
+        String syncRootId = registerSyncRootInShell(syncRootPath, context.username, iconPath);
         System.err.println("[CF] Registered syncRootId in shell: " + syncRootId);
 
         // Arena for the sync root registration structs (registration is persistent)
@@ -432,7 +473,8 @@ public class CloudFilesMount implements Closeable {
     /**
      * Returns the syncRootId we registered.
      */
-    private static String registerSyncRootInShell(String syncRootPath, String accountName) throws Exception {
+    private static String registerSyncRootInShell(String syncRootPath, String accountName,
+                                                  Path iconPath) throws Exception {
         String sid = currentUserSid();
         // syncRootId format: ProviderName!SID!AccountName!FolderAlias
         // FolderAlias is a unique per-folder identifier; using the path hash keeps it unique
@@ -444,12 +486,21 @@ public class CloudFilesMount implements Closeable {
         // Required values per Microsoft's "Integrate a cloud storage provider" docs:
         // - Flags (DWORD): 0x14 = SHOW_SIBLING_DISPLAY_NAME | HIDE_LIBRARY (typical values)
         // - DisplayNameResource (REG_EXPAND_SZ)
-        // - IconResource (REG_EXPAND_SZ)
+        // - IconResource (REG_EXPAND_SZ)  — path to a Windows .ico file with optional ",index"
         // - UserSyncRoots\<SID> (REG_SZ, value = sync root path)
         regAdd(baseKey, "Flags", "REG_DWORD", "0x14");
         regAdd(baseKey, "DisplayNameResource", "REG_EXPAND_SZ", "Peergos");
-        regAdd(baseKey, "IconResource", "REG_EXPAND_SZ",
-                System.getenv("SystemRoot") + "\\System32\\imageres.dll,-1043");
+        // Prefer the Peergos icon when one is bundled in peergosDir. The path syntax
+        // "<file>,0" picks resource index 0 from the .ico container (sized variants
+        // are auto-selected by Explorer at draw time). Falls back to the Windows
+        // generic cloud icon if no .ico was bundled or the file is missing.
+        String iconResource;
+        if (iconPath != null && Files.exists(iconPath)) {
+            iconResource = iconPath.toString() + ",0";
+        } else {
+            iconResource = System.getenv("SystemRoot") + "\\System32\\imageres.dll,-1043";
+        }
+        regAdd(baseKey, "IconResource", "REG_EXPAND_SZ", iconResource);
         regAdd(baseKey + "\\UserSyncRoots", sid, "REG_SZ", syncRootPath);
         return syncRootId;
     }

@@ -78,13 +78,18 @@
     <copy todir="${dist}/lib">
       <fileset dir="lib"/>
     </copy>
+    <available file="assets/winicon.ico" property="have.winicon"/>
+    <copy file="assets/winicon.ico" tofile="${build}/peergos.ico"
+          failonerror="false">
+      <filterchain/>
+    </copy>
     <copy todir="${build}/native-lib">
       <fileset dir="native-lib"/>
     </copy>
     <manifestclasspath property="manifest_cp" jarfile="myjar.jar">
       <classpath refid="dep.runtime" />
     </manifestclasspath>
-    <jar jarfile="${dist}/Peergos.jar" basedir="${build}" includes="peergos/server/**,peergos/shared/**,peergos/client/**,native-lib/**,pki/**">
+    <jar jarfile="${dist}/Peergos.jar" basedir="${build}" includes="peergos/server/**,peergos/shared/**,peergos/client/**,native-lib/**,pki/**,peergos.ico">
       <manifest>
         <attribute name="Main-Class" value="peergos.server.Main"/>
         <attribute name="Class-Path" value="${manifest_cp}"/>
