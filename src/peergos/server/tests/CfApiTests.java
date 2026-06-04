@@ -10,6 +10,7 @@ import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
 import peergos.shared.util.*;
 
+import java.io.IOException;
 import java.lang.foreign.*;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
@@ -132,7 +133,8 @@ public class CfApiTests {
                 context.network, context.crypto, () -> false, l -> {}).join();
 
         Path syncRoot = tmp.newFolder("peergos-cf-" + user).toPath();
-        CloudFilesMount mount = CloudFilesMount.mount(context, syncRoot.toString());
+        Path stateDb = tmp.newFolder("peergos-cf-state-" + user).toPath().resolve("state.db");
+        CloudFilesMount mount = CloudFilesMount.mount(context, syncRoot.toString(), stateDb);
         try {
             // Step 1 — external directory listing. This fires FETCH_PLACEHOLDERS from an external
             // PID; our provider responds with CfExecute(TRANSFER_PLACEHOLDERS) which creates the
@@ -389,6 +391,197 @@ public class CfApiTests {
                 assertTrue("world.txt should be gone from Peergos",
                         context.getByPath(p).join().isEmpty());
             }
+        } finally {
+            mount.close();
+        }
+    }
+
+    /**
+     * Verifies the conflict-handling path: a remote edit by another UserContext
+     * happens concurrently with a local edit via the CF mount. Expected outcome
+     * is that Peergos ends up with BOTH the remote-edited content under the
+     * original name AND the local-edited content renamed to foo[conflict-0].txt.
+     */
+    @Test
+    public void localAndRemoteEditConflict() throws Exception {
+        if (!isWindows()) return;
+        NetworkAccess network = Builder.buildLocalJavaNetworkAccess(WEB_PORT).join();
+        Crypto crypto = Main.initCrypto();
+        String user = "cfapi" + UUID.randomUUID().toString().substring(0, 8);
+        UserContext contextA = UserContext.signUp(user, PASSWORD, "", network, crypto).join();
+
+        // 1) Context A: upload the initial file "AAAA..." (large enough to span >1 chunk
+        //    so we exercise multi-chunk hashing in the conflict path).
+        byte[] aBytes = new byte[7 * 1024 * 1024];
+        java.util.Arrays.fill(aBytes, (byte) 'A');
+        FileWrapper home = contextA.getByPath("/" + contextA.username).join().get();
+        home.uploadOrReplaceFile("conflict.txt",
+                new AsyncReader.ArrayBacked(aBytes), aBytes.length,
+                contextA.network, contextA.crypto, () -> false, l -> {}).join();
+
+        Path syncRoot = tmp.newFolder("peergos-cf-" + user).toPath();
+        Path stateDb  = tmp.newFolder("peergos-cf-state-" + user).toPath().resolve("state.db");
+        CloudFilesMount mount = CloudFilesMount.mount(contextA, syncRoot.toString(), stateDb);
+        try {
+            // 2) Force the placeholder to materialise on disk by listing the dir.
+            String syncRootPs = syncRoot.toString().replace("'", "''");
+            int lsExit = runPs("Get-ChildItem -LiteralPath '" + syncRootPs + "' -Name | Out-String");
+            assertEquals("listing failed", 0, lsExit);
+            assertTrue("conflict.txt should be on disk",
+                    Files.exists(syncRoot.resolve("conflict.txt")));
+
+            // 3) Hydrate it via Get-Content so the local placeholder has real bytes
+            //    and our syncState records the synced baseline (A).
+            String filePs = syncRoot.resolve("conflict.txt").toString().replace("'", "''");
+            int readExit = runPs("$null = Get-Content -LiteralPath '" + filePs + "' -Raw -ErrorAction Stop");
+            assertEquals("hydrate read failed", 0, readExit);
+
+            // 4) Sign in as Context B (same user, separate session) and overwrite Peergos
+            //    with "BBBB..." — simulates a concurrent edit from another device.
+            UserContext contextB = UserContext.signIn(user, PASSWORD,
+                    req -> { throw new IllegalStateException("no MFA"); },
+                    network, crypto).join();
+            byte[] bBytes = new byte[7 * 1024 * 1024];
+            java.util.Arrays.fill(bBytes, (byte) 'B');
+            Optional<FileWrapper> existingOnB = contextB.getByPath(
+                    "/" + user + "/conflict.txt").join();
+            assertTrue("context B should see conflict.txt", existingOnB.isPresent());
+            existingOnB.get().overwriteChangedChunks(
+                    new AsyncReader.ArrayBacked(bBytes), bBytes.length,
+                    contextB.network, contextB.crypto, l -> {}).join();
+
+            // Wait for context A's synchronizer to actually observe context B's update.
+            // Without this poll, the close handler below sees A's stale snapshot, decides
+            // synced == remote (case A) and silently last-writer-wins over B's change. The
+            // pull-loop daemon would normally close this gap; in production sync, the
+            // 30-second tick window is when this race can bite. Here we force A to refresh
+            // by waiting for the first byte of the file to read as 'B'.
+            waitFor(60_000, () -> {
+                Optional<FileWrapper> fw = contextA.getByPath(
+                        "/" + user + "/conflict.txt").join();
+                if (fw.isEmpty()) return false;
+                try {
+                    byte[] head = Serialize.readFully(fw.get(), crypto, network).join();
+                    return head.length > 0 && head[0] == 'B';
+                } catch (Exception e) { return false; }
+            });
+
+            // 5) From the mount side (Context A's view), overwrite the local file with
+            //    "CCCC..." via an explicit OpenWrite + Write + Close sequence. Copy-Item
+            //    -Force uses CopyFileEx underneath, which CF does NOT surface to the
+            //    provider as a FILE_CLOSE_COMPLETION callback for the destination — so
+            //    the conflict path never runs. The OpenWrite path does fire the callback
+            //    (same pattern as the in-place modify in mountLifecyclePlaceholdersAppear).
+            byte[] cBytes = new byte[7 * 1024 * 1024];
+            java.util.Arrays.fill(cBytes, (byte) 'C');
+            Path stagedC = tmp.newFile("conflict-c-source.bin").toPath();
+            Files.write(stagedC, cBytes);
+            int cpExit = runPs(
+                    "$bytes = [IO.File]::ReadAllBytes('"
+                            + stagedC.toString().replace("'", "''") + "'); " +
+                    "$fs = [IO.File]::OpenWrite('" + filePs + "'); " +
+                    "try { $fs.SetLength([int64]$bytes.Length); " +
+                    "      $fs.Seek(0, 'Begin') | Out-Null; " +
+                    "      $fs.Write($bytes, 0, $bytes.Length) } " +
+                    "finally { $fs.Close() }");
+            assertEquals("local in-place modify failed", 0, cpExit);
+
+            // 6) Wait for conflict resolution to land in Peergos. Expected end state:
+            //    /user/conflict.txt              = B  (remote pulled into original name)
+            //    /user/conflict[conflict-0].txt  = C  (local renamed and re-uploaded)
+            String conflictPath = "/" + user + "/conflict[conflict-0].txt";
+            String origPath     = "/" + user + "/conflict.txt";
+            waitFor(120_000, () -> {
+                Optional<FileWrapper> orig = contextA.getByPath(origPath).join();
+                Optional<FileWrapper> ren  = contextA.getByPath(conflictPath).join();
+                return orig.isPresent() && ren.isPresent()
+                        && orig.get().getSize() == bBytes.length
+                        && ren.get().getSize()  == cBytes.length;
+            });
+
+            FileWrapper finalOrig = contextA.getByPath(origPath).join().orElseThrow();
+            FileWrapper finalRen  = contextA.getByPath(conflictPath).join().orElseThrow();
+            byte[] origRound = Serialize.readFully(finalOrig, crypto, network).join();
+            byte[] renRound  = Serialize.readFully(finalRen,  crypto, network).join();
+
+            assertEquals("original name should hold B's content size",
+                    bBytes.length, origRound.length);
+            assertEquals("conflict copy should hold C's content size",
+                    cBytes.length, renRound.length);
+            assertEquals("B's first byte", 'B', origRound[0]);
+            assertEquals("C's first byte", 'C', renRound[0]);
+            System.err.println("[TEST] conflict resolved: " + origPath
+                    + "=B, " + conflictPath + "=C");
+        } finally {
+            mount.close();
+        }
+    }
+
+    /**
+     * Verifies the pull loop: a remote edit happens, local hasn't been touched
+     * since last sync, so the loop's Tier 1 snapshot check fires, Tier 2 finds
+     * the file's hash diverged from synced, and Tier 3 pulls the new bytes into
+     * the local placeholder (no conflict file).
+     */
+    @Test
+    public void pullLoopPicksUpRemoteEdit() throws Exception {
+        if (!isWindows()) return;
+        NetworkAccess network = Builder.buildLocalJavaNetworkAccess(WEB_PORT).join();
+        Crypto crypto = Main.initCrypto();
+        String user = "cfapi" + UUID.randomUUID().toString().substring(0, 8);
+        UserContext contextA = UserContext.signUp(user, PASSWORD, "", network, crypto).join();
+
+        byte[] before = "remote-edit-before".getBytes(StandardCharsets.UTF_8);
+        FileWrapper home = contextA.getByPath("/" + contextA.username).join().get();
+        home.uploadOrReplaceFile("remote-edit.txt",
+                new AsyncReader.ArrayBacked(before), before.length,
+                contextA.network, contextA.crypto, () -> false, l -> {}).join();
+
+        Path syncRoot = tmp.newFolder("peergos-cf-" + user).toPath();
+        Path stateDb  = tmp.newFolder("peergos-cf-state-" + user).toPath().resolve("state.db");
+        CloudFilesMount mount = CloudFilesMount.mount(contextA, syncRoot.toString(), stateDb);
+        try {
+            // 1) Materialise the placeholder and hydrate it so syncState records the baseline.
+            String syncRootPs = syncRoot.toString().replace("'", "''");
+            assertEquals(0, runPs("Get-ChildItem -LiteralPath '" + syncRootPs + "' -Name | Out-String"));
+            Path localFile = syncRoot.resolve("remote-edit.txt");
+            assertTrue("placeholder should exist", Files.exists(localFile));
+            String filePs = localFile.toString().replace("'", "''");
+            assertEquals(0, runPs("$null = Get-Content -LiteralPath '" + filePs + "' -Raw -ErrorAction Stop"));
+
+            // 2) Another UserContext for the same user edits the file in Peergos.
+            UserContext contextB = UserContext.signIn(user, PASSWORD,
+                    req -> { throw new IllegalStateException("no MFA"); },
+                    network, crypto).join();
+            byte[] after = "remote-edit-AFTER-the-pull-loop".getBytes(StandardCharsets.UTF_8);
+            Optional<FileWrapper> existingOnB = contextB.getByPath(
+                    "/" + user + "/remote-edit.txt").join();
+            assertTrue(existingOnB.isPresent());
+            existingOnB.get().overwriteChangedChunks(
+                    new AsyncReader.ArrayBacked(after), after.length,
+                    contextB.network, contextB.crypto, l -> {}).join();
+
+            // 3) Force a pull tick. Tier 1 should detect the writer's snapshot moved,
+            //    Tier 2 should shortlist remote-edit.txt, Tier 3 should pull (local
+            //    untouched since synced → no conflict).
+            mount.forcePullTick();
+
+            // 4) Local file should now match the new content.
+            waitFor(60_000, () -> {
+                try { return Files.size(localFile) == after.length; }
+                catch (IOException e) { return false; }
+            });
+            byte[] onDisk = Files.readAllBytes(localFile);
+            assertEquals("pulled content size", after.length, onDisk.length);
+            assertArrayEquals("pulled content bytes", after, onDisk);
+
+            // 5) And no conflict copy should have been created.
+            assertFalse("no conflict copy expected for a clean pull",
+                    Files.exists(syncRoot.resolve("remote-edit[conflict-0].txt")));
+            assertTrue("Peergos still has the file at original name",
+                    contextA.getByPath("/" + user + "/remote-edit.txt").join().isPresent());
+            System.err.println("[TEST] pull loop applied remote edit cleanly ("
+                    + after.length + " bytes)");
         } finally {
             mount.close();
         }

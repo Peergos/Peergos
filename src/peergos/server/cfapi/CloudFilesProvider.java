@@ -1,11 +1,15 @@
 package peergos.server.cfapi;
 
+import peergos.server.sync.SyncState;
 import peergos.server.util.Logging;
 import peergos.shared.user.UserContext;
 import peergos.shared.user.fs.AsyncReader;
 import peergos.shared.user.fs.FileProperties;
 import peergos.shared.user.fs.FileWrapper;
+import peergos.shared.user.fs.HashBranch;
+import peergos.shared.user.fs.HashTree;
 import peergos.shared.util.PathUtil;
+import peergos.server.sync.FileState;
 
 import java.io.IOException;
 import java.lang.foreign.*;
@@ -27,6 +31,10 @@ public class CloudFilesProvider {
 
     private final UserContext context;
     private final String syncRootPath;
+    /** Persisted "last synced version" per path + last-seen Snapshot — feeds the
+     *  conflict detector. Reuses peergos.server.sync.SyncState + FileState directly.
+     *  Lifecycle owned by CloudFilesMount (opened in mount(), closed in close()). */
+    private final peergos.server.sync.SyncState syncState;
 
     /**
      * Maps a file's identity bytes (stored as a long hash) back to its full Peergos path.
@@ -54,9 +62,12 @@ public class CloudFilesProvider {
     private final java.util.Map<String, Boolean> recentlyUploaded =
             java.util.Collections.synchronizedMap(new peergos.shared.util.LRUCache<>(1024));
 
-    public CloudFilesProvider(UserContext context, String syncRootPath) {
+    public CloudFilesProvider(UserContext context,
+                              String syncRootPath,
+                              SyncState syncState) {
         this.context = context;
         this.syncRootPath = syncRootPath;
+        this.syncState = syncState;
     }
 
     // -----------------------------------------------------------------------
@@ -177,6 +188,13 @@ public class CloudFilesProvider {
                     offset    += nRead;
                     remaining -= nRead;
                 }
+            }
+            // After the full file has been hydrated, the on-disk content matches the
+            // current Peergos version. Record that so the next FILE_CLOSE_COMPLETION
+            // for this path has a baseline for conflict detection.
+            if (requiredOffset == 0 && end >= fw.getSize()) {
+                String relPath = peergosPathToRelPath(peergosPath);
+                if (relPath != null) recordSyncedVersion(relPath, fw);
             }
         } catch (Exception e) {
             LOG.log(Level.SEVERE, "FETCH_DATA callback exception (connKey=" + connectionKey + ")", e);
@@ -303,6 +321,18 @@ public class CloudFilesProvider {
                         ? MemorySegment.NULL
                         : buildPlaceholderArray(visible, peergosPath, arena);
                 transferPlaceholders(arena, connectionKey, transferKey, requestKey, array, visible.size());
+            }
+            // Record initial "last synced version" for each new placeholder. After
+            // TRANSFER_PLACEHOLDERS the local placeholder represents the current remote
+            // state (dehydrated content + correct metadata), so synced == remote.
+            String dirRelPath = peergosPathToRelPath(peergosPath);
+            if (dirRelPath != null) {
+                for (FileWrapper fw : visible) {
+                    String relPath = dirRelPath.isEmpty()
+                            ? fw.getName()
+                            : dirRelPath + "/" + fw.getName();
+                    if (!fw.isDirectory()) recordSyncedVersion(relPath, fw);
+                }
             }
         } catch (Exception e) {
             LOG.log(Level.WARNING, "FETCH_PLACEHOLDERS callback error", e);
@@ -504,20 +534,281 @@ public class CloudFilesProvider {
             return;
         }
 
+        // Conflict detection. We look up the "last synced version" in our state DB:
+        //   case A — synced.hash == remote.hash:
+        //              remote unchanged since our last sync; safe to push local update.
+        //   case B — synced == null && remote == null:
+        //              brand new file from this side; just upload.
+        //   case C — synced.hash != remote.hash but local.hash == remote.hash:
+        //              we already have the same content as remote; just update state, no upload.
+        //   case D — synced.hash != remote.hash and local.hash != remote.hash:
+        //              real conflict. rename local to foo[conflict-N].ext, pull remote into
+        //              the original name, upload the renamed file as a new entry.
+        try {
+            String relPath = peergosPathToRelPath(peergosPath);
+            FileState synced = (syncState != null && relPath != null)
+                    ? syncState.byPath(relPath) : null;
+            peergos.shared.user.fs.RootHash remoteHash = existingOpt
+                    .flatMap(fw -> fw.getFileProperties().treeHash)
+                    .map(b -> b.rootHash)
+                    .orElse(null);
+
+            boolean remoteUnchangedSinceSync =
+                    synced != null && remoteHash != null
+                    && synced.hashTree.rootHash.equals(remoteHash);
+
+            if (remoteUnchangedSinceSync || existingOpt.isEmpty()) {
+                // case A or B: safe to push
+                pushLocalToPeergos(localPath, localSize, name, peergosPath,
+                        peergosParent, existingOpt, parentOpt);
+                return;
+            }
+
+            // case C or D: remote moved since our last sync. Need to hash local to tell apart.
+            peergos.shared.user.fs.HashTree localHash = hashLocalFile(localPath, localSize);
+            if (localHash != null && remoteHash != null
+                    && localHash.rootHash.equals(remoteHash)) {
+                // case C: local already matches remote, just record state.
+                System.err.println("[CF] CONFLICT: local content already matches remote, no upload");
+                if (relPath != null && existingOpt.isPresent())
+                    recordSyncedVersion(relPath, existingOpt.get());
+                return;
+            }
+
+            // case D: real conflict — rename local, pull remote into original name, upload renamed.
+            System.err.println("[CF] CONFLICT: local and remote both moved since last sync — resolving");
+            resolveLocalConflict(localPath, relPath, localHash, localSize,
+                    peergosPath, peergosParent, existingOpt, parentOpt);
+        } catch (Exception e) {
+            LOG.log(Level.WARNING, "Write-back failed for " + peergosPath, e);
+        }
+    }
+
+    /** Push local content to Peergos via overwriteChangedChunks (existing) or uploadFileWithHash (new).
+     *  Always sets the file's treeHash explicitly afterwards — mirrors PeergosSyncFS.setBytes /
+     *  PeergosSyncFS.setHashes. This guarantees every conflict check after this upload has a
+     *  populated treeHash to compare against. */
+    private void pushLocalToPeergos(Path localPath, long localSize, String name,
+                                    String peergosPath, String peergosParent,
+                                    Optional<FileWrapper> existingOpt,
+                                    Optional<FileWrapper> parentOpt) throws Exception {
+        HashTree localHash = hashLocalFile(localPath, localSize);
         try (peergos.server.simulation.FileAsyncReader reader =
                      new peergos.server.simulation.FileAsyncReader(localPath.toFile())) {
             if (existingOpt.isPresent() && !existingOpt.get().isDirectory()) {
                 existingOpt.get().overwriteChangedChunks(
                         reader, localSize,
                         context.network, context.crypto, l -> {}).join();
+                if (localHash != null) applyHash(peergosPath, localHash);
             } else {
-                parentOpt.get().uploadOrReplaceFile(name,
-                        reader, localSize,
-                        context.network, context.crypto, () -> false, l -> {}).join();
+                parentOpt.get().uploadFileWithHash(name,
+                        reader, localSize, Optional.ofNullable(localHash),
+                        Optional.empty(), Optional.empty(),
+                        context.network, context.crypto, l -> {}).join();
             }
             System.err.println("[CF] FILE_CLOSE_COMPLETION: upload complete for " + peergosPath);
+            context.getByPath(peergosPath).join().ifPresent(
+                    fw -> recordSyncedVersion(localPath, fw));
+        }
+    }
+
+    /** Apply a precomputed HashTree to an already-uploaded file via PropsUpdate.
+     *  Mirrors PeergosSyncFS.setHashes — used after overwriteChangedChunks (which doesn't
+     *  set the hash itself) so conflict-detection always has a populated baseline. */
+    private void applyHash(String peergosPath, HashTree hash) {
+        try {
+            Optional<FileWrapper> fwOpt = context.getByPath(peergosPath).join();
+            if (fwOpt.isEmpty()) return;
+            java.util.List<FileWrapper.PropsUpdate> updates =
+                    fwOpt.get().getHashUpdates(hash, context.network, context.crypto.hasher).join();
+            if (updates.isEmpty()) return;
+            FileWrapper.bulkSetSameNameProperties(updates, context.network).join();
         } catch (Exception e) {
-            LOG.log(Level.WARNING, "Write-back failed for " + peergosPath, e);
+            LOG.log(Level.WARNING, "applyHash failed for " + peergosPath, e);
+        }
+    }
+
+    /**
+     * Resolve a conflict: rename local to foo[conflict-N].ext, download the current
+     * remote content into the original local path, then upload the renamed local file
+     * as a new Peergos entry under the conflict name.
+     */
+    private void resolveLocalConflict(Path localPath, String relPath,
+                                      peergos.shared.user.fs.HashTree localHash, long localSize,
+                                      String peergosPath, String peergosParent,
+                                      Optional<FileWrapper> existingOpt,
+                                      Optional<FileWrapper> parentOpt) throws Exception {
+        // 1) Rename local out of the way.
+        long localMtime;
+        try { localMtime = Files.getLastModifiedTime(localPath).toMillis(); }
+        catch (IOException e) { localMtime = System.currentTimeMillis(); }
+        FileState localFs = new FileState(relPath, localMtime, localSize, localHash);
+        FileState renamed = peergos.server.sync.DirectorySync.renameOnConflict(
+                LOCAL_FS_FOR_RENAME, localPath, localFs);
+        Path renamedLocal = localPath.resolveSibling(
+                renamed.relPath.substring(renamed.relPath.lastIndexOf('/') + 1));
+        System.err.println("[CF] CONFLICT: renamed local " + localPath.getFileName()
+                + " → " + renamedLocal.getFileName());
+        // Pre-suppress the close-completion that the rename fires on the new name.
+        recentlyUploaded.put(normPathKey(renamedLocal), Boolean.TRUE);
+
+        // 2) Download remote content into the original local path.
+        FileWrapper remote = existingOpt.get();
+        try (AsyncReader src = remote.getInputStream(context.network, context.crypto,
+                                                    remote.getSize(), l -> {}).join();
+             java.io.OutputStream out = Files.newOutputStream(localPath)) {
+            byte[] buf = new byte[CHUNK_SIZE];
+            long remaining = remote.getSize();
+            while (remaining > 0) {
+                int toRead = (int) Math.min(buf.length, remaining);
+                int n = src.readIntoArray(buf, 0, toRead).join();
+                if (n <= 0) break;
+                out.write(buf, 0, n);
+                remaining -= n;
+            }
+        }
+        if (relPath != null) recordSyncedVersion(relPath, remote);
+
+        // 3) Upload the renamed local file as a new Peergos entry under the conflict name.
+        // We already have the localHash computed by the caller — pass it through so the
+        // resulting Peergos file has its treeHash populated immediately.
+        try (peergos.server.simulation.FileAsyncReader reader =
+                     new peergos.server.simulation.FileAsyncReader(renamedLocal.toFile())) {
+            String conflictName = renamedLocal.getFileName().toString();
+            parentOpt.get().uploadFileWithHash(conflictName,
+                    reader, localSize, Optional.ofNullable(localHash),
+                    Optional.empty(), Optional.empty(),
+                    context.network, context.crypto, l -> {}).join();
+        }
+        String conflictPeergosPath = peergosParent + "/" + renamedLocal.getFileName();
+        context.getByPath(conflictPeergosPath).join().ifPresent(
+                fw -> recordSyncedVersion(renamedLocal, fw));
+        System.err.println("[CF] CONFLICT: resolved — local " + localPath.getFileName()
+                + " now has remote content, conflict copy at "
+                + renamedLocal.getFileName());
+    }
+
+    // -----------------------------------------------------------------------
+    // Pull loop — detect remote-only edits and pull them into local placeholders.
+    // Three tiers from cheap to expensive (see /home/ian/dev/conflict.md):
+    //  Tier 1: Snapshot equality (writer-set vs last-synced snapshot). O(writers).
+    //  Tier 2: per-path hash diff (remote vs synced). Only runs if Tier 1 differs.
+    //  Tier 3: per-path apply with local mtime/size verification + pull or conflict.
+    // -----------------------------------------------------------------------
+
+    void runPullTick() {
+        if (syncState == null) return;
+        try {
+            // Tier 1 — snapshot equality across all writers we've ever recorded.
+            // The persisted snapshot accumulates writers via recordSyncedVersion (one entry
+            // per writer that owns a file we know about). Empty snapshot means we haven't
+            // synced anything yet — nothing remote to detect either, so we bail.
+            peergos.shared.user.Snapshot syncedSnap = syncState.getSnapshot(syncRootPath);
+            if (syncedSnap == null || syncedSnap.versions.isEmpty()) return;
+            java.util.Set<peergos.shared.crypto.hash.PublicKeyHash> writers =
+                    new java.util.HashSet<>(syncedSnap.versions.keySet());
+            // Owner is needed by withWriters to look up each writer's data. We assume
+            // owner == the user for now (matches single-user setups and most files);
+            // shared subtrees with a different owner would need their owner tracked
+            // alongside the writer in the persisted state. TODO when multi-owner is needed.
+            peergos.shared.crypto.hash.PublicKeyHash owner = context.signer.publicKeyHash;
+            peergos.shared.user.Snapshot remoteSnap = new peergos.shared.user.Snapshot(
+                    new java.util.HashMap<>())
+                    .withWriters(owner, writers, context.network).join();
+            if (remoteSnap.equals(syncedSnap)) return;          // nothing moved
+
+            // Tier 2 — path-level shortlist.
+            java.util.Set<String> allPaths = syncState.allFilePaths();
+            for (String relPath : allPaths) {
+                FileState synced = syncState.byPath(relPath);
+                if (synced == null) continue;
+                String peergosPath = "/" + context.username + "/" + relPath;
+                Optional<FileWrapper> remoteOpt = context.getByPath(peergosPath).join();
+                if (remoteOpt.isEmpty() || remoteOpt.get().isDirectory()) continue;
+                FileWrapper remote = remoteOpt.get();
+                peergos.shared.user.fs.RootHash remoteHash = remote.getFileProperties()
+                        .treeHash.map(b -> b.rootHash).orElse(null);
+                if (remoteHash == null
+                        || remoteHash.equals(synced.hashTree.rootHash)) continue;
+                // Tier 3 — apply or conflict.
+                applyRemoteChangeOrConflict(relPath, synced, remote);
+            }
+
+            // Persist the new snapshot baseline.
+            syncState.setSnapshot(syncRootPath, remoteSnap);
+        } catch (Exception e) {
+            LOG.log(Level.WARNING, "pull tick failed", e);
+        }
+    }
+
+    private void applyRemoteChangeOrConflict(String relPath, FileState synced, FileWrapper remote) {
+        Path localPath = Path.of(syncRootPath).resolve(relPath.replace('/', java.io.File.separatorChar));
+        long localMtime, localSize;
+        try {
+            if (!Files.exists(localPath)) return;        // not materialised yet; FETCH_DATA will pull on demand
+            localMtime = Files.getLastModifiedTime(localPath).toMillis() / 1000 * 1000;
+            localSize  = Files.size(localPath);
+        } catch (IOException e) { return; }
+
+        if (localMtime == synced.modificationTime && localSize == synced.size) {
+            // Local hasn't been touched since last sync — safe to pull.
+            try {
+                downloadRemoteToLocal(remote, localPath);
+                recordSyncedVersion(relPath, remote);
+                System.err.println("[CF] PULL: " + relPath + " updated from remote");
+            } catch (Exception e) {
+                LOG.log(Level.WARNING, "pull download failed for " + relPath, e);
+            }
+        } else {
+            // Both diverged. Same conflict flow as the close handler.
+            try {
+                peergos.shared.user.fs.HashTree localHash = hashLocalFile(localPath, localSize);
+                if (localHash != null && localHash.rootHash.equals(
+                        remote.getFileProperties().treeHash.map(b -> b.rootHash).orElse(null))) {
+                    recordSyncedVersion(relPath, remote);   // already match — just update state
+                    return;
+                }
+                String peergosPath = "/" + context.username + "/" + relPath;
+                String peergosParent = peergosPath.substring(0, peergosPath.lastIndexOf('/'));
+                Optional<FileWrapper> parentOpt = context.getByPath(peergosParent).join();
+                if (parentOpt.isEmpty()) return;
+                resolveLocalConflict(localPath, relPath, localHash, localSize,
+                        peergosPath, peergosParent,
+                        Optional.of(remote), parentOpt);
+            } catch (Exception e) {
+                LOG.log(Level.WARNING, "pull conflict resolution failed for " + relPath, e);
+            }
+        }
+    }
+
+    private void downloadRemoteToLocal(FileWrapper remote, Path localPath) throws IOException {
+        try (AsyncReader src = remote.getInputStream(context.network, context.crypto,
+                                                    remote.getSize(), l -> {}).join();
+             java.io.OutputStream out = Files.newOutputStream(localPath)) {
+            byte[] buf = new byte[CHUNK_SIZE];
+            long remaining = remote.getSize();
+            while (remaining > 0) {
+                int toRead = (int) Math.min(buf.length, remaining);
+                int n = src.readIntoArray(buf, 0, toRead).join();
+                if (n <= 0) break;
+                out.write(buf, 0, n);
+                remaining -= n;
+            }
+        } catch (Exception e) {
+            if (e instanceof IOException) throw (IOException) e;
+            throw new IOException(e);
+        }
+    }
+
+    /** Stream-hash a local file using a FileAsyncReader (no full-file load). */
+    private peergos.shared.user.fs.HashTree hashLocalFile(Path localPath, long size) {
+        try (peergos.server.simulation.FileAsyncReader reader =
+                     new peergos.server.simulation.FileAsyncReader(localPath.toFile())) {
+            return peergos.shared.user.fs.HashTree.build(
+                    reader, (int) (size >>> 32), (int) size, context.crypto.hasher).join();
+        } catch (Exception e) {
+            LOG.log(Level.WARNING, "Local hash failed for " + localPath, e);
+            return null;
         }
     }
 
@@ -557,19 +848,25 @@ public class CloudFilesProvider {
             System.err.println("[CF] uploadLocalFile: uploading " + localSize
                     + " bytes to " + peergosPath);
             FileWrapper uploaded;
+            HashTree localHash = hashLocalFile(localPath, localSize);
             try (peergos.server.simulation.FileAsyncReader reader =
                          new peergos.server.simulation.FileAsyncReader(localPath.toFile())) {
                 if (existing.isPresent() && !existing.get().isDirectory()) {
                     uploaded = existing.get().overwriteChangedChunks(
                             reader, localSize,
                             context.network, context.crypto, l -> {}).join();
+                    if (localHash != null) applyHash(peergosPath, localHash);
                 } else {
-                    uploaded = parentOpt.get().uploadOrReplaceFile(name,
-                            reader, localSize,
-                            context.network, context.crypto, () -> false, l -> {}).join();
+                    uploaded = parentOpt.get().uploadFileWithHash(name,
+                            reader, localSize, Optional.ofNullable(localHash),
+                            Optional.empty(), Optional.empty(),
+                            context.network, context.crypto, l -> {}).join();
                 }
             }
             System.err.println("[CF] uploadLocalFile: upload complete for " + peergosPath);
+            // Record the new "last synced version" for conflict detection.
+            context.getByPath(peergosPath).join().ifPresent(
+                    fw -> recordSyncedVersion(localPath, fw));
 
             // Convert the local file to a CF placeholder so subsequent reads go through
             // FETCH_DATA and CF fires NOTIFY_RENAME / NOTIFY_DELETE for managed files.
@@ -662,6 +959,10 @@ public class CloudFilesProvider {
             if (parentOpt.isEmpty()) return;
             fwOpt.get().remove(parentOpt.get(), PathUtil.get(peergosPath), context).join();
             identityToPath.values().removeIf(p -> p.equals(peergosPath) || p.startsWith(peergosPath + "/"));
+            if (syncState != null) {
+                String relPath = peergosPathToRelPath(peergosPath);
+                if (relPath != null) syncState.remove(relPath);
+            }
             LOG.fine("Deleted " + peergosPath);
         } catch (Exception e) {
             LOG.log(Level.WARNING, "Delete failed for " + peergosPath, e);
@@ -764,6 +1065,15 @@ public class CloudFilesProvider {
                     return peergosTarget + v.substring(peergosSource.length());
                 return v;
             });
+            // Move the SyncState entry: remove old, add at target path with current props.
+            if (syncState != null) {
+                String relSource = peergosPathToRelPath(peergosSource);
+                if (relSource != null) syncState.remove(relSource);
+                context.getByPath(peergosTarget).join().ifPresent(fw -> {
+                    String relTarget = peergosPathToRelPath(peergosTarget);
+                    if (relTarget != null) recordSyncedVersion(relTarget, fw);
+                });
+            }
             System.err.println("[CF] NOTIFY_RENAME_COMPLETION: done " + peergosSource
                     + " -> " + peergosTarget);
         } catch (Exception e) {
@@ -915,6 +1225,129 @@ public class CloudFilesProvider {
      * (\\?\C:\...) for the same file. Without normalisation, our recentlyUploaded LRU
      * would miss for case differences or prefix differences and we'd re-upload.
      */
+    /**
+     * Persist a "last synced version" entry for {@code relPath} pointing at the given
+     * FileWrapper's current state. Used after every successful push/pull so the conflict
+     * detector knows what version local and remote last agreed on.
+     *
+     * Skips silently if {@code syncState} wasn't configured (legacy code path) or if
+     * the FileWrapper has no treeHash yet (rare for committed files; the next event
+     * will record it).
+     */
+    void recordSyncedVersion(String relPath, FileWrapper fw) {
+        recordSyncedVersion(relPath, fw, null);
+    }
+
+    /** {@code localPath} optional — used to compute the HashTree by streaming the local
+     *  file when Peergos's FileProperties.treeHash isn't populated yet (which can happen
+     *  immediately after an upload). Mirrors PeergosSyncFS.hashFile's fallback. */
+    void recordSyncedVersion(String relPath, FileWrapper fw, Path localPath) {
+        if (syncState == null) return;
+        FileProperties props = fw.getFileProperties();
+        HashTree tree;
+        if (props.treeHash.isPresent()) {
+            HashBranch branch = props.treeHash.get();
+            tree = new HashTree(
+                    branch.rootHash,
+                    branch.level1.map(List::of).orElse(Collections.emptyList()),
+                    Collections.emptyList(),
+                    Collections.emptyList());
+        } else if (localPath != null && Files.exists(localPath)) {
+            tree = hashLocalFile(localPath, props.size);
+            if (tree == null) return;
+        } else {
+            return;
+        }
+        long modTime = props.modified == null ? 0L
+                : props.modified.toInstant(java.time.ZoneOffset.UTC).toEpochMilli() / 1000 * 1000;
+        syncState.add(new FileState(relPath, modTime, props.size, tree));
+
+        // Expand the persisted Snapshot to include this file's writer. The Tier-1 pull check
+        // (Snapshot.equals) only catches remote changes for writers in the persisted set, so
+        // we accumulate writers as we sync files from them. First call seeds the snapshot;
+        // subsequent calls add new writers if any (typical case is one user → one writer).
+        try {
+            peergos.shared.crypto.hash.PublicKeyHash owner  = fw.owner();
+            peergos.shared.crypto.hash.PublicKeyHash writer = fw.writer();
+            peergos.shared.user.Snapshot current = syncState.getSnapshot(syncRootPath);
+            if (current == null) current = new peergos.shared.user.Snapshot(new java.util.HashMap<>());
+            if (!current.versions.containsKey(writer)) {
+                peergos.shared.user.Snapshot updated =
+                        current.withWriter(owner, writer, context.network).join();
+                syncState.setSnapshot(syncRootPath, updated);
+            }
+        } catch (Exception e) {
+            LOG.log(Level.FINE, "recordSyncedVersion: snapshot expansion failed for " + relPath, e);
+        }
+    }
+
+    /** Same as above but compute the relPath from the local placeholder path under syncRoot. */
+    void recordSyncedVersion(Path localPath, FileWrapper fw) {
+        String relPath = Path.of(syncRootPath).relativize(localPath).toString()
+                .replace(java.io.File.separatorChar, '/');
+        recordSyncedVersion(relPath, fw, localPath);
+    }
+
+    /**
+     * Minimal SyncFilesystem adapter — only implements the three methods
+     * peergos.server.sync.DirectorySync.renameOnConflict needs (exists, moveTo,
+     * getLastModified) so we can reuse its [conflict-N] naming logic without
+     * implementing the full ~15-method interface.
+     */
+    private static final peergos.server.sync.SyncFilesystem LOCAL_FS_FOR_RENAME =
+            new peergos.server.sync.SyncFilesystem() {
+        @Override public boolean exists(Path p) { return Files.exists(p); }
+        @Override public void moveTo(Path src, Path target) {
+            try { Files.move(src, target); }
+            catch (IOException e) { throw new RuntimeException(e); }
+        }
+        @Override public long getLastModified(Path p) {
+            try { return Files.getLastModifiedTime(p).toMillis(); }
+            catch (IOException e) { throw new RuntimeException(e); }
+        }
+        @Override public long totalSpace() { throw new UnsupportedOperationException(); }
+        @Override public long freeSpace() { throw new UnsupportedOperationException(); }
+        @Override public String getRoot() { throw new UnsupportedOperationException(); }
+        @Override public Path resolve(String p) { throw new UnsupportedOperationException(); }
+        @Override public void mkdirs(Path p) { throw new UnsupportedOperationException(); }
+        @Override public void delete(Path p) { throw new UnsupportedOperationException(); }
+        @Override public void bulkDelete(Path dir, java.util.Set<String> children) { throw new UnsupportedOperationException(); }
+        @Override public void setModificationTime(Path p, long t) { throw new UnsupportedOperationException(); }
+        @Override public void setHash(Path p, peergos.shared.user.fs.HashTree h, long sz) { throw new UnsupportedOperationException(); }
+        @Override public void setHashes(java.util.List<peergos.shared.util.Triple<String, FileWrapper, peergos.shared.user.fs.HashTree>> u) { throw new UnsupportedOperationException(); }
+        @Override public long size(Path p) { throw new UnsupportedOperationException(); }
+        @Override public void truncate(Path p, long size) { throw new UnsupportedOperationException(); }
+        @Override public Optional<LocalDateTime> setBytes(Path p, long off, AsyncReader d, long sz,
+                Optional<peergos.shared.user.fs.HashTree> h, Optional<LocalDateTime> mt,
+                Optional<peergos.shared.user.fs.Thumbnail> th,
+                peergos.shared.user.fs.ResumeUploadProps props,
+                java.util.function.Supplier<Boolean> c, java.util.function.Consumer<String> pr) {
+            throw new UnsupportedOperationException();
+        }
+        @Override public AsyncReader getBytes(Path p, long off) { throw new UnsupportedOperationException(); }
+        @Override public void uploadSubtree(java.util.stream.Stream<FileWrapper.FolderUploadProperties> d) { throw new UnsupportedOperationException(); }
+        @Override public Optional<peergos.shared.user.fs.Thumbnail> getThumbnail(Path p) { throw new UnsupportedOperationException(); }
+        @Override public peergos.shared.user.fs.HashTree hashFile(Path p, Optional<FileWrapper> m, String r,
+                peergos.server.sync.SyncState s, long sz) {
+            throw new UnsupportedOperationException();
+        }
+        @Override public Optional<peergos.shared.crypto.hash.PublicKeyHash> applyToSubtree(
+                java.util.function.Consumer<FileProps> f, java.util.function.Consumer<FileProps> d) {
+            throw new UnsupportedOperationException();
+        }
+        @Override public long filesCount() { throw new UnsupportedOperationException(); }
+    };
+
+    /** Convert a Peergos absolute path "/&lt;user&gt;/a/b/c.txt" into the relPath
+     *  format ("a/b/c.txt") used as the SyncState key. Returns null if the path
+     *  doesn't look right (no second slash). */
+    private String peergosPathToRelPath(String peergosPath) {
+        if (peergosPath == null) return null;
+        int second = peergosPath.indexOf('/', 1);
+        if (second < 0) return null;
+        return peergosPath.substring(second + 1);
+    }
+
     private static String normPathKey(Path p) {
         String s = p.toAbsolutePath().normalize().toString();
         if (s.startsWith("\\\\?\\")) s = s.substring(4);

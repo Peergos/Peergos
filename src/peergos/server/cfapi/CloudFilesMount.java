@@ -26,17 +26,31 @@ public class CloudFilesMount implements Closeable {
     private final Thread watcherThread;
     private final java.nio.file.WatchService watchService;
     private final java.util.concurrent.ExecutorService uploadExecutor;
+    private final java.util.concurrent.ScheduledExecutorService pullScheduler;
+    private final peergos.server.sync.SyncState syncState;
+    private final CloudFilesProvider provider;       // exposed for forcePullTick()
     private volatile boolean watcherRunning = true;
 
     private CloudFilesMount(String syncRootPath, long connectionKey, Arena callbackArena,
                             Thread watcherThread, java.nio.file.WatchService watchService,
-                            java.util.concurrent.ExecutorService uploadExecutor) {
+                            java.util.concurrent.ExecutorService uploadExecutor,
+                            java.util.concurrent.ScheduledExecutorService pullScheduler,
+                            peergos.server.sync.SyncState syncState,
+                            CloudFilesProvider provider) {
         this.syncRootPath   = syncRootPath;
         this.connectionKey  = connectionKey;
         this.callbackArena  = callbackArena;
         this.watcherThread  = watcherThread;
         this.watchService   = watchService;
         this.uploadExecutor = uploadExecutor;
+        this.pullScheduler  = pullScheduler;
+        this.syncState      = syncState;
+        this.provider       = provider;
+    }
+
+    /** Trigger a pull tick synchronously. Test-only hook. */
+    public void forcePullTick() {
+        if (provider != null) provider.runPullTick();
     }
 
     public String getMountPoint() {
@@ -47,12 +61,22 @@ public class CloudFilesMount implements Closeable {
     // Factory
     // -----------------------------------------------------------------------
 
-    public static CloudFilesMount mount(UserContext context) throws Exception {
-        return mount(context, Path.of(System.getProperty("user.home"), "Peergos").toString());
+    public static CloudFilesMount mount(UserContext context, Path peergosDir) throws Exception {
+        return mount(context, peergosDir, Path.of(System.getProperty("user.home"), "Peergos").toString());
     }
 
-    /** Overload for testing with a custom sync root path. */
-    public static CloudFilesMount mount(UserContext context, String syncRootPath) throws Exception {
+    /** Overload for testing with a custom sync root path. State DB defaults to
+     *  ~/.peergos/cf-state-<hash16>.db where the hash is derived from the sync root. */
+    public static CloudFilesMount mount(UserContext context,
+                                        Path peergosDir,
+                                        String syncRootPath) throws Exception {
+        return mount(context, syncRootPath, defaultStateDbPath(peergosDir, syncRootPath));
+    }
+
+    /** Full overload — used by tests that want to put the state DB in their own tempdir. */
+    public static CloudFilesMount mount(UserContext context,
+                                        String syncRootPath,
+                                        Path stateDbPath) throws Exception {
         CfApi.load();
 
         Files.createDirectories(Path.of(syncRootPath));
@@ -103,8 +127,16 @@ public class CloudFilesMount implements Closeable {
             throw new Exception("CfRegisterSyncRoot failed: 0x" + Integer.toHexString(hr));
         LOG.info("CF sync root registered at " + syncRootPath);
 
+        // -- Sync state DB --
+        // Lives outside the sync root so CF doesn't manage it. Path default:
+        // ~/.peergos/cf-state-<hash16>.db (see defaultStateDbPath).
+        Files.createDirectories(stateDbPath.getParent());
+        peergos.server.sync.SyncState syncState =
+                new peergos.server.sync.JdbcTreeState(stateDbPath.toString());
+        LOG.info("CF sync state DB: " + stateDbPath);
+
         // -- Callbacks --
-        CloudFilesProvider provider = new CloudFilesProvider(context, syncRootPath);
+        CloudFilesProvider provider = new CloudFilesProvider(context, syncRootPath, syncState);
 
         // callbackArena must outlive the connection — closed in CloudFilesMount.close()
         Arena callbackArena = Arena.ofShared();
@@ -178,7 +210,18 @@ public class CloudFilesMount implements Closeable {
                 "CF local file watcher");
         wt.setDaemon(true);
 
-        CloudFilesMount m = new CloudFilesMount(syncRootPath, connectionKey, callbackArena, wt, ws, uploadExec);
+        // Pull-loop scheduler. Detects remote-only edits on a 30-second tick.
+        // Snapshot-equality check makes idle mounts essentially free; only when
+        // a writer in scope moves do we walk individual paths.
+        java.util.concurrent.ScheduledExecutorService pullSched =
+                java.util.concurrent.Executors.newSingleThreadScheduledExecutor(r -> {
+                    Thread t = new Thread(r, "CF pull loop");
+                    t.setDaemon(true);
+                    return t;
+                });
+        pullSched.scheduleWithFixedDelay(provider::runPullTick, 30, 30, java.util.concurrent.TimeUnit.SECONDS);
+
+        CloudFilesMount m = new CloudFilesMount(syncRootPath, connectionKey, callbackArena, wt, ws, uploadExec, pullSched, syncState, provider);
         holder[0] = m;
         wt.start();
         Runtime.getRuntime().addShutdownHook(new Thread(m::close, "CF unmount"));
@@ -336,6 +379,12 @@ public class CloudFilesMount implements Closeable {
             try { uploadExecutor.awaitTermination(10, java.util.concurrent.TimeUnit.SECONDS); }
             catch (InterruptedException ignored) { Thread.currentThread().interrupt(); }
         }
+        // Stop the pull-loop scheduler.
+        if (pullScheduler != null) {
+            pullScheduler.shutdown();
+            try { pullScheduler.awaitTermination(5, java.util.concurrent.TimeUnit.SECONDS); }
+            catch (InterruptedException ignored) { Thread.currentThread().interrupt(); }
+        }
         try {
             int hr = CfApi.cfDisconnectSyncRoot(connectionKey);
             if (hr != CfApi.S_OK)
@@ -344,6 +393,8 @@ public class CloudFilesMount implements Closeable {
             LOG.log(Level.WARNING, "Error disconnecting CF sync root", e);
         } finally {
             try { callbackArena.close(); } catch (Exception ignored) {}
+            if (syncState != null)
+                try { syncState.close(); } catch (Exception ignored) {}
         }
         LOG.info("CF sync root disconnected");
     }
@@ -358,6 +409,27 @@ public class CloudFilesMount implements Closeable {
      * dropped. Mirrors Nextcloud's createSyncRootRegistryKeys() and what
      * StorageProviderSyncRootManager::Register does under the hood.
      *
+     * Default state-DB path. Lives in ~/.peergos so CF never sees or manages it,
+     * and the watcher inside the sync root never picks it up. Keyed per-mount with
+     * the first 16 hex chars of SHA-256(normalised syncRootPath).
+     */
+    public static Path defaultStateDbPath(Path peergosDir, String syncRootPath) {
+        try {
+            Path normalised = Path.of(syncRootPath).toAbsolutePath().normalize();
+            java.security.MessageDigest md = java.security.MessageDigest.getInstance("SHA-256");
+            byte[] digest = md.digest(normalised.toString()
+                    .toLowerCase(java.util.Locale.ROOT)
+                    .getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            StringBuilder hex = new StringBuilder(16);
+            for (int i = 0; i < 8; i++) hex.append(String.format("%02x", digest[i] & 0xff));
+            Files.createDirectories(peergosDir);
+            return peergosDir.resolve("cf-state-" + hex + ".db");
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to compute default state DB path", e);
+        }
+    }
+
+    /**
      * Returns the syncRootId we registered.
      */
     private static String registerSyncRootInShell(String syncRootPath, String accountName) throws Exception {

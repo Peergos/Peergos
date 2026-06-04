@@ -85,7 +85,7 @@ public class MountConfigHandler implements HttpHandler {
     private void enableMount(MountConfig config) throws Exception {
         if (WindowsVersionCheck.isCfApiAvailable()) {
             UserContext context = buildContext(config);
-            CloudFilesMount mount = CloudFilesMount.mount(context);
+            CloudFilesMount mount = CloudFilesMount.mount(context, peergosDir);
             activeCloudMount.set(mount);
             activePeergosUsername.set(config.peergosUsername);
             return;
