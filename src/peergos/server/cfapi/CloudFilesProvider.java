@@ -330,10 +330,11 @@ public class CloudFilesProvider {
             System.err.println("[CF] FETCH_PLACEHOLDERS: returning " + visible.size()
                     + " NEW entries matching pattern '" + pattern + "'");
 
+            boolean syntheticRoot = peergosPath.equals("/");
             try (Arena arena = Arena.ofConfined()) {
                 MemorySegment array = visible.isEmpty()
                         ? MemorySegment.NULL
-                        : buildPlaceholderArray(visible, peergosPath, arena);
+                        : buildPlaceholderArray(visible, peergosPath, arena, syntheticRoot);
                 transferPlaceholders(arena, connectionKey, transferKey, requestKey, array, visible.size());
             }
             // Record initial "last synced version" for each new placeholder. After
@@ -421,7 +422,7 @@ public class CloudFilesProvider {
         List<FileWrapper> visible = List.of(homeOpt.get());
 
         MemorySegment baseDirW = CfApi.wideString(syncRootPath, arena);
-        MemorySegment array    = buildPlaceholderArray(visible, "/", arena);
+        MemorySegment array    = buildPlaceholderArray(visible, "/", arena, true);
         MemorySegment processed = arena.allocate(ValueLayout.JAVA_INT);
 
         System.err.println("[CF] CfCreatePlaceholders: syncRoot=" + syncRootPath + " count=" + visible.size()
@@ -508,6 +509,14 @@ public class CloudFilesProvider {
         Optional<FileWrapper> existingOpt;
         try { existingOpt = context.getByPath(peergosPath).join(); }
         catch (Exception e) { LOG.log(Level.WARNING, "CLOSE_COMPLETION: lookup failed", e); return; }
+        // Read-only guard: skip write-back if the existing file is not writable.
+        // For brand-new files (no existing), the parent-writable check happens further down
+        // where parentOpt is resolved.
+        if (existingOpt.isPresent() && !existingOpt.get().isWritable()) {
+            System.err.println("[CF] FILE_CLOSE_COMPLETION: " + peergosPath
+                    + " is read-only in peergos, skipping write-back");
+            return;
+        }
         if (existingOpt.isPresent() && !existingOpt.get().isDirectory()
                 && existingOpt.get().getSize() == localSize) {
             LocalDateTime peergosMtime = existingOpt.get().getFileProperties().modified;
@@ -541,6 +550,11 @@ public class CloudFilesProvider {
         Optional<FileWrapper> parentOpt = context.getByPath(peergosParent).join();
         if (parentOpt.isEmpty()) {
             System.err.println("[CF] FILE_CLOSE_COMPLETION: parent missing: " + peergosParent);
+            return;
+        }
+        if (!parentOpt.get().isWritable()) {
+            System.err.println("[CF] FILE_CLOSE_COMPLETION: parent " + peergosParent
+                    + " is read-only, skipping upload of " + peergosPath);
             return;
         }
 
@@ -834,6 +848,14 @@ public class CloudFilesProvider {
             String name        = localPath.getFileName().toString();
             String relative    = Path.of(syncRootPath).relativize(localPath).toString()
                     .replace(java.io.File.separatorChar, '/');
+            // The sync root itself is read-only: it only ever contains the $username
+            // folder (you can't create new users from the file system, or rename your
+            // user). Anything dropped here by the user is rejected.
+            if (!relative.contains("/")) {
+                System.err.println("[CF] uploadLocalFile: rejecting sync-root-level entry "
+                        + localPath + " — the mount root is read-only");
+                return;
+            }
             String peergosPath = "/" + relative;
             String peergosParent = peergosPath.substring(0, peergosPath.lastIndexOf('/'));
 
@@ -848,10 +870,20 @@ public class CloudFilesProvider {
             if (existing.isPresent() && !existing.get().isDirectory()
                     && existing.get().getSize() == localSize)
                 return; // already in sync
+            if (existing.isPresent() && !existing.get().isWritable()) {
+                System.err.println("[CF] uploadLocalFile: " + peergosPath
+                        + " is read-only in peergos, skipping");
+                return;
+            }
 
             Optional<FileWrapper> parentOpt = context.getByPath(peergosParent).join();
             if (parentOpt.isEmpty()) {
                 System.err.println("[CF] uploadLocalFile: parent missing: " + peergosParent);
+                return;
+            }
+            if (!parentOpt.get().isWritable()) {
+                System.err.println("[CF] uploadLocalFile: parent " + peergosParent
+                        + " is read-only, skipping upload of " + peergosPath);
                 return;
             }
 
@@ -892,6 +924,11 @@ public class CloudFilesProvider {
         Optional<FileWrapper> parentOpt = context.getByPath(peergosParent).join();
         if (parentOpt.isEmpty()) {
             System.err.println("[CF] mkdir: parent missing: " + peergosParent);
+            return;
+        }
+        if (!parentOpt.get().isWritable()) {
+            System.err.println("[CF] mkdir: parent " + peergosParent
+                    + " is read-only, skipping creation of " + peergosPath);
             return;
         }
         try {
@@ -960,11 +997,25 @@ public class CloudFilesProvider {
                 CfApi.CF_OPERATION_TYPE_ACK_DELETE, CfApi.STATUS_SUCCESS);
         }
 
-        // Then remove from Peergos
+        // Then remove from Peergos. Read-only guard: a NOTIFY_DELETE is just a heads-up
+        // — Windows has already let the local placeholder be deleted by the time we get
+        // here. If the file isn't writable in peergos (or it's the top-level $username
+        // folder), we leave peergos alone; the next listing / pull tick rematerialises
+        // the placeholder locally.
         try {
             Optional<FileWrapper> fwOpt = context.getByPath(peergosPath).join();
             if (fwOpt.isEmpty()) return;
             String parent = peergosPath.substring(0, peergosPath.lastIndexOf('/'));
+            if (parent.isEmpty()) {
+                System.err.println("[CF] NOTIFY_DELETE: refusing to delete sync-root-level entry "
+                        + peergosPath + " from peergos");
+                return;
+            }
+            if (!fwOpt.get().isWritable()) {
+                System.err.println("[CF] NOTIFY_DELETE: " + peergosPath
+                        + " is read-only in peergos, skipping peergos delete");
+                return;
+            }
             Optional<FileWrapper> parentOpt = context.getByPath(parent).join();
             if (parentOpt.isEmpty()) return;
             fwOpt.get().remove(parentOpt.get(), PathUtil.get(peergosPath), context).join();
@@ -1051,11 +1102,28 @@ public class CloudFilesProvider {
             String sourceParent = peergosSource.substring(0, peergosSource.lastIndexOf('/'));
             String targetParent = peergosTarget.substring(0, peergosTarget.lastIndexOf('/'));
             String targetName   = peergosTarget.substring(peergosTarget.lastIndexOf('/') + 1);
+            // Read-only guards: the sync root is read-only (you can't rename your user folder
+            // or move things into the sync-root level), and a read-only source can't be moved.
+            if (sourceParent.isEmpty() || targetParent.isEmpty()) {
+                System.err.println("[CF] NOTIFY_RENAME_COMPLETION: refusing rename involving the "
+                        + "read-only sync root (src=" + peergosSource + " tgt=" + peergosTarget + ")");
+                return;
+            }
+            if (!fwOpt.get().isWritable()) {
+                System.err.println("[CF] NOTIFY_RENAME_COMPLETION: source " + peergosSource
+                        + " is read-only in peergos, skipping rename");
+                return;
+            }
             Optional<FileWrapper> sourceParentOpt = context.getByPath(sourceParent).join();
             Optional<FileWrapper> targetParentOpt = context.getByPath(targetParent).join();
             if (sourceParentOpt.isEmpty() || targetParentOpt.isEmpty()) {
                 System.err.println("[CF] NOTIFY_RENAME_COMPLETION: parents missing src="
                         + sourceParentOpt.isPresent() + " tgt=" + targetParentOpt.isPresent());
+                return;
+            }
+            if (!targetParentOpt.get().isWritable()) {
+                System.err.println("[CF] NOTIFY_RENAME_COMPLETION: target parent " + targetParent
+                        + " is read-only, skipping rename to " + peergosTarget);
                 return;
             }
 
@@ -1098,6 +1166,17 @@ public class CloudFilesProvider {
 
     private MemorySegment buildPlaceholderArray(List<FileWrapper> children,
                                                 String parentPeergosPath, Arena arena) {
+        return buildPlaceholderArray(children, parentPeergosPath, arena, false);
+    }
+
+    /** {@code forceReadOnly}: OR FILE_ATTRIBUTE_READONLY into every entry regardless of
+     *  the FileWrapper's own writability. Used for the synthetic sync-root listing — the
+     *  {@code $username} entry is writable on the inside, but at the sync-root level it
+     *  must not be renamed/deleted (you can't rename your peergos user), so we surface
+     *  it as read-only. */
+    private MemorySegment buildPlaceholderArray(List<FileWrapper> children,
+                                                String parentPeergosPath, Arena arena,
+                                                boolean forceReadOnly) {
         MemorySegment array = arena.allocate(CfApi.PCI_SIZE * children.size());
         for (int i = 0; i < children.size(); i++) {
             FileWrapper fw = children.get(i);
@@ -1121,6 +1200,8 @@ public class CloudFilesProvider {
             int attrs = fw.isDirectory()
                     ? CfApi.FILE_ATTRIBUTE_DIRECTORY
                     : CfApi.FILE_ATTRIBUTE_NORMAL;
+            if (forceReadOnly || !fw.isWritable())
+                attrs |= CfApi.FILE_ATTRIBUTE_READONLY;
             array.set(ValueLayout.JAVA_INT, fbiBase + CfApi.FBI_FILE_ATTRIBUTES_OFF, attrs);
 
             // FS metadata — FileSize

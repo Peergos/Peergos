@@ -129,6 +129,7 @@ public class CfApi {
     public static final int STATUS_SUCCESS = 0;
 
     // FILE_ATTRIBUTE flags
+    public static final int FILE_ATTRIBUTE_READONLY               = 0x01;
     public static final int FILE_ATTRIBUTE_DIRECTORY              = 0x10;
     public static final int FILE_ATTRIBUTE_NORMAL                 = 0x80;
     public static final int FILE_ATTRIBUTE_OFFLINE                = 0x1000;
