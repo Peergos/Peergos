@@ -16,9 +16,22 @@ import peergos.server.util.Logging;
 import peergos.shared.Crypto;
 import peergos.shared.NetworkAccess;
 import peergos.shared.io.ipfs.api.JSONParser;
+import peergos.shared.login.mfa.MultiFactorAuthMethod;
+import peergos.shared.login.mfa.MultiFactorAuthRequest;
+import peergos.shared.login.mfa.MultiFactorAuthResponse;
+import peergos.shared.login.mfa.TotpKey;
 import peergos.shared.user.UserContext;
 import peergos.shared.util.Constants;
+import peergos.shared.util.Either;
+import peergos.shared.util.Futures;
 import peergos.shared.util.Serialize;
+import com.eatthepath.otp.TimeBasedOneTimePasswordGenerator;
+
+import javax.crypto.spec.SecretKeySpec;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.concurrent.CompletableFuture;
+import java.util.function.Function;
 
 import java.io.*;
 import java.net.URL;
@@ -105,8 +118,44 @@ public class MountConfigHandler implements HttpHandler {
         NetworkAccess network = Builder.buildJavaNetworkAccess(
                 new URL(peergosUrl), peergosUrl.startsWith("https"),
                 Optional.of("Peergos-webdav"), Optional.empty()).join();
+        // If the mount was provisioned with a dedicated TOTP, use that for MFA; falls back
+        // to the interactive CLI prompt for legacy mounts that don't have one.
+        Function<MultiFactorAuthRequest, CompletableFuture<MultiFactorAuthResponse>> mfa =
+                config.hasTotp() ? mountTotpResponder(config) : Main::getMfaResponseCLI;
         return UserContext.signIn(config.peergosUsername, config.peergosPassword,
-                Main::getMfaResponseCLI, network, crypto).join();
+                mfa, network, crypto).join();
+    }
+
+    /**
+     * Build a non-interactive MFA responder that generates a TOTP code from the
+     * mount's stored secret. Matches the request's expected TOTP method against the
+     * stored credentialId — if the user has multiple TOTP factors, we pick OURS so
+     * the rest of the user's authenticator apps don't have to be involved.
+     */
+    public static Function<MultiFactorAuthRequest, CompletableFuture<MultiFactorAuthResponse>>
+    mountTotpResponder(MountConfig config) {
+        byte[] credentialId = config.totpCredentialIdBytes();
+        byte[] secret       = config.totpSecretBytes();
+        TimeBasedOneTimePasswordGenerator totp;
+        try {
+            totp = new TimeBasedOneTimePasswordGenerator(Duration.ofSeconds(30L), 6, TotpKey.ALGORITHM);
+        } catch (Exception e) { throw new RuntimeException(e); }
+        return req -> {
+            // Prefer a TOTP entry whose credentialId matches our stored one.
+            MultiFactorAuthMethod ours = req.methods.stream()
+                    .filter(m -> m.type == MultiFactorAuthMethod.Type.TOTP)
+                    .filter(m -> Arrays.equals(m.credentialId, credentialId))
+                    .findFirst()
+                    .orElseThrow(() -> new IllegalStateException(
+                            "Mount TOTP credential not found in user's 2FA methods — was it deleted?"));
+            try {
+                String code = totp.generateOneTimePasswordString(
+                        new SecretKeySpec(secret, TotpKey.ALGORITHM), Instant.now());
+                return Futures.of(new MultiFactorAuthResponse(ours.credentialId, Either.a(code)));
+            } catch (Exception e) {
+                throw new RuntimeException("Failed to generate mount TOTP code", e);
+            }
+        };
     }
 
     private static void writeAppGroupConfig(MountConfig config) {
@@ -213,10 +262,15 @@ public class MountConfigHandler implements HttpHandler {
                 String webdavUsername = generateToken();
                 String webdavPassword = generateToken();
                 int webdavPort = findFreePort();
+                // Optional TOTP credential supplied by the UI when the user had 2FA enabled.
+                // Both hex-encoded; empty/missing means the mount logs in with password only.
+                String totpCredentialId = (String) body.getOrDefault("totpCredentialId", "");
+                String totpSecret       = (String) body.getOrDefault("totpSecret", "");
 
                 disableMount();
                 MountConfig config = new MountConfig(true, peergosUsername, peergosPassword,
-                        webdavUsername, webdavPassword, webdavPort, authType);
+                        webdavUsername, webdavPassword, webdavPort, authType,
+                        totpCredentialId, totpSecret);
                 if (autoMount) saveConfig(config);
                 // Native mount can block (e.g. gio mount on Linux awaits D-Bus); run in background
                 // and let the UI poll get-config for the mount point.

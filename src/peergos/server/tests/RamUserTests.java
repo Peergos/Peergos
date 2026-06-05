@@ -155,6 +155,44 @@ public class RamUserTests extends UserTests {
         Assert.assertTrue(context.network.account.getSecondAuthMethods(username, context.signer).join().size() == 1);
     }
 
+    /**
+     * Mount login uses the dedicated TOTP credential stored in MountConfig instead of
+     * prompting a human. Verifies the round trip: a freshly-issued TOTP key, hex-encoded
+     * into MountConfig, drives a non-interactive UserContext.signIn through the responder
+     * built by {@link peergos.server.net.MountConfigHandler#mountTotpResponder}.
+     */
+    @Test
+    public void mountTotpResponderSignsIn() throws Exception {
+        String username = generateUsername();
+        String password = "password";
+        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
+        Assert.assertTrue(context.network.account.getSecondAuthMethods(username, context.signer).join().isEmpty());
+
+        TimeBasedOneTimePasswordGenerator totp = new TimeBasedOneTimePasswordGenerator(
+                java.time.Duration.ofSeconds(30L), 6, peergos.shared.login.mfa.TotpKey.ALGORITHM);
+        peergos.shared.login.mfa.TotpKey totpKey = addTotpKey(context, totp);
+
+        // Build a MountConfig that mirrors what the UI would POST after provisioning.
+        peergos.server.webdav.MountConfig cfg = new peergos.server.webdav.MountConfig(
+                true, username, password, "webdav-user", "webdav-pass", 8090, "digest",
+                peergos.shared.util.ArrayOps.bytesToHex(totpKey.credentialId),
+                peergos.shared.util.ArrayOps.bytesToHex(totpKey.key));
+        Assert.assertTrue("MountConfig should report hasTotp()", cfg.hasTotp());
+
+        // Drive the same path buildContext takes, just without the URL/network plumbing.
+        java.util.function.Function<
+                peergos.shared.login.mfa.MultiFactorAuthRequest,
+                java.util.concurrent.CompletableFuture<peergos.shared.login.mfa.MultiFactorAuthResponse>>
+                responder = peergos.server.net.MountConfigHandler.mountTotpResponder(cfg);
+
+        UserContext mounted = UserContext.signIn(username, password, responder, network, crypto).join();
+        Assert.assertEquals(username, mounted.username);
+
+        // Cleanup so a stale TOTP doesn't trip subsequent tests on the same account.
+        context.network.account.deleteSecondFactor(username, totpKey.credentialId, context.signer).join();
+        Assert.assertTrue(context.network.account.getSecondAuthMethods(username, context.signer).join().isEmpty());
+    }
+
     private static void testLoginRequiresTotp(String username,
                                               String password,
                                               NetworkAccess network,
