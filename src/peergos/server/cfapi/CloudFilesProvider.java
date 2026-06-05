@@ -154,11 +154,34 @@ public class CloudFilesProvider {
                 return;
             }
             FileWrapper fw  = fwOpt.get();
-            long end = Math.min(requiredOffset + requiredLength, fw.getSize());
+            long fileSize = fw.getSize();
+            long end = Math.min(requiredOffset + requiredLength, fileSize);
+
+            // Fine-grained hydration progress: the AsyncReader's monitor fires per
+            // IPFS block (~1 MB), so the File Explorer download dialog updates smoothly
+            // rather than jumping in CHUNK_SIZE (4 MB) steps. Throttle to ~0.5% of the
+            // file so we don't hammer CfReportProviderProgress for tiny files. Final
+            // 100% is sent after the last transferData below.
+            final long connKey = connectionKey, transferK = transferKey;
+            java.util.concurrent.atomic.AtomicLong downloaded =
+                    new java.util.concurrent.atomic.AtomicLong(requiredOffset);
+            java.util.concurrent.atomic.AtomicLong lastReported =
+                    new java.util.concurrent.atomic.AtomicLong(-1);
+            long progressGrain = Math.max(CLUSTER_SIZE, fileSize / 200);
+            peergos.shared.util.ProgressConsumer<Long> dlMonitor = bytes -> {
+                if (bytes == null || bytes <= 0) return;
+                long cum = Math.min(downloaded.addAndGet(bytes), fileSize);
+                long lr = lastReported.get();
+                if (cum - lr >= progressGrain && cum < fileSize
+                        && lastReported.compareAndSet(lr, cum)) {
+                    try { CfApi.cfReportProviderProgress(connKey, transferK, fileSize, cum); }
+                    catch (Exception ignored) {}
+                }
+            };
 
             try (Arena arena = Arena.ofConfined();
                  AsyncReader reader = fw.getInputStream(context.network, context.crypto,
-                         fw.getSize(), l -> {}).join()) {
+                         fileSize, dlMonitor).join()) {
                 if (requiredOffset > 0)
                     reader.seek(requiredOffset).join();
 
@@ -181,13 +204,29 @@ public class CloudFilesProvider {
                     System.err.println("[CF] FETCH_DATA: nRead=" + nRead + " offset=" + offset);
                     // Length = actual bytes read (Microsoft passes numberOfBytesTransfered,
                     // which for a 30-byte file is 30, NOT the padded buffer size).
-                    transferData(connectionKey, transferKey, requestKey, ds, offset, nRead, fw.getSize());
+                    transferData(connectionKey, transferKey, requestKey, ds, offset, nRead, fileSize);
+                    // After-delivery progress: belt-and-braces for the download monitor —
+                    // small files / cached chunks may not fire the monitor, so bump the
+                    // counter from the delivered offset too. Monotonic via compareAndSet.
+                    long deliveredOffset = Math.min(offset + nRead, fileSize);
+                    long lrAfter = lastReported.get();
+                    if (deliveredOffset > lrAfter && deliveredOffset < fileSize
+                            && lastReported.compareAndSet(lrAfter, deliveredOffset)) {
+                        try { CfApi.cfReportProviderProgress(connKey, transferK, fileSize, deliveredOffset); }
+                        catch (Exception ignored) {}
+                    }
                     // Sweep already-expired buffers, then defer this one for BUFFER_RETAIN_MS.
                     sweepExpiredBuffers();
                     pendingBuffers.add(new Object[]{ds, System.currentTimeMillis() + BUFFER_RETAIN_MS});
                     offset    += nRead;
                     remaining -= nRead;
                 }
+            }
+            // Final 100% — closes the File Explorer hydration dialog and unblocks
+            // any same-process read waiting on the placeholder.
+            if (requiredOffset == 0 && end >= fileSize) {
+                try { CfApi.cfReportProviderProgress(connKey, transferK, fileSize, fileSize); }
+                catch (Exception ignored) {}
             }
             // After the full file has been hydrated, the on-disk content matches the
             // current Peergos version. Record that so the next FILE_CLOSE_COMPLETION
@@ -229,22 +268,8 @@ public class CloudFilesProvider {
             opParams.set(ValueLayout.JAVA_LONG, CfApi.OP_XFER_DATA_OFFSET_OFF, offset);
             opParams.set(ValueLayout.JAVA_LONG, CfApi.OP_XFER_DATA_LENGTH_OFF, length);
 
-            // Pre-progress: completed < total so CF doesn't consider hydration done prematurely.
-            long total = fileSize + CLUSTER_SIZE;
-            long completed = offset + CLUSTER_SIZE;
-            int progressHr = CfApi.cfReportProviderProgress(connectionKey, transferKey, total, completed);
-            System.err.println("[CF] CfReportProviderProgress(total=" + total + ", completed=" + completed
-                    + ") hr=0x" + Integer.toHexString(progressHr));
-
             int hr = CfApi.cfExecute(opInfo, opParams);
             System.err.println("[CF] CfExecute(TRANSFER_DATA) hr=0x" + Integer.toHexString(hr));
-
-            // If this CfExecute delivered the final chunk (offset+length == fileSize), mark
-            // the operation 100% complete so the UI popup closes and the read unblocks.
-            if (offset + length >= fileSize) {
-                int finalHr = CfApi.cfReportProviderProgress(connectionKey, transferKey, fileSize, fileSize);
-                System.err.println("[CF] CfReportProviderProgress(final 100%) hr=0x" + Integer.toHexString(finalHr));
-            }
         }
     }
 
