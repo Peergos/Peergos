@@ -5,6 +5,7 @@ import org.junit.*;
 import peergos.server.*;
 import peergos.server.tests.util.TestPorts;
 import peergos.server.util.Args;
+import peergos.server.webdav.MountConfig;
 import peergos.server.webdav.WebdavMount;
 import peergos.server.webdav.WebdavServer;
 import peergos.shared.*;
@@ -54,7 +55,7 @@ public class WebdavTests {
         String peergosUrl = "http://localhost:" + args.getInt("port");
 
         Server webdavServer = WebdavServer.startNonBlocking(webdavPort, webdavUser, webdavPass,
-                username, password, peergosUrl, "basic");
+                username, password, peergosUrl, "basic", MountConfig.disabled());
         try {
             String auth = "Basic " + Base64.getEncoder().encodeToString((webdavUser + ":" + webdavPass).getBytes());
             HttpClient client = HttpClient.newHttpClient();
@@ -182,7 +183,7 @@ public class WebdavTests {
         String peergosUrl = "http://localhost:" + args.getInt("port");
 
         Server webdavServer = WebdavServer.startNonBlocking(webdavPort, webdavUser, webdavPass,
-                username, password, peergosUrl, "basic");
+                username, password, peergosUrl, "basic", MountConfig.disabled());
         try (WebdavMount mount = WebdavMount.mount(webdavPort, webdavUser, webdavPass)) {
             Path home = Path.of(mount.getMountPoint()).resolve(username);
 

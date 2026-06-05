@@ -29,6 +29,8 @@ import peergos.shared.Crypto;
 import peergos.shared.NetworkAccess;
 import peergos.shared.crypto.hash.Hasher;
 import peergos.shared.crypto.hash.PublicKeyHash;
+import peergos.shared.login.mfa.MultiFactorAuthRequest;
+import peergos.shared.login.mfa.MultiFactorAuthResponse;
 import peergos.shared.mutable.MutablePointers;
 import peergos.shared.storage.ContentAddressedStorage;
 import peergos.shared.user.CommittedWriterData;
@@ -48,10 +50,13 @@ import java.time.ZoneOffset;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.BiFunction;
+import java.util.function.Function;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+
+import static peergos.server.net.MountConfigHandler.mountTotpResponder;
 
 /**
  * Integration with Peergos File system
@@ -73,13 +78,15 @@ public class WebdavFileSystem implements IWebdavStore {
     private volatile long quotaCacheTime = 0;
     private static final long QUOTA_CACHE_TTL_MS = 60_000;
 
-    public WebdavFileSystem(String username, String password, String peergosUrl) {
+    public WebdavFileSystem(String username, String password, String peergosUrl, MountConfig config) {
         Crypto crypto = Main.initCrypto();
         try {
             Optional<String> userAgent = Optional.of("Peergos-" + UserService.CURRENT_VERSION + "-webdav");
             NetworkAccess network = Builder.buildJavaNetworkAccess(new URL(peergosUrl),
                     peergosUrl.startsWith("https"), userAgent, Optional.empty()).join();
-            context = UserContext.signIn(username, password, Main::getMfaResponseCLI, network, crypto).join();
+            Function<MultiFactorAuthRequest, CompletableFuture<MultiFactorAuthResponse>> mfa =
+                config.hasTotp() ? mountTotpResponder(config) : Main::getMfaResponseCLI;
+            context = UserContext.signIn(username, password, mfa, network, crypto).join();
         } catch (Exception ex) {
             LOG.log(Level.WARNING, ex, () -> "Unable to connect to Peergos account");
             throw new IllegalStateException("Unable to connect to Peergos account: ", ex);

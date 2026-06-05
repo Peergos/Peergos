@@ -14,6 +14,7 @@ import org.eclipse.jetty.servlet.ServletHolder;
 import org.eclipse.jetty.util.security.Constraint;
 import org.eclipse.jetty.util.security.Password;
 import peergos.server.Main;
+import peergos.server.net.MountConfigHandler;
 import peergos.server.util.JvmThumbnailer;
 import peergos.server.util.Logging;
 import peergos.server.webdav.modeshape.webdav.WebdavServlet;
@@ -50,9 +51,10 @@ public class WebdavServer {
     public static Server startNonBlocking(int port,
                                           String webdavUser, String webdavPassword,
                                           String peergosUser, String peergosPassword,
-                                          String peergosUrl, String authScheme) {
+                                          String peergosUrl, String authScheme,
+                                          MountConfig config) {
         return startWithServlet(port, webdavUser, webdavPassword, authScheme,
-                new WebdavServlet(peergosUser, peergosPassword, peergosUrl), null);
+                new WebdavServlet(peergosUser, peergosPassword, peergosUrl, config), null);
     }
 
     private static Server startWithServlet(int port,
@@ -157,7 +159,8 @@ public class WebdavServer {
         String password = args.getArg("PEERGOS_PASSWORD");
         String authScheme = args.getOptionalArg("webdav.authorization.scheme").orElse("digest");
         String peergosUrl = args.getArg("peergos-url");
-        Server server = startNonBlocking(port, webdavUser, webdavPWD, username, password, peergosUrl, authScheme);
+        MountConfig config = MountConfigHandler.readConfig(args.getPeergosDir());
+        Server server = startNonBlocking(port, webdavUser, webdavPWD, username, password, peergosUrl, authScheme, config);
         try {
             server.join();
         } catch (InterruptedException e) {

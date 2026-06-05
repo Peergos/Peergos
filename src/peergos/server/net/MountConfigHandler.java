@@ -75,6 +75,10 @@ public class MountConfigHandler implements HttpHandler {
     }
 
     private synchronized MountConfig readConfig() {
+        return readConfig(peergosDir);
+    }
+
+    public static synchronized MountConfig readConfig(Path peergosDir) {
         Path configFile = peergosDir.resolve(MountConfig.FILENAME);
         if (!configFile.toFile().exists())
             return MountConfig.disabled();
@@ -103,7 +107,7 @@ public class MountConfigHandler implements HttpHandler {
             activePeergosUsername.set(config.peergosUsername);
             return;
         }
-        WebdavFileSystem fs = new WebdavFileSystem(config.peergosUsername, config.peergosPassword, peergosUrl);
+        WebdavFileSystem fs = new WebdavFileSystem(config.peergosUsername, config.peergosPassword, peergosUrl, config);
         Server server = WebdavServer.startNonBlocking(config.webdavPort, config.webdavUsername,
                 config.webdavPassword, fs, config.authType);
         webdavServer.set(server);

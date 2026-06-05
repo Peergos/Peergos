@@ -17,6 +17,7 @@
 package peergos.server.webdav.modeshape.webdav;
 
 import jakarta.servlet.ServletException;
+import peergos.server.webdav.MountConfig;
 import peergos.server.webdav.WebdavFileSystem;
 
 /**
@@ -33,8 +34,8 @@ public class WebdavServlet extends WebDavServletBean {
 
     private final IWebdavStore webdavStore;
 
-    public WebdavServlet(String username, String password, String peergosUrl) {
-        webdavStore = new WebdavFileSystem(username, password, peergosUrl);
+    public WebdavServlet(String username, String password, String peergosUrl, MountConfig config) {
+        webdavStore = new WebdavFileSystem(username, password, peergosUrl, config);
     }
 
     public WebdavServlet(WebdavFileSystem fs) {
