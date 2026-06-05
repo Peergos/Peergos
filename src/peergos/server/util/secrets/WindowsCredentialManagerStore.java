@@ -4,10 +4,13 @@ import java.io.IOException;
 import java.lang.foreign.Arena;
 import java.lang.foreign.FunctionDescriptor;
 import java.lang.foreign.Linker;
+import java.lang.foreign.MemoryLayout;
 import java.lang.foreign.MemorySegment;
+import java.lang.foreign.StructLayout;
 import java.lang.foreign.SymbolLookup;
 import java.lang.foreign.ValueLayout;
 import java.lang.invoke.MethodHandle;
+import java.lang.invoke.VarHandle;
 import java.nio.charset.StandardCharsets;
 import java.util.Optional;
 
@@ -72,7 +75,14 @@ public final class WindowsCredentialManagerStore implements SecretStore {
     private static MethodHandle hCredWriteW;
     private static MethodHandle hCredDeleteW;
     private static MethodHandle hCredFree;
-    private static MethodHandle hGetLastError;
+
+    // FFM captures GetLastError into a per-call buffer immediately after the
+    // native call returns. Reading GetLastError via a separately-bound
+    // downcall (the "obvious" approach) is unreliable because the JVM may
+    // issue its own Win32 syscalls in between, clobbering the thread-local
+    // error state. See JEP 454 / Linker.Option#captureCallState.
+    private static StructLayout capturedStateLayout;
+    private static VarHandle hLastErrorInState;
 
     private static synchronized void load() {
         if (loaded) return;
@@ -80,39 +90,44 @@ public final class WindowsCredentialManagerStore implements SecretStore {
         if (systemRoot == null) systemRoot = "C:\\Windows";
         SymbolLookup advapi32 = SymbolLookup.libraryLookup(
                 java.nio.file.Path.of(systemRoot, "System32", "advapi32.dll"), Arena.global());
-        SymbolLookup kernel32 = SymbolLookup.libraryLookup(
-                java.nio.file.Path.of(systemRoot, "System32", "kernel32.dll"), Arena.global());
         Linker linker = Linker.nativeLinker();
+
+        capturedStateLayout = Linker.Option.captureStateLayout();
+        hLastErrorInState = capturedStateLayout.varHandle(
+                MemoryLayout.PathElement.groupElement("GetLastError"));
+        Linker.Option capture = Linker.Option.captureCallState("GetLastError");
 
         // BOOL CredReadW(LPCWSTR TargetName, DWORD Type, DWORD Flags, PCREDENTIALW *Credential)
         hCredReadW = linker.downcallHandle(
                 advapi32.find("CredReadW").orElseThrow(),
                 FunctionDescriptor.of(ValueLayout.JAVA_INT,
-                        ValueLayout.ADDRESS, ValueLayout.JAVA_INT, ValueLayout.JAVA_INT, ValueLayout.ADDRESS));
+                        ValueLayout.ADDRESS, ValueLayout.JAVA_INT, ValueLayout.JAVA_INT, ValueLayout.ADDRESS),
+                capture);
 
         // BOOL CredWriteW(PCREDENTIALW Credential, DWORD Flags)
         hCredWriteW = linker.downcallHandle(
                 advapi32.find("CredWriteW").orElseThrow(),
                 FunctionDescriptor.of(ValueLayout.JAVA_INT,
-                        ValueLayout.ADDRESS, ValueLayout.JAVA_INT));
+                        ValueLayout.ADDRESS, ValueLayout.JAVA_INT),
+                capture);
 
         // BOOL CredDeleteW(LPCWSTR TargetName, DWORD Type, DWORD Flags)
         hCredDeleteW = linker.downcallHandle(
                 advapi32.find("CredDeleteW").orElseThrow(),
                 FunctionDescriptor.of(ValueLayout.JAVA_INT,
-                        ValueLayout.ADDRESS, ValueLayout.JAVA_INT, ValueLayout.JAVA_INT));
+                        ValueLayout.ADDRESS, ValueLayout.JAVA_INT, ValueLayout.JAVA_INT),
+                capture);
 
-        // void CredFree(PVOID Buffer)
+        // void CredFree(PVOID Buffer)  — doesn't fail, no capture needed.
         hCredFree = linker.downcallHandle(
                 advapi32.find("CredFree").orElseThrow(),
                 FunctionDescriptor.ofVoid(ValueLayout.ADDRESS));
 
-        // DWORD GetLastError(void)
-        hGetLastError = linker.downcallHandle(
-                kernel32.find("GetLastError").orElseThrow(),
-                FunctionDescriptor.of(ValueLayout.JAVA_INT));
-
         loaded = true;
+    }
+
+    private static int readLastError(MemorySegment capturedState) {
+        return (int) hLastErrorInState.get(capturedState, 0L);
     }
 
     private static String targetName(String service, String account) {
@@ -132,14 +147,16 @@ public final class WindowsCredentialManagerStore implements SecretStore {
     public void put(String service, String account, String value) throws IOException {
         load();
         try (Arena arena = Arena.ofConfined()) {
+            MemorySegment errBuf = arena.allocate(capturedStateLayout);
             MemorySegment target = wide(arena, targetName(service, account));
             MemorySegment user   = wide(arena, account);
             byte[] blobBytes = value.getBytes(StandardCharsets.UTF_8);
             MemorySegment blob = arena.allocate(blobBytes.length == 0 ? 1 : blobBytes.length);
             MemorySegment.copy(blobBytes, 0, blob, ValueLayout.JAVA_BYTE, 0, blobBytes.length);
 
-            MemorySegment cred = arena.allocate(CRED_SIZE);
-            // Zero the struct — most fields we don't care about must be 0 / null.
+            // 8-byte alignment so the pointer fields at offsets 8 / 16 / 40 / 56 / 64 / 72
+            // satisfy ValueLayout.ADDRESS's natural alignment when we write them.
+            MemorySegment cred = arena.allocate(CRED_SIZE, 8);
             cred.fill((byte) 0);
             cred.set(ValueLayout.JAVA_INT,     OFF_FLAGS,                0);
             cred.set(ValueLayout.JAVA_INT,     OFF_TYPE,                 CRED_TYPE_GENERIC);
@@ -151,12 +168,12 @@ public final class WindowsCredentialManagerStore implements SecretStore {
 
             int ok;
             try {
-                ok = (int) hCredWriteW.invokeExact(cred, 0);
+                ok = (int) hCredWriteW.invokeExact(errBuf, cred, 0);
             } catch (Throwable t) {
                 throw new IOException("CredWriteW threw", t);
             }
             if (ok == 0) {
-                int err = lastError();
+                int err = readLastError(errBuf);
                 throw new IOException("CredWriteW failed for '" + targetName(service, account)
                         + "' (GetLastError=" + err + ")");
             }
@@ -167,18 +184,19 @@ public final class WindowsCredentialManagerStore implements SecretStore {
     public Optional<String> get(String service, String account) throws IOException {
         load();
         try (Arena arena = Arena.ofConfined()) {
+            MemorySegment errBuf = arena.allocate(capturedStateLayout);
             MemorySegment target = wide(arena, targetName(service, account));
-            // out param: PCREDENTIALW* — we give CredReadW the address of a pointer slot.
+            // out param: PCREDENTIALW* — give CredReadW the address of a pointer slot.
             MemorySegment outPtr = arena.allocate(ValueLayout.ADDRESS);
 
             int ok;
             try {
-                ok = (int) hCredReadW.invokeExact(target, CRED_TYPE_GENERIC, 0, outPtr);
+                ok = (int) hCredReadW.invokeExact(errBuf, target, CRED_TYPE_GENERIC, 0, outPtr);
             } catch (Throwable t) {
                 throw new IOException("CredReadW threw", t);
             }
             if (ok == 0) {
-                int err = lastError();
+                int err = readLastError(errBuf);
                 if (err == ERROR_NOT_FOUND) return Optional.empty();
                 throw new IOException("CredReadW failed for '" + targetName(service, account)
                         + "' (GetLastError=" + err + ")");
@@ -204,15 +222,16 @@ public final class WindowsCredentialManagerStore implements SecretStore {
     public void delete(String service, String account) throws IOException {
         load();
         try (Arena arena = Arena.ofConfined()) {
+            MemorySegment errBuf = arena.allocate(capturedStateLayout);
             MemorySegment target = wide(arena, targetName(service, account));
             int ok;
             try {
-                ok = (int) hCredDeleteW.invokeExact(target, CRED_TYPE_GENERIC, 0);
+                ok = (int) hCredDeleteW.invokeExact(errBuf, target, CRED_TYPE_GENERIC, 0);
             } catch (Throwable t) {
                 throw new IOException("CredDeleteW threw", t);
             }
             if (ok == 0) {
-                int err = lastError();
+                int err = readLastError(errBuf);
                 if (err == ERROR_NOT_FOUND) return; // idempotent
                 throw new IOException("CredDeleteW failed for '" + targetName(service, account)
                         + "' (GetLastError=" + err + ")");
@@ -231,11 +250,4 @@ public final class WindowsCredentialManagerStore implements SecretStore {
         return new java.io.File(systemRoot + "\\System32\\advapi32.dll").exists();
     }
 
-    private static int lastError() {
-        try {
-            return (int) hGetLastError.invokeExact();
-        } catch (Throwable t) {
-            return -1;
-        }
-    }
 }
