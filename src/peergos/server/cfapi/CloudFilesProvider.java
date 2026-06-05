@@ -290,19 +290,33 @@ public class CloudFilesProvider {
             String peergosPath = normalizedToPeregos(dirPath);
             System.err.println("[CF] FETCH_PLACEHOLDERS fetching " + peergosPath);
 
-            Optional<FileWrapper> dirOpt = context.getByPath(peergosPath).join();
-            if (dirOpt.isEmpty() || !dirOpt.get().isDirectory()) {
-                System.err.println("[CF] FETCH_PLACEHOLDERS: path not found or not a dir → fail");
-                failPlaceholders(connectionKey, transferKey, requestKey);
-                return;
-            }
             int fetchFlags = params.get(ValueLayout.JAVA_INT, CfApi.CBP_FETCH_PH_FLAGS_OFF);
             String pattern = CfApi.readWideString(params, CfApi.CBP_FETCH_PH_PATTERN_OFF);
             System.err.println("[CF] FETCH_PLACEHOLDERS: fetchFlags=0x" + Integer.toHexString(fetchFlags)
                     + " pattern='" + pattern + "'");
 
-            Set<FileWrapper> children = dirOpt.get()
-                    .getChildren(context.crypto.hasher, context.network).join();
+            // Synthetic root: the sync root only contains the user's home directory
+            // (/$username). There's no peergos path "/" to enumerate, so we hand-craft
+            // a single placeholder for the home folder.
+            Set<FileWrapper> children;
+            if (peergosPath.equals("/")) {
+                Optional<FileWrapper> homeOpt = context.getByPath("/" + context.username).join();
+                if (homeOpt.isEmpty() || !homeOpt.get().isDirectory()) {
+                    System.err.println("[CF] FETCH_PLACEHOLDERS: user home not found → fail");
+                    failPlaceholders(connectionKey, transferKey, requestKey);
+                    return;
+                }
+                children = Set.of(homeOpt.get());
+            } else {
+                Optional<FileWrapper> dirOpt = context.getByPath(peergosPath).join();
+                if (dirOpt.isEmpty() || !dirOpt.get().isDirectory()) {
+                    System.err.println("[CF] FETCH_PLACEHOLDERS: path not found or not a dir → fail");
+                    failPlaceholders(connectionKey, transferKey, requestKey);
+                    return;
+                }
+                children = dirOpt.get()
+                        .getChildren(context.crypto.hasher, context.network).join();
+            }
             // Filter out files that already have physical placeholders on disk.
             // First FETCH_PLACEHOLDERS creates them; subsequent re-fires would error with
             // ALREADY_EXISTS. By sending count=0 with DISABLE_ON_DEMAND_POPULATION flag,
@@ -396,22 +410,18 @@ public class CloudFilesProvider {
     // -----------------------------------------------------------------------
 
     /**
-     * Called once on mount to populate the sync root's immediate children so
-     * Explorer shows them without requiring an explicit FETCH_PLACEHOLDERS.
+     * Called once on mount to populate the sync root's single top-level entry
+     * (the $username directory) so Explorer shows it without requiring an
+     * explicit FETCH_PLACEHOLDERS callback.
      */
     public void seedRootPlaceholders(Arena arena) throws Exception {
-        Optional<FileWrapper> rootOpt = context.getByPath("/" + context.username).join();
-        if (rootOpt.isEmpty()) return;
+        Optional<FileWrapper> homeOpt = context.getByPath("/" + context.username).join();
+        if (homeOpt.isEmpty()) return;
 
-        Set<FileWrapper> children = rootOpt.get()
-                .getChildren(context.crypto.hasher, context.network).join();
-        List<FileWrapper> visible = children.stream()
-                .filter(f -> !f.getFileProperties().isHidden)
-                .toList();
-        if (visible.isEmpty()) return;
+        List<FileWrapper> visible = List.of(homeOpt.get());
 
         MemorySegment baseDirW = CfApi.wideString(syncRootPath, arena);
-        MemorySegment array    = buildPlaceholderArray(visible, "/" + context.username, arena);
+        MemorySegment array    = buildPlaceholderArray(visible, "/", arena);
         MemorySegment processed = arena.allocate(ValueLayout.JAVA_INT);
 
         System.err.println("[CF] CfCreatePlaceholders: syncRoot=" + syncRootPath + " count=" + visible.size()
@@ -722,7 +732,7 @@ public class CloudFilesProvider {
             for (String relPath : allPaths) {
                 FileState synced = syncState.byPath(relPath);
                 if (synced == null) continue;
-                String peergosPath = "/" + context.username + "/" + relPath;
+                String peergosPath = "/" + relPath;
                 Optional<FileWrapper> remoteOpt = context.getByPath(peergosPath).join();
                 if (remoteOpt.isEmpty() || remoteOpt.get().isDirectory()) continue;
                 FileWrapper remote = remoteOpt.get();
@@ -768,7 +778,7 @@ public class CloudFilesProvider {
                     recordSyncedVersion(relPath, remote);   // already match — just update state
                     return;
                 }
-                String peergosPath = "/" + context.username + "/" + relPath;
+                String peergosPath = "/" + relPath;
                 String peergosParent = peergosPath.substring(0, peergosPath.lastIndexOf('/'));
                 Optional<FileWrapper> parentOpt = context.getByPath(peergosParent).join();
                 if (parentOpt.isEmpty()) return;
@@ -824,7 +834,7 @@ public class CloudFilesProvider {
             String name        = localPath.getFileName().toString();
             String relative    = Path.of(syncRootPath).relativize(localPath).toString()
                     .replace(java.io.File.separatorChar, '/');
-            String peergosPath = "/" + context.username + "/" + relative;
+            String peergosPath = "/" + relative;
             String peergosParent = peergosPath.substring(0, peergosPath.lastIndexOf('/'));
 
             if (Files.isDirectory(localPath)) {
@@ -1028,7 +1038,7 @@ public class CloudFilesProvider {
         // the rename's "open new name" handle, and without this short-circuit our close
         // handler would treat the renamed file as a brand-new local file and re-upload it.
         recentlyUploaded.put(normPathKey(Path.of(syncRootPath).resolve(
-                peergosTarget.substring(peergosTarget.indexOf('/', 1) + 1)
+                peergosTarget.substring(1)
                               .replace('/', java.io.File.separatorChar))), Boolean.TRUE);
 
         try {
@@ -1119,7 +1129,9 @@ public class CloudFilesProvider {
                     base + CfApi.PCI_FS_METADATA_OFF + CfApi.FSM_FILE_SIZE_OFF, fileSize);
 
             // File identity: store the full Peergos path as UTF-8 bytes (max 4096)
-            String fullPath = parentPeregosPath + "/" + props.name;
+            String fullPath = parentPeregosPath.equals("/")
+                    ? "/" + props.name
+                    : parentPeregosPath + "/" + props.name;
             long key = identityKey(fullPath);
             identityToPath.put(key, fullPath);
             byte[] idBytes = java.nio.ByteBuffer.allocate(8)
@@ -1191,9 +1203,13 @@ public class CloudFilesProvider {
     private String normalizedToPeregos(String normalizedPath) {
         // NormalizedPath from CF API is volume-relative (e.g. "\Users\...\syncroot\sub\file.txt"),
         // NOT relative to the sync root.  Strip the sync-root prefix to get the in-root path.
+        // The in-root path is the full Peergos path without its leading slash —
+        // e.g. "alice/foo.txt" ⇔ "/alice/foo.txt". The synthetic root "/" only contains
+        // the user's home directory ("/" + context.username); onFetchPlaceholders handles
+        // that case specially since there's no real peergos path "/" to enumerate.
         // syncRootPath is absolute ("C:\Users\...\syncroot") — strip the drive letter for comparison.
         if (normalizedPath == null || normalizedPath.isEmpty()) {
-            return "/" + context.username;
+            return "/";
         }
         String volRelRoot = syncRootPath.replaceFirst("^[A-Za-z]:", "").replace('\\', '/');
         String norm = normalizedPath.replace('\\', '/');
@@ -1205,7 +1221,7 @@ public class CloudFilesProvider {
         } else {
             rel = ""; // fallback to root (e.g. empty NormalizedPath)
         }
-        return rel.isEmpty() ? "/" + context.username : "/" + context.username + "/" + rel;
+        return rel.isEmpty() ? "/" : "/" + rel;
     }
 
     private void ack(Arena arena, long connectionKey, long transferKey, long requestKey, int opType, int status) {
@@ -1339,13 +1355,12 @@ public class CloudFilesProvider {
     };
 
     /** Convert a Peergos absolute path "/&lt;user&gt;/a/b/c.txt" into the relPath
-     *  format ("a/b/c.txt") used as the SyncState key. Returns null if the path
-     *  doesn't look right (no second slash). */
+     *  format ("&lt;user&gt;/a/b/c.txt") used as the SyncState key — i.e. the
+     *  in-sync-root path, which mirrors the full peergos path without the leading slash.
+     *  Returns null for null input or the synthetic root "/". */
     private String peergosPathToRelPath(String peergosPath) {
-        if (peergosPath == null) return null;
-        int second = peergosPath.indexOf('/', 1);
-        if (second < 0) return null;
-        return peergosPath.substring(second + 1);
+        if (peergosPath == null || peergosPath.isEmpty() || peergosPath.equals("/")) return null;
+        return peergosPath.startsWith("/") ? peergosPath.substring(1) : peergosPath;
     }
 
     private static String normPathKey(Path p) {

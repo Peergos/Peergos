@@ -133,6 +133,7 @@ public class CfApiTests {
                 context.network, context.crypto, () -> false, l -> {}).join();
 
         Path syncRoot = tmp.newFolder("peergos-cf-" + user).toPath();
+        Path userRoot = syncRoot.resolve(user);
         Path stateDb = tmp.newFolder("peergos-cf-state-" + user).toPath().resolve("state.db");
         CloudFilesMount mount = CloudFilesMount.mount(context, syncRoot.toString(), stateDb);
         try {
@@ -140,14 +141,19 @@ public class CfApiTests {
             // PID; our provider responds with CfExecute(TRANSFER_PLACEHOLDERS) which creates the
             // physical placeholder files. Same-process Files.list on an empty sync root does NOT
             // trigger FETCH_PLACEHOLDERS, so we rely on the external listing to populate the dir.
+            // First list syncRoot to materialise the $user/ folder placeholder, then list inside
+            // it to materialise the actual file placeholders.
             String syncRootPs = syncRoot.toString().replace("'", "''");
+            String userRootPs = userRoot.toString().replace("'", "''");
             {
-                System.err.println("[TEST] Starting external Get-ChildItem on " + syncRoot);
+                assertEquals("External syncRoot listing failed", 0,
+                        runPs("Get-ChildItem -LiteralPath '" + syncRootPs + "' -Name | Out-String"));
+                System.err.println("[TEST] Starting external Get-ChildItem on " + userRoot);
                 ProcessBuilder lb = new ProcessBuilder(
                         "powershell", "-NoProfile", "-NonInteractive",
                         "-ExecutionPolicy", "Bypass",
                         "-Command",
-                        "Get-ChildItem -LiteralPath '" + syncRootPs + "' -Name | Out-String");
+                        "Get-ChildItem -LiteralPath '" + userRootPs + "' -Name | Out-String");
                 lb.redirectErrorStream(true);
                 Process lp = lb.start();
                 System.err.println("[TEST] Get-ChildItem process started, pid=" + lp.pid());
@@ -167,7 +173,7 @@ public class CfApiTests {
             // access to memory location" even when CfExecute(TRANSFER_DATA) returned S_OK —
             // Get-Content is a simpler read path with fewer Win32 layers in between.
             {
-                String srcPath = syncRoot.resolve("hello.txt").toString().replace("'", "''");
+                String srcPath = userRoot.resolve("hello.txt").toString().replace("'", "''");
                 System.err.println("[TEST] Reading '" + srcPath + "' via Get-Content");
                 ProcessBuilder pb = new ProcessBuilder(
                         "powershell", "-NoProfile", "-NonInteractive",
@@ -189,7 +195,7 @@ public class CfApiTests {
 
             // Step 2 — read large.txt
             {
-                String srcPath = syncRoot.resolve("large.txt").toString().replace("'", "''");
+                String srcPath = userRoot.resolve("large.txt").toString().replace("'", "''");
                 System.err.println("[TEST] Reading '" + srcPath + "' via Get-Content");
                 ProcessBuilder pb = new ProcessBuilder(
                         "powershell", "-NoProfile", "-NonInteractive",
@@ -220,7 +226,7 @@ public class CfApiTests {
                 Files.write(stagedFile, upload);
 
                 String destName = "uploaded.bin";
-                String destPath = syncRoot.resolve(destName).toString().replace("'", "''");
+                String destPath = userRoot.resolve(destName).toString().replace("'", "''");
                 String srcPath  = stagedFile.toString().replace("'", "''");
                 System.err.println("[TEST] Copying " + upload.length + " bytes from '"
                         + srcPath + "' to '" + destPath + "'");
@@ -265,7 +271,7 @@ public class CfApiTests {
             // Step 4 — mkdir inside the mount and verify the directory shows up in Peergos.
             String subdirName = "subdir";
             {
-                String subdirLocal = syncRoot.resolve(subdirName).toString().replace("'", "''");
+                String subdirLocal = userRoot.resolve(subdirName).toString().replace("'", "''");
                 System.err.println("[TEST] mkdir '" + subdirLocal + "'");
                 int exit = runPs("New-Item -ItemType Directory -Path '" + subdirLocal
                         + "' -Force | Out-Null");
@@ -291,7 +297,7 @@ public class CfApiTests {
             // Step 5 — rename hello.txt to renamed.txt.
             String renamedName = "renamed.txt";
             {
-                String src = syncRoot.resolve("hello.txt").toString().replace("'", "''");
+                String src = userRoot.resolve("hello.txt").toString().replace("'", "''");
                 System.err.println("[TEST] Rename hello.txt -> " + renamedName);
                 int exit = runPs("Rename-Item -LiteralPath '" + src
                         + "' -NewName '" + renamedName + "' -ErrorAction Stop");
@@ -311,8 +317,8 @@ public class CfApiTests {
 
             // Step 6 — move large.txt into subdir/ and verify the move in Peergos.
             {
-                String src  = syncRoot.resolve("large.txt").toString().replace("'", "''");
-                String dest = syncRoot.resolve(subdirName).resolve("large.txt").toString().replace("'", "''");
+                String src  = userRoot.resolve("large.txt").toString().replace("'", "''");
+                String dest = userRoot.resolve(subdirName).resolve("large.txt").toString().replace("'", "''");
                 System.err.println("[TEST] Move large.txt -> " + subdirName + "/large.txt");
                 int exit = runPs("Move-Item -LiteralPath '" + src
                         + "' -Destination '" + dest + "' -ErrorAction Stop");
@@ -339,7 +345,7 @@ public class CfApiTests {
             // and should be skipped by Peergos's chunk-level SHA-256 dedup.
             String modifiedName = "uploaded.bin";
             {
-                String src = syncRoot.resolve(modifiedName).toString().replace("'", "''");
+                String src = userRoot.resolve(modifiedName).toString().replace("'", "''");
                 byte[] marker = "PEERGOS_INPLACE_MARKER".getBytes(StandardCharsets.UTF_8);
                 StringBuilder bytesLit = new StringBuilder();
                 for (int i = 0; i < marker.length; i++) {
@@ -382,7 +388,7 @@ public class CfApiTests {
 
             // Step 8 — delete world.txt and verify Peergos no longer has it.
             {
-                String src = syncRoot.resolve("world.txt").toString().replace("'", "''");
+                String src = userRoot.resolve("world.txt").toString().replace("'", "''");
                 System.err.println("[TEST] Delete world.txt");
                 int exit = runPs("Remove-Item -LiteralPath '" + src + "' -Force -ErrorAction Stop");
                 assertEquals("Remove-Item failed", 0, exit);
@@ -420,19 +426,24 @@ public class CfApiTests {
                 contextA.network, contextA.crypto, () -> false, l -> {}).join();
 
         Path syncRoot = tmp.newFolder("peergos-cf-" + user).toPath();
+        Path userRoot = syncRoot.resolve(user);
         Path stateDb  = tmp.newFolder("peergos-cf-state-" + user).toPath().resolve("state.db");
         CloudFilesMount mount = CloudFilesMount.mount(contextA, syncRoot.toString(), stateDb);
         try {
-            // 2) Force the placeholder to materialise on disk by listing the dir.
+            // 2) Force the placeholder to materialise on disk: list syncRoot to materialise
+            //    the $user/ folder, then list it to materialise the file placeholders inside.
             String syncRootPs = syncRoot.toString().replace("'", "''");
-            int lsExit = runPs("Get-ChildItem -LiteralPath '" + syncRootPs + "' -Name | Out-String");
-            assertEquals("listing failed", 0, lsExit);
+            String userRootPs = userRoot.toString().replace("'", "''");
+            assertEquals("syncRoot listing failed", 0,
+                    runPs("Get-ChildItem -LiteralPath '" + syncRootPs + "' -Name | Out-String"));
+            assertEquals("userRoot listing failed", 0,
+                    runPs("Get-ChildItem -LiteralPath '" + userRootPs + "' -Name | Out-String"));
             assertTrue("conflict.txt should be on disk",
-                    Files.exists(syncRoot.resolve("conflict.txt")));
+                    Files.exists(userRoot.resolve("conflict.txt")));
 
             // 3) Hydrate it via Get-Content so the local placeholder has real bytes
             //    and our syncState records the synced baseline (A).
-            String filePs = syncRoot.resolve("conflict.txt").toString().replace("'", "''");
+            String filePs = userRoot.resolve("conflict.txt").toString().replace("'", "''");
             int readExit = runPs("$null = Get-Content -LiteralPath '" + filePs + "' -Raw -ErrorAction Stop");
             assertEquals("hydrate read failed", 0, readExit);
 
@@ -538,13 +549,17 @@ public class CfApiTests {
                 contextA.network, contextA.crypto, () -> false, l -> {}).join();
 
         Path syncRoot = tmp.newFolder("peergos-cf-" + user).toPath();
+        Path userRoot = syncRoot.resolve(user);
         Path stateDb  = tmp.newFolder("peergos-cf-state-" + user).toPath().resolve("state.db");
         CloudFilesMount mount = CloudFilesMount.mount(contextA, syncRoot.toString(), stateDb);
         try {
-            // 1) Materialise the placeholder and hydrate it so syncState records the baseline.
+            // 1) Materialise the $user/ folder and the file placeholder inside it, then hydrate
+            //    the file so syncState records the baseline.
             String syncRootPs = syncRoot.toString().replace("'", "''");
+            String userRootPs = userRoot.toString().replace("'", "''");
             assertEquals(0, runPs("Get-ChildItem -LiteralPath '" + syncRootPs + "' -Name | Out-String"));
-            Path localFile = syncRoot.resolve("remote-edit.txt");
+            assertEquals(0, runPs("Get-ChildItem -LiteralPath '" + userRootPs + "' -Name | Out-String"));
+            Path localFile = userRoot.resolve("remote-edit.txt");
             assertTrue("placeholder should exist", Files.exists(localFile));
             String filePs = localFile.toString().replace("'", "''");
             assertEquals(0, runPs("$null = Get-Content -LiteralPath '" + filePs + "' -Raw -ErrorAction Stop"));
@@ -577,7 +592,7 @@ public class CfApiTests {
 
             // 5) And no conflict copy should have been created.
             assertFalse("no conflict copy expected for a clean pull",
-                    Files.exists(syncRoot.resolve("remote-edit[conflict-0].txt")));
+                    Files.exists(userRoot.resolve("remote-edit[conflict-0].txt")));
             assertTrue("Peergos still has the file at original name",
                     contextA.getByPath("/" + user + "/remote-edit.txt").join().isPresent());
             System.err.println("[TEST] pull loop applied remote edit cleanly ("
