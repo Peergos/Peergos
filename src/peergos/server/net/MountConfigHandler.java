@@ -13,6 +13,7 @@ import peergos.server.webdav.WebdavMount;
 import peergos.server.webdav.WebdavServer;
 import peergos.server.util.HttpUtil;
 import peergos.server.util.Logging;
+import peergos.server.util.secrets.SecretStore;
 import peergos.shared.Crypto;
 import peergos.shared.NetworkAccess;
 import peergos.shared.io.ipfs.api.JSONParser;
@@ -56,8 +57,12 @@ public class MountConfigHandler implements HttpHandler {
      *  surfaces the change so we can disable the mount and prompt the user to re-mount. */
     private static final long CREDENTIAL_CHECK_INTERVAL_MIN = 60;
 
+    /** Service name used for all mount-related secrets in the OS keyring. */
+    private static final String SECRET_SERVICE = "peergos-mount";
+
     private final Path peergosDir;
     private final String peergosUrl;
+    private final SecretStore secretStore;
     private final AtomicReference<Server> webdavServer = new AtomicReference<>(null);
     private final AtomicReference<WebdavMount> activeMount = new AtomicReference<>(null);
     private final AtomicReference<CloudFilesMount> activeCloudMount = new AtomicReference<>(null);
@@ -71,8 +76,13 @@ public class MountConfigHandler implements HttpHandler {
     private final AtomicReference<ScheduledFuture<?>> credentialCheck = new AtomicReference<>(null);
 
     public MountConfigHandler(MountProperties props) {
+        this(props, SecretStore.detect());
+    }
+
+    public MountConfigHandler(MountProperties props, SecretStore secretStore) {
         this.peergosDir = props.peergosDir;
         this.peergosUrl = props.peergosUrl;
+        this.secretStore = secretStore;
     }
 
     public void start() {
@@ -90,16 +100,27 @@ public class MountConfigHandler implements HttpHandler {
     }
 
     private synchronized MountConfig readConfig() {
-        return readConfig(peergosDir);
+        return readConfig(peergosDir, secretStore);
     }
 
     public static synchronized MountConfig readConfig(Path peergosDir) {
+        return readConfig(peergosDir, SecretStore.detect());
+    }
+
+    /** Load the persisted mount config, splicing in keyring-backed secrets when applicable. */
+    public static synchronized MountConfig readConfig(Path peergosDir, SecretStore secretStore) {
         Path configFile = peergosDir.resolve(MountConfig.FILENAME);
         if (!configFile.toFile().exists())
             return MountConfig.disabled();
         try {
             String json = Files.readString(configFile);
-            return MountConfig.fromJson((Map<String, Object>) JSONParser.parse(json));
+            MountConfig config = MountConfig.fromJson((Map<String, Object>) JSONParser.parse(json));
+            if (secretStore.embedsInConfigFile() || config.peergosUsername.isEmpty())
+                return config;
+            // Keyring-backed: fetch the secrets that were redacted from the JSON.
+            String password = secretStore.get(SECRET_SERVICE, config.peergosUsername + ":password").orElse("");
+            String totp     = secretStore.get(SECRET_SERVICE, config.peergosUsername + ":totp").orElse("");
+            return config.withSecrets(password, totp);
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
@@ -107,8 +128,18 @@ public class MountConfigHandler implements HttpHandler {
 
     private synchronized void saveConfig(MountConfig config) {
         try {
+            if (!secretStore.embedsInConfigFile()) {
+                // Push secrets into the OS keyring first, then redact them from the JSON.
+                if (!config.peergosPassword.isEmpty())
+                    secretStore.put(SECRET_SERVICE, config.peergosUsername + ":password", config.peergosPassword);
+                if (config.hasTotp())
+                    secretStore.put(SECRET_SERVICE, config.peergosUsername + ":totp", config.totpSecret);
+                else
+                    secretStore.delete(SECRET_SERVICE, config.peergosUsername + ":totp");
+            }
+            MountConfig toWrite = secretStore.embedsInConfigFile() ? config : config.withoutSecrets();
             Files.write(peergosDir.resolve(MountConfig.FILENAME),
-                    JSONParser.toString(config.toJson()).getBytes(StandardCharsets.UTF_8));
+                    JSONParser.toString(toWrite.toJson()).getBytes(StandardCharsets.UTF_8));
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
@@ -135,8 +166,11 @@ public class MountConfigHandler implements HttpHandler {
     }
 
     private void scheduleCredentialCheck(MountConfig config) {
+        // Capture only the username; re-read the config (and its secrets) on each tick
+        // so a keyring rotation surfaces on the next check rather than at JVM restart.
+        String username = config.peergosUsername;
         ScheduledFuture<?> next = loginScheduler.scheduleAtFixedRate(
-                () -> verifyCredentials(config),
+                () -> verifyCredentials(username),
                 CREDENTIAL_CHECK_INTERVAL_MIN, CREDENTIAL_CHECK_INTERVAL_MIN, TimeUnit.MINUTES);
         ScheduledFuture<?> prev = credentialCheck.getAndSet(next);
         if (prev != null) prev.cancel(false);
@@ -146,7 +180,10 @@ public class MountConfigHandler implements HttpHandler {
      *  are still accepted. On a definitive credential failure we tear the mount down so
      *  the UI surfaces an error and the user can re-mount with fresh credentials; on
      *  transient failures (network, server down) we just log and wait for the next tick. */
-    private void verifyCredentials(MountConfig config) {
+    private void verifyCredentials(String username) {
+        MountConfig config = readConfig();
+        if (!config.enabled || !config.peergosUsername.equals(username))
+            return; // Mount was disabled or replaced while we were waiting to fire.
         try {
             Crypto crypto = Main.initCrypto();
             NetworkAccess network = Builder.buildJavaNetworkAccess(
@@ -210,16 +247,23 @@ public class MountConfigHandler implements HttpHandler {
                 mfa, network, crypto).join();
     }
 
+    public static Function<MultiFactorAuthRequest, CompletableFuture<MultiFactorAuthResponse>>
+    mountTotpResponder(MountConfig config) {
+        return mountTotpResponder(config.totpCredentialIdBytes(), config.totpSecretBytes());
+    }
+
     /**
      * Build a non-interactive MFA responder that generates a TOTP code from the
      * mount's stored secret. Matches the request's expected TOTP method against the
      * stored credentialId — if the user has multiple TOTP factors, we pick OURS so
      * the rest of the user's authenticator apps don't have to be involved.
+     *
+     * Takes the raw bytes (not a {@link MountConfig}) so the returned closure
+     * doesn't pin a reference to a config object that may be re-read later from
+     * the keyring with different secrets.
      */
     public static Function<MultiFactorAuthRequest, CompletableFuture<MultiFactorAuthResponse>>
-    mountTotpResponder(MountConfig config) {
-        byte[] credentialId = config.totpCredentialIdBytes();
-        byte[] secret       = config.totpSecretBytes();
+    mountTotpResponder(byte[] credentialId, byte[] secret) {
         TimeBasedOneTimePasswordGenerator totp;
         try {
             totp = new TimeBasedOneTimePasswordGenerator(Duration.ofSeconds(30L), 6, TotpKey.ALGORITHM);
@@ -371,8 +415,18 @@ public class MountConfigHandler implements HttpHandler {
                 exchange.sendResponseHeaders(200, 0);
 
             } else if (action.equals("disable")) {
+                // Capture the username before tearing down so we know whose keyring
+                // entries to clear; verifyCredentials' transient disables don't take
+                // this path, so they leave keyring entries intact for the next re-mount.
+                String username = readConfig().peergosUsername;
                 disableMount();
                 peergosDir.resolve(MountConfig.FILENAME).toFile().delete();
+                if (!username.isEmpty() && !secretStore.embedsInConfigFile()) {
+                    try { secretStore.delete(SECRET_SERVICE, username + ":password"); }
+                    catch (IOException e) { LOG.log(Level.WARNING, "Failed to clear mount password from keyring", e); }
+                    try { secretStore.delete(SECRET_SERVICE, username + ":totp"); }
+                    catch (IOException e) { LOG.log(Level.WARNING, "Failed to clear mount TOTP from keyring", e); }
+                }
                 exchange.sendResponseHeaders(200, 0);
             } else {
                 LOG.info("Unknown mount config action: " + action);

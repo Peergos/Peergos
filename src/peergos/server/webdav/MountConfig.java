@@ -59,6 +59,32 @@ public class MountConfig implements Jsonable {
         return new MountConfig(false, "", "", "", "", 8090, "digest", "", "");
     }
 
+    public MountConfig withoutSecrets() {
+        return new MountConfig(enabled, peergosUsername, "",
+                webdavUsername, webdavPassword, webdavPort, authType,
+                totpCredentialId, "");
+    }
+
+    public MountConfig withSecrets(String peergosPassword, String totpSecret) {
+        return new MountConfig(enabled, peergosUsername, peergosPassword,
+                webdavUsername, webdavPassword, webdavPort, authType,
+                totpCredentialId, totpSecret);
+    }
+
+    public static final class Credentials {
+        public final String peergosPassword;
+        public final String totpSecret;
+
+        public Credentials(String peergosPassword, String totpSecret) {
+            this.peergosPassword = peergosPassword == null ? "" : peergosPassword;
+            this.totpSecret      = totpSecret      == null ? "" : totpSecret;
+        }
+    }
+
+    public Credentials credentials() {
+        return new Credentials(peergosPassword, totpSecret);
+    }
+
     @Override
     public Map<String, Object> toJson() {
         LinkedHashMap<String, Object> res = new LinkedHashMap<>();
