@@ -130,7 +130,7 @@ public class CloudFilesProvider {
                 // Fallback: identityToPath was lost (e.g., JVM restart after the placeholder
                 // was already created on disk). Reconstruct the path from the normalized path
                 // CF passed in. Re-register the mapping so subsequent fetches hit the cache.
-                peergosPath = normalizedToPeregos(normalizedPath);
+                peergosPath = normalizedToPeergos(normalizedPath);
                 System.err.println("[CF] FETCH_DATA: identity miss, derived peergosPath="
                         + peergosPath + " from normalizedPath=" + normalizedPath);
                 if (peergosPath != null && identityLen == 8 && identityAddr != 0) {
@@ -287,7 +287,7 @@ public class CloudFilesProvider {
             String dirPath    = CfApi.readWideString(info, CfApi.CBI_NORMALIZED_PATH_OFF);
             System.err.println("[CF] FETCH_PLACEHOLDERS connKey=" + connectionKey
                     + " transferKey=" + transferKey + " dirPath='" + dirPath + "'");
-            String peergosPath = normalizedToPeregos(dirPath);
+            String peergosPath = normalizedToPeergos(dirPath);
             System.err.println("[CF] FETCH_PLACEHOLDERS fetching " + peergosPath);
 
             int fetchFlags = params.get(ValueLayout.JAVA_INT, CfApi.CBP_FETCH_PH_FLAGS_OFF);
@@ -469,7 +469,7 @@ public class CloudFilesProvider {
         }
 
         String normalizedPath = CfApi.readWideString(info, CfApi.CBI_NORMALIZED_PATH_OFF);
-        String peergosPath    = normalizedToPeregos(normalizedPath);
+        String peergosPath    = normalizedToPeergos(normalizedPath);
         // normalizedPath is an absolute path within the volume ("\Users\...\file.txt").
         // Reattach the drive letter from syncRootPath ("C:") to form a full path.
         String drive  = syncRootPath.substring(0, 2); // e.g. "C:"
@@ -952,7 +952,7 @@ public class CloudFilesProvider {
             requestKey    = info.get(ValueLayout.JAVA_LONG, CfApi.CBI_REQUEST_KEY_OFF);
             normalizedPath = CfApi.readWideString(info, CfApi.CBI_NORMALIZED_PATH_OFF);
         } catch (Exception e) { LOG.log(Level.WARNING, "DELETE: failed to read params", e); return; }
-        String peergosPath    = normalizedToPeregos(normalizedPath);
+        String peergosPath    = normalizedToPeergos(normalizedPath);
 
         // Ack first to let Windows proceed with the local delete
         try (Arena arena = Arena.ofConfined()) {
@@ -1028,8 +1028,8 @@ public class CloudFilesProvider {
             sourcePath = CfApi.readWideString(params, CfApi.CBP_RENAME_COMPLETION_SOURCE_PATH_OFF);
             targetPath = CfApi.readWideString(info,   CfApi.CBI_NORMALIZED_PATH_OFF);
         } catch (Exception e) { LOG.log(Level.WARNING, "RENAME_COMPLETION: failed to read params", e); return; }
-        String peergosSource = normalizedToPeregos(sourcePath);
-        String peergosTarget = normalizedToPeregos(targetPath);
+        String peergosSource = normalizedToPeergos(sourcePath);
+        String peergosTarget = normalizedToPeergos(targetPath);
 
         System.err.println("[CF] NOTIFY_RENAME_COMPLETION src=" + peergosSource
                 + " tgt=" + peergosTarget);
@@ -1097,7 +1097,7 @@ public class CloudFilesProvider {
     // -----------------------------------------------------------------------
 
     private MemorySegment buildPlaceholderArray(List<FileWrapper> children,
-                                                String parentPeregosPath, Arena arena) {
+                                                String parentPeergosPath, Arena arena) {
         MemorySegment array = arena.allocate(CfApi.PCI_SIZE * children.size());
         for (int i = 0; i < children.size(); i++) {
             FileWrapper fw = children.get(i);
@@ -1129,9 +1129,9 @@ public class CloudFilesProvider {
                     base + CfApi.PCI_FS_METADATA_OFF + CfApi.FSM_FILE_SIZE_OFF, fileSize);
 
             // File identity: store the full Peergos path as UTF-8 bytes (max 4096)
-            String fullPath = parentPeregosPath.equals("/")
+            String fullPath = parentPeergosPath.equals("/")
                     ? "/" + props.name
-                    : parentPeregosPath + "/" + props.name;
+                    : parentPeergosPath + "/" + props.name;
             long key = identityKey(fullPath);
             identityToPath.put(key, fullPath);
             byte[] idBytes = java.nio.ByteBuffer.allocate(8)
@@ -1200,7 +1200,7 @@ public class CloudFilesProvider {
         return Path.of(syncRootPath).resolve(rel);
     }
 
-    private String normalizedToPeregos(String normalizedPath) {
+    private String normalizedToPeergos(String normalizedPath) {
         // NormalizedPath from CF API is volume-relative (e.g. "\Users\...\syncroot\sub\file.txt"),
         // NOT relative to the sync root.  Strip the sync-root prefix to get the in-root path.
         // The in-root path is the full Peergos path without its leading slash —
