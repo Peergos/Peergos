@@ -137,17 +137,14 @@ public class CfApiTests {
         Path stateDb = tmp.newFolder("peergos-cf-state-" + user).toPath().resolve("state.db");
         CloudFilesMount mount = CloudFilesMount.mount(context, syncRoot.toString(), stateDb);
         try {
-            // Step 1 — external directory listing. This fires FETCH_PLACEHOLDERS from an external
-            // PID; our provider responds with CfExecute(TRANSFER_PLACEHOLDERS) which creates the
-            // physical placeholder files. Same-process Files.list on an empty sync root does NOT
-            // trigger FETCH_PLACEHOLDERS, so we rely on the external listing to populate the dir.
-            // First list syncRoot to materialise the $user/ folder placeholder, then list inside
-            // it to materialise the actual file placeholders.
-            String syncRootPs = syncRoot.toString().replace("'", "''");
+            // Step 1 — external directory listing of $user/. This fires FETCH_PLACEHOLDERS
+            // from an external PID; our provider responds with CfExecute(TRANSFER_PLACEHOLDERS)
+            // which creates the physical placeholder files. Same-process Files.list on an empty
+            // placeholder dir does NOT trigger FETCH_PLACEHOLDERS, so we rely on the external
+            // listing to populate it. The $user/ folder itself is materialised by the mount at
+            // startup (seedRootPlaceholders), so we list straight into it here.
             String userRootPs = userRoot.toString().replace("'", "''");
             {
-                assertEquals("External syncRoot listing failed", 0,
-                        runPs("Get-ChildItem -LiteralPath '" + syncRootPs + "' -Name | Out-String"));
                 System.err.println("[TEST] Starting external Get-ChildItem on " + userRoot);
                 ProcessBuilder lb = new ProcessBuilder(
                         "powershell", "-NoProfile", "-NonInteractive",
@@ -430,12 +427,9 @@ public class CfApiTests {
         Path stateDb  = tmp.newFolder("peergos-cf-state-" + user).toPath().resolve("state.db");
         CloudFilesMount mount = CloudFilesMount.mount(contextA, syncRoot.toString(), stateDb);
         try {
-            // 2) Force the placeholder to materialise on disk: list syncRoot to materialise
-            //    the $user/ folder, then list it to materialise the file placeholders inside.
-            String syncRootPs = syncRoot.toString().replace("'", "''");
+            // 2) Force the file placeholders to materialise on disk. The $user/ folder itself
+            //    is seeded by the mount at startup, so we list straight into it.
             String userRootPs = userRoot.toString().replace("'", "''");
-            assertEquals("syncRoot listing failed", 0,
-                    runPs("Get-ChildItem -LiteralPath '" + syncRootPs + "' -Name | Out-String"));
             assertEquals("userRoot listing failed", 0,
                     runPs("Get-ChildItem -LiteralPath '" + userRootPs + "' -Name | Out-String"));
             assertTrue("conflict.txt should be on disk",
@@ -553,11 +547,9 @@ public class CfApiTests {
         Path stateDb  = tmp.newFolder("peergos-cf-state-" + user).toPath().resolve("state.db");
         CloudFilesMount mount = CloudFilesMount.mount(contextA, syncRoot.toString(), stateDb);
         try {
-            // 1) Materialise the $user/ folder and the file placeholder inside it, then hydrate
-            //    the file so syncState records the baseline.
-            String syncRootPs = syncRoot.toString().replace("'", "''");
+            // 1) Materialise the file placeholder inside $user/, then hydrate it so syncState
+            //    records the baseline. The $user/ folder itself is seeded by the mount at startup.
             String userRootPs = userRoot.toString().replace("'", "''");
-            assertEquals(0, runPs("Get-ChildItem -LiteralPath '" + syncRootPs + "' -Name | Out-String"));
             assertEquals(0, runPs("Get-ChildItem -LiteralPath '" + userRootPs + "' -Name | Out-String"));
             Path localFile = userRoot.resolve("remote-edit.txt");
             assertTrue("placeholder should exist", Files.exists(localFile));

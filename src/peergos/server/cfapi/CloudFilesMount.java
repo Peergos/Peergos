@@ -223,6 +223,17 @@ public class CloudFilesMount implements Closeable {
         long connectionKey = connectionKeyOut.get(ValueLayout.JAVA_LONG, 0);
         System.err.println("[CF] Connected key=" + connectionKey);
 
+        // Proactively materialise the $username folder placeholder under the sync root
+        // so external listings don't have to round-trip through FETCH_PLACEHOLDERS first.
+        // Without this, Get-ChildItem on the sync root races against the asynchronous
+        // creation of the $user dir, which surfaces as flaky CI failures where the
+        // subsequent listing of $user/ comes back empty.
+        try (Arena seedArena = Arena.ofConfined()) {
+            provider.seedRootPlaceholders(seedArena);
+        } catch (Exception e) {
+            LOG.log(Level.WARNING, "seedRootPlaceholders failed (non-fatal)", e);
+        }
+
         // CF only fires NOTIFY_FILE_CLOSE_COMPLETION for placeholders it already tracks.
         // For files created locally inside the sync root by other processes (e.g. Copy-Item),
         // we get no callback at all — so run a WatchService to detect new/modified files and

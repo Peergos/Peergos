@@ -230,10 +230,18 @@ public class CloudFilesProvider {
             }
             // After the full file has been hydrated, the on-disk content matches the
             // current Peergos version. Record that so the next FILE_CLOSE_COMPLETION
-            // for this path has a baseline for conflict detection.
+            // for this path has a baseline for conflict detection — and so the pull
+            // loop's Tier 1 snapshot includes this file's writer. Pass the local path
+            // so the recorder can fall back to hashing on-disk bytes when the remote
+            // FileProperties.treeHash is absent (typical for tiny files with 0 fragments,
+            // which would otherwise leave the snapshot empty and disable the pull loop).
             if (requiredOffset == 0 && end >= fw.getSize()) {
                 String relPath = peergosPathToRelPath(peergosPath);
-                if (relPath != null) recordSyncedVersion(relPath, fw);
+                if (relPath != null) {
+                    Path localPath = Path.of(syncRootPath)
+                            .resolve(relPath.replace('/', java.io.File.separatorChar));
+                    recordSyncedVersion(relPath, fw, localPath);
+                }
             }
         } catch (Exception e) {
             LOG.log(Level.SEVERE, "FETCH_DATA callback exception (connKey=" + connectionKey + ")", e);
@@ -438,9 +446,15 @@ public class CloudFilesProvider {
     /**
      * Called once on mount to populate the sync root's single top-level entry
      * (the $username directory) so Explorer shows it without requiring an
-     * explicit FETCH_PLACEHOLDERS callback.
+     * explicit FETCH_PLACEHOLDERS callback. Idempotent — skips when the
+     * placeholder is already on disk from a previous run.
      */
     public void seedRootPlaceholders(Arena arena) throws Exception {
+        if (Files.exists(Path.of(syncRootPath, context.username))) {
+            System.err.println("[CF] seedRootPlaceholders: " + context.username
+                    + " already on disk, skipping");
+            return;
+        }
         Optional<FileWrapper> homeOpt = context.getByPath("/" + context.username).join();
         if (homeOpt.isEmpty()) return;
 
