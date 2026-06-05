@@ -57,12 +57,8 @@ public class CloudFilesMount implements Closeable {
         return syncRootPath;
     }
 
-    // -----------------------------------------------------------------------
-    // Factory
-    // -----------------------------------------------------------------------
-
     public static CloudFilesMount mount(UserContext context, Path peergosDir) throws Exception {
-        return mount(context, peergosDir, Path.of(System.getProperty("user.home"), "Peergos").toString());
+        return mount(context, peergosDir, Path.of(System.getProperty("user.home"), "Peergos", context.username).toString());
     }
 
     /** Overload for testing with a custom sync root path. State DB defaults to
