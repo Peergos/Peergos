@@ -230,18 +230,10 @@ public class CloudFilesProvider {
             }
             // After the full file has been hydrated, the on-disk content matches the
             // current Peergos version. Record that so the next FILE_CLOSE_COMPLETION
-            // for this path has a baseline for conflict detection — and so the pull
-            // loop's Tier 1 snapshot includes this file's writer. Pass the local path
-            // so the recorder can fall back to hashing on-disk bytes when the remote
-            // FileProperties.treeHash is absent (typical for tiny files with 0 fragments,
-            // which would otherwise leave the snapshot empty and disable the pull loop).
+            // for this path has a baseline for conflict detection.
             if (requiredOffset == 0 && end >= fw.getSize()) {
                 String relPath = peergosPathToRelPath(peergosPath);
-                if (relPath != null) {
-                    Path localPath = Path.of(syncRootPath)
-                            .resolve(relPath.replace('/', java.io.File.separatorChar));
-                    recordSyncedVersion(relPath, fw, localPath);
-                }
+                if (relPath != null) recordSyncedVersion(relPath, fw);
             }
         } catch (Exception e) {
             LOG.log(Level.SEVERE, "FETCH_DATA callback exception (connKey=" + connectionKey + ")", e);

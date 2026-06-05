@@ -1753,6 +1753,15 @@ public class FileWrapper {
 
                                                         return chunks.upload(current, committer, network, parentLocation.owner,
                                                                 signer, mirrorBat, crypto.random, crypto.hasher)
+                                                                .thenCompose(cwd -> chunks.completeHash(crypto.hasher)
+                                                                        .thenCompose(maybeHash -> maybeHash.isEmpty()
+                                                                                ? Futures.of(cwd)
+                                                                                : network.getFile(cwd, fileWriteCap, getChildsEntryWriter(), ownername)
+                                                                                        .thenCompose(uploaded -> uploaded.get()
+                                                                                                .getHashUpdates(maybeHash.get(), network, crypto.hasher))
+                                                                                        .thenCompose(updates -> updates.isEmpty()
+                                                                                                ? Futures.of(cwd)
+                                                                                                : bulkSetSameNameProperties(cwd, committer, owner(), updates, network))))
                                                                 .thenCompose(cwd -> fileData.reset().thenCompose(resetAgain ->
                                                                         generateThumbnailAndUpdate(cwd, committer, fileWriteCap, filename, resetAgain,
                                                                                 network, isHidden, mimeType,
