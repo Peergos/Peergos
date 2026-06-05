@@ -41,11 +41,20 @@ import java.security.SecureRandom;
 import java.util.*;
 
 import java.util.concurrent.ForkJoinPool;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.logging.*;
 
 public class MountConfigHandler implements HttpHandler {
     private static final Logger LOG = Logging.LOG();
+    /** How often to re-run signIn against peergos to confirm password + 2FA still work.
+     *  If the user changes their password (or removes the mount's TOTP) on another device,
+     *  the existing session may keep working until its token expires; this check is what
+     *  surfaces the change so we can disable the mount and prompt the user to re-mount. */
+    private static final long CREDENTIAL_CHECK_INTERVAL_MIN = 60;
 
     private final Path peergosDir;
     private final String peergosUrl;
@@ -54,6 +63,12 @@ public class MountConfigHandler implements HttpHandler {
     private final AtomicReference<CloudFilesMount> activeCloudMount = new AtomicReference<>(null);
     private final AtomicReference<String> mountError = new AtomicReference<>(null);
     private final AtomicReference<String> activePeergosUsername = new AtomicReference<>("");
+    private final ScheduledExecutorService loginScheduler = Executors.newSingleThreadScheduledExecutor(r -> {
+        Thread t = new Thread(r, "peergos-mount-relogin");
+        t.setDaemon(true);
+        return t;
+    });
+    private final AtomicReference<ScheduledFuture<?>> credentialCheck = new AtomicReference<>(null);
 
     public MountConfigHandler(MountProperties props) {
         this.peergosDir = props.peergosDir;
@@ -105,6 +120,7 @@ public class MountConfigHandler implements HttpHandler {
             CloudFilesMount mount = CloudFilesMount.mount(context, peergosDir);
             activeCloudMount.set(mount);
             activePeergosUsername.set(config.peergosUsername);
+            scheduleCredentialCheck(config);
             return;
         }
         WebdavFileSystem fs = new WebdavFileSystem(config.peergosUsername, config.peergosPassword, peergosUrl, config);
@@ -115,6 +131,70 @@ public class MountConfigHandler implements HttpHandler {
         writeAppGroupConfig(config);
         WebdavMount mount = WebdavMount.mount(config.webdavPort, config.webdavUsername, config.webdavPassword);
         activeMount.set(mount);
+        scheduleCredentialCheck(config);
+    }
+
+    private void scheduleCredentialCheck(MountConfig config) {
+        ScheduledFuture<?> next = loginScheduler.scheduleAtFixedRate(
+                () -> verifyCredentials(config),
+                CREDENTIAL_CHECK_INTERVAL_MIN, CREDENTIAL_CHECK_INTERVAL_MIN, TimeUnit.MINUTES);
+        ScheduledFuture<?> prev = credentialCheck.getAndSet(next);
+        if (prev != null) prev.cancel(false);
+    }
+
+    /** Re-run signIn against peergos to make sure the stored password (and TOTP, if any)
+     *  are still accepted. On a definitive credential failure we tear the mount down so
+     *  the UI surfaces an error and the user can re-mount with fresh credentials; on
+     *  transient failures (network, server down) we just log and wait for the next tick. */
+    private void verifyCredentials(MountConfig config) {
+        try {
+            Crypto crypto = Main.initCrypto();
+            NetworkAccess network = Builder.buildJavaNetworkAccess(
+                    new URL(peergosUrl), peergosUrl.startsWith("https"),
+                    Optional.of("Peergos-webdav"), Optional.empty()).join();
+            // Non-interactive MFA: TOTP if we have one, otherwise an immediate failure
+            // (we have no console to read from in a background scheduler thread).
+            Function<MultiFactorAuthRequest, CompletableFuture<MultiFactorAuthResponse>> mfa =
+                    config.hasTotp()
+                            ? mountTotpResponder(config)
+                            : req -> Futures.errored(new IllegalStateException(
+                                    "Mount credential check requires MFA but no TOTP is stored"));
+            UserContext.signIn(config.peergosUsername, config.peergosPassword,
+                    mfa, network, crypto).join();
+            LOG.fine("Mount credential check OK for " + config.peergosUsername);
+        } catch (Throwable t) {
+            if (isCredentialFailure(t)) {
+                String msg = rootMessage(t);
+                LOG.log(Level.WARNING, "Mount credentials no longer valid — disabling mount: " + msg);
+                mountError.set("Credentials no longer valid: " + msg);
+                disableMount();
+            } else {
+                LOG.log(Level.INFO, "Mount credential check failed transiently (will retry next hour): "
+                        + rootMessage(t));
+            }
+        }
+    }
+
+    /** True for definitive "your password / TOTP isn't accepted" failures from signIn —
+     *  used to distinguish from transient network/server errors so we only tear down the
+     *  mount when the credentials themselves are the problem. */
+    private static boolean isCredentialFailure(Throwable t) {
+        while (t != null) {
+            String msg = t.getMessage();
+            if (msg != null && (msg.contains("Incorrect username or password")
+                    || msg.contains("Incorrect password")
+                    || msg.contains("Mount TOTP credential not found"))) {
+                return true;
+            }
+            t = t.getCause();
+        }
+        return false;
+    }
+
+    private static String rootMessage(Throwable t) {
+        Throwable cur = t;
+        while (cur.getCause() != null) cur = cur.getCause();
+        return cur.getMessage() == null ? cur.getClass().getSimpleName() : cur.getMessage();
     }
 
     private UserContext buildContext(MountConfig config) throws Exception {
@@ -181,6 +261,8 @@ public class MountConfigHandler implements HttpHandler {
     }
 
     private void disableMount() {
+        ScheduledFuture<?> check = credentialCheck.getAndSet(null);
+        if (check != null) check.cancel(false);
         CloudFilesMount cfMount = activeCloudMount.getAndSet(null);
         if (cfMount != null)
             cfMount.close();
