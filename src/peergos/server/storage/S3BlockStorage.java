@@ -1049,6 +1049,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                     mirrorSemaphore.release();
                 }
             } catch (Throwable t) {
+                LOG.log(Level.SEVERE, "Couldn't retrieve " + c + " (" + hashToKey(owner, c) + ")");
                 firstError.compareAndSet(null, t);
             }
         })).toList();
