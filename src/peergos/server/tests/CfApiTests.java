@@ -33,6 +33,9 @@ public class CfApiTests {
         return osName.startsWith("windows")
                 && !osName.contains("server");
     }
+    private static boolean isWindows() {
+        return System.getProperty("os.name", "").toLowerCase().startsWith("windows");
+    }
 
     @BeforeClass
     public static void startServer() throws Exception {
@@ -48,7 +51,7 @@ public class CfApiTests {
 
     @Test
     public void versionCheckReturnsFalseOnNonWindows() {
-        if (isWindowsDesktop()) return;
+        if (isWindows()) return;
         assertFalse(WindowsVersionCheck.isCfApiAvailable());
     }
 
