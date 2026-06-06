@@ -16,7 +16,6 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
 import java.time.LocalDateTime;
 import java.util.*;
-import java.util.stream.Collectors;
 
 import static org.junit.Assert.*;
 
@@ -28,13 +27,16 @@ public class CfApiTests {
     @Rule
     public TemporaryFolder tmp = new TemporaryFolder();
 
-    private static boolean isWindows() {
-        return System.getProperty("os.name", "").toLowerCase().startsWith("windows");
+    private static boolean isWindowsDesktop() {
+        String osName = System.getProperty("os.name", "").toLowerCase();
+
+        return osName.startsWith("windows")
+                && !osName.contains("server");
     }
 
     @BeforeClass
     public static void startServer() throws Exception {
-        if (!isWindows()) return;
+        if (!isWindowsDesktop()) return;
         Args args = UserTests.buildArgs().with("useIPFS", "false");
         WEB_PORT = args.getInt("port");
         Main.PKI_INIT.main(args);
@@ -46,7 +48,7 @@ public class CfApiTests {
 
     @Test
     public void versionCheckReturnsFalseOnNonWindows() {
-        if (isWindows()) return;
+        if (isWindowsDesktop()) return;
         assertFalse(WindowsVersionCheck.isCfApiAvailable());
     }
 
@@ -90,13 +92,13 @@ public class CfApiTests {
 
     @Test
     public void loadCfapiDll() {
-        if (!isWindows()) return;
+        if (!isWindowsDesktop()) return;
         CfApi.load(); // must not throw
     }
 
     @Test
     public void registerAndUnregisterSyncRoot() throws Exception {
-        if (!isWindows()) return;
+        if (!isWindowsDesktop()) return;
         CfApi.load();
         Path syncRoot = tmp.newFolder("peergos-cfapi-test").toPath();
         try (Arena arena = Arena.ofConfined()) {
@@ -113,7 +115,7 @@ public class CfApiTests {
 
     @Test
     public void mountLifecyclePlaceholdersAppear() throws Exception {
-        if (!isWindows()) return;
+        if (!isWindowsDesktop()) return;
         NetworkAccess network = Builder.buildLocalJavaNetworkAccess(WEB_PORT).join();
         Crypto crypto = Main.initCrypto();
         String user = "cfapi" + UUID.randomUUID().toString().substring(0, 8);
@@ -407,7 +409,7 @@ public class CfApiTests {
      */
     @Test
     public void localAndRemoteEditConflict() throws Exception {
-        if (!isWindows()) return;
+        if (!isWindowsDesktop()) return;
         NetworkAccess network = Builder.buildLocalJavaNetworkAccess(WEB_PORT).join();
         Crypto crypto = Main.initCrypto();
         String user = "cfapi" + UUID.randomUUID().toString().substring(0, 8);
@@ -530,7 +532,7 @@ public class CfApiTests {
      */
     @Test
     public void pullLoopPicksUpRemoteEdit() throws Exception {
-        if (!isWindows()) return;
+        if (!isWindowsDesktop()) return;
         NetworkAccess network = Builder.buildLocalJavaNetworkAccess(WEB_PORT).join();
         Crypto crypto = Main.initCrypto();
         String user = "cfapi" + UUID.randomUUID().toString().substring(0, 8);
