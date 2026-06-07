@@ -406,6 +406,7 @@ public class CfApi {
     public static final int  FILE_SHARE_DELETE           = 0x00000004;
     public static final int  OPEN_EXISTING               = 3;
     public static final int  FILE_FLAG_OPEN_REPARSE_POINT = 0x00200000;
+    public static final int  FILE_FLAG_BACKUP_SEMANTICS   = 0x02000000;
     public static final long INVALID_HANDLE_VALUE        = -1L;
 
     // CF_HYDRATE_FLAGS
@@ -721,6 +722,24 @@ public class CfApi {
                     MemorySegment.NULL,
                     OPEN_EXISTING,
                     FILE_ATTRIBUTE_NORMAL,
+                    MemorySegment.NULL);
+        } catch (Throwable t) { throw new RuntimeException(t); }
+    }
+
+    /**
+     * Open a directory HANDLE suitable for CfConvertToPlaceholder. FILE_FLAG_BACKUP_SEMANTICS
+     * is required for opening a directory via CreateFileW. Shared read/write/delete so we
+     * don't fight Explorer's inline-rename handle on a just-created folder.
+     */
+    public static MemorySegment createDirForConvert(MemorySegment pathW) {
+        try {
+            return (MemorySegment) hCreateFileW.invokeExact(
+                    pathW,
+                    0,                       // dwDesiredAccess
+                    FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                    MemorySegment.NULL,
+                    OPEN_EXISTING,
+                    FILE_FLAG_BACKUP_SEMANTICS,
                     MemorySegment.NULL);
         } catch (Throwable t) { throw new RuntimeException(t); }
     }

@@ -1004,6 +1004,14 @@ public class CloudFilesProvider {
 
             if (Files.isDirectory(localPath)) {
                 createPeergosDirectory(name, peergosPath, peergosParent);
+                // Convert the local dir to a CF placeholder so CF tracks subsequent
+                // rename/delete and fires NOTIFY_RENAME / NOTIFY_DELETE (handled by our
+                // existing callbacks). Without this, renaming a just-mkdir'd folder (the
+                // standard Explorer "New Folder" → type-name flow) leaves both the original
+                // "New folder" and the renamed entry in Peergos, because the local dir
+                // is just an ordinary directory that CF doesn't intercept.
+                if (Files.exists(localPath))
+                    convertToPlaceholder(localPath, peergosPath, CfApi.CF_CONVERT_FLAG_MARK_IN_SYNC);
                 return;
             }
             long localSize = Files.size(localPath);
@@ -1107,7 +1115,7 @@ public class CloudFilesProvider {
         }
     }
 
-    /** Convert a local file into a CF placeholder.
+    /** Convert a local file or directory into a CF placeholder.
      *  Returns the HRESULT from CfConvertToPlaceholder (S_OK on success), or -1 if we
      *  couldn't open a handle / hit an exception. The convert opens the file with
      *  dwDesiredAccess=0 (query only) and closes it before returning. In practice CF
@@ -1116,7 +1124,10 @@ public class CloudFilesProvider {
     private int convertToPlaceholder(Path localPath, String peergosPath, int convertFlags) {
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment pathW = CfApi.wideString(localPath.toString(), arena);
-            MemorySegment handle = CfApi.createFileForConvert(pathW);
+            boolean isDir = Files.isDirectory(localPath);
+            MemorySegment handle = isDir
+                    ? CfApi.createDirForConvert(pathW)
+                    : CfApi.createFileForConvert(pathW);
             if (handle.address() == CfApi.INVALID_HANDLE_VALUE) {
                 System.err.println("[CF] convertToPlaceholder: CreateFile failed for " + localPath);
                 return -1;
