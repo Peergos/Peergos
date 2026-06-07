@@ -148,7 +148,12 @@ public class CloudFilesMount implements Closeable {
         // -- CF_SYNC_POLICIES --
         MemorySegment policies = globalArena.allocate(CfApi.POLICIES_SIZE);
         policies.set(ValueLayout.JAVA_INT,   CfApi.POLICIES_STRUCT_SIZE_OFF,  (int) CfApi.POLICIES_SIZE);
-        policies.set(ValueLayout.JAVA_SHORT, CfApi.POLICIES_HYDRATION_OFF,    CfApi.CF_HYDRATION_POLICY_FULL);
+        // PROGRESSIVE (not FULL) so File Explorer's "Free up space" menu item is enabled
+        // on hydrated, in-sync placeholders: FULL/ALWAYS_FULL pin local content in place
+        // and grey the menu out. CF itself handles the dehydration (zeroes the on-disk
+        // stream, keeps the metadata) — the canonical bytes already live on peergos, so
+        // we don't need a NOTIFY_DEHYDRATE callback to validate the request.
+        policies.set(ValueLayout.JAVA_SHORT, CfApi.POLICIES_HYDRATION_OFF,    CfApi.CF_HYDRATION_POLICY_PROGRESSIVE);
         policies.set(ValueLayout.JAVA_SHORT, CfApi.POLICIES_HYDRATION_OFF + 2, CfApi.CF_POLICY_MODIFIER_NONE);
         policies.set(ValueLayout.JAVA_SHORT, CfApi.POLICIES_POPULATION_OFF,   CfApi.CF_POPULATION_POLICY_PARTIAL);
         policies.set(ValueLayout.JAVA_SHORT, CfApi.POLICIES_POPULATION_OFF + 2, CfApi.CF_POLICY_MODIFIER_NONE);
