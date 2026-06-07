@@ -821,6 +821,13 @@ public class CloudFilesProvider {
             // force).
             discoverNewRemoteChildren();
 
+            // Tier 2c — safety net for local files the WatchService missed. We've seen
+            // ENTRY_CREATE / ENTRY_MODIFY get dropped for files copied into placeholder
+            // dirs (the dir is a reparse point with CF state, and ReadDirectoryChangesW
+            // can behave inconsistently there). Walk the tree and upload any non-placeholder
+            // file with content that isn't in syncState yet.
+            discoverMissedLocalUploads();
+
             // Persist the new snapshot baseline.
             syncState.setSnapshot(syncRootPath, remoteSnap);
         } catch (Exception e) {
@@ -929,6 +936,47 @@ public class CloudFilesProvider {
             });
         } catch (java.io.IOException e) {
             LOG.log(Level.WARNING, "pull: discoverNewRemoteChildren walk failed", e);
+        }
+    }
+
+    /** Walk the local tree and upload any non-placeholder file with content that isn't
+     *  already in {@code syncState}. Compensates for ENTRY_CREATE / ENTRY_MODIFY events
+     *  the WatchService failed to deliver — most often for files copied into a CF
+     *  placeholder dir, where ReadDirectoryChangesW is unreliable. Descends into
+     *  placeholder dirs (unlike {@link #discoverNewRemoteChildren}); same-process
+     *  FETCH_PLACEHOLDERS for unenumerated ones fails fast without a peergos request. */
+    private void discoverMissedLocalUploads() {
+        if (syncState == null) return;
+        Path root = Path.of(syncRootPath);
+        try {
+            Files.walkFileTree(root, new java.nio.file.SimpleFileVisitor<Path>() {
+                @Override
+                public java.nio.file.FileVisitResult visitFile(Path file,
+                        java.nio.file.attribute.BasicFileAttributes attrs) {
+                    try {
+                        if (CfApi.isPlaceholder(file)) return java.nio.file.FileVisitResult.CONTINUE;
+                        if (attrs.size() == 0) return java.nio.file.FileVisitResult.CONTINUE;
+                        String rel = root.relativize(file).toString()
+                                .replace(java.io.File.separatorChar, '/');
+                        if (syncState.byPath(rel) != null) return java.nio.file.FileVisitResult.CONTINUE;
+                        System.err.println("[CF] pull: safety-net uploading missed local file " + rel);
+                        uploadLocalFile(file);
+                    } catch (Exception e) {
+                        LOG.log(Level.FINE, "pull: safety-net upload failed for " + file, e);
+                    }
+                    return java.nio.file.FileVisitResult.CONTINUE;
+                }
+                @Override
+                public java.nio.file.FileVisitResult visitFileFailed(Path file, IOException exc) {
+                    return java.nio.file.FileVisitResult.CONTINUE;
+                }
+                @Override
+                public java.nio.file.FileVisitResult postVisitDirectory(Path dir, IOException exc) {
+                    return java.nio.file.FileVisitResult.CONTINUE;
+                }
+            });
+        } catch (IOException e) {
+            LOG.log(Level.WARNING, "pull: discoverMissedLocalUploads walk failed", e);
         }
     }
 

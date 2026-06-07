@@ -319,7 +319,13 @@ public class CloudFilesMount implements Closeable {
                                     java.nio.file.StandardWatchEventKinds.ENTRY_MODIFY); }
                             catch (Exception ignored) {}
                             pending.put(full, System.currentTimeMillis());
-                        } else if (Files.size(full) > 0) {
+                        } else {
+                            // Always enqueue files — don't gate on size. Copy-Item / Explorer
+                            // copy often goes create-then-write, so ENTRY_CREATE fires with
+                            // size=0 and gating here drops the file if the following MODIFY
+                            // events get coalesced or don't propagate (which we've seen on
+                            // CF placeholder dirs). The debounce timestamp keeps re-bumping
+                            // on each MODIFY, and uploadLocalFile filters 0-byte files itself.
                             pending.put(full, System.currentTimeMillis() + STABLE_MS);
                         }
                     } catch (Exception ignored) {}
@@ -335,6 +341,13 @@ public class CloudFilesMount implements Closeable {
                 // a fresh modify event during the upload should retrigger another upload
                 // once the worker clears inflight. We do NOT remove + drop here.
                 if (inflight.containsKey(p)) continue;
+                // Parents must land in peergos before their children, otherwise the child's
+                // uploadLocalFile finds the parent missing and drops the file. Defer this
+                // entry if any ancestor (up to syncRoot) is still pending or in-flight.
+                if (ancestorPendingOrInflight(p, syncRoot, pending, inflight)) {
+                    e.setValue(now + 250);
+                    continue;
+                }
                 it.remove();
                 inflight.put(p, Boolean.TRUE);
                 try {
@@ -350,6 +363,17 @@ public class CloudFilesMount implements Closeable {
                 }
             }
         }
+    }
+
+    private static boolean ancestorPendingOrInflight(Path p, Path syncRoot,
+                                                     java.util.Map<Path, Long> pending,
+                                                     java.util.Map<Path, Boolean> inflight) {
+        Path parent = p.getParent();
+        while (parent != null && parent.startsWith(syncRoot) && !parent.equals(syncRoot)) {
+            if (pending.containsKey(parent) || inflight.containsKey(parent)) return true;
+            parent = parent.getParent();
+        }
+        return false;
     }
 
     /**
