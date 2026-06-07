@@ -806,6 +806,14 @@ public class CloudFilesProvider {
                 applyRemoteChangeOrConflict(relPath, synced, remote);
             }
 
+            // Tier 2b — discover remote children that appeared in dirs the user has
+            // already enumerated locally. CF sets DISABLE_ON_DEMAND_POPULATION on every
+            // dir we serve via FETCH_PLACEHOLDERS, so it never fires the callback again
+            // for those dirs — without this walk, new remote files in an enumerated dir
+            // would stay invisible until the user manually re-listed (which they can't
+            // force).
+            discoverNewRemoteChildren();
+
             // Persist the new snapshot baseline.
             syncState.setSnapshot(syncRootPath, remoteSnap);
         } catch (Exception e) {
@@ -851,6 +859,93 @@ public class CloudFilesProvider {
                 LOG.log(Level.WARNING, "pull conflict resolution failed for " + relPath, e);
             }
         }
+    }
+
+    /** Walk the local sync-root tree and create placeholders for any remote children
+     *  that have appeared in already-enumerated dirs since the last pass. Dehydrated
+     *  placeholder dirs are skipped because CF will fire FETCH_PLACEHOLDERS for them
+     *  the first time anything lists their contents, which already pulls current
+     *  remote children. */
+    private void discoverNewRemoteChildren() {
+        Path root = Path.of(syncRootPath);
+        try {
+            Files.walkFileTree(root, new java.nio.file.SimpleFileVisitor<Path>() {
+                @Override
+                public java.nio.file.FileVisitResult preVisitDirectory(Path dir,
+                        java.nio.file.attribute.BasicFileAttributes attrs) {
+                    // Dehydrated placeholder dir (CF still has on-demand population) →
+                    // don't descend, don't enumerate. Walking into one would force-fire
+                    // FETCH_PLACEHOLDERS, which is exactly the work we're trying to do
+                    // here, just lazily.
+                    if (!dir.equals(root) && CfApi.isPlaceholder(dir))
+                        return java.nio.file.FileVisitResult.SKIP_SUBTREE;
+                    try { pullNewChildrenInto(dir); }
+                    catch (Exception e) {
+                        LOG.log(Level.FINE, "pull: failed to discover new children in " + dir, e);
+                    }
+                    return java.nio.file.FileVisitResult.CONTINUE;
+                }
+            });
+        } catch (java.io.IOException e) {
+            LOG.log(Level.WARNING, "pull: discoverNewRemoteChildren walk failed", e);
+        }
+    }
+
+    /** For one already-enumerated local dir, list the corresponding remote dir and
+     *  CfCreatePlaceholders the children that aren't on disk yet. No-op for the sync
+     *  root itself (it only ever contains the $username folder, seeded at mount). */
+    private void pullNewChildrenInto(Path localDir) {
+        if (localDir.equals(Path.of(syncRootPath))) return;
+        String peergosDir = localDirToPeergos(localDir);
+        if (peergosDir == null) return;
+        Optional<FileWrapper> dirOpt = context.getByPath(peergosDir).join();
+        if (dirOpt.isEmpty() || !dirOpt.get().isDirectory()) return;
+
+        java.util.Set<FileWrapper> remoteChildren =
+                dirOpt.get().getChildren(context.crypto.hasher, context.network).join();
+        List<FileWrapper> newChildren = remoteChildren.stream()
+                .filter(f -> !f.getFileProperties().isHidden)
+                .filter(f -> !Files.exists(localDir.resolve(f.getName())))
+                .toList();
+        if (newChildren.isEmpty()) return;
+
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment baseDirW = CfApi.wideString(localDir.toString(), arena);
+            MemorySegment array    = buildPlaceholderArray(newChildren, peergosDir, arena);
+            MemorySegment processed = arena.allocate(ValueLayout.JAVA_INT);
+            int hr = CfApi.cfCreatePlaceholders(baseDirW, array, newChildren.size(),
+                    CfApi.CF_CREATE_FLAG_NONE, processed);
+            int entriesProcessed = processed.get(ValueLayout.JAVA_INT, 0);
+            System.err.println("[CF] pull: CfCreatePlaceholders dir=" + localDir
+                    + " new=" + newChildren.size() + " entriesProcessed=" + entriesProcessed
+                    + " hr=0x" + Integer.toHexString(hr));
+        }
+
+        // Record a "last synced version" for each new file placeholder so subsequent
+        // pull ticks (Tier 2 hash diff) and close-completion conflict detection have a
+        // baseline. Skip directories — they're recorded when files inside them are.
+        String dirRelPath = peergosPathToRelPath(peergosDir);
+        if (dirRelPath == null) return;
+        for (FileWrapper fw : newChildren) {
+            if (fw.isDirectory()) continue;
+            String relPath = dirRelPath.isEmpty()
+                    ? fw.getName()
+                    : dirRelPath + "/" + fw.getName();
+            recordSyncedVersion(relPath, fw);
+        }
+    }
+
+    /** Convert a local directory under the sync root into its peergos path. Returns
+     *  null for the sync root itself (no peergos equivalent — there's no "/" dir to
+     *  enumerate; the synthetic root just exposes /$username). */
+    private String localDirToPeergos(Path localDir) {
+        Path root = Path.of(syncRootPath);
+        if (localDir.equals(root)) return null;
+        try {
+            String rel = root.relativize(localDir).toString()
+                    .replace(java.io.File.separatorChar, '/');
+            return "/" + rel;
+        } catch (Exception e) { return null; }
     }
 
     private void downloadRemoteToLocal(FileWrapper remote, Path localPath) throws IOException {
