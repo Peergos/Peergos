@@ -790,13 +790,20 @@ public class CloudFilesProvider {
             if (remoteSnap.equals(syncedSnap)) return;          // nothing moved
 
             // Tier 2 — path-level shortlist.
-            java.util.Set<String> allPaths = syncState.allFilePaths();
+            // Snapshot the set so applyRemoteDelete can mutate syncState while we iterate.
+            java.util.Set<String> allPaths = new java.util.HashSet<>(syncState.allFilePaths());
             for (String relPath : allPaths) {
                 FileState synced = syncState.byPath(relPath);
                 if (synced == null) continue;
                 String peergosPath = "/" + relPath;
                 Optional<FileWrapper> remoteOpt = context.getByPath(peergosPath).join();
-                if (remoteOpt.isEmpty() || remoteOpt.get().isDirectory()) continue;
+                if (remoteOpt.isEmpty()) {
+                    // Remote deleted (or moved). Propagate to local — see helper for
+                    // divergent-local handling.
+                    applyRemoteDelete(relPath, synced);
+                    continue;
+                }
+                if (remoteOpt.get().isDirectory()) continue;
                 FileWrapper remote = remoteOpt.get();
                 peergos.shared.user.fs.RootHash remoteHash = remote.getFileProperties()
                         .treeHash.map(b -> b.rootHash).orElse(null);
@@ -818,6 +825,40 @@ public class CloudFilesProvider {
             syncState.setSnapshot(syncRootPath, remoteSnap);
         } catch (Exception e) {
             LOG.log(Level.WARNING, "pull tick failed", e);
+        }
+    }
+
+    /** Remote file at {@code relPath} no longer exists. Mirror the delete locally unless
+     *  the local copy has diverged from the last synced version — in that case keep the
+     *  local bytes (the user's unsynced edits) and just stop tracking the path; the watcher
+     *  will treat any subsequent edit as a new local file and re-upload it. */
+    private void applyRemoteDelete(String relPath, FileState synced) {
+        Path localPath = Path.of(syncRootPath).resolve(relPath.replace('/', java.io.File.separatorChar));
+        try {
+            if (!Files.exists(localPath)) {
+                // Already gone locally — just drop the stale entry.
+                syncState.remove(relPath);
+                identityToPath.values().removeIf(p -> p.equals("/" + relPath));
+                return;
+            }
+            long localMtime = Files.getLastModifiedTime(localPath).toMillis() / 1000 * 1000;
+            long localSize  = Files.size(localPath);
+            if (localMtime != synced.modificationTime || localSize != synced.size) {
+                // Local has unsynced edits — don't destroy them. Stop tracking so the next
+                // pull tick doesn't keep re-firing; the watcher's MODIFY/CLOSE on a future
+                // edit will re-upload it as a new entry.
+                System.err.println("[CF] PULL: remote " + relPath + " deleted but local diverged"
+                        + " (mtime/size mismatch) — keeping local, removing from sync state");
+                syncState.remove(relPath);
+                identityToPath.values().removeIf(p -> p.equals("/" + relPath));
+                return;
+            }
+            Files.delete(localPath);
+            syncState.remove(relPath);
+            identityToPath.values().removeIf(p -> p.equals("/" + relPath));
+            System.err.println("[CF] PULL: removed local " + relPath + " (deleted on remote)");
+        } catch (Exception e) {
+            LOG.log(Level.WARNING, "pull: local delete failed for " + relPath, e);
         }
     }
 
