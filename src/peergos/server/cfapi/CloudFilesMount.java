@@ -353,28 +353,39 @@ public class CloudFilesMount implements Closeable {
     }
 
     /**
-     * Register {@code root} and every existing non-placeholder subdirectory with the
-     * WatchService.
+     * Register {@code root} and every existing subdirectory (including placeholder
+     * dirs) with the WatchService, so files created in any pre-existing folder fire
+     * ENTRY_CREATE on the parent.
      *
-     * Placeholder directories (any of FILE_ATTRIBUTE_OFFLINE / RECALL_ON_DATA_ACCESS /
-     * RECALL_ON_OPEN set) are still registered so we'll catch later edits to their
-     * direct children, but we SKIP_SUBTREE on them to avoid forcing NTFS to enumerate
-     * their contents — that enumeration would trigger one FETCH_PLACEHOLDERS callback
-     * per dir, and one Peergos directory listing per callback. The check uses
-     * GetFileAttributesW which doesn't trigger hydration.
+     * Walking into placeholder dirs is cheap: onFetchPlaceholders fails same-process
+     * callbacks without making any Peergos request, so enumerating an unpopulated
+     * placeholder dir just returns empty — no hydration, no remote listing, and the
+     * dir's "populated" state is unchanged (we don't send DISABLE_ON_DEMAND_POPULATION
+     * on a failure). Previously-populated dirs enumerate their on-disk children with
+     * no callback at all.
      */
     private static void registerRecursive(java.nio.file.WatchService ws, Path root) {
         try {
             Files.walkFileTree(root, new java.nio.file.SimpleFileVisitor<Path>() {
                 @Override
                 public java.nio.file.FileVisitResult preVisitDirectory(Path dir,
-                        java.nio.file.attribute.BasicFileAttributes attrs) throws IOException {
-                    dir.register(ws,
-                            java.nio.file.StandardWatchEventKinds.ENTRY_CREATE,
-                            java.nio.file.StandardWatchEventKinds.ENTRY_MODIFY);
-                    return CfApi.isPlaceholder(dir)
-                            ? java.nio.file.FileVisitResult.SKIP_SUBTREE
-                            : java.nio.file.FileVisitResult.CONTINUE;
+                        java.nio.file.attribute.BasicFileAttributes attrs) {
+                    try {
+                        dir.register(ws,
+                                java.nio.file.StandardWatchEventKinds.ENTRY_CREATE,
+                                java.nio.file.StandardWatchEventKinds.ENTRY_MODIFY);
+                    } catch (IOException e) {
+                        LOG.log(Level.WARNING, "watcher: failed to register " + dir, e);
+                    }
+                    return java.nio.file.FileVisitResult.CONTINUE;
+                }
+                @Override
+                public java.nio.file.FileVisitResult visitFileFailed(Path file, IOException exc) {
+                    return java.nio.file.FileVisitResult.CONTINUE;
+                }
+                @Override
+                public java.nio.file.FileVisitResult postVisitDirectory(Path dir, IOException exc) {
+                    return java.nio.file.FileVisitResult.CONTINUE;
                 }
             });
         } catch (IOException e) {
