@@ -1033,15 +1033,23 @@ public class CloudFilesProvider {
             System.err.println("[CF] uploadLocalFile: uploading " + localSize
                     + " bytes to " + peergosPath);
 
-            // Convert the file to a CF placeholder BEFORE uploading, deliberately WITHOUT
-            // CF_CONVERT_FLAG_MARK_IN_SYNC so File Explorer shows the "not in sync" cloud
-            // overlay while the bytes are going up. We flip it to IN_SYNC below once the
-            // upload completes. Converting first also means FETCH_DATA / NOTIFY_RENAME /
-            // NOTIFY_DELETE will route correctly even if something touches the file mid-
-            // upload. If the pre-upload convert fails (e.g. another process still holds
-            // the file open, or it's already a placeholder being re-uploaded), we fall
-            // back to the original post-upload convert-with-MARK_IN_SYNC path.
-            int preConvertHr = convertToPlaceholder(localPath, peergosPath, CfApi.CF_CONVERT_FLAG_NONE);
+            // Convert the file to a CF placeholder BEFORE uploading. We use
+            // CF_CONVERT_FLAG_MARK_IN_SYNC (matches the original post-upload behaviour
+            // that's known to render the green check), then toggle the in-sync bit via
+            // CfSetInSyncState to surface "syncing" during the upload. Converting first
+            // also means FETCH_DATA / NOTIFY_RENAME / NOTIFY_DELETE route correctly if
+            // anything touches the file mid-upload. Empirically, converting WITHOUT
+            // MARK_IN_SYNC leaves hydrated placeholders with no overlay at all in
+            // Explorer (no active transfer to drive the syncing icon), so we drive it
+            // explicitly with setInSyncState.
+            int preConvertHr = convertToPlaceholder(localPath, peergosPath, CfApi.CF_CONVERT_FLAG_MARK_IN_SYNC);
+            boolean isPlaceholder = (preConvertHr == CfApi.S_OK);
+            if (isPlaceholder) {
+                // Best-effort: flip to NOT_IN_SYNC for the upload window. If this call
+                // fails, the file just stays IN_SYNC (no syncing overlay, but still has
+                // the green check) — strictly better than landing in an invisible state.
+                setInSyncState(localPath, CfApi.CF_IN_SYNC_STATE_NOT_IN_SYNC);
+            }
 
             FileWrapper uploaded;
             HashTree localHash = hashLocalFile(localPath, localSize);
@@ -1064,14 +1072,13 @@ public class CloudFilesProvider {
             context.getByPath(peergosPath).join().ifPresent(
                     fw -> recordSyncedVersion(localPath, fw));
 
-            if (preConvertHr == CfApi.S_OK) {
-                // Pre-upload convert succeeded → file is already a placeholder in the
-                // NOT_IN_SYNC state. Flip it to IN_SYNC so the overlay turns into the
-                // green check.
+            if (isPlaceholder) {
+                // Pre-convert succeeded → re-mark IN_SYNC so the green check is restored.
                 setInSyncState(localPath, CfApi.CF_IN_SYNC_STATE_IN_SYNC);
             } else {
-                // Fallback: pre-convert failed, so do the original convert-with-mark to
-                // ensure the file ends up as an in-sync placeholder.
+                // Pre-convert failed (file held open elsewhere, already a placeholder,
+                // etc). Fall back to the original post-upload convert-with-mark so the
+                // file still ends up as an in-sync placeholder.
                 convertToPlaceholder(localPath, uploaded, peergosPath);
             }
         } catch (Exception e) {
