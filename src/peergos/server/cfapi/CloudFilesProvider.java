@@ -642,11 +642,17 @@ public class CloudFilesProvider {
     /** Push local content to Peergos via overwriteChangedChunks (existing) or uploadFileWithHash (new).
      *  Always sets the file's treeHash explicitly afterwards — mirrors PeergosSyncFS.setBytes /
      *  PeergosSyncFS.setHashes. This guarantees every conflict check after this upload has a
-     *  populated treeHash to compare against. */
+     *  populated treeHash to compare against.
+     *
+     *  Surfaces upload progress in File Explorer by marking the placeholder NOT_IN_SYNC
+     *  before the upload and flipping it to IN_SYNC after success. CF only fires
+     *  FILE_CLOSE_COMPLETION for files it manages, so the local file is always already a
+     *  placeholder here. */
     private void pushLocalToPeergos(Path localPath, long localSize, String name,
                                     String peergosPath, String peergosParent,
                                     Optional<FileWrapper> existingOpt,
                                     Optional<FileWrapper> parentOpt) throws Exception {
+        setInSyncState(localPath, CfApi.CF_IN_SYNC_STATE_NOT_IN_SYNC);
         HashTree localHash = hashLocalFile(localPath, localSize);
         try (peergos.server.simulation.FileAsyncReader reader =
                      new peergos.server.simulation.FileAsyncReader(localPath.toFile())) {
@@ -665,6 +671,7 @@ public class CloudFilesProvider {
             context.getByPath(peergosPath).join().ifPresent(
                     fw -> recordSyncedVersion(localPath, fw));
         }
+        setInSyncState(localPath, CfApi.CF_IN_SYNC_STATE_IN_SYNC);
     }
 
     /** Apply a precomputed HashTree to an already-uploaded file via PropsUpdate.
@@ -723,10 +730,19 @@ public class CloudFilesProvider {
             }
         }
         if (relPath != null) recordSyncedVersion(relPath, remote);
+        // Files.newOutputStream re-created localPath as a regular file, so the original
+        // placeholder state was destroyed. Convert it back to an in-sync placeholder
+        // since its content now matches the canonical remote — without this it would
+        // show no cloud overlay at all in File Explorer.
+        convertToPlaceholder(localPath, peergosPath, CfApi.CF_CONVERT_FLAG_MARK_IN_SYNC);
 
-        // 3) Upload the renamed local file as a new Peergos entry under the conflict name.
+        // 4) Upload the renamed local file as a new Peergos entry under the conflict name.
         // We already have the localHash computed by the caller — pass it through so the
         // resulting Peergos file has its treeHash populated immediately.
+        // The rename in step 1 carried the original placeholder state across, so
+        // renamedLocal is itself a placeholder we can flip NOT_IN_SYNC → IN_SYNC around
+        // the upload to surface progress in File Explorer.
+        setInSyncState(renamedLocal, CfApi.CF_IN_SYNC_STATE_NOT_IN_SYNC);
         try (peergos.server.simulation.FileAsyncReader reader =
                      new peergos.server.simulation.FileAsyncReader(renamedLocal.toFile())) {
             String conflictName = renamedLocal.getFileName().toString();
@@ -735,6 +751,7 @@ public class CloudFilesProvider {
                     Optional.empty(), Optional.empty(),
                     context.network, context.crypto, l -> {}).join();
         }
+        setInSyncState(renamedLocal, CfApi.CF_IN_SYNC_STATE_IN_SYNC);
         String conflictPeergosPath = peergosParent + "/" + renamedLocal.getFileName();
         context.getByPath(conflictPeergosPath).join().ifPresent(
                 fw -> recordSyncedVersion(renamedLocal, fw));
@@ -920,6 +937,17 @@ public class CloudFilesProvider {
 
             System.err.println("[CF] uploadLocalFile: uploading " + localSize
                     + " bytes to " + peergosPath);
+
+            // Convert the file to a CF placeholder BEFORE uploading, deliberately WITHOUT
+            // CF_CONVERT_FLAG_MARK_IN_SYNC so File Explorer shows the "not in sync" cloud
+            // overlay while the bytes are going up. We flip it to IN_SYNC below once the
+            // upload completes. Converting first also means FETCH_DATA / NOTIFY_RENAME /
+            // NOTIFY_DELETE will route correctly even if something touches the file mid-
+            // upload. If the pre-upload convert fails (e.g. another process still holds
+            // the file open, or it's already a placeholder being re-uploaded), we fall
+            // back to the original post-upload convert-with-MARK_IN_SYNC path.
+            int preConvertHr = convertToPlaceholder(localPath, peergosPath, CfApi.CF_CONVERT_FLAG_NONE);
+
             FileWrapper uploaded;
             HashTree localHash = hashLocalFile(localPath, localSize);
             try (peergos.server.simulation.FileAsyncReader reader =
@@ -941,9 +969,16 @@ public class CloudFilesProvider {
             context.getByPath(peergosPath).join().ifPresent(
                     fw -> recordSyncedVersion(localPath, fw));
 
-            // Convert the local file to a CF placeholder so subsequent reads go through
-            // FETCH_DATA and CF fires NOTIFY_RENAME / NOTIFY_DELETE for managed files.
-            convertToPlaceholder(localPath, uploaded, peergosPath);
+            if (preConvertHr == CfApi.S_OK) {
+                // Pre-upload convert succeeded → file is already a placeholder in the
+                // NOT_IN_SYNC state. Flip it to IN_SYNC so the overlay turns into the
+                // green check.
+                setInSyncState(localPath, CfApi.CF_IN_SYNC_STATE_IN_SYNC);
+            } else {
+                // Fallback: pre-convert failed, so do the original convert-with-mark to
+                // ensure the file ends up as an in-sync placeholder.
+                convertToPlaceholder(localPath, uploaded, peergosPath);
+            }
         } catch (Exception e) {
             LOG.log(Level.WARNING, "uploadLocalFile failed for " + localPath, e);
         }
@@ -970,19 +1005,19 @@ public class CloudFilesProvider {
         }
     }
 
-    private void convertToPlaceholder(Path localPath, FileWrapper uploaded, String peergosPath) {
-        // The convert opens the file with dwDesiredAccess=0 (query only) and closes it
-        // before returning. In practice CF does NOT fire FILE_CLOSE_COMPLETION for that
-        // handle (probably because no FILE_*_DATA access was requested), so no pre-mark is
-        // needed in recentlyUploaded. If a close-completion ever does fire, the
-        // size + mtime check in onFileCloseCompletion will skip it (post-upload Peergos
-        // mtime is later than the user's local-write mtime).
+    /** Convert a local file into a CF placeholder.
+     *  Returns the HRESULT from CfConvertToPlaceholder (S_OK on success), or -1 if we
+     *  couldn't open a handle / hit an exception. The convert opens the file with
+     *  dwDesiredAccess=0 (query only) and closes it before returning. In practice CF
+     *  does NOT fire FILE_CLOSE_COMPLETION for that handle (no FILE_*_DATA access was
+     *  requested), so no pre-mark in recentlyUploaded is needed. */
+    private int convertToPlaceholder(Path localPath, String peergosPath, int convertFlags) {
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment pathW = CfApi.wideString(localPath.toString(), arena);
             MemorySegment handle = CfApi.createFileForConvert(pathW);
             if (handle.address() == CfApi.INVALID_HANDLE_VALUE) {
                 System.err.println("[CF] convertToPlaceholder: CreateFile failed for " + localPath);
-                return;
+                return -1;
             }
             try {
                 // Identity must match the scheme used in buildPlaceholderArray (8-byte hash
@@ -992,15 +1027,48 @@ public class CloudFilesProvider {
                 identityToPath.put(key, peergosPath);
                 MemorySegment idSeg = arena.allocate(8);
                 idSeg.set(ValueLayout.JAVA_LONG, 0, key);
-                int hr = CfApi.cfConvertToPlaceholder(handle, idSeg, 8,
-                        CfApi.CF_CONVERT_FLAG_MARK_IN_SYNC);
+                int hr = CfApi.cfConvertToPlaceholder(handle, idSeg, 8, convertFlags);
                 System.err.println("[CF] convertToPlaceholder hr=0x"
-                        + Integer.toHexString(hr) + " path=" + localPath);
+                        + Integer.toHexString(hr) + " flags=0x" + Integer.toHexString(convertFlags)
+                        + " path=" + localPath);
+                return hr;
             } finally {
                 CfApi.closeHandle(handle);
             }
         } catch (Exception e) {
             LOG.log(Level.WARNING, "convertToPlaceholder failed for " + localPath, e);
+            return -1;
+        }
+    }
+
+    /** Backwards-compatible signature — convert + mark-in-sync in one call. Used as the
+     *  fallback path when pre-upload conversion failed. */
+    private void convertToPlaceholder(Path localPath, FileWrapper uploaded, String peergosPath) {
+        convertToPlaceholder(localPath, peergosPath, CfApi.CF_CONVERT_FLAG_MARK_IN_SYNC);
+    }
+
+    /** Set an existing placeholder's in-sync state. {@code inSyncState} must be one of
+     *  {@link CfApi#CF_IN_SYNC_STATE_IN_SYNC} or {@link CfApi#CF_IN_SYNC_STATE_NOT_IN_SYNC}.
+     *  Drives the File Explorer overlay: IN_SYNC = green check, NOT_IN_SYNC = "syncing"
+     *  cloud icon. CfSetInSyncState requires WRITE_DAC on the handle, which
+     *  createFileForHydration provides without triggering hydration. */
+    private void setInSyncState(Path localPath, int inSyncState) {
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment pathW = CfApi.wideString(localPath.toString(), arena);
+            MemorySegment handle = CfApi.createFileForHydration(pathW);
+            if (handle.address() == CfApi.INVALID_HANDLE_VALUE) {
+                System.err.println("[CF] setInSyncState: CreateFile failed for " + localPath);
+                return;
+            }
+            try {
+                int hr = CfApi.cfSetInSyncState(handle, inSyncState, CfApi.CF_SET_IN_SYNC_FLAG_NONE);
+                System.err.println("[CF] setInSyncState=" + inSyncState + " hr=0x"
+                        + Integer.toHexString(hr) + " path=" + localPath);
+            } finally {
+                CfApi.closeHandle(handle);
+            }
+        } catch (Exception e) {
+            LOG.log(Level.WARNING, "setInSyncState failed for " + localPath, e);
         }
     }
 

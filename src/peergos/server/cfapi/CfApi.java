@@ -379,6 +379,7 @@ public class CfApi {
     private static MethodHandle hCfDisconnectSyncRoot;
     private static MethodHandle hCfCreatePlaceholders;
     private static MethodHandle hCfConvertToPlaceholder;
+    private static MethodHandle hCfSetInSyncState;
     private static MethodHandle hCfExecute;
     private static MethodHandle hCfReportProviderProgress;
     private static MethodHandle hCfHydratePlaceholder;
@@ -479,6 +480,13 @@ public class CfApi {
                 FunctionDescriptor.of(ValueLayout.JAVA_INT,
                         ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_INT,
                         ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
+
+        // HRESULT CfSetInSyncState(HANDLE, CF_IN_SYNC_STATE, CF_SET_IN_SYNC_FLAGS, USN*)
+        hCfSetInSyncState = linker.downcallHandle(
+                cfapi.find("CfSetInSyncState").orElseThrow(),
+                FunctionDescriptor.of(ValueLayout.JAVA_INT,
+                        ValueLayout.ADDRESS, ValueLayout.JAVA_INT, ValueLayout.JAVA_INT,
+                        ValueLayout.ADDRESS));
 
         // LPVOID VirtualAlloc(LPVOID lpAddress, SIZE_T dwSize, DWORD flAllocationType, DWORD flProtect)
         SymbolLookup kernel32 = SymbolLookup.libraryLookup(
@@ -675,12 +683,26 @@ public class CfApi {
     public static final int CF_CONVERT_FLAG_NONE         = 0x00000000;
     public static final int CF_CONVERT_FLAG_MARK_IN_SYNC = 0x00000001;
 
+    // CF_IN_SYNC_STATE (per MSDN): controls whether a placeholder's local content is
+    // considered up-to-date with the cloud. Drives the File Explorer overlay: IN_SYNC
+    // = green check, NOT_IN_SYNC = "syncing" cloud icon.
+    public static final int CF_IN_SYNC_STATE_NOT_IN_SYNC = 0;
+    public static final int CF_IN_SYNC_STATE_IN_SYNC     = 1;
+    public static final int CF_SET_IN_SYNC_FLAG_NONE     = 0;
+
     public static int cfConvertToPlaceholder(MemorySegment fileHandle, MemorySegment fileIdentity,
                                              int fileIdentityLength, int flags) {
         try {
             return (int) hCfConvertToPlaceholder.invokeExact(
                     fileHandle, fileIdentity, fileIdentityLength, flags,
                     MemorySegment.NULL, MemorySegment.NULL);
+        } catch (Throwable t) { throw new RuntimeException(t); }
+    }
+
+    public static int cfSetInSyncState(MemorySegment fileHandle, int inSyncState, int flags) {
+        try {
+            return (int) hCfSetInSyncState.invokeExact(
+                    fileHandle, inSyncState, flags, MemorySegment.NULL);
         } catch (Throwable t) { throw new RuntimeException(t); }
     }
 
