@@ -1012,6 +1012,13 @@ public class CloudFilesProvider {
                 // is just an ordinary directory that CF doesn't intercept.
                 if (Files.exists(localPath))
                     convertToPlaceholder(localPath, peergosPath, CfApi.CF_CONVERT_FLAG_MARK_IN_SYNC);
+                // Race-window guard: the local dir wasn't a CF placeholder during the
+                // peergos mkdir above, so a rename/delete that arrived mid-upload slipped
+                // past CF (no NOTIFY_RENAME / NOTIFY_DELETE). If the local vanished, the
+                // peergos dir we just created is orphaned — roll it back. The watcher's
+                // CREATE event for any renamed target will reupload under the new name.
+                if (!Files.exists(localPath))
+                    rollbackEmptyPeergosDir(peergosPath);
                 return;
             }
             long localSize = Files.size(localPath);
@@ -1112,6 +1119,32 @@ public class CloudFilesProvider {
             System.err.println("[CF] mkdir: created " + peergosPath);
         } catch (Exception e) {
             LOG.log(Level.WARNING, "mkdir failed for " + peergosPath, e);
+        }
+    }
+
+    /** Undo a {@link #createPeergosDirectory} when the local dir disappeared before we could
+     *  convert it to a placeholder (rename/delete during the mkdir network call). Only
+     *  removes empty dirs: if a concurrent upload landed a child here we'd rather leave a
+     *  stranded entry visible than silently lose data. */
+    private void rollbackEmptyPeergosDir(String peergosPath) {
+        try {
+            Optional<FileWrapper> fwOpt = context.getByPath(peergosPath).join();
+            if (fwOpt.isEmpty()) return;
+            Set<FileWrapper> children = fwOpt.get()
+                    .getChildren(context.crypto.hasher, context.network).join();
+            if (!children.isEmpty()) {
+                System.err.println("[CF] rollback skipped for " + peergosPath
+                        + " — has " + children.size() + " children");
+                return;
+            }
+            String parent = peergosPath.substring(0, peergosPath.lastIndexOf('/'));
+            Optional<FileWrapper> parentOpt = context.getByPath(parent).join();
+            if (parentOpt.isEmpty()) return;
+            fwOpt.get().remove(parentOpt.get(), PathUtil.get(peergosPath), context).join();
+            System.err.println("[CF] rollback: removed orphaned " + peergosPath
+                    + " (local vanished during mkdir)");
+        } catch (Exception e) {
+            LOG.log(Level.WARNING, "rollback failed for " + peergosPath, e);
         }
     }
 
