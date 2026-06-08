@@ -324,11 +324,19 @@ public class CloudFilesMount implements Closeable {
             try { key = ws.poll(200, java.util.concurrent.TimeUnit.MILLISECONDS); }
             catch (InterruptedException e) { Thread.currentThread().interrupt(); return; }
             if (key != null) {
-                Path dir = (Path) key.watchable();
+                // key.watchable() returns the Path that was used at register time. Windows'
+                // ReadDirectoryChangesW follows the inode across renames so the watch keeps
+                // firing, but the WatchKey's watchable Path object is frozen — for a dir we
+                // registered as "foo" that the user has since renamed to "bar", events still
+                // arrive with dir=foo, which resolve() turns into a non-existent path.
+                // currentDirPath looks up rename(s) recorded by onRenameCompletionPlaceholder.
+                Path watchableDir = (Path) key.watchable();
+                Path dir = provider.currentDirPath(watchableDir);
                 for (java.nio.file.WatchEvent<?> ev : key.pollEvents()) {
                     Object ctx = ev.context();
                     System.err.println("[CF] watcher: event " + ev.kind().name()
-                            + " ctx=" + ctx + " dir=" + dir);
+                            + " ctx=" + ctx + " dir=" + dir
+                            + (watchableDir.equals(dir) ? "" : " (was " + watchableDir + ")"));
                     if (!(ctx instanceof Path)) continue;
                     Path full = dir.resolve((Path) ctx);
                     try {
@@ -341,7 +349,15 @@ public class CloudFilesMount implements Closeable {
                                     java.nio.file.StandardWatchEventKinds.ENTRY_CREATE,
                                     java.nio.file.StandardWatchEventKinds.ENTRY_MODIFY); }
                             catch (Exception ignored) {}
-                            pending.put(full, System.currentTimeMillis());
+                            // Debounce dir uploads identically to files: if CF NOTIFY_RENAME
+                            // is in flight on this dir (the standard Explorer "New > Folder
+                            // → type name" produces a CREATE for the new name racing the CF
+                            // rename callback), uploadLocalFile would otherwise create the
+                            // renamed dir in peergos before the rename API call could land,
+                            // causing "child already exists" and leaving both names in peergos.
+                            // The debounce gives NOTIFY_RENAME_COMPLETION time to finish so
+                            // uploadLocalFile's getByPath sees the renamed entry and is a no-op.
+                            pending.put(full, System.currentTimeMillis() + STABLE_MS);
                         } else {
                             // Always enqueue files — don't gate on size. Copy-Item / Explorer
                             // copy often goes create-then-write, so ENTRY_CREATE fires with

@@ -62,6 +62,34 @@ public class CloudFilesProvider {
     private final java.util.Map<String, Boolean> recentlyUploaded =
             java.util.Collections.synchronizedMap(new peergos.shared.util.LRUCache<>(1024));
 
+    /**
+     * Tracks local directory renames so the watcher can resolve
+     * {@code WatchKey.watchable()} (which is frozen at registration time) to the dir's
+     * current on-disk path. Without this, when the user renames a dir we registered, the
+     * WatchService keeps firing events on the same kernel handle but with the dir's old
+     * path — dir.resolve(ctx) then produces a non-existent path and the event is dropped.
+     * {@link #recordDirRename} is called from onRenameCompletionPlaceholder; the watcher
+     * loop consults {@link #currentDirPath} on every event.
+     */
+    private final java.util.Map<Path, Path> originalToCurrentDir =
+            new java.util.concurrent.ConcurrentHashMap<>();
+    private final java.util.Map<Path, Path> currentToOriginalDir =
+            new java.util.concurrent.ConcurrentHashMap<>();
+
+    /** Returns the dir's current local path. If never renamed, returns the input. */
+    public Path currentDirPath(Path original) {
+        return originalToCurrentDir.getOrDefault(original, original);
+    }
+
+    /** Record that the dir whose current local path was {@code src} is now at {@code tgt}.
+     *  Handles chained renames (A→B→C) by tracking back to the original registration. */
+    private void recordDirRename(Path src, Path tgt) {
+        Path original = currentToOriginalDir.remove(src);
+        if (original == null) original = src;   // first rename: registration path was src
+        currentToOriginalDir.put(tgt, original);
+        originalToCurrentDir.put(original, tgt);
+    }
+
     public CloudFilesProvider(UserContext context,
                               String syncRootPath,
                               SyncState syncState) {
@@ -1405,6 +1433,18 @@ public class CloudFilesProvider {
                 System.err.println("[CF] NOTIFY_RENAME_COMPLETION: source not found in peergos: "
                         + peergosSource);
                 return;
+            }
+            // Record the local dir rename so the watcher can keep resolving events on the
+            // (still-valid) WatchKey to the dir's NEW on-disk path. The peergos rename
+            // below can fail (read-only, parent missing, etc.) but the local rename has
+            // already happened by the time CF fires this callback — we still need the
+            // path-resolution fix to work in either case.
+            if (fwOpt.get().isDirectory()) {
+                Path oldLocal = Path.of(syncRootPath).resolve(peergosSource.substring(1)
+                        .replace('/', java.io.File.separatorChar));
+                Path newLocal = Path.of(syncRootPath).resolve(peergosTarget.substring(1)
+                        .replace('/', java.io.File.separatorChar));
+                recordDirRename(oldLocal, newLocal);
             }
             String sourceParent = peergosSource.substring(0, peergosSource.lastIndexOf('/'));
             String targetParent = peergosTarget.substring(0, peergosTarget.lastIndexOf('/'));

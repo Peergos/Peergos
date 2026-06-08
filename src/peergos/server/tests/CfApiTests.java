@@ -353,6 +353,107 @@ public class CfApiTests {
                     d.isPresent() && d.get().isDirectory());
         }
 
+        // Step 4b — copy a NEW file into the just-mkdir'd subdir. Exercises the
+        // "local mkdir + drop a file inside" flow: the watcher must register the
+        // new subdir for events as soon as it sees the CREATE for it on $user/'s
+        // watch, and then the child file's CREATE must fire on subdir's watch and
+        // reach uploadLocalFile after subdir's own upload+convertToPlaceholder has
+        // landed in peergos (so the file's parent lookup succeeds).
+        String inSubdirName = prefix + "-insub.bin";
+        {
+            byte[] insub = new byte[256 * 1024];
+            for (int i = 0; i < insub.length; i++)
+                insub[i] = (byte) (i * 13 + 5);
+            Path stagedInSub = tmp.newFile(prefix + "-insub-source.bin").toPath();
+            Files.write(stagedInSub, insub);
+            String destPath = userRoot.resolve(subdirName).resolve(inSubdirName).toString()
+                    .replace("'", "''");
+            String srcPath  = stagedInSub.toString().replace("'", "''");
+            System.err.println("[TEST] " + prefix + ": Copy-Item into new subdir "
+                    + srcPath + " -> " + destPath);
+            int exit = runPs("Copy-Item -LiteralPath '" + srcPath + "' -Destination '"
+                    + destPath + "' -ErrorAction Stop");
+            assertEquals("Copy-Item into subdir failed", 0, exit);
+
+            String peergosPath = "/" + context.username + "/" + subdirName + "/" + inSubdirName;
+            FileWrapper landed = null;
+            long deadline = System.currentTimeMillis() + 60_000;
+            while (System.currentTimeMillis() < deadline) {
+                Optional<FileWrapper> opt = context.getByPath(peergosPath).join();
+                if (opt.isPresent() && opt.get().getSize() == insub.length) {
+                    landed = opt.get();
+                    break;
+                }
+                Thread.sleep(500);
+            }
+            assertNotNull(inSubdirName + " never appeared in Peergos under " + subdirName,
+                    landed);
+            byte[] roundTripped = Serialize.readFully(landed, crypto, network).join();
+            assertArrayEquals(inSubdirName + " content mismatch after round trip",
+                    insub, roundTripped);
+        }
+
+        // Step 4c — mimic Explorer's "New > Folder → type name" flow: mkdir a
+        // throwaway folder, rename it to the intended name, then drop a file in.
+        // The watcher registers the throwaway folder's WatchKey on its CREATE
+        // event; on Windows the rename leaves WatchKey.watchable() pointing at
+        // the old (now non-existent) path, so the file's CREATE event resolves
+        // to a path that fails Files.exists and the event is silently dropped.
+        String renamedSubName  = prefix + "-renamedsub";
+        String renamedInSubName = prefix + "-renamed-insub.bin";
+        {
+            String tmpName = prefix + "-tmpsub";
+            String tmpLocal = userRoot.resolve(tmpName).toString().replace("'", "''");
+            int mk = runPs("New-Item -ItemType Directory -Path '" + tmpLocal
+                    + "' -Force | Out-Null");
+            assertEquals("New-Item tmpsub failed", 0, mk);
+            waitFor(60_000, () -> context.getByPath(
+                    "/" + context.username + "/" + tmpName).join().isPresent());
+
+            int rn = runPs("Rename-Item -LiteralPath '" + tmpLocal
+                    + "' -NewName '" + renamedSubName + "' -ErrorAction Stop");
+            assertEquals("Rename of tmpsub failed", 0, rn);
+            waitFor(60_000, () -> {
+                Optional<FileWrapper> r = context.getByPath(
+                        "/" + context.username + "/" + renamedSubName).join();
+                Optional<FileWrapper> o = context.getByPath(
+                        "/" + context.username + "/" + tmpName).join();
+                return r.isPresent() && o.isEmpty();
+            });
+
+            byte[] payload = new byte[128 * 1024];
+            for (int i = 0; i < payload.length; i++)
+                payload[i] = (byte) (i * 17 + 3);
+            Path stagedRen = tmp.newFile(prefix + "-renamed-insub-source.bin").toPath();
+            Files.write(stagedRen, payload);
+            String destPath = userRoot.resolve(renamedSubName).resolve(renamedInSubName)
+                    .toString().replace("'", "''");
+            String srcPath = stagedRen.toString().replace("'", "''");
+            System.err.println("[TEST] " + prefix
+                    + ": Copy-Item into renamed subdir " + srcPath + " -> " + destPath);
+            int cp = runPs("Copy-Item -LiteralPath '" + srcPath + "' -Destination '"
+                    + destPath + "' -ErrorAction Stop");
+            assertEquals("Copy-Item into renamed subdir failed", 0, cp);
+
+            String peergosPath = "/" + context.username + "/" + renamedSubName
+                    + "/" + renamedInSubName;
+            FileWrapper landed = null;
+            long deadline = System.currentTimeMillis() + 60_000;
+            while (System.currentTimeMillis() < deadline) {
+                Optional<FileWrapper> opt = context.getByPath(peergosPath).join();
+                if (opt.isPresent() && opt.get().getSize() == payload.length) {
+                    landed = opt.get();
+                    break;
+                }
+                Thread.sleep(500);
+            }
+            assertNotNull(renamedInSubName + " never appeared under " + renamedSubName,
+                    landed);
+            byte[] roundTripped = Serialize.readFully(landed, crypto, network).join();
+            assertArrayEquals(renamedInSubName + " content mismatch after round trip",
+                    payload, roundTripped);
+        }
+
         // Rename / move / delete need CF-managed placeholders so cldapi fires the
         // NOTIFY_RENAME / NOTIFY_DELETE callbacks our provider already handles. The
         // three fixture files were created via uploadOrReplaceFile + TRANSFER_PLACEHOLDERS,
