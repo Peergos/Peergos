@@ -298,6 +298,27 @@ public class CloudFilesMount implements Closeable {
         // Recurse: register existing subdirs and any new ones the watcher discovers, so
         // edits inside subdir/ also fire CREATE/MODIFY.
         registerRecursive(ws, syncRoot);
+        // Re-register placeholder dirs we populated in previous mounts. registerRecursive
+        // SKIP_SUBTREEs every placeholder dir (descending would trigger same-process
+        // FETCH_PLACEHOLDERS), and on a remount no CREATE/MODIFY ever fires for $user/
+        // on syncRoot's watch — seedRootPlaceholders is a no-op when $user/ is already
+        // on disk — so the lazy chain that worked on first mount never starts. Register
+        // each known-populated dir explicitly via syncState.getDirs(). The register call
+        // opens a ReadDirectoryChangesW handle without enumerating, so it doesn't fire
+        // FETCH_PLACEHOLDERS.
+        for (String relPath : provider.getKnownDirs()) {
+            Path d = syncRoot.resolve(relPath.replace('/', java.io.File.separatorChar));
+            if (!Files.isDirectory(d)) continue;
+            try {
+                d.register(ws,
+                        java.nio.file.StandardWatchEventKinds.ENTRY_CREATE,
+                        java.nio.file.StandardWatchEventKinds.ENTRY_MODIFY);
+                System.err.println("[CF] watcher: re-registered (syncState) " + d);
+            } catch (IOException e) {
+                LOG.log(Level.WARNING, "watcher: failed to re-register " + d, e);
+            }
+        }
+        System.err.println("[CF] watcher: started, polling on syncRoot=" + syncRoot);
         while (running.getAsBoolean()) {
             java.nio.file.WatchKey key;
             try { key = ws.poll(200, java.util.concurrent.TimeUnit.MILLISECONDS); }
@@ -306,6 +327,8 @@ public class CloudFilesMount implements Closeable {
                 Path dir = (Path) key.watchable();
                 for (java.nio.file.WatchEvent<?> ev : key.pollEvents()) {
                     Object ctx = ev.context();
+                    System.err.println("[CF] watcher: event " + ev.kind().name()
+                            + " ctx=" + ctx + " dir=" + dir);
                     if (!(ctx instanceof Path)) continue;
                     Path full = dir.resolve((Path) ctx);
                     try {
@@ -370,23 +393,32 @@ public class CloudFilesMount implements Closeable {
                                                      java.util.Map<Path, Boolean> inflight) {
         Path parent = p.getParent();
         while (parent != null && parent.startsWith(syncRoot) && !parent.equals(syncRoot)) {
-            if (pending.containsKey(parent) || inflight.containsKey(parent)) return true;
+            // Skip sync-root-level parents (the $user/ folder). uploadLocalFile rejects
+            // them outright, so them being in pending/inflight does NOT mean we're racing
+            // a real upload — but MODIFY events for $user/ fire repeatedly as CF does its
+            // placeholder bookkeeping, and a strict check here would defer every child
+            // file's upload indefinitely.
+            Path rel = syncRoot.relativize(parent);
+            if (rel.getNameCount() > 1
+                    && (pending.containsKey(parent) || inflight.containsKey(parent)))
+                return true;
             parent = parent.getParent();
         }
         return false;
     }
 
     /**
-     * Register {@code root} and every existing subdirectory (including placeholder
-     * dirs) with the WatchService, so files created in any pre-existing folder fire
-     * ENTRY_CREATE on the parent.
+     * Register {@code root} and every existing non-placeholder subdirectory with the
+     * WatchService.
      *
-     * Walking into placeholder dirs is cheap: onFetchPlaceholders fails same-process
-     * callbacks without making any Peergos request, so enumerating an unpopulated
-     * placeholder dir just returns empty — no hydration, no remote listing, and the
-     * dir's "populated" state is unchanged (we don't send DISABLE_ON_DEMAND_POPULATION
-     * on a failure). Previously-populated dirs enumerate their on-disk children with
-     * no callback at all.
+     * Placeholder dirs are still registered (so we catch CREATE events for their
+     * direct children) but we SKIP_SUBTREE there: descending would call
+     * Files.newDirectoryStream on the dir, which triggers FETCH_PLACEHOLDERS for
+     * unpopulated placeholders, which we then fail same-process. Repeated failures
+     * have been observed to leave Explorer's view of the dir empty, so we avoid them.
+     * The trade-off: locally-dropped files inside a placeholder dir created in a
+     * previous session aren't watched until that dir's parent fires a fresh CREATE
+     * (or until something else re-registers it).
      */
     private static void registerRecursive(java.nio.file.WatchService ws, Path root) {
         try {
@@ -398,10 +430,14 @@ public class CloudFilesMount implements Closeable {
                         dir.register(ws,
                                 java.nio.file.StandardWatchEventKinds.ENTRY_CREATE,
                                 java.nio.file.StandardWatchEventKinds.ENTRY_MODIFY);
+                        System.err.println("[CF] watcher: registered " + dir
+                                + " (placeholder=" + CfApi.isPlaceholder(dir) + ")");
                     } catch (IOException e) {
                         LOG.log(Level.WARNING, "watcher: failed to register " + dir, e);
                     }
-                    return java.nio.file.FileVisitResult.CONTINUE;
+                    return CfApi.isPlaceholder(dir)
+                            ? java.nio.file.FileVisitResult.SKIP_SUBTREE
+                            : java.nio.file.FileVisitResult.CONTINUE;
                 }
                 @Override
                 public java.nio.file.FileVisitResult visitFileFailed(Path file, IOException exc) {

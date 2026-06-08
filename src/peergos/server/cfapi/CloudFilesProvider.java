@@ -373,6 +373,12 @@ public class CloudFilesProvider {
                             : dirRelPath + "/" + fw.getName();
                     if (!fw.isDirectory()) recordSyncedVersion(relPath, fw);
                 }
+                // Remember that this dir is now populated. discoverNewRemoteChildren
+                // uses syncState.hasDir to decide whether descending into a placeholder
+                // dir is safe — without this, we couldn't tell a populated placeholder
+                // dir apart from an unpopulated one, and remote-side files added after
+                // CF marked the dir DISABLE_ON_DEMAND_POPULATION would stay invisible.
+                if (syncState != null) syncState.addDir(dirRelPath);
             }
         } catch (Exception e) {
             LOG.log(Level.WARNING, "FETCH_PLACEHOLDERS callback error", e);
@@ -768,6 +774,15 @@ public class CloudFilesProvider {
     //  Tier 3: per-path apply with local mtime/size verification + pull or conflict.
     // -----------------------------------------------------------------------
 
+    /** Relative paths of every dir we've populated locally (either via FETCH_PLACEHOLDERS
+     *  or local mkdir+convert). Used by the watcher on mount startup to register watches
+     *  on placeholder dirs that registerRecursive skips (because walking into them would
+     *  trigger same-process FETCH_PLACEHOLDERS). Without this, on a remount no event ever
+     *  fires for $user/ on syncRoot's watch and the lazy registration chain never starts. */
+    java.util.Set<String> getKnownDirs() {
+        return syncState == null ? java.util.Set.of() : syncState.getDirs();
+    }
+
     void runPullTick() {
         if (syncState == null) return;
         try {
@@ -820,13 +835,6 @@ public class CloudFilesProvider {
             // would stay invisible until the user manually re-listed (which they can't
             // force).
             discoverNewRemoteChildren();
-
-            // Tier 2c — safety net for local files the WatchService missed. We've seen
-            // ENTRY_CREATE / ENTRY_MODIFY get dropped for files copied into placeholder
-            // dirs (the dir is a reparse point with CF state, and ReadDirectoryChangesW
-            // can behave inconsistently there). Walk the tree and upload any non-placeholder
-            // file with content that isn't in syncState yet.
-            discoverMissedLocalUploads();
 
             // Persist the new snapshot baseline.
             syncState.setSnapshot(syncRootPath, remoteSnap);
@@ -910,10 +918,12 @@ public class CloudFilesProvider {
     }
 
     /** Walk the local sync-root tree and create placeholders for any remote children
-     *  that have appeared in already-enumerated dirs since the last pass. Dehydrated
-     *  placeholder dirs are skipped because CF will fire FETCH_PLACEHOLDERS for them
-     *  the first time anything lists their contents, which already pulls current
-     *  remote children. */
+     *  that have appeared in dirs we've already populated. We descend into a placeholder
+     *  dir only if {@code syncState.hasDir} says we've populated it previously — for
+     *  un-populated placeholder dirs, walking would trigger FETCH_PLACEHOLDERS, which
+     *  we fail same-process, which can leave the dir empty in Explorer's view. CF marks
+     *  every successfully-populated dir DISABLE_ON_DEMAND_POPULATION, so without this
+     *  walk new remote-side files added after first listing would stay invisible. */
     private void discoverNewRemoteChildren() {
         Path root = Path.of(syncRootPath);
         try {
@@ -921,12 +931,12 @@ public class CloudFilesProvider {
                 @Override
                 public java.nio.file.FileVisitResult preVisitDirectory(Path dir,
                         java.nio.file.attribute.BasicFileAttributes attrs) {
-                    // Dehydrated placeholder dir (CF still has on-demand population) →
-                    // don't descend, don't enumerate. Walking into one would force-fire
-                    // FETCH_PLACEHOLDERS, which is exactly the work we're trying to do
-                    // here, just lazily.
-                    if (!dir.equals(root) && CfApi.isPlaceholder(dir))
-                        return java.nio.file.FileVisitResult.SKIP_SUBTREE;
+                    if (!dir.equals(root) && CfApi.isPlaceholder(dir)) {
+                        String relPath = root.relativize(dir).toString()
+                                .replace(java.io.File.separatorChar, '/');
+                        if (syncState == null || !syncState.hasDir(relPath))
+                            return java.nio.file.FileVisitResult.SKIP_SUBTREE;
+                    }
                     try { pullNewChildrenInto(dir); }
                     catch (Exception e) {
                         LOG.log(Level.FINE, "pull: failed to discover new children in " + dir, e);
@@ -936,47 +946,6 @@ public class CloudFilesProvider {
             });
         } catch (java.io.IOException e) {
             LOG.log(Level.WARNING, "pull: discoverNewRemoteChildren walk failed", e);
-        }
-    }
-
-    /** Walk the local tree and upload any non-placeholder file with content that isn't
-     *  already in {@code syncState}. Compensates for ENTRY_CREATE / ENTRY_MODIFY events
-     *  the WatchService failed to deliver — most often for files copied into a CF
-     *  placeholder dir, where ReadDirectoryChangesW is unreliable. Descends into
-     *  placeholder dirs (unlike {@link #discoverNewRemoteChildren}); same-process
-     *  FETCH_PLACEHOLDERS for unenumerated ones fails fast without a peergos request. */
-    private void discoverMissedLocalUploads() {
-        if (syncState == null) return;
-        Path root = Path.of(syncRootPath);
-        try {
-            Files.walkFileTree(root, new java.nio.file.SimpleFileVisitor<Path>() {
-                @Override
-                public java.nio.file.FileVisitResult visitFile(Path file,
-                        java.nio.file.attribute.BasicFileAttributes attrs) {
-                    try {
-                        if (CfApi.isPlaceholder(file)) return java.nio.file.FileVisitResult.CONTINUE;
-                        if (attrs.size() == 0) return java.nio.file.FileVisitResult.CONTINUE;
-                        String rel = root.relativize(file).toString()
-                                .replace(java.io.File.separatorChar, '/');
-                        if (syncState.byPath(rel) != null) return java.nio.file.FileVisitResult.CONTINUE;
-                        System.err.println("[CF] pull: safety-net uploading missed local file " + rel);
-                        uploadLocalFile(file);
-                    } catch (Exception e) {
-                        LOG.log(Level.FINE, "pull: safety-net upload failed for " + file, e);
-                    }
-                    return java.nio.file.FileVisitResult.CONTINUE;
-                }
-                @Override
-                public java.nio.file.FileVisitResult visitFileFailed(Path file, IOException exc) {
-                    return java.nio.file.FileVisitResult.CONTINUE;
-                }
-                @Override
-                public java.nio.file.FileVisitResult postVisitDirectory(Path dir, IOException exc) {
-                    return java.nio.file.FileVisitResult.CONTINUE;
-                }
-            });
-        } catch (IOException e) {
-            LOG.log(Level.WARNING, "pull: discoverMissedLocalUploads walk failed", e);
         }
     }
 
@@ -1108,6 +1077,10 @@ public class CloudFilesProvider {
                 // CREATE event for any renamed target will reupload under the new name.
                 if (!Files.exists(localPath))
                     rollbackEmptyPeergosDir(peergosPath);
+                else if (syncState != null)
+                    // Remember this dir is populated locally so the next mount's watcher
+                    // re-registers it (see CloudFilesMount.runWatcher's getKnownDirs loop).
+                    syncState.addDir(relative);
                 return;
             }
             long localSize = Files.size(localPath);

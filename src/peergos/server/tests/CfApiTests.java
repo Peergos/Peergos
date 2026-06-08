@@ -129,278 +129,325 @@ public class CfApiTests {
         for (int i=0; i < large.length; i += content.length) {
             System.arraycopy(content, 0, large, i, Math.min(content.length, large.length - i));
         }
-        FileWrapper home = context.getByPath("/" + context.username).join().get();
-        home.uploadOrReplaceFile("hello.txt", new AsyncReader.ArrayBacked(content), content.length,
-                context.network, context.crypto, () -> false, l -> {}).join();
-        home.getUpdated(network).join().uploadOrReplaceFile("world.txt", new AsyncReader.ArrayBacked(content), content.length,
-                context.network, context.crypto, () -> false, l -> {}).join();
-        home.getUpdated(network).join().uploadOrReplaceFile("large.txt", new AsyncReader.ArrayBacked(large), large.length,
-                context.network, context.crypto, () -> false, l -> {}).join();
 
         Path syncRoot = tmp.newFolder("peergos-cf-" + user).toPath();
         Path userRoot = syncRoot.resolve(user);
         Path stateDb = tmp.newFolder("peergos-cf-state-" + user).toPath().resolve("state.db");
-        CloudFilesMount mount = CloudFilesMount.mount(context, syncRoot.toString(), stateDb);
+
+        // Round 1 — fresh mount, exercise the full sequence with "r1-" prefixed names.
+        // CloudFilesMount.mount() is the same entry point MountConfigHandler uses in
+        // production: it cfRegisterSyncRoot + cfConnectSyncRoot, seeds the $user/
+        // placeholder, starts the local WatchService thread and the remote pull-tick
+        // scheduler. The test exercises end-to-end against the full stack.
+        CloudFilesMount mount1 = CloudFilesMount.mount(context, syncRoot.toString(), stateDb);
         try {
-            // Step 1 — external directory listing of $user/. This fires FETCH_PLACEHOLDERS
-            // from an external PID; our provider responds with CfExecute(TRANSFER_PLACEHOLDERS)
-            // which creates the physical placeholder files. Same-process Files.list on an empty
-            // placeholder dir does NOT trigger FETCH_PLACEHOLDERS, so we rely on the external
-            // listing to populate it. The $user/ folder itself is materialised by the mount at
-            // startup (seedRootPlaceholders), so we list straight into it here.
-            String userRootPs = userRoot.toString().replace("'", "''");
-            {
-                System.err.println("[TEST] Starting external Get-ChildItem on " + userRoot);
-                ProcessBuilder lb = new ProcessBuilder(
-                        "powershell", "-NoProfile", "-NonInteractive",
-                        "-ExecutionPolicy", "Bypass",
-                        "-Command",
-                        "Get-ChildItem -LiteralPath '" + userRootPs + "' -Name | Out-String");
-                lb.redirectErrorStream(true);
-                Process lp = lb.start();
-                System.err.println("[TEST] Get-ChildItem process started, pid=" + lp.pid());
-                String listing = new String(lp.getInputStream().readAllBytes());
-                boolean ldone = lp.waitFor(30, java.util.concurrent.TimeUnit.SECONDS);
-                System.err.println("[TEST] External dir listing (exit="
-                        + (ldone ? lp.exitValue() : "TIMEOUT") + "): " + listing.trim());
-                assertTrue("External dir listing timed out", ldone);
-                assertEquals("External dir listing failed", 0, lp.exitValue());
-                assertTrue("hello.txt should appear in external listing", listing.contains("hello.txt"));
-                assertTrue("world.txt should appear in external listing", listing.contains("world.txt"));
-            }
+            runMountTestSequence(mount1, context, network, crypto, userRoot, "r1", content, large);
+        } finally {
+            mount1.close();
+        }
 
-            // Step 2 — read hello.txt via PowerShell Get-Content to trigger FETCH_DATA from
-            // an external PID and verify the content reaches the caller intact. We switched
-            // from Copy-Item to Get-Content because Copy-Item kept failing with "Invalid
-            // access to memory location" even when CfExecute(TRANSFER_DATA) returned S_OK —
-            // Get-Content is a simpler read path with fewer Win32 layers in between.
-            {
-                String srcPath = userRoot.resolve("hello.txt").toString().replace("'", "''");
-                System.err.println("[TEST] Reading '" + srcPath + "' via Get-Content");
-                ProcessBuilder pb = new ProcessBuilder(
-                        "powershell", "-NoProfile", "-NonInteractive",
-                        "-ExecutionPolicy", "Bypass",
-                        "-Command",
-                        "Get-Content -LiteralPath '" + srcPath + "' -Raw -ErrorAction Stop");
-                pb.redirectErrorStream(true);
-                Process proc = pb.start();
-                String psOutput = new String(proc.getInputStream().readAllBytes());
-                boolean done = proc.waitFor(30, java.util.concurrent.TimeUnit.SECONDS);
-                System.err.println("[TEST] Get-Content exit=" + (done ? proc.exitValue() : "TIMEOUT")
-                        + " output=[" + psOutput.trim() + "]");
-                assertTrue("Get-Content timed out", done);
-                assertEquals("Get-Content failed (output: " + psOutput.trim() + ")",
-                        0, proc.exitValue());
-                assertEquals("File content must match what was uploaded",
-                        new String(content).trim(), psOutput.trim());
-            }
+        // Inter-round sanity: the state we left in peergos and on disk should survive
+        // an unmount. Re-check before remounting so a regression here points at the
+        // closed-mount path rather than the remount path.
+        assertTrue("r1 subdir should still be in peergos after unmount",
+                context.getByPath("/" + user + "/r1-subdir").join().isPresent());
+        assertTrue("r1 renamed.txt should still be in peergos after unmount",
+                context.getByPath("/" + user + "/r1-renamed.txt").join().isPresent());
+        assertTrue("r1 subdir should still be on disk after unmount",
+                Files.exists(userRoot.resolve("r1-subdir")));
 
-            // Step 2 — read large.txt
-            {
-                String srcPath = userRoot.resolve("large.txt").toString().replace("'", "''");
-                System.err.println("[TEST] Reading '" + srcPath + "' via Get-Content");
-                ProcessBuilder pb = new ProcessBuilder(
-                        "powershell", "-NoProfile", "-NonInteractive",
-                        "-ExecutionPolicy", "Bypass",
-                        "-Command",
-                        "Get-Content -LiteralPath '" + srcPath + "' -Raw -ErrorAction Stop");
-                pb.redirectErrorStream(true);
-                Process proc = pb.start();
-                byte[] psBytes = proc.getInputStream().readAllBytes();
-                boolean done = proc.waitFor(30, java.util.concurrent.TimeUnit.SECONDS);
-                System.err.println("[TEST] Get-Content exit=" + (done ? proc.exitValue() : "TIMEOUT")
-                        + " bytes=" + psBytes.length);
-                assertTrue("Get-Content timed out", done);
-                assertEquals("Get-Content failed", 0, proc.exitValue());
-                assertEquals("File content must match what was uploaded",
-                        new String(large).trim(), new String(psBytes).trim());
-            }
+        // Round 2 — remount the same syncRoot and stateDb. The persisted state DB
+        // means the new mount inherits round 1's known-synced versions; the on-disk
+        // placeholders for r1 files are still there. Run the full sequence again with
+        // "r2-" prefixed names to verify the second mount handles every operation
+        // (listing, FETCH_DATA, upload, mkdir, rename, move, in-place edit, delete)
+        // independently of the first.
+        CloudFilesMount mount2 = CloudFilesMount.mount(context, syncRoot.toString(), stateDb);
+        try {
+            runMountTestSequence(mount2, context, network, crypto, userRoot, "r2", content, large);
+        } finally {
+            mount2.close();
+        }
+    }
 
-            // Step 3 — write a new 11MB file INTO the mount from an external process and
-            // verify it gets uploaded back to Peergos. We stage the content in a temp file
-            // outside the sync root, then Copy-Item it in. Closing the file triggers
-            // NOTIFY_FILE_CLOSE_COMPLETION, which reads the local bytes and uploads them.
-            {
-                byte[] upload = new byte[11 * 1024 * 1024];
-                for (int i = 0; i < upload.length; i++)
-                    upload[i] = (byte) (i * 31 + 7);
-                Path stagedFile = tmp.newFile("upload-source.bin").toPath();
-                Files.write(stagedFile, upload);
+    /**
+     * Runs the full file/dir operation sequence (listing, read, upload, mkdir, rename,
+     * move, in-place edit, delete) against an already-mounted sync root. Uses the
+     * {@code prefix} to namespace every fixture so the sequence can be run repeatedly
+     * across a mount/remount cycle on the same on-disk sync root.
+     *
+     * Steps:
+     * <ol>
+     *   <li>Seed three Peergos fixtures via UserContext: prefix-hello.txt,
+     *       prefix-world.txt, prefix-large.txt (the mount picks them up via
+     *       FETCH_PLACEHOLDERS on the listing in step 1).</li>
+     *   <li>External Get-ChildItem to force-populate the placeholders.</li>
+     *   <li>Read prefix-hello.txt and prefix-large.txt via Get-Content (FETCH_DATA).</li>
+     *   <li>Copy an 11 MB file in from outside (CLOSE_COMPLETION → upload).</li>
+     *   <li>mkdir prefix-subdir (watcher → createPeergosDirectory + convertToPlaceholder).</li>
+     *   <li>Rename prefix-hello.txt → prefix-renamed.txt (CF NOTIFY_RENAME).</li>
+     *   <li>Move prefix-large.txt → prefix-subdir/prefix-large.txt (CF NOTIFY_RENAME).</li>
+     *   <li>In-place overwrite first bytes of prefix-uploaded.bin (CLOSE_COMPLETION re-upload).</li>
+     *   <li>Delete prefix-world.txt (CF NOTIFY_DELETE).</li>
+     * </ol>
+     */
+    private void runMountTestSequence(CloudFilesMount mount, UserContext context,
+                                      NetworkAccess network, Crypto crypto,
+                                      Path userRoot, String prefix,
+                                      byte[] content, byte[] large) throws Exception {
+        String helloName  = prefix + "-hello.txt";
+        String worldName  = prefix + "-world.txt";
+        String largeName  = prefix + "-large.txt";
+        String uploadedName = prefix + "-uploaded.bin";
+        String subdirName = prefix + "-subdir";
+        String renamedName = prefix + "-renamed.txt";
 
-                String destName = "uploaded.bin";
-                String destPath = userRoot.resolve(destName).toString().replace("'", "''");
-                String srcPath  = stagedFile.toString().replace("'", "''");
-                System.err.println("[TEST] Copying " + upload.length + " bytes from '"
-                        + srcPath + "' to '" + destPath + "'");
-                ProcessBuilder cp = new ProcessBuilder(
-                        "powershell", "-NoProfile", "-NonInteractive",
-                        "-ExecutionPolicy", "Bypass",
-                        "-Command",
-                        "Copy-Item -LiteralPath '" + srcPath + "' -Destination '" + destPath
-                                + "' -ErrorAction Stop");
-                cp.redirectErrorStream(true);
-                Process cproc = cp.start();
-                String cpOutput = new String(cproc.getInputStream().readAllBytes());
-                boolean cdone = cproc.waitFor(60, java.util.concurrent.TimeUnit.SECONDS);
-                System.err.println("[TEST] Copy-Item exit=" + (cdone ? cproc.exitValue() : "TIMEOUT")
-                        + " output=[" + cpOutput.trim() + "]");
-                assertTrue("Copy-Item timed out", cdone);
-                assertEquals("Copy-Item failed (output: " + cpOutput.trim() + ")",
-                        0, cproc.exitValue());
+        // Seed fixtures directly via the UserContext (bypassing the mount) so the
+        // pull tick / FETCH_PLACEHOLDERS pick them up as remote-only files.
+        FileWrapper home = context.getByPath("/" + context.username).join().get();
+        home.uploadOrReplaceFile(helloName, new AsyncReader.ArrayBacked(content), content.length,
+                context.network, context.crypto, () -> false, l -> {}).join();
+        home.getUpdated(network).join().uploadOrReplaceFile(worldName, new AsyncReader.ArrayBacked(content), content.length,
+                context.network, context.crypto, () -> false, l -> {}).join();
+        home.getUpdated(network).join().uploadOrReplaceFile(largeName, new AsyncReader.ArrayBacked(large), large.length,
+                context.network, context.crypto, () -> false, l -> {}).join();
 
-                // Wait for the upload to land in Peergos (driven by NOTIFY_FILE_CLOSE_COMPLETION).
-                String peergosPath = "/" + context.username + "/" + destName;
-                FileWrapper uploaded = null;
-                long deadline = System.currentTimeMillis() + 60_000;
-                while (System.currentTimeMillis() < deadline) {
-                    Optional<FileWrapper> opt = context.getByPath(peergosPath).join();
-                    if (opt.isPresent() && opt.get().getSize() == upload.length) {
-                        uploaded = opt.get();
-                        break;
-                    }
-                    Thread.sleep(500);
+        // Force a pull tick so the remote-only fixtures we just uploaded land as local
+        // placeholders. On the first mount of a session this is a no-op for $user/
+        // (CF will fire FETCH_PLACEHOLDERS as soon as we list it), but on a remount CF
+        // has already set DISABLE_ON_DEMAND_POPULATION from the previous round, so the
+        // listing won't trigger another FETCH_PLACEHOLDERS — discoverNewRemoteChildren
+        // in the pull tick is the only path that surfaces newly-added remote files.
+        mount.forcePullTick();
+
+        // Step 1 — external directory listing of $user/. On the first mount this fires
+        // FETCH_PLACEHOLDERS from an external PID and our provider responds with
+        // CfExecute(TRANSFER_PLACEHOLDERS) to create the physical placeholders. On a
+        // remount the dir is already DISABLE_ON_DEMAND_POPULATION; the forcePullTick
+        // above is what surfaced the new fixtures.
+        String userRootPs = userRoot.toString().replace("'", "''");
+        {
+            System.err.println("[TEST] " + prefix + ": Starting external Get-ChildItem on " + userRoot);
+            ProcessBuilder lb = new ProcessBuilder(
+                    "powershell", "-NoProfile", "-NonInteractive",
+                    "-ExecutionPolicy", "Bypass",
+                    "-Command",
+                    "Get-ChildItem -LiteralPath '" + userRootPs + "' -Name | Out-String");
+            lb.redirectErrorStream(true);
+            Process lp = lb.start();
+            String listing = new String(lp.getInputStream().readAllBytes());
+            boolean ldone = lp.waitFor(30, java.util.concurrent.TimeUnit.SECONDS);
+            System.err.println("[TEST] " + prefix + ": dir listing (exit="
+                    + (ldone ? lp.exitValue() : "TIMEOUT") + "): " + listing.trim());
+            assertTrue("External dir listing timed out", ldone);
+            assertEquals("External dir listing failed", 0, lp.exitValue());
+            assertTrue(helloName + " should appear in external listing", listing.contains(helloName));
+            assertTrue(worldName + " should appear in external listing", listing.contains(worldName));
+        }
+
+        // Step 2 — read prefix-hello.txt via PowerShell Get-Content to trigger FETCH_DATA
+        // from an external PID and verify the content reaches the caller intact. We use
+        // Get-Content rather than Copy-Item because it's a simpler read path with fewer
+        // Win32 layers in between.
+        {
+            String srcPath = userRoot.resolve(helloName).toString().replace("'", "''");
+            ProcessBuilder pb = new ProcessBuilder(
+                    "powershell", "-NoProfile", "-NonInteractive",
+                    "-ExecutionPolicy", "Bypass",
+                    "-Command",
+                    "Get-Content -LiteralPath '" + srcPath + "' -Raw -ErrorAction Stop");
+            pb.redirectErrorStream(true);
+            Process proc = pb.start();
+            String psOutput = new String(proc.getInputStream().readAllBytes());
+            boolean done = proc.waitFor(30, java.util.concurrent.TimeUnit.SECONDS);
+            assertTrue("Get-Content timed out", done);
+            assertEquals("Get-Content failed (output: " + psOutput.trim() + ")",
+                    0, proc.exitValue());
+            assertEquals("File content must match what was uploaded",
+                    new String(content).trim(), psOutput.trim());
+        }
+
+        // Step 2b — read prefix-large.txt
+        {
+            String srcPath = userRoot.resolve(largeName).toString().replace("'", "''");
+            ProcessBuilder pb = new ProcessBuilder(
+                    "powershell", "-NoProfile", "-NonInteractive",
+                    "-ExecutionPolicy", "Bypass",
+                    "-Command",
+                    "Get-Content -LiteralPath '" + srcPath + "' -Raw -ErrorAction Stop");
+            pb.redirectErrorStream(true);
+            Process proc = pb.start();
+            byte[] psBytes = proc.getInputStream().readAllBytes();
+            boolean done = proc.waitFor(30, java.util.concurrent.TimeUnit.SECONDS);
+            assertTrue("Get-Content timed out", done);
+            assertEquals("Get-Content failed", 0, proc.exitValue());
+            assertEquals("File content must match what was uploaded",
+                    new String(large).trim(), new String(psBytes).trim());
+        }
+
+        // Step 3 — write a new 11MB file INTO the mount from an external process and
+        // verify it gets uploaded back to Peergos. We stage the content in a temp file
+        // outside the sync root, then Copy-Item it in. Closing the file triggers
+        // NOTIFY_FILE_CLOSE_COMPLETION, which reads the local bytes and uploads them.
+        {
+            byte[] upload = new byte[11 * 1024 * 1024];
+            for (int i = 0; i < upload.length; i++)
+                upload[i] = (byte) (i * 31 + 7);
+            Path stagedFile = tmp.newFile(prefix + "-upload-source.bin").toPath();
+            Files.write(stagedFile, upload);
+
+            String destPath = userRoot.resolve(uploadedName).toString().replace("'", "''");
+            String srcPath  = stagedFile.toString().replace("'", "''");
+            System.err.println("[TEST] " + prefix + ": Copy-Item " + srcPath + " -> " + destPath);
+            ProcessBuilder cp = new ProcessBuilder(
+                    "powershell", "-NoProfile", "-NonInteractive",
+                    "-ExecutionPolicy", "Bypass",
+                    "-Command",
+                    "Copy-Item -LiteralPath '" + srcPath + "' -Destination '" + destPath
+                            + "' -ErrorAction Stop");
+            cp.redirectErrorStream(true);
+            Process cproc = cp.start();
+            String cpOutput = new String(cproc.getInputStream().readAllBytes());
+            boolean cdone = cproc.waitFor(60, java.util.concurrent.TimeUnit.SECONDS);
+            assertTrue("Copy-Item timed out", cdone);
+            assertEquals("Copy-Item failed (output: " + cpOutput.trim() + ")",
+                    0, cproc.exitValue());
+            System.err.println("[TEST] " + prefix + ": Copy-Item exit=" + cproc.exitValue()
+                    + " destOnDisk=" + Files.exists(userRoot.resolve(uploadedName))
+                    + " destSize=" + (Files.exists(userRoot.resolve(uploadedName))
+                            ? Files.size(userRoot.resolve(uploadedName)) : -1));
+
+            String peergosPath = "/" + context.username + "/" + uploadedName;
+            FileWrapper uploaded = null;
+            long deadline = System.currentTimeMillis() + 60_000;
+            while (System.currentTimeMillis() < deadline) {
+                Optional<FileWrapper> opt = context.getByPath(peergosPath).join();
+                if (opt.isPresent() && opt.get().getSize() == upload.length) {
+                    uploaded = opt.get();
+                    break;
                 }
-                assertNotNull("uploaded.bin never appeared in Peergos", uploaded);
-                assertEquals("uploaded file size mismatch", upload.length, uploaded.getSize());
-
-                byte[] roundTripped = Serialize.readFully(uploaded, crypto, network).join();
-                assertArrayEquals("uploaded.bin content mismatch after round trip",
-                        upload, roundTripped);
-                System.err.println("[TEST] uploaded.bin round trip OK ("
-                        + upload.length + " bytes)");
+                Thread.sleep(500);
             }
+            assertNotNull(uploadedName + " never appeared in Peergos", uploaded);
+            assertEquals("uploaded file size mismatch", upload.length, uploaded.getSize());
 
-            // Step 4 — mkdir inside the mount and verify the directory shows up in Peergos.
-            String subdirName = "subdir";
-            {
-                String subdirLocal = userRoot.resolve(subdirName).toString().replace("'", "''");
-                System.err.println("[TEST] mkdir '" + subdirLocal + "'");
-                int exit = runPs("New-Item -ItemType Directory -Path '" + subdirLocal
-                        + "' -Force | Out-Null");
-                assertEquals("New-Item mkdir failed", 0, exit);
-                waitFor(60_000, () -> {
-                    Optional<FileWrapper> d = context.getByPath(
-                            "/" + context.username + "/" + subdirName).join();
-                    return d.isPresent() && d.get().isDirectory();
-                });
+            byte[] roundTripped = Serialize.readFully(uploaded, crypto, network).join();
+            assertArrayEquals(uploadedName + " content mismatch after round trip",
+                    upload, roundTripped);
+        }
+
+        // Step 4 — mkdir inside the mount and verify the directory shows up in Peergos.
+        {
+            String subdirLocal = userRoot.resolve(subdirName).toString().replace("'", "''");
+            int exit = runPs("New-Item -ItemType Directory -Path '" + subdirLocal
+                    + "' -Force | Out-Null");
+            assertEquals("New-Item mkdir failed", 0, exit);
+            waitFor(60_000, () -> {
                 Optional<FileWrapper> d = context.getByPath(
                         "/" + context.username + "/" + subdirName).join();
-                assertTrue(subdirName + " should be a directory in Peergos",
-                        d.isPresent() && d.get().isDirectory());
+                return d.isPresent() && d.get().isDirectory();
+            });
+            Optional<FileWrapper> d = context.getByPath(
+                    "/" + context.username + "/" + subdirName).join();
+            assertTrue(subdirName + " should be a directory in Peergos",
+                    d.isPresent() && d.get().isDirectory());
+        }
+
+        // Rename / move / delete need CF-managed placeholders so cldapi fires the
+        // NOTIFY_RENAME / NOTIFY_DELETE callbacks our provider already handles. The
+        // three fixture files were created via uploadOrReplaceFile + TRANSFER_PLACEHOLDERS,
+        // so they're real placeholders; the uploaded.bin from step 3 is too (its
+        // post-upload convertToPlaceholder runs in uploadLocalFile).
+
+        // Step 5 — rename prefix-hello.txt to prefix-renamed.txt.
+        {
+            String src = userRoot.resolve(helloName).toString().replace("'", "''");
+            int exit = runPs("Rename-Item -LiteralPath '" + src
+                    + "' -NewName '" + renamedName + "' -ErrorAction Stop");
+            assertEquals("Rename-Item failed", 0, exit);
+            waitFor(60_000, () -> {
+                Optional<FileWrapper> r = context.getByPath(
+                        "/" + context.username + "/" + renamedName).join();
+                Optional<FileWrapper> orig = context.getByPath(
+                        "/" + context.username + "/" + helloName).join();
+                return r.isPresent() && orig.isEmpty();
+            });
+            assertTrue(renamedName + " should exist in Peergos",
+                    context.getByPath("/" + context.username + "/" + renamedName).join().isPresent());
+            assertFalse(helloName + " should be gone from Peergos",
+                    context.getByPath("/" + context.username + "/" + helloName).join().isPresent());
+        }
+
+        // Step 6 — move prefix-large.txt into prefix-subdir/ and verify the move in Peergos.
+        {
+            String src  = userRoot.resolve(largeName).toString().replace("'", "''");
+            String dest = userRoot.resolve(subdirName).resolve(largeName).toString().replace("'", "''");
+            int exit = runPs("Move-Item -LiteralPath '" + src
+                    + "' -Destination '" + dest + "' -ErrorAction Stop");
+            assertEquals("Move-Item failed", 0, exit);
+            String newPath = "/" + context.username + "/" + subdirName + "/" + largeName;
+            String oldPath = "/" + context.username + "/" + largeName;
+            waitFor(60_000, () -> {
+                Optional<FileWrapper> n = context.getByPath(newPath).join();
+                Optional<FileWrapper> o = context.getByPath(oldPath).join();
+                return n.isPresent() && o.isEmpty();
+            });
+            assertTrue(largeName + " should exist under " + subdirName + "/ in Peergos",
+                    context.getByPath(newPath).join().isPresent());
+            assertFalse(largeName + " should be gone from old location in Peergos",
+                    context.getByPath(oldPath).join().isPresent());
+        }
+
+        // Step 7 — modify prefix-uploaded.bin in place (same size, different content).
+        // Exercises the mtime-based dirty-bit path in onFileCloseCompletion: same size
+        // means the cheap size-mismatch check doesn't fire, so the handler falls back
+        // to comparing local mtime vs Peergos mtime to decide whether to upload.
+        {
+            String src = userRoot.resolve(uploadedName).toString().replace("'", "''");
+            byte[] marker = ("PEERGOS_" + prefix + "_INPLACE").getBytes(StandardCharsets.UTF_8);
+            StringBuilder bytesLit = new StringBuilder();
+            for (int i = 0; i < marker.length; i++) {
+                if (i > 0) bytesLit.append(',');
+                bytesLit.append(marker[i] & 0xFF);
             }
+            int exit = runPs(
+                    "$bytes = [byte[]](" + bytesLit + "); " +
+                    "$fs = [IO.File]::OpenWrite('" + src + "'); " +
+                    "try { $fs.Seek(0, 'Begin') | Out-Null; $fs.Write($bytes, 0, $bytes.Length) } " +
+                    "finally { $fs.Close() }");
+            assertEquals("in-place modify failed", 0, exit);
 
-            // Rename / move / delete need CF-managed placeholders so cldapi fires the
-            // NOTIFY_RENAME / NOTIFY_DELETE callbacks our provider already handles. The
-            // three files created via uploadOrReplaceFile + TRANSFER_PLACEHOLDERS at the
-            // start of the test (hello.txt, large.txt, world.txt) are real placeholders;
-            // uploaded.bin (Step 3) was written locally and never converted, so its
-            // rename would skip CF entirely.
+            String peergosPath = "/" + context.username + "/" + uploadedName;
+            long expectedSize = 11L * 1024 * 1024;
+            waitFor(120_000, () -> {
+                Optional<FileWrapper> u = context.getByPath(peergosPath).join();
+                if (u.isEmpty() || u.get().getSize() != expectedSize) return false;
+                try {
+                    byte[] data = Serialize.readFully(u.get(), crypto, network).join();
+                    return data.length >= marker.length
+                            && java.util.Arrays.equals(
+                                    java.util.Arrays.copyOfRange(data, 0, marker.length),
+                                    marker);
+                } catch (Exception e) { return false; }
+            });
+            FileWrapper updated = context.getByPath(peergosPath).join().orElseThrow();
+            assertEquals(uploadedName + " size should be unchanged", expectedSize, updated.getSize());
 
-            // Step 5 — rename hello.txt to renamed.txt.
-            String renamedName = "renamed.txt";
-            {
-                String src = userRoot.resolve("hello.txt").toString().replace("'", "''");
-                System.err.println("[TEST] Rename hello.txt -> " + renamedName);
-                int exit = runPs("Rename-Item -LiteralPath '" + src
-                        + "' -NewName '" + renamedName + "' -ErrorAction Stop");
-                assertEquals("Rename-Item failed", 0, exit);
-                waitFor(60_000, () -> {
-                    Optional<FileWrapper> r = context.getByPath(
-                            "/" + context.username + "/" + renamedName).join();
-                    Optional<FileWrapper> orig = context.getByPath(
-                            "/" + context.username + "/hello.txt").join();
-                    return r.isPresent() && orig.isEmpty();
-                });
-                assertTrue(renamedName + " should exist in Peergos",
-                        context.getByPath("/" + context.username + "/" + renamedName).join().isPresent());
-                assertFalse("hello.txt should be gone from Peergos",
-                        context.getByPath("/" + context.username + "/hello.txt").join().isPresent());
-            }
+            byte[] roundTripped = Serialize.readFully(updated, crypto, network).join();
+            byte[] head = java.util.Arrays.copyOfRange(roundTripped, 0, marker.length);
+            assertArrayEquals("marker should be at start of " + uploadedName + " in Peergos",
+                    marker, head);
+        }
 
-            // Step 6 — move large.txt into subdir/ and verify the move in Peergos.
-            {
-                String src  = userRoot.resolve("large.txt").toString().replace("'", "''");
-                String dest = userRoot.resolve(subdirName).resolve("large.txt").toString().replace("'", "''");
-                System.err.println("[TEST] Move large.txt -> " + subdirName + "/large.txt");
-                int exit = runPs("Move-Item -LiteralPath '" + src
-                        + "' -Destination '" + dest + "' -ErrorAction Stop");
-                assertEquals("Move-Item failed", 0, exit);
-                String newPath = "/" + context.username + "/" + subdirName + "/large.txt";
-                String oldPath = "/" + context.username + "/large.txt";
-                waitFor(60_000, () -> {
-                    Optional<FileWrapper> n = context.getByPath(newPath).join();
-                    Optional<FileWrapper> o = context.getByPath(oldPath).join();
-                    return n.isPresent() && o.isEmpty();
-                });
-                assertTrue("large.txt should exist under subdir/ in Peergos",
-                        context.getByPath(newPath).join().isPresent());
-                assertFalse("large.txt should be gone from old location in Peergos",
-                        context.getByPath(oldPath).join().isPresent());
-            }
-
-            // Step 7 — modify uploaded.bin in place (same size, different content). This
-            // exercises the mtime-based dirty-bit path in onFileCloseCompletion: same size
-            // means the cheap size-mismatch check doesn't fire, so the handler falls back
-            // to comparing local mtime vs Peergos mtime to decide whether to upload.
-            // uploaded.bin is 11 MB = 3 chunks of 5/5/~1 MB. Overwriting only the FIRST
-            // chunk's bytes should re-upload chunk 0 (~5 MB) — chunks 1 & 2 are unchanged
-            // and should be skipped by Peergos's chunk-level SHA-256 dedup.
-            String modifiedName = "uploaded.bin";
-            {
-                String src = userRoot.resolve(modifiedName).toString().replace("'", "''");
-                byte[] marker = "PEERGOS_INPLACE_MARKER".getBytes(StandardCharsets.UTF_8);
-                StringBuilder bytesLit = new StringBuilder();
-                for (int i = 0; i < marker.length; i++) {
-                    if (i > 0) bytesLit.append(',');
-                    bytesLit.append(marker[i] & 0xFF);
-                }
-                System.err.println("[TEST] In-place overwriting first " + marker.length
-                        + " bytes of " + modifiedName);
-                int exit = runPs(
-                        "$bytes = [byte[]](" + bytesLit + "); " +
-                        "$fs = [IO.File]::OpenWrite('" + src + "'); " +
-                        "try { $fs.Seek(0, 'Begin') | Out-Null; $fs.Write($bytes, 0, $bytes.Length) } " +
-                        "finally { $fs.Close() }");
-                assertEquals("in-place modify failed", 0, exit);
-
-                String peergosPath = "/" + context.username + "/" + modifiedName;
-                long expectedSize = 11L * 1024 * 1024;
-                // Poll until Peergos shows the new first-bytes marker (size is unchanged).
-                waitFor(120_000, () -> {
-                    Optional<FileWrapper> u = context.getByPath(peergosPath).join();
-                    if (u.isEmpty() || u.get().getSize() != expectedSize) return false;
-                    try {
-                        byte[] data = Serialize.readFully(u.get(), crypto, network).join();
-                        return data.length >= marker.length
-                                && java.util.Arrays.equals(
-                                        java.util.Arrays.copyOfRange(data, 0, marker.length),
-                                        marker);
-                    } catch (Exception e) { return false; }
-                });
-                FileWrapper updated = context.getByPath(peergosPath).join().orElseThrow();
-                assertEquals("uploaded.bin size should be unchanged", expectedSize, updated.getSize());
-
-                byte[] roundTripped = Serialize.readFully(updated, crypto, network).join();
-                byte[] head = java.util.Arrays.copyOfRange(roundTripped, 0, marker.length);
-                assertArrayEquals("marker should be at start of uploaded.bin in Peergos",
-                        marker, head);
-                System.err.println("[TEST] uploaded.bin in-place modification verified ("
-                        + marker.length + " bytes at offset 0, total " + roundTripped.length + ")");
-            }
-
-            // Step 8 — delete world.txt and verify Peergos no longer has it.
-            {
-                String src = userRoot.resolve("world.txt").toString().replace("'", "''");
-                System.err.println("[TEST] Delete world.txt");
-                int exit = runPs("Remove-Item -LiteralPath '" + src + "' -Force -ErrorAction Stop");
-                assertEquals("Remove-Item failed", 0, exit);
-                String p = "/" + context.username + "/world.txt";
-                waitFor(60_000, () -> context.getByPath(p).join().isEmpty());
-                assertTrue("world.txt should be gone from Peergos",
-                        context.getByPath(p).join().isEmpty());
-            }
-        } finally {
-            mount.close();
+        // Step 8 — delete prefix-world.txt and verify Peergos no longer has it.
+        {
+            String src = userRoot.resolve(worldName).toString().replace("'", "''");
+            int exit = runPs("Remove-Item -LiteralPath '" + src + "' -Force -ErrorAction Stop");
+            assertEquals("Remove-Item failed", 0, exit);
+            String p = "/" + context.username + "/" + worldName;
+            waitFor(60_000, () -> context.getByPath(p).join().isEmpty());
+            assertTrue(worldName + " should be gone from Peergos",
+                    context.getByPath(p).join().isEmpty());
         }
     }
 
