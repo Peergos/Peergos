@@ -413,8 +413,11 @@ public class DirectorySync {
         Set<String> doneFiles = Collections.synchronizedSet(new HashSet<>());
         SyncProgress progress = new SyncProgress(allChangedPaths.size());
 
-        // upload new small files in a single bulk operation
-        Set<String> smallFiles = new HashSet<>();
+        // upload new small files in large bulk operations
+        List<Set<String>> smallFileBatches = new ArrayList<>();
+        smallFileBatches.add(new HashSet<>());
+        long currentSmallBatchCount = 0;
+        long currentSmallBatchSize = 0;
         Set<String> localDeletes = new HashSet<>();
         for (String relativePath : allChangedPaths) {
             FileState synced = syncedVersions.byPath(relativePath);
@@ -438,8 +441,16 @@ public class DirectorySync {
                 Optional<FileState> localAtHashedPath = extraRemote.size() == extraLocal.size() ?
                         Optional.ofNullable(localState.byPath(extraRemote.get(index).relPath)) :
                         Optional.empty();
-                if (extraRemote.size() != extraLocal.size() || localAtHashedPath.isPresent())
-                    smallFiles.add(relativePath);
+                if (extraRemote.size() != extraLocal.size() || localAtHashedPath.isPresent()) {
+                    currentSmallBatchCount++;
+                    currentSmallBatchSize += local.size;
+                    if (currentSmallBatchCount >= 1_000 || currentSmallBatchSize >= 100*1024*1024) {
+                        smallFileBatches.add(new HashSet<>());
+                        currentSmallBatchCount = 0;
+                        currentSmallBatchSize = 0;
+                    }
+                    smallFileBatches.get(smallFileBatches.size() - 1).add(relativePath);
+                }
             }
 
             boolean isLocalDelete = local == null &&
@@ -469,53 +480,54 @@ public class DirectorySync {
         if (isCancelled.get())
             return;
 
-        if (! smallFiles.isEmpty()) {
-
-            LOG.accept("Remote: bulk uploading " + smallFiles.size() + " small files");
-            Map<String, FileWrapper.FolderUploadProperties> folders = new HashMap<>();
-            for (String relPath : smallFiles) {
-                doneFiles.add(relPath);
-                String folderPath = relPath.contains("/") ? relPath.substring(0, relPath.lastIndexOf("/")) : "";
-                FileWrapper.FolderUploadProperties folder = folders.get(folderPath);
-                if (folder == null) {
-                    List<String> relativePath = folderPath.isEmpty() ? Collections.emptyList() : Arrays.asList(folderPath.split("/"));
-                    folder = new FileWrapper.FolderUploadProperties(relativePath, new ArrayList<>());
-                    folders.put(folderPath, folder);
+        for (Set<String> smallFiles : smallFileBatches) {
+            if (!smallFiles.isEmpty()) {
+                LOG.accept("Remote: bulk uploading " + smallFiles.size() + " small files");
+                Map<String, FileWrapper.FolderUploadProperties> folders = new HashMap<>();
+                for (String relPath : smallFiles) {
+                    doneFiles.add(relPath);
+                    String folderPath = relPath.contains("/") ? relPath.substring(0, relPath.lastIndexOf("/")) : "";
+                    FileWrapper.FolderUploadProperties folder = folders.get(folderPath);
+                    if (folder == null) {
+                        List<String> relativePath = folderPath.isEmpty() ? Collections.emptyList() : Arrays.asList(folderPath.split("/"));
+                        folder = new FileWrapper.FolderUploadProperties(relativePath, new ArrayList<>());
+                        folders.put(folderPath, folder);
+                    }
+                    String filename = relPath.substring(relPath.lastIndexOf("/") + 1);
+                    FileState local = localState.byPath(relPath);
+                    if (relPath.contains("/"))
+                        remoteState.addDir(relPath.substring(0, relPath.length() - filename.length() - 1));
+                    AtomicBoolean uploadStarted = new AtomicBoolean(false);
+                    AtomicBoolean uploadEnded = new AtomicBoolean(false);
+                    LocalDateTime modificationTime = LocalDateTime.ofInstant(Instant.ofEpochSecond(local.modificationTime / 1000, 0), ZoneOffset.UTC);
+                    folder.files.add(new FileWrapper.FileUploadProperties(filename,
+                            () -> {
+                                try {
+                                    return localFS.getBytes(localFS.resolve(relPath), 0);
+                                } catch (IOException e) {
+                                    throw new RuntimeException(e);
+                                }
+                            },
+                            (int) (local.size >> 32), (int) local.size, Optional.of(modificationTime), Optional.of(local.hashTree), false, true,
+                            x -> {
+                                if (!uploadStarted.get()) {
+                                    LOG.accept("REMOTE: Uploading " + relPath + " " + progress);
+                                    uploadStarted.set(true);
+                                }
+                                if (!uploadEnded.get()) {
+                                    progress.doneFile();
+                                    uploadEnded.set(true);
+                                }
+                            }));
                 }
-                String filename = relPath.substring(relPath.lastIndexOf("/") + 1);
-                FileState local = localState.byPath(relPath);
-                if (relPath.contains("/"))
-                    remoteState.addDir(relPath.substring(0, relPath.length() - filename.length() - 1));
-                AtomicBoolean uploadStarted = new AtomicBoolean(false);
-                AtomicBoolean uploadEnded = new AtomicBoolean(false);
-                LocalDateTime modificationTime = LocalDateTime.ofInstant(Instant.ofEpochSecond(local.modificationTime / 1000, 0), ZoneOffset.UTC);
-                folder.files.add(new FileWrapper.FileUploadProperties(filename,
-                        () -> {
-                            try {
-                                return localFS.getBytes(localFS.resolve(relPath), 0);
-                            } catch (IOException e) {
-                                throw new RuntimeException(e);
-                            }
-                        },
-                        (int) (local.size >> 32), (int) local.size, Optional.of(modificationTime), Optional.of(local.hashTree), false, true,
-                        x -> {
-                            if (!uploadStarted.get()) {
-                                LOG.accept("REMOTE: Uploading " + relPath + " " + progress);
-                                uploadStarted.set(true);
-                            }
-                            if (! uploadEnded.get()) {
-                                progress.doneFile();
-                                uploadEnded.set(true);
-                            }
-                        }));
+                remoteFS.uploadSubtree(folders.values().stream());
+                for (String relPath : smallFiles) {
+                    syncedVersions.add(localState.byPath(relPath));
+                }
             }
-            remoteFS.uploadSubtree(folders.values().stream());
-            for (String relPath : smallFiles) {
-                syncedVersions.add(localState.byPath(relPath));
-            }
+            if (isCancelled.get())
+                return;
         }
-        if (isCancelled.get())
-            return;
 
         // do deletes in bulk
         if (! localDeletes.isEmpty()) {
