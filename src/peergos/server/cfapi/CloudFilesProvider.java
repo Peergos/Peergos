@@ -1,5 +1,6 @@
 package peergos.server.cfapi;
 
+import peergos.server.sync.CopyOp;
 import peergos.server.sync.SyncState;
 import peergos.server.util.Logging;
 import peergos.shared.user.UserContext;
@@ -8,6 +9,7 @@ import peergos.shared.user.fs.FileProperties;
 import peergos.shared.user.fs.FileWrapper;
 import peergos.shared.user.fs.HashBranch;
 import peergos.shared.user.fs.HashTree;
+import peergos.shared.user.fs.ResumeUploadProps;
 import peergos.shared.util.PathUtil;
 import peergos.server.sync.FileState;
 
@@ -863,6 +865,52 @@ public class CloudFilesProvider {
         return syncState == null ? java.util.Set.of() : syncState.getDirs();
     }
 
+    /**
+     * Re-drive any upload CopyOps that were in flight when the previous mount session
+     * closed. {@link #uploadLocalFile} persists a CopyOp via {@code startCopies} before
+     * touching the network and removes it via {@code finishCopies} after the upload
+     * completes — anything still in {@code getInProgressCopies()} on the next start is
+     * an upload that didn't finish (mount closed, JVM crashed, network died).
+     * <p>
+     * Each pending op is handed to {@link #uploadLocalFile} which uploads current local
+     * bytes; the {@link #uploadsInFlight} guard prevents this from racing the watcher
+     * if it picks up the same path independently. Skips ops whose local source is gone
+     * (file was deleted between sessions) — we finishCopies those to clear the entry.
+     * <p>
+     * Called from {@code CloudFilesMount.mount} after the watcher and pull scheduler
+     * are running, so re-driven uploads execute on the upload executor like any other.
+     */
+    public void rerunPendingUploads(java.util.concurrent.ExecutorService uploadExec) {
+        if (syncState == null) return;
+        java.util.List<CopyOp> ops;
+        try { ops = syncState.getInProgressCopies(); }
+        catch (Exception e) {
+            LOG.log(Level.WARNING, "rerunPendingUploads: failed to read syncState", e);
+            return;
+        }
+        for (CopyOp op : ops) {
+            if (op.isLocalTarget) continue;   // downloads — out of scope for this method
+            Path localPath = op.source;
+            if (!Files.exists(localPath)) {
+                // Source vanished between sessions; nothing to upload. Drop the entry
+                // so the table doesn't grow with stale rows.
+                try { syncState.finishCopies(java.util.List.of(op)); }
+                catch (Exception e) {
+                    LOG.log(Level.WARNING, "rerunPendingUploads: finishCopies failed for "
+                            + localPath, e);
+                }
+                continue;
+            }
+            System.err.println("[CF] rerunPendingUploads: re-driving " + localPath
+                    + " -> " + op.target);
+            try {
+                uploadExec.submit(() -> uploadLocalFile(localPath));
+            } catch (java.util.concurrent.RejectedExecutionException rej) {
+                LOG.log(Level.WARNING, "rerunPendingUploads: executor rejected " + localPath, rej);
+            }
+        }
+    }
+
     void runPullTick() {
         if (syncState == null) return;
         // Tier 2c — upload local files added while the mount wasn't running. Runs even
@@ -1350,6 +1398,22 @@ public class CloudFilesProvider {
 
             FileWrapper uploaded;
             HashTree localHash = hashLocalFile(localPath, localSize);
+            // Persist a CopyOp BEFORE we touch the network. If the mount is closed (or
+            // the JVM dies) mid-upload, the entry stays in syncState's in-progress copy
+            // table and CloudFilesMount.mount picks it up next start via
+            // rerunPendingUploads(). finishCopies below removes it on completion. We
+            // only need source/target paths to re-drive — the re-drive just calls
+            // uploadLocalFile again with current local bytes — so targetState is null
+            // and we don't bother snapshotting the remote treeHash.
+            long localMtime = Files.getLastModifiedTime(localPath).toMillis() / 1000 * 1000;
+            FileState sourceSt = localHash == null ? null
+                    : new FileState(relative, localMtime, localSize, localHash);
+            CopyOp pending = sourceSt == null ? null : new CopyOp(false, localPath,
+                    java.nio.file.Paths.get(peergosPath),
+                    sourceSt, null, 0L, localSize,
+                    ResumeUploadProps.random(context.crypto));
+            if (pending != null && syncState != null)
+                syncState.startCopies(java.util.List.of(pending));
             try (peergos.server.simulation.FileAsyncReader reader =
                          new peergos.server.simulation.FileAsyncReader(localPath.toFile())) {
                 if (existing.isPresent() && !existing.get().isDirectory()) {
@@ -1364,6 +1428,8 @@ public class CloudFilesProvider {
                             context.network, context.crypto, l -> {}).join();
                 }
             }
+            if (pending != null && syncState != null)
+                syncState.finishCopies(java.util.List.of(pending));
             System.err.println("[CF] uploadLocalFile: upload complete for " + peergosPath);
             // Record the new "last synced version" for conflict detection.
             context.getByPath(peergosPath).join().ifPresent(

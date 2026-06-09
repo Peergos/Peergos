@@ -277,6 +277,13 @@ public class CloudFilesMount implements Closeable {
         CloudFilesMount m = new CloudFilesMount(syncRootPath, connectionKey, callbackArena, wt, ws, uploadExec, pullSched, syncState, provider);
         holder[0] = m;
         wt.start();
+        // Re-drive any uploads that were in flight when the previous mount session
+        // closed (or the JVM died). uploadLocalFile persists a CopyOp via syncState's
+        // startCopies before touching the network and removes it on success — anything
+        // still recorded here is an upload that didn't get a chance to finish. Done
+        // AFTER the watcher and pull scheduler are running so the re-driven uploads
+        // share the same uploadsInFlight guard and pull-tick interactions as fresh ones.
+        provider.rerunPendingUploads(uploadExec);
         Runtime.getRuntime().addShutdownHook(new Thread(m::close, "CF unmount"));
         return m;
     }
