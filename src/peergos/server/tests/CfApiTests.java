@@ -859,6 +859,89 @@ public class CfApiTests {
         }
     }
 
+    /**
+     * Verify that a directory deleted on the remote (via another UserContext) is
+     * cleaned up locally — both the file placeholders inside (handled by per-file
+     * applyRemoteDelete) and the empty dir itself (handled by applyRemoteDirDeletes,
+     * the parallel pass over syncState.getDirs()). Without the dir pass, the empty
+     * placeholder dir would linger on disk and the syncState entry would persist
+     * across remounts.
+     */
+    @Test
+    public void remoteDirDeletePropagatesToLocal() throws Exception {
+        if (!isWindowsDesktop()) return;
+        NetworkAccess network = Builder.buildLocalJavaNetworkAccess(WEB_PORT).join();
+        Crypto crypto = Main.initCrypto();
+        String user = "cfapi" + UUID.randomUUID().toString().substring(0, 8);
+        UserContext contextA = UserContext.signUp(user, PASSWORD, "", network, crypto).join();
+
+        // Seed a remote subdir with one file inside, so it's a real populated dir
+        // (not just an empty placeholder) and exercises the file-then-dir order.
+        byte[] inside = "inside".getBytes(StandardCharsets.UTF_8);
+        FileWrapper home = contextA.getByPath("/" + user).join().get();
+        FileWrapper folder = home.mkdir("folder", contextA.network, false,
+                Optional.empty(), contextA.crypto).join();
+        contextA.getByPath("/" + user + "/folder").join().get()
+                .uploadOrReplaceFile("inside.txt",
+                        new AsyncReader.ArrayBacked(inside), inside.length,
+                        contextA.network, contextA.crypto, () -> false, l -> {}).join();
+
+        Path syncRoot = tmp.newFolder("peergos-cf-" + user).toPath();
+        Path userRoot = syncRoot.resolve(user);
+        Path stateDb  = tmp.newFolder("peergos-cf-state-" + user).toPath().resolve("state.db");
+        CloudFilesMount mount = CloudFilesMount.mount(contextA, syncRoot.toString(), stateDb);
+        try {
+            // External enumerations: $user/ then $user/folder/ — populate both via
+            // FETCH_PLACEHOLDERS so addDir runs for each (the gate the dir-delete pass
+            // iterates over) and so inside.txt's placeholder is on disk + in syncState.
+            String userRootPs = userRoot.toString().replace("'", "''");
+            assertEquals(0, runPs("Get-ChildItem -LiteralPath '" + userRootPs + "' -Name | Out-String"));
+            String folderPs = userRoot.resolve("folder").toString().replace("'", "''");
+            assertEquals(0, runPs("Get-ChildItem -LiteralPath '" + folderPs + "' -Name | Out-String"));
+            // Hydrate inside.txt so its mtime/size match the synced baseline (so the
+            // per-file applyRemoteDelete in the pull tick agrees to delete it cleanly
+            // rather than treating it as locally-diverged).
+            String insidePs = userRoot.resolve("folder").resolve("inside.txt")
+                    .toString().replace("'", "''");
+            assertEquals(0, runPs("$null = Get-Content -LiteralPath '" + insidePs
+                    + "' -Raw -ErrorAction Stop"));
+
+            assertTrue("folder should be on disk after first enumeration",
+                    Files.exists(userRoot.resolve("folder")));
+            assertTrue("inside.txt should be on disk after hydrate",
+                    Files.exists(userRoot.resolve("folder").resolve("inside.txt")));
+
+            // Remote delete via a second context. Remove the file first, then the dir.
+            UserContext contextB = UserContext.signIn(user, PASSWORD,
+                    req -> { throw new IllegalStateException("no MFA"); },
+                    network, crypto).join();
+            String remoteFile   = "/" + user + "/folder/inside.txt";
+            String remoteFolder = "/" + user + "/folder";
+            FileWrapper fileOnB = contextB.getByPath(remoteFile).join().orElseThrow();
+            FileWrapper folderOnB = contextB.getByPath(remoteFolder).join().orElseThrow();
+            fileOnB.remove(folderOnB, PathUtil.get(remoteFile), contextB).join();
+            FileWrapper homeOnB = contextB.getByPath("/" + user).join().orElseThrow();
+            FileWrapper folderOnB2 = contextB.getByPath(remoteFolder).join().orElseThrow();
+            folderOnB2.remove(homeOnB, PathUtil.get(remoteFolder), contextB).join();
+
+            // Wait for context A to observe the remote deletes.
+            waitFor(60_000, () -> contextA.getByPath(remoteFolder).join().isEmpty()
+                    && contextA.getByPath(remoteFile).join().isEmpty());
+
+            // Force the pull tick — first the file is locally deleted, then the dir.
+            mount.forcePullTick();
+
+            // Eventual: both gone locally, and getDirs no longer has folder.
+            waitFor(60_000, () -> !Files.exists(userRoot.resolve("folder")));
+            assertFalse("local folder/ should be deleted after remote dir delete",
+                    Files.exists(userRoot.resolve("folder")));
+            assertFalse("local folder/inside.txt should be deleted",
+                    Files.exists(userRoot.resolve("folder").resolve("inside.txt")));
+        } finally {
+            mount.close();
+        }
+    }
+
     private static int runPs(String command) throws Exception {
         ProcessBuilder pb = new ProcessBuilder(
                 "powershell", "-NoProfile", "-NonInteractive",

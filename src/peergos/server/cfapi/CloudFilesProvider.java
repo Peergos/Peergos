@@ -90,6 +90,41 @@ public class CloudFilesProvider {
         originalToCurrentDir.put(original, tgt);
     }
 
+    /**
+     * Single-thread executor that owns every write to the {@link SyncState} SQLite DB.
+     * SQLite serialises writers anyway (SQLITE_BUSY otherwise), and a CF callback thread
+     * blowing up inside JNI exception construction while unwinding through an FFM upcall
+     * stub crashed the JVM in testing — that path went through redefined-by-JVMTI
+     * Throwable.fillInStackTrace and SIGSEGV'd in jvm.dll. Routing every write through
+     * one thread sidesteps both the SQLite contention and the FFM-upcall-on-exception
+     * fragility. Daemon thread so it doesn't keep the JVM alive on shutdown.
+     */
+    private final java.util.concurrent.ExecutorService syncStateExec =
+            java.util.concurrent.Executors.newSingleThreadExecutor(r -> {
+                Thread t = new Thread(r, "CF syncState");
+                t.setDaemon(true);
+                return t;
+            });
+
+    /** Submit a SyncState write off the calling thread. Any exception inside the task is
+     *  logged on the executor thread instead of unwinding back through the caller. Use
+     *  this from CF callback threads — direct calls from the upload executor and pull
+     *  scheduler are also routed here so that all writers serialise on one thread. */
+    private void asyncSyncState(Runnable r) {
+        if (syncState == null) return;
+        try {
+            syncStateExec.submit(() -> {
+                try { r.run(); }
+                catch (Throwable t) {
+                    LOG.log(Level.WARNING, "syncState write failed", t);
+                }
+            });
+        } catch (java.util.concurrent.RejectedExecutionException ignored) {
+            // Executor shut down (mount closing) — drop the write; the next mount will
+            // recover via its discoverMissedLocalUploads / discoverNewRemoteChildren walks.
+        }
+    }
+
     public CloudFilesProvider(UserContext context,
                               String syncRootPath,
                               SyncState syncState) {
@@ -392,21 +427,27 @@ public class CloudFilesProvider {
             }
             // Record initial "last synced version" for each new placeholder. After
             // TRANSFER_PLACEHOLDERS the local placeholder represents the current remote
-            // state (dehydrated content + correct metadata), so synced == remote.
+            // state (dehydrated content + correct metadata), so synced == remote. All
+            // SyncState writes go through asyncSyncState — see syncStateExec's javadoc
+            // for why we don't run SQLite from CF callback threads.
             String dirRelPath = peergosPathToRelPath(peergosPath);
             if (dirRelPath != null) {
-                for (FileWrapper fw : visible) {
-                    String relPath = dirRelPath.isEmpty()
-                            ? fw.getName()
-                            : dirRelPath + "/" + fw.getName();
-                    if (!fw.isDirectory()) recordSyncedVersion(relPath, fw);
-                }
-                // Remember that this dir is now populated. discoverNewRemoteChildren
-                // uses syncState.hasDir to decide whether descending into a placeholder
-                // dir is safe — without this, we couldn't tell a populated placeholder
-                // dir apart from an unpopulated one, and remote-side files added after
-                // CF marked the dir DISABLE_ON_DEMAND_POPULATION would stay invisible.
-                if (syncState != null) syncState.addDir(dirRelPath);
+                final String dirRel = dirRelPath;
+                final java.util.List<FileWrapper> snapshot = new java.util.ArrayList<>(visible);
+                asyncSyncState(() -> {
+                    for (FileWrapper fw : snapshot) {
+                        String relPath = dirRel.isEmpty()
+                                ? fw.getName()
+                                : dirRel + "/" + fw.getName();
+                        if (!fw.isDirectory()) recordSyncedVersion(relPath, fw);
+                    }
+                    // Remember that this dir is now populated. discoverNewRemoteChildren
+                    // uses syncState.hasDir to decide whether descending into a placeholder
+                    // dir is safe — without this, we couldn't tell a populated placeholder
+                    // dir apart from an unpopulated one, and remote-side files added after
+                    // CF marked the dir DISABLE_ON_DEMAND_POPULATION would stay invisible.
+                    syncState.addDir(dirRel);
+                });
             }
         } catch (Exception e) {
             LOG.log(Level.WARNING, "FETCH_PLACEHOLDERS callback error", e);
@@ -865,6 +906,12 @@ public class CloudFilesProvider {
                 applyRemoteChangeOrConflict(relPath, synced, remote);
             }
 
+            // Tier 2-dirs — propagate remote directory deletions. Tier 2 above cleared
+            // the files inside any remotely-deleted dir, so the local dir itself should
+            // now be empty and safe to delete. Runs AFTER the file tier so child files
+            // have already been Files.deleted by applyRemoteDelete.
+            applyRemoteDirDeletes();
+
             // Tier 2b — discover remote children that appeared in dirs the user has
             // already enumerated locally. CF sets DISABLE_ON_DEMAND_POPULATION on every
             // dir we serve via FETCH_PLACEHOLDERS, so it never fires the callback again
@@ -911,6 +958,56 @@ public class CloudFilesProvider {
             System.err.println("[CF] PULL: removed local " + relPath + " (deleted on remote)");
         } catch (Exception e) {
             LOG.log(Level.WARNING, "pull: local delete failed for " + relPath, e);
+        }
+    }
+
+    /**
+     * Iterate every dir we've recorded in {@link SyncState#getDirs()}; for any whose
+     * remote {@code getByPath} is empty, delete the local placeholder dir (if empty)
+     * and drop the syncState entry. Sorted deepest-first so child dirs are removed
+     * before their parents, otherwise the parent's {@code Files.delete} would fail
+     * with {@code DirectoryNotEmptyException}.
+     *
+     * <p>Skips:
+     * <ul>
+     *   <li>Sync-root-level entries (the {@code $user/} folder — its absence remotely
+     *       would mean the account itself is gone, never propagate that locally).</li>
+     *   <li>Non-empty local dirs — the user may have unsynced files we don't want to
+     *       destroy. The {@code syncState} entry stays in that case so the dir keeps
+     *       being checked; the dir won't be removed until its contents drain.</li>
+     * </ul>
+     */
+    private void applyRemoteDirDeletes() {
+        java.util.List<String> dirs = new java.util.ArrayList<>(syncState.getDirs());
+        // Deepest first: dir name count strictly descending, then any stable order.
+        dirs.sort((a, b) -> Integer.compare(b.split("/").length, a.split("/").length));
+        for (String relPath : dirs) {
+            if (!relPath.contains("/")) continue;   // sync-root-level ($user/)
+            try {
+                Optional<FileWrapper> remoteOpt = context.getByPath("/" + relPath).join();
+                if (remoteOpt.isPresent()) continue;
+                Path localPath = Path.of(syncRootPath).resolve(
+                        relPath.replace('/', java.io.File.separatorChar));
+                if (Files.exists(localPath)) {
+                    try {
+                        Files.delete(localPath);
+                        System.err.println("[CF] PULL: removed local dir " + relPath
+                                + " (deleted on remote)");
+                    } catch (java.nio.file.DirectoryNotEmptyException e) {
+                        // Leave the dir alone — the user has unsynced content in there.
+                        // Don't drop the syncState entry either, so we keep checking it
+                        // each tick; once the user clears the leftovers we'll catch up.
+                        System.err.println("[CF] PULL: remote dir " + relPath
+                                + " gone but local has unsynced children — keeping local");
+                        continue;
+                    }
+                }
+                syncState.removeDir(relPath);
+                identityToPath.values().removeIf(p ->
+                        p.equals("/" + relPath) || p.startsWith("/" + relPath + "/"));
+            } catch (Exception e) {
+                LOG.log(Level.WARNING, "pull: remote-dir-delete check failed for " + relPath, e);
+            }
         }
     }
 
@@ -1430,10 +1527,9 @@ public class CloudFilesProvider {
             if (parentOpt.isEmpty()) return;
             fwOpt.get().remove(parentOpt.get(), PathUtil.get(peergosPath), context).join();
             identityToPath.values().removeIf(p -> p.equals(peergosPath) || p.startsWith(peergosPath + "/"));
-            if (syncState != null) {
-                String relPath = peergosPathToRelPath(peergosPath);
-                if (relPath != null) syncState.remove(relPath);
-            }
+            String relPath = peergosPathToRelPath(peergosPath);
+            if (relPath != null)
+                asyncSyncState(() -> syncState.remove(relPath));
             LOG.fine("Deleted " + peergosPath);
         } catch (Exception e) {
             LOG.log(Level.WARNING, "Delete failed for " + peergosPath, e);
@@ -1566,14 +1662,15 @@ public class CloudFilesProvider {
                 return v;
             });
             // Move the SyncState entry: remove old, add at target path with current props.
-            if (syncState != null) {
-                String relSource = peergosPathToRelPath(peergosSource);
-                if (relSource != null) syncState.remove(relSource);
-                context.getByPath(peergosTarget).join().ifPresent(fw -> {
-                    String relTarget = peergosPathToRelPath(peergosTarget);
-                    if (relTarget != null) recordSyncedVersion(relTarget, fw);
-                });
-            }
+            // Both writes are routed off the CF callback thread via asyncSyncState.
+            String relSource = peergosPathToRelPath(peergosSource);
+            if (relSource != null)
+                asyncSyncState(() -> syncState.remove(relSource));
+            context.getByPath(peergosTarget).join().ifPresent(fw -> {
+                String relTarget = peergosPathToRelPath(peergosTarget);
+                if (relTarget != null)
+                    asyncSyncState(() -> recordSyncedVersion(relTarget, fw));
+            });
             System.err.println("[CF] NOTIFY_RENAME_COMPLETION: done " + peergosSource
                     + " -> " + peergosTarget);
         } catch (Exception e) {
