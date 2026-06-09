@@ -2903,7 +2903,7 @@ public CompletableFuture<Boolean> copyTo(FileWrapper target, UserContext context
                                                             parent.signingPair() :
                                                             signingPair(), tid, hasher, network, v1, c), network.dhtClient))
                             .thenCompose(v2 -> (writableParent ? v2.withWriter(owner(), parent.writer(), network)
-                                                                 .thenCompose(v3 -> parent.getUpdated(v3, network).thenCompose(freshParent -> parent.pointer.fileAccess
+                                                                 .thenCompose(v3 -> parent.getUpdated(v3, network).thenCompose(freshParent -> freshParent.pointer.fileAccess
                                                                                     .removeChildren(v3, c, Arrays.asList(isLink() ? linkPointer.get().capability : getPointer().capability), parent.writableFilePointer(),
                                                                                             parent.entryWriter, network, context.crypto.random, hasher))) :
                                     Futures.of(v2)))
