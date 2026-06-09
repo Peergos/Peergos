@@ -791,6 +791,74 @@ public class CfApiTests {
         }
     }
 
+    /**
+     * A file added to the sync root while the mount is offline (no WatchService
+     * running to catch the CREATE) must be uploaded by the pull loop's safety-net
+     * scan after the next mount comes up. We mount once to populate $user/, close,
+     * drop a file directly into $user/ via Files.write (bypassing CF and the
+     * watcher), remount and forcePullTick.
+     */
+    @Test
+    public void offlineDropIsUploadedOnRemount() throws Exception {
+        if (!isWindowsDesktop()) return;
+        NetworkAccess network = Builder.buildLocalJavaNetworkAccess(WEB_PORT).join();
+        Crypto crypto = Main.initCrypto();
+        String user = "cfapi" + UUID.randomUUID().toString().substring(0, 8);
+        UserContext context = UserContext.signUp(user, PASSWORD, "", network, crypto).join();
+
+        // Seed one remote file so the first mount has a reason to enumerate $user/
+        // and thereby addDir($user) to syncState — which is the gate the safety-net
+        // walk uses to decide $user/ is safe to descend into on remount.
+        byte[] seed = "seed".getBytes(StandardCharsets.UTF_8);
+        FileWrapper home = context.getByPath("/" + user).join().get();
+        home.uploadOrReplaceFile("seed.txt", new AsyncReader.ArrayBacked(seed), seed.length,
+                context.network, context.crypto, () -> false, l -> {}).join();
+
+        Path syncRoot = tmp.newFolder("peergos-cf-" + user).toPath();
+        Path userRoot = syncRoot.resolve(user);
+        Path stateDb  = tmp.newFolder("peergos-cf-state-" + user).toPath().resolve("state.db");
+
+        // First mount: external Get-ChildItem to populate $user/ (FETCH_PLACEHOLDERS
+        // → addDir($user)), then close.
+        CloudFilesMount first = CloudFilesMount.mount(context, syncRoot.toString(), stateDb);
+        try {
+            String userRootPs = userRoot.toString().replace("'", "''");
+            assertEquals(0, runPs("Get-ChildItem -LiteralPath '" + userRootPs + "' -Name | Out-String"));
+            assertTrue("seed.txt should materialise during first mount",
+                    Files.exists(userRoot.resolve("seed.txt")));
+        } finally {
+            first.close();
+        }
+
+        // Offline drop: while the mount is closed, write a file directly into the
+        // sync root. Nothing in our process sees this — no watcher events, no CF
+        // callbacks. The file exists on disk as an ordinary file (not a placeholder).
+        byte[] offline = "added-while-offline".getBytes(StandardCharsets.UTF_8);
+        Path offlinePath = userRoot.resolve("offline.txt");
+        Files.write(offlinePath, offline);
+        assertTrue("offline.txt must be on disk before remount", Files.exists(offlinePath));
+        assertFalse("offline.txt must not be in peergos yet",
+                context.getByPath("/" + user + "/offline.txt").join().isPresent());
+
+        // Remount and force a pull tick. discoverMissedLocalUploads should walk
+        // $user/ (it's in syncState.getDirs() from the first mount's FETCH_PLACEHOLDERS)
+        // and upload offline.txt because no syncState entry exists for it.
+        CloudFilesMount second = CloudFilesMount.mount(context, syncRoot.toString(), stateDb);
+        try {
+            second.forcePullTick();
+            waitFor(60_000, () -> context.getByPath("/" + user + "/offline.txt").join().isPresent());
+            Optional<FileWrapper> remote = context.getByPath("/" + user + "/offline.txt").join();
+            assertTrue("offline.txt should be in peergos after remount + pull tick",
+                    remote.isPresent());
+            assertEquals("offline.txt size mismatch", offline.length, remote.get().getSize());
+            byte[] roundTripped = Serialize.readFully(remote.get(), crypto, network).join();
+            assertArrayEquals("offline.txt bytes mismatch after round trip",
+                    offline, roundTripped);
+        } finally {
+            second.close();
+        }
+    }
+
     private static int runPs(String command) throws Exception {
         ProcessBuilder pb = new ProcessBuilder(
                 "powershell", "-NoProfile", "-NonInteractive",

@@ -813,6 +813,15 @@ public class CloudFilesProvider {
 
     void runPullTick() {
         if (syncState == null) return;
+        // Tier 2c — upload local files added while the mount wasn't running. Runs even
+        // when the writer-set snapshot is empty or unchanged: offline-added files leave
+        // no trace in any writer's history, so the snapshot-based checks below can't
+        // see them.
+        try {
+            discoverMissedLocalUploads();
+        } catch (Exception e) {
+            LOG.log(Level.WARNING, "pull: discoverMissedLocalUploads failed", e);
+        }
         try {
             // Tier 1 — snapshot equality across all writers we've ever recorded.
             // The persisted snapshot accumulates writers via recordSyncedVersion (one entry
@@ -902,6 +911,72 @@ public class CloudFilesProvider {
             System.err.println("[CF] PULL: removed local " + relPath + " (deleted on remote)");
         } catch (Exception e) {
             LOG.log(Level.WARNING, "pull: local delete failed for " + relPath, e);
+        }
+    }
+
+    /**
+     * Walk the local sync root and upload any non-placeholder file with content that
+     * isn't already in {@code syncState}. Compensates for WatchService events the
+     * mount couldn't see — chiefly files dropped into the sync root while the mount
+     * wasn't running (the watcher only catches changes during its own polling window).
+     *
+     * <p>Safety gate: descends only into the sync root, non-placeholder subdirs, and
+     * placeholder subdirs already in {@code syncState.getDirs()} (i.e. ones we
+     * populated previously). Walking into an un-populated placeholder dir would call
+     * {@code newDirectoryStream}, which triggers FETCH_PLACEHOLDERS, which we fail
+     * same-process — empirically that leaves the dir appearing empty in Explorer.
+     * The gate keeps lazy population of un-enumerated dirs to the FETCH_PLACEHOLDERS
+     * path where it belongs.
+     *
+     * <p>For each non-placeholder file with non-zero size that {@code syncState}
+     * doesn't already track, calls {@link #uploadLocalFile} (which is idempotent —
+     * no-op if peergos already has matching size). Cheap on a fully-synced tree
+     * because the per-entry checks ({@code isPlaceholder}, {@code attrs.size}, the
+     * sync-state lookup) are all in-process.
+     */
+    private void discoverMissedLocalUploads() {
+        if (syncState == null) return;
+        Path root = Path.of(syncRootPath);
+        try {
+            Files.walkFileTree(root, new java.nio.file.SimpleFileVisitor<Path>() {
+                @Override
+                public java.nio.file.FileVisitResult preVisitDirectory(Path dir,
+                        java.nio.file.attribute.BasicFileAttributes attrs) {
+                    if (dir.equals(root)) return java.nio.file.FileVisitResult.CONTINUE;
+                    if (!CfApi.isPlaceholder(dir)) return java.nio.file.FileVisitResult.CONTINUE;
+                    String rel = root.relativize(dir).toString()
+                            .replace(java.io.File.separatorChar, '/');
+                    return syncState.hasDir(rel)
+                            ? java.nio.file.FileVisitResult.CONTINUE
+                            : java.nio.file.FileVisitResult.SKIP_SUBTREE;
+                }
+                @Override
+                public java.nio.file.FileVisitResult visitFile(Path file,
+                        java.nio.file.attribute.BasicFileAttributes attrs) {
+                    try {
+                        if (CfApi.isPlaceholder(file)) return java.nio.file.FileVisitResult.CONTINUE;
+                        if (attrs.size() == 0) return java.nio.file.FileVisitResult.CONTINUE;
+                        String rel = root.relativize(file).toString()
+                                .replace(java.io.File.separatorChar, '/');
+                        if (syncState.byPath(rel) != null) return java.nio.file.FileVisitResult.CONTINUE;
+                        System.err.println("[CF] PULL: uploading offline-added " + rel);
+                        uploadLocalFile(file);
+                    } catch (Exception e) {
+                        LOG.log(Level.FINE, "pull: missed-upload visit failed for " + file, e);
+                    }
+                    return java.nio.file.FileVisitResult.CONTINUE;
+                }
+                @Override
+                public java.nio.file.FileVisitResult visitFileFailed(Path file, IOException exc) {
+                    return java.nio.file.FileVisitResult.CONTINUE;
+                }
+                @Override
+                public java.nio.file.FileVisitResult postVisitDirectory(Path dir, IOException exc) {
+                    return java.nio.file.FileVisitResult.CONTINUE;
+                }
+            });
+        } catch (IOException e) {
+            LOG.log(Level.WARNING, "pull: discoverMissedLocalUploads walk failed", e);
         }
     }
 
