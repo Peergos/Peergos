@@ -49,23 +49,23 @@ public class SyncTests {
         LocalFileSystem remoteFs = new LocalFileSystem(base2, Main.initCrypto().hasher);
         SyncState syncedState = new JdbcTreeState(":memory:");
 
-        DirectorySync.syncDir(localFs, remoteFs, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, 32, 5, crypto, () -> false, DirectorySync::log);
+        DirectorySync.syncDir(localFs, remoteFs, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, 32, 5, Files.createTempFile("peergos-sync", ".sqlite"), crypto, () -> false, DirectorySync::log);
 
         byte[] data = new byte[filesize];
         new Random(42).nextBytes(data);
         Files.write(base1.resolve(originalFilename), data, StandardOpenOption.CREATE);
 
-        DirectorySync.syncDir(localFs, remoteFs, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, 32, 5, crypto, () -> false, DirectorySync::log);
+        DirectorySync.syncDir(localFs, remoteFs, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, 32, 5, Files.createTempFile("peergos-sync", ".sqlite"), crypto, () -> false, DirectorySync::log);
         Assert.assertNotNull(syncedState.byPath(originalFilename));
 
         // rename file
         Files.move(base1.resolve(originalFilename), base1.resolve(newFilename));
-        DirectorySync.syncDir(localFs, remoteFs, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, 32, 5, crypto, () -> false, DirectorySync::log);
+        DirectorySync.syncDir(localFs, remoteFs, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, 32, 5, Files.createTempFile("peergos-sync", ".sqlite"), crypto, () -> false, DirectorySync::log);
         Assert.assertNull(syncedState.byPath(originalFilename));
         Assert.assertNotNull(syncedState.byPath(newFilename));
 
         // sync should be stable
-        DirectorySync.syncDir(localFs, remoteFs, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, 32, 5, crypto, () -> false, DirectorySync::log);
+        DirectorySync.syncDir(localFs, remoteFs, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, 32, 5, Files.createTempFile("peergos-sync", ".sqlite"), crypto, () -> false, DirectorySync::log);
         Assert.assertNull(syncedState.byPath(originalFilename));
         Assert.assertNotNull(syncedState.byPath(newFilename));
     }
@@ -91,14 +91,14 @@ public class SyncTests {
         LocalFileSystem remoteFs = new LocalFileSystem(base2, Main.initCrypto().hasher);
         SyncState syncedState = new JdbcTreeState(":memory:");
 
-        DirectorySync.syncDir(localFs, remoteFs, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, 32, 5, crypto, () -> false, DirectorySync::log);
+        DirectorySync.syncDir(localFs, remoteFs, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, 32, 5, Files.createTempFile("peergos-sync", ".sqlite"), crypto, () -> false, DirectorySync::log);
 
         byte[] data = new byte[filesize];
         new Random(42).nextBytes(data);
         for (int i=0; i < nCopies; i++)
             Files.write(base1.resolve(i + "_" + originalFilename), data, StandardOpenOption.CREATE);
 
-        DirectorySync.syncDir(localFs, remoteFs, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, 32, 5, crypto, () -> false, DirectorySync::log);
+        DirectorySync.syncDir(localFs, remoteFs, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, 32, 5, Files.createTempFile("peergos-sync", ".sqlite"), crypto, () -> false, DirectorySync::log);
         for (int i=0; i < nCopies; i++)
             Assert.assertNotNull(syncedState.byPath(i + "_" + originalFilename));
         Assert.assertEquals(syncedState.allFilePaths().size(), nCopies);
@@ -107,7 +107,7 @@ public class SyncTests {
         for (int i=0; i < nRenames; i++)
             Files.move(base1.resolve(i + "_" + originalFilename), base1.resolve(i + "_" + newFilename));
         List<String> ops = new ArrayList<>();
-        DirectorySync.syncDir(localFs, remoteFs, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, 32, 5, crypto, () -> false, ops::add);
+        DirectorySync.syncDir(localFs, remoteFs, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, 32, 5, Files.createTempFile("peergos-sync", ".sqlite"), crypto, () -> false, ops::add);
         for (int i=0; i < nRenames; i++) {
             Assert.assertNull(syncedState.byPath(i + "_" + originalFilename));
             Assert.assertNotNull(syncedState.byPath(i + "_" + newFilename));
@@ -116,7 +116,7 @@ public class SyncTests {
         Assert.assertTrue(ops.stream().anyMatch(op -> op.contains("Moving")));
 
         // sync should be stable
-        DirectorySync.syncDir(localFs, remoteFs, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, 32, 5, crypto, () -> false, DirectorySync::log);
+        DirectorySync.syncDir(localFs, remoteFs, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, 32, 5, Files.createTempFile("peergos-sync", ".sqlite"), crypto, () -> false, DirectorySync::log);
         for (int i=0; i < nRenames; i++) {
             Assert.assertNull(syncedState.byPath(i + "_" + originalFilename));
             Assert.assertNotNull(syncedState.byPath(i + "_" + newFilename));
@@ -134,25 +134,25 @@ public class SyncTests {
 
         boolean syncLocalDeletes = false;
         boolean syncRemoteDeletes = false;
-        DirectorySync.syncDir(localFs, remoteFs, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, 32, 5, crypto, () -> false, DirectorySync::log);
+        DirectorySync.syncDir(localFs, remoteFs, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, 32, 5, Files.createTempFile("peergos-sync", ".sqlite"), crypto, () -> false, DirectorySync::log);
 
         byte[] data = new byte[6 * 1024 * 1024];
         new Random(42).nextBytes(data);
         String filename = "file.bin";
         Files.write(base1.resolve(filename), data, StandardOpenOption.CREATE);
 
-        DirectorySync.syncDir(localFs, remoteFs, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, 32, 5, crypto, () -> false, DirectorySync::log);
+        DirectorySync.syncDir(localFs, remoteFs, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, 32, 5, Files.createTempFile("peergos-sync", ".sqlite"), crypto, () -> false, DirectorySync::log);
         Assert.assertNotNull(syncedState.byPath(filename));
 
         // rename file
         String filename2 = "newfile.bin";
         Files.move(base1.resolve(filename), base1.resolve(filename2));
-        DirectorySync.syncDir(localFs, remoteFs, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, 32, 5, crypto, () -> false, DirectorySync::log);
+        DirectorySync.syncDir(localFs, remoteFs, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, 32, 5, Files.createTempFile("peergos-sync", ".sqlite"), crypto, () -> false, DirectorySync::log);
         Assert.assertNull(syncedState.byPath(filename));
         Assert.assertNotNull(syncedState.byPath(filename2));
 
         // sync should be stable
-        DirectorySync.syncDir(localFs, remoteFs, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, 32, 5, crypto, () -> false, DirectorySync::log);
+        DirectorySync.syncDir(localFs, remoteFs, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, 32, 5, Files.createTempFile("peergos-sync", ".sqlite"), crypto, () -> false, DirectorySync::log);
         Assert.assertNull(syncedState.byPath(filename));
         Assert.assertNotNull(syncedState.byPath(filename2));
     }
@@ -166,38 +166,38 @@ public class SyncTests {
         LocalFileSystem remoteFs = new LocalFileSystem(base2, Main.initCrypto().hasher);
         SyncState syncedState = new JdbcTreeState(":memory:");
 
-        DirectorySync.syncDir(localFs, remoteFs, true, true, null, null, syncedState, 32, 5, crypto, () -> false, DirectorySync::log);
+        DirectorySync.syncDir(localFs, remoteFs, true, true, null, null, syncedState, 32, 5, Files.createTempFile("peergos-sync", ".sqlite"), crypto, () -> false, DirectorySync::log);
 
         byte[] data = new byte[6 * 1024 * 1024];
         new Random(42).nextBytes(data);
         String filename = "file.bin";
         Files.write(base1.resolve(filename), data, StandardOpenOption.CREATE);
 
-        DirectorySync.syncDir(localFs, remoteFs, true, true, null, null, syncedState, 32, 5, crypto, () -> false, DirectorySync::log);
+        DirectorySync.syncDir(localFs, remoteFs, true, true, null, null, syncedState, 32, 5, Files.createTempFile("peergos-sync", ".sqlite"), crypto, () -> false, DirectorySync::log);
         Assert.assertNotNull(syncedState.byPath(filename));
 
         // move file to a subdir
         Path subdir = base1.resolve("subdir");
         subdir.toFile().mkdirs();
         Files.move(base1.resolve(filename), subdir.resolve(filename));
-        DirectorySync.syncDir(localFs, remoteFs, true, true, null, null, syncedState, 32, 5, crypto, () -> false, DirectorySync::log);
+        DirectorySync.syncDir(localFs, remoteFs, true, true, null, null, syncedState, 32, 5, Files.createTempFile("peergos-sync", ".sqlite"), crypto, () -> false, DirectorySync::log);
         Assert.assertNull(syncedState.byPath(filename));
         String fileRelPath = subdir.getFileName().resolve(filename).toString().replaceAll("\\\\", "/");
         Assert.assertNotNull(syncedState.byPath(fileRelPath));
 
         // sync should be stable
-        DirectorySync.syncDir(localFs, remoteFs, true, true, null, null, syncedState, 32, 5, crypto, () -> false, DirectorySync::log);
+        DirectorySync.syncDir(localFs, remoteFs, true, true, null, null, syncedState, 32, 5, Files.createTempFile("peergos-sync", ".sqlite"), crypto, () -> false, DirectorySync::log);
         Assert.assertNull(syncedState.byPath(filename));
         Assert.assertNotNull(syncedState.byPath(fileRelPath));
 
         // move the file back
         Files.move(subdir.resolve(filename), base1.resolve(filename));
-        DirectorySync.syncDir(localFs, remoteFs, true, true, null, null, syncedState, 32, 5, crypto, () -> false, DirectorySync::log);
+        DirectorySync.syncDir(localFs, remoteFs, true, true, null, null, syncedState, 32, 5, Files.createTempFile("peergos-sync", ".sqlite"), crypto, () -> false, DirectorySync::log);
         Assert.assertNotNull(syncedState.byPath(filename));
         Assert.assertNull(syncedState.byPath(fileRelPath));
 
         // check stability
-        DirectorySync.syncDir(localFs, remoteFs, true, true, null, null, syncedState, 32, 5, crypto, () -> false, DirectorySync::log);
+        DirectorySync.syncDir(localFs, remoteFs, true, true, null, null, syncedState, 32, 5, Files.createTempFile("peergos-sync", ".sqlite"), crypto, () -> false, DirectorySync::log);
         Assert.assertNotNull(syncedState.byPath(filename));
         Assert.assertNull(syncedState.byPath(fileRelPath));
 
@@ -213,14 +213,14 @@ public class SyncTests {
         LocalFileSystem remoteFs = new LocalFileSystem(base2, Main.initCrypto().hasher);
         SyncState syncedState = new JdbcTreeState(":memory:");
 
-        DirectorySync.syncDir(localFs, remoteFs, true, true, null, null, syncedState, 32, 5, crypto, () -> false, DirectorySync::log);
+        DirectorySync.syncDir(localFs, remoteFs, true, true, null, null, syncedState, 32, 5, Files.createTempFile("peergos-sync", ".sqlite"), crypto, () -> false, DirectorySync::log);
 
         byte[] data = new byte[6 * 1024];
         new Random(42).nextBytes(data);
         String filename = "file.bin";
         Files.write(base2.resolve(filename), data, StandardOpenOption.CREATE);
 
-        DirectorySync.syncDir(localFs, remoteFs, true, true, null, null, syncedState, 32, 5, crypto, () -> false, DirectorySync::log);
+        DirectorySync.syncDir(localFs, remoteFs, true, true, null, null, syncedState, 32, 5, Files.createTempFile("peergos-sync", ".sqlite"), crypto, () -> false, DirectorySync::log);
         Assert.assertNotNull(syncedState.byPath(filename));
 
         // simulate Android (base1) not being able to set mod time, and a modification on original source (base2)
@@ -229,7 +229,7 @@ public class SyncTests {
 
         // check stability
         List<String> ops = new ArrayList<>();
-        DirectorySync.syncDir(localFs, remoteFs, true, true, null, null, syncedState, 32, 5, crypto, () -> false, ops::add);
+        DirectorySync.syncDir(localFs, remoteFs, true, true, null, null, syncedState, 32, 5, Files.createTempFile("peergos-sync", ".sqlite"), crypto, () -> false, ops::add);
         Assert.assertNotNull(syncedState.byPath(filename));
         Set<String> all = syncedState.allFilePaths();
         Assert.assertEquals(1, all.size());
@@ -251,24 +251,24 @@ public class SyncTests {
 
         boolean syncLocalDeletes = false;
         boolean syncRemoteDeletes = true;
-        DirectorySync.syncDir(localFs, remoteFs, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, 32, 5, crypto, () -> false, DirectorySync::log);
+        DirectorySync.syncDir(localFs, remoteFs, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, 32, 5, Files.createTempFile("peergos-sync", ".sqlite"), crypto, () -> false, DirectorySync::log);
 
         byte[] data = new byte[fileSize];
         new Random(42).nextBytes(data);
         String filename = "file.bin";
         Files.write(base1.resolve(filename), data, StandardOpenOption.CREATE);
 
-        DirectorySync.syncDir(localFs, remoteFs, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, 32, 5, crypto, () -> false, DirectorySync::log);
+        DirectorySync.syncDir(localFs, remoteFs, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, 32, 5, Files.createTempFile("peergos-sync", ".sqlite"), crypto, () -> false, DirectorySync::log);
         Assert.assertNotNull(syncedState.byPath(filename));
 
         // delete local file and check remote is not deleted
         Files.delete(base1.resolve(filename));
-        DirectorySync.syncDir(localFs, remoteFs, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, 32, 5, crypto, () -> false, DirectorySync::log);
+        DirectorySync.syncDir(localFs, remoteFs, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, 32, 5, Files.createTempFile("peergos-sync", ".sqlite"), crypto, () -> false, DirectorySync::log);
         Assert.assertNotNull(syncedState.byPath(filename));
         Assert.assertTrue(base2.resolve(filename).toFile().exists());
         Assert.assertFalse(base1.resolve(filename).toFile().exists());
         Assert.assertTrue(syncedState.hasLocalDelete(filename));
-        DirectorySync.syncDir(localFs, remoteFs, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, 32, 5, crypto, () -> false, DirectorySync::log);
+        DirectorySync.syncDir(localFs, remoteFs, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, 32, 5, Files.createTempFile("peergos-sync", ".sqlite"), crypto, () -> false, DirectorySync::log);
         Assert.assertNotNull(syncedState.byPath(filename));
         Assert.assertTrue(syncedState.hasLocalDelete(filename));
         Assert.assertTrue(base2.resolve(filename).toFile().exists());
@@ -278,7 +278,7 @@ public class SyncTests {
         byte[] data2 = new byte[fileSize + 1024 * 1024];
         new Random(28).nextBytes(data2);
         Files.write(base1.resolve(filename), data2, StandardOpenOption.CREATE);
-        DirectorySync.syncDir(localFs, remoteFs, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, 32, 5, crypto, () -> false, DirectorySync::log);
+        DirectorySync.syncDir(localFs, remoteFs, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, 32, 5, Files.createTempFile("peergos-sync", ".sqlite"), crypto, () -> false, DirectorySync::log);
         Assert.assertArrayEquals(Files.readAllBytes(base2.resolve(filename)), data);
         Assert.assertArrayEquals(Files.readAllBytes(base1.resolve(filename)), data);
         Assert.assertFalse(syncedState.hasLocalDelete(filename));
@@ -301,30 +301,30 @@ public class SyncTests {
 
         boolean syncLocalDeletes = false;
         boolean syncRemoteDeletes = true;
-        DirectorySync.syncDir(localFs, remoteFs, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, 32, 5, crypto, () -> false, DirectorySync::log);
+        DirectorySync.syncDir(localFs, remoteFs, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, 32, 5, Files.createTempFile("peergos-sync", ".sqlite"), crypto, () -> false, DirectorySync::log);
 
         byte[] data = new byte[fileSize];
         new Random(42).nextBytes(data);
         String filename = "file.bin";
         Files.write(base1.resolve(filename), data, StandardOpenOption.CREATE);
 
-        DirectorySync.syncDir(localFs, remoteFs, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, 32, 5, crypto, () -> false, DirectorySync::log);
+        DirectorySync.syncDir(localFs, remoteFs, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, 32, 5, Files.createTempFile("peergos-sync", ".sqlite"), crypto, () -> false, DirectorySync::log);
         Assert.assertNotNull(syncedState.byPath(filename));
 
         // delete local file and check remote is not deleted
         Files.delete(base1.resolve(filename));
-        DirectorySync.syncDir(localFs, remoteFs, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, 32, 5, crypto, () -> false, DirectorySync::log);
+        DirectorySync.syncDir(localFs, remoteFs, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, 32, 5, Files.createTempFile("peergos-sync", ".sqlite"), crypto, () -> false, DirectorySync::log);
         Assert.assertNotNull(syncedState.byPath(filename));
         Assert.assertTrue(base2.resolve(filename).toFile().exists());
         Assert.assertTrue(syncedState.hasLocalDelete(filename));
-        DirectorySync.syncDir(localFs, remoteFs, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, 32, 5, crypto, () -> false, DirectorySync::log);
+        DirectorySync.syncDir(localFs, remoteFs, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, 32, 5, Files.createTempFile("peergos-sync", ".sqlite"), crypto, () -> false, DirectorySync::log);
         Assert.assertNotNull(syncedState.byPath(filename));
         Assert.assertTrue(syncedState.hasLocalDelete(filename));
         Assert.assertTrue(base2.resolve(filename).toFile().exists());
 
         // restore the local file (it should be removed from the delete list)
         Files.write(base1.resolve(filename), data, StandardOpenOption.CREATE);
-        DirectorySync.syncDir(localFs, remoteFs, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, 32, 5, crypto, () -> false, DirectorySync::log);
+        DirectorySync.syncDir(localFs, remoteFs, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, 32, 5, Files.createTempFile("peergos-sync", ".sqlite"), crypto, () -> false, DirectorySync::log);
         Assert.assertArrayEquals(Files.readAllBytes(base2.resolve(filename)), data);
         Assert.assertArrayEquals(Files.readAllBytes(base1.resolve(filename)), data);
         Assert.assertFalse(syncedState.hasLocalDelete(filename));
@@ -347,23 +347,23 @@ public class SyncTests {
 
         boolean syncLocalDeletes = false;
         boolean syncRemoteDeletes = true;
-        DirectorySync.syncDir(localFs, remoteFs, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, 32, 5, crypto, () -> false, DirectorySync::log);
+        DirectorySync.syncDir(localFs, remoteFs, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, 32, 5, Files.createTempFile("peergos-sync", ".sqlite"), crypto, () -> false, DirectorySync::log);
 
         byte[] data = new byte[fileSize];
         new Random(42).nextBytes(data);
         String filename = "file.bin";
         Files.write(base1.resolve(filename), data, StandardOpenOption.CREATE);
 
-        DirectorySync.syncDir(localFs, remoteFs, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, 32, 5, crypto, () -> false, DirectorySync::log);
+        DirectorySync.syncDir(localFs, remoteFs, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, 32, 5, Files.createTempFile("peergos-sync", ".sqlite"), crypto, () -> false, DirectorySync::log);
         Assert.assertNotNull(syncedState.byPath(filename));
 
         // delete local file and check remote is not deleted
         Files.delete(base1.resolve(filename));
-        DirectorySync.syncDir(localFs, remoteFs, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, 32, 5, crypto, () -> false, DirectorySync::log);
+        DirectorySync.syncDir(localFs, remoteFs, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, 32, 5, Files.createTempFile("peergos-sync", ".sqlite"), crypto, () -> false, DirectorySync::log);
         Assert.assertNotNull(syncedState.byPath(filename));
         Assert.assertTrue(base2.resolve(filename).toFile().exists());
         Assert.assertTrue(syncedState.hasLocalDelete(filename));
-        DirectorySync.syncDir(localFs, remoteFs, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, 32, 5, crypto, () -> false, DirectorySync::log);
+        DirectorySync.syncDir(localFs, remoteFs, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, 32, 5, Files.createTempFile("peergos-sync", ".sqlite"), crypto, () -> false, DirectorySync::log);
         Assert.assertNotNull(syncedState.byPath(filename));
         Assert.assertTrue(syncedState.hasLocalDelete(filename));
         Assert.assertTrue(base2.resolve(filename).toFile().exists());
@@ -373,7 +373,7 @@ public class SyncTests {
         new Random(28).nextBytes(data2);
         Files.delete(base2.resolve(filename));
         Files.write(base2.resolve(filename), data2, StandardOpenOption.CREATE);
-        DirectorySync.syncDir(localFs, remoteFs, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, 32, 5, crypto, () -> false, DirectorySync::log);
+        DirectorySync.syncDir(localFs, remoteFs, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, 32, 5, Files.createTempFile("peergos-sync", ".sqlite"), crypto, () -> false, DirectorySync::log);
         Assert.assertArrayEquals(Files.readAllBytes(base2.resolve(filename)), data2);
         Assert.assertArrayEquals(Files.readAllBytes(base1.resolve(filename)), data2);
         Assert.assertFalse(syncedState.hasLocalDelete(filename));
@@ -396,23 +396,23 @@ public class SyncTests {
 
         boolean syncLocalDeletes = true;
         boolean syncRemoteDeletes = false;
-        DirectorySync.syncDir(localFs, remoteFs, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, 32, 5, crypto, () -> false, DirectorySync::log);
+        DirectorySync.syncDir(localFs, remoteFs, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, 32, 5, Files.createTempFile("peergos-sync", ".sqlite"), crypto, () -> false, DirectorySync::log);
 
         byte[] data = new byte[fileSize];
         new Random(42).nextBytes(data);
         String filename = "file.bin";
         Files.write(base1.resolve(filename), data, StandardOpenOption.CREATE);
 
-        DirectorySync.syncDir(localFs, remoteFs, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, 32, 5, crypto, () -> false, DirectorySync::log);
+        DirectorySync.syncDir(localFs, remoteFs, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, 32, 5, Files.createTempFile("peergos-sync", ".sqlite"), crypto, () -> false, DirectorySync::log);
         Assert.assertNotNull(syncedState.byPath(filename));
 
         // delete remote file and check local is not deleted
         Files.delete(base2.resolve(filename));
-        DirectorySync.syncDir(localFs, remoteFs, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, 32, 5, crypto, () -> false, DirectorySync::log);
+        DirectorySync.syncDir(localFs, remoteFs, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, 32, 5, Files.createTempFile("peergos-sync", ".sqlite"), crypto, () -> false, DirectorySync::log);
         Assert.assertNotNull(syncedState.byPath(filename));
         Assert.assertTrue(base1.resolve(filename).toFile().exists());
         Assert.assertTrue(syncedState.hasRemoteDelete(filename));
-        DirectorySync.syncDir(localFs, remoteFs, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, 32, 5, crypto, () -> false, DirectorySync::log);
+        DirectorySync.syncDir(localFs, remoteFs, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, 32, 5, Files.createTempFile("peergos-sync", ".sqlite"), crypto, () -> false, DirectorySync::log);
         Assert.assertNotNull(syncedState.byPath(filename));
         Assert.assertTrue(syncedState.hasRemoteDelete(filename));
         Assert.assertTrue(base1.resolve(filename).toFile().exists());
@@ -421,7 +421,7 @@ public class SyncTests {
         byte[] data2 = new byte[fileSize + 1024 * 1024];
         new Random(28).nextBytes(data2);
         Files.write(base2.resolve(filename), data2, StandardOpenOption.CREATE);
-        DirectorySync.syncDir(localFs, remoteFs, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, 32, 5, crypto, () -> false, DirectorySync::log);
+        DirectorySync.syncDir(localFs, remoteFs, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, 32, 5, Files.createTempFile("peergos-sync", ".sqlite"), crypto, () -> false, DirectorySync::log);
         Assert.assertArrayEquals(Files.readAllBytes(base2.resolve(filename)), data2);
         Assert.assertArrayEquals(Files.readAllBytes(base1.resolve(filename)), data2);
         Assert.assertFalse(syncedState.hasRemoteDelete(filename));
@@ -448,30 +448,30 @@ public class SyncTests {
 
         boolean syncLocalDeletes = true;
         boolean syncRemoteDeletes = false;
-        DirectorySync.syncDir(localFs, remoteFs, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, 32, 5, crypto, () -> false, DirectorySync::log);
+        DirectorySync.syncDir(localFs, remoteFs, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, 32, 5, Files.createTempFile("peergos-sync", ".sqlite"), crypto, () -> false, DirectorySync::log);
 
         byte[] data = new byte[fileSize];
         new Random(42).nextBytes(data);
         String filename = "file.bin";
         Files.write(base1.resolve(filename), data, StandardOpenOption.CREATE);
 
-        DirectorySync.syncDir(localFs, remoteFs, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, 32, 5, crypto, () -> false, DirectorySync::log);
+        DirectorySync.syncDir(localFs, remoteFs, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, 32, 5, Files.createTempFile("peergos-sync", ".sqlite"), crypto, () -> false, DirectorySync::log);
         Assert.assertNotNull(syncedState.byPath(filename));
 
         // delete remote file and check local is not deleted
         Files.delete(base2.resolve(filename));
-        DirectorySync.syncDir(localFs, remoteFs, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, 32, 5, crypto, () -> false, DirectorySync::log);
+        DirectorySync.syncDir(localFs, remoteFs, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, 32, 5, Files.createTempFile("peergos-sync", ".sqlite"), crypto, () -> false, DirectorySync::log);
         Assert.assertNotNull(syncedState.byPath(filename));
         Assert.assertTrue(base1.resolve(filename).toFile().exists());
         Assert.assertTrue(syncedState.hasRemoteDelete(filename));
-        DirectorySync.syncDir(localFs, remoteFs, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, 32, 5, crypto, () -> false, DirectorySync::log);
+        DirectorySync.syncDir(localFs, remoteFs, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, 32, 5, Files.createTempFile("peergos-sync", ".sqlite"), crypto, () -> false, DirectorySync::log);
         Assert.assertNotNull(syncedState.byPath(filename));
         Assert.assertTrue(syncedState.hasRemoteDelete(filename));
         Assert.assertTrue(base1.resolve(filename).toFile().exists());
 
         // restore the remote file (it should be removed from the delete list)
         Files.write(base2.resolve(filename), data, StandardOpenOption.CREATE);
-        DirectorySync.syncDir(localFs, remoteFs, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, 32, 5, crypto, () -> false, DirectorySync::log);
+        DirectorySync.syncDir(localFs, remoteFs, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, 32, 5, Files.createTempFile("peergos-sync", ".sqlite"), crypto, () -> false, DirectorySync::log);
         Assert.assertArrayEquals(Files.readAllBytes(base2.resolve(filename)), data);
         Assert.assertArrayEquals(Files.readAllBytes(base1.resolve(filename)), data);
         Assert.assertFalse(syncedState.hasRemoteDelete(filename));
@@ -494,23 +494,23 @@ public class SyncTests {
 
         boolean syncLocalDeletes = true;
         boolean syncRemoteDeletes = false;
-        DirectorySync.syncDir(localFs, remoteFs, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, 32, 5, crypto, () -> false, DirectorySync::log);
+        DirectorySync.syncDir(localFs, remoteFs, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, 32, 5, Files.createTempFile("peergos-sync", ".sqlite"), crypto, () -> false, DirectorySync::log);
 
         byte[] data = new byte[fileSize];
         new Random(42).nextBytes(data);
         String filename = "file.bin";
         Files.write(base1.resolve(filename), data, StandardOpenOption.CREATE);
 
-        DirectorySync.syncDir(localFs, remoteFs, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, 32, 5, crypto, () -> false, DirectorySync::log);
+        DirectorySync.syncDir(localFs, remoteFs, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, 32, 5, Files.createTempFile("peergos-sync", ".sqlite"), crypto, () -> false, DirectorySync::log);
         Assert.assertNotNull(syncedState.byPath(filename));
 
         // delete remote file and check local is not deleted
         Files.delete(base2.resolve(filename));
-        DirectorySync.syncDir(localFs, remoteFs, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, 32, 5, crypto, () -> false, DirectorySync::log);
+        DirectorySync.syncDir(localFs, remoteFs, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, 32, 5, Files.createTempFile("peergos-sync", ".sqlite"), crypto, () -> false, DirectorySync::log);
         Assert.assertNotNull(syncedState.byPath(filename));
         Assert.assertTrue(base1.resolve(filename).toFile().exists());
         Assert.assertTrue(syncedState.hasRemoteDelete(filename));
-        DirectorySync.syncDir(localFs, remoteFs, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, 32, 5, crypto, () -> false, DirectorySync::log);
+        DirectorySync.syncDir(localFs, remoteFs, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, 32, 5, Files.createTempFile("peergos-sync", ".sqlite"), crypto, () -> false, DirectorySync::log);
         Assert.assertNotNull(syncedState.byPath(filename));
         Assert.assertTrue(syncedState.hasRemoteDelete(filename));
         Assert.assertTrue(base1.resolve(filename).toFile().exists());
@@ -520,7 +520,7 @@ public class SyncTests {
         new Random(28).nextBytes(data2);
         Files.delete(base1.resolve(filename));
         Files.write(base1.resolve(filename), data2, StandardOpenOption.CREATE);
-        DirectorySync.syncDir(localFs, remoteFs, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, 32, 5, crypto, () -> false, DirectorySync::log);
+        DirectorySync.syncDir(localFs, remoteFs, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, 32, 5, Files.createTempFile("peergos-sync", ".sqlite"), crypto, () -> false, DirectorySync::log);
         Assert.assertArrayEquals(Files.readAllBytes(base2.resolve(filename)), data2);
         Assert.assertArrayEquals(Files.readAllBytes(base1.resolve(filename)), data2);
         Assert.assertFalse(syncedState.hasRemoteDelete(filename));
@@ -543,14 +543,14 @@ public class SyncTests {
         boolean syncLocalDeletes = true;
         boolean syncRemoteDeletes = true;
 
-        DirectorySync.syncDir(localFs, remoteFs, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, 32, 5, crypto, () -> false, DirectorySync::log);
+        DirectorySync.syncDir(localFs, remoteFs, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, 32, 5, Files.createTempFile("peergos-sync", ".sqlite"), crypto, () -> false, DirectorySync::log);
 
         // Create and sync a file
         byte[] data = new byte[fileSize];
         new Random(42).nextBytes(data);
         String filename = "document.txt";
         Files.write(base1.resolve(filename), data, StandardOpenOption.CREATE);
-        DirectorySync.syncDir(localFs, remoteFs, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, 32, 5, crypto, () -> false, DirectorySync::log);
+        DirectorySync.syncDir(localFs, remoteFs, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, 32, 5, Files.createTempFile("peergos-sync", ".sqlite"), crypto, () -> false, DirectorySync::log);
 
         FileState synced1 = syncedState.byPath(filename);
         Assert.assertNotNull(synced1);
@@ -562,7 +562,7 @@ public class SyncTests {
         Files.write(base1.resolve(filename), newData, StandardOpenOption.CREATE);
 
         // Sync the change
-        DirectorySync.syncDir(localFs, remoteFs, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, 32, 5, crypto, () -> false, DirectorySync::log);
+        DirectorySync.syncDir(localFs, remoteFs, syncLocalDeletes, syncRemoteDeletes, null, null, syncedState, 32, 5, Files.createTempFile("peergos-sync", ".sqlite"), crypto, () -> false, DirectorySync::log);
 
         // Verify the file is synced correctly
         Assert.assertArrayEquals(newData, Files.readAllBytes(base1.resolve(filename)));
