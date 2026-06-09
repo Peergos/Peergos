@@ -762,6 +762,9 @@ public class CloudFilesProvider {
                                     Optional<FileWrapper> parentOpt) throws Exception {
         setInSyncState(localPath, CfApi.CF_IN_SYNC_STATE_NOT_IN_SYNC);
         HashTree localHash = hashLocalFile(localPath, localSize);
+        LocalDateTime localModified = LocalDateTime.ofInstant(
+                Files.getLastModifiedTime(localPath).toInstant(),
+                java.time.ZoneOffset.UTC);
         try (peergos.server.simulation.FileAsyncReader reader =
                      new peergos.server.simulation.FileAsyncReader(localPath.toFile())) {
             if (existingOpt.isPresent() && !existingOpt.get().isDirectory()) {
@@ -769,10 +772,11 @@ public class CloudFilesProvider {
                         reader, localSize,
                         context.network, context.crypto, l -> {}).join();
                 if (localHash != null) applyHash(peergosPath, localHash);
+                stampPeergosMtime(peergosPath, localModified);
             } else {
                 parentOpt.get().uploadFileWithHash(name,
                         reader, localSize, Optional.ofNullable(localHash),
-                        Optional.empty(), Optional.empty(),
+                        Optional.of(localModified), Optional.empty(),
                         context.network, context.crypto, l -> {}).join();
             }
             System.err.println("[CF] FILE_CLOSE_COMPLETION: upload complete for " + peergosPath);
@@ -780,6 +784,26 @@ public class CloudFilesProvider {
                     fw -> recordSyncedVersion(localPath, fw));
         }
         setInSyncState(localPath, CfApi.CF_IN_SYNC_STATE_IN_SYNC);
+    }
+
+    /** Set the file's modified time to {@code localModified} so syncState.modificationTime
+     *  (recorded from the peergos FileWrapper) matches the local placeholder's mtime —
+     *  applyRemoteDelete / applyRemoteChangeOrConflict use that equality as the "no local
+     *  edits since last sync" signal. {@code overwriteChangedChunks} doesn't accept a
+     *  modified time, so we update it as a follow-up; {@code uploadFileWithHash} takes
+     *  it directly and doesn't need this. */
+    private Optional<FileWrapper> stampPeergosMtime(String peergosPath, LocalDateTime localModified) {
+        try {
+            Optional<FileWrapper> fwOpt = context.getByPath(peergosPath).join();
+            if (fwOpt.isEmpty()) return Optional.empty();
+            FileWrapper fw = fwOpt.get();
+            FileProperties updated = fw.getFileProperties().withModified(localModified);
+            fw.setSameNameProperties(updated, context.network).join();
+            return context.getByPath(peergosPath).join();
+        } catch (Exception e) {
+            LOG.log(Level.WARNING, "stampPeergosMtime failed for " + peergosPath, e);
+            return Optional.empty();
+        }
     }
 
     /** Apply a precomputed HashTree to an already-uploaded file via PropsUpdate.
@@ -1352,6 +1376,19 @@ public class CloudFilesProvider {
                 throw new IOException(e);
             }
             success = true;
+            // Mirror peergos's mtime onto the local file so the placeholder's on-disk
+            // mtime matches syncState.modificationTime — keeps the "no local edits"
+            // equality in applyRemoteDelete / applyRemoteChangeOrConflict honest after
+            // a remote-driven content pull.
+            LocalDateTime remoteModified = remote.getFileProperties().modified;
+            if (remoteModified != null) {
+                try {
+                    Files.setLastModifiedTime(localPath, java.nio.file.attribute.FileTime.fromMillis(
+                            remoteModified.toInstant(java.time.ZoneOffset.UTC).toEpochMilli()));
+                } catch (Exception e) {
+                    LOG.log(Level.FINE, "downloadRemoteToLocal: setLastModifiedTime failed for " + localPath, e);
+                }
+            }
         } finally {
             downloadsInFlight.remove(localPath);
             if (success && syncState != null)
@@ -1481,6 +1518,9 @@ public class CloudFilesProvider {
             // uploadLocalFile again with current local bytes — so targetState is null
             // and we don't bother snapshotting the remote treeHash.
             long localMtime = Files.getLastModifiedTime(localPath).toMillis() / 1000 * 1000;
+            LocalDateTime localModified = LocalDateTime.ofInstant(
+                    java.time.Instant.ofEpochMilli(localMtime),
+                    java.time.ZoneOffset.UTC);
             FileState sourceSt = localHash == null ? null
                     : new FileState(relative, localMtime, localSize, localHash);
             CopyOp pending = sourceSt == null ? null : new CopyOp(false, localPath,
@@ -1496,10 +1536,11 @@ public class CloudFilesProvider {
                             reader, localSize,
                             context.network, context.crypto, l -> {}).join();
                     if (localHash != null) applyHash(peergosPath, localHash);
+                    uploaded = stampPeergosMtime(peergosPath, localModified).orElse(uploaded);
                 } else {
                     uploaded = parentOpt.get().uploadFileWithHash(name,
                             reader, localSize, Optional.ofNullable(localHash),
-                            Optional.empty(), Optional.empty(),
+                            Optional.of(localModified), Optional.empty(),
                             context.network, context.crypto, l -> {}).join();
                 }
             }
