@@ -76,6 +76,17 @@ public class CloudFilesProvider {
     private final java.util.Map<Path, Path> currentToOriginalDir =
             new java.util.concurrent.ConcurrentHashMap<>();
 
+    /**
+     * Paths whose {@link #uploadLocalFile} is currently running. Prevents concurrent
+     * uploads of the same file when multiple callers (the watcher's uploadExec, the
+     * pull tick's discoverMissedLocalUploads, etc.) racingly initiate one each — a
+     * large upload can take minutes, so a 30-second pull tick will fire several times
+     * before {@code recordSyncedVersion} marks the file as synced. Without this guard,
+     * a 600 MB file gets uploaded N times in parallel, multiplying bandwidth.
+     */
+    private final java.util.Set<Path> uploadsInFlight =
+            java.util.concurrent.ConcurrentHashMap.newKeySet();
+
     /** Returns the dir's current local path. If never renamed, returns the input. */
     public Path currentDirPath(Path original) {
         return originalToCurrentDir.getOrDefault(original, original);
@@ -1243,6 +1254,15 @@ public class CloudFilesProvider {
      * it already manages), so a separate watcher invokes this when it detects a new file.
      */
     public void uploadLocalFile(Path localPath) {
+        // Single-flight guard: if another caller is already uploading this exact path,
+        // bail out. This blocks the watcher's uploadExec and the pull tick's
+        // discoverMissedLocalUploads from issuing parallel uploads for the same big
+        // file (the watcher's own inflight map only covers its own thread pool —
+        // it doesn't see calls from elsewhere in the provider).
+        if (!uploadsInFlight.add(localPath)) {
+            System.err.println("[CF] uploadLocalFile: already in flight, skipping " + localPath);
+            return;
+        }
         try {
             if (!Files.exists(localPath)) return;
 
@@ -1360,6 +1380,8 @@ public class CloudFilesProvider {
             }
         } catch (Exception e) {
             LOG.log(Level.WARNING, "uploadLocalFile failed for " + localPath, e);
+        } finally {
+            uploadsInFlight.remove(localPath);
         }
     }
 
