@@ -89,6 +89,18 @@ public class CloudFilesProvider {
     private final java.util.Set<Path> uploadsInFlight =
             java.util.concurrent.ConcurrentHashMap.newKeySet();
 
+    /**
+     * Paths whose {@link #downloadRemoteToLocal} is currently writing bytes. A partial
+     * write — interrupted by a mount close, network drop, or anything else — leaves
+     * the local file with {@code Files.size < remote.size}. Without this guard, the
+     * FILE_CLOSE_COMPLETION fired by the partial write's OutputStream close would see
+     * the size mismatch and route into {@code overwriteChangedChunks}, which would
+     * TRUNCATE the remote to the partial local size. {@link #onFileCloseCompletion}
+     * consults this set before deciding to write back.
+     */
+    private final java.util.Set<Path> downloadsInFlight =
+            java.util.concurrent.ConcurrentHashMap.newKeySet();
+
     /** Returns the dir's current local path. If never renamed, returns the input. */
     public Path currentDirPath(Path original) {
         return originalToCurrentDir.getOrDefault(original, original);
@@ -599,6 +611,14 @@ public class CloudFilesProvider {
                 + "' peergosPath='" + peergosPath + "' localPath='" + localPath + "' flags=0x"
                 + Integer.toHexString(flags));
 
+        // Truncation guard: if we're mid-download for this path, the local file is
+        // partially written and Files.size returns the partial size. Routing it
+        // through the write-back logic below would invoke overwriteChangedChunks
+        // with the partial size and truncate the canonical remote file. Skip.
+        if (downloadsInFlight.contains(localPath)) {
+            System.err.println("[CF] FILE_CLOSE_COMPLETION: download in flight, skipping " + localPath);
+            return;
+        }
         if (recentlyUploaded.remove(normPathKey(localPath)) != null) {
             System.err.println("[CF] FILE_CLOSE_COMPLETION: just uploaded by watcher, skipping");
             return;
@@ -802,21 +822,12 @@ public class CloudFilesProvider {
         // Pre-suppress the close-completion that the rename fires on the new name.
         recentlyUploaded.put(normPathKey(renamedLocal), Boolean.TRUE);
 
-        // 2) Download remote content into the original local path.
+        // 2) Download remote content into the original local path. Wrapped with the
+        // CopyOp + downloadsInFlight + recentlyUploaded guard inside downloadRemoteToLocal
+        // so a mid-conflict interruption gets re-driven on next mount, and the partial
+        // file can't trick onFileCloseCompletion into truncating the remote.
         FileWrapper remote = existingOpt.get();
-        try (AsyncReader src = remote.getInputStream(context.network, context.crypto,
-                                                    remote.getSize(), l -> {}).join();
-             java.io.OutputStream out = Files.newOutputStream(localPath)) {
-            byte[] buf = new byte[CHUNK_SIZE];
-            long remaining = remote.getSize();
-            while (remaining > 0) {
-                int toRead = (int) Math.min(buf.length, remaining);
-                int n = src.readIntoArray(buf, 0, toRead).join();
-                if (n <= 0) break;
-                out.write(buf, 0, n);
-                remaining -= n;
-            }
-        }
+        downloadRemoteToLocal(remote, localPath, peergosPath);
         if (relPath != null) recordSyncedVersion(relPath, remote);
         // Files.newOutputStream re-created localPath as a regular file, so the original
         // placeholder state was destroyed. Convert it back to an in-sync placeholder
@@ -866,19 +877,22 @@ public class CloudFilesProvider {
     }
 
     /**
-     * Re-drive any upload CopyOps that were in flight when the previous mount session
-     * closed. {@link #uploadLocalFile} persists a CopyOp via {@code startCopies} before
-     * touching the network and removes it via {@code finishCopies} after the upload
-     * completes — anything still in {@code getInProgressCopies()} on the next start is
-     * an upload that didn't finish (mount closed, JVM crashed, network died).
+     * Re-drive any CopyOps that were in flight when the previous mount session closed.
+     * Both {@link #uploadLocalFile} and {@link #downloadRemoteToLocal} persist a
+     * CopyOp via {@code startCopies} before touching the network and remove it via
+     * {@code finishCopies} on success — anything still in {@code getInProgressCopies}
+     * on the next start is a transfer that didn't finish.
      * <p>
-     * Each pending op is handed to {@link #uploadLocalFile} which uploads current local
-     * bytes; the {@link #uploadsInFlight} guard prevents this from racing the watcher
-     * if it picks up the same path independently. Skips ops whose local source is gone
-     * (file was deleted between sessions) — we finishCopies those to clear the entry.
+     * For uploads ({@code isLocalTarget == false}): re-call {@link #uploadLocalFile}
+     * on the {@code uploadExec}. The {@link #uploadsInFlight} guard prevents racing
+     * the watcher / pull-tick if they pick up the same path independently.
      * <p>
-     * Called from {@code CloudFilesMount.mount} after the watcher and pull scheduler
-     * are running, so re-driven uploads execute on the upload executor like any other.
+     * For downloads ({@code isLocalTarget == true}): re-resolve the remote via
+     * {@code context.getByPath} and re-call {@link #downloadRemoteToLocal}. A missing
+     * remote means the source was deleted while we were offline — drop the entry.
+     * <p>
+     * In all cases, a missing local source (uploads) or missing remote (downloads)
+     * results in {@code finishCopies} clearing the stale row.
      */
     public void rerunPendingUploads(java.util.concurrent.ExecutorService uploadExec) {
         if (syncState == null) return;
@@ -889,25 +903,57 @@ public class CloudFilesProvider {
             return;
         }
         for (CopyOp op : ops) {
-            if (op.isLocalTarget) continue;   // downloads — out of scope for this method
-            Path localPath = op.source;
-            if (!Files.exists(localPath)) {
-                // Source vanished between sessions; nothing to upload. Drop the entry
-                // so the table doesn't grow with stale rows.
-                try { syncState.finishCopies(java.util.List.of(op)); }
-                catch (Exception e) {
-                    LOG.log(Level.WARNING, "rerunPendingUploads: finishCopies failed for "
-                            + localPath, e);
+            if (op.isLocalTarget) {
+                redriveDownload(op, uploadExec);
+            } else {
+                redriveUpload(op, uploadExec);
+            }
+        }
+    }
+
+    private void redriveUpload(CopyOp op, java.util.concurrent.ExecutorService uploadExec) {
+        Path localPath = op.source;
+        if (!Files.exists(localPath)) {
+            try { syncState.finishCopies(java.util.List.of(op)); }
+            catch (Exception e) {
+                LOG.log(Level.WARNING, "redriveUpload: finishCopies failed for " + localPath, e);
+            }
+            return;
+        }
+        System.err.println("[CF] rerunPendingUploads: re-driving upload " + localPath
+                + " -> " + op.target);
+        try {
+            uploadExec.submit(() -> uploadLocalFile(localPath));
+        } catch (java.util.concurrent.RejectedExecutionException rej) {
+            LOG.log(Level.WARNING, "redriveUpload: executor rejected " + localPath, rej);
+        }
+    }
+
+    private void redriveDownload(CopyOp op, java.util.concurrent.ExecutorService uploadExec) {
+        Path localPath = op.target;
+        String peergosPath = op.source.toString().replace(java.io.File.separatorChar, '/');
+        if (!peergosPath.startsWith("/")) peergosPath = "/" + peergosPath;
+        final String fullPeergosPath = peergosPath;
+        try {
+            uploadExec.submit(() -> {
+                try {
+                    Optional<FileWrapper> remoteOpt = context.getByPath(fullPeergosPath).join();
+                    if (remoteOpt.isEmpty() || remoteOpt.get().isDirectory()) {
+                        // Remote vanished or is no longer a file — drop the stale op.
+                        System.err.println("[CF] rerunPendingUploads: remote gone for "
+                                + fullPeergosPath + ", dropping pending download");
+                        syncState.finishCopies(java.util.List.of(op));
+                        return;
+                    }
+                    System.err.println("[CF] rerunPendingUploads: re-driving download "
+                            + fullPeergosPath + " -> " + localPath);
+                    downloadRemoteToLocal(remoteOpt.get(), localPath, fullPeergosPath);
+                } catch (Exception e) {
+                    LOG.log(Level.WARNING, "redriveDownload failed for " + localPath, e);
                 }
-                continue;
-            }
-            System.err.println("[CF] rerunPendingUploads: re-driving " + localPath
-                    + " -> " + op.target);
-            try {
-                uploadExec.submit(() -> uploadLocalFile(localPath));
-            } catch (java.util.concurrent.RejectedExecutionException rej) {
-                LOG.log(Level.WARNING, "rerunPendingUploads: executor rejected " + localPath, rej);
-            }
+            });
+        } catch (java.util.concurrent.RejectedExecutionException rej) {
+            LOG.log(Level.WARNING, "redriveDownload: executor rejected " + localPath, rej);
         }
     }
 
@@ -1148,7 +1194,7 @@ public class CloudFilesProvider {
         if (localMtime == synced.modificationTime && localSize == synced.size) {
             // Local hasn't been touched since last sync — safe to pull.
             try {
-                downloadRemoteToLocal(remote, localPath);
+                downloadRemoteToLocal(remote, localPath, "/" + relPath);
                 recordSyncedVersion(relPath, remote);
                 System.err.println("[CF] PULL: " + relPath + " updated from remote");
             } catch (Exception e) {
@@ -1265,22 +1311,51 @@ public class CloudFilesProvider {
         } catch (Exception e) { return null; }
     }
 
-    private void downloadRemoteToLocal(FileWrapper remote, Path localPath) throws IOException {
-        try (AsyncReader src = remote.getInputStream(context.network, context.crypto,
-                                                    remote.getSize(), l -> {}).join();
-             java.io.OutputStream out = Files.newOutputStream(localPath)) {
-            byte[] buf = new byte[CHUNK_SIZE];
-            long remaining = remote.getSize();
-            while (remaining > 0) {
-                int toRead = (int) Math.min(buf.length, remaining);
-                int n = src.readIntoArray(buf, 0, toRead).join();
-                if (n <= 0) break;
-                out.write(buf, 0, n);
-                remaining -= n;
+    private void downloadRemoteToLocal(FileWrapper remote, Path localPath, String peergosPath) throws IOException {
+        long remoteSize = remote.getSize();
+        // Persist a download CopyOp so the next mount session can re-drive an
+        // interrupted download. isLocalTarget=true marks this as a download; source
+        // holds the peergos path (as a Path string container), target holds the local.
+        // States are null — re-drive just calls downloadRemoteToLocal again with the
+        // current remote, no need to capture the remote hash here.
+        CopyOp pending = new CopyOp(true,
+                java.nio.file.Paths.get(peergosPath), localPath,
+                null, null, 0L, remoteSize,
+                ResumeUploadProps.random(context.crypto));
+        if (syncState != null) syncState.startCopies(java.util.List.of(pending));
+        // Two layers of truncation guard for onFileCloseCompletion:
+        //   downloadsInFlight  — covers the in-flight window while we're writing.
+        //   recentlyUploaded   — covers the (short) window between our finally
+        //                        clearing the set and CF actually delivering the
+        //                        CLOSE_COMPLETION for the OutputStream close.
+        // Without these, a partial write's close → CLOSE_COMPLETION sees
+        // Files.size < peergosSize → routes into overwriteChangedChunks → truncates
+        // the remote to the partial local bytes.
+        downloadsInFlight.add(localPath);
+        recentlyUploaded.put(normPathKey(localPath), Boolean.TRUE);
+        boolean success = false;
+        try {
+            try (AsyncReader src = remote.getInputStream(context.network, context.crypto,
+                                                        remoteSize, l -> {}).join();
+                 java.io.OutputStream out = Files.newOutputStream(localPath)) {
+                byte[] buf = new byte[CHUNK_SIZE];
+                long remaining = remoteSize;
+                while (remaining > 0) {
+                    int toRead = (int) Math.min(buf.length, remaining);
+                    int n = src.readIntoArray(buf, 0, toRead).join();
+                    if (n <= 0) break;
+                    out.write(buf, 0, n);
+                    remaining -= n;
+                }
+            } catch (Exception e) {
+                if (e instanceof IOException) throw (IOException) e;
+                throw new IOException(e);
             }
-        } catch (Exception e) {
-            if (e instanceof IOException) throw (IOException) e;
-            throw new IOException(e);
+            success = true;
+        } finally {
+            downloadsInFlight.remove(localPath);
+            if (success && syncState != null)
+                syncState.finishCopies(java.util.List.of(pending));
         }
     }
 
