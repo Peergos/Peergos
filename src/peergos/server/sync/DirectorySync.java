@@ -313,8 +313,12 @@ public class DirectorySync {
         for (CopyOp op : ops) {
             try {
                 applyCopyOp(op.isLocalTarget ? remoteFS : localFS, op.isLocalTarget ? localFS : remoteFS, op, isCancelled, LOG);
-            } catch (FileNotFoundException e) {
-                // A local file has been added and removed concurrently with us trying to copy it, ignore the copy op now
+            } catch (Exception e) {
+                Throwable cause = Exceptions.getRootCause(e);
+                if (cause instanceof FileNotFoundException) {
+                    // A local file has been added and removed concurrently with us trying to copy it, ignore the copy op now
+                } else
+                    throw new RuntimeException(e);
             }
             syncedVersions.finishCopies(List.of(op));
         }
