@@ -149,12 +149,22 @@ public class CfApiTests {
         // Inter-round sanity: the state we left in peergos and on disk should survive
         // an unmount. Re-check before remounting so a regression here points at the
         // closed-mount path rather than the remount path.
+        // - r1-subdir was mkdir'd in step 4 and survives (only its children moved).
+        // - r1-uploaded.bin was copied in step 3, edited in step 7, and not removed.
+        // - r1-renamed.txt was removed remotely in step 9, so it must NOT be there.
+        // - r1-world.txt was removed locally in step 8.
         assertTrue("r1 subdir should still be in peergos after unmount",
                 context.getByPath("/" + user + "/r1-subdir").join().isPresent());
-        assertTrue("r1 renamed.txt should still be in peergos after unmount",
+        assertTrue("r1 uploaded.bin should still be in peergos after unmount",
+                context.getByPath("/" + user + "/r1-uploaded.bin").join().isPresent());
+        assertFalse("r1 renamed.txt was remotely deleted in step 9, must be gone",
                 context.getByPath("/" + user + "/r1-renamed.txt").join().isPresent());
+        assertFalse("r1 world.txt was locally deleted in step 8, must be gone",
+                context.getByPath("/" + user + "/r1-world.txt").join().isPresent());
         assertTrue("r1 subdir should still be on disk after unmount",
                 Files.exists(userRoot.resolve("r1-subdir")));
+        assertFalse("r1 renamed.txt should be off disk after step 9's pull-tick delete",
+                Files.exists(userRoot.resolve("r1-renamed.txt")));
 
         // Round 2 — remount the same syncRoot and stateDb. The persisted state DB
         // means the new mount inherits round 1's known-synced versions; the on-disk
@@ -549,6 +559,40 @@ public class CfApiTests {
             waitFor(60_000, () -> context.getByPath(p).join().isEmpty());
             assertTrue(worldName + " should be gone from Peergos",
                     context.getByPath(p).join().isEmpty());
+        }
+
+        // Step 9 — opposite direction: a delete that happens on the remote (another
+        // device / web UI / second session) must remove the local materialised
+        // placeholder. Sign in as a second context for the same user, remove
+        // prefix-renamed.txt remotely, wait for the mount's own context to observe
+        // the deletion, then force a pull tick. The pull loop's applyRemoteDelete
+        // should Files.delete the local entry (its mtime/size still match the synced
+        // baseline, since we only read it via Get-Content).
+        {
+            UserContext contextB = UserContext.signIn(context.username, PASSWORD,
+                    req -> { throw new IllegalStateException("no MFA"); },
+                    network, crypto).join();
+            String remoteTarget = "/" + context.username + "/" + renamedName;
+            Optional<FileWrapper> targetOnB = contextB.getByPath(remoteTarget).join();
+            assertTrue("contextB should see " + renamedName, targetOnB.isPresent());
+            Optional<FileWrapper> parentOnB = contextB.getByPath(
+                    "/" + context.username).join();
+            assertTrue("contextB should see $user/", parentOnB.isPresent());
+            System.err.println("[TEST] " + prefix + ": remotely deleting " + renamedName);
+            targetOnB.get().remove(parentOnB.get(), PathUtil.get(remoteTarget), contextB).join();
+
+            // Wait for the mount's context to observe the remote deletion before we
+            // force the pull tick — otherwise getByPath in applyRemoteDelete may still
+            // return the stale entry from the local synchronizer cache.
+            waitFor(60_000, () -> context.getByPath(remoteTarget).join().isEmpty());
+
+            mount.forcePullTick();
+
+            Path localPath = userRoot.resolve(renamedName);
+            waitFor(60_000, () -> !Files.exists(localPath));
+            assertFalse("local " + renamedName
+                            + " should be removed after the remote delete",
+                    Files.exists(localPath));
         }
     }
 
