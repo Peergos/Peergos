@@ -37,5 +37,12 @@ jobs:
     - name: Run tests
       timeout-minutes: 120
       run: ant -noinput -buildfile build.xml test
+    - name: Upload test reports
+      if: always()
+      uses: actions/upload-artifact@v7
+      with:
+        name: test-reports-${{ matrix.os }}
+        path: test.reports/**
+        if-no-files-found: ignore
     - name: Reproducible build
       run: ./reproducible-test.sh
