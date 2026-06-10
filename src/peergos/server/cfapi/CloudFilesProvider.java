@@ -631,8 +631,32 @@ public class CloudFilesProvider {
         }
 
         long localSize;
-        try { localSize = Files.size(localPath); }
-        catch (Exception e) { LOG.log(Level.WARNING, "CLOSE_COMPLETION: size read failed", e); return; }
+        long localMtimeMs;
+        try {
+            localSize = Files.size(localPath);
+            localMtimeMs = Files.getLastModifiedTime(localPath).toMillis() / 1000 * 1000;
+        } catch (Exception e) { LOG.log(Level.WARNING, "CLOSE_COMPLETION: size/mtime read failed", e); return; }
+
+        // Fast-path: if syncState already records this file at the same size+mtime,
+        // skip the network round-trip. CF fires FILE_CLOSE_COMPLETION for every read
+        // of a placeholder (anti-virus scans, Explorer thumbnail/preview, indexer),
+        // not just writes — without this guard each one pays a CHAMP traversal via
+        // context.getByPath before the "no write-back needed" branch below catches
+        // it. Observed ~130 close events/sec when AV / indexer touched a 1000-file
+        // dir, which alone dominated the steady-state bandwidth.
+        if (syncState != null) {
+            Path syncRoot = Path.of(syncRootPath);
+            try {
+                String relPath = syncRoot.relativize(localPath).toString()
+                        .replace(java.io.File.separatorChar, '/');
+                FileState synced = syncState.byPath(relPath);
+                if (synced != null && synced.size == localSize
+                        && synced.modificationTime == localMtimeMs)
+                    return;
+            } catch (IllegalArgumentException ignored) {
+                // localPath wasn't under syncRoot — fall through to the network path.
+            }
+        }
         LOG.info("[CF] FILE_CLOSE_COMPLETION: localSize=" + localSize);
 
         // CF doesn't tell us whether the close followed a write or just a read. We use the
