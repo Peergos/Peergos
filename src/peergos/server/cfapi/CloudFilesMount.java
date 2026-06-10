@@ -124,7 +124,7 @@ public class CloudFilesMount implements Closeable {
         // deliveries (CfExecute returns S_OK but data never reaches the requesting process).
         // Discovered by comparing with Nextcloud's createSyncRootRegistryKeys.
         String syncRootId = registerSyncRootInShell(syncRootPath, context.username, iconPath);
-        System.err.println("[CF] Registered syncRootId in shell: " + syncRootId);
+        LOG.info("[CF] Registered syncRootId in shell: " + syncRootId);
 
         // Arena for the sync root registration structs (registration is persistent)
         Arena globalArena = Arena.ofAuto();
@@ -209,7 +209,7 @@ public class CloudFilesMount implements Closeable {
 
         // -- Connect --
         MemorySegment connectionKeyOut = callbackArena.allocate(ValueLayout.JAVA_LONG);
-        System.err.println("[CF] CfConnectSyncRoot: cbTable=0x" + Long.toHexString(cbTable.address())
+        LOG.info("[CF] CfConnectSyncRoot: cbTable=0x" + Long.toHexString(cbTable.address())
                 + " fetchDataStub=0x" + Long.toHexString(fetchDataStub.address()));
         // REQUIRE_PROCESS_INFO: needed to detect same-process FETCH_PLACEHOLDERS (fired on
         // CfConnectSyncRoot) so we can fail them immediately and keep the directory unpopulated
@@ -226,7 +226,7 @@ public class CloudFilesMount implements Closeable {
             throw new Exception("CfConnectSyncRoot failed: 0x" + Integer.toHexString(hr));
         }
         long connectionKey = connectionKeyOut.get(ValueLayout.JAVA_LONG, 0);
-        System.err.println("[CF] Connected key=" + connectionKey);
+        LOG.info("[CF] Connected key=" + connectionKey);
 
         // Proactively materialise the $username folder placeholder under the sync root
         // so external listings don't have to round-trip through FETCH_PLACEHOLDERS first.
@@ -320,12 +320,12 @@ public class CloudFilesMount implements Closeable {
                 d.register(ws,
                         java.nio.file.StandardWatchEventKinds.ENTRY_CREATE,
                         java.nio.file.StandardWatchEventKinds.ENTRY_MODIFY);
-                System.err.println("[CF] watcher: re-registered (syncState) " + d);
+                LOG.info("[CF] watcher: re-registered (syncState) " + d);
             } catch (IOException e) {
                 LOG.log(Level.WARNING, "watcher: failed to re-register " + d, e);
             }
         }
-        System.err.println("[CF] watcher: started, polling on syncRoot=" + syncRoot);
+        LOG.info("[CF] watcher: started, polling on syncRoot=" + syncRoot);
         while (running.getAsBoolean()) {
             java.nio.file.WatchKey key;
             try { key = ws.poll(200, java.util.concurrent.TimeUnit.MILLISECONDS); }
@@ -341,7 +341,7 @@ public class CloudFilesMount implements Closeable {
                 Path dir = provider.currentDirPath(watchableDir);
                 for (java.nio.file.WatchEvent<?> ev : key.pollEvents()) {
                     Object ctx = ev.context();
-                    System.err.println("[CF] watcher: event " + ev.kind().name()
+                    LOG.info("[CF] watcher: event " + ev.kind().name()
                             + " ctx=" + ctx + " dir=" + dir
                             + (watchableDir.equals(dir) ? "" : " (was " + watchableDir + ")"));
                     if (!(ctx instanceof Path)) continue;
@@ -379,6 +379,12 @@ public class CloudFilesMount implements Closeable {
                 key.reset();
             }
             long now = System.currentTimeMillis();
+            // Collect every entry whose debounce window has elapsed, then group by
+            // parent dir so siblings can ride a single bulk uploadSubtree call —
+            // collapses 1000 serial per-file applyComplexUpdate cycles on the parent
+            // writer into one. Single-file groups fall through to uploadLocalFile
+            // (which has its own placeholder + CopyOp bookkeeping).
+            java.util.List<Path> ready = new java.util.ArrayList<>();
             for (java.util.Iterator<java.util.Map.Entry<Path, Long>> it = pending.entrySet().iterator(); it.hasNext(); ) {
                 java.util.Map.Entry<Path, Long> e = it.next();
                 if (now < e.getValue()) continue;
@@ -396,17 +402,18 @@ public class CloudFilesMount implements Closeable {
                 }
                 it.remove();
                 inflight.put(p, Boolean.TRUE);
-                try {
-                    uploadExec.submit(() -> {
-                        try { provider.uploadLocalFile(p); }
-                        catch (Exception ex) { LOG.log(Level.WARNING, "watcher upload failed: " + p, ex); }
-                        finally { inflight.remove(p); }
-                    });
-                } catch (java.util.concurrent.RejectedExecutionException rej) {
-                    // Executor shut down — clear inflight and stop.
-                    inflight.remove(p);
-                    return;
-                }
+                ready.add(p);
+            }
+            if (ready.isEmpty()) continue;
+            try {
+                uploadExec.submit(() -> {
+                    try { provider.uploadLocalFiles(ready); }
+                    catch (Exception ex) { LOG.log(Level.WARNING, "watcher upload failed", ex); }
+                    finally { for (Path p : ready) inflight.remove(p); }
+                });
+            } catch (java.util.concurrent.RejectedExecutionException rej) {
+                for (Path p : ready) inflight.remove(p);
+                return;
             }
         }
     }
@@ -453,7 +460,7 @@ public class CloudFilesMount implements Closeable {
                         dir.register(ws,
                                 java.nio.file.StandardWatchEventKinds.ENTRY_CREATE,
                                 java.nio.file.StandardWatchEventKinds.ENTRY_MODIFY);
-                        System.err.println("[CF] watcher: registered " + dir
+                        LOG.info("[CF] watcher: registered " + dir
                                 + " (placeholder=" + CfApi.isPlaceholder(dir) + ")");
                     } catch (IOException e) {
                         LOG.log(Level.WARNING, "watcher: failed to register " + dir, e);

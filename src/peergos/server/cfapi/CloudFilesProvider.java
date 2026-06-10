@@ -178,7 +178,7 @@ public class CloudFilesProvider {
         // the transfer so the caller gets an error instead of hanging. Mirrors the guard in
         // onFetchPlaceholders.
         if (isSameProcessCaller(info)) {
-            System.err.println("[CF] FETCH_DATA: same-process caller → fail to avoid deadlock");
+            LOG.info("[CF] FETCH_DATA: same-process caller → fail to avoid deadlock");
             failTransfer(connectionKey, transferKey, requestKey, -1);
             return;
         }
@@ -186,7 +186,7 @@ public class CloudFilesProvider {
         // If the identity lookup misses, derive the peergos path from the normalized path
         // CF gives us (CBI_NORMALIZED_PATH_OFF) — same conversion the other callbacks use.
         String normalizedPath = CfApi.readWideString(info, CfApi.CBI_NORMALIZED_PATH_OFF);
-        System.err.println("[CF] FETCH_DATA: connKey=" + connectionKey + " xferKey=" + transferKey
+        LOG.info("[CF] FETCH_DATA: connKey=" + connectionKey + " xferKey=" + transferKey
                 + " reqOff=" + requiredOffset + " reqLen=" + requiredLength);
         // Call synchronously on the CF callback thread — CF may correlate the CfExecute
         // back to the originating thread, so calling from a worker thread loses context.
@@ -219,7 +219,7 @@ public class CloudFilesProvider {
                 // was already created on disk). Reconstruct the path from the normalized path
                 // CF passed in. Re-register the mapping so subsequent fetches hit the cache.
                 peergosPath = normalizedToPeergos(normalizedPath);
-                System.err.println("[CF] FETCH_DATA: identity miss, derived peergosPath="
+                LOG.info("[CF] FETCH_DATA: identity miss, derived peergosPath="
                         + peergosPath + " from normalizedPath=" + normalizedPath);
                 if (peergosPath != null && identityLen == 8 && identityAddr != 0) {
                     try {
@@ -229,9 +229,9 @@ public class CloudFilesProvider {
                     } catch (Exception ignored) {}
                 }
             }
-            System.err.println("[CF] FETCH_DATA: peergosPath=" + peergosPath + " mapSize=" + identityToPath.size());
+            LOG.info("[CF] FETCH_DATA: peergosPath=" + peergosPath + " mapSize=" + identityToPath.size());
             if (peergosPath == null) {
-                System.err.println("[CF] FETCH_DATA: path lookup FAILED identityAddr=0x" + Long.toHexString(identityAddr));
+                LOG.info("[CF] FETCH_DATA: path lookup FAILED identityAddr=0x" + Long.toHexString(identityAddr));
                 failTransfer(connectionKey, transferKey, requestKey, -1);
                 return;
             }
@@ -289,7 +289,7 @@ public class CloudFilesProvider {
                     MemorySegment ds = CfApi.virtualAlloc(padded).reinterpret(padded);
                     MemorySegment.copy(buf, 0, ds, ValueLayout.JAVA_BYTE, 0, nRead);
                     // Use padded length so all internal CF state machine boundaries are aligned
-                    System.err.println("[CF] FETCH_DATA: nRead=" + nRead + " offset=" + offset);
+                    LOG.info("[CF] FETCH_DATA: nRead=" + nRead + " offset=" + offset);
                     // Length = actual bytes read (Microsoft passes numberOfBytesTransfered,
                     // which for a 30-byte file is 30, NOT the padded buffer size).
                     transferData(connectionKey, transferKey, requestKey, ds, offset, nRead, fileSize);
@@ -357,7 +357,7 @@ public class CloudFilesProvider {
             opParams.set(ValueLayout.JAVA_LONG, CfApi.OP_XFER_DATA_LENGTH_OFF, length);
 
             int hr = CfApi.cfExecute(opInfo, opParams);
-            System.err.println("[CF] CfExecute(TRANSFER_DATA) hr=0x" + Integer.toHexString(hr));
+            LOG.info("[CF] CfExecute(TRANSFER_DATA) hr=0x" + Integer.toHexString(hr));
         }
     }
 
@@ -384,7 +384,7 @@ public class CloudFilesProvider {
         info   = info.reinterpret(256);
         params = params.reinterpret(256);
         long connectionKey = 0, transferKey = 0, requestKey = 0;
-        System.err.println("[CF] FETCH_PLACEHOLDERS entered");
+        LOG.info("[CF] FETCH_PLACEHOLDERS entered");
         try {
             connectionKey = info.get(ValueLayout.JAVA_LONG, CfApi.CBI_CONNECTION_KEY_OFF);
             transferKey   = info.get(ValueLayout.JAVA_LONG, CfApi.CBI_TRANSFER_KEY_OFF);
@@ -392,20 +392,20 @@ public class CloudFilesProvider {
 
             // Detect same-process callbacks (e.g. fired by CfConnectSyncRoot itself).
             if (isSameProcessCaller(info)) {
-                System.err.println("[CF] FETCH_PLACEHOLDERS: same-process → fail to keep dir unpopulated");
+                LOG.info("[CF] FETCH_PLACEHOLDERS: same-process → fail to keep dir unpopulated");
                 failPlaceholders(connectionKey, transferKey, requestKey);
                 return;
             }
 
             String dirPath    = CfApi.readWideString(info, CfApi.CBI_NORMALIZED_PATH_OFF);
-            System.err.println("[CF] FETCH_PLACEHOLDERS connKey=" + connectionKey
+            LOG.info("[CF] FETCH_PLACEHOLDERS connKey=" + connectionKey
                     + " transferKey=" + transferKey + " dirPath='" + dirPath + "'");
             String peergosPath = normalizedToPeergos(dirPath);
-            System.err.println("[CF] FETCH_PLACEHOLDERS fetching " + peergosPath);
+            LOG.info("[CF] FETCH_PLACEHOLDERS fetching " + peergosPath);
 
             int fetchFlags = params.get(ValueLayout.JAVA_INT, CfApi.CBP_FETCH_PH_FLAGS_OFF);
             String pattern = CfApi.readWideString(params, CfApi.CBP_FETCH_PH_PATTERN_OFF);
-            System.err.println("[CF] FETCH_PLACEHOLDERS: fetchFlags=0x" + Integer.toHexString(fetchFlags)
+            LOG.info("[CF] FETCH_PLACEHOLDERS: fetchFlags=0x" + Integer.toHexString(fetchFlags)
                     + " pattern='" + pattern + "'");
 
             // Synthetic root: the sync root only contains the user's home directory
@@ -415,7 +415,7 @@ public class CloudFilesProvider {
             if (peergosPath.equals("/")) {
                 Optional<FileWrapper> homeOpt = context.getByPath("/" + context.username).join();
                 if (homeOpt.isEmpty() || !homeOpt.get().isDirectory()) {
-                    System.err.println("[CF] FETCH_PLACEHOLDERS: user home not found → fail");
+                    LOG.info("[CF] FETCH_PLACEHOLDERS: user home not found → fail");
                     failPlaceholders(connectionKey, transferKey, requestKey);
                     return;
                 }
@@ -423,7 +423,7 @@ public class CloudFilesProvider {
             } else {
                 Optional<FileWrapper> dirOpt = context.getByPath(peergosPath).join();
                 if (dirOpt.isEmpty() || !dirOpt.get().isDirectory()) {
-                    System.err.println("[CF] FETCH_PLACEHOLDERS: path not found or not a dir → fail");
+                    LOG.info("[CF] FETCH_PLACEHOLDERS: path not found or not a dir → fail");
                     failPlaceholders(connectionKey, transferKey, requestKey);
                     return;
                 }
@@ -440,7 +440,7 @@ public class CloudFilesProvider {
                     .filter(f -> matchesPattern(f.getName(), pattern))
                     .filter(f -> !java.nio.file.Files.exists(localDir.resolve(f.getName())))
                     .toList();
-            System.err.println("[CF] FETCH_PLACEHOLDERS: returning " + visible.size()
+            LOG.info("[CF] FETCH_PLACEHOLDERS: returning " + visible.size()
                     + " NEW entries matching pattern '" + pattern + "'");
 
             boolean syntheticRoot = peergosPath.equals("/");
@@ -492,25 +492,26 @@ public class CloudFilesProvider {
         opParams.set(ValueLayout.JAVA_LONG, CfApi.OP_XFER_PH_TOTAL_COUNT_OFF,   (long) count);
         opParams.set(ValueLayout.JAVA_INT,  CfApi.OP_XFER_PH_COUNT_OFF,         count);
 
-        System.err.print("[CF] opParams(PH) @0x" + Long.toHexString(opParams.address()) + ":");
+        StringBuilder hexDump = new StringBuilder("[CF] opParams(PH) @0x")
+                .append(Long.toHexString(opParams.address())).append(":");
         for (int i = 0; i < (int) CfApi.OP_XFER_PH_SIZE; i++)
-            System.err.printf(" %02x", opParams.get(ValueLayout.JAVA_BYTE, i) & 0xFF);
-        System.err.println();
+            hexDump.append(String.format(" %02x", opParams.get(ValueLayout.JAVA_BYTE, i) & 0xFF));
+        LOG.info(hexDump.toString());
         int hr = CfApi.cfExecute(opInfo, opParams);
         int entriesProcessed = opParams.get(ValueLayout.JAVA_INT, CfApi.OP_XFER_PH_ENTRIES_PROCESSED_OFF);
-        System.err.println("[CF] CfExecute(TRANSFER_PLACEHOLDERS) hr=0x" + Integer.toHexString(hr)
+        LOG.info("[CF] CfExecute(TRANSFER_PLACEHOLDERS) hr=0x" + Integer.toHexString(hr)
                 + " entriesProcessed=" + entriesProcessed);
         if (array != MemorySegment.NULL) {
             for (int i = 0; i < count; i++) {
                 long base = CfApi.PCI_SIZE * i;
                 int resultHr = array.get(ValueLayout.JAVA_INT, base + CfApi.PCI_RESULT_OFF);
                 long createUsn = array.get(ValueLayout.JAVA_LONG, base + CfApi.PCI_CREATE_USN_OFF);
-                System.err.println("[CF] Placeholder[" + i + "] Result=0x" + Integer.toHexString(resultHr)
+                LOG.info("[CF] Placeholder[" + i + "] Result=0x" + Integer.toHexString(resultHr)
                         + " CreateUsn=" + createUsn);
             }
         }
         java.io.File[] physical = new java.io.File(syncRootPath).listFiles();
-        System.err.println("[CF] Physical files after TRANSFER_PLACEHOLDERS: "
+        LOG.info("[CF] Physical files after TRANSFER_PLACEHOLDERS: "
                 + (physical == null ? "null" : java.util.Arrays.stream(physical)
                         .map(java.io.File::getName).collect(java.util.stream.Collectors.joining(", "))));
         if (hr != CfApi.S_OK)
@@ -543,7 +544,7 @@ public class CloudFilesProvider {
      */
     public void seedRootPlaceholders(Arena arena) throws Exception {
         if (Files.exists(Path.of(syncRootPath, context.username))) {
-            System.err.println("[CF] seedRootPlaceholders: " + context.username
+            LOG.info("[CF] seedRootPlaceholders: " + context.username
                     + " already on disk, skipping");
             return;
         }
@@ -556,16 +557,16 @@ public class CloudFilesProvider {
         MemorySegment array    = buildPlaceholderArray(visible, "/", arena, true);
         MemorySegment processed = arena.allocate(ValueLayout.JAVA_INT);
 
-        System.err.println("[CF] CfCreatePlaceholders: syncRoot=" + syncRootPath + " count=" + visible.size()
+        LOG.info("[CF] CfCreatePlaceholders: syncRoot=" + syncRootPath + " count=" + visible.size()
                 + " names=" + visible.stream().map(f -> f.getName()).collect(java.util.stream.Collectors.joining(",")));
         int hr = CfApi.cfCreatePlaceholders(baseDirW, array, visible.size(),
                 CfApi.CF_CREATE_FLAG_NONE, processed);
         int entriesProcessed = processed.get(ValueLayout.JAVA_INT, 0);
-        System.err.println("[CF] CfCreatePlaceholders hr=0x" + Integer.toHexString(hr)
+        LOG.info("[CF] CfCreatePlaceholders hr=0x" + Integer.toHexString(hr)
                 + " entriesProcessed=" + entriesProcessed);
         // Verify physical files are visible on the real filesystem after creation.
         java.io.File[] physicalFiles = new java.io.File(syncRootPath).listFiles();
-        System.err.println("[CF] Physical files in syncRoot after CfCreatePlaceholders: "
+        LOG.info("[CF] Physical files in syncRoot after CfCreatePlaceholders: "
                 + (physicalFiles == null ? "null" : java.util.Arrays.stream(physicalFiles)
                         .map(java.io.File::getName).collect(java.util.stream.Collectors.joining(", "))));
     }
@@ -578,15 +579,15 @@ public class CloudFilesProvider {
     // state machine to advance. We log only — CF handles the actual semantics.
 
     public void onValidateData(MemorySegment info, MemorySegment params) {
-        System.err.println("[CF] VALIDATE_DATA callback");
+        LOG.info("[CF] VALIDATE_DATA callback");
     }
 
     public void onCancelFetchData(MemorySegment info, MemorySegment params) {
-        System.err.println("[CF] CANCEL_FETCH_DATA callback");
+        LOG.info("[CF] CANCEL_FETCH_DATA callback");
     }
 
     public void onFileOpenCompletion(MemorySegment info, MemorySegment params) {
-        System.err.println("[CF] FILE_OPEN_COMPLETION callback");
+        LOG.info("[CF] FILE_OPEN_COMPLETION callback");
     }
 
     public void onFileCloseCompletion(MemorySegment info, MemorySegment params) {
@@ -596,7 +597,7 @@ public class CloudFilesProvider {
         try { flags = params.get(ValueLayout.JAVA_INT, CfApi.CBP_CLOSE_FLAGS_OFF); }
         catch (Exception e) { LOG.log(Level.WARNING, "CLOSE_COMPLETION: failed to read params", e); return; }
         if ((flags & CfApi.CF_CALLBACK_NOTIFY_FILE_CLOSE_COMPLETION_FLAG_DELETED) != 0) {
-            System.err.println("[CF] FILE_CLOSE_COMPLETION: file deleted, skipping");
+            LOG.info("[CF] FILE_CLOSE_COMPLETION: file deleted, skipping");
             return; // file was deleted on close — handled by DELETE callback
         }
 
@@ -607,7 +608,7 @@ public class CloudFilesProvider {
         String drive  = syncRootPath.substring(0, 2); // e.g. "C:"
         Path   localPath = Path.of(drive + normalizedPath);
 
-        System.err.println("[CF] FILE_CLOSE_COMPLETION: normalizedPath='" + normalizedPath
+        LOG.info("[CF] FILE_CLOSE_COMPLETION: normalizedPath='" + normalizedPath
                 + "' peergosPath='" + peergosPath + "' localPath='" + localPath + "' flags=0x"
                 + Integer.toHexString(flags));
 
@@ -616,23 +617,23 @@ public class CloudFilesProvider {
         // through the write-back logic below would invoke overwriteChangedChunks
         // with the partial size and truncate the canonical remote file. Skip.
         if (downloadsInFlight.contains(localPath)) {
-            System.err.println("[CF] FILE_CLOSE_COMPLETION: download in flight, skipping " + localPath);
+            LOG.info("[CF] FILE_CLOSE_COMPLETION: download in flight, skipping " + localPath);
             return;
         }
         if (recentlyUploaded.remove(normPathKey(localPath)) != null) {
-            System.err.println("[CF] FILE_CLOSE_COMPLETION: just uploaded by watcher, skipping");
+            LOG.info("[CF] FILE_CLOSE_COMPLETION: just uploaded by watcher, skipping");
             return;
         }
 
         if (!Files.exists(localPath) || Files.isDirectory(localPath)) {
-            System.err.println("[CF] FILE_CLOSE_COMPLETION: localPath missing or directory, skipping");
+            LOG.info("[CF] FILE_CLOSE_COMPLETION: localPath missing or directory, skipping");
             return;
         }
 
         long localSize;
         try { localSize = Files.size(localPath); }
         catch (Exception e) { LOG.log(Level.WARNING, "CLOSE_COMPLETION: size read failed", e); return; }
-        System.err.println("[CF] FILE_CLOSE_COMPLETION: localSize=" + localSize);
+        LOG.info("[CF] FILE_CLOSE_COMPLETION: localSize=" + localSize);
 
         // CF doesn't tell us whether the close followed a write or just a read. We use the
         // local mtime as a cheap dirty-bit: when we materialise a placeholder via
@@ -652,7 +653,7 @@ public class CloudFilesProvider {
         // For brand-new files (no existing), the parent-writable check happens further down
         // where parentOpt is resolved.
         if (existingOpt.isPresent() && !existingOpt.get().isWritable()) {
-            System.err.println("[CF] FILE_CLOSE_COMPLETION: " + peergosPath
+            LOG.info("[CF] FILE_CLOSE_COMPLETION: " + peergosPath
                     + " is read-only in peergos, skipping write-back");
             return;
         }
@@ -669,30 +670,30 @@ public class CloudFilesProvider {
                 return;
             }
             if (peergosMtime != null && !localMtime.isAfter(peergosMtime)) {
-                System.err.println("[CF] FILE_CLOSE_COMPLETION: size+mtime match (peergos="
+                LOG.info("[CF] FILE_CLOSE_COMPLETION: size+mtime match (peergos="
                         + peergosMtime + " local=" + localMtime + "), no write-back needed");
                 return;
             }
-            System.err.println("[CF] FILE_CLOSE_COMPLETION: size matches but localMtime="
+            LOG.info("[CF] FILE_CLOSE_COMPLETION: size matches but localMtime="
                     + localMtime + " > peergosMtime=" + peergosMtime
                     + " → handing to overwriteChangedChunks (chunk-level dedup)");
         }
         if (localSize == 0) {
-            System.err.println("[CF] FILE_CLOSE_COMPLETION: local file empty, skipping write-back");
+            LOG.info("[CF] FILE_CLOSE_COMPLETION: local file empty, skipping write-back");
             return;
         }
 
         String name = localPath.getFileName().toString();
-        System.err.println("[CF] FILE_CLOSE_COMPLETION: uploading " + localSize
+        LOG.info("[CF] FILE_CLOSE_COMPLETION: uploading " + localSize
                 + " bytes to " + peergosPath);
 
         Optional<FileWrapper> parentOpt = context.getByPath(peergosParent).join();
         if (parentOpt.isEmpty()) {
-            System.err.println("[CF] FILE_CLOSE_COMPLETION: parent missing: " + peergosParent);
+            LOG.info("[CF] FILE_CLOSE_COMPLETION: parent missing: " + peergosParent);
             return;
         }
         if (!parentOpt.get().isWritable()) {
-            System.err.println("[CF] FILE_CLOSE_COMPLETION: parent " + peergosParent
+            LOG.info("[CF] FILE_CLOSE_COMPLETION: parent " + peergosParent
                     + " is read-only, skipping upload of " + peergosPath);
             return;
         }
@@ -732,14 +733,14 @@ public class CloudFilesProvider {
             if (localHash != null && remoteHash != null
                     && localHash.rootHash.equals(remoteHash)) {
                 // case C: local already matches remote, just record state.
-                System.err.println("[CF] CONFLICT: local content already matches remote, no upload");
+                LOG.info("[CF] CONFLICT: local content already matches remote, no upload");
                 if (relPath != null && existingOpt.isPresent())
                     recordSyncedVersion(relPath, existingOpt.get());
                 return;
             }
 
             // case D: real conflict — rename local, pull remote into original name, upload renamed.
-            System.err.println("[CF] CONFLICT: local and remote both moved since last sync — resolving");
+            LOG.info("[CF] CONFLICT: local and remote both moved since last sync — resolving");
             resolveLocalConflict(localPath, relPath, localHash, localSize,
                     peergosPath, peergosParent, existingOpt, parentOpt);
         } catch (Exception e) {
@@ -779,7 +780,7 @@ public class CloudFilesProvider {
                         Optional.of(localModified), Optional.empty(),
                         context.network, context.crypto, l -> {}).join();
             }
-            System.err.println("[CF] FILE_CLOSE_COMPLETION: upload complete for " + peergosPath);
+            LOG.info("[CF] FILE_CLOSE_COMPLETION: upload complete for " + peergosPath);
             context.getByPath(peergosPath).join().ifPresent(
                     fw -> recordSyncedVersion(localPath, fw));
         }
@@ -841,7 +842,7 @@ public class CloudFilesProvider {
                 LOCAL_FS_FOR_RENAME, localPath, localFs);
         Path renamedLocal = localPath.resolveSibling(
                 renamed.relPath.substring(renamed.relPath.lastIndexOf('/') + 1));
-        System.err.println("[CF] CONFLICT: renamed local " + localPath.getFileName()
+        LOG.info("[CF] CONFLICT: renamed local " + localPath.getFileName()
                 + " → " + renamedLocal.getFileName());
         // Pre-suppress the close-completion that the rename fires on the new name.
         recentlyUploaded.put(normPathKey(renamedLocal), Boolean.TRUE);
@@ -878,7 +879,7 @@ public class CloudFilesProvider {
         String conflictPeergosPath = peergosParent + "/" + renamedLocal.getFileName();
         context.getByPath(conflictPeergosPath).join().ifPresent(
                 fw -> recordSyncedVersion(renamedLocal, fw));
-        System.err.println("[CF] CONFLICT: resolved — local " + localPath.getFileName()
+        LOG.info("[CF] CONFLICT: resolved — local " + localPath.getFileName()
                 + " now has remote content, conflict copy at "
                 + renamedLocal.getFileName());
     }
@@ -944,7 +945,7 @@ public class CloudFilesProvider {
             }
             return;
         }
-        System.err.println("[CF] rerunPendingUploads: re-driving upload " + localPath
+        LOG.info("[CF] rerunPendingUploads: re-driving upload " + localPath
                 + " -> " + op.target);
         try {
             uploadExec.submit(() -> uploadLocalFile(localPath));
@@ -964,12 +965,12 @@ public class CloudFilesProvider {
                     Optional<FileWrapper> remoteOpt = context.getByPath(fullPeergosPath).join();
                     if (remoteOpt.isEmpty() || remoteOpt.get().isDirectory()) {
                         // Remote vanished or is no longer a file — drop the stale op.
-                        System.err.println("[CF] rerunPendingUploads: remote gone for "
+                        LOG.info("[CF] rerunPendingUploads: remote gone for "
                                 + fullPeergosPath + ", dropping pending download");
                         syncState.finishCopies(java.util.List.of(op));
                         return;
                     }
-                    System.err.println("[CF] rerunPendingUploads: re-driving download "
+                    LOG.info("[CF] rerunPendingUploads: re-driving download "
                             + fullPeergosPath + " -> " + localPath);
                     downloadRemoteToLocal(remoteOpt.get(), localPath, fullPeergosPath);
                 } catch (Exception e) {
@@ -1075,7 +1076,7 @@ public class CloudFilesProvider {
                 // Local has unsynced edits — don't destroy them. Stop tracking so the next
                 // pull tick doesn't keep re-firing; the watcher's MODIFY/CLOSE on a future
                 // edit will re-upload it as a new entry.
-                System.err.println("[CF] PULL: remote " + relPath + " deleted but local diverged"
+                LOG.info("[CF] PULL: remote " + relPath + " deleted but local diverged"
                         + " (mtime/size mismatch) — keeping local, removing from sync state");
                 syncState.remove(relPath);
                 identityToPath.values().removeIf(p -> p.equals("/" + relPath));
@@ -1084,7 +1085,7 @@ public class CloudFilesProvider {
             Files.delete(localPath);
             syncState.remove(relPath);
             identityToPath.values().removeIf(p -> p.equals("/" + relPath));
-            System.err.println("[CF] PULL: removed local " + relPath + " (deleted on remote)");
+            LOG.info("[CF] PULL: removed local " + relPath + " (deleted on remote)");
         } catch (Exception e) {
             LOG.log(Level.WARNING, "pull: local delete failed for " + relPath, e);
         }
@@ -1120,13 +1121,13 @@ public class CloudFilesProvider {
                 if (Files.exists(localPath)) {
                     try {
                         Files.delete(localPath);
-                        System.err.println("[CF] PULL: removed local dir " + relPath
+                        LOG.info("[CF] PULL: removed local dir " + relPath
                                 + " (deleted on remote)");
                     } catch (java.nio.file.DirectoryNotEmptyException e) {
                         // Leave the dir alone — the user has unsynced content in there.
                         // Don't drop the syncState entry either, so we keep checking it
                         // each tick; once the user clears the leftovers we'll catch up.
-                        System.err.println("[CF] PULL: remote dir " + relPath
+                        LOG.info("[CF] PULL: remote dir " + relPath
                                 + " gone but local has unsynced children — keeping local");
                         continue;
                     }
@@ -1185,7 +1186,7 @@ public class CloudFilesProvider {
                         String rel = root.relativize(file).toString()
                                 .replace(java.io.File.separatorChar, '/');
                         if (syncState.byPath(rel) != null) return java.nio.file.FileVisitResult.CONTINUE;
-                        System.err.println("[CF] PULL: uploading offline-added " + rel);
+                        LOG.info("[CF] PULL: uploading offline-added " + rel);
                         uploadLocalFile(file);
                     } catch (Exception e) {
                         LOG.log(Level.FINE, "pull: missed-upload visit failed for " + file, e);
@@ -1220,7 +1221,7 @@ public class CloudFilesProvider {
             try {
                 downloadRemoteToLocal(remote, localPath, "/" + relPath);
                 recordSyncedVersion(relPath, remote);
-                System.err.println("[CF] PULL: " + relPath + " updated from remote");
+                LOG.info("[CF] PULL: " + relPath + " updated from remote");
             } catch (Exception e) {
                 LOG.log(Level.WARNING, "pull download failed for " + relPath, e);
             }
@@ -1287,12 +1288,27 @@ public class CloudFilesProvider {
         if (peergosDir == null) return;
         Optional<FileWrapper> dirOpt = context.getByPath(peergosDir).join();
         if (dirOpt.isEmpty() || !dirOpt.get().isDirectory()) return;
+        FileWrapper dir = dirOpt.get();
 
-        java.util.Set<FileWrapper> remoteChildren =
-                dirOpt.get().getChildren(context.crypto.hasher, context.network).join();
-        List<FileWrapper> newChildren = remoteChildren.stream()
+        // List the dir's child capabilities first — cheap because it's bounded
+        // by chunk count, not child count — and filter by name against local
+        // placeholders BEFORE fetching any cryptree metadata. The previous
+        // shape called dir.getChildren(), which fetched a FileWrapper for
+        // every remote child even when all of them were already on disk —
+        // dominating the steady-state bandwidth on a 1000-file dir whenever
+        // the pull tick decided to iterate.
+        java.util.Set<peergos.shared.user.fs.NamedAbsoluteCapability> allCaps =
+                dir.getChildrenCapabilities(context.crypto.hasher, context.network).join();
+        java.util.Set<peergos.shared.user.fs.NamedAbsoluteCapability> missingCaps = allCaps.stream()
+                .filter(c -> !Files.exists(localDir.resolve(c.name.name)))
+                .collect(java.util.stream.Collectors.toSet());
+        if (missingCaps.isEmpty()) return;
+
+        java.util.Set<FileWrapper> fetched = java.util.Collections.synchronizedSet(new java.util.HashSet<>());
+        dir.getChildrenFromCaps(missingCaps, fetched::addAll,
+                context.crypto.hasher, context.network).join();
+        List<FileWrapper> newChildren = fetched.stream()
                 .filter(f -> !f.getFileProperties().isHidden)
-                .filter(f -> !Files.exists(localDir.resolve(f.getName())))
                 .toList();
         if (newChildren.isEmpty()) return;
 
@@ -1303,7 +1319,7 @@ public class CloudFilesProvider {
             int hr = CfApi.cfCreatePlaceholders(baseDirW, array, newChildren.size(),
                     CfApi.CF_CREATE_FLAG_NONE, processed);
             int entriesProcessed = processed.get(ValueLayout.JAVA_INT, 0);
-            System.err.println("[CF] pull: CfCreatePlaceholders dir=" + localDir
+            LOG.info("[CF] pull: CfCreatePlaceholders dir=" + localDir
                     + " new=" + newChildren.size() + " entriesProcessed=" + entriesProcessed
                     + " hr=0x" + Integer.toHexString(hr));
         }
@@ -1420,7 +1436,7 @@ public class CloudFilesProvider {
         // file (the watcher's own inflight map only covers its own thread pool —
         // it doesn't see calls from elsewhere in the provider).
         if (!uploadsInFlight.add(localPath)) {
-            System.err.println("[CF] uploadLocalFile: already in flight, skipping " + localPath);
+            LOG.info("[CF] uploadLocalFile: already in flight, skipping " + localPath);
             return;
         }
         try {
@@ -1433,7 +1449,7 @@ public class CloudFilesProvider {
             // folder (you can't create new users from the file system, or rename your
             // user). Anything dropped here by the user is rejected.
             if (!relative.contains("/")) {
-                System.err.println("[CF] uploadLocalFile: rejecting sync-root-level entry "
+                LOG.info("[CF] uploadLocalFile: rejecting sync-root-level entry "
                         + localPath + " — the mount root is read-only");
                 return;
             }
@@ -1485,23 +1501,23 @@ public class CloudFilesProvider {
                     && existing.get().getSize() == localSize)
                 return; // already in sync
             if (existing.isPresent() && !existing.get().isWritable()) {
-                System.err.println("[CF] uploadLocalFile: " + peergosPath
+                LOG.info("[CF] uploadLocalFile: " + peergosPath
                         + " is read-only in peergos, skipping");
                 return;
             }
 
             Optional<FileWrapper> parentOpt = context.getByPath(peergosParent).join();
             if (parentOpt.isEmpty()) {
-                System.err.println("[CF] uploadLocalFile: parent missing: " + peergosParent);
+                LOG.info("[CF] uploadLocalFile: parent missing: " + peergosParent);
                 return;
             }
             if (!parentOpt.get().isWritable()) {
-                System.err.println("[CF] uploadLocalFile: parent " + peergosParent
+                LOG.info("[CF] uploadLocalFile: parent " + peergosParent
                         + " is read-only, skipping upload of " + peergosPath);
                 return;
             }
 
-            System.err.println("[CF] uploadLocalFile: uploading " + localSize
+            LOG.info("[CF] uploadLocalFile: uploading " + localSize
                     + " bytes to " + peergosPath);
 
             // Convert the file to a CF placeholder BEFORE uploading. We use
@@ -1560,7 +1576,7 @@ public class CloudFilesProvider {
             }
             if (pending != null && syncState != null)
                 syncState.finishCopies(java.util.List.of(pending));
-            System.err.println("[CF] uploadLocalFile: upload complete for " + peergosPath);
+            LOG.info("[CF] uploadLocalFile: upload complete for " + peergosPath);
             // Record the new "last synced version" for conflict detection.
             context.getByPath(peergosPath).join().ifPresent(
                     fw -> recordSyncedVersion(localPath, fw));
@@ -1581,22 +1597,218 @@ public class CloudFilesProvider {
         }
     }
 
+    /** Bulk version of {@link #uploadLocalFile}. Groups {@code localPaths} by parent
+     *  directory and uploads each group via a single {@link FileWrapper#uploadSubtree}
+     *  call — collapsing what would have been N serial {@code applyComplexUpdate}
+     *  transactions on the parent writer into one. Directories and files in different
+     *  parents fall through to the individual {@code uploadLocalFile} path.
+     *
+     *  Caps each batch at {@value #BULK_BATCH_FILE_CAP} files or
+     *  {@value #BULK_BATCH_BYTE_CAP} bytes so a giant burst doesn't hold the writer
+     *  lock for too long, blocking other operations on the same writer. */
+    private static final int BULK_BATCH_FILE_CAP = 1000;
+    private static final long BULK_BATCH_BYTE_CAP = 40L * 1024 * 1024;
+
+    public void uploadLocalFiles(java.util.List<Path> localPaths) {
+        if (localPaths.isEmpty()) return;
+        java.util.Map<Path, java.util.List<Path>> filesByParent = new java.util.LinkedHashMap<>();
+        java.util.List<Path> singles = new java.util.ArrayList<>();
+        for (Path p : localPaths) {
+            try {
+                if (!Files.exists(p) || Files.isDirectory(p)) { singles.add(p); continue; }
+            } catch (Exception e) { singles.add(p); continue; }
+            filesByParent.computeIfAbsent(p.getParent(), k -> new java.util.ArrayList<>()).add(p);
+        }
+        // Directories (and any path we couldn't stat) go through the single-file path —
+        // mkdir is fast and uploadLocalFile already handles the placeholder/rollback
+        // dance for it.
+        for (Path p : singles) uploadLocalFile(p);
+        for (java.util.Map.Entry<Path, java.util.List<Path>> e : filesByParent.entrySet()) {
+            java.util.List<Path> group = e.getValue();
+            if (group.size() == 1) { uploadLocalFile(group.get(0)); continue; }
+            bulkUploadSiblingFiles(e.getKey(), group);
+        }
+    }
+
+    private void bulkUploadSiblingFiles(Path localParentDir, java.util.List<Path> localFiles) {
+        Path syncRoot = Path.of(syncRootPath);
+        String relParent = syncRoot.relativize(localParentDir).toString()
+                .replace(java.io.File.separatorChar, '/');
+        // Sync-root-level (no peergos parent on the inside): fall back per-file. The
+        // single-file path rejects it with a clear log.
+        if (relParent.isEmpty() || !relParent.contains("/")) {
+            for (Path p : localFiles) uploadLocalFile(p);
+            return;
+        }
+        String peergosParent = "/" + relParent;
+
+        // Claim every path in-flight up front. If something else (the pull tick's
+        // discoverMissedLocalUploads, say) is already uploading one, skip just that
+        // one and bulk-upload the rest.
+        java.util.List<Path> claimed = new java.util.ArrayList<>();
+        for (Path p : localFiles) {
+            if (uploadsInFlight.add(p)) claimed.add(p);
+        }
+        if (claimed.isEmpty()) return;
+
+        try {
+            Optional<FileWrapper> parentOpt = context.getByPath(peergosParent).join();
+            if (parentOpt.isEmpty()) {
+                LOG.info("[CF] bulkUpload: parent missing: " + peergosParent);
+                return;
+            }
+            if (!parentOpt.get().isWritable()) {
+                LOG.info("[CF] bulkUpload: parent " + peergosParent
+                        + " is read-only, skipping " + claimed.size() + " files");
+                return;
+            }
+            FileWrapper parent = parentOpt.get();
+
+            // Per-file pre-processing: size + mtime + hash. Skip files the syncState
+            // already says are current (same fast-path as uploadLocalFile uses for
+            // spurious CF MODIFY events) and skip empty/missing/dir entries.
+            java.util.List<Path> toUpload = new java.util.ArrayList<>();
+            java.util.Map<Path, Long> sizes = new java.util.HashMap<>();
+            java.util.Map<Path, LocalDateTime> mtimes = new java.util.HashMap<>();
+            java.util.Map<Path, HashTree> hashes = new java.util.HashMap<>();
+            for (Path p : claimed) {
+                if (!Files.exists(p) || Files.isDirectory(p)) continue;
+                long size;
+                long mtimeMs;
+                try {
+                    size = Files.size(p);
+                    mtimeMs = Files.getLastModifiedTime(p).toMillis() / 1000 * 1000;
+                } catch (IOException ex) { continue; }
+                if (size == 0) continue;
+                String relPath = syncRoot.relativize(p).toString()
+                        .replace(java.io.File.separatorChar, '/');
+                if (syncState != null) {
+                    FileState synced = syncState.byPath(relPath);
+                    if (synced != null && synced.size == size && synced.modificationTime == mtimeMs)
+                        continue;
+                }
+                sizes.put(p, size);
+                mtimes.put(p, LocalDateTime.ofInstant(
+                        java.time.Instant.ofEpochMilli(mtimeMs), java.time.ZoneOffset.UTC));
+                HashTree h = hashLocalFile(p, size);
+                if (h != null) hashes.put(p, h);
+                toUpload.add(p);
+            }
+            if (toUpload.isEmpty()) return;
+
+            // Pre-convert each to a placeholder so CF tracks subsequent rename/delete
+            // mid-upload, and flip to NOT_IN_SYNC so File Explorer shows the syncing
+            // overlay. Failures (file held open, already a placeholder) get caught
+            // up by the post-upload convert fallback below.
+            java.util.Map<Path, Boolean> wasConverted = new java.util.HashMap<>();
+            for (Path p : toUpload) {
+                String peergosPath = peergosParent + "/" + p.getFileName().toString();
+                int hr = convertToPlaceholder(p, peergosPath, CfApi.CF_CONVERT_FLAG_MARK_IN_SYNC);
+                boolean ok = (hr == CfApi.S_OK);
+                wasConverted.put(p, ok);
+                if (ok) setInSyncState(p, CfApi.CF_IN_SYNC_STATE_NOT_IN_SYNC);
+            }
+
+            // Split into batches by file count and total byte cap.
+            java.util.List<java.util.List<Path>> batches = new java.util.ArrayList<>();
+            java.util.List<Path> currentBatch = new java.util.ArrayList<>();
+            long currentBytes = 0;
+            for (Path p : toUpload) {
+                long sz = sizes.get(p);
+                if (!currentBatch.isEmpty() && (currentBatch.size() >= BULK_BATCH_FILE_CAP
+                        || currentBytes + sz > BULK_BATCH_BYTE_CAP)) {
+                    batches.add(currentBatch);
+                    currentBatch = new java.util.ArrayList<>();
+                    currentBytes = 0;
+                }
+                currentBatch.add(p);
+                currentBytes += sz;
+            }
+            if (!currentBatch.isEmpty()) batches.add(currentBatch);
+
+            // One uploadSubtree call per batch — one applyComplexUpdate cycle per batch,
+            // which is the whole point of this method.
+            for (java.util.List<Path> batch : batches) {
+                java.util.List<FileWrapper.FileUploadProperties> fileProps = new java.util.ArrayList<>();
+                for (Path p : batch) {
+                    final Path fp = p;
+                    long size = sizes.get(p);
+                    fileProps.add(new FileWrapper.FileUploadProperties(
+                            p.getFileName().toString(),
+                            () -> {
+                                try { return new peergos.server.simulation.FileAsyncReader(fp.toFile()); }
+                                catch (Exception ex) { throw new RuntimeException(ex); }
+                            },
+                            (int)(size >>> 32), (int) size,
+                            Optional.of(mtimes.get(p)),
+                            Optional.ofNullable(hashes.get(p)),
+                            false, true, x -> {}));
+                }
+                FileWrapper.FolderUploadProperties folder = new FileWrapper.FolderUploadProperties(
+                        java.util.Collections.emptyList(), fileProps);
+                LOG.info("[CF] bulkUpload: " + batch.size() + " files (" + currentBytes
+                        + " bytes) to " + peergosParent);
+                try {
+                    parent.uploadSubtree(
+                            java.util.stream.Stream.of(folder),
+                            Optional.empty(),
+                            context.network, context.crypto,
+                            context.getTransactionService(),
+                            f -> peergos.shared.util.Futures.of(false),
+                            f -> peergos.shared.util.Futures.of(true),
+                            () -> true).join();
+                } catch (Exception ex) {
+                    LOG.log(Level.WARNING, "bulkUpload batch failed for " + peergosParent, ex);
+                    continue;
+                }
+                Optional<FileWrapper> refreshed = context.getByPath(peergosParent).join();
+                if (refreshed.isPresent()) parent = refreshed.get();
+            }
+
+            // Post-process: fetch all uploaded FWs in one batched call (cheap — same
+            // mechanism the pull-tick optimisation uses), record synced versions,
+            // flip CF in-sync state.
+            java.util.Set<String> filenames = toUpload.stream()
+                    .map(p -> p.getFileName().toString())
+                    .collect(java.util.stream.Collectors.toSet());
+            java.util.Set<FileWrapper> fws = parent.getChildren(filenames,
+                    context.crypto.hasher, context.network, true).join();
+            java.util.Map<String, FileWrapper> byName = new java.util.HashMap<>();
+            for (FileWrapper fw : fws) byName.put(fw.getName(), fw);
+            for (Path p : toUpload) {
+                FileWrapper fw = byName.get(p.getFileName().toString());
+                if (fw == null) continue;
+                recordSyncedVersion(p, fw);
+                if (wasConverted.getOrDefault(p, false)) {
+                    setInSyncState(p, CfApi.CF_IN_SYNC_STATE_IN_SYNC);
+                } else {
+                    String peergosPath = peergosParent + "/" + p.getFileName().toString();
+                    convertToPlaceholder(p, peergosPath, CfApi.CF_CONVERT_FLAG_MARK_IN_SYNC);
+                }
+            }
+        } catch (Exception e) {
+            LOG.log(Level.WARNING, "bulkUpload failed for " + localParentDir, e);
+        } finally {
+            for (Path p : claimed) uploadsInFlight.remove(p);
+        }
+    }
+
     private void createPeergosDirectory(String name, String peergosPath, String peergosParent) {
         Optional<FileWrapper> existing = context.getByPath(peergosPath).join();
         if (existing.isPresent()) return;
         Optional<FileWrapper> parentOpt = context.getByPath(peergosParent).join();
         if (parentOpt.isEmpty()) {
-            System.err.println("[CF] mkdir: parent missing: " + peergosParent);
+            LOG.info("[CF] mkdir: parent missing: " + peergosParent);
             return;
         }
         if (!parentOpt.get().isWritable()) {
-            System.err.println("[CF] mkdir: parent " + peergosParent
+            LOG.info("[CF] mkdir: parent " + peergosParent
                     + " is read-only, skipping creation of " + peergosPath);
             return;
         }
         try {
             parentOpt.get().mkdir(name, context.network, false, Optional.empty(), context.crypto).join();
-            System.err.println("[CF] mkdir: created " + peergosPath);
+            LOG.info("[CF] mkdir: created " + peergosPath);
         } catch (Exception e) {
             LOG.log(Level.WARNING, "mkdir failed for " + peergosPath, e);
         }
@@ -1613,7 +1825,7 @@ public class CloudFilesProvider {
             Set<FileWrapper> children = fwOpt.get()
                     .getChildren(context.crypto.hasher, context.network).join();
             if (!children.isEmpty()) {
-                System.err.println("[CF] rollback skipped for " + peergosPath
+                LOG.info("[CF] rollback skipped for " + peergosPath
                         + " — has " + children.size() + " children");
                 return;
             }
@@ -1621,7 +1833,7 @@ public class CloudFilesProvider {
             Optional<FileWrapper> parentOpt = context.getByPath(parent).join();
             if (parentOpt.isEmpty()) return;
             fwOpt.get().remove(parentOpt.get(), PathUtil.get(peergosPath), context).join();
-            System.err.println("[CF] rollback: removed orphaned " + peergosPath
+            LOG.info("[CF] rollback: removed orphaned " + peergosPath
                     + " (local vanished during mkdir)");
         } catch (Exception e) {
             LOG.log(Level.WARNING, "rollback failed for " + peergosPath, e);
@@ -1642,7 +1854,7 @@ public class CloudFilesProvider {
                     ? CfApi.createDirForConvert(pathW)
                     : CfApi.createFileForConvert(pathW);
             if (handle.address() == CfApi.INVALID_HANDLE_VALUE) {
-                System.err.println("[CF] convertToPlaceholder: CreateFile failed for " + localPath);
+                LOG.info("[CF] convertToPlaceholder: CreateFile failed for " + localPath);
                 return -1;
             }
             try {
@@ -1654,7 +1866,7 @@ public class CloudFilesProvider {
                 MemorySegment idSeg = arena.allocate(8);
                 idSeg.set(ValueLayout.JAVA_LONG, 0, key);
                 int hr = CfApi.cfConvertToPlaceholder(handle, idSeg, 8, convertFlags);
-                System.err.println("[CF] convertToPlaceholder hr=0x"
+                LOG.info("[CF] convertToPlaceholder hr=0x"
                         + Integer.toHexString(hr) + " flags=0x" + Integer.toHexString(convertFlags)
                         + " path=" + localPath);
                 return hr;
@@ -1683,12 +1895,12 @@ public class CloudFilesProvider {
             MemorySegment pathW = CfApi.wideString(localPath.toString(), arena);
             MemorySegment handle = CfApi.createFileForHydration(pathW);
             if (handle.address() == CfApi.INVALID_HANDLE_VALUE) {
-                System.err.println("[CF] setInSyncState: CreateFile failed for " + localPath);
+                LOG.info("[CF] setInSyncState: CreateFile failed for " + localPath);
                 return;
             }
             try {
                 int hr = CfApi.cfSetInSyncState(handle, inSyncState, CfApi.CF_SET_IN_SYNC_FLAG_NONE);
-                System.err.println("[CF] setInSyncState=" + inSyncState + " hr=0x"
+                LOG.info("[CF] setInSyncState=" + inSyncState + " hr=0x"
                         + Integer.toHexString(hr) + " path=" + localPath);
             } finally {
                 CfApi.closeHandle(handle);
@@ -1703,7 +1915,7 @@ public class CloudFilesProvider {
     // -----------------------------------------------------------------------
 
     public void onDeletePlaceholder(MemorySegment info, MemorySegment params) {
-        System.err.println("[CF] NOTIFY_DELETE entered");
+        LOG.info("[CF] NOTIFY_DELETE entered");
         info = info.reinterpret(256);
         params = params.reinterpret(256);
         long connectionKey, transferKey, requestKey;
@@ -1732,12 +1944,12 @@ public class CloudFilesProvider {
             if (fwOpt.isEmpty()) return;
             String parent = peergosPath.substring(0, peergosPath.lastIndexOf('/'));
             if (parent.isEmpty()) {
-                System.err.println("[CF] NOTIFY_DELETE: refusing to delete sync-root-level entry "
+                LOG.info("[CF] NOTIFY_DELETE: refusing to delete sync-root-level entry "
                         + peergosPath + " from peergos");
                 return;
             }
             if (!fwOpt.get().isWritable()) {
-                System.err.println("[CF] NOTIFY_DELETE: " + peergosPath
+                LOG.info("[CF] NOTIFY_DELETE: " + peergosPath
                         + " is read-only in peergos, skipping peergos delete");
                 return;
             }
@@ -1759,7 +1971,7 @@ public class CloudFilesProvider {
     // -----------------------------------------------------------------------
 
     public void onRenamePlaceholder(MemorySegment info, MemorySegment params) {
-        System.err.println("[CF] NOTIFY_RENAME entered");
+        LOG.info("[CF] NOTIFY_RENAME entered");
         info = info.reinterpret(256);
         params = params.reinterpret(256);
         long connectionKey, transferKey, requestKey;
@@ -1780,22 +1992,22 @@ public class CloudFilesProvider {
             String drive  = syncRootPath.substring(0, 2);
             Path localTarget = Path.of(drive + targetPath);
             recentlyUploaded.put(normPathKey(localTarget), Boolean.TRUE);
-            System.err.println("[CF] NOTIFY_RENAME pre-marked target=" + localTarget);
+            LOG.info("[CF] NOTIFY_RENAME pre-marked target=" + localTarget);
         } catch (Exception e) {
             LOG.log(Level.WARNING, "RENAME: failed to pre-mark target", e);
         }
 
-        System.err.println("[CF] NOTIFY_RENAME connKey=" + connectionKey
+        LOG.info("[CF] NOTIFY_RENAME connKey=" + connectionKey
                 + " xferKey=" + transferKey + " reqKey=" + requestKey);
         try (Arena arena = Arena.ofConfined()) {
             ack(arena, connectionKey, transferKey, requestKey,
                 CfApi.CF_OPERATION_TYPE_ACK_RENAME, CfApi.STATUS_SUCCESS);
         }
-        System.err.println("[CF] NOTIFY_RENAME ack sent");
+        LOG.info("[CF] NOTIFY_RENAME ack sent");
     }
 
     public void onRenameCompletionPlaceholder(MemorySegment info, MemorySegment params) {
-        System.err.println("[CF] NOTIFY_RENAME_COMPLETION entered");
+        LOG.info("[CF] NOTIFY_RENAME_COMPLETION entered");
         info   = info.reinterpret(256);
         params = params.reinterpret(256);
         String sourcePath, targetPath;
@@ -1806,7 +2018,7 @@ public class CloudFilesProvider {
         String peergosSource = normalizedToPeergos(sourcePath);
         String peergosTarget = normalizedToPeergos(targetPath);
 
-        System.err.println("[CF] NOTIFY_RENAME_COMPLETION src=" + peergosSource
+        LOG.info("[CF] NOTIFY_RENAME_COMPLETION src=" + peergosSource
                 + " tgt=" + peergosTarget);
 
         // Suppress the upcoming FILE_CLOSE_COMPLETION on the target — the OS fires it for
@@ -1819,7 +2031,7 @@ public class CloudFilesProvider {
         try {
             Optional<FileWrapper> fwOpt = context.getByPath(peergosSource).join();
             if (fwOpt.isEmpty()) {
-                System.err.println("[CF] NOTIFY_RENAME_COMPLETION: source not found in peergos: "
+                LOG.info("[CF] NOTIFY_RENAME_COMPLETION: source not found in peergos: "
                         + peergosSource);
                 return;
             }
@@ -1841,34 +2053,34 @@ public class CloudFilesProvider {
             // Read-only guards: the sync root is read-only (you can't rename your user folder
             // or move things into the sync-root level), and a read-only source can't be moved.
             if (sourceParent.isEmpty() || targetParent.isEmpty()) {
-                System.err.println("[CF] NOTIFY_RENAME_COMPLETION: refusing rename involving the "
+                LOG.info("[CF] NOTIFY_RENAME_COMPLETION: refusing rename involving the "
                         + "read-only sync root (src=" + peergosSource + " tgt=" + peergosTarget + ")");
                 return;
             }
             if (!fwOpt.get().isWritable()) {
-                System.err.println("[CF] NOTIFY_RENAME_COMPLETION: source " + peergosSource
+                LOG.info("[CF] NOTIFY_RENAME_COMPLETION: source " + peergosSource
                         + " is read-only in peergos, skipping rename");
                 return;
             }
             Optional<FileWrapper> sourceParentOpt = context.getByPath(sourceParent).join();
             Optional<FileWrapper> targetParentOpt = context.getByPath(targetParent).join();
             if (sourceParentOpt.isEmpty() || targetParentOpt.isEmpty()) {
-                System.err.println("[CF] NOTIFY_RENAME_COMPLETION: parents missing src="
+                LOG.info("[CF] NOTIFY_RENAME_COMPLETION: parents missing src="
                         + sourceParentOpt.isPresent() + " tgt=" + targetParentOpt.isPresent());
                 return;
             }
             if (!targetParentOpt.get().isWritable()) {
-                System.err.println("[CF] NOTIFY_RENAME_COMPLETION: target parent " + targetParent
+                LOG.info("[CF] NOTIFY_RENAME_COMPLETION: target parent " + targetParent
                         + " is read-only, skipping rename to " + peergosTarget);
                 return;
             }
 
             if (sourceParent.equals(targetParent)) {
-                System.err.println("[CF] NOTIFY_RENAME_COMPLETION: in-place rename to " + targetName);
+                LOG.info("[CF] NOTIFY_RENAME_COMPLETION: in-place rename to " + targetName);
                 fwOpt.get().rename(targetName, targetParentOpt.get(),
                         PathUtil.get(peergosSource), context).join();
             } else {
-                System.err.println("[CF] NOTIFY_RENAME_COMPLETION: moveTo " + targetParent);
+                LOG.info("[CF] NOTIFY_RENAME_COMPLETION: moveTo " + targetParent);
                 fwOpt.get().moveTo(targetParentOpt.get(), sourceParentOpt.get(),
                         PathUtil.get(peergosSource), context, () -> peergos.shared.util.Futures.of(true)).join();
             }
@@ -1889,11 +2101,11 @@ public class CloudFilesProvider {
                 if (relTarget != null)
                     asyncSyncState(() -> recordSyncedVersion(relTarget, fw));
             });
-            System.err.println("[CF] NOTIFY_RENAME_COMPLETION: done " + peergosSource
+            LOG.info("[CF] NOTIFY_RENAME_COMPLETION: done " + peergosSource
                     + " -> " + peergosTarget);
         } catch (Exception e) {
             LOG.log(Level.WARNING, "Rename failed " + peergosSource + " -> " + peergosTarget, e);
-            System.err.println("[CF] NOTIFY_RENAME_COMPLETION FAILED: " + e);
+            LOG.info("[CF] NOTIFY_RENAME_COMPLETION FAILED: " + e);
         }
     }
 
@@ -1923,7 +2135,7 @@ public class CloudFilesProvider {
             // Relative file name pointer
             MemorySegment nameW = CfApi.wideString(props.name, arena);
             array.set(ValueLayout.JAVA_LONG, base + CfApi.PCI_RELATIVE_FILE_NAME_OFF, nameW.address());
-            System.err.println("[CF] buildPlaceholderArray[" + i + "] name='" + props.name
+            LOG.info("[CF] buildPlaceholderArray[" + i + "] name='" + props.name
                     + "' nameW=0x" + Long.toHexString(nameW.address())
                     + " array=0x" + Long.toHexString(array.address()));
 
