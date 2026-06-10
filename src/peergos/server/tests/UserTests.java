@@ -2129,10 +2129,13 @@ public abstract class UserTests {
         context.getByPath(filePath).join().get().remove(context.getUserRoot().join(), filePath, context).join();
         Path dirPath = PathUtil.get(username, dirName);
         context.getByPath(dirPath).join().get().remove(context.getUserRoot().join(), dirPath, context).join();
-        try {Thread.sleep(2000);} catch (InterruptedException e) {}
+        long finalUsage = context.getSpaceUsage(false).join();
+        while (finalUsage > initialUsage) {
+            Thread.sleep(1_000);
+            finalUsage = context.getSpaceUsage(false).join();
+        }
         UserCleanup.checkRawUsage(context);
 
-        long finalUsage = context.getSpaceUsage(false).join();
         long diff = finalUsage - initialUsage;
         Assert.assertTrue(diff == 0);
     }

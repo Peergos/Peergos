@@ -467,7 +467,7 @@ public class RamUserTests extends UserTests {
 
         sub.remove(context.getUserRoot().get(), subdirPath, context).join();
         long usageAfterDelete = context.getSpaceUsage(false).join();
-        while (usageAfterDelete >= throwAtIndex) { // give server a chance to recalculate usage
+        while (usageAfterDelete >= initialUsage) { // give server a chance to recalculate usage
             Thread.sleep(2_000);
             usageAfterDelete = context.getSpaceUsage(false).join();
         }
