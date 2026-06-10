@@ -1466,6 +1466,20 @@ public class CloudFilesProvider {
             long localSize = Files.size(localPath);
             if (localSize == 0) return;
 
+            // Fast-path: if syncState already records this file with matching size+mtime,
+            // skip the network round-trip. CF fires NOTIFY_MODIFY on placeholders for its
+            // own bookkeeping (in-sync flag transitions, attribute updates) even when
+            // content is unchanged — without this guard each spurious event walks the
+            // cryptree via context.getByPath, which compounds badly when 1000s of files
+            // share a parent dir.
+            if (syncState != null) {
+                long localMtime = Files.getLastModifiedTime(localPath).toMillis() / 1000 * 1000;
+                FileState synced = syncState.byPath(relative);
+                if (synced != null && synced.size == localSize
+                        && synced.modificationTime == localMtime)
+                    return;
+            }
+
             Optional<FileWrapper> existing = context.getByPath(peergosPath).join();
             if (existing.isPresent() && !existing.get().isDirectory()
                     && existing.get().getSize() == localSize)
