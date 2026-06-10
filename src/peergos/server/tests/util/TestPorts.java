@@ -4,12 +4,12 @@ import java.io.*;
 import java.net.*;
 import java.util.*;
 
-/** Hands out a port the OS has confirmed is free. Each call binds port 0
- *  (which makes the OS pick an unused ephemeral port), records the chosen
- *  number, then closes the socket so the caller can bind it. The OS rotates
- *  its ephemeral-port assignment, so the same port won't come back within a
- *  short window — making collisions between parallel JVMs much rarer than
- *  the previous random-counter scheme.
+/** Hands out a port the OS has confirmed is free on BOTH TCP and UDP. Each
+ *  call binds port 0 to let the OS pick an unused ephemeral TCP port, then
+ *  probes UDP on the same number — libp2p binds ipfs-swarm-port for both the
+ *  tcp transport and QUIC, and the OS treats those port spaces separately, so
+ *  a TCP-only probe missed the case where QUIC's UDP bind collided (the macOS
+ *  BindException we hit under parallel CI).
  *
  *  Within one JVM we additionally remember every port we've handed out and
  *  retry if the OS happens to re-issue one (e.g. after wrap-around). */
@@ -20,16 +20,29 @@ public class TestPorts {
     public static synchronized int getPort() {
         IOException last = null;
         for (int attempt = 0; attempt < 50; attempt++) {
+            int port;
             try (ServerSocket s = new ServerSocket()) {
                 s.setReuseAddress(true);
                 s.bind(new InetSocketAddress((InetAddress) null, 0));
-                int port = s.getLocalPort();
-                if (handedOut.add(port))
-                    return port;
+                port = s.getLocalPort();
             } catch (IOException e) {
                 last = e;
+                continue;
             }
+            if (!handedOut.add(port))
+                continue;
+            // Probe UDP on the same number. SO_REUSEADDR matches what netty/libp2p
+            // sets when it eventually binds, so TIME_WAIT and recent-close states
+            // aren't reported as taken.
+            try (DatagramSocket udp = new DatagramSocket(null)) {
+                udp.setReuseAddress(true);
+                udp.bind(new InetSocketAddress((InetAddress) null, port));
+            } catch (IOException e) {
+                last = e;
+                continue;
+            }
+            return port;
         }
-        throw new RuntimeException("Couldn't allocate a unique free port", last);
+        throw new RuntimeException("Couldn't allocate a port free on both TCP and UDP", last);
     }
 }
