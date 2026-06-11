@@ -423,18 +423,13 @@ public class BufferedStorage extends DelegatingStorage {
 
         int maxBlocksPerBatch = ContentAddressedStorage.MAX_BLOCK_AUTHS;
         int maxCborBatchSize = 1024*1024;
+        int maxCborBlocksPerBatch = 1000;
         List<List<OpLog.BlockWrite>> cborBatches = new ArrayList<>();
         List<List<OpLog.BlockWrite>> rawBatches = new ArrayList<>();
         List<List<OpLog.BlockWrite>> smallRawBatches = new ArrayList<>();
 
         int cborSize = 0, rawcount = 0, smallRawCount = 0;
         int smallBlockMax = DirectS3BlockStore.MAX_SMALL_BLOCK_SIZE;
-        if (! cborBatches.isEmpty() && ! cborBatches.get(cborBatches.size() - 1).isEmpty())
-            cborBatches.add(new ArrayList<>());
-        if (! rawBatches.isEmpty() && ! rawBatches.get(rawBatches.size() - 1).isEmpty())
-            rawBatches.add(new ArrayList<>());
-        if (! smallRawBatches.isEmpty() && ! smallRawBatches.get(rawBatches.size() - 1).isEmpty())
-            smallRawBatches.add(new ArrayList<>());
         for (OpLog.BlockWrite val : forWriter) {
             List<List<OpLog.BlockWrite>> batches = val.isRaw ?
                     val.block.length < smallBlockMax ? smallRawBatches : rawBatches : cborBatches;
@@ -442,7 +437,10 @@ public class BufferedStorage extends DelegatingStorage {
             int maxBatchCount = val.isRaw ? maxBlocksPerBatch : maxCborBatchSize;
             if (val.isRaw && count % maxBatchCount == 0)
                 batches.add(new ArrayList<>());
-            if (! val.isRaw && (cborBatches.isEmpty() || cborSize + val.block.length > maxCborBatchSize)) {
+            if (! val.isRaw &&
+                    (cborBatches.isEmpty() ||
+                            cborSize + val.block.length > maxCborBatchSize ||
+                            cborBatches.get(cborBatches.size() - 1).size() >= maxCborBlocksPerBatch)) {
                 cborBatches.add(new ArrayList<>());
                 cborSize = 0;
             }
