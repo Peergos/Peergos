@@ -29,6 +29,12 @@ public class CloudFilesMount implements Closeable {
     private final java.util.concurrent.ScheduledExecutorService pullScheduler;
     private final java.util.concurrent.ScheduledExecutorService deleteScheduler;
     private final peergos.server.sync.SyncState syncState;
+    /** Path of the on-disk state DB so {@link #unmount} can wipe it. */
+    private final Path stateDbPath;
+    /** Shell-registry SyncRootManager id captured at mount time so {@link #unmount}
+     *  can delete the exact key (the id includes a path-hash alias and the user SID
+     *  which we'd otherwise have to recompute). */
+    private final String syncRootId;
     private final CloudFilesProvider provider;       // exposed for forcePullTick()
     private volatile boolean watcherRunning = true;
 
@@ -38,6 +44,8 @@ public class CloudFilesMount implements Closeable {
                             java.util.concurrent.ScheduledExecutorService pullScheduler,
                             java.util.concurrent.ScheduledExecutorService deleteScheduler,
                             peergos.server.sync.SyncState syncState,
+                            Path stateDbPath,
+                            String syncRootId,
                             CloudFilesProvider provider) {
         this.syncRootPath   = syncRootPath;
         this.connectionKey  = connectionKey;
@@ -48,6 +56,8 @@ public class CloudFilesMount implements Closeable {
         this.pullScheduler  = pullScheduler;
         this.deleteScheduler = deleteScheduler;
         this.syncState      = syncState;
+        this.stateDbPath    = stateDbPath;
+        this.syncRootId     = syncRootId;
         this.provider       = provider;
     }
 
@@ -288,7 +298,7 @@ public class CloudFilesMount implements Closeable {
                 });
         deleteSched.scheduleWithFixedDelay(provider::drainDeletes, 200, 200, java.util.concurrent.TimeUnit.MILLISECONDS);
 
-        CloudFilesMount m = new CloudFilesMount(syncRootPath, connectionKey, callbackArena, wt, ws, uploadExec, pullSched, deleteSched, syncState, provider);
+        CloudFilesMount m = new CloudFilesMount(syncRootPath, connectionKey, callbackArena, wt, ws, uploadExec, pullSched, deleteSched, syncState, stateDbPath, syncRootId, provider);
         holder[0] = m;
         wt.start();
         // Re-drive any uploads that were in flight when the previous mount session
@@ -574,6 +584,126 @@ public class CloudFilesMount implements Closeable {
                 try { syncState.close(); } catch (Exception ignored) {}
         }
         LOG.info("CF sync root disconnected");
+    }
+
+    /** User-initiated unmount: full {@link #close()} plus wipe the local state DB,
+     *  drop the kernel CF registration for this path, and remove the Explorer shell
+     *  registry entries. Used by {@code MountConfigHandler.disableMount} when the
+     *  user toggles the mount off — the DB persists local path/metadata for resume
+     *  + change detection so we clear it on an explicit unmount for privacy. The
+     *  plain {@link #close()} path (e.g. the JVM shutdown hook) keeps everything
+     *  so the next mount can resume in-flight uploads and short-circuit the pull
+     *  tick.
+     *
+     *  <p>Existing placeholder files on disk are NOT touched — they're still CF
+     *  reparse points but with no provider answering FETCH_DATA they're un-openable.
+     *  Deleting/hydrating them is a separate product decision (see the comment in
+     *  the original code review). */
+    public void unmount() {
+        close();
+
+        // (1) Kernel CF binding: tell Windows this path is no longer a sync root.
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment pathW = CfApi.wideString(syncRootPath, arena);
+            int hr = CfApi.cfUnregisterSyncRoot(pathW);
+            if (hr != CfApi.S_OK)
+                LOG.warning("CfUnregisterSyncRoot returned 0x" + Integer.toHexString(hr));
+            else
+                LOG.info("CF unmount: kernel sync root unregistered for " + syncRootPath);
+        } catch (Exception e) {
+            LOG.log(Level.WARNING, "CfUnregisterSyncRoot failed", e);
+        }
+
+        // (2) Purge dehydrated placeholders + dirs left empty by the purge.
+        // Run AFTER CfUnregisterSyncRoot so deletions don't get routed back into
+        // our (already-closed) provider as NOTIFY_DELETE.
+        try { purgeUnmaterializedPlaceholders(); }
+        catch (Exception e) { LOG.log(Level.WARNING, "unmount: placeholder purge failed", e); }
+
+        // (3) Shell registry entries — undo what registerSyncRootInShell wrote.
+        // `reg delete /f` recurses into subkeys so the UserSyncRoots child goes too.
+        if (syncRootId != null) {
+            String baseKey = "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer\\SyncRootManager\\" + syncRootId;
+            try {
+                regDelete(baseKey);
+                LOG.info("CF unmount: shell registry key removed " + baseKey);
+            } catch (Exception e) {
+                LOG.log(Level.WARNING, "unmount: failed to delete registry key " + baseKey, e);
+            }
+        }
+
+        // (4) Local state DB + SQLite sidecar files. WAL/SHM should have been
+        // checkpointed by syncState.close() inside close() above; the journal
+        // entry covers the legacy rollback-journal case.
+        if (stateDbPath != null) {
+            Path[] toDelete = {
+                    stateDbPath,
+                    stateDbPath.resolveSibling(stateDbPath.getFileName() + "-wal"),
+                    stateDbPath.resolveSibling(stateDbPath.getFileName() + "-shm"),
+                    stateDbPath.resolveSibling(stateDbPath.getFileName() + "-journal"),
+            };
+            for (Path p : toDelete) {
+                try { Files.deleteIfExists(p); }
+                catch (Exception e) { LOG.log(Level.WARNING, "unmount: failed to delete " + p, e); }
+            }
+            LOG.info("CF unmount: removed state DB " + stateDbPath);
+        }
+    }
+
+    /** Post-order walk of the sync root removing dehydrated placeholders (files
+     *  whose content isn't on disk and can't be fetched now that the provider's
+     *  gone) and any subdirectory left empty as a result. The sync root itself,
+     *  fully-hydrated files (no OFFLINE bit), and dirs that still have hydrated
+     *  descendants are kept. */
+    private void purgeUnmaterializedPlaceholders() {
+        Path root = Path.of(syncRootPath);
+        if (!Files.exists(root)) return;
+        try {
+            Files.walkFileTree(root, new java.nio.file.SimpleFileVisitor<Path>() {
+                @Override
+                public java.nio.file.FileVisitResult visitFile(Path file,
+                        java.nio.file.attribute.BasicFileAttributes attrs) {
+                    int a = CfApi.getFileAttributes(file);
+                    if (a == CfApi.INVALID_FILE_ATTRIBUTES)
+                        return java.nio.file.FileVisitResult.CONTINUE;
+                    // OFFLINE is the reliable "content not on disk" signal for CF
+                    // placeholders. A fully-hydrated placeholder has the reparse
+                    // point but OFFLINE clear — those we leave alone.
+                    if ((a & CfApi.FILE_ATTRIBUTE_OFFLINE) != 0) {
+                        try { Files.delete(file); }
+                        catch (IOException e) {
+                            LOG.log(Level.FINE, "unmount: delete failed " + file, e);
+                        }
+                    }
+                    return java.nio.file.FileVisitResult.CONTINUE;
+                }
+                @Override
+                public java.nio.file.FileVisitResult postVisitDirectory(Path dir, IOException exc) {
+                    if (dir.equals(root)) return java.nio.file.FileVisitResult.CONTINUE;
+                    try (java.util.stream.Stream<Path> children = Files.list(dir)) {
+                        if (children.findAny().isEmpty()) Files.delete(dir);
+                    } catch (IOException e) {
+                        LOG.log(Level.FINE, "unmount: dir cleanup failed " + dir, e);
+                    }
+                    return java.nio.file.FileVisitResult.CONTINUE;
+                }
+                @Override
+                public java.nio.file.FileVisitResult visitFileFailed(Path file, IOException exc) {
+                    return java.nio.file.FileVisitResult.CONTINUE;
+                }
+            });
+        } catch (IOException e) {
+            LOG.log(Level.WARNING, "unmount: placeholder purge walk failed", e);
+        }
+    }
+
+    private static void regDelete(String key) throws Exception {
+        ProcessBuilder pb = new ProcessBuilder("reg", "delete", key, "/f");
+        pb.redirectErrorStream(true);
+        Process p = pb.start();
+        String out = new String(p.getInputStream().readAllBytes());
+        if (!p.waitFor(10, java.util.concurrent.TimeUnit.SECONDS) || p.exitValue() != 0)
+            throw new Exception("reg delete failed for " + key + ": " + out.trim());
     }
 
     // -----------------------------------------------------------------------

@@ -309,7 +309,7 @@ public class MountConfigHandler implements HttpHandler {
         if (check != null) check.cancel(false);
         CloudFilesMount cfMount = activeCloudMount.getAndSet(null);
         if (cfMount != null)
-            cfMount.close();
+            cfMount.unmount();
         WebdavMount mount = activeMount.getAndSet(null);
         if (mount != null)
             mount.close();
