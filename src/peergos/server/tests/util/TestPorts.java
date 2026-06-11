@@ -21,22 +21,29 @@ public class TestPorts {
         IOException last = null;
         for (int attempt = 0; attempt < 50; attempt++) {
             int port;
-            try (ServerSocket s = new ServerSocket()) {
-                s.setReuseAddress(true);
-                s.bind(new InetSocketAddress((InetAddress) null, 0));
-                port = s.getLocalPort();
+            // Probe UDP first. Windows' dynamic-port range is shared between TCP
+            // and UDP, but UDP is much busier (mDNS, SSDP, NLA, AV agents, Hyper-V
+            // excluded ranges) — letting the OS pick from the UDP-free space and
+            // then verifying TCP on the same number succeeds far more often than
+            // the other way around. Without this, every TCP-free ephemeral port we
+            // got back was already in use by some UDP socket and the retry loop
+            // ran out without finding a candidate.
+            try (DatagramSocket udp = new DatagramSocket(null)) {
+                udp.setReuseAddress(true);
+                udp.bind(new InetSocketAddress((InetAddress) null, 0));
+                port = udp.getLocalPort();
             } catch (IOException e) {
                 last = e;
                 continue;
             }
             if (!handedOut.add(port))
                 continue;
-            // Probe UDP on the same number. SO_REUSEADDR matches what netty/libp2p
+            // Verify TCP on the same number. SO_REUSEADDR matches what netty/libp2p
             // sets when it eventually binds, so TIME_WAIT and recent-close states
             // aren't reported as taken.
-            try (DatagramSocket udp = new DatagramSocket(null)) {
-                udp.setReuseAddress(true);
-                udp.bind(new InetSocketAddress((InetAddress) null, port));
+            try (ServerSocket tcp = new ServerSocket()) {
+                tcp.setReuseAddress(true);
+                tcp.bind(new InetSocketAddress((InetAddress) null, port));
             } catch (IOException e) {
                 last = e;
                 continue;

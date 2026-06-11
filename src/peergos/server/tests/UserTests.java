@@ -2130,14 +2130,17 @@ public abstract class UserTests {
         Path dirPath = PathUtil.get(username, dirName);
         context.getByPath(dirPath).join().get().remove(context.getUserRoot().join(), dirPath, context).join();
         long finalUsage = context.getSpaceUsage(false).join();
-        while (finalUsage > initialUsage) {
+        // Bounded poll — under parallel CI the server's async usage recalc can lag,
+        // but if it never settles we want a clean assertion failure rather than a
+        // build-blocking hang.
+        for (int i = 0; i < 60 && finalUsage > initialUsage; i++) {
             Thread.sleep(1_000);
             finalUsage = context.getSpaceUsage(false).join();
         }
         UserCleanup.checkRawUsage(context);
 
         long diff = finalUsage - initialUsage;
-        Assert.assertTrue(diff == 0);
+        Assert.assertEquals("usage didn't return to initial after delete", 0, diff);
     }
 
     @Test
