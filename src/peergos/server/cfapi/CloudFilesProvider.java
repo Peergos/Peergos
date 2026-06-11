@@ -1036,28 +1036,22 @@ public class CloudFilesProvider {
                     .withWriters(owner, writers, context.network).join();
             if (remoteSnap.equals(syncedSnap)) return;          // nothing moved
 
-            // Tier 2 — path-level shortlist.
+            // Tier 2 — path-level shortlist, grouped by parent dir so each dir's
+            // child set is fetched in one capability listing plus one batched FW
+            // fetch, instead of N separate getByPath calls per dir (each of which
+            // re-walks the cryptree from root). On a 100-file dir with 5 remote
+            // deletes the old shape issued ~100 CHAMP traversals; this shape
+            // issues 1 parent lookup + 1 cap listing + 1 batched FW fetch.
             // Snapshot the set so applyRemoteDelete can mutate syncState while we iterate.
             java.util.Set<String> allPaths = new java.util.HashSet<>(syncState.allFilePaths());
+            java.util.Map<String, java.util.List<String>> pathsByParent = new java.util.HashMap<>();
             for (String relPath : allPaths) {
-                FileState synced = syncState.byPath(relPath);
-                if (synced == null) continue;
-                String peergosPath = "/" + relPath;
-                Optional<FileWrapper> remoteOpt = context.getByPath(peergosPath).join();
-                if (remoteOpt.isEmpty()) {
-                    // Remote deleted (or moved). Propagate to local — see helper for
-                    // divergent-local handling.
-                    applyRemoteDelete(relPath, synced);
-                    continue;
-                }
-                if (remoteOpt.get().isDirectory()) continue;
-                FileWrapper remote = remoteOpt.get();
-                peergos.shared.user.fs.RootHash remoteHash = remote.getFileProperties()
-                        .treeHash.map(b -> b.rootHash).orElse(null);
-                if (remoteHash == null
-                        || remoteHash.equals(synced.hashTree.rootHash)) continue;
-                // Tier 3 — apply or conflict.
-                applyRemoteChangeOrConflict(relPath, synced, remote);
+                int slash = relPath.lastIndexOf('/');
+                String parentRel = slash < 0 ? "" : relPath.substring(0, slash);
+                pathsByParent.computeIfAbsent(parentRel, k -> new java.util.ArrayList<>()).add(relPath);
+            }
+            for (java.util.Map.Entry<String, java.util.List<String>> e : pathsByParent.entrySet()) {
+                processParentDir(e.getKey(), e.getValue());
             }
 
             // Tier 2-dirs — propagate remote directory deletions. Tier 2 above cleared
@@ -1078,6 +1072,86 @@ public class CloudFilesProvider {
             syncState.setSnapshot(syncRootPath, remoteSnap);
         } catch (Exception e) {
             LOG.log(Level.WARNING, "pull tick failed", e);
+        }
+    }
+
+    /** Per-parent step of the Tier-2 pull pass. Fetches the parent's child capability
+     *  list once, then:
+     *  <ul>
+     *    <li>For each tracked path whose filename is missing from the cap list →
+     *        {@link #applyRemoteDelete}.</li>
+     *    <li>For each still-present name, batch-fetches the FileWrappers in one
+     *        {@code getChildrenFromCaps} call and compares tree hashes for the
+     *        Tier-3 change-or-conflict decision.</li>
+     *  </ul>
+     *  If the parent itself is gone, every tracked child gets {@code applyRemoteDelete}. */
+    private void processParentDir(String parentRel, java.util.List<String> trackedRelPaths) {
+        String parentPeergosPath = "/" + parentRel;
+        Optional<FileWrapper> parentOpt;
+        try { parentOpt = context.getByPath(parentPeergosPath).join(); }
+        catch (Exception e) {
+            LOG.log(Level.WARNING, "pull: parent lookup failed for " + parentPeergosPath, e);
+            return;
+        }
+        if (parentOpt.isEmpty()) {
+            for (String relPath : trackedRelPaths) {
+                FileState synced = syncState.byPath(relPath);
+                if (synced != null) applyRemoteDelete(relPath, synced);
+            }
+            return;
+        }
+        FileWrapper parent = parentOpt.get();
+        if (!parent.isDirectory()) return;
+
+        java.util.Set<peergos.shared.user.fs.NamedAbsoluteCapability> caps;
+        try {
+            caps = parent.getChildrenCapabilities(context.crypto.hasher, context.network).join();
+        } catch (Exception e) {
+            LOG.log(Level.WARNING, "pull: child cap listing failed for " + parentPeergosPath, e);
+            return;
+        }
+        java.util.Map<String, peergos.shared.user.fs.NamedAbsoluteCapability> capsByName = new java.util.HashMap<>();
+        for (peergos.shared.user.fs.NamedAbsoluteCapability c : caps)
+            capsByName.put(c.name.name, c);
+
+        // Detect deletes (missing names) and collect caps for surviving children
+        // so we can fetch their FileWrappers in one batch below.
+        java.util.Set<peergos.shared.user.fs.NamedAbsoluteCapability> survivingCaps = new java.util.HashSet<>();
+        java.util.Map<String, String> relByName = new java.util.HashMap<>();
+        for (String relPath : trackedRelPaths) {
+            FileState synced = syncState.byPath(relPath);
+            if (synced == null) continue;
+            String filename = relPath.substring(relPath.lastIndexOf('/') + 1);
+            peergos.shared.user.fs.NamedAbsoluteCapability c = capsByName.get(filename);
+            if (c == null) {
+                applyRemoteDelete(relPath, synced);
+                continue;
+            }
+            if (c.isDir.orElse(false)) continue;
+            survivingCaps.add(c);
+            relByName.put(filename, relPath);
+        }
+        if (survivingCaps.isEmpty()) return;
+
+        // Tier 3 — batch-fetch FileWrappers for the survivors and compare tree hashes.
+        java.util.Set<FileWrapper> fws = java.util.Collections.synchronizedSet(new java.util.HashSet<>());
+        try {
+            parent.getChildrenFromCaps(survivingCaps, fws::addAll,
+                    context.crypto.hasher, context.network).join();
+        } catch (Exception e) {
+            LOG.log(Level.WARNING, "pull: child FW fetch failed for " + parentPeergosPath, e);
+            return;
+        }
+        for (FileWrapper remote : fws) {
+            if (remote.isDirectory()) continue;
+            String relPath = relByName.get(remote.getName());
+            if (relPath == null) continue;
+            FileState synced = syncState.byPath(relPath);
+            if (synced == null) continue;
+            peergos.shared.user.fs.RootHash remoteHash = remote.getFileProperties()
+                    .treeHash.map(b -> b.rootHash).orElse(null);
+            if (remoteHash == null || remoteHash.equals(synced.hashTree.rootHash)) continue;
+            applyRemoteChangeOrConflict(relPath, synced, remote);
         }
     }
 
