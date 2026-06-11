@@ -65,6 +65,19 @@ public class CloudFilesProvider {
             java.util.Collections.synchronizedMap(new peergos.shared.util.LRUCache<>(1024));
 
     /**
+     * Acked NOTIFY_DELETE peergos paths waiting for the next drain. We accumulate
+     * across a short window so a "delete 100 files" burst from Explorer collapses
+     * into one {@link FileWrapper#deleteChildren} call per parent, instead of N
+     * serial {@code applyComplexUpdate} cycles on the same writer. Keyed by
+     * peergos parent path, values are filenames in that parent.
+     *
+     * <p>Guarded by its own monitor — both {@link #enqueueDelete} (CF thread) and
+     * {@link #drainDeletes} (delete-scheduler thread) write to it.
+     */
+    private final java.util.Map<String, java.util.Set<String>> pendingDeletes =
+            new java.util.HashMap<>();
+
+    /**
      * Tracks local directory renames so the watcher can resolve
      * {@code WatchKey.watchable()} (which is frozen at registration time) to the dir's
      * current on-disk path. Without this, when the user renames a dir we registered, the
@@ -2032,35 +2045,109 @@ public class CloudFilesProvider {
                 CfApi.CF_OPERATION_TYPE_ACK_DELETE, CfApi.STATUS_SUCCESS);
         }
 
-        // Then remove from Peergos. Read-only guard: a NOTIFY_DELETE is just a heads-up
-        // — Windows has already let the local placeholder be deleted by the time we get
-        // here. If the file isn't writable in peergos (or it's the top-level $username
-        // folder), we leave peergos alone; the next listing / pull tick rematerialises
-        // the placeholder locally.
+        // Sync-root-level entries (just the $username dir) must never be deleted in
+        // peergos from a CF event — surface it here so we don't enqueue something we'd
+        // refuse to act on later.
+        int slash = peergosPath.lastIndexOf('/');
+        if (slash <= 0) {
+            LOG.info("[CF] NOTIFY_DELETE: refusing to delete sync-root-level entry "
+                    + peergosPath + " from peergos");
+            return;
+        }
+        // Defer the peergos remove to the batched drain. Acked NOTIFY_DELETEs queue up
+        // by parent and a small scheduler issues one FileWrapper.deleteChildren call
+        // per parent, plus collapses subtree-wipes to their root (an ancestor's
+        // deleteChildren cleans up all descendants in one shot). The CF ack above
+        // has already let Windows complete the local delete — Peergos catches up on
+        // the next drain tick.
+        enqueueDelete(peergosPath);
+    }
+
+    private void enqueueDelete(String peergosPath) {
+        int slash = peergosPath.lastIndexOf('/');
+        if (slash <= 0) return;
+        String parent = peergosPath.substring(0, slash);
+        String filename = peergosPath.substring(slash + 1);
+        synchronized (pendingDeletes) {
+            pendingDeletes.computeIfAbsent(parent, k -> new java.util.HashSet<>()).add(filename);
+        }
+    }
+
+    /** Drain {@link #pendingDeletes}: ancestor-collapse the pending paths so a
+     *  subtree wipe issues just the ancestor's removal, then issue one
+     *  {@link FileWrapper#deleteChildren} call per surviving parent. Called on a
+     *  small fixed-rate tick from {@code CloudFilesMount} so a burst of
+     *  NOTIFY_DELETEs from Explorer coalesces into a couple of writer-lock
+     *  acquisitions instead of one per file. */
+    void drainDeletes() {
+        java.util.Map<String, java.util.Set<String>> snapshot;
+        synchronized (pendingDeletes) {
+            if (pendingDeletes.isEmpty()) return;
+            snapshot = new java.util.HashMap<>(pendingDeletes);
+            pendingDeletes.clear();
+        }
+
+        // Ancestor collapse: walk shortest path first, keep ones that aren't
+        // strict descendants of an already-kept one. peergos drops the whole
+        // subtree when a directory is removed, so a child delete pending under
+        // an ancestor in the same batch is redundant work.
+        java.util.List<String> allPaths = new java.util.ArrayList<>();
+        for (java.util.Map.Entry<String, java.util.Set<String>> e : snapshot.entrySet()) {
+            for (String name : e.getValue())
+                allPaths.add(e.getKey() + "/" + name);
+        }
+        allPaths.sort(java.util.Comparator.comparingInt(String::length));
+        java.util.List<String> survivors = new java.util.ArrayList<>();
+        for (String p : allPaths) {
+            boolean covered = false;
+            for (String kept : survivors) {
+                if (p.startsWith(kept + "/")) { covered = true; break; }
+            }
+            if (!covered) survivors.add(p);
+        }
+
+        // Re-group survivors by parent — some may have moved into an ancestor's
+        // parent because the ancestor was itself collapsed.
+        java.util.Map<String, java.util.Set<String>> byParent = new java.util.HashMap<>();
+        for (String full : survivors) {
+            int s = full.lastIndexOf('/');
+            byParent.computeIfAbsent(full.substring(0, s), k -> new java.util.HashSet<>())
+                    .add(full.substring(s + 1));
+        }
+        for (java.util.Map.Entry<String, java.util.Set<String>> e : byParent.entrySet()) {
+            deleteChildrenInPeergos(e.getKey(), e.getValue());
+        }
+    }
+
+    private void deleteChildrenInPeergos(String peergosParent, java.util.Set<String> filenames) {
+        if (filenames.isEmpty()) return;
         try {
-            Optional<FileWrapper> fwOpt = context.getByPath(peergosPath).join();
-            if (fwOpt.isEmpty()) return;
-            String parent = peergosPath.substring(0, peergosPath.lastIndexOf('/'));
-            if (parent.isEmpty()) {
-                LOG.info("[CF] NOTIFY_DELETE: refusing to delete sync-root-level entry "
-                        + peergosPath + " from peergos");
-                return;
-            }
-            if (!fwOpt.get().isWritable()) {
-                LOG.info("[CF] NOTIFY_DELETE: " + peergosPath
-                        + " is read-only in peergos, skipping peergos delete");
-                return;
-            }
-            Optional<FileWrapper> parentOpt = context.getByPath(parent).join();
+            Optional<FileWrapper> parentOpt = context.getByPath(peergosParent).join();
             if (parentOpt.isEmpty()) return;
-            fwOpt.get().remove(parentOpt.get(), PathUtil.get(peergosPath), context).join();
-            identityToPath.values().removeIf(p -> p.equals(peergosPath) || p.startsWith(peergosPath + "/"));
-            String relPath = peergosPathToRelPath(peergosPath);
-            if (relPath != null)
-                asyncSyncState(() -> syncState.remove(relPath));
-            LOG.fine("Deleted " + peergosPath);
+            if (!parentOpt.get().isWritable()) {
+                LOG.info("[CF] bulkDelete: parent " + peergosParent
+                        + " is read-only, skipping " + filenames.size() + " entries");
+                return;
+            }
+            FileWrapper parent = parentOpt.get();
+            java.util.Set<FileWrapper> fws = parent.getChildren(filenames,
+                    context.crypto.hasher, context.network, true).join();
+            if (fws.isEmpty()) return;
+            LOG.info("[CF] bulkDelete: removing " + fws.size() + " entries from " + peergosParent);
+            FileWrapper.deleteChildren(parent, fws,
+                    PathUtil.get(peergosParent), context).join();
+            for (FileWrapper fw : fws) {
+                String peergosPath = peergosParent + "/" + fw.getName();
+                identityToPath.values().removeIf(p ->
+                        p.equals(peergosPath) || p.startsWith(peergosPath + "/"));
+                String relPath = peergosPathToRelPath(peergosPath);
+                if (relPath != null) {
+                    final String fp = relPath;
+                    asyncSyncState(() -> syncState.remove(fp));
+                }
+            }
         } catch (Exception e) {
-            LOG.log(Level.WARNING, "Delete failed for " + peergosPath, e);
+            LOG.log(Level.WARNING, "bulkDelete failed for " + peergosParent, e);
         }
     }
 

@@ -27,6 +27,7 @@ public class CloudFilesMount implements Closeable {
     private final java.nio.file.WatchService watchService;
     private final java.util.concurrent.ExecutorService uploadExecutor;
     private final java.util.concurrent.ScheduledExecutorService pullScheduler;
+    private final java.util.concurrent.ScheduledExecutorService deleteScheduler;
     private final peergos.server.sync.SyncState syncState;
     private final CloudFilesProvider provider;       // exposed for forcePullTick()
     private volatile boolean watcherRunning = true;
@@ -35,6 +36,7 @@ public class CloudFilesMount implements Closeable {
                             Thread watcherThread, java.nio.file.WatchService watchService,
                             java.util.concurrent.ExecutorService uploadExecutor,
                             java.util.concurrent.ScheduledExecutorService pullScheduler,
+                            java.util.concurrent.ScheduledExecutorService deleteScheduler,
                             peergos.server.sync.SyncState syncState,
                             CloudFilesProvider provider) {
         this.syncRootPath   = syncRootPath;
@@ -44,6 +46,7 @@ public class CloudFilesMount implements Closeable {
         this.watchService   = watchService;
         this.uploadExecutor = uploadExecutor;
         this.pullScheduler  = pullScheduler;
+        this.deleteScheduler = deleteScheduler;
         this.syncState      = syncState;
         this.provider       = provider;
     }
@@ -274,7 +277,18 @@ public class CloudFilesMount implements Closeable {
                 });
         pullSched.scheduleWithFixedDelay(provider::runPullTick, 30, 30, java.util.concurrent.TimeUnit.SECONDS);
 
-        CloudFilesMount m = new CloudFilesMount(syncRootPath, connectionKey, callbackArena, wt, ws, uploadExec, pullSched, syncState, provider);
+        // Delete-batch scheduler. NOTIFY_DELETE handlers enqueue paths and this
+        // ticks at ~200 ms to drain them — coalesces a burst of Explorer deletes
+        // into one FileWrapper.deleteChildren call per parent.
+        java.util.concurrent.ScheduledExecutorService deleteSched =
+                java.util.concurrent.Executors.newSingleThreadScheduledExecutor(r -> {
+                    Thread t = new Thread(r, "CF delete batcher");
+                    t.setDaemon(true);
+                    return t;
+                });
+        deleteSched.scheduleWithFixedDelay(provider::drainDeletes, 200, 200, java.util.concurrent.TimeUnit.MILLISECONDS);
+
+        CloudFilesMount m = new CloudFilesMount(syncRootPath, connectionKey, callbackArena, wt, ws, uploadExec, pullSched, deleteSched, syncState, provider);
         holder[0] = m;
         wt.start();
         // Re-drive any uploads that were in flight when the previous mount session
@@ -537,6 +551,15 @@ public class CloudFilesMount implements Closeable {
         if (pullScheduler != null) {
             pullScheduler.shutdown();
             try { pullScheduler.awaitTermination(5, java.util.concurrent.TimeUnit.SECONDS); }
+            catch (InterruptedException ignored) { Thread.currentThread().interrupt(); }
+        }
+        // Final drain of any pending NOTIFY_DELETEs, then stop the delete batcher.
+        // Without the explicit drain a delete that arrived in the last tick window
+        // would be dropped when the scheduler shuts down before its next fire.
+        if (deleteScheduler != null) {
+            try { if (provider != null) provider.drainDeletes(); } catch (Exception ignored) {}
+            deleteScheduler.shutdown();
+            try { deleteScheduler.awaitTermination(5, java.util.concurrent.TimeUnit.SECONDS); }
             catch (InterruptedException ignored) { Thread.currentThread().interrupt(); }
         }
         try {
