@@ -214,7 +214,9 @@ public class FileContentAddressedStorage implements DeletableContentAddressedSto
         List<Cid> cids = blocks.stream()
                 .map(b -> new Cid(CID_V1, codec, Multihash.Type.sha2_256, RAMStorage.hash(b)))
                 .toList();
-        transactions.addBlocks(new ArrayList<>(cids), tid, owner);
+        // Limit batch size to 1000 for fairness across concurrent requests
+        for (int i=0; i < cids.size(); i += 1000)
+            transactions.addBlocks(new ArrayList<>(cids.subList(i, Math.min(i + 1000, cids.size()))), tid, owner);
         try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
 
             List<CompletableFuture<Void>> futures = IntStream.range(0, blocks.size())

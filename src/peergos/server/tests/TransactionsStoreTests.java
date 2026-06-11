@@ -6,11 +6,14 @@ import org.junit.runners.*;
 import peergos.server.*;
 import peergos.server.sql.*;
 import peergos.server.storage.*;
+import peergos.server.util.Sqlite;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.Cid;
 import peergos.shared.io.ipfs.Multihash;
 import peergos.shared.storage.*;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.security.*;
 import java.util.*;
 
@@ -26,8 +29,13 @@ public class TransactionsStoreTests {
     @Parameterized.Parameters()
     public static Collection<Object[]> parameters() throws Exception {
         TransactionStore ram = JdbcTransactionStore.build(Main.buildEphemeralSqlite(), new SqliteCommands());
+        Path dbPath = Files.createTempFile("peergos-test", ".sqlite");
+        Sqlite.UncloseableConnection conn = new Sqlite.UncloseableConnection(Sqlite.build(dbPath.toString()));
+        TransactionStore file = JdbcTransactionStore.build(() -> conn, new SqliteCommands());
+
         return Arrays.asList(new Object[][] {
-                {ram}
+                {ram},
+                {file}
         });
     }
 
@@ -71,7 +79,7 @@ public class TransactionsStoreTests {
         PublicKeyHash owner = new PublicKeyHash(multihash);
         TransactionId tid = store.startTransaction(owner);
         List<Multihash> pending = new ArrayList<>();
-        for (int i=0; i < 20; i++) {
+        for (int i=0; i < 1000; i++) {
             Cid block = hashToCid(new byte[]{(byte) i}, false);
             pending.add(block);
         }
