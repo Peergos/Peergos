@@ -93,7 +93,7 @@ public class UserService {
     private final Optional<BlockCache> blockCache;
     private final Optional<SyncProperties> syncProps;
     private final Optional<LocalAppProperties> localAppProps;
-    private final Optional<MountProperties> mountProps;
+    private final Optional<peergos.server.net.MountConfigHandler> mountHandler;
     private HttpServer localhostServer;
 
     public UserService(ContentAddressedStorage storage,
@@ -109,7 +109,7 @@ public class UserService {
                        GarbageCollector gc,
                        Optional<SyncProperties> syncProps,
                        Optional<LocalAppProperties> localAppProps,
-                       Optional<MountProperties> mountProps) {
+                       Optional<peergos.server.net.MountConfigHandler> mountHandler) {
         this.storage = storage;
         this.bats = bats;
         this.crypto = crypto;
@@ -124,7 +124,7 @@ public class UserService {
         this.blockCache = storage.getBlockCache();
         this.syncProps = syncProps;
         this.localAppProps = localAppProps;
-        this.mountProps = mountProps;
+        this.mountHandler = mountHandler;
     }
 
     public static class TlsProperties {
@@ -308,8 +308,7 @@ public class UserService {
                 addHandler(localhostServer, null, "/" + Constants.SYNC,
                         sync, basicAuth, local, host, nodeIds, false);
             });
-            mountProps.ifPresent(props -> {
-                MountConfigHandler mount = new MountConfigHandler(props);
+            mountHandler.ifPresent(mount -> {
                 mount.start();
                 addHandler(localhostServer, null, "/" + Constants.MOUNT,
                         mount, basicAuth, local, host, nodeIds, false);

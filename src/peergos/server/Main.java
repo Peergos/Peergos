@@ -10,6 +10,7 @@ import peergos.server.cli.CLI;
 import peergos.server.crypto.hash.ScryptJava;
 import peergos.server.login.*;
 import peergos.server.messages.*;
+import peergos.server.net.MountConfigHandler;
 import peergos.server.net.ProxyChooser;
 import peergos.server.net.SyncConfigHandler;
 import peergos.server.webdav.MountConfig;
@@ -719,7 +720,7 @@ public class Main extends Builder {
                     UserService server = new UserService(withoutS3, offlineBats, crypto, offlineCorenode, offlineAccounts,
                             httpSocial, pointerCache, admin, httpUsage, serverMessager, null, Optional.of(sync),
                             Optional.of(new UserService.LocalAppProperties(peergosDir, getAppServerUrl(a))),
-                            Optional.of(mountProps));
+                            Optional.of(new MountConfigHandler(mountProps)));
 
                     InetSocketAddress localAPIAddress = new InetSocketAddress("localhost", port);
                     List<String> appSubdomains = Arrays.asList("markup-viewer,calendar,code-editor,pdf".split(","));
@@ -1023,7 +1024,8 @@ public class Main extends Builder {
                     "http://localhost:" + a.getInt("port"));
             Optional<UserService.LocalAppProperties> noConfigApi = Optional.empty();
             UserService localAPI = new UserService(cachingStorage, p2pBats, crypto, corePropagator, verifyingAccount,
-                    p2pSocial, p2mMutable, storageAdmin, p2pSpaceUsage, serverMessages, gc, Optional.of(sync), noConfigApi, Optional.of(mountPropsDaemon));
+                    p2pSocial, p2mMutable, storageAdmin, p2pSpaceUsage, serverMessages, gc, Optional.of(sync), noConfigApi,
+                    Optional.of(new MountConfigHandler(mountPropsDaemon)));
             UserService p2pAPI = new UserService(cachingStorage, p2pBats, crypto, corePropagator, verifyingAccount,
                     p2pSocial, p2mMutable, storageAdmin, p2pSpaceUsage, serverMessages, gc, Optional.empty(), noConfigApi, Optional.empty());
             InetSocketAddress localAPIAddress = userAPIAddress;
