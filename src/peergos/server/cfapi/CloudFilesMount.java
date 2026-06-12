@@ -252,6 +252,13 @@ public class CloudFilesMount implements Closeable {
             LOG.log(Level.WARNING, "seedRootPlaceholders failed (non-fatal)", e);
         }
 
+        // Re-build syncState from whatever's on disk if the state DB is empty
+        // (typically because the previous mount session ended via unmount(), which
+        // wipes the DB for privacy). Without this the pull tick would bail at the
+        // empty-snapshot check and the user's tree would never re-populate.
+        try { provider.seedSyncStateFromLocal(); }
+        catch (Exception e) { LOG.log(Level.WARNING, "seedSyncStateFromLocal failed (non-fatal)", e); }
+
         // CF only fires NOTIFY_FILE_CLOSE_COMPLETION for placeholders it already tracks.
         // For files created locally inside the sync root by other processes (e.g. Copy-Item),
         // we get no callback at all — so run a WatchService to detect new/modified files and

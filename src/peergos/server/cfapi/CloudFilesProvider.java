@@ -1358,6 +1358,77 @@ public class CloudFilesProvider {
         }
     }
 
+    /** Walk the local sync-root tree and re-build {@link #syncState} entries for
+     *  the dirs and hydrated files already on disk. Used by the mount path when
+     *  the state DB was wiped (e.g. by a previous {@link CloudFilesMount#unmount})
+     *  but local CF placeholders survived — without this the post-remount
+     *  {@code runPullTick} would bail at the empty-snapshot check and
+     *  {@link #discoverNewRemoteChildren} would skip every placeholder dir,
+     *  leaving the user staring at a sync root that never re-populates.
+     *
+     *  <p>For each non-OFFLINE file we look the remote entry up by path and only
+     *  record a synced version if the local hash matches the remote tree hash.
+     *  If the hashes disagree we leave the file alone and let the watcher /
+     *  conflict-resolution path handle it on its own time. */
+    public void seedSyncStateFromLocal() {
+        if (syncState == null) return;
+        if (!syncState.allFilePaths().isEmpty()) return;        // already bootstrapped
+        Path root = Path.of(syncRootPath);
+        if (!Files.exists(root)) return;
+        try {
+            Files.walkFileTree(root, new java.nio.file.SimpleFileVisitor<Path>() {
+                @Override
+                public java.nio.file.FileVisitResult preVisitDirectory(Path dir,
+                        java.nio.file.attribute.BasicFileAttributes attrs) {
+                    if (!dir.equals(root)) {
+                        String rel = root.relativize(dir).toString()
+                                .replace(java.io.File.separatorChar, '/');
+                        syncState.addDir(rel);
+                    }
+                    return java.nio.file.FileVisitResult.CONTINUE;
+                }
+                @Override
+                public java.nio.file.FileVisitResult visitFile(Path file,
+                        java.nio.file.attribute.BasicFileAttributes attrs) {
+                    try {
+                        int a = CfApi.getFileAttributes(file);
+                        if (a == CfApi.INVALID_FILE_ATTRIBUTES) return java.nio.file.FileVisitResult.CONTINUE;
+                        // Skip dehydrated placeholders — their content isn't on disk
+                        // so we can't hash, and they'll be recreated as placeholders
+                        // by discoverNewRemoteChildren / FETCH_PLACEHOLDERS anyway.
+                        if ((a & CfApi.FILE_ATTRIBUTE_OFFLINE) != 0) return java.nio.file.FileVisitResult.CONTINUE;
+                        long size = Files.size(file);
+                        if (size == 0) return java.nio.file.FileVisitResult.CONTINUE;
+                        String rel = root.relativize(file).toString()
+                                .replace(java.io.File.separatorChar, '/');
+                        String peergosPath = "/" + rel;
+                        Optional<FileWrapper> remoteOpt = context.getByPath(peergosPath).join();
+                        if (remoteOpt.isEmpty() || remoteOpt.get().isDirectory()) return java.nio.file.FileVisitResult.CONTINUE;
+                        if (remoteOpt.get().getSize() != size) return java.nio.file.FileVisitResult.CONTINUE;
+                        HashTree localHash = hashLocalFile(file, size);
+                        if (localHash == null) return java.nio.file.FileVisitResult.CONTINUE;
+                        peergos.shared.user.fs.RootHash remoteRoot = remoteOpt.get().getFileProperties()
+                                .treeHash.map(b -> b.rootHash).orElse(null);
+                        if (remoteRoot == null || !localHash.rootHash.equals(remoteRoot))
+                            return java.nio.file.FileVisitResult.CONTINUE;
+                        recordSyncedVersion(rel, remoteOpt.get());
+                    } catch (Exception e) {
+                        LOG.log(Level.FINE, "seedSyncStateFromLocal: visit failed for " + file, e);
+                    }
+                    return java.nio.file.FileVisitResult.CONTINUE;
+                }
+                @Override
+                public java.nio.file.FileVisitResult visitFileFailed(Path file, IOException exc) {
+                    return java.nio.file.FileVisitResult.CONTINUE;
+                }
+            });
+            LOG.info("[CF] seedSyncStateFromLocal: rebuilt " + syncState.allFilePaths().size()
+                    + " file entries, " + syncState.getDirs().size() + " dir entries");
+        } catch (IOException e) {
+            LOG.log(Level.WARNING, "seedSyncStateFromLocal walk failed", e);
+        }
+    }
+
     /** Walk the local sync-root tree and create placeholders for any remote children
      *  that have appeared in dirs we've already populated. We descend into a placeholder
      *  dir only if {@code syncState.hasDir} says we've populated it previously — for
@@ -1375,8 +1446,25 @@ public class CloudFilesProvider {
                     if (!dir.equals(root) && CfApi.isPlaceholder(dir)) {
                         String relPath = root.relativize(dir).toString()
                                 .replace(java.io.File.separatorChar, '/');
-                        if (syncState == null || !syncState.hasDir(relPath))
-                            return java.nio.file.FileVisitResult.SKIP_SUBTREE;
+                        if (syncState == null || !syncState.hasDir(relPath)) {
+                            // Normally we skip CF placeholder dirs we don't have in
+                            // syncState — descending would trigger FETCH_PLACEHOLDERS.
+                            // But after a state-DB wipe (unmount + remount) a dir we
+                            // populated in a prior session has children on disk
+                            // already; enumerating it returns the cached entries
+                            // without firing the callback. Use the presence of any
+                            // child as the "already populated, safe to descend" signal
+                            // and addDir so subsequent ticks short-circuit this check.
+                            boolean hasChildren = false;
+                            try (java.util.stream.Stream<Path> kids = Files.list(dir)) {
+                                hasChildren = kids.findAny().isPresent();
+                            } catch (IOException e) {
+                                return java.nio.file.FileVisitResult.SKIP_SUBTREE;
+                            }
+                            if (!hasChildren)
+                                return java.nio.file.FileVisitResult.SKIP_SUBTREE;
+                            if (syncState != null) syncState.addDir(relPath);
+                        }
                     }
                     try { pullNewChildrenInto(dir); }
                     catch (Exception e) {
@@ -1609,8 +1697,22 @@ public class CloudFilesProvider {
 
             Optional<FileWrapper> existing = context.getByPath(peergosPath).join();
             if (existing.isPresent() && !existing.get().isDirectory()
-                    && existing.get().getSize() == localSize)
-                return; // already in sync
+                    && existing.get().getSize() == localSize) {
+                // Verify hash before declaring in-sync. Size-only match is unsafe
+                // for the rediscovery case (post-remount with a wiped state DB) —
+                // a same-size but content-divergent file would be silently
+                // shadowed. Hashes match → record so the watcher / pull tick
+                // honours it as a known-clean entry. Hashes diverge → fall
+                // through to the existing upload path.
+                HashTree localHash = hashLocalFile(localPath, localSize);
+                peergos.shared.user.fs.RootHash remoteRoot = existing.get().getFileProperties()
+                        .treeHash.map(b -> b.rootHash).orElse(null);
+                if (localHash != null && remoteRoot != null
+                        && localHash.rootHash.equals(remoteRoot)) {
+                    recordSyncedVersion(localPath, existing.get());
+                    return;
+                }
+            }
             if (existing.isPresent() && !existing.get().isWritable()) {
                 LOG.info("[CF] uploadLocalFile: " + peergosPath
                         + " is read-only in peergos, skipping");
