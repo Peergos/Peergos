@@ -62,6 +62,8 @@ public class MountConfigHandler implements HttpHandler {
     private final String peergosUrl;
     private final SecretStore secretStore;
     private final MountBackend backend;
+    private final java.util.function.Supplier<Crypto> cryptoFactory;
+    private final java.util.function.Supplier<NetworkAccess> networkFactory;
     private final AtomicReference<String> mountError = new AtomicReference<>(null);
     private final AtomicReference<String> activePeergosUsername = new AtomicReference<>("");
     private final ScheduledExecutorService loginScheduler = Executors.newSingleThreadScheduledExecutor(r -> {
@@ -72,20 +74,41 @@ public class MountConfigHandler implements HttpHandler {
     private final AtomicReference<ScheduledFuture<?>> credentialCheck = new AtomicReference<>(null);
 
     public MountConfigHandler(MountProperties props) {
-        this(props, SecretStore.detect(), defaultBackend(props.peergosUrl));
+        this(props, SecretStore.detect(), defaultBackend(props.peergosUrl),
+                Main::initCrypto, defaultNetworkFactory(props.peergosUrl));
     }
 
     public MountConfigHandler(MountProperties props, SecretStore secretStore, MountBackend backend) {
+        this(props, secretStore, backend, Main::initCrypto, defaultNetworkFactory(props.peergosUrl));
+    }
+
+    public MountConfigHandler(MountProperties props, SecretStore secretStore, MountBackend backend,
+                              java.util.function.Supplier<Crypto> cryptoFactory,
+                              java.util.function.Supplier<NetworkAccess> networkFactory) {
         this.peergosDir = props.peergosDir;
         this.peergosUrl = props.peergosUrl;
         this.secretStore = secretStore;
         this.backend = backend;
+        this.cryptoFactory = cryptoFactory;
+        this.networkFactory = networkFactory;
     }
 
     private static MountBackend defaultBackend(String peergosUrl) {
         if (WindowsVersionCheck.isCfApiAvailable())
             return new CloudFilesBackend();
         return new WebdavBackend(peergosUrl);
+    }
+
+    private static java.util.function.Supplier<NetworkAccess> defaultNetworkFactory(String peergosUrl) {
+        return () -> {
+            try {
+                return Builder.buildJavaNetworkAccess(
+                        new URL(peergosUrl), peergosUrl.startsWith("https"),
+                        Optional.of("Peergos-webdav"), Optional.empty()).join();
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+        };
     }
 
     public void start() {
@@ -175,10 +198,8 @@ public class MountConfigHandler implements HttpHandler {
         if (!config.enabled || !config.peergosUsername.equals(username))
             return; // Mount was disabled or replaced while we were waiting to fire.
         try {
-            Crypto crypto = Main.initCrypto();
-            NetworkAccess network = Builder.buildJavaNetworkAccess(
-                    new URL(peergosUrl), peergosUrl.startsWith("https"),
-                    Optional.of("Peergos-webdav"), Optional.empty()).join();
+            Crypto crypto = cryptoFactory.get();
+            NetworkAccess network = networkFactory.get();
             // Non-interactive MFA: TOTP if we have one, otherwise an immediate failure
             // (we have no console to read from in a background scheduler thread).
             Function<MultiFactorAuthRequest, CompletableFuture<MultiFactorAuthResponse>> mfa =
@@ -225,10 +246,8 @@ public class MountConfigHandler implements HttpHandler {
     }
 
     private UserContext buildContext(MountConfig config) throws Exception {
-        Crypto crypto = Main.initCrypto();
-        NetworkAccess network = Builder.buildJavaNetworkAccess(
-                new URL(peergosUrl), peergosUrl.startsWith("https"),
-                Optional.of("Peergos-webdav"), Optional.empty()).join();
+        Crypto crypto = cryptoFactory.get();
+        NetworkAccess network = networkFactory.get();
         // If the mount was provisioned with a dedicated TOTP, use that for MFA; falls back
         // to the interactive CLI prompt for legacy mounts that don't have one.
         Function<MultiFactorAuthRequest, CompletableFuture<MultiFactorAuthResponse>> mfa =
