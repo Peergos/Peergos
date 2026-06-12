@@ -1,16 +1,14 @@
 package peergos.server.net;
 
 import com.sun.net.httpserver.*;
-import org.eclipse.jetty.server.Server;
 import peergos.server.Builder;
 import peergos.server.Main;
 import peergos.server.MountProperties;
-import peergos.server.cfapi.CloudFilesMount;
 import peergos.server.cfapi.WindowsVersionCheck;
+import peergos.server.mount.CloudFilesBackend;
+import peergos.server.mount.MountBackend;
+import peergos.server.mount.WebdavBackend;
 import peergos.server.webdav.MountConfig;
-import peergos.server.webdav.WebdavFileSystem;
-import peergos.server.webdav.WebdavMount;
-import peergos.server.webdav.WebdavServer;
 import peergos.server.util.HttpUtil;
 import peergos.server.util.Logging;
 import peergos.server.util.secrets.SecretStore;
@@ -63,9 +61,7 @@ public class MountConfigHandler implements HttpHandler {
     private final Path peergosDir;
     private final String peergosUrl;
     private final SecretStore secretStore;
-    private final AtomicReference<Server> webdavServer = new AtomicReference<>(null);
-    private final AtomicReference<WebdavMount> activeMount = new AtomicReference<>(null);
-    private final AtomicReference<CloudFilesMount> activeCloudMount = new AtomicReference<>(null);
+    private final MountBackend backend;
     private final AtomicReference<String> mountError = new AtomicReference<>(null);
     private final AtomicReference<String> activePeergosUsername = new AtomicReference<>("");
     private final ScheduledExecutorService loginScheduler = Executors.newSingleThreadScheduledExecutor(r -> {
@@ -76,13 +72,20 @@ public class MountConfigHandler implements HttpHandler {
     private final AtomicReference<ScheduledFuture<?>> credentialCheck = new AtomicReference<>(null);
 
     public MountConfigHandler(MountProperties props) {
-        this(props, SecretStore.detect());
+        this(props, SecretStore.detect(), defaultBackend(props.peergosUrl));
     }
 
-    public MountConfigHandler(MountProperties props, SecretStore secretStore) {
+    public MountConfigHandler(MountProperties props, SecretStore secretStore, MountBackend backend) {
         this.peergosDir = props.peergosDir;
         this.peergosUrl = props.peergosUrl;
         this.secretStore = secretStore;
+        this.backend = backend;
+    }
+
+    private static MountBackend defaultBackend(String peergosUrl) {
+        if (WindowsVersionCheck.isCfApiAvailable())
+            return new CloudFilesBackend();
+        return new WebdavBackend(peergosUrl);
     }
 
     public void start() {
@@ -146,22 +149,9 @@ public class MountConfigHandler implements HttpHandler {
     }
 
     private void enableMount(MountConfig config) throws Exception {
-        if (WindowsVersionCheck.isCfApiAvailable()) {
-            UserContext context = buildContext(config);
-            CloudFilesMount mount = CloudFilesMount.mount(context, peergosDir);
-            activeCloudMount.set(mount);
-            activePeergosUsername.set(config.peergosUsername);
-            scheduleCredentialCheck(config);
-            return;
-        }
-        WebdavFileSystem fs = new WebdavFileSystem(config.peergosUsername, config.peergosPassword, peergosUrl, config);
-        Server server = WebdavServer.startNonBlocking(config.webdavPort, config.webdavUsername,
-                config.webdavPassword, fs, config.authType);
-        webdavServer.set(server);
+        UserContext context = buildContext(config);
+        backend.enable(config, context, peergosDir);
         activePeergosUsername.set(config.peergosUsername);
-        writeAppGroupConfig(config);
-        WebdavMount mount = WebdavMount.mount(config.webdavPort, config.webdavUsername, config.webdavPassword);
-        activeMount.set(mount);
         scheduleCredentialCheck(config);
     }
 
@@ -286,45 +276,11 @@ public class MountConfigHandler implements HttpHandler {
         };
     }
 
-    private static void writeAppGroupConfig(MountConfig config) {
-        if (!System.getProperty("os.name", "").toLowerCase().startsWith("mac")) return;
-        try {
-            Path appGroupDir = Path.of(System.getProperty("user.home"),
-                    "Library", "Group Containers", "group.org.peergos.PeergosMount");
-            Files.createDirectories(appGroupDir);
-            Map<String, Object> json = new LinkedHashMap<>();
-            json.put("port", config.webdavPort);
-            json.put("webdavUsername", config.webdavUsername);
-            json.put("webdavPassword", config.webdavPassword);
-            json.put("peergosUsername", config.peergosUsername);
-            Files.write(appGroupDir.resolve("webdav-config.json"),
-                    JSONParser.toString(json).getBytes(StandardCharsets.UTF_8));
-        } catch (IOException e) {
-            LOG.log(Level.WARNING, "Failed to write App Group config", e);
-        }
-    }
-
     private void disableMount() {
         ScheduledFuture<?> check = credentialCheck.getAndSet(null);
         if (check != null) check.cancel(false);
-        CloudFilesMount cfMount = activeCloudMount.getAndSet(null);
-        if (cfMount != null)
-            cfMount.unmount();
-        WebdavMount mount = activeMount.getAndSet(null);
-        if (mount != null)
-            mount.close();
-        Server server = webdavServer.getAndSet(null);
-        if (server != null) {
-            try { server.stop(); } catch (Exception e) {
-                LOG.log(Level.WARNING, "Error stopping WebDAV server", e);
-            }
-        }
+        backend.disable();
         activePeergosUsername.set("");
-        if (System.getProperty("os.name", "").toLowerCase().startsWith("mac")) {
-            Path.of(System.getProperty("user.home"),
-                    "Library", "Group Containers", "group.org.peergos.PeergosMount",
-                    "webdav-config.json").toFile().delete();
-        }
     }
 
     private static String generateToken() {
@@ -364,11 +320,9 @@ public class MountConfigHandler implements HttpHandler {
 
             if (action.equals("get-config")) {
                 MountConfig config = readConfig();
-                WebdavMount mount = activeMount.get();
-                CloudFilesMount cfMount = activeCloudMount.get();
-                boolean mountActive = mount != null || cfMount != null;
-                String mountPoint = cfMount != null ? cfMount.getMountPoint()
-                        : mount != null ? mount.getMountPoint() : "";
+                Optional<String> activeMountPoint = backend.activeMountPoint();
+                boolean mountActive = activeMountPoint.isPresent();
+                String mountPoint = activeMountPoint.orElse("");
                 Map<String, Object> json = new LinkedHashMap<>();
                 json.put("enabled", mountActive || config.enabled);
                 json.put("peergosUsername", mountActive ? activePeergosUsername.get() : config.peergosUsername);
