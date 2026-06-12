@@ -31,7 +31,13 @@ public class FileAsyncReader implements AsyncReader {
     @Override
     public CompletableFuture<Integer> readIntoArray(byte[] res, int offset, int length) {
         try {
-            return Futures.of(file.read(res, offset, length));
+            int total = 0;
+            while (total < length) {
+                int n = file.read(res, offset + total, length - total);
+                if (n <= 0) break;
+                total += n;
+            }
+            return Futures.of(total);
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
