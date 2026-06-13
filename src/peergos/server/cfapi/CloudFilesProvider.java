@@ -56,6 +56,32 @@ public class CloudFilesProvider {
             new java.util.concurrent.ConcurrentLinkedDeque<>();
 
     /**
+     * CF dispatches one transfer (xferKey) as a sequence of small, mostly-forward
+     * FETCH_DATA calls (~128 KB at a time as VLC plays or zip reads). Without
+     * caching, each call re-opens an {@link AsyncReader} from chunk 0 and seeks to
+     * the required offset — for a read at offset N that's a re-fetch of chunks
+     * 0..⌊N/5MB⌋ from the network. A 70 MB sequential play turns into gigabytes.
+     * Cache the open reader per transferKey and reuse it for forward (and same-
+     * offset) reads. Backward seeks fall through to a fresh reader since
+     * {@link peergos.shared.user.fs.LazyInputStreamCombiner#seekJS} resets to
+     * chunk 0 in that case.
+     */
+    private static final long READER_CACHE_TTL_MS = 60_000;
+    private static final class CachedReader {
+        final String peergosPath;
+        final AsyncReader reader;
+        final long fileSize;
+        long position;
+        long expiresAtMs;
+        CachedReader(String path, AsyncReader r, long fileSize, long pos) {
+            this.peergosPath = path; this.reader = r; this.fileSize = fileSize;
+            this.position = pos;
+            this.expiresAtMs = System.currentTimeMillis() + READER_CACHE_TTL_MS;
+        }
+    }
+    private final ConcurrentHashMap<Long, CachedReader> readerCache = new ConcurrentHashMap<>();
+
+    /**
      * Paths the local-file watcher just uploaded and converted to placeholders. The
      * conversion fires FILE_CLOSE_COMPLETION (CF treats the convert as a placeholder
      * lifecycle event), and any subsequent edit would also fire the close callback —
@@ -249,43 +275,70 @@ public class CloudFilesProvider {
                 return;
             }
 
-            Optional<FileWrapper> fwOpt = context.getByPath(peergosPath).join();
-            if (fwOpt.isEmpty() || fwOpt.get().isDirectory()) {
-                failTransfer(connectionKey, transferKey, requestKey, -1);
-                return;
-            }
-            FileWrapper fw  = fwOpt.get();
-            long fileSize = fw.getSize();
-            long end = Math.min(requiredOffset + requiredLength, fileSize);
+            sweepExpiredReaders();
 
-            // Fine-grained hydration progress: the AsyncReader's monitor fires per
-            // IPFS block (~1 MB), so the File Explorer download dialog updates smoothly
-            // rather than jumping in CHUNK_SIZE (4 MB) steps. Throttle to ~0.5% of the
-            // file so we don't hammer CfReportProviderProgress for tiny files. Final
-            // 100% is sent after the last transferData below.
-            final long connKey = connectionKey, transferK = transferKey;
-            java.util.concurrent.atomic.AtomicLong downloaded =
-                    new java.util.concurrent.atomic.AtomicLong(requiredOffset);
-            java.util.concurrent.atomic.AtomicLong lastReported =
-                    new java.util.concurrent.atomic.AtomicLong(-1);
-            long progressGrain = Math.max(CLUSTER_SIZE, fileSize / 200);
-            peergos.shared.util.ProgressConsumer<Long> dlMonitor = bytes -> {
-                if (bytes == null || bytes <= 0) return;
-                long cum = Math.min(downloaded.addAndGet(bytes), fileSize);
-                long lr = lastReported.get();
-                if (cum - lr >= progressGrain && cum < fileSize
-                        && lastReported.compareAndSet(lr, cum)) {
-                    try { CfApi.cfReportProviderProgress(connKey, transferK, fileSize, cum); }
-                    catch (Exception ignored) {}
+            AsyncReader reader;
+            long fileSize;
+            FileWrapper firstFetchFw = null;
+            long readerPos;
+            CachedReader cached = readerCache.get(transferKey);
+            if (cached != null && cached.peergosPath.equals(peergosPath)
+                    && cached.position <= requiredOffset) {
+                reader = cached.reader;
+                fileSize = cached.fileSize;
+                readerPos = cached.position;
+                if (readerPos < requiredOffset) {
+                    reader.seek(requiredOffset).join();
+                    readerPos = requiredOffset;
                 }
-            };
+                LOG.info("[CF] FETCH_DATA: reusing cached reader xferKey=" + transferKey
+                        + " readerPos=" + readerPos);
+            } else {
+                if (cached != null) {
+                    try { cached.reader.close(); } catch (Exception ignored) {}
+                    readerCache.remove(transferKey);
+                }
+                Optional<FileWrapper> fwOpt = context.getByPath(peergosPath).join();
+                if (fwOpt.isEmpty() || fwOpt.get().isDirectory()) {
+                    failTransfer(connectionKey, transferKey, requestKey, -1);
+                    return;
+                }
+                firstFetchFw = fwOpt.get();
+                fileSize = firstFetchFw.getSize();
 
-            try (Arena arena = Arena.ofConfined();
-                 AsyncReader reader = fw.getInputStream(context.network, context.crypto,
-                         fileSize, dlMonitor).join()) {
+                // Fine-grained hydration progress: the AsyncReader's monitor fires per
+                // IPFS block (~1 MB) so File Explorer's download dialog updates smoothly
+                // rather than jumping in CHUNK_SIZE (4 MB) steps. Throttle to ~0.5% of
+                // the file. Only attached to a freshly-opened reader; cached reuses
+                // already have a monitor bound from the original open call.
+                final long connKey = connectionKey, transferK = transferKey;
+                java.util.concurrent.atomic.AtomicLong downloaded =
+                        new java.util.concurrent.atomic.AtomicLong(requiredOffset);
+                java.util.concurrent.atomic.AtomicLong lastReported =
+                        new java.util.concurrent.atomic.AtomicLong(-1);
+                long progressGrain = Math.max(CLUSTER_SIZE, fileSize / 200);
+                peergos.shared.util.ProgressConsumer<Long> dlMonitor = bytes -> {
+                    if (bytes == null || bytes <= 0) return;
+                    long cum = Math.min(downloaded.addAndGet(bytes), fileSize);
+                    long lr = lastReported.get();
+                    if (cum - lr >= progressGrain && cum < fileSize
+                            && lastReported.compareAndSet(lr, cum)) {
+                        try { CfApi.cfReportProviderProgress(connKey, transferK, fileSize, cum); }
+                        catch (Exception ignored) {}
+                    }
+                };
+
+                reader = firstFetchFw.getInputStream(context.network, context.crypto,
+                        fileSize, dlMonitor).join();
                 if (requiredOffset > 0)
                     reader.seek(requiredOffset).join();
+                readerPos = requiredOffset;
+            }
 
+            long end = Math.min(requiredOffset + requiredLength, fileSize);
+            java.util.concurrent.atomic.AtomicLong afterDelivLastReported =
+                    new java.util.concurrent.atomic.AtomicLong(-1);
+            try (Arena arena = Arena.ofConfined()) {
                 long remaining = end - requiredOffset;
                 long offset    = requiredOffset;
                 byte[] buf = new byte[(int) Math.min(CHUNK_SIZE, remaining)];
@@ -301,40 +354,44 @@ public class CloudFilesProvider {
                     long padded = ((nRead + CLUSTER_SIZE - 1) / CLUSTER_SIZE) * CLUSTER_SIZE;
                     MemorySegment ds = CfApi.virtualAlloc(padded).reinterpret(padded);
                     MemorySegment.copy(buf, 0, ds, ValueLayout.JAVA_BYTE, 0, nRead);
-                    // Use padded length so all internal CF state machine boundaries are aligned
                     LOG.info("[CF] FETCH_DATA: nRead=" + nRead + " offset=" + offset);
                     // Length = actual bytes read (Microsoft passes numberOfBytesTransfered,
                     // which for a 30-byte file is 30, NOT the padded buffer size).
                     transferData(connectionKey, transferKey, requestKey, ds, offset, nRead, fileSize);
-                    // After-delivery progress: belt-and-braces for the download monitor —
-                    // small files / cached chunks may not fire the monitor, so bump the
-                    // counter from the delivered offset too. Monotonic via compareAndSet.
                     long deliveredOffset = Math.min(offset + nRead, fileSize);
-                    long lrAfter = lastReported.get();
+                    long lrAfter = afterDelivLastReported.get();
                     if (deliveredOffset > lrAfter && deliveredOffset < fileSize
-                            && lastReported.compareAndSet(lrAfter, deliveredOffset)) {
-                        try { CfApi.cfReportProviderProgress(connKey, transferK, fileSize, deliveredOffset); }
+                            && afterDelivLastReported.compareAndSet(lrAfter, deliveredOffset)) {
+                        try { CfApi.cfReportProviderProgress(connectionKey, transferKey, fileSize, deliveredOffset); }
                         catch (Exception ignored) {}
                     }
-                    // Sweep already-expired buffers, then defer this one for BUFFER_RETAIN_MS.
                     sweepExpiredBuffers();
                     pendingBuffers.add(new Object[]{ds, System.currentTimeMillis() + BUFFER_RETAIN_MS});
                     offset    += nRead;
+                    readerPos += nRead;
                     remaining -= nRead;
                 }
+            } catch (Exception readErr) {
+                readerCache.remove(transferKey);
+                try { reader.close(); } catch (Exception ignored) {}
+                throw readErr;
             }
+
+            readerCache.put(transferKey,
+                    new CachedReader(peergosPath, reader, fileSize, readerPos));
+
             // Final 100% — closes the File Explorer hydration dialog and unblocks
             // any same-process read waiting on the placeholder.
             if (requiredOffset == 0 && end >= fileSize) {
-                try { CfApi.cfReportProviderProgress(connKey, transferK, fileSize, fileSize); }
+                try { CfApi.cfReportProviderProgress(connectionKey, transferKey, fileSize, fileSize); }
                 catch (Exception ignored) {}
             }
-            // After the full file has been hydrated, the on-disk content matches the
-            // current Peergos version. Record that so the next FILE_CLOSE_COMPLETION
-            // for this path has a baseline for conflict detection.
-            if (requiredOffset == 0 && end >= fw.getSize()) {
+            // First-fetch covering the whole file: record the synced version so the
+            // next FILE_CLOSE_COMPLETION has a baseline for conflict detection. Only
+            // meaningful when we just opened the file (and thus have a FileWrapper).
+            if (firstFetchFw != null && requiredOffset == 0 && end >= fileSize) {
                 String relPath = peergosPathToRelPath(peergosPath);
-                if (relPath != null) recordSyncedVersion(relPath, fw);
+                if (relPath != null) recordSyncedVersion(relPath, firstFetchFw);
             }
         } catch (Exception e) {
             LOG.log(Level.SEVERE, "FETCH_DATA callback exception (connKey=" + connectionKey + ")", e);
@@ -354,6 +411,15 @@ public class CloudFilesProvider {
             try { CfApi.virtualFree((MemorySegment) head[0]); }
             catch (Exception ignored) {}
         }
+    }
+
+    private void sweepExpiredReaders() {
+        long now = System.currentTimeMillis();
+        readerCache.entrySet().removeIf(e -> {
+            if (e.getValue().expiresAtMs > now) return false;
+            try { e.getValue().reader.close(); } catch (Exception ignored) {}
+            return true;
+        });
     }
 
     private void transferData(long connectionKey, long transferKey, long requestKey,
@@ -597,6 +663,14 @@ public class CloudFilesProvider {
 
     public void onCancelFetchData(MemorySegment info, MemorySegment params) {
         LOG.info("[CF] CANCEL_FETCH_DATA callback");
+        try {
+            info = info.reinterpret(256);
+            long transferKey = info.get(ValueLayout.JAVA_LONG, CfApi.CBI_TRANSFER_KEY_OFF);
+            CachedReader removed = readerCache.remove(transferKey);
+            if (removed != null) try { removed.reader.close(); } catch (Exception ignored) {}
+        } catch (Exception e) {
+            LOG.log(Level.FINE, "CANCEL_FETCH_DATA: cache eviction failed", e);
+        }
     }
 
     public void onFileOpenCompletion(MemorySegment info, MemorySegment params) {
