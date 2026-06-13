@@ -1427,6 +1427,13 @@ public class CloudFilesProvider {
         } catch (IOException e) {
             LOG.log(Level.WARNING, "seedSyncStateFromLocal walk failed", e);
         }
+        // After a state-DB wipe, dehydrated placeholders deleted by unmount's
+        // purge are not on disk and not in syncState — runPullTick's Tier 1
+        // snapshot-equality shortcut would skip discoverNewRemoteChildren since
+        // no writer's state has actually moved. Run it once here so the dirs we
+        // just addDir'd above get their missing children recreated.
+        try { discoverNewRemoteChildren(); }
+        catch (Exception e) { LOG.log(Level.WARNING, "seedSyncStateFromLocal: discoverNewRemoteChildren failed", e); }
     }
 
     /** Walk the local sync-root tree and create placeholders for any remote children

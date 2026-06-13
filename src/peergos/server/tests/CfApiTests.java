@@ -942,6 +942,150 @@ public class CfApiTests {
         }
     }
 
+    /**
+     * Verifies the unmount → remount lifecycle for CF placeholders:
+     *   (1) unmount() purges dehydrated file placeholders and dirs left empty by
+     *       that purge.
+     *   (2) Materialised (hydrated) files survive unmount unchanged.
+     *   (3) After remount, the pull tick recreates the purged top-level entries
+     *       as placeholders; listing a recreated placeholder dir then re-populates
+     *       its children via FETCH_PLACEHOLDERS.
+     *
+     * Fixtures laid out so the purge has to discriminate:
+     *   hydrated.txt          — read after listing, content on disk → keep
+     *   dehydrated.txt        — listed only, still OFFLINE          → purge
+     *   mixed-dir/mixed-hyd.txt — hydrated; parent must survive
+     *   empty-dir/orphan.txt  — never read; parent should be removed after purge
+     */
+    @Test
+    public void unmountPurgesPlaceholdersAndRemountRestoresThem() throws Exception {
+        if (!isWindowsDesktop()) return;
+        NetworkAccess network = Builder.buildLocalJavaNetworkAccess(WEB_PORT).join();
+        Crypto crypto = Main.initCrypto();
+        String user = "cfapi" + UUID.randomUUID().toString().substring(0, 8);
+        UserContext context = UserContext.signUp(user, PASSWORD, "", network, crypto).join();
+
+        byte[] hydContent  = "hydrated bytes".getBytes(StandardCharsets.UTF_8);
+        byte[] dehContent  = "dehydrated bytes".getBytes(StandardCharsets.UTF_8);
+        byte[] mixContent  = "mixed-dir hydrated child".getBytes(StandardCharsets.UTF_8);
+        byte[] orphContent = "empty-dir orphan placeholder".getBytes(StandardCharsets.UTF_8);
+
+        FileWrapper home = context.getByPath("/" + user).join().get();
+        home.uploadOrReplaceFile("hydrated.txt", new AsyncReader.ArrayBacked(hydContent),
+                hydContent.length, context.network, context.crypto, () -> false, l -> {}).join();
+        home.getUpdated(network).join().uploadOrReplaceFile("dehydrated.txt",
+                new AsyncReader.ArrayBacked(dehContent), dehContent.length,
+                context.network, context.crypto, () -> false, l -> {}).join();
+        home.getUpdated(network).join().mkdir("mixed-dir", context.network, false,
+                Optional.empty(), context.crypto).join();
+        context.getByPath("/" + user + "/mixed-dir").join().get()
+                .uploadOrReplaceFile("mixed-hyd.txt",
+                        new AsyncReader.ArrayBacked(mixContent), mixContent.length,
+                        context.network, context.crypto, () -> false, l -> {}).join();
+        home.getUpdated(network).join().mkdir("empty-dir", context.network, false,
+                Optional.empty(), context.crypto).join();
+        context.getByPath("/" + user + "/empty-dir").join().get()
+                .uploadOrReplaceFile("orphan.txt",
+                        new AsyncReader.ArrayBacked(orphContent), orphContent.length,
+                        context.network, context.crypto, () -> false, l -> {}).join();
+
+        Path syncRoot = tmp.newFolder("peergos-cf-" + user).toPath();
+        Path userRoot = syncRoot.resolve(user);
+        Path stateDb  = tmp.newFolder("peergos-cf-state-" + user).toPath().resolve("state.db");
+
+        CloudFilesMount mount1 = CloudFilesMount.mount(context, syncRoot.toString(), stateDb);
+        try {
+            String userRootPs = userRoot.toString().replace("'", "''");
+            assertEquals("list $user/ failed", 0,
+                    runPs("Get-ChildItem -LiteralPath '" + userRootPs + "' -Name | Out-String"));
+            String mixedPs = userRoot.resolve("mixed-dir").toString().replace("'", "''");
+            assertEquals("list mixed-dir failed", 0,
+                    runPs("Get-ChildItem -LiteralPath '" + mixedPs + "' -Name | Out-String"));
+            String emptyPs = userRoot.resolve("empty-dir").toString().replace("'", "''");
+            assertEquals("list empty-dir failed", 0,
+                    runPs("Get-ChildItem -LiteralPath '" + emptyPs + "' -Name | Out-String"));
+
+            // Hydrate the two files that should survive the purge.
+            String hydPs = userRoot.resolve("hydrated.txt").toString().replace("'", "''");
+            assertEquals("read hydrated.txt failed", 0,
+                    runPs("$null = Get-Content -LiteralPath '" + hydPs + "' -Raw -ErrorAction Stop"));
+            String mixHydPs = userRoot.resolve("mixed-dir").resolve("mixed-hyd.txt")
+                    .toString().replace("'", "''");
+            assertEquals("read mixed-hyd.txt failed", 0,
+                    runPs("$null = Get-Content -LiteralPath '" + mixHydPs + "' -Raw -ErrorAction Stop"));
+
+            assertTrue(Files.exists(userRoot.resolve("hydrated.txt")));
+            assertTrue(Files.exists(userRoot.resolve("dehydrated.txt")));
+            assertTrue(Files.exists(userRoot.resolve("mixed-dir").resolve("mixed-hyd.txt")));
+            assertTrue(Files.exists(userRoot.resolve("empty-dir").resolve("orphan.txt")));
+            assertTrue("dehydrated.txt should still be OFFLINE before unmount",
+                    (CfApi.getFileAttributes(userRoot.resolve("dehydrated.txt"))
+                            & CfApi.FILE_ATTRIBUTE_OFFLINE) != 0);
+            assertTrue("empty-dir/orphan.txt should still be OFFLINE before unmount",
+                    (CfApi.getFileAttributes(userRoot.resolve("empty-dir").resolve("orphan.txt"))
+                            & CfApi.FILE_ATTRIBUTE_OFFLINE) != 0);
+            assertEquals("hydrated.txt should NOT be OFFLINE",
+                    0,
+                    CfApi.getFileAttributes(userRoot.resolve("hydrated.txt"))
+                            & CfApi.FILE_ATTRIBUTE_OFFLINE);
+        } finally {
+            mount1.unmount();
+        }
+
+        // (1) Purge: dehydrated placeholders and the dir left empty by the purge.
+        assertFalse("dehydrated.txt should be purged by unmount",
+                Files.exists(userRoot.resolve("dehydrated.txt")));
+        assertFalse("empty-dir/orphan.txt should be purged by unmount",
+                Files.exists(userRoot.resolve("empty-dir").resolve("orphan.txt")));
+        assertFalse("empty-dir should be removed after its only child was purged",
+                Files.exists(userRoot.resolve("empty-dir")));
+
+        // (2) Hydrated files survive untouched.
+        assertTrue("hydrated.txt should remain on disk after unmount",
+                Files.exists(userRoot.resolve("hydrated.txt")));
+        assertArrayEquals("hydrated.txt content should be untouched",
+                hydContent, Files.readAllBytes(userRoot.resolve("hydrated.txt")));
+        assertTrue("mixed-dir should survive (it has a hydrated child)",
+                Files.exists(userRoot.resolve("mixed-dir")));
+        assertTrue("mixed-dir/mixed-hyd.txt should survive",
+                Files.exists(userRoot.resolve("mixed-dir").resolve("mixed-hyd.txt")));
+        assertArrayEquals("mixed-hyd.txt content should be untouched",
+                mixContent, Files.readAllBytes(userRoot.resolve("mixed-dir").resolve("mixed-hyd.txt")));
+        assertTrue("syncRoot itself should remain", Files.exists(syncRoot));
+        assertTrue("$user/ should remain (has a hydrated child)", Files.exists(userRoot));
+
+        // (3) Remount: forcePullTick re-discovers remote children of dirs still
+        // on disk and CfCreatePlaceholders them — recreating dehydrated.txt and
+        // empty-dir/ under $user/. Listing the recreated empty-dir/ then fires
+        // FETCH_PLACEHOLDERS on the fresh placeholder (no DISABLE_ON_DEMAND_POPULATION
+        // yet) which surfaces its child.
+        CloudFilesMount mount2 = CloudFilesMount.mount(context, syncRoot.toString(), stateDb);
+        try {
+            mount2.forcePullTick();
+            waitFor(30_000, () -> Files.exists(userRoot.resolve("dehydrated.txt")));
+            waitFor(30_000, () -> Files.exists(userRoot.resolve("empty-dir")));
+
+            assertTrue("dehydrated.txt should reappear as a placeholder after remount",
+                    Files.exists(userRoot.resolve("dehydrated.txt")));
+            assertTrue("recreated dehydrated.txt should be a CF placeholder",
+                    CfApi.isPlaceholder(userRoot.resolve("dehydrated.txt")));
+            assertTrue("empty-dir should reappear after remount",
+                    Files.exists(userRoot.resolve("empty-dir"))
+                            && Files.isDirectory(userRoot.resolve("empty-dir")));
+            assertTrue("recreated empty-dir should be a CF placeholder",
+                    CfApi.isPlaceholder(userRoot.resolve("empty-dir")));
+
+            String emptyPs = userRoot.resolve("empty-dir").toString().replace("'", "''");
+            assertEquals("list empty-dir after remount failed", 0,
+                    runPs("Get-ChildItem -LiteralPath '" + emptyPs + "' -Name | Out-String"));
+            waitFor(30_000, () -> Files.exists(userRoot.resolve("empty-dir").resolve("orphan.txt")));
+            assertTrue("orphan.txt should reappear under empty-dir after listing it",
+                    Files.exists(userRoot.resolve("empty-dir").resolve("orphan.txt")));
+        } finally {
+            mount2.close();
+        }
+    }
+
     private static int runPs(String command) throws Exception {
         ProcessBuilder pb = new ProcessBuilder(
                 "powershell", "-NoProfile", "-NonInteractive",
