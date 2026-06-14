@@ -60,7 +60,7 @@ public class P2pStreamNetworkTests {
         // other nodes
         int ipfsApiPort = TestPorts.getPort();
         int ipfsGatewayPort = TestPorts.getPort();
-        int ipfsSwarmPort = TestPorts.getPort();
+        int ipfsSwarmPort = TestPorts.getTcpAndUdpPort();
         int allowPort = TestPorts.getPort();
         Args normalNode = UserTests.buildArgs()
                 .with("ipfs-api-address", "/ip4/127.0.0.1/tcp/" + ipfsApiPort)

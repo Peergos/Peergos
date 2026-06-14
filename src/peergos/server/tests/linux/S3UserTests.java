@@ -84,7 +84,7 @@ public class S3UserTests extends UserTests {
         // start ipfs S3 node
         int ipfsApiPort = TestPorts.getPort();
         int ipfsGatewayPort = TestPorts.getPort();
-        int ipfsSwarmPort = TestPorts.getPort();
+        int ipfsSwarmPort = TestPorts.getTcpAndUdpPort();
         int proxyTargetPort = TestPorts.getPort();
         int allowPort = TestPorts.getPort();
         Args ipfsArgs = withS3(buildArgs())

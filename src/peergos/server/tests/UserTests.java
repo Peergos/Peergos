@@ -76,7 +76,7 @@ public abstract class UserTests {
             int gatewayPort = TestPorts.getPort();
             int ipfsApiPort = TestPorts.getPort();
             int ipfsGatewayPort = TestPorts.getPort();
-            int ipfsSwarmPort = TestPorts.getPort();
+            int ipfsSwarmPort = TestPorts.getTcpAndUdpPort();
             return Args.parse(new String[]{
                     "-port", Integer.toString(port),
                     "-proxy-target", "/ip4/127.0.0.1/tcp/" + proxyPort,

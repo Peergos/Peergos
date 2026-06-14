@@ -4,12 +4,12 @@ import java.io.*;
 import java.net.*;
 import java.util.*;
 
-/** Hands out a port the OS has confirmed is free on BOTH TCP and UDP. Each
- *  call binds port 0 to let the OS pick an unused ephemeral TCP port, then
- *  probes UDP on the same number — libp2p binds ipfs-swarm-port for both the
- *  tcp transport and QUIC, and the OS treats those port spaces separately, so
- *  a TCP-only probe missed the case where QUIC's UDP bind collided (the macOS
- *  BindException we hit under parallel CI).
+/** Hands out ports the OS has confirmed are free. {@link #getPort()} is the
+ *  default — TCP only, sufficient for any port a test will bind only over TCP.
+ *  {@link #getTcpAndUdpPort()} is for libp2p swarm ports, where the tcp
+ *  transport and QUIC share the same number and the OS treats the two port
+ *  spaces separately (TCP-only probing missed UDP collisions, which is what
+ *  caused the macOS BindException under parallel CI).
  *
  *  Within one JVM we additionally remember every port we've handed out and
  *  retry if the OS happens to re-issue one (e.g. after wrap-around). */
@@ -18,6 +18,25 @@ public class TestPorts {
     private static final Set<Integer> handedOut = new HashSet<>();
 
     public static synchronized int getPort() {
+        IOException last = null;
+        for (int attempt = 0; attempt < 50; attempt++) {
+            int port;
+            try (ServerSocket tcp = new ServerSocket()) {
+                tcp.setReuseAddress(true);
+                tcp.bind(new InetSocketAddress((InetAddress) null, 0));
+                port = tcp.getLocalPort();
+            } catch (IOException e) {
+                last = e;
+                continue;
+            }
+            if (!handedOut.add(port))
+                continue;
+            return port;
+        }
+        throw new RuntimeException("Couldn't allocate a free TCP port", last);
+    }
+
+    public static synchronized int getTcpAndUdpPort() {
         IOException last = null;
         for (int attempt = 0; attempt < 50; attempt++) {
             int port;

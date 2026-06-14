@@ -171,7 +171,7 @@ public class MultiNodeNetworkTests {
             long n0 = System.currentTimeMillis();
             int ipfsApiPort = TestPorts.getPort();System.out.println("node" + (i+1) + " base port: " + ipfsApiPort);
             int ipfsGatewayPort = TestPorts.getPort();
-            int ipfsSwarmPort = TestPorts.getPort();
+            int ipfsSwarmPort = TestPorts.getTcpAndUdpPort();
             int peergosPort = TestPorts.getPort();
             int proxyTargetPort = TestPorts.getPort();
             Args normalNode = UserTests.buildArgs()
