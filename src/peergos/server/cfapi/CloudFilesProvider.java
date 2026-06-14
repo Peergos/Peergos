@@ -5,6 +5,7 @@ import peergos.server.sync.SyncState;
 import peergos.server.util.Logging;
 import peergos.shared.user.UserContext;
 import peergos.shared.user.fs.AsyncReader;
+import peergos.shared.user.fs.Chunk;
 import peergos.shared.user.fs.FileProperties;
 import peergos.shared.user.fs.FileWrapper;
 import peergos.shared.user.fs.HashBranch;
@@ -335,7 +336,14 @@ public class CloudFilesProvider {
                 readerPos = requiredOffset;
             }
 
-            long end = Math.min(requiredOffset + requiredLength, fileSize);
+            // Extend delivery to the next peergos chunk boundary so the bytes the
+            // AsyncReader already had to fetch are pushed to CF in one go. CF accepts
+            // ranges beyond what was requested, marks them hydrated, and future reads
+            // inside the same chunk hit the local NTFS stream instead of firing more
+            // FETCH_DATA callbacks. Turns a sequential read of an N-chunk file from
+            // O(N²) chunk fetches into O(N).
+            long chunkBoundary = ((requiredOffset / Chunk.MAX_SIZE) + 1) * (long) Chunk.MAX_SIZE;
+            long end = Math.min(Math.max(requiredOffset + requiredLength, chunkBoundary), fileSize);
             java.util.concurrent.atomic.AtomicLong afterDelivLastReported =
                     new java.util.concurrent.atomic.AtomicLong(-1);
             try (Arena arena = Arena.ofConfined()) {
