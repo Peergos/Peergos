@@ -277,6 +277,8 @@ public class Args {
         Map<String, String> map = paramMap();
         for (int i = 0; i < args.length; i++) {
             String argName = args[i];
+            if (argName.startsWith("--"))
+                argName = argName.substring(2);
             if (argName.startsWith("-"))
                 argName = argName.substring(1);
 
