@@ -319,18 +319,10 @@ public class MountConfigHandler implements HttpHandler {
     }
 
     private static void openInFileExplorer(String mountPoint) throws IOException {
-        // Android first: there's no java.awt.Desktop, and `am start` fires the system
-        // file-viewer intent for the folder. Detected via vm.vendor rather than os.name
-        // because Android still reports "Linux" for os.name.
-        if ("The Android Project".equals(System.getProperty("java.vm.vendor"))) {
-            Runtime.getRuntime().exec(new String[] {
-                    "am", "start",
-                    "-a", "android.intent.action.VIEW",
-                    "-d", "file://" + mountPoint,
-                    "-t", "resource/folder"
-            });
-            return;
-        }
+        // Android isn't handled here — the host app exposes a JS bridge
+        // (MainActivity.openMountInFiles) that fires a SAF browse intent with the
+        // necessary Context. The web UI calls that bridge directly and never hits
+        // this endpoint on Android.
         if (java.awt.Desktop.isDesktopSupported()) {
             java.awt.Desktop desktop = java.awt.Desktop.getDesktop();
             if (desktop.isSupported(java.awt.Desktop.Action.OPEN)) {
@@ -341,7 +333,13 @@ public class MountConfigHandler implements HttpHandler {
         // Headless Linux JVMs (no AWT) — Desktop reports unsupported; xdg-open handles it.
         String os = System.getProperty("os.name", "").toLowerCase();
         if (os.contains("linux")) {
-            Runtime.getRuntime().exec(new String[] {"xdg-open", mountPoint});
+            Process p = Runtime.getRuntime().exec(new String[] {"xdg-open", mountPoint});
+            try {
+                if (p.waitFor(5, TimeUnit.SECONDS) && p.exitValue() != 0)
+                    throw new IOException("xdg-open exited " + p.exitValue());
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
             return;
         }
         throw new IOException("No native file explorer available on this platform: " + os);
@@ -417,6 +415,10 @@ public class MountConfigHandler implements HttpHandler {
                 exchange.sendResponseHeaders(200, 0);
 
             } else if (action.equals("open")) {
+                if ("The Android Project".equals(System.getProperty("java.vm.vendor"))) {
+                    exchange.sendResponseHeaders(200, 0);
+                    return;
+                }
                 Optional<String> activeMountPoint = backend.activeMountPoint();
                 if (activeMountPoint.isEmpty()) {
                     exchange.sendResponseHeaders(409, 0);
