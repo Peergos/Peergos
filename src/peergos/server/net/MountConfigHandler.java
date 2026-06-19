@@ -318,6 +318,35 @@ public class MountConfigHandler implements HttpHandler {
         }
     }
 
+    private static void openInFileExplorer(String mountPoint) throws IOException {
+        // Android first: there's no java.awt.Desktop, and `am start` fires the system
+        // file-viewer intent for the folder. Detected via vm.vendor rather than os.name
+        // because Android still reports "Linux" for os.name.
+        if ("The Android Project".equals(System.getProperty("java.vm.vendor"))) {
+            Runtime.getRuntime().exec(new String[] {
+                    "am", "start",
+                    "-a", "android.intent.action.VIEW",
+                    "-d", "file://" + mountPoint,
+                    "-t", "resource/folder"
+            });
+            return;
+        }
+        if (java.awt.Desktop.isDesktopSupported()) {
+            java.awt.Desktop desktop = java.awt.Desktop.getDesktop();
+            if (desktop.isSupported(java.awt.Desktop.Action.OPEN)) {
+                desktop.open(new File(mountPoint));
+                return;
+            }
+        }
+        // Headless Linux JVMs (no AWT) — Desktop reports unsupported; xdg-open handles it.
+        String os = System.getProperty("os.name", "").toLowerCase();
+        if (os.contains("linux")) {
+            Runtime.getRuntime().exec(new String[] {"xdg-open", mountPoint});
+            return;
+        }
+        throw new IOException("No native file explorer available on this platform: " + os);
+    }
+
     @Override
     public void handle(HttpExchange exchange) {
         long t1 = System.currentTimeMillis();
@@ -385,6 +414,15 @@ public class MountConfigHandler implements HttpHandler {
                         mountError.set(e.getMessage());
                     }
                 });
+                exchange.sendResponseHeaders(200, 0);
+
+            } else if (action.equals("open")) {
+                Optional<String> activeMountPoint = backend.activeMountPoint();
+                if (activeMountPoint.isEmpty()) {
+                    exchange.sendResponseHeaders(409, 0);
+                    return;
+                }
+                openInFileExplorer(activeMountPoint.get());
                 exchange.sendResponseHeaders(200, 0);
 
             } else if (action.equals("disable")) {
