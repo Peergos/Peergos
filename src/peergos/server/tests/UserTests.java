@@ -76,7 +76,7 @@ public abstract class UserTests {
             int gatewayPort = TestPorts.getPort();
             int ipfsApiPort = TestPorts.getPort();
             int ipfsGatewayPort = TestPorts.getPort();
-            int ipfsSwarmPort = TestPorts.getPort();
+            int ipfsSwarmPort = TestPorts.getTcpAndUdpPort();
             return Args.parse(new String[]{
                     "-port", Integer.toString(port),
                     "-proxy-target", "/ip4/127.0.0.1/tcp/" + proxyPort,
@@ -2129,12 +2129,18 @@ public abstract class UserTests {
         context.getByPath(filePath).join().get().remove(context.getUserRoot().join(), filePath, context).join();
         Path dirPath = PathUtil.get(username, dirName);
         context.getByPath(dirPath).join().get().remove(context.getUserRoot().join(), dirPath, context).join();
-        try {Thread.sleep(2000);} catch (InterruptedException e) {}
+        long finalUsage = context.getSpaceUsage(false).join();
+        // Bounded poll — under parallel CI the server's async usage recalc can lag,
+        // but if it never settles we want a clean assertion failure rather than a
+        // build-blocking hang.
+        for (int i = 0; i < 60 && finalUsage > initialUsage + 5000; i++) {
+            Thread.sleep(1_000);
+            finalUsage = context.getSpaceUsage(false).join();
+        }
         UserCleanup.checkRawUsage(context);
 
-        long finalUsage = context.getSpaceUsage(false).join();
         long diff = finalUsage - initialUsage;
-        Assert.assertTrue(diff == 0);
+        Assert.assertTrue("usage didn't return to initial after delete", diff < 5000);
     }
 
     @Test

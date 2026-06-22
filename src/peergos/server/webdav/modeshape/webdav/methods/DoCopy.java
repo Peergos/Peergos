@@ -379,6 +379,15 @@ public class DoCopy extends AbstractMethod {
             }
         }
 
+        // Strip the Windows WebDAV mount prefix ("/Peergos") that the
+        // MiniRedir prepends to the Destination URL, matching what
+        // getRelativePath() already does for the source path.
+        if (destinationPath.startsWith("/Peergos")) {
+            destinationPath = destinationPath.substring("/Peergos".length());
+            if (destinationPath.isEmpty())
+                destinationPath = "/";
+        }
+
         return destinationPath;
     }
 

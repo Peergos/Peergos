@@ -10,8 +10,10 @@ import peergos.server.cli.CLI;
 import peergos.server.crypto.hash.ScryptJava;
 import peergos.server.login.*;
 import peergos.server.messages.*;
+import peergos.server.net.MountConfigHandler;
 import peergos.server.net.ProxyChooser;
 import peergos.server.net.SyncConfigHandler;
+import peergos.server.webdav.MountConfig;
 import peergos.server.space.*;
 import peergos.server.sql.*;
 import peergos.server.storage.admin.*;
@@ -710,9 +712,15 @@ public class Main extends Builder {
                             Either.a(new HostDirEnumerator.Java());
 
                     SyncProperties sync = new SyncProperties(syncConfig, peergosDir, syncer, syncDirChooser);
+                    Path jsonMountConfig = peergosDir.resolve(MountConfig.FILENAME);
+                    MountConfig mountConfig = jsonMountConfig.toFile().exists() ?
+                            MountConfig.fromJson((Map<String, Object>) JSONParser.parse(Files.readString(jsonMountConfig))) :
+                            MountConfig.disabled();
+                    MountProperties mountProps = new MountProperties(mountConfig, peergosDir, getAppServerUrl(a));
                     UserService server = new UserService(withoutS3, offlineBats, crypto, offlineCorenode, offlineAccounts,
                             httpSocial, pointerCache, admin, httpUsage, serverMessager, null, Optional.of(sync),
-                            Optional.of(new UserService.LocalAppProperties(peergosDir, getAppServerUrl(a))));
+                            Optional.of(new UserService.LocalAppProperties(peergosDir, getAppServerUrl(a))),
+                            Optional.of(new MountConfigHandler(mountProps)));
 
                     InetSocketAddress localAPIAddress = new InetSocketAddress("localhost", port);
                     List<String> appSubdomains = Arrays.asList("markup-viewer,calendar,code-editor,pdf".split(","));
@@ -1008,11 +1016,18 @@ public class Main extends Builder {
                     Either.b(new HostDirChooser.Flatpak()) :
                     Either.a(new HostDirEnumerator.Java());
             SyncProperties sync = new SyncProperties(syncConfig, a.getPeergosDir(), syncer, syncDirChooser);
+            Path jsonMountConfigDaemon = a.getPeergosDir().resolve(MountConfig.FILENAME);
+            MountConfig mountConfigDaemon = jsonMountConfigDaemon.toFile().exists() ?
+                    MountConfig.fromJson((Map<String, Object>) JSONParser.parse(Files.readString(jsonMountConfigDaemon))) :
+                    MountConfig.disabled();
+            MountProperties mountPropsDaemon = new MountProperties(mountConfigDaemon, a.getPeergosDir(),
+                    "http://localhost:" + a.getInt("port"));
             Optional<UserService.LocalAppProperties> noConfigApi = Optional.empty();
             UserService localAPI = new UserService(cachingStorage, p2pBats, crypto, corePropagator, verifyingAccount,
-                    p2pSocial, p2mMutable, storageAdmin, p2pSpaceUsage, serverMessages, gc, Optional.of(sync), noConfigApi);
+                    p2pSocial, p2mMutable, storageAdmin, p2pSpaceUsage, serverMessages, gc, Optional.of(sync), noConfigApi,
+                    Optional.of(new MountConfigHandler(mountPropsDaemon)));
             UserService p2pAPI = new UserService(cachingStorage, p2pBats, crypto, corePropagator, verifyingAccount,
-                    p2pSocial, p2mMutable, storageAdmin, p2pSpaceUsage, serverMessages, gc, Optional.empty(), noConfigApi);
+                    p2pSocial, p2mMutable, storageAdmin, p2pSpaceUsage, serverMessages, gc, Optional.empty(), noConfigApi, Optional.empty());
             InetSocketAddress localAPIAddress = userAPIAddress;
             InetSocketAddress p2pAPIAddress = new InetSocketAddress("localhost", localP2PApi.getTCPPort());
 

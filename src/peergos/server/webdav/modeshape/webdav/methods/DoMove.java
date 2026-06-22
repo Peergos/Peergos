@@ -119,6 +119,10 @@ public class DoMove extends AbstractMethod {
                         // Delete destination resource, if it exists
                         if (destinationSo != null) {
                             doDelete.deleteResource(transaction, destinationPath, errorList, req, resp);
+                            if (!errorList.isEmpty()) {
+                                sendReport(req, resp, errorList);
+                                return;
+                            }
                         } else {
                             resp.setStatus(WebdavStatus.SC_CREATED);
                         }

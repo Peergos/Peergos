@@ -316,6 +316,9 @@ public class DoPropfind extends AbstractMethod {
                     generatedXML.writeElement("DAV::resourcetype", XMLWriter.OPENING);
                     generatedXML.writeElement("DAV::collection", XMLWriter.NO_CONTENT);
                     generatedXML.writeElement("DAV::resourcetype", XMLWriter.CLOSING);
+                    long[] quota = store.getQuotaInfo(transaction);
+                    generatedXML.writeProperty("DAV::quota-used-bytes", String.valueOf(quota[0]));
+                    generatedXML.writeProperty("DAV::quota-available-bytes", String.valueOf(quota[1]));
                 }
 
                 writeSupportedLockElements(transaction, generatedXML, path);
@@ -348,6 +351,10 @@ public class DoPropfind extends AbstractMethod {
                 generatedXML.writeElement("DAV::resourcetype", XMLWriter.NO_CONTENT);
                 generatedXML.writeElement("DAV::supportedlock", XMLWriter.NO_CONTENT);
                 generatedXML.writeElement("DAV::source", XMLWriter.NO_CONTENT);
+                if (isFolder) {
+                    generatedXML.writeElement("DAV::quota-used-bytes", XMLWriter.NO_CONTENT);
+                    generatedXML.writeElement("DAV::quota-available-bytes", XMLWriter.NO_CONTENT);
+                }
 
                 generatedXML.writeElement("DAV::prop", XMLWriter.CLOSING);
                 generatedXML.writeElement("DAV::status", XMLWriter.OPENING);
@@ -366,7 +373,7 @@ public class DoPropfind extends AbstractMethod {
                 generatedXML.writeElement("DAV::propstat", XMLWriter.OPENING);
                 generatedXML.writeElement("DAV::prop", XMLWriter.OPENING);
 
-                writeCustomProperties(transaction, generatedXML, path, true, propertiesVector);
+                Set<String> writtenCustomProps = writeCustomProperties(transaction, generatedXML, path, true, propertiesVector);
 
                 Enumeration<String> properties = propertiesVector.elements();
 
@@ -374,7 +381,9 @@ public class DoPropfind extends AbstractMethod {
 
                     String property = properties.nextElement();
 
-                    if (property.equals("DAV::creationdate")) {
+                    if (writtenCustomProps.contains(property)) {
+                        // already written by writeCustomProperties
+                    } else if (property.equals("DAV::creationdate")) {
                         generatedXML.writeProperty("DAV::creationdate", creationdate);
                     } else if (property.equals("DAV::displayname")) {
                         generatedXML.writeElement("DAV::displayname", XMLWriter.OPENING);
@@ -420,6 +429,20 @@ public class DoPropfind extends AbstractMethod {
                         }
                     } else if (property.equals("DAV::source")) {
                         generatedXML.writeProperty("DAV::source", "");
+                    } else if (property.equals("DAV::quota-used-bytes")) {
+                        if (isFolder) {
+                            long[] quota = store.getQuotaInfo(transaction);
+                            generatedXML.writeProperty("DAV::quota-used-bytes", String.valueOf(quota[0]));
+                        } else {
+                            propertiesNotFound.addElement(property);
+                        }
+                    } else if (property.equals("DAV::quota-available-bytes")) {
+                        if (isFolder) {
+                            long[] quota = store.getQuotaInfo(transaction);
+                            generatedXML.writeProperty("DAV::quota-available-bytes", String.valueOf(quota[1]));
+                        } else {
+                            propertiesNotFound.addElement(property);
+                        }
                     } else if (property.equals("DAV::supportedlock")) {
 
                         writeSupportedLockElements(transaction, generatedXML, path);
@@ -596,28 +619,28 @@ public class DoPropfind extends AbstractMethod {
         lo = null;
     }
 
-    private void writeCustomProperties( ITransaction transaction,
-                                        XMLWriter generatedXML,
-                                        String path,
-                                        boolean includeValue,
-                                        Vector<String> propertiesFilter ) {
+    private Set<String> writeCustomProperties( ITransaction transaction,
+                                               XMLWriter generatedXML,
+                                               String path,
+                                               boolean includeValue,
+                                               Vector<String> propertiesFilter ) {
         Map<String, Object> customProperties = store.getCustomProperties(transaction, path);
-        if (customProperties.isEmpty()) {
-            return;
-        }
+        if (customProperties.isEmpty())
+            return Collections.emptySet();
+        Set<String> written = new HashSet<>();
         for (String propertyName : customProperties.keySet()) {
-            if (propertiesFilter != null && !propertiesFilter.contains(propertyName)) {
+            if (propertiesFilter != null && !propertiesFilter.contains(propertyName))
                 continue;
-            }
+            written.add(propertyName);
             if (includeValue) {
                 generatedXML.writeElement(propertyName, XMLWriter.OPENING);
-                final String value = customProperties.get(propertyName).toString();
-                generatedXML.writeData(value);
+                generatedXML.writeData(customProperties.get(propertyName).toString());
                 generatedXML.writeElement(propertyName, XMLWriter.CLOSING);
             } else {
                 generatedXML.writeElement(propertyName, XMLWriter.NO_CONTENT);
             }
         }
+        return written;
     }
 
     private boolean ignoreRequest( String userAgent, String requestPath ) {

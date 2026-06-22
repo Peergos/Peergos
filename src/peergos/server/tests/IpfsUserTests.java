@@ -108,4 +108,5 @@ public class IpfsUserTests extends UserTests {
         long diff = sizeAfterDelete - sizeBefore;
         Assert.assertTrue(diff < 20*1024); // Why not equal?
     }
+
 }

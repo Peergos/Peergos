@@ -39,6 +39,7 @@ public class FileUploader implements AutoCloseable {
     private final byte[] firstLocation;
     private final Optional<Bat> firstBat;
     private final Supplier<Boolean> isCancelled;
+    private HashTreeBuilder hashBuilder;
 
     public FileUploader(String name, AsyncReader fileData,
                         int offsetHi, int offsetLow, int lengthHi, int lengthLow,
@@ -75,6 +76,7 @@ public class FileUploader implements AutoCloseable {
         this.firstLocation = firstLocation;
         this.firstBat = firstBat;
         this.isCancelled = isCancelled;
+        this.hashBuilder = hash.isEmpty() ? new HashTreeBuilder(length) : null;
     }
 
     public FileUploader(String name, AsyncReader fileData, long offset, long length,
@@ -140,6 +142,7 @@ public class FileUploader implements AutoCloseable {
                                                   Optional<BatId> mirrorBat,
                                                   SafeRandom random,
                                                   Hasher hasher) {
+        if (startChunkIndex > 0) hashBuilder = null;
         return reader.seek(startChunkIndex * Chunk.MAX_SIZE).thenCompose(seeked -> {
             long t1 = System.currentTimeMillis();
 
@@ -194,7 +197,11 @@ public class FileUploader implements AutoCloseable {
         boolean isLastChunk = fileLength < position + Chunk.MAX_SIZE;
         int length =  isLastChunk ? (int)(fileLength -  position) : Chunk.MAX_SIZE;
         byte[] data = new byte[length];
-        return reader.readIntoArray(data, 0, data.length).thenCompose(b -> {
+        return reader.readIntoArray(data, 0, data.length).thenCompose(b ->
+                (hashBuilder == null
+                        ? Futures.of(true)
+                        : hashBuilder.setChunk((int) chunkIndex, data, hasher))
+                .thenCompose(__ -> {
             byte[] nonce = baseKey.createNonce();
             return FileProperties.calculateMapKey(props.streamSecret.get(), firstLocation, firstBat,
                     chunkIndex * Chunk.MAX_SIZE, hasher)
@@ -216,7 +223,12 @@ public class FileUploader implements AutoCloseable {
                                             .thenApply(p -> new ChunkUpload(chunk, p.left, p.right));
                                 });
                     });
-        });
+        }));
+    }
+
+    public CompletableFuture<Optional<HashTree>> completeHash(Hasher hasher) {
+        if (hashBuilder == null) return Futures.of(Optional.empty());
+        return hashBuilder.complete(hasher).thenApply(Optional::of);
     }
 
     public static CompletableFuture<Snapshot> uploadChunk(Snapshot current,

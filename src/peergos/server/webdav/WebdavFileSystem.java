@@ -17,7 +17,7 @@ package peergos.server.webdav;
 
 import org.peergos.util.Pair;
 import peergos.server.UserService;
-import peergos.server.net.ProxyChooser;
+import peergos.server.storage.DeletableContentAddressedStorage;
 import peergos.server.util.Logging;
 import peergos.server.webdav.modeshape.webdav.ITransaction;
 import peergos.server.webdav.modeshape.webdav.IWebdavStore;
@@ -27,7 +27,13 @@ import peergos.server.Builder;
 import peergos.server.Main;
 import peergos.shared.Crypto;
 import peergos.shared.NetworkAccess;
-import peergos.shared.storage.RetryStorage;
+import peergos.shared.crypto.hash.Hasher;
+import peergos.shared.crypto.hash.PublicKeyHash;
+import peergos.shared.login.mfa.MultiFactorAuthRequest;
+import peergos.shared.login.mfa.MultiFactorAuthResponse;
+import peergos.shared.mutable.MutablePointers;
+import peergos.shared.storage.ContentAddressedStorage;
+import peergos.shared.user.CommittedWriterData;
 import peergos.shared.user.UserContext;
 import peergos.shared.user.fs.AsyncReader;
 import peergos.shared.user.fs.FileWrapper;
@@ -37,15 +43,20 @@ import peergos.shared.util.PathUtil;
 import peergos.shared.util.Futures;
 
 import java.io.*;
-import java.net.ProxySelector;
 import java.net.URL;
 import java.nio.file.Path;
 import java.security.Principal;
 import java.time.ZoneOffset;
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
+import java.util.function.BiFunction;
+import java.util.function.Function;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
+
+import static peergos.server.net.MountConfigHandler.mountTotpResponder;
 
 /**
  * Integration with Peergos File system
@@ -59,20 +70,80 @@ import java.util.stream.Collectors;
 public class WebdavFileSystem implements IWebdavStore {
 
     private static final Logger LOG = Logging.LOG();
+    private static final String PEERGOS_NS = "https://peergos.org/ns/dav";
 
     private final UserContext context;
+    private volatile long cachedUsed = 0;
+    private volatile long cachedQuota = 1024L * 1024 * 1024;
+    private volatile long quotaCacheTime = 0;
+    private static final long QUOTA_CACHE_TTL_MS = 60_000;
 
-    public WebdavFileSystem(String username, String password, String peergosUrl) {
+    public WebdavFileSystem(String username, String password, String peergosUrl, MountConfig config) {
         Crypto crypto = Main.initCrypto();
         try {
             Optional<String> userAgent = Optional.of("Peergos-" + UserService.CURRENT_VERSION + "-webdav");
             NetworkAccess network = Builder.buildJavaNetworkAccess(new URL(peergosUrl),
                     peergosUrl.startsWith("https"), userAgent, Optional.empty()).join();
-            context = UserContext.signIn(username, password, Main::getMfaResponseCLI, network, crypto).join();
+            Function<MultiFactorAuthRequest, CompletableFuture<MultiFactorAuthResponse>> mfa =
+                config.hasTotp() ? mountTotpResponder(config) : Main::getMfaResponseCLI;
+            context = UserContext.signIn(username, password, mfa, network, crypto).join();
         } catch (Exception ex) {
             LOG.log(Level.WARNING, ex, () -> "Unable to connect to Peergos account");
             throw new IllegalStateException("Unable to connect to Peergos account: ", ex);
         }
+    }
+
+    /**
+     * Returns a snapshot of all writers visible in the current user's file tree as
+     * { writerPublicKeyHash.toString() -> hex-encoded signed pointer bytes }.
+     * Used by the macOS File Provider extension as a sync anchor to detect changes.
+     */
+    public Map<String, String> getWriterSnapshot() {
+        PublicKeyHash owner = context.signer.publicKeyHash;
+        ContentAddressedStorage dht = context.network.dhtClient;
+        MutablePointers mutable = context.network.mutable;
+        Hasher hasher = context.crypto.hasher;
+        CommittedWriterData.Retriever retriever =
+                (h, s) -> ContentAddressedStorage.getWriterData(owner, h, s, dht);
+        Map<PublicKeyHash, byte[]> raw = getUserSnapshotRecursive(
+                owner, owner, Collections.emptyMap(), mutable, dht, hasher, retriever).join();
+        HexFormat hex = HexFormat.of();
+        Map<String, String> result = new LinkedHashMap<>();
+        raw.forEach((writer, bytes) -> result.put(writer.toString(), hex.formatHex(bytes)));
+        return result;
+    }
+
+    private static CompletableFuture<Map<PublicKeyHash, byte[]>> getUserSnapshotRecursive(
+            PublicKeyHash owner,
+            PublicKeyHash writer,
+            Map<PublicKeyHash, byte[]> alreadyDone,
+            MutablePointers mutable,
+            ContentAddressedStorage dht,
+            Hasher hasher,
+            CommittedWriterData.Retriever retriever) {
+        return DeletableContentAddressedStorage.getDirectOwnedKeys(owner, writer, mutable, retriever, dht, hasher)
+                .thenCompose(directOwned -> {
+                    Set<PublicKeyHash> newKeys = directOwned.stream()
+                            .filter(h -> !alreadyDone.containsKey(h))
+                            .collect(Collectors.toSet());
+                    Map<PublicKeyHash, byte[]> done = new HashMap<>(alreadyDone);
+                    return mutable.getPointer(owner, writer).thenCompose(val -> {
+                        if (val.isPresent())
+                            done.put(writer, val.get());
+                        BiFunction<Map<PublicKeyHash, byte[]>, PublicKeyHash,
+                                CompletableFuture<Map<PublicKeyHash, byte[]>>> composer =
+                                (a, w) -> getUserSnapshotRecursive(owner, w, a, mutable, dht, hasher, retriever)
+                                        .thenApply(ws -> Stream.concat(
+                                                ws.entrySet().stream().filter(e -> !a.containsKey(e.getKey())),
+                                                a.entrySet().stream())
+                                                .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue)));
+                        return Futures.reduceAll(newKeys, done, composer,
+                                (a, b) -> Stream.concat(
+                                        a.entrySet().stream().filter(e -> !b.containsKey(e.getKey())),
+                                        b.entrySet().stream())
+                                        .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue)));
+                    });
+                });
     }
 
     @Override
@@ -152,6 +223,17 @@ public class WebdavFileSystem implements IWebdavStore {
                                     Pair<AsyncReader, Long> readerPair,
                                     String contentType,
                                     String characterEncoding ) throws WebdavException {
+        return setResourceContent(transaction, uri, readerPair, 0, -1, contentType, characterEncoding);
+    }
+
+    @Override
+    public long setResourceContent( ITransaction transaction,
+                                    String uri,
+                                    Pair<AsyncReader, Long> readerPair,
+                                    long rangeStart,
+                                    long rangeEnd,
+                                    String contentType,
+                                    String characterEncoding ) throws WebdavException {
 
         LOG.fine("PeergosFileSystem.setResourceContent(" + uri + ")");
         Path path = new File(uri).toPath();
@@ -163,10 +245,35 @@ public class WebdavFileSystem implements IWebdavStore {
             throw new WebdavException("cannot find parent of file: " + uri);
         }
         try {
-            parentFolder.get().uploadOrReplaceFile(path.getFileName().toString(), readerPair.left, readerPair.right, context.network, context.crypto, () -> false, l -> {}).join();
+            boolean isRange = rangeEnd != -1;
+            if (isRange) {
+                // Client has already done chunk comparison; just write the specified range.
+                Optional<FileWrapper> existingFile = getByPath(path);
+                if (existingFile.isPresent() && !existingFile.get().isDirectory()
+                        && !existingFile.get().getFileProperties().isHidden) {
+                    FileWrapper fw = existingFile.get();
+                    context.network.synchronizer.applyComplexUpdate(fw.owner(), fw.signingPair(),
+                            (s, committer) -> fw.clean(s, committer, context.network, context.crypto)
+                                    .thenCompose(cleaned -> cleaned.left.overwriteSection(
+                                            cleaned.right, committer,
+                                            readerPair.left, rangeStart, rangeEnd,
+                                            Optional.empty(), context.network, context.crypto, l -> {}))).join();
+                }
+            } else {
+                Optional<FileWrapper> existing = getByPath(path);
+                if (existing.isPresent() && !existing.get().isDirectory()
+                        && !existing.get().getFileProperties().isHidden
+                        && existing.get().getSize() > 0) {
+                    existing.get().overwriteChangedChunks(readerPair.left, readerPair.right,
+                            context.network, context.crypto, l -> {}).join();
+                } else {
+                    parentFolder.get().uploadOrReplaceFile(path.getFileName().toString(),
+                            readerPair.left, readerPair.right, context.network, context.crypto, () -> false, l -> {}).join();
+                }
+            }
             return readerPair.right;
         } catch (Exception e) {
-            LOG.warning("PeergosFileSystem.setResourceContent(" + uri + ") failed");
+            LOG.log(Level.WARNING, "PeergosFileSystem.setResourceContent(" + uri + ") failed", e);
             throw new WebdavException(e);
         }
     }
@@ -248,7 +355,7 @@ public class WebdavFileSystem implements IWebdavStore {
                                                       String uri ) throws WebdavException {
         LOG.fine("PeergosFileSystem.getResourceContent(" + uri + ")");
         Path path = new File(uri).toPath();
-        Optional<FileWrapper> fw = context.getByPath(path.toString()).join();
+        Optional<FileWrapper> fw = getByPath(path);
         if (fw.isEmpty() || fw.get().isDirectory() || fw.get().getFileProperties().isHidden) {
             throw new WebdavException("cannot find file: " + uri);
         }
@@ -265,7 +372,7 @@ public class WebdavFileSystem implements IWebdavStore {
     public long getResourceLength( ITransaction transaction,
                                    String uri) throws WebdavException {
         Path path = new File(uri).toPath();
-        Optional<FileWrapper> fw = context.getByPath(path.toString()).join();
+        Optional<FileWrapper> fw = getByPath(path);
         if (fw.isEmpty() || fw.get().isDirectory() || fw.get().getFileProperties().isHidden) {
             throw new WebdavException("cannot find file: " + uri);
         }
@@ -277,7 +384,7 @@ public class WebdavFileSystem implements IWebdavStore {
                                         String uri ) {
         StoredObject so = null;
         Path path = new File(uri).toPath();
-        Optional<FileWrapper> fwOpt = context.getByPath(path.toString()).join();
+        Optional<FileWrapper> fwOpt = getByPath(path);
         if (fwOpt.isPresent() && fwOpt.get().isRoot()) {
             so = new StoredObject();
             so.setFolder(true);
@@ -307,13 +414,39 @@ public class WebdavFileSystem implements IWebdavStore {
     @Override
     public Map<String, Object> getCustomProperties( ITransaction transaction,
                                                     String resourceUri ) {
-        LOG.fine("PeergosFileSystem.getCustomProperties(" + resourceUri + ")");
-        return Collections.emptyMap();
+        Path path = new File(resourceUri).toPath();
+        Optional<FileWrapper> fwOpt = getByPath(path);
+        if (fwOpt.isEmpty() || fwOpt.get().isDirectory() || fwOpt.get().getFileProperties().isHidden)
+            return Collections.emptyMap();
+        FileWrapper fw = fwOpt.get();
+        Map<String, Object> props = new LinkedHashMap<>();
+        fw.getFileProperties().treeHash.ifPresent(h -> {
+            props.put(PEERGOS_NS + ":treehash", h.toString());
+            h.level1.ifPresent(chunks -> props.put(PEERGOS_NS + ":treehash-chunks",
+                    HexFormat.of().formatHex(chunks.chunkHashes)));
+        });
+        props.put(PEERGOS_NS + ":writerKey", fw.writer().toString());
+        return props;
     }
 
     @Override
     public Map<String, String> getCustomNamespaces( ITransaction transaction,
                                                     String resourceUri ) {
-        return Collections.emptyMap();
+        return Collections.singletonMap(PEERGOS_NS, "P");
+    }
+
+    @Override
+    public long[] getQuotaInfo( ITransaction transaction ) {
+        long now = System.currentTimeMillis();
+        if (now - quotaCacheTime > QUOTA_CACHE_TTL_MS) {
+            try {
+                cachedUsed = context.getSpaceUsage(false).join();
+                cachedQuota = context.getQuota().join();
+                quotaCacheTime = now;
+            } catch (Exception e) {
+                LOG.fine("Failed to refresh quota info: " + e.getMessage());
+            }
+        }
+        return new long[]{cachedUsed, Math.max(0, cachedQuota - cachedUsed)};
     }
 }

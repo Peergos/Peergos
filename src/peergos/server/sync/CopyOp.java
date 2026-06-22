@@ -5,7 +5,7 @@ import peergos.shared.user.fs.ResumeUploadProps;
 import java.nio.file.Path;
 import java.util.Objects;
 
-class CopyOp {
+public class CopyOp {
     public final boolean isLocalTarget;
     public final Path source, target;
     public final FileState sourceState, targetState;

@@ -4,12 +4,17 @@ import peergos.server.*;
 import peergos.server.sql.*;
 import peergos.server.storage.*;
 import peergos.server.storage.admin.*;
+import peergos.server.util.Args;
+import peergos.server.util.Sqlite;
 import peergos.shared.*;
 import peergos.shared.io.ipfs.Cid;
 import peergos.shared.storage.*;
 import peergos.shared.util.*;
 
+import java.io.File;
 import java.net.*;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.sql.*;
 import java.time.*;
 import java.util.*;
@@ -31,16 +36,25 @@ public class QuotaCLI extends Builder {
         return mb/1024 + " GiB";
     }
 
+    private static JdbcQuotas getDb(Args a) {
+        SqlSupplier sqlCommands = getSqlCommands(a);
+        String dbType = "quotas-sql-file";
+        String sqlFilePath = Sqlite.getDbPath(a, dbType);
+        if (! Files.exists(Paths.get(sqlFilePath))) {
+            System.err.println("Quota db doesn't exist at " + sqlFilePath);
+        }
+        Supplier<Connection> quotasDb = getDBConnector(a, dbType);
+        return JdbcQuotas.build(quotasDb, sqlCommands);
+    }
+
     public static final Command<Boolean> SET = new Command<>("set",
             "Set free quota for a user on this server",
             a -> {
                 boolean paidStorage = a.hasArg("quota-admin-address");
                 if (paidStorage)
                     throw new IllegalStateException("Quota CLI only valid on non paid instances");
-                SqlSupplier sqlCommands = getSqlCommands(a);
-                Supplier<Connection> quotasDb = getDBConnector(a, "quotas-sql-file");
-                JdbcQuotas quotas = JdbcQuotas.build(quotasDb, sqlCommands);
 
+                JdbcQuotas quotas = getDb(a);
                 String name = a.getArg("username");
                 long quota = UserQuotas.parseQuota(a.getArg("quota"));
                 quotas.setQuota(name, quota);
@@ -86,9 +100,7 @@ public class QuotaCLI extends Builder {
                 boolean paidStorage = a.hasArg("quota-admin-address");
                 if (paidStorage)
                     throw new IllegalStateException("Quota CLI only valid on non paid instances");
-                SqlSupplier sqlCommands = getSqlCommands(a);
-                Supplier<Connection> quotasDb = getDBConnector(a, "quotas-sql-file");
-                JdbcQuotas quotas = JdbcQuotas.build(quotasDb, sqlCommands);
+                JdbcQuotas quotas = getDb(a);
 
                 if (a.hasArg("username")) {
                     String name = a.getArg("username");
@@ -116,9 +128,7 @@ public class QuotaCLI extends Builder {
                             .forEach(System.out::println);
                     return true;
                 }
-                SqlSupplier sqlCommands = getSqlCommands(a);
-                Supplier<Connection> quotasDb = getDBConnector(a, "quotas-sql-file");
-                JdbcQuotas quotas = JdbcQuotas.build(quotasDb, sqlCommands);
+                JdbcQuotas quotas = getDb(a);
 
                 quotas.getQuotas()
                         .keySet()
@@ -145,9 +155,7 @@ public class QuotaCLI extends Builder {
                             .sorted()
                             .collect(Collectors.toList());
                 } else {
-                    SqlSupplier sqlCommands = getSqlCommands(a);
-                    Supplier<Connection> quotasDb = getDBConnector(a, "quotas-sql-file");
-                    JdbcQuotas quotas = JdbcQuotas.build(quotasDb, sqlCommands);
+                    JdbcQuotas quotas = getDb(a);
 
                     candidates = quotas.getQuotas()
                             .keySet()
@@ -189,9 +197,7 @@ public class QuotaCLI extends Builder {
                         System.out.println(quotas.generateToken(crypto.random));
                     return true;
                 }
-                SqlSupplier sqlCommands = getSqlCommands(a);
-                Supplier<Connection> quotasDb = getDBConnector(a, "quotas-sql-file");
-                JdbcQuotas quotas = JdbcQuotas.build(quotasDb, sqlCommands);
+                JdbcQuotas quotas = getDb(a);
 
                 for (int i=0; i < count; i++) {
                     String token = ArrayOps.bytesToHex(crypto.random.randomBytes(32));
@@ -211,9 +217,7 @@ public class QuotaCLI extends Builder {
                 boolean paidStorage = a.hasArg("quota-admin-address");
                 if (paidStorage)
                     throw new IllegalStateException("Quota CLI only valid on non paid instances");
-                SqlSupplier sqlCommands = getSqlCommands(a);
-                Supplier<Connection> quotasDb = getDBConnector(a, "quotas-sql-file");
-                JdbcQuotas quotas = JdbcQuotas.build(quotasDb, sqlCommands);
+                JdbcQuotas quotas = getDb(a);
 
                 List<String> tokens = quotas.listTokens();
                 System.out.println("Stored tokens:");

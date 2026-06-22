@@ -124,6 +124,16 @@ public interface IWebdavStore {
                              String contentType,
                              String characterEncoding );
 
+    default long setResourceContent( ITransaction transaction,
+                                     String resourceUri,
+                                     Pair<AsyncReader, Long> readerPair,
+                                     long rangeStart,
+                                     long rangeEnd,
+                                     String contentType,
+                                     String characterEncoding ) {
+        return setResourceContent(transaction, resourceUri, readerPair, contentType, characterEncoding);
+    }
+
     /**
      *
      * @param transaction indicates that the method is within the scope of a WebDAV transaction
@@ -208,12 +218,17 @@ public interface IWebdavStore {
 
     /**
      * Returns a map of custom namespaces that are specific to the store.
-     * 
+     *
      * @param transaction the {@link ITransaction} within which the operation takes place; may not be null
      * @param resourceUri resourceUri the URI of the object on which the properties should be updated; may not be null
      * @return a Map of (namespaceUri, namespacePrefix) pairs;may not be null;
      */
     Map<String, String> getCustomNamespaces( ITransaction transaction,
                                              String resourceUri );
+
+    /**
+     * Returns quota information as [usedBytes, availableBytes] for DAV:quota-used-bytes and DAV:quota-available-bytes.
+     */
+    long[] getQuotaInfo( ITransaction transaction );
 
 }

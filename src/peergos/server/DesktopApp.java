@@ -55,7 +55,7 @@ public class DesktopApp {
                         .getCodeSource()
                         .getLocation()
                         .toURI());
-                Path binary = jar.getParent().resolve("PeergosWebView");
+                Path binary = jar.getParent().resolve("PeergosMount.app/Contents/MacOS/PeergosMount");
                 ProcessBuilder pb = new ProcessBuilder(
                         binary.toString()
                 );

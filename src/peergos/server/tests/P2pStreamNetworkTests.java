@@ -13,7 +13,9 @@ import peergos.shared.io.ipfs.MultiAddress;
 import peergos.shared.io.ipfs.Multihash;
 import peergos.shared.user.UserContext;
 import peergos.shared.user.fs.*;
+import peergos.shared.util.Exceptions;
 
+import java.net.BindException;
 import java.net.URL;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
@@ -36,7 +38,20 @@ public class P2pStreamNetworkTests {
     @BeforeClass
     public static void init() throws Exception {
         // start pki node
-        Main.PKI_INIT.main(args);
+        try {
+            Main.PKI_INIT.main(args);
+        } catch (Throwable t) {
+            Throwable cause = Exceptions.getRootCause(t);
+            if (cause instanceof BindException) {
+                args = UserTests
+                        .buildArgs()
+                        .with("useIPFS", "true")
+                        .with("async-bootstrap", "true")
+                        .removeArg(IpfsWrapper.IPFS_BOOTSTRAP_NODES);
+                Main.PKI_INIT.main(args);
+            } else
+                throw new RuntimeException(t);
+        }
         NetworkAccess toPki = buildApi(args);
         Multihash pkiNodeId = toPki.dhtClient.id().get();
         nodes.add(toPki);
@@ -45,7 +60,7 @@ public class P2pStreamNetworkTests {
         // other nodes
         int ipfsApiPort = TestPorts.getPort();
         int ipfsGatewayPort = TestPorts.getPort();
-        int ipfsSwarmPort = TestPorts.getPort();
+        int ipfsSwarmPort = TestPorts.getTcpAndUdpPort();
         int allowPort = TestPorts.getPort();
         Args normalNode = UserTests.buildArgs()
                 .with("ipfs-api-address", "/ip4/127.0.0.1/tcp/" + ipfsApiPort)

@@ -148,6 +148,12 @@ public abstract class AbstractMethod implements IMethodExecutor {
         if ((result == null) || (result.equals(""))) {
             result = "/";
         }
+        // Windows WebDAV maps \\host@port\Peergos → HTTP path /Peergos/...
+        // Strip this prefix so requests resolve against the Peergos root.
+        if (result.startsWith("/Peergos")) {
+            result = result.substring("/Peergos".length());
+            if (result.isEmpty()) result = "/";
+        }
         return result;
     }
 
@@ -192,6 +198,7 @@ public abstract class AbstractMethod implements IMethodExecutor {
             documentBuilderFactory = DocumentBuilderFactory.newInstance();
             documentBuilderFactory.setNamespaceAware(true);
             documentBuilderFactory.setExpandEntityReferences(false);
+            documentBuilderFactory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
             documentBuilder = documentBuilderFactory.newDocumentBuilder();
         } catch (ParserConfigurationException e) {
             throw new ServletException("jaxp failed");
@@ -303,7 +310,7 @@ public abstract class AbstractMethod implements IMethodExecutor {
                                   String path ) throws IOException, LockFailedException {
 
         LockedObject resourceLock = resourceLocks.getLockedObjectByPath(transaction, path);
-        if (resourceLock == null || resourceLock.isShared()) {
+        if (resourceLock == null || resourceLock.isShared() || resourceLock.hasExpired()) {
             return true;
         }
 

@@ -78,13 +78,18 @@
     <copy todir="${dist}/lib">
       <fileset dir="lib"/>
     </copy>
+    <available file="assets/winicon.ico" property="have.winicon"/>
+    <copy file="assets/winicon.ico" tofile="${build}/peergos.ico"
+          failonerror="false">
+      <filterchain/>
+    </copy>
     <copy todir="${build}/native-lib">
       <fileset dir="native-lib"/>
     </copy>
     <manifestclasspath property="manifest_cp" jarfile="myjar.jar">
       <classpath refid="dep.runtime" />
     </manifestclasspath>
-    <jar jarfile="${dist}/Peergos.jar" basedir="${build}" includes="peergos/server/**,peergos/shared/**,peergos/client/**,native-lib/**,pki/**">
+    <jar jarfile="${dist}/Peergos.jar" basedir="${build}" includes="peergos/server/**,peergos/shared/**,peergos/client/**,native-lib/**,pki/**,peergos.ico">
       <manifest>
         <attribute name="Main-Class" value="peergos.server.Main"/>
         <attribute name="Class-Path" value="${manifest_cp}"/>
@@ -116,11 +121,13 @@
       <map from="${test.sources}/" to="" />
     </pathconvert>
     <!-- run one particular test -->
-    <junit fork="true" printsummary="true" haltonfailure="no">
+    <junit fork="true" printsummary="true" haltonfailure="no" timeout="3600000">
       <jvmarg value="-Xmx4g"/>
       <jvmarg value="-Djava.library.path=native-lib"/>
       <jvmarg value="--enable-native-access=ALL-UNNAMED"/>
       <jvmarg value="--sun-misc-unsafe-memory-access=allow"/>
+      <jvmarg value="-XX:+HeapDumpOnOutOfMemoryError"/>
+      <jvmarg value="-XX:HeapDumpPath=${test.reports}"/>
       <classpath>
 	<fileset dir="lib-build">
 	  <include name="**/*.jar"/>
@@ -131,6 +138,7 @@
 	<pathelement location="${build}" />
       </classpath>
       <formatter type="xml" />
+      <formatter type="plain" usefile="true" />
       <batchtest todir="${test.reports}" skipNonTests="true">
 	<fileset dir="${test.sources}">
           <filename name="${test.source.relative}" />
