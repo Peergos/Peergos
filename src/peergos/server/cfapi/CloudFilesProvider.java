@@ -2754,7 +2754,7 @@ public class CloudFilesProvider {
             throw new UnsupportedOperationException();
         }
         @Override public Optional<peergos.shared.crypto.hash.PublicKeyHash> applyToSubtree(
-                java.util.function.Consumer<FileProps> f, java.util.function.Consumer<FileProps> d) {
+                java.util.function.Consumer<FileProps> f, java.util.function.Consumer<FileProps> d, boolean parallel) {
             throw new UnsupportedOperationException();
         }
         @Override public long filesCount() { throw new UnsupportedOperationException(); }

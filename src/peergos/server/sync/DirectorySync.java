@@ -363,7 +363,7 @@ public class DirectorySync {
                         }
                     }
                 }
-            }, dir -> {});
+            }, dir -> {}, false);
         }
 
         String localStatePath = File.createTempFile("peergos-sync", ".sqlite", peergosDir.toFile()).toString();
@@ -1157,7 +1157,7 @@ public class DirectorySync {
             String relPath = p.relPath;
             p.meta.ifPresent(d -> version.update(d.version));
             res.addDir(relPath);
-        });
+        }, synced.hasCompletedSync());
         if (! toUpdate.isEmpty()) {
             log("REMOTE: Updating " + toUpdate.size() + " hashes: " + toUpdate.stream().limit(10).map(p -> p.left).collect(Collectors.toList()));
             fs.setHashes(toUpdate);

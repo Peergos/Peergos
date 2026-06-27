@@ -87,7 +87,11 @@ public interface SyncFilesystem {
      * @return the writer to ignore from snapshots (we only have read access to it as the entry point)
      * @throws IOException
      */
-    Optional<PublicKeyHash> applyToSubtree(Consumer<FileProps> file, Consumer<FileProps> dir) throws IOException;
+    /**
+     * @param parallel if true, walk children concurrently (safe once an initial sync
+     *                 has completed for this pair).
+     */
+    Optional<PublicKeyHash> applyToSubtree(Consumer<FileProps> file, Consumer<FileProps> dir, boolean parallel) throws IOException;
 
     long filesCount() throws IOException;
 

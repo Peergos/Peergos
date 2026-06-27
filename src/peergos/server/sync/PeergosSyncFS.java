@@ -322,7 +322,7 @@ public class PeergosSyncFS implements SyncFilesystem {
     }
 
     @Override
-    public Optional<PublicKeyHash> applyToSubtree(Consumer<FileProps> onFile, Consumer<FileProps> onDir) {
+    public Optional<PublicKeyHash> applyToSubtree(Consumer<FileProps> onFile, Consumer<FileProps> onDir, boolean parallel) {
         return applyToSubtree(root, onFile, onDir);
     }
 

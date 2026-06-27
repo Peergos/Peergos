@@ -247,7 +247,7 @@ public class LocalFileSystem implements SyncFilesystem {
     }
 
     @Override
-    public Optional<PublicKeyHash> applyToSubtree(Consumer<FileProps> file, Consumer<FileProps> dir) throws IOException {
+    public Optional<PublicKeyHash> applyToSubtree(Consumer<FileProps> file, Consumer<FileProps> dir, boolean parallel) throws IOException {
         applyToSubtree(root, file, dir);
         return Optional.empty();
     }
