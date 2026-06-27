@@ -97,7 +97,7 @@ public class SyncConfigHandler implements HttpHandler {
                 .map(this::getRemotePath)
                 .collect(Collectors.toList());
         saveConfigToFile(new SyncConfig(updated.localDirs, remotePaths, links, updated.syncLocalDeletes, updated.syncRemoteDeletes,
-                updated.maxDownloadParallelism, updated.minFreeSpacePercent));
+                updated.allowOnMobile, updated.maxDownloadParallelism, updated.minFreeSpacePercent));
     }
 
     public void start() {
@@ -147,6 +147,7 @@ public class SyncConfigHandler implements HttpHandler {
                 List<String> remotePaths = updated.remotePaths;
                 List<Boolean> syncLocalDeletes = updated.syncLocalDeletes;
                 List<Boolean> syncRemoteDeletes = updated.syncRemoteDeletes;
+                List<Boolean> allowOnMobile = updated.allowOnMobile;
                 int existing = links.indexOf(link);
                 if (existing != -1 && existing == localDirs.indexOf(localDir)) {
                     exchange.sendResponseHeaders(200, 0);
@@ -157,8 +158,10 @@ public class SyncConfigHandler implements HttpHandler {
                     remotePaths.add(getRemotePath(link));
                     syncLocalDeletes.add(newSyncLocalDeletes);
                     syncRemoteDeletes.add(newSyncRemoteDeletes);
+                    // New pairs default to Wi-Fi only; flip via set-allow-mobile.
+                    allowOnMobile.add(false);
                     saveConfigToFile(new SyncConfig(localDirs, remotePaths, links, syncLocalDeletes, syncRemoteDeletes,
-                            updated.maxDownloadParallelism, updated.minFreeSpacePercent));
+                            allowOnMobile, updated.maxDownloadParallelism, updated.minFreeSpacePercent));
                     // run sync client now
                     syncer.start();
                     System.out.println("Syncing " + localDir + " syncLocalDeletes: " + newSyncLocalDeletes + ", syncRemoteDeletes: " + newSyncRemoteDeletes);
@@ -186,9 +189,11 @@ public class SyncConfigHandler implements HttpHandler {
                 syncLocalDeletes.remove(toRemove);
                 List<Boolean> syncRemoteDeletes = updated.syncRemoteDeletes;
                 syncRemoteDeletes.remove(toRemove);
+                List<Boolean> allowOnMobile = updated.allowOnMobile;
+                allowOnMobile.remove(toRemove);
 
                 saveConfigToFile(new SyncConfig(localDirs, remotePaths, links, syncLocalDeletes, syncRemoteDeletes,
-                        updated.maxDownloadParallelism, updated.minFreeSpacePercent));
+                        allowOnMobile, updated.maxDownloadParallelism, updated.minFreeSpacePercent));
                 // clear sync state db as well
                 String linkPath = UserContext.fromSecretLinksV2(Arrays.asList(link), Arrays.asList(() -> Futures.of("")), network, crypto).join().getEntryPath().join();
                 Path syncDb = DirectorySync.getSyncStateDbPath(peergosDir, linkPath, removedLocal);
@@ -208,6 +213,23 @@ public class SyncConfigHandler implements HttpHandler {
                     Files.delete(syncDb);
                     LOG.info("Deleted " + syncDb);
                 }
+                exchange.sendResponseHeaders(200, 0);
+                exchange.close();
+            } else if (action.equals("set-allow-mobile")) {
+                long label = Long.parseLong(last.apply("label"));
+                boolean allow = Boolean.parseBoolean(last.apply("allow"));
+                SyncConfig updated = getUpdatedArgs();
+                List<String> links = updated.links;
+                int idx = 0;
+                for (; idx < links.size(); idx++) {
+                    String link = links.get(idx);
+                    if (link.substring(link.lastIndexOf("/", link.indexOf("#")) + 1, link.indexOf("#")).equals(Long.toString(label)))
+                        break;
+                }
+                if (idx == links.size())
+                    throw new IllegalArgumentException("Unknown label");
+                updated.allowOnMobile.set(idx, allow);
+                saveConfigToFile(updated);
                 exchange.sendResponseHeaders(200, 0);
                 exchange.close();
             } else if (action.equals("get-pairs")) {

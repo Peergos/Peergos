@@ -10,7 +10,7 @@ import java.util.stream.Stream;
 
 public class SyncConfig implements Jsonable {
     public final List<String> localDirs, remotePaths, links;
-    public final List<Boolean> syncLocalDeletes, syncRemoteDeletes;
+    public final List<Boolean> syncLocalDeletes, syncRemoteDeletes, allowOnMobile;
     public final int maxDownloadParallelism, minFreeSpacePercent;
 
     public SyncConfig(List<String> localDirs,
@@ -18,6 +18,7 @@ public class SyncConfig implements Jsonable {
                       List<String> links,
                       List<Boolean> syncLocalDeletes,
                       List<Boolean> syncRemoteDeletes,
+                      List<Boolean> allowOnMobile,
                       int maxDownloadParallelism,
                       int minFreeSpacePercent) {
         if (localDirs.size() != remotePaths.size())
@@ -28,11 +29,14 @@ public class SyncConfig implements Jsonable {
             throw new IllegalStateException("Invalid SyncConfig!");
         if (localDirs.size() != syncRemoteDeletes.size())
             throw new IllegalStateException("Invalid SyncConfig!");
+        if (localDirs.size() != allowOnMobile.size())
+            throw new IllegalStateException("Invalid SyncConfig!");
         this.localDirs = localDirs;
         this.remotePaths = remotePaths;
         this.links = links;
         this.syncLocalDeletes = syncLocalDeletes;
         this.syncRemoteDeletes = syncRemoteDeletes;
+        this.allowOnMobile = allowOnMobile;
         this.maxDownloadParallelism = maxDownloadParallelism;
         this.minFreeSpacePercent = minFreeSpacePercent;
     }
@@ -49,6 +53,7 @@ public class SyncConfig implements Jsonable {
             pair.put("label", link.substring(link.lastIndexOf("/", link.indexOf("#")) + 1, link.indexOf("#")));
             pair.put("syncLocalDeletes", syncLocalDeletes.get(i));
             pair.put("syncRemoteDeletes", syncRemoteDeletes.get(i));
+            pair.put("allowOnMobile", allowOnMobile.get(i));
             pairs.add(pair);
         }
         res.put("pairs", pairs);
@@ -68,6 +73,7 @@ public class SyncConfig implements Jsonable {
             pair.put("link", links.get(i));
             pair.put("syncLocalDeletes", syncLocalDeletes.get(i));
             pair.put("syncRemoteDeletes", syncRemoteDeletes.get(i));
+            pair.put("allowOnMobile", allowOnMobile.get(i));
             pairs.add(pair);
         }
         res.put("pairs", pairs);
@@ -83,14 +89,19 @@ public class SyncConfig implements Jsonable {
         List<String> remoteDirs = new ArrayList<>();
         List<Boolean> syncLocalDeletes= new ArrayList<>();
         List<Boolean> syncRemoteDeletes= new ArrayList<>();
+        List<Boolean> allowOnMobile = new ArrayList<>();
         for (Map<String, Object> pair : jsonList) {
             localDirs.add((String)pair.get("localpath"));
             links.add((String)pair.get("link"));
             remoteDirs.add((String)pair.get("remotepath"));
             syncLocalDeletes.add((Boolean)pair.get("syncLocalDeletes"));
             syncRemoteDeletes.add((Boolean)pair.get("syncRemoteDeletes"));
+            // Older config files predate this flag; treat missing as not allowed.
+            Boolean allow = (Boolean) pair.get("allowOnMobile");
+            allowOnMobile.add(allow != null && allow);
         }
-        return new SyncConfig(localDirs, remoteDirs, links, syncLocalDeletes, syncRemoteDeletes, (Integer)json.get("maxParallelism"), (Integer)json.get("minPercentFreeSpace"));
+        return new SyncConfig(localDirs, remoteDirs, links, syncLocalDeletes, syncRemoteDeletes, allowOnMobile,
+                (Integer)json.get("maxParallelism"), (Integer)json.get("minPercentFreeSpace"));
     }
 
     public static List<String> getLinks(Args updated) {
@@ -128,12 +139,22 @@ public class SyncConfig implements Jsonable {
                 .collect(Collectors.toList()));
     }
 
+    public static List<Boolean> getAllowOnMobile(Args updated, int size) {
+        if (! updated.hasArg("allow-on-mobile"))
+            return new ArrayList<>(Collections.nCopies(size, false));
+        return new ArrayList<>(Stream.of(updated.getArg("allow-on-mobile").split(","))
+                .map(Boolean::parseBoolean)
+                .collect(Collectors.toList()));
+    }
+
     public static SyncConfig fromArgs(Args a) {
-        return new SyncConfig(getLocalDirs(a),
+        List<String> localDirs = getLocalDirs(a);
+        return new SyncConfig(localDirs,
                 getRemotePaths(a),
                 getLinks(a),
                 getSyncLocalDeletes(a),
                 getSyncRemoteDeletes(a),
+                getAllowOnMobile(a, localDirs.size()),
                 a.getInt("max-parallelism", 32),
                 a.getInt("min-free-space-percent", 5));
     }
