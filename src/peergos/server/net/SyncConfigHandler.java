@@ -5,6 +5,8 @@ import com.sun.net.httpserver.HttpHandler;
 import peergos.server.HostDirChooser;
 import peergos.server.HostDirEnumerator;
 import peergos.server.sync.DirectorySync;
+import peergos.server.sync.PairLogger;
+import peergos.server.sync.PairStatus;
 import peergos.server.sync.SyncConfig;
 import peergos.server.sync.SyncRunner;
 import peergos.server.util.Args;
@@ -213,6 +215,13 @@ public class SyncConfigHandler implements HttpHandler {
                     Files.delete(syncDb);
                     LOG.info("Deleted " + syncDb);
                 }
+                String pairHash = PairLogger.hash(linkPath, removedLocal);
+                try {
+                    PairLogger.deleteFor(peergosDir, pairHash);
+                    PairStatus.deleteFor(peergosDir, pairHash);
+                } catch (IOException e) {
+                    LOG.info("Error deleting sync log/status for " + pairHash + ": " + e.getMessage());
+                }
                 exchange.sendResponseHeaders(200, 0);
                 exchange.close();
             } else if (action.equals("set-allow-mobile")) {
@@ -288,7 +297,40 @@ public class SyncConfigHandler implements HttpHandler {
                 reply.put("msg", syncer.getStatusHolder().getStatusAndTime());
                 Optional<String> error = syncer.getStatusHolder().getError();
                 error.ifPresent(err -> reply.put("error", err));
+                SyncConfig cfg = getUpdatedArgs();
+                List<Object> pairs = new ArrayList<>();
+                for (int i = 0; i < cfg.links.size(); i++) {
+                    String link = cfg.links.get(i);
+                    String label = link.substring(link.lastIndexOf("/", link.indexOf("#")) + 1, link.indexOf("#"));
+                    String hash = PairLogger.hash(cfg.remotePaths.get(i), cfg.localDirs.get(i));
+                    PairStatus ps = new PairStatus(peergosDir, hash);
+                    LinkedHashMap<String, Object> p = new LinkedHashMap<>();
+                    p.put("label", label);
+                    p.put("msg", ps.getStatusAndTime());
+                    ps.getError().ifPresent(err -> p.put("error", err));
+                    pairs.add(p);
+                }
+                reply.put("pairs", pairs);
                 byte[] res = JSONParser.toString(reply).getBytes(StandardCharsets.UTF_8);
+                exchange.sendResponseHeaders(200, res.length);
+                OutputStream resp = exchange.getResponseBody();
+                resp.write(res);
+                exchange.close();
+            } else if (action.equals("get-log")) {
+                long label = Long.parseLong(last.apply("label"));
+                SyncConfig cfg = getUpdatedArgs();
+                int idx = 0;
+                for (; idx < cfg.links.size(); idx++) {
+                    String link = cfg.links.get(idx);
+                    if (link.substring(link.lastIndexOf("/", link.indexOf("#")) + 1, link.indexOf("#")).equals(Long.toString(label)))
+                        break;
+                }
+                if (idx == cfg.links.size())
+                    throw new IllegalArgumentException("Unknown label");
+                String hash = PairLogger.hash(cfg.remotePaths.get(idx), cfg.localDirs.get(idx));
+                byte[] res = PairLogger.readCombined(peergosDir, hash);
+                exchange.getResponseHeaders().set("Content-Type", "text/plain; charset=utf-8");
+                exchange.getResponseHeaders().set("Content-Disposition", "attachment; filename=\"sync-" + label + ".log\"");
                 exchange.sendResponseHeaders(200, res.length);
                 OutputStream resp = exchange.getResponseBody();
                 resp.write(res);

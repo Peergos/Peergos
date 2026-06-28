@@ -129,6 +129,10 @@ public class DirectorySync {
         return peergosDir.resolve("dir-sync-state-v3-" + ArrayOps.bytesToHex(Hash.sha256(linkPath + "///" + localDir)) + ".sqlite");
     }
 
+    public static String pairHash(String linkPath, String localDir) {
+        return PairLogger.hash(linkPath, localDir);
+    }
+
     public static boolean syncDirs(List<String> links,
                                    List<String> localDirs, //could be paths or URIs
                                    List<Boolean> syncLocalDeletes,
@@ -173,6 +177,47 @@ public class DirectorySync {
             e.printStackTrace();
         }
 
+        List<String> pairHashes = IntStream.range(0, linkPaths.size())
+                .mapToObj(i -> pairHash(linkPaths.get(i), localDirs.get(i)))
+                .collect(Collectors.toList());
+        List<PairLogger> pairLoggers = new ArrayList<>();
+        List<PairStatus> pairStatuses = new ArrayList<>();
+        for (String h : pairHashes) {
+            try {
+                pairLoggers.add(new PairLogger(peergosDir, h));
+            } catch (IOException e) {
+                pairLoggers.add(null);
+            }
+            pairStatuses.add(new PairStatus(peergosDir, h));
+        }
+        // delete logs/status for pairs that are no longer present
+        Path syncLogsDir = PairLogger.logDir(peergosDir);
+        if (Files.exists(syncLogsDir)) {
+            Set<String> keepHashes = new HashSet<>(pairHashes);
+            try (Stream<Path> kids = Files.list(syncLogsDir)) {
+                kids.filter(p -> {
+                            String name = p.getFileName().toString();
+                            return name.startsWith("sync-") && (name.endsWith(".log") || name.endsWith(".log.1") || name.endsWith(".status.json"));
+                        })
+                        .filter(p -> {
+                            String name = p.getFileName().toString();
+                            String rest = name.substring("sync-".length());
+                            int dot = rest.indexOf('.');
+                            if (dot < 0) return false;
+                            return ! keepHashes.contains(rest.substring(0, dot));
+                        })
+                        .forEach(p -> {
+                            try {
+                                Files.delete(p);
+                            } catch (IOException e) {
+                                e.printStackTrace();
+                            }
+                        });
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+
         List<Supplier<SyncState>> syncedStates = syncDbPaths.stream()
                 .<Supplier<SyncState>>map(p -> () -> new JdbcTreeState(p.toString()))
                 .collect(Collectors.toList());
@@ -184,6 +229,14 @@ public class DirectorySync {
             boolean errored = false;
             for (int i=0; i < links.size(); i++) {
                 SyncState syncedState = null;
+                PairLogger pairLog = pairLoggers.get(i);
+                PairStatus pairStatus = pairStatuses.get(i);
+                Consumer<String> perPairLog = msg -> {
+                    LOG.accept(msg);
+                    if (pairLog != null)
+                        pairLog.log(msg);
+                    pairStatus.setStatus(msg);
+                };
                 try {
                     if (status.isCancelled()) {
                         status.resume();
@@ -192,7 +245,7 @@ public class DirectorySync {
                     Path localDir = Paths.get(localDirs.get(i));
                     Path remoteDir = PathUtil.get(linkPaths.get(i));
                     syncedState = syncedStates.get(i).get();
-                    log("Syncing " + localDir + " to+from " + remoteDir);
+                    perPairLog.accept("Syncing " + localDir + " to+from " + remoteDir);
                     long t0 = System.currentTimeMillis();
                     String username = remoteDir.getName(0).toString();
                     PublicKeyHash owner = network.coreNode.getPublicKeyHash(username).join().get();
@@ -200,7 +253,7 @@ public class DirectorySync {
                     boolean isAndroid = "The Android Project".equals(System.getProperty("java.vm.vendor"));
                     if (! isAndroid && ! Paths.get(localDirs.get(i)).toFile().exists()) {
                         boolean isFlatpak = System.getenv("FLATPAK_ID") != null;
-                        LOG.accept(isFlatpak ?
+                        perPairLog.accept(isFlatpak ?
                                 "Restart Peergos to start syncing " + localDirs.get(i) :
                                 "Local dir does not exist! Please remove and recreate the sync.");
                         errored = true;
@@ -208,13 +261,17 @@ public class DirectorySync {
                         SyncFilesystem local = localBuilder.apply(localDirs.get(i));
                         syncDir(local, remote, syncLocalDeletes.get(i), syncRemoteDeletes.get(i),
                                 owner, network, syncedState, maxDownloadParallelism, minFreeSpacePercent, peergosDir,
-                                crypto, status::isCancelled, LOG);
+                                crypto, status::isCancelled, perPairLog);
                         long t1 = System.currentTimeMillis();
-                        LOG.accept("Dir sync took " + (t1 - t0) / 1000 + "s");
+                        perPairLog.accept("Dir sync took " + (t1 - t0) / 1000 + "s");
+                        pairStatus.setError(null);
                     }
                 } catch (Exception e) {
                     errored = true;
                     ERROR.accept(e);
+                    if (pairLog != null)
+                        pairLog.error(e.getMessage());
+                    pairStatus.setError(e.getMessage());
                     e.printStackTrace();
                     DirectorySync.LOG.log(Level.WARNING, e, e::getMessage);
                 } finally {
