@@ -2392,12 +2392,12 @@ public CompletableFuture<Boolean> copyTo(FileWrapper target, UserContext context
         Optional<HashBranch> hash = getFileProperties().treeHash;
         if (hash.isEmpty())
             return Futures.of(Optional.empty());
-        if (size < 1024 * Chunk.MAX_SIZE)
+        if (size < 1024L * Chunk.MAX_SIZE)
             return Futures.of(hash.map(t -> new HashTree(t.rootHash, t
                     .level1.stream().collect(Collectors.toList()),
                     t.level2.stream().collect(Collectors.toList()),
                     t.level3.stream().collect(Collectors.toList()))));
-        long nBranches = (size + 1024 * Chunk.MAX_SIZE - 1) / (1024 * Chunk.MAX_SIZE);
+        long nBranches = (size + 1024L * Chunk.MAX_SIZE - 1) / (1024L * Chunk.MAX_SIZE);
         return Futures.combineAllInOrder(LongStream.range(0, nBranches).mapToObj(b -> {
             WritableAbsoluteCapability cap = writableFilePointer();
             return FileProperties.calculateMapKey(getFileProperties().streamSecret.get(),

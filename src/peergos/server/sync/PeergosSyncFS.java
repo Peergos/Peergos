@@ -158,7 +158,7 @@ public class PeergosSyncFS implements SyncFilesystem {
         Optional<FileWrapper> parent = context.getByPath(root.resolve(p).getParent()).join();
         FileProperties withHash = f.getFileProperties().withHash(Optional.of(hashTree.branch(0)));
         f.setProperties(withHash, context.crypto.hasher, context.network, parent).join();
-        long nBranches = (fileSize + 1024 * Chunk.MAX_SIZE - 1) / (1024 * Chunk.MAX_SIZE);
+        long nBranches = (fileSize + 1024L * Chunk.MAX_SIZE - 1) / (1024L * Chunk.MAX_SIZE);
         for (long b = 1; b < nBranches; b++) {
             WritableAbsoluteCapability cap = f.writableFilePointer();
             Pair<byte[], Optional<Bat>> loc = FileProperties.calculateMapKey(withHash.streamSecret.get(),
