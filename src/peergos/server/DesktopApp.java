@@ -65,8 +65,18 @@ public class DesktopApp {
                 Process webviewProcess = pb.start();
 
                 webviewProcess.onExit().thenAccept(done -> {
-                    System.out.println("Webview closed, shutting down...");
-                    System.exit(0);
+                    if (done.exitValue() == 0) {
+                        System.out.println("Webview closed, shutting down...");
+                        System.exit(0);
+                    } else {
+                        try {
+                            if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.BROWSE))
+                                Desktop.getDesktop().browse(api);
+                        } catch (Throwable t) {
+                            t.printStackTrace();
+                        }
+                        System.out.println("Webview failed to start. Please open http://localhost:" + port + " in your browser.");
+                    }
                 });
             } else if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.BROWSE)) {
                 Desktop.getDesktop().browse(api);
