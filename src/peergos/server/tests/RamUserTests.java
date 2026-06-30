@@ -215,6 +215,30 @@ public class RamUserTests extends UserTests {
     }
 
     @Test
+    public void resumableUploadPreservesHash() throws Exception {
+        String username = generateUsername();
+        String password = "test";
+        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
+
+        byte[] content = new byte[256 * 1024];
+        new Random(7).nextBytes(content);
+        HashTree expected = HashTree.build(AsyncReader.build(content), 0, content.length, crypto.hasher).join();
+
+        ResumeUploadProps props = ResumeUploadProps.random(crypto);
+        String filename = "resumable.bin";
+        context.getUserRoot().join()
+                .uploadFileWithHash(filename, AsyncReader.build(content), content.length,
+                        Optional.of(expected), Optional.empty(), Optional.empty(),
+                        Optional.of(props),
+                        network, crypto, () -> false, x -> {}).join();
+
+        FileWrapper file = context.getByPath(Paths.get(username, filename)).join().get();
+        HashBranch stored = file.getFileProperties().treeHash
+                .orElseThrow(() -> new AssertionError("treeHash missing on resumable-upload file"));
+        Assert.assertEquals(expected.branch(0), stored);
+    }
+
+    @Test
     public void appWriteInSecretLink() throws Exception {
         String username = generateUsername();
         String password = "test01";

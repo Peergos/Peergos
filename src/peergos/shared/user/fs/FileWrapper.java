@@ -721,6 +721,11 @@ public class FileWrapper {
                                                                                              Crypto crypto) {
         RelativeCapability fromParent = writableFilePointer().relativise(txn.writeCap());
         FileProperties props = txn.props;
+        // only valid for files < 5 GiB
+        Optional<HashTree> txnHash = props.treeHash.map(b -> new HashTree(b.rootHash,
+                b.level1.stream().collect(Collectors.toList()),
+                b.level2.stream().collect(Collectors.toList()),
+                b.level3.stream().collect(Collectors.toList())));
         // first find how many chunks were already uploaded, then seek reader to that offset and continue
         long totalChunks = (txn.size() + Chunk.MAX_SIZE - 1) / Chunk.MAX_SIZE;
         return findFirstAbsentChunkIndex(txn.streamSecret(), txn.getFirstLocation(), txn.firstBat, totalChunks, s, network, crypto)
@@ -728,7 +733,7 @@ public class FileWrapper {
                     monitor.accept(startChunkIndex * Chunk.MAX_SIZE);
                     FileUploader uploader = new FileUploader(txn.targetFilename(), data, startChunkIndex*Chunk.MAX_SIZE,
                             txn.size(), txn.baseKey, txn.dataKey, getLocation(), getPointer().capability.bat, getParentKey(),
-                            monitor, props, Optional.empty(), txn.getFirstLocation().getMapKey(), txn.firstBat, isCancelled);
+                            monitor, props, txnHash, txn.getFirstLocation().getMapKey(), txn.firstBat, isCancelled);
                     return uploader.uploadFrom(s, c, network, startChunkIndex.intValue(), txn.getFirstLocation().owner,
                             signingPair(), mirrorBatId(), crypto.random, crypto.hasher);
                 }).thenApply(v -> new Pair<>(v, Optional.of(new NamedRelativeCapability(txn.targetFilename(), fromParent,
