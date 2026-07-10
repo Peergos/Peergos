@@ -528,6 +528,39 @@ public class SyncTests {
     }
 
     @Test
+    public void shrinkFile() throws Exception {
+        Path base1 = Files.createTempDirectory("peergos-sync");
+        Path base2 = Files.createTempDirectory("peergos-sync");
+
+        LocalFileSystem localFs = new LocalFileSystem(base1, Main.initCrypto().hasher);
+        LocalFileSystem remoteFs = new LocalFileSystem(base2, Main.initCrypto().hasher);
+        SyncState syncedState = new JdbcTreeState(":memory:");
+
+        DirectorySync.syncDir(localFs, remoteFs, true, true, null, null, syncedState, 32, 5, Files.createTempDirectory("peergos-sync"), crypto, () -> false, DirectorySync::log);
+
+        int fileSize = 6 * 1024 * 1024;
+        byte[] data = new byte[fileSize];
+        new Random(42).nextBytes(data);
+        String filename = "document.txt";
+        Files.write(base1.resolve(filename), data, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
+        DirectorySync.syncDir(localFs, remoteFs, true, true, null, null, syncedState, 32, 5, Files.createTempDirectory("peergos-sync"), crypto, () -> false, DirectorySync::log);
+
+        // User edits the file locally, making it SHORTER
+        Thread.sleep(10);
+        byte[] newData = new byte[2 * 1024 * 1024];
+        new Random(99).nextBytes(newData);
+        Files.delete(base1.resolve(filename));
+        Files.write(base1.resolve(filename), newData, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
+
+        DirectorySync.syncDir(localFs, remoteFs, true, true, null, null, syncedState, 32, 5, Files.createTempDirectory("peergos-sync"), crypto, () -> false, DirectorySync::log);
+
+        System.out.println("SHRINK local size=" + Files.size(base1.resolve(filename)) + " remote size=" + Files.size(base2.resolve(filename)) + " expected=" + newData.length);
+        Assert.assertArrayEquals(newData, Files.readAllBytes(base2.resolve(filename)));
+        Assert.assertArrayEquals(newData, Files.readAllBytes(base1.resolve(filename)));
+    }
+
+
+    @Test
     public void modifyLargeFile() throws Exception {
         modifyLargeFile(6 * 1024 * 1024);
     }
