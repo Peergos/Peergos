@@ -1127,7 +1127,7 @@ public class DirectorySync {
 
     public static Optional<LocalDateTime> applyCopyOp(SyncFilesystem srcFs, SyncFilesystem targetFs, CopyOp op, Supplier<Boolean> isCancelled, Consumer<String> progress) throws IOException {
         if (isCancelled.get())
-            return Optional.empty();
+            throw new RuntimeException("Sync cancelled before copying " + op.target);
         log("COPY from " + op.source + " to " + op.target + " range=[" + op.diffStart +", " + op.diffEnd+"]");
         targetFs.mkdirs(getParent(op.target));
         long priorSize = op.targetState != null ? op.targetState.size : 0;
@@ -1144,7 +1144,7 @@ public class DirectorySync {
                     Optional.of(modified), thumbnail, op.props, isCancelled, progress);
         }
         if (isCancelled.get())
-            return res;
+            throw new RuntimeException("Sync cancelled before copying " + op.target);
         if (priorSize > size) {
             log("Sync Truncating file " + op.sourceState.relPath + " from " + priorSize + " to " + size);
             targetFs.truncate(op.target, size);

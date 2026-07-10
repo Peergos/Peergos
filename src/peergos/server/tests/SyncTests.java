@@ -18,6 +18,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
 import java.time.LocalDateTime;
 import java.util.*;
@@ -526,6 +527,38 @@ public class SyncTests {
         Assert.assertFalse(syncedState.hasRemoteDelete(filename));
         Assert.assertEquals(1, syncedState.allFilePaths().size());
     }
+
+    @Test
+    public void cancelledCopyStaysResumable() throws Exception {
+        // Reproduces the race where a queued parallel download runs after the user cancelled:
+        // applyCopyOp sees isCancelled==true at its top guard and never writes. It must abort
+        // (throw) rather than complete normally, otherwise copyFileDiffAndTruncate clears the
+        // retry journal and the caller marks the (never-written) file synced -> next run treats
+        // it as a local delete and deletes the only remaining (remote) copy.
+        Path base1 = Files.createTempDirectory("peergos-sync"); // target (local)
+        Path base2 = Files.createTempDirectory("peergos-sync"); // source (remote)
+        LocalFileSystem targetFs = new LocalFileSystem(base1, crypto.hasher);
+        LocalFileSystem srcFs = new LocalFileSystem(base2, crypto.hasher);
+        SyncState syncDb = new JdbcTreeState(":memory:");
+
+        byte[] data = new byte[1024 * 1024];
+        new Random(1).nextBytes(data);
+        Files.write(base2.resolve("f.bin"), data, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
+        HashTree hash = srcFs.hashFile(Paths.get("f.bin"), Optional.empty(), "f.bin", syncDb, data.length);
+        FileState remote = new FileState("f.bin", srcFs.getLastModified(Paths.get("f.bin")), data.length, hash);
+        List<CopyOp> ops = List.of(new CopyOp(true, srcFs.resolve("f.bin"), targetFs.resolve("f.bin"), remote, null,
+                0, data.length, peergos.shared.user.fs.ResumeUploadProps.random(crypto)));
+
+        boolean threw = false;
+        try {
+            DirectorySync.copyFileDiffAndTruncate(srcFs, targetFs, ops, syncDb, () -> true, DirectorySync::log);
+        } catch (RuntimeException e) {
+            threw = true;
+        }
+        Assert.assertTrue("A cancelled copy must abort rather than complete normally", threw);
+        Assert.assertEquals("A cancelled copy must remain in the retry journal", 1, syncDb.getInProgressCopies().size());
+    }
+
 
     @Test
     public void shrinkFile() throws Exception {
