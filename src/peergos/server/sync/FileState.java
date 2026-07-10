@@ -48,10 +48,11 @@ public class FileState implements Cborable {
         List<Long> diffChunks = new ArrayList<>();
         for (int i=0; i < a.size(); i++) {
             ChunkHashList aList = a.get(i);
-            ChunkHashList bList = b.get(i);
+            ChunkHashList bList = i < b.size() ? b.get(i) : null;
             if (bList == null) {
+                long base = i * 1024L;
                 diffChunks.addAll(LongStream.range(0, aList.nChunks())
-                        .mapToObj(x -> x)
+                        .mapToObj(x -> base + x)
                         .collect(Collectors.toList()));
             } else {
                 for (int j=0; j < aList.nChunks(); j++){

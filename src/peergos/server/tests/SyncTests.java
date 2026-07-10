@@ -12,7 +12,11 @@ import peergos.shared.io.ipfs.Cid;
 import peergos.shared.io.ipfs.Multihash;
 import peergos.shared.user.CommittedWriterData;
 import peergos.shared.user.Snapshot;
+import peergos.shared.user.fs.Chunk;
+import peergos.shared.user.fs.ChunkHashList;
 import peergos.shared.user.fs.HashTree;
+import peergos.shared.user.fs.RootHash;
+import peergos.shared.util.Pair;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -526,6 +530,31 @@ public class SyncTests {
         Assert.assertArrayEquals(Files.readAllBytes(base1.resolve(filename)), data2);
         Assert.assertFalse(syncedState.hasRemoteDelete(filename));
         Assert.assertEquals(1, syncedState.allFilePaths().size());
+    }
+
+    @Test
+    public void diffRangesAcrossLevel1Boundary() {
+        // level1 holds one ChunkHashList per 1024 chunks (== 5 GiB). A file that grew from
+        // 1024 chunks (one group) to 1025 chunks (two groups) has more level1 groups than the
+        // old version, so diffRanges must not index past the shorter list. The first group is
+        // identical here, so the only diff is the single new chunk (index 1024).
+        List<ChunkHashList> grownLevel1 = Arrays.asList(
+                new ChunkHashList(new byte[1024 * 32]),
+                new ChunkHashList(new byte[32]));
+        List<ChunkHashList> oldLevel1 = Arrays.asList(
+                new ChunkHashList(new byte[1024 * 32]));
+        byte[] rootA = new byte[32]; rootA[0] = 1;
+        byte[] rootB = new byte[32]; rootB[0] = 2;
+        HashTree grown = new HashTree(new RootHash(rootA), grownLevel1, Collections.emptyList(), Collections.emptyList());
+        HashTree old = new HashTree(new RootHash(rootB), oldLevel1, Collections.emptyList(), Collections.emptyList());
+
+        FileState grownFs = new FileState("big.bin", 1000, 1025L * Chunk.MAX_SIZE, grown);
+        FileState oldFs = new FileState("big.bin", 1000, 1024L * Chunk.MAX_SIZE, old);
+
+        List<Pair<Long, Long>> diff = grownFs.diffRanges(oldFs);
+        Assert.assertEquals(1, diff.size());
+        Assert.assertEquals(1024L * Chunk.MAX_SIZE, (long) diff.get(0).left);
+        Assert.assertEquals(1025L * Chunk.MAX_SIZE, (long) diff.get(0).right);
     }
 
     @Test
