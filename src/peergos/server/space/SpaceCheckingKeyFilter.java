@@ -42,6 +42,10 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
     private final long quotaUploadLimitSeconds;
     private final Map<String, SlidingWindowCounter> writeLimiter = new ConcurrentHashMap<>();
     private final Cid ourId;
+    private static final long HEAL_RETRY_INTERVAL_MILLIS = 60_000;
+    private final ConcurrentHashMap<PublicKeyHash, Object> healLocks = new ConcurrentHashMap<>();
+    private final Map<PublicKeyHash, Long> lastFailedHeals = new ConcurrentHashMap<>();
+    private final LRUCache<PublicKeyHash, Boolean> nonLocalOwners = new LRUCache<>(1_000);
 
     public SpaceCheckingKeyFilter(CoreNode core,
                                   MutablePointers mutable,
@@ -65,7 +69,7 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
                     processMutablePointerEvent(event);
                 } catch (InterruptedException e) {}
                 catch (Exception e) {
-                    e.printStackTrace();
+                    LOG.log(Level.WARNING, "Error processing mutable pointer event: " + e.getMessage(), e);
                 }
             }
         }, "SpaceCheckingKeyFilter").start();
@@ -202,7 +206,7 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
         try {
             prepareMutablePointerChange(event, dht, usageStore, hasher);
         } catch (Exception e) {
-            e.printStackTrace();
+            LOG.log(Level.WARNING, "Error registering owned keys for writer " + event.writer + ": " + e.getMessage(), e);
         }
     }
 
@@ -433,8 +437,17 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
         return usage;
     }
 
-    public boolean allowWrite(PublicKeyHash writer, int size) {
-        String username = usageStore.getOwner(writer);
+    public boolean allowWrite(PublicKeyHash owner, PublicKeyHash writer, int size) {
+        String username;
+        try {
+            username = usageStore.getOwner(writer);
+        } catch (IllegalStateException e) {
+            // The writer is absent from the usage store, most likely because a registration event failed or was
+            // missed. Self heal: if the writer is provably owned by the owner then register it and allow the write.
+            if (! registerMissedWriters(owner, writer))
+                throw e;
+            username = usageStore.getOwner(writer);
+        }
         long quota = getQuota(username, quotaAdmin);
 
         UserUsage usage = getUsage(username, usageStore);
@@ -464,5 +477,76 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
             throw new IllegalStateException("Couldn't update pending usage for user " + username, e);
         }
         return true;
+    }
+
+    /** A write was attempted with a writer that is absent from the usage store. If the writer is reachable through
+     *  the chain of ownership proofs from the owner's identity key then register it, and any other missing owned
+     *  keys, and account their current usage.
+     *
+     * @return true if the writer was registered
+     */
+    private boolean registerMissedWriters(PublicKeyHash owner, PublicKeyHash writer) {
+        synchronized (nonLocalOwners) {
+            if (nonLocalOwners.containsKey(owner))
+                return false;
+        }
+        Object lock = healLocks.computeIfAbsent(owner, o -> new Object());
+        synchronized (lock) {
+            try {
+                usageStore.getOwner(writer);
+                return true; // already healed by a concurrent write
+            } catch (IllegalStateException absent) {}
+            Long lastFailure = lastFailedHeals.get(owner);
+            if (lastFailure != null && System.currentTimeMillis() - lastFailure < HEAL_RETRY_INTERVAL_MILLIS)
+                return false;
+            try {
+                String username = core.getUsername(owner).join();
+                if (! quotaAdmin.getLocalUsernames().contains(username)) {
+                    synchronized (nonLocalOwners) {
+                        nonLocalOwners.put(owner, true);
+                    }
+                    return false;
+                }
+                LOG.warning("Usage store is missing writer " + writer + " of local user " + username
+                        + ", searching their ownership tree for it");
+                usageStore.addUserIfAbsent(username);
+                Set<PublicKeyHash> known = usageStore.getAllWriters(username);
+                List<Multihash> us = List.of(ourId.bareMultihash());
+                Set<PublicKeyHash> visited = new HashSet<>();
+                Deque<PublicKeyHash> toVisit = new ArrayDeque<>();
+                toVisit.add(owner);
+                List<PublicKeyHash> added = new ArrayList<>();
+                while (! toVisit.isEmpty()) {
+                    PublicKeyHash current = toVisit.poll();
+                    if (! visited.add(current))
+                        continue;
+                    if (! known.contains(current)) {
+                        usageStore.addWriter(username, current);
+                        added.add(current);
+                    }
+                    toVisit.addAll(DeletableContentAddressedStorage.getDirectOwnedKeys(owner, current, mutable,
+                            (h, s) -> DeletableContentAddressedStorage.getWriterData(us, owner, h, s, false, ourId, hasher, dht),
+                            dht, hasher).join());
+                }
+                for (PublicKeyHash newWriter : added) {
+                    try {
+                        MaybeMultihash target = mutable.getPointerTarget(owner, newWriter, dht).join().updated;
+                        processMutablePointerEvent(usageStore, owner, newWriter, MaybeMultihash.empty(), target,
+                                mutable, quotaAdmin, dht, hasher);
+                    } catch (Exception e) {
+                        LOG.log(Level.WARNING, "Couldn't account usage of missed writer " + newWriter, e);
+                    }
+                }
+                if (visited.contains(writer)) {
+                    LOG.info("Registered " + added.size() + " missed writers for " + username);
+                    return true;
+                }
+                LOG.warning("Writer " + writer + " is not owned by " + username + ", rejecting write");
+            } catch (Exception e) {
+                LOG.log(Level.WARNING, "Failed to search for missed writer " + writer + " of owner " + owner, e);
+            }
+            lastFailedHeals.put(owner, System.currentTimeMillis());
+            return false;
+        }
     }
 }

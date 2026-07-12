@@ -13,9 +13,9 @@ import java.util.function.*;
 public class WriteFilter extends DelegatingStorage {
 
     private final ContentAddressedStorage dht;
-    private final BiFunction<PublicKeyHash, Integer, Boolean> keyFilter;
+    private final TriFunction<PublicKeyHash, PublicKeyHash, Integer, Boolean> keyFilter;
 
-    public WriteFilter(ContentAddressedStorage dht, BiFunction<PublicKeyHash, Integer, Boolean> keyFilter) {
+    public WriteFilter(ContentAddressedStorage dht, TriFunction<PublicKeyHash, PublicKeyHash, Integer, Boolean> keyFilter) {
         super(dht);
         this.dht = dht;
         this.keyFilter = keyFilter;
@@ -32,7 +32,7 @@ public class WriteFilter extends DelegatingStorage {
         long totalSize = blockSizes.stream().mapToLong(Integer::longValue).sum();
         if (totalSize > Integer.MAX_VALUE)
             throw new IllegalStateException("Total write size too large: " + totalSize);
-        if (! keyFilter.apply(writer, (int) totalSize))
+        if (! keyFilter.apply(owner, writer, (int) totalSize))
             throw new IllegalStateException("Key not allowed to write to this server: " + writer);
         if (blockSizes.stream().anyMatch(s -> s > Fragment.MAX_LENGTH_WITH_BAT_PREFIX))
             throw new IllegalStateException("Block too big!");
@@ -53,7 +53,7 @@ public class WriteFilter extends DelegatingStorage {
         long totalSize = blocks.stream().mapToLong(x -> x.length).sum();
         if (totalSize > Integer.MAX_VALUE)
             throw new IllegalStateException("Total write size too large: " + totalSize);
-        if (! keyFilter.apply(writer, (int) totalSize))
+        if (! keyFilter.apply(owner, writer, (int) totalSize))
             throw new IllegalStateException("Key not allowed to write to this server: " + writer);
         if (blocks.stream().anyMatch(b -> b.length > Fragment.MAX_LENGTH_WITH_BAT_PREFIX))
             throw new IllegalStateException("Block too big!");
@@ -70,7 +70,7 @@ public class WriteFilter extends DelegatingStorage {
         long totalSize = blocks.stream().mapToLong(x -> x.length).sum();
         if (totalSize > Integer.MAX_VALUE)
             throw new IllegalStateException("Total write size too large: " + totalSize);
-        if (! keyFilter.apply(writer, (int) totalSize))
+        if (! keyFilter.apply(owner, writer, (int) totalSize))
             throw new IllegalStateException("Key not allowed to write to this server: " + writer);
         if (blocks.stream().anyMatch(b -> b.length > Fragment.MAX_LENGTH_WITH_BAT_PREFIX))
             throw new IllegalStateException("Block too big!");
