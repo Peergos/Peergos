@@ -24,7 +24,16 @@ abstract class SubprocessSecretStore implements SecretStore {
     /** Run a command, optionally piping {@code stdin} (without a trailing newline). */
     protected static String runWithStdin(String stdin, String... cmd) throws IOException {
         ProcessBuilder pb = new ProcessBuilder(cmd).redirectErrorStream(true);
-        Process p = pb.start();
+        Process p;
+        try {
+            p = pb.start();
+        } catch (IOException missingBinary) {
+            // The raw JVM message ("Cannot run program ...: error=2") reaches the web UI
+            // verbatim, so name the missing tool and what it costs the user instead.
+            throw new IOException("Couldn't run '" + cmd[0] + "', which Peergos needs to store"
+                    + " your mount credentials in the system keyring. Is it installed?",
+                    missingBinary);
+        }
         if (stdin != null) {
             try (OutputStream os = p.getOutputStream()) {
                 os.write(stdin.getBytes(StandardCharsets.UTF_8));
