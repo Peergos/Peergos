@@ -150,10 +150,44 @@ public class WebdavFileSystem implements IWebdavStore {
     public void destroy() {
     }
 
+    /**
+     * Per-request state. A PROPFIND lists a directory and then asks for the properties of
+     * every child in turn; without somewhere to keep the children we already retrieved,
+     * each one is re-resolved from the root, which re-reads the parent directory's
+     * metadata once per child — quadratic in the size of the directory.
+     */
+    private static final class Transaction implements ITransaction {
+        private final Principal principal;
+        /** Files retrieved earlier in this request, keyed by normalised path. */
+        private final Map<String, FileWrapper> known = new HashMap<>();
+
+        private Transaction(Principal principal) {
+            this.principal = principal;
+        }
+
+        @Override
+        public Principal getPrincipal() {
+            return principal;
+        }
+
+        void remember(String path, FileWrapper file) {
+            known.put(path, file);
+        }
+
+        Optional<FileWrapper> recall(String path) {
+            return Optional.ofNullable(known.get(path));
+        }
+
+        /** Anything we wrote invalidates what we remembered. */
+        void forgetAll() {
+            known.clear();
+        }
+    }
+
     @Override
     public ITransaction begin(Principal principal ) throws WebdavException {
         LOG.fine("PeergosFileSystem.begin()");
-        return null;
+        return new Transaction(principal);
     }
 
     @Override
@@ -175,6 +209,24 @@ public class WebdavFileSystem implements IWebdavStore {
         return context.getByPath(path.toString().replace('\\', '/')).join();
     }
 
+    /** As {@link #getByPath(Path)}, but reuses anything already retrieved in this request. */
+    private Optional<FileWrapper> getByPath(ITransaction transaction, Path path) {
+        if (! (transaction instanceof Transaction))
+            return getByPath(path);
+        Transaction tx = (Transaction) transaction;
+        Optional<FileWrapper> known = tx.recall(path.toString());
+        if (known.isPresent())
+            return known;
+        Optional<FileWrapper> resolved = getByPath(path);
+        resolved.ifPresent(f -> tx.remember(path.toString(), f));
+        return resolved;
+    }
+
+    private static void invalidate(ITransaction transaction) {
+        if (transaction instanceof Transaction)
+            ((Transaction) transaction).forgetAll();
+    }
+
     @Override
     public void createFolder( ITransaction transaction,
                               String uri ) throws WebdavException {
@@ -186,6 +238,7 @@ public class WebdavFileSystem implements IWebdavStore {
         }
         try {
             parentFolder.get().mkdir(path.getFileName().toString(), context.network, false, context.mirrorBatId(), context.crypto).join();
+            invalidate(transaction);
         } catch (Exception ex) {
             LOG.log(Level.WARNING, ex, () -> "cannot create folder");
             throw new WebdavException("cannot create folder: " + uri);
@@ -211,6 +264,7 @@ public class WebdavFileSystem implements IWebdavStore {
             HashTree h = hash.complete(context.crypto.hasher).join();
             parentFolder.get().uploadFileWithHash(path.getFileName().toString(), new AsyncReader.ArrayBacked(contents),
                     contents.length, Optional.of(h), Optional.empty(), Optional.empty(), context.network, context.crypto, l -> {}).join();
+            invalidate(transaction);
         } catch (Exception e) {
             LOG.warning("PeergosFileSystem.createResource(" + uri + ") failed");
             throw new WebdavException(e);
@@ -271,6 +325,7 @@ public class WebdavFileSystem implements IWebdavStore {
                             readerPair.left, readerPair.right, context.network, context.crypto, () -> false, l -> {}).join();
                 }
             }
+            invalidate(transaction);
             return readerPair.right;
         } catch (Exception e) {
             LOG.log(Level.WARNING, "PeergosFileSystem.setResourceContent(" + uri + ") failed", e);
@@ -308,6 +363,7 @@ public class WebdavFileSystem implements IWebdavStore {
             } else {
                 sourceFile.get().moveTo(targetParent.get(), parent.get(), PathUtil.get(sourcePath), context, () -> Futures.of(true)).join();
             }
+            invalidate(transaction);
         } catch (Exception e) {
             LOG.warning("PeergosFileSystem.setResourceContent(" + sourcePath + ") failed");
             throw new WebdavException(e);
@@ -327,6 +383,15 @@ public class WebdavFileSystem implements IWebdavStore {
         List<String> filenames = children.stream()
                 .filter(f -> !f.getFileProperties().isHidden)
                 .map(f -> f.getName()).collect(Collectors.toList());
+        // The children carry everything a subsequent getStoredObject needs, so hold on to
+        // them rather than making the caller resolve each one from the root again.
+        if (transaction instanceof Transaction) {
+            Transaction tx = (Transaction) transaction;
+            for (FileWrapper child : children) {
+                if (! child.getFileProperties().isHidden)
+                    tx.remember(path.resolve(child.getName()).toString(), child);
+            }
+        }
         String[] childrenNames = new String[filenames.size()];
         return filenames.toArray(childrenNames);
     }
@@ -345,6 +410,7 @@ public class WebdavFileSystem implements IWebdavStore {
         }
         try {
             fw.get().remove(parentFolder.get(), path, context).join();
+            invalidate(transaction);
         } catch (Exception ex) {
             throw new WebdavException("cannot delete object: " + uri);
         }
@@ -372,7 +438,7 @@ public class WebdavFileSystem implements IWebdavStore {
     public long getResourceLength( ITransaction transaction,
                                    String uri) throws WebdavException {
         Path path = new File(uri).toPath();
-        Optional<FileWrapper> fw = getByPath(path);
+        Optional<FileWrapper> fw = getByPath(transaction, path);
         if (fw.isEmpty() || fw.get().isDirectory() || fw.get().getFileProperties().isHidden) {
             throw new WebdavException("cannot find file: " + uri);
         }
@@ -384,7 +450,7 @@ public class WebdavFileSystem implements IWebdavStore {
                                         String uri ) {
         StoredObject so = null;
         Path path = new File(uri).toPath();
-        Optional<FileWrapper> fwOpt = getByPath(path);
+        Optional<FileWrapper> fwOpt = getByPath(transaction, path);
         if (fwOpt.isPresent() && fwOpt.get().isRoot()) {
             so = new StoredObject();
             so.setFolder(true);
