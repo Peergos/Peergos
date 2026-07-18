@@ -44,24 +44,34 @@ public class FileBlockCache implements BlockCache {
             throw new IllegalStateException("File store path must be a directory! " + root);
 
         File sizeFile = root.resolve("size.bin").toFile();
+        boolean needToRecount = true;
         if (sizeFile.exists()) {
             try {
                 DataInputStream din = new DataInputStream(new FileInputStream(sizeFile));
                 long size = din.readLong();
                 din.close();
-                totalSize.set(size);
-                LOG.info("Loaded file block cache size from disk: " + totalSize.get() / 1024 / 1024 + " MiB");
+                if (size >= 0 && size / 2 <= this.maxSizeBytes) {
+                    totalSize.set(size);
+                    needToRecount = false;
+                    LOG.info("Loaded file block cache size from disk: " + totalSize.get() / 1024 / 1024 + " MiB");
+                } else {
+                    LOG.warning("Ignoring implausible file block cache size of " + size
+                            + " bytes (max size is " + this.maxSizeBytes + "), recounting...");
+                }
             } catch (IOException e) {
                 throw new RuntimeException(e);
             }
-        } else {
+        }
+        if (needToRecount) {
             LOG.info("Listing file block cache...");
             long t0 = System.currentTimeMillis();
+            totalSize.set(0);
             applyToAll((p, a) -> totalSize.addAndGet(a.size()));
             long t1 = System.currentTimeMillis();
             LOG.info("Finished listing file block cache in " + (t1 - t0) / 1000 + "s, total size " + totalSize.get() / 1024 / 1024 + " MiB");
         }
-        ForkJoinPool.commonPool().submit(() -> ensureWithinSizeLimit(maxSizeBytes));
+        // the configured limit, not the requested one — getOrSetMaxSize may have overridden it
+        ForkJoinPool.commonPool().submit(() -> ensureWithinSizeLimit(this.maxSizeBytes));
         Thread sizeCommitter = new Thread(this::sizeCommitter, "FileBlockCache size");
         sizeCommitter.setDaemon(true);
         sizeCommitter.start();
@@ -292,10 +302,8 @@ public class FileBlockCache implements BlockCache {
         // delete files randomly, don't bother trying to sort by access time
         Logging.LOG().info("Starting FileBlockCache reduction from " + totalSize.get());
         applyToAll((p, a) -> {
-            if (totalSize.get() > maxSize / 2) {
-                delete(p.toFile());
-                totalSize.addAndGet(-a.size());
-            }
+            if (totalSize.get() > maxSize / 2)
+                delete(p.toFile()); // delete() already subtracts the file's size
         });
         Logging.LOG().info("Reduced FileBlockCache down to " + totalSize.get());
         cleaning.set(false);
