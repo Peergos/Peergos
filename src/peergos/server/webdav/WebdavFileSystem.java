@@ -464,6 +464,8 @@ public class WebdavFileSystem implements IWebdavStore {
             so.setLastModified(new Date(fw.getFileProperties().modified.toEpochSecond(ZoneOffset.UTC) * 1000));
             so.setCreationDate(new Date(fw.getFileProperties().created.toEpochSecond(ZoneOffset.UTC) * 1000));
             so.setResourceLength(fw.getFileProperties().size);
+            if (! fw.isDirectory())
+                so.setMimeType(fw.getFileProperties().mimeType);
         }
         return so;
     }
@@ -481,7 +483,7 @@ public class WebdavFileSystem implements IWebdavStore {
     public Map<String, Object> getCustomProperties( ITransaction transaction,
                                                     String resourceUri ) {
         Path path = new File(resourceUri).toPath();
-        Optional<FileWrapper> fwOpt = getByPath(path);
+        Optional<FileWrapper> fwOpt = getByPath(transaction, path);
         if (fwOpt.isEmpty() || fwOpt.get().isDirectory() || fwOpt.get().getFileProperties().isHidden)
             return Collections.emptyMap();
         FileWrapper fw = fwOpt.get();

@@ -148,8 +148,7 @@ public class DoPropfind extends AbstractMethod {
                                     generatedXML,
                                     path,
                                     propertyFindType,
-                                    properties,
-                                    mimeTyper.getMimeType(transaction, path));
+                                    properties);
                 } else {
                     recursiveParseProperties(transaction,
                                              path,
@@ -157,8 +156,7 @@ public class DoPropfind extends AbstractMethod {
                                              generatedXML,
                                              propertyFindType,
                                              properties,
-                                             depth,
-                                             mimeTyper.getMimeType(transaction, path));
+                                             depth);
                 }
                 generatedXML.writeElement("DAV::multistatus", XMLWriter.CLOSING);
                 logger.fine("Sending response: " + generatedXML.toString());
@@ -190,7 +188,6 @@ public class DoPropfind extends AbstractMethod {
      * @param propertyFindType
      * @param properties
      * @param depth depth of the propfind
-     * @param mimeType
      * @throws WebdavException
      */
     private void recursiveParseProperties( ITransaction transaction,
@@ -199,10 +196,9 @@ public class DoPropfind extends AbstractMethod {
                                            XMLWriter generatedXML,
                                            int propertyFindType,
                                            Vector<String> properties,
-                                           int depth,
-                                           String mimeType ) throws WebdavException {
+                                           int depth ) throws WebdavException {
 
-        parseProperties(transaction, req, generatedXML, currentPath, propertyFindType, properties, mimeType);
+        parseProperties(transaction, req, generatedXML, currentPath, propertyFindType, properties);
 
         if (depth > 0) {
             // no need to get name if depth is already zero
@@ -222,8 +218,7 @@ public class DoPropfind extends AbstractMethod {
                                          generatedXML,
                                          propertyFindType,
                                          properties,
-                                         depth - 1,
-                                         mimeType);
+                                         depth - 1);
             }
         }
     }
@@ -237,7 +232,6 @@ public class DoPropfind extends AbstractMethod {
      * @param path Path of the current resource
      * @param type Propfind type
      * @param propertiesVector If the propfind type is find properties by name, then this Vector contains those properties
-     * @param mimeType
      * @throws WebdavException
      */
     private void parseProperties( ITransaction transaction,
@@ -245,11 +239,11 @@ public class DoPropfind extends AbstractMethod {
                                   XMLWriter generatedXML,
                                   String path,
                                   int type,
-                                  Vector<String> propertiesVector,
-                                  String mimeType ) throws WebdavException {
+                                  Vector<String> propertiesVector ) throws WebdavException {
 
         StoredObject so = store.getStoredObject(transaction, path);
         if (so == null) return;
+        String mimeType = mimeTyper.getMimeType(transaction, path);
 
         boolean isFolder = so.isFolder();
         final String creationdate = creationDateFormat(so.getCreationDate());

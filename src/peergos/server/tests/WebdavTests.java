@@ -100,6 +100,10 @@ public class WebdavTests {
             Assert.assertEquals(207, propfind2.statusCode());
             Assert.assertTrue("Directory listing should contain uploaded filename",
                     propfind2.body().contains("test-webdav.txt"));
+            // Each entry must carry its own content type; without it clients sniff the type by
+            // reading the head of every file in the directory.
+            Assert.assertTrue("Listing should report the file's content type: " + propfind2.body(),
+                    propfind2.body().contains("text/plain"));
 
             String dirPath = "/" + username + "/test-subdir";
             HttpResponse<String> mkcol = client.send(
