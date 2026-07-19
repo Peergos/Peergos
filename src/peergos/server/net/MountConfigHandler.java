@@ -323,6 +323,15 @@ public class MountConfigHandler implements HttpHandler {
         // (MainActivity.openMountInFiles) that fires a SAF browse intent with the
         // necessary Context. The web UI calls that bridge directly and never hits
         // this endpoint on Android.
+
+        // Under flatpak gio mounts in the host's namespace, so the mount point doesn't
+        // exist inside the sandbox at all: Desktop.open would reject it as missing, and
+        // a sandboxed xdg-open would resolve it against our empty view. Open it on the
+        // host, for the same reason we mount there.
+        if (System.getenv("FLATPAK_ID") != null) {
+            runOpener("flatpak-spawn", "--host", "xdg-open", mountPoint);
+            return;
+        }
         if (java.awt.Desktop.isDesktopSupported()) {
             java.awt.Desktop desktop = java.awt.Desktop.getDesktop();
             if (desktop.isSupported(java.awt.Desktop.Action.OPEN)) {
@@ -333,16 +342,20 @@ public class MountConfigHandler implements HttpHandler {
         // Headless Linux JVMs (no AWT) — Desktop reports unsupported; xdg-open handles it.
         String os = System.getProperty("os.name", "").toLowerCase();
         if (os.contains("linux")) {
-            Process p = Runtime.getRuntime().exec(new String[] {"xdg-open", mountPoint});
-            try {
-                if (p.waitFor(5, TimeUnit.SECONDS) && p.exitValue() != 0)
-                    throw new IOException("xdg-open exited " + p.exitValue());
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-            }
+            runOpener("xdg-open", mountPoint);
             return;
         }
         throw new IOException("No native file explorer available on this platform: " + os);
+    }
+
+    private static void runOpener(String... cmd) throws IOException {
+        Process p = Runtime.getRuntime().exec(cmd);
+        try {
+            if (p.waitFor(5, TimeUnit.SECONDS) && p.exitValue() != 0)
+                throw new IOException(cmd[0] + " exited " + p.exitValue());
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
     }
 
     @Override
