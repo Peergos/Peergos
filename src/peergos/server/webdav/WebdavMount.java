@@ -5,6 +5,7 @@ import java.net.*;
 import java.nio.file.*;
 import java.util.*;
 import java.util.logging.*;
+import java.util.stream.*;
 
 public class WebdavMount implements Closeable {
 
@@ -142,18 +143,17 @@ public class WebdavMount implements Closeable {
 
     private static String findGvfsMountPoint(int port) throws IOException {
         String uid = capture(host("id", "-u")).trim();
-        Path gvfsBase = Path.of("/run/user/" + uid + "/gvfs");
+        String gvfsBase = "/run/user/" + uid + "/gvfs";
         String portFragment = "port=" + port + ",";
-        try (var stream = Files.list(gvfsBase)) {
-            return stream
-                    .filter(p -> {
-                        String name = p.getFileName().toString();
-                        return name.startsWith("dav:") && name.contains(portFragment);
-                    })
-                    .findFirst()
-                    .map(Path::toString)
-                    .orElseThrow(() -> new IOException("Could not find GVFS mount point for port " + port + " under " + gvfsBase));
-        }
+        // gio mounts on the host, so the mount point only exists in the host's namespace —
+        // under flatpak this directory is not visible to us at all. List it on the host for
+        // the same reason we run gio there.
+        return Stream.of(capture(host("ls", "-1", gvfsBase)).split("\n"))
+                .map(String::trim)
+                .filter(name -> name.startsWith("dav:") && name.contains(portFragment))
+                .findFirst()
+                .map(name -> gvfsBase + "/" + name)
+                .orElseThrow(() -> new IOException("Could not find GVFS mount point for port " + port + " under " + gvfsBase));
     }
 
     private static void runCheckedWithStdin(String stdin, String... cmd) throws IOException {
