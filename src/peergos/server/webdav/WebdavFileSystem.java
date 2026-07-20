@@ -73,12 +73,24 @@ public class WebdavFileSystem implements IWebdavStore {
     private static final String PEERGOS_NS = "https://peergos.org/ns/dav";
 
     private final UserContext context;
+    private final Optional<ThumbnailCacheSeeder> thumbnailSeeder;
     private volatile long cachedUsed = 0;
     private volatile long cachedQuota = 1024L * 1024 * 1024;
     private volatile long quotaCacheTime = 0;
     private static final long QUOTA_CACHE_TTL_MS = 60_000;
 
     public WebdavFileSystem(String username, String password, String peergosUrl, MountConfig config) {
+        this(username, password, peergosUrl, config, false);
+    }
+
+    /**
+     * @param seedThumbnailCache when true, and only under flatpak, directory listings also
+     *   pre-seed the host thumbnail cache so a file manager renders thumbnails without
+     *   downloading files. Set by the drive-mount path only; the standalone WebDAV server
+     *   leaves it false.
+     */
+    public WebdavFileSystem(String username, String password, String peergosUrl, MountConfig config,
+                            boolean seedThumbnailCache) {
         Crypto crypto = Main.initCrypto();
         try {
             Optional<String> userAgent = Optional.of("Peergos-" + UserService.CURRENT_VERSION + "-webdav");
@@ -91,6 +103,9 @@ public class WebdavFileSystem implements IWebdavStore {
             LOG.log(Level.WARNING, ex, () -> "Unable to connect to Peergos account");
             throw new IllegalStateException("Unable to connect to Peergos account: ", ex);
         }
+        this.thumbnailSeeder = seedThumbnailCache
+                ? ThumbnailCacheSeeder.createForFlatpakMount(config)
+                : Optional.empty();
     }
 
     /**
@@ -385,12 +400,16 @@ public class WebdavFileSystem implements IWebdavStore {
                 .map(f -> f.getName()).collect(Collectors.toList());
         // The children carry everything a subsequent getStoredObject needs, so hold on to
         // them rather than making the caller resolve each one from the root again.
-        if (transaction instanceof Transaction) {
-            Transaction tx = (Transaction) transaction;
-            for (FileWrapper child : children) {
-                if (! child.getFileProperties().isHidden)
-                    tx.remember(path.resolve(child.getName()).toString(), child);
-            }
+        Transaction tx = transaction instanceof Transaction ? (Transaction) transaction : null;
+        for (FileWrapper child : children) {
+            if (child.getFileProperties().isHidden)
+                continue;
+            String childPath = path.resolve(child.getName()).toString();
+            if (tx != null)
+                tx.remember(childPath, child);
+            // Under the flatpak drive mount only: drop the file's stored thumbnail into the
+            // host thumbnail cache so the file manager shows it without downloading the file.
+            thumbnailSeeder.ifPresent(s -> s.seed(childPath, child.getFileProperties()));
         }
         String[] childrenNames = new String[filenames.size()];
         return filenames.toArray(childrenNames);

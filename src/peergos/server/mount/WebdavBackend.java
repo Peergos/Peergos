@@ -33,8 +33,9 @@ public class WebdavBackend implements MountBackend {
 
     @Override
     public void enable(MountConfig config, UserContext context, Path peergosDir) throws Exception {
+        // Drive mount: enable thumbnail-cache seeding (no-op unless running under flatpak).
         WebdavFileSystem fs = new WebdavFileSystem(config.peergosUsername, config.peergosPassword,
-                peergosUrl, config);
+                peergosUrl, config, true);
         Server server = WebdavServer.startNonBlocking(config.webdavPort, config.webdavUsername,
                 config.webdavPassword, fs, config.authType);
         Server prevServer = activeServer.getAndSet(server);
