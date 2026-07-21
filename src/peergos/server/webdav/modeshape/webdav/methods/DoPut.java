@@ -42,8 +42,6 @@ public class DoPut extends AbstractMethod {
     private final boolean readOnly;
     private final boolean lazyFolderCreationOnPut;
 
-    private String userAgent;
-
     public DoPut( IWebdavStore store,
                   IResourceLocks resLocks,
                   boolean readOnly,
@@ -64,9 +62,9 @@ public class DoPut extends AbstractMethod {
             String path = getRelativePath(req);
             String parentPath = getParentPath(path);
 
-            userAgent = req.getHeader("User-Agent");
+            String userAgent = req.getHeader("User-Agent");
 
-            if (isOSXFinder() && req.getContentLength() == 0) {
+            if (isOSXFinder(userAgent) && req.getContentLength() == 0) {
                 // OS X Finder sends 2 PUTs; first has 0 content, second has content.
                 // This is the first one, so we'll ignore it ...
                 logger.fine("-- First of multiple OS-X Finder PUT calls at " + path);
@@ -74,7 +72,7 @@ public class DoPut extends AbstractMethod {
 
             Hashtable<String, Integer> errorList = new Hashtable<String, Integer>();
 
-            if (isOSXFinder()) {
+            if (isOSXFinder(userAgent)) {
                 // OS X Finder sends 2 PUTs; first has 0 content, second has content.
                 // This is the second one that was preceded by a LOCK, so don't need to check the locks ...
             } else {
@@ -160,7 +158,7 @@ public class DoPut extends AbstractMethod {
                         }
                     }
                     // User-Agent workarounds
-                    doUserAgentWorkaround(resp);
+                    doUserAgentWorkaround(resp, userAgent);
 
                     // setting resourceContent
                     Optional<String> header = Optional.ofNullable(req.getHeader("Content-Range")).map(t -> t.trim());
@@ -222,8 +220,8 @@ public class DoPut extends AbstractMethod {
     /**
      * @param resp
      */
-    private void doUserAgentWorkaround( HttpServletResponse resp ) {
-        if (isOSXFinder()) {
+    private void doUserAgentWorkaround( HttpServletResponse resp, String userAgent ) {
+        if (isOSXFinder(userAgent)) {
             logger.fine("DoPut.execute() : do workaround for user agent '" + userAgent + "'");
             resp.setStatus(WebdavStatus.SC_CREATED);
         } else if (userAgent != null && userAgent.contains("Transmit")) {
@@ -236,7 +234,7 @@ public class DoPut extends AbstractMethod {
         }
     }
 
-    private boolean isOSXFinder() {
+    private boolean isOSXFinder( String userAgent ) {
         return (userAgent != null && userAgent.contains("WebDAVFS") && !userAgent.contains("Transmit"));
     }
 

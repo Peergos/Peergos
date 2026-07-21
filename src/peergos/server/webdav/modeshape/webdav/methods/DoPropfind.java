@@ -58,8 +58,6 @@ public class DoPropfind extends AbstractMethod {
     private final ResourceLocks resourceLocks;
     private final IMimeTyper mimeTyper;
 
-    private int depth;
-
     public DoPropfind( IWebdavStore store,
                        ResourceLocks resLocks,
                        IMimeTyper mimeTyper ) {
@@ -83,7 +81,7 @@ public class DoPropfind extends AbstractMethod {
             resp.sendError(HttpServletResponse.SC_NOT_FOUND);
             return;
         }
-        depth = getDepth(req);
+        int depth = getDepth(req);
 
         if (resourceLocks.lock(transaction, path, tempLockOwner, false, depth, TEMP_TIMEOUT, TEMPORARY)) {
 
@@ -148,7 +146,8 @@ public class DoPropfind extends AbstractMethod {
                                     generatedXML,
                                     path,
                                     propertyFindType,
-                                    properties);
+                                    properties,
+                                    depth);
                 } else {
                     recursiveParseProperties(transaction,
                                              path,
@@ -198,7 +197,7 @@ public class DoPropfind extends AbstractMethod {
                                            Vector<String> properties,
                                            int depth ) throws WebdavException {
 
-        parseProperties(transaction, req, generatedXML, currentPath, propertyFindType, properties);
+        parseProperties(transaction, req, generatedXML, currentPath, propertyFindType, properties, depth);
 
         if (depth > 0) {
             // no need to get name if depth is already zero
@@ -239,7 +238,8 @@ public class DoPropfind extends AbstractMethod {
                                   XMLWriter generatedXML,
                                   String path,
                                   int type,
-                                  Vector<String> propertiesVector ) throws WebdavException {
+                                  Vector<String> propertiesVector,
+                                  int depth ) throws WebdavException {
 
         StoredObject so = store.getStoredObject(transaction, path);
         if (so == null) return;
@@ -317,7 +317,7 @@ public class DoPropfind extends AbstractMethod {
 
                 writeSupportedLockElements(transaction, generatedXML, path);
 
-                writeLockDiscoveryElements(transaction, generatedXML, path);
+                writeLockDiscoveryElements(transaction, generatedXML, path, depth);
 
                 generatedXML.writeProperty("DAV::source", "");
                 generatedXML.writeElement("DAV::prop", XMLWriter.CLOSING);
@@ -443,7 +443,7 @@ public class DoPropfind extends AbstractMethod {
 
                     } else if (property.equals("DAV::lockdiscovery")) {
 
-                        writeLockDiscoveryElements(transaction, generatedXML, path);
+                        writeLockDiscoveryElements(transaction, generatedXML, path, depth);
 
                     } else {
                         propertiesNotFound.addElement(property);
@@ -547,7 +547,8 @@ public class DoPropfind extends AbstractMethod {
 
     private void writeLockDiscoveryElements( ITransaction transaction,
                                              XMLWriter generatedXML,
-                                             String path ) {
+                                             String path,
+                                             int depth ) {
 
         LockedObject lo = resourceLocks.getLockedObjectByPath(transaction, path);
 
