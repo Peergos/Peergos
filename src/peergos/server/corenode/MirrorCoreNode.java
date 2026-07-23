@@ -57,6 +57,9 @@ public class MirrorCoreNode implements CoreNode {
     private final Crypto crypto;
     private final ExecutorService mirrorPool = Threads.newPool(1, "Mirror-");
     private final List<String> unlistedUsernames;
+    // A MutablePointers that routes each read to the owner's home server (or locally), rather than
+    // defaulting every read to the pki node like the raw p2pMutable proxy does.
+    private final MutablePointers routingPointers;
 
     private volatile CorenodeState state;
     private final Path statePath;
@@ -103,6 +106,7 @@ public class MirrorCoreNode implements CoreNode {
         this.unlistedUsernames = unlistedUsernames;
         this.hasher = crypto.hasher;
         this.crypto = crypto;
+        this.routingPointers = new ProxyingMutablePointers(List.of(ourNodeId), this, localPointers, p2pMutable);
         try {
             this.state = load(statePath, pkiOwnerIdentity);
         } catch (IOException e) {
@@ -178,9 +182,9 @@ public class MirrorCoreNode implements CoreNode {
                         long t0 = System.currentTimeMillis();
                         PublicKeyHash owner = getPublicKeyHash(username).join().get();
                         Map<PublicKeyHash, byte[]> pointers = Mirror.mirrorUser(username, Optional.empty(),
-                                Optional.of(localMirrorBats.get(localMirrorBats.size() - 1)), this, p2pMutable,
+                                Optional.of(localMirrorBats.get(localMirrorBats.size() - 1)), this, routingPointers,
                                 null, ipfs, rawPointers, rawAccount, transactions, linkCounts, usageStore, hasher);
-                        SpaceCheckingKeyFilter.processCorenodeEvent(username, owner, pointers.keySet(), usageStore, quotas, ipfs, p2pMutable, hasher);
+                        SpaceCheckingKeyFilter.processCorenodeEvent(username, owner, pointers.keySet(), usageStore, quotas, ipfs, routingPointers, hasher);
                         long t1 = System.currentTimeMillis();
                         LOG.info("Finished mirroring " + username + " data in " + (t1 - t0) / 1_000 + "s");
                     } catch (Exception e) {
@@ -688,7 +692,7 @@ public class MirrorCoreNode implements CoreNode {
             // a user is migrating away from this server
             ProofOfWork work = ProofOfWork.empty();
             LinkCounts updated = linkCounts.getUpdatedCounts(username, latestLinkCountUpdate);
-            UserSnapshot snapshot = getUserSnapshot(owner, currentLast.claim.storageProviders, p2pMutable, ourNodeId, ipfs, hasher)
+            UserSnapshot snapshot = getUserSnapshot(owner, currentLast.claim.storageProviders, routingPointers, ourNodeId, ipfs, hasher)
                     .thenApply(pointers -> new UserSnapshot(username,
                             currentLast.owner,
                             pointers,
@@ -718,10 +722,10 @@ public class MirrorCoreNode implements CoreNode {
             }
             List<Multihash> storageProviders = getStorageProviders(owner);
             // Mirror all the data locally
-            Mirror.mirrorUser(username, Optional.empty(), mirrorBat, this, p2pMutable, null,
+            Mirror.mirrorUser(username, Optional.empty(), mirrorBat, this, routingPointers, null,
                     ipfs, rawPointers, rawAccount, transactions, linkCounts, usageStore, hasher);
             Map<PublicKeyHash, byte[]> mirrored = Mirror.mirrorUser(username, Optional.empty(), mirrorBat,
-                    this, p2pMutable, null, ipfs, rawPointers, rawAccount, transactions, linkCounts,
+                    this, routingPointers, null, ipfs, rawPointers, rawAccount, transactions, linkCounts,
                     usageStore, hasher);
 
             // Proxy call to their current storage server
@@ -744,9 +748,9 @@ public class MirrorCoreNode implements CoreNode {
 
             // Make sure usage is updated
             List<Multihash> us = List.of(ourNodeId.bareMultihash());
-            Set<PublicKeyHash> allUserKeys = DeletableContentAddressedStorage.getOwnedKeysRecursive(owner, owner, p2pMutable,
+            Set<PublicKeyHash> allUserKeys = DeletableContentAddressedStorage.getOwnedKeysRecursive(owner, owner, routingPointers,
                     (h, s) -> DeletableContentAddressedStorage.getWriterData(us, owner, h, s, true, ourNodeId, hasher, ipfs), ipfs, hasher).join();
-            SpaceCheckingKeyFilter.processCorenodeEvent(username, owner, allUserKeys, usageStore, quotas, ipfs, p2pMutable, hasher);
+            SpaceCheckingKeyFilter.processCorenodeEvent(username, owner, allUserKeys, usageStore, quotas, ipfs, routingPointers, hasher);
             return Futures.of(res);
         } else // Proxy call to their target storage server
             return writeTarget.migrateUser(username, newChain, migrationTargetNode, mirrorBat, latestLinkCountUpdate, currentUsage, commitToPki);
