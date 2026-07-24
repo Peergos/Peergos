@@ -43,6 +43,9 @@ public class MutationHandler implements HttpHandler {
 
         Map<String, List<String>> params = HttpUtil.parseQuery(exchange.getRequestURI().getQuery());
         PublicKeyHash owner = PublicKeyHash.fromString(params.get("owner").get(0));
+        String source = Optional.ofNullable(exchange.getRequestHeaders().get("Source"))
+                .map(h -> " Source: " + h.get(0))
+                .orElse("");
         try {
             if (! HttpUtil.allowedQuery(exchange, isPublicServer)) {
                 exchange.sendResponseHeaders(405, 0);
@@ -84,7 +87,7 @@ public class MutationHandler implements HttpHandler {
         } finally {
             exchange.close();
             long t2 = System.currentTimeMillis();
-            LOG.info("Mutable pointers server handled " + method + " request in: " + (t2 - t1) + " mS " + owner);
+            LOG.info("Mutable pointers server handled " + method + " request in: " + (t2 - t1) + " mS " + owner + source);
         }
     }
 }
