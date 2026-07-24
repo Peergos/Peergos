@@ -72,7 +72,7 @@ public class IpfsWrapper implements AutoCloseable {
     ).collect(Collectors.joining(","));
 
     private static HttpProtocol.HttpRequestProcessor proxyHandler(io.ipfs.multiaddr.MultiAddress target) {
-        return (s, req, h) -> HttpProtocol.proxyRequest(req, convert(target), h);
+        return (s, req, h) -> HttpProtocol.proxyRequest(req, convert(target), h, s.remotePeerId());
     }
 
     private static SocketAddress convert(io.ipfs.multiaddr.MultiAddress target) {
