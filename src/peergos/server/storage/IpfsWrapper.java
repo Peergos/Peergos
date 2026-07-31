@@ -438,7 +438,11 @@ public class IpfsWrapper implements AutoCloseable {
         InetSocketAddress localAPIAddress = new InetSocketAddress(apiAddress.getHost(), apiAddress.getPort());
 
         int maxConnectionQueue = 500;
-        int handlerThreads = 50;
+        // An in-flight handler owns its inbound socket for as long as it runs, and a proxy handler
+        // waiting on an unreachable peer runs for a long time, so this is really a cap on open
+        // descriptors. It has to be a cap: without one, a peer that stops answering turns every
+        // arriving request into another permanently held descriptor until the node runs out.
+        int handlerThreads = args.getInt("ipfs-api-handler-threads", 1000);
         LOG.info("Starting Nabu API server at " + apiAddress.getHost() + ":" + localAPIAddress.getPort());
         try {
             if (config.metrics.enabled) {
@@ -448,7 +452,7 @@ public class IpfsWrapper implements AutoCloseable {
 
             ipfsWrapper.apiServer = HttpServer.create(localAPIAddress, maxConnectionQueue);
             ipfsWrapper.apiServer.createContext(APIHandler.API_URL, new PeerAPIHandler(ipfsWrapper.embeddedIpfs));
-            ipfsWrapper.apiServer.setExecutor(Threads.newPool(handlerThreads, "Nabu-api-handler-"));
+            ipfsWrapper.apiServer.setExecutor(Threads.newBoundedPool(handlerThreads, "Nabu-api-handler-"));
             ipfsWrapper.apiServer.start();
 
             io.ipfs.multiaddr.MultiAddress p2pAddress = config.addresses.gatewayAddress;
@@ -458,7 +462,7 @@ public class IpfsWrapper implements AutoCloseable {
             ipfsWrapper.p2pServer.createContext(HttpProxyService.API_URL, new HttpProxyHandler(
                     new HttpProxyService(ipfsWrapper.embeddedIpfs.node, ipfsWrapper.embeddedIpfs.p2pHttp.get(),
                             ipfsWrapper.embeddedIpfs.dht)));
-            ipfsWrapper.p2pServer.setExecutor(Threads.newPool(handlerThreads, "Nabu-proxy-handler-"));
+            ipfsWrapper.p2pServer.setExecutor(Threads.newBoundedPool(handlerThreads, "Nabu-proxy-handler-"));
             ipfsWrapper.p2pServer.start();
         } catch (IOException ioe) {
             throw new IllegalStateException("Unable to start Server: " + ioe);

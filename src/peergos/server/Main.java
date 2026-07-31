@@ -65,6 +65,14 @@ import java.util.stream.Stream;
 import static peergos.server.net.SyncConfigHandler.SYNC_CONFIG_FILENAME;
 
 public class Main extends Builder {
+
+    static {
+        // Has to happen before the first HttpServer is created anywhere in the process, because the
+        // JDK reads these once in a static initialiser. A static block on Main is the earliest point
+        // every entry path shares - main() is bypassed by tests, which start servers directly.
+        Threads.boundHttpServerExchanges();
+    }
+
     public static final String PEERGOS_PATH = "PEERGOS_PATH";
     public static final Path DEFAULT_PEERGOS_DIR_PATH =
             Paths.get(System.getProperty("user.home"), ".peergos");
@@ -725,7 +733,8 @@ public class Main extends Builder {
                     InetSocketAddress localAPIAddress = new InetSocketAddress("localhost", port);
                     List<String> appSubdomains = Arrays.asList("markup-viewer,calendar,code-editor,pdf".split(","));
                     int connectionBacklog = 50;
-                    int handlerPoolSize = 4;
+                    // a concurrency cap rather than a thread count: requests past it are refused
+                    int handlerPoolSize = 1000;
                     server.initAndStart(localAPIAddress, Arrays.asList(), Optional.empty(), Optional.empty(),
                             Collections.emptyList(), Collections.emptyList(), appSubdomains, true,
                             Optional.empty(), Optional.empty(), Optional.empty(), true, false,
@@ -1040,7 +1049,7 @@ public class Main extends Builder {
             Optional<UserService.TlsProperties> tlsProps =
                     tlsHostname.map(host -> new UserService.TlsProperties(host, a.getArg("tls.keyfile.password")));
             int maxConnectionQueue = a.getInt("max-connection-queue", 500);
-            int handlerThreads = a.getInt("handler-threads", 50);
+            int handlerThreads = a.getInt("handler-threads", 1000);
             Optional<String> basicAuth = a.getOptionalArg("basic-auth");
             List<String> blockstoreDomains = S3Config.getBlockstoreDomains(a);
             Optional<String> paymentDomain = a.getOptionalArg("payment-domain");
@@ -1170,7 +1179,7 @@ public class Main extends Builder {
             InetSocketAddress localAddress = new InetSocketAddress(domain, webPort);
             boolean isPublicServer = a.getBoolean("public-server", false);
             int maxConnectionQueue = a.getInt("max-connection-queue", 500);
-            int handlerThreads = a.getInt("handler-threads", 50);
+            int handlerThreads = a.getInt("handler-threads", 1000);
             gateway.initAndStart(localAddress, isPublicServer, maxConnectionQueue, handlerThreads);
             return gateway;
         } catch (Exception ex) {
