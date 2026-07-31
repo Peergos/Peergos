@@ -286,9 +286,27 @@ public class JSONParser
         for (int i=0; i<s.length(); i++)
         {
             char ch = s.charAt(i);
-            if ((ch == '"') || (ch == '\\'))
-                buf.append('\\');
-            buf.append(ch);
+            switch (ch)
+            {
+                case '"': buf.append("\\\""); break;
+                case '\\': buf.append("\\\\"); break;
+                case '\n': buf.append("\\n"); break;
+                case '\r': buf.append("\\r"); break;
+                case '\t': buf.append("\\t"); break;
+                case '\b': buf.append("\\b"); break;
+                case '\f': buf.append("\\f"); break;
+                default:
+                    if (ch < 0x20)
+                    {
+                        String hex = Integer.toHexString(ch);
+                        buf.append("\\u");
+                        for (int pad = hex.length(); pad < 4; pad++)
+                            buf.append('0');
+                        buf.append(hex);
+                    }
+                    else
+                        buf.append(ch);
+            }
         }
         buf.append('"');
     }
