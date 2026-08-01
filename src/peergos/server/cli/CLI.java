@@ -593,21 +593,32 @@ public class CLI implements Runnable {
         Path remotePath = resolvedRemotePath(pathToShare);
 
         Stat stat = checkPath(remotePath);
-        // TODO
-        if (stat.fileProperties().isDirectory)
-            throw new IllegalStateException("Directory is not supported");
+        boolean isDirectory = stat.fileProperties().isDirectory;
+        String type = isDirectory ? "directory" : "file";
 
         String userToGrantReadAccess = cmd.secondArgument();
         Set<String> followerUsernames = cliContext.userContext.getFollowerNames().join();
         if (!followerUsernames.contains(userToGrantReadAccess))
-            return "File not shared: specified-user " + userToGrantReadAccess + " is not following you";
+            return capitalise(type) + " not shared: specified-user " + userToGrantReadAccess + " is not following you";
         try {
             cliContext.userContext.shareReadAccessWith(remotePath, new HashSet<>(Arrays.asList(userToGrantReadAccess))).join();
         } catch (Exception ex) {
             ex.printStackTrace();
-            return "Failed not share file";
+            return "Failed to share " + type + " '" + remotePath + "': " + errorMessage(ex);
         }
-        return "Shared read-access to '" + remotePath + "' with " + userToGrantReadAccess;
+        return "Shared read-access to " + type + " '" + remotePath + "' with " + userToGrantReadAccess
+                + (isDirectory ? ", including everything it contains." : "");
+    }
+
+    private static String capitalise(String s) {
+        return Character.toUpperCase(s.charAt(0)) + s.substring(1);
+    }
+
+    /** The message of the underlying failure, unwrapping the future's completion exception.
+     */
+    private static String errorMessage(Throwable t) {
+        Throwable cause = t instanceof CompletionException && t.getCause() != null ? t.getCause() : t;
+        return cause.getMessage() == null ? cause.toString() : cause.getMessage();
     }
 
     public String follow(ParsedCommand cmd) {

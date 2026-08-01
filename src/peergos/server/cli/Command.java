@@ -22,7 +22,7 @@ public enum Command {
     get_follow_requests("Show the users that have sent you a follow request."),
     process_follow_request("Accept or reject a pending follow-request.", "process_follow_request pending-follower accept|accept-and-reciprocate|reject", Argument.PENDING_FOLLOW_REQUEST, Argument.PROCESS_FOLLOW_REQUEST),
     follow("Send a follow-request to another user.", "follow user", Argument.USERNAME),
-    share_read("Grant read access for a file to another user.", "share_read remote-path user", Argument.REMOTE_FILE, Argument.FOLLOWER),
+    share_read("Grant read access for a file or directory to another user.", "share_read remote-path user", Argument.REMOTE_FILE, Argument.FOLLOWER),
     passwd("Update your password."),
     cd("change (remote) directory.", "cd <remote-path>", Argument.REMOTE_DIR),
     lcd("change (local) directory.", "lcd local-path", Argument.LOCAL_DIR),
