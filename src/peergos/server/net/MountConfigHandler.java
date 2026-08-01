@@ -318,10 +318,6 @@ public class MountConfigHandler implements HttpHandler {
         }
     }
 
-    private static boolean isLinux() {
-        return System.getProperty("os.name", "").toLowerCase().contains("linux");
-    }
-
     private static void openInFileExplorer(String mountPoint) throws IOException {
         // Android isn't handled here — the host app exposes a JS bridge
         // (MainActivity.openMountInFiles) that fires a SAF browse intent with the
@@ -405,10 +401,7 @@ public class MountConfigHandler implements HttpHandler {
                 String peergosUsername = (String) body.get("peergosUsername");
                 String peergosPassword = (String) body.get("peergosPassword");
                 boolean autoMount = body.get("autoMount") instanceof Boolean ? (Boolean) body.get("autoMount") : true;
-                // gvfs's dav backend (used by the Linux gio-mount path) rejects the mount as
-                // "Location is not mountable" under digest auth — webdavMountReadWrite in
-                // WebdavTests only exercises basic auth on Linux for exactly this reason.
-                String authType = isLinux() ? "basic" : "digest";
+                String authType = "digest";
                 String webdavUsername = generateToken();
                 String webdavPassword = generateToken();
                 int webdavPort = findFreePort();
