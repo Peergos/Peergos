@@ -10,6 +10,7 @@ public enum Command {
     help("Show this help."),
     exit("Disconnect."),
     get("Download a file.", "get remote-path <local path>", Set.of(Flag.SKIP_EXISTING), Argument.REMOTE_FILE, Argument.LOCAL_FILE),
+    cat("Print the contents of a remote file.", "cat remote-path", Argument.REMOTE_FILE),
     mkdir("Create a directory", "mkdir dir-name", Argument.REMOTE_DIR),
     put("Upload a file or folder.", "put <--skip-existing> local-path <remote-path> ", Set.of(Flag.SKIP_EXISTING), Argument.LOCAL_FILE, Argument.REMOTE_FILE),
     ls("List contents of a remote directory.", "ls <path>", Argument.REMOTE_FILE),

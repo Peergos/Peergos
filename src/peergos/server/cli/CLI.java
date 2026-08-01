@@ -33,6 +33,8 @@ import peergos.shared.util.*;
 
 import java.io.*;
 import java.net.*;
+import java.nio.*;
+import java.nio.charset.*;
 import java.nio.file.*;
 import java.time.Instant;
 import java.time.LocalDateTime;
@@ -116,6 +118,7 @@ public class CLI implements Runnable {
 
     private static final char PASSWORD_MASK = '*';
     private static final String PROMPT = " > ";
+    private static final int CAT_BUFFER_SIZE = 32 * 1024;
 
     static String formatHelp() {
         StringBuilder sb = new StringBuilder();
@@ -144,6 +147,8 @@ public class CLI implements Runnable {
                     return lls(parsedCommand);
                 case get:  // download
                     return get(parsedCommand, terminal.writer());
+                case cat:
+                    return cat(parsedCommand, terminal.writer());
                 case put:  //upload
                     return put(parsedCommand, terminal.writer());
                 case mkdir:
@@ -307,6 +312,48 @@ public class CLI implements Runnable {
                 writerForProgress.flush();
             }
         }
+    }
+
+    public String cat(ParsedCommand cmd, PrintWriter writer) throws IOException {
+        if (! cmd.hasArguments())
+            throw new IllegalStateException("Usage: " + Command.cat.example());
+
+        Path remotePath = resolvedRemotePath(cmd.firstArgument()).toAbsolutePath().normalize();
+        Stat stat = checkPath(remotePath);
+        if (stat.fileProperties().isDirectory)
+            throw new IllegalStateException("'" + remotePath + "' is a directory.");
+
+        writeTextTo(peergosFileSystem.reader(remotePath), stat.fileProperties().size, writer, CAT_BUFFER_SIZE);
+        return "";
+    }
+
+    /** Stream the first fileSize bytes of reader to writer, decoded as UTF-8.
+     */
+    public static void writeTextTo(AsyncReader reader, long fileSize, PrintWriter writer, int bufferSize) {
+        // decode incrementally so a multi-byte character spanning two reads survives
+        CharsetDecoder decoder = StandardCharsets.UTF_8.newDecoder()
+                .onMalformedInput(CodingErrorAction.REPLACE)
+                .onUnmappableCharacter(CodingErrorAction.REPLACE);
+        byte[] buf = new byte[bufferSize];
+        ByteBuffer bytes = ByteBuffer.allocate(buf.length + 8);
+        CharBuffer chars = CharBuffer.allocate(buf.length + 8);
+        for (long offset = 0; offset < fileSize;) {
+            int read = reader.readIntoArray(buf, 0, Math.min(buf.length, (int) (fileSize - offset))).join();
+            offset += read;
+            bytes.put(buf, 0, read);
+            bytes.flip();
+            decoder.decode(bytes, chars, offset == fileSize);
+            bytes.compact();
+            chars.flip();
+            writer.write(chars.toString());
+            chars.clear();
+        }
+        if (fileSize > 0) { // a decoder that has never decoded anything cannot be flushed
+            decoder.flush(chars);
+            chars.flip();
+            writer.write(chars.toString());
+        }
+        writer.flush();
     }
 
     private static List<String> convert(Path p) {
