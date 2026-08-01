@@ -968,7 +968,7 @@ public class Main extends Builder {
             ContentAddressedStorageProxy proxingDht = new ContentAddressedStorageProxy.HTTP(p2pHttpProxy);
             LRUCache<PublicKeyHash, Boolean> nonLocal = new LRUCache<>(100);
             ContentAddressedStorage p2pDht = new ContentAddressedStorage.Proxying(filteringDht, proxingDht, nodeIds,
-                    core, allowNonLocalLinks, owner -> {
+                    core, allowNonLocalLinks, true, owner -> {
                 synchronized (nonLocal) {
                     if (nonLocal.containsKey(owner))
                         return true;
@@ -977,6 +977,21 @@ public class Main extends Builder {
                 if (! isLocal) {
                     synchronized (nonLocal) {
                         nonLocal.put(owner, true);
+                    }
+                }
+                return isLocal;
+            });
+            LRUCache<PublicKeyHash, Boolean> nonLocalP2p = new LRUCache<>(100);
+            ContentAddressedStorage p2pInboundStorage = new ContentAddressedStorage.Proxying(filteringDht, proxingDht, nodeIds,
+                    core, allowNonLocalLinks, false, owner -> {
+                synchronized (nonLocalP2p) {
+                    if (nonLocalP2p.containsKey(owner))
+                        return true;
+                }
+                boolean isLocal = userQuotas.getQuota(core.getUsername(owner).join()) > 0;
+                if (! isLocal) {
+                    synchronized (nonLocalP2p) {
+                        nonLocalP2p.put(owner, true);
                     }
                 }
                 return isLocal;
@@ -1005,6 +1020,7 @@ public class Main extends Builder {
             boolean allowExternalLogin = a.getBoolean("allow-external-login", !isPublicServer);
             LocalOnlyAccount verifyingAccount = new LocalOnlyAccount(new VerifyingAccount(p2pAccount, core, localStorage), userQuotas, allowExternalLogin);
             ContentAddressedStorage cachingStorage = new AuthedCachingStorage(p2pDht, blockAuth, hasher, blockCacheSize, maxCachedBlockSize);
+            ContentAddressedStorage p2pInboundCachingStorage = new AuthedCachingStorage(p2pInboundStorage, blockAuth, hasher, blockCacheSize, maxCachedBlockSize);
 
             ProxyingBatCave p2pBats = new ProxyingBatCave(nodeIds, core, batStore, new HttpBatCave(p2pHttpProxy, p2pHttpProxy));
             ServerMessageStore serverMessages = new ServerMessageStore(getDBConnector(a, "server-messages-sql-file", dbConnectionPool),
@@ -1035,7 +1051,7 @@ public class Main extends Builder {
             UserService localAPI = new UserService(cachingStorage, p2pBats, crypto, corePropagator, verifyingAccount,
                     p2pSocial, p2mMutable, storageAdmin, p2pSpaceUsage, serverMessages, gc, Optional.of(sync), noConfigApi,
                     Optional.of(new MountConfigHandler(mountPropsDaemon)));
-            UserService p2pAPI = new UserService(cachingStorage, p2pBats, crypto, corePropagator, verifyingAccount,
+            UserService p2pAPI = new UserService(p2pInboundCachingStorage, p2pBats, crypto, corePropagator, verifyingAccount,
                     p2pSocial, p2mMutable, storageAdmin, p2pSpaceUsage, serverMessages, gc, Optional.empty(), noConfigApi, Optional.empty());
             InetSocketAddress localAPIAddress = userAPIAddress;
             InetSocketAddress p2pAPIAddress = new InetSocketAddress("localhost", localP2PApi.getTCPPort());
