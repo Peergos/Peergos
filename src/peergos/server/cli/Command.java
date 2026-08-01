@@ -24,6 +24,7 @@ public enum Command {
     follow("Send a follow-request to another user.", "follow user", Argument.USERNAME),
     share_read("Grant read access for a file or directory to another user.", "share_read remote-path user", Argument.REMOTE_FILE, Argument.FOLLOWER),
     share_write("Grant write access for a file or directory to another user.", "share_write remote-path user", Argument.REMOTE_FILE, Argument.FOLLOWER),
+    make_public("Make a file or directory readable by anyone.", "make_public remote-path", Argument.REMOTE_FILE),
     passwd("Update your password."),
     cd("change (remote) directory.", "cd <remote-path>", Argument.REMOTE_DIR),
     lcd("change (local) directory.", "lcd local-path", Argument.LOCAL_DIR),

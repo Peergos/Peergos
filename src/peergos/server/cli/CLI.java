@@ -178,6 +178,8 @@ public class CLI implements Runnable {
                     return shareReadAccess(parsedCommand);
                 case share_write:
                     return shareWriteAccess(parsedCommand);
+                case make_public:
+                    return makePublic(parsedCommand);
                 case cd:
                     return cd(parsedCommand);
                 case lcd:
@@ -621,6 +623,39 @@ public class CLI implements Runnable {
         }
         return "Shared " + access + "-access to " + type + " '" + remotePath + "' with " + userToGrantAccess
                 + (isDirectory ? ", including everything it contains." : "");
+    }
+
+    public String makePublic(ParsedCommand cmd) {
+
+        if (! cmd.hasArguments())
+            throw new IllegalStateException("Usage: " + Command.make_public.example());
+
+        Path remotePath = resolvedRemotePath(cmd.firstArgument()).toAbsolutePath().normalize();
+
+        Stat stat = checkPath(remotePath);
+        boolean isDirectory = stat.fileProperties().isDirectory;
+        String type = isDirectory ? "directory" : "file";
+
+        if (! cliContext.username.equals(stat.user()))
+            return capitalise(type) + " not published: only the owner (" + stat.user() + ") can make it public";
+        try {
+            FileWrapper file = cliContext.userContext.getByPath(remotePath).join()
+                    .orElseThrow(() -> new IllegalStateException("Could not find " + remotePath));
+            cliContext.userContext.makePublic(file).join();
+        } catch (Exception ex) {
+            ex.printStackTrace();
+            return "Failed to publish " + type + " '" + remotePath + "': " + errorMessage(ex);
+        }
+        return "Made " + type + " '" + remotePath + "' public"
+                + (isDirectory ? ", including everything it contains." : ".")
+                + "\nAnyone can now read it at " + publicUrl(remotePath);
+    }
+
+    private String publicUrl(Path remotePath) {
+        String server = cliContext.serverURL.endsWith("/") ?
+                cliContext.serverURL.substring(0, cliContext.serverURL.length() - 1) :
+                cliContext.serverURL;
+        return server + "/public" + remotePath;
     }
 
     private static String capitalise(String s) {
