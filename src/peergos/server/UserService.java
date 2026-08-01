@@ -316,12 +316,12 @@ public class UserService {
         }
         addHandler(localhostServer, tlsServer, UI_URL, handler, basicAuth, local, host, nodeIds, true);
 
-        ExecutorService executor = Threads.newPool(handlerPoolSize, "api-handler-");
+        ExecutorService executor = Threads.newBoundedPool(handlerPoolSize, "api-handler-");
         localhostServer.setExecutor(executor);
         localhostServer.start();
 
         if (tlsServer != null) {
-            tlsServer.setExecutor(Threads.newPool(handlerPoolSize, "api-handler-"));
+            tlsServer.setExecutor(Threads.newBoundedPool(handlerPoolSize, "api-handler-"));
             tlsServer.start();
         }
 
