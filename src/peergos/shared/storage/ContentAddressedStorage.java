@@ -753,6 +753,8 @@ public interface ContentAddressedStorage {
 
         @Override
         public CompletableFuture<EncryptedCapability> getSecretLink(SecretLink link) {
+            if (! allowNonlocalP2p)
+                return local.getSecretLink(link);
             PublicKeyHash owner = link.owner;
             if (! allowNonLocalLinks && ! isLocal.apply(owner))
                 throw new IllegalStateException("Please use the link owner's server");
@@ -765,6 +767,8 @@ public interface ContentAddressedStorage {
 
         @Override
         public CompletableFuture<LinkCounts> getLinkCounts(String owner, LocalDateTime after, BatWithId mirrorBat) {
+            if (! allowNonlocalP2p)
+                return local.getLinkCounts(owner, after, mirrorBat);
             return core.getPublicKeyHash(owner)
                     .thenCompose(id -> Proxy.redirectCall(core,
                             ourNodeIds,
@@ -799,9 +803,6 @@ public interface ContentAddressedStorage {
 
         @Override
         public CompletableFuture<Optional<Integer>> getSize(PublicKeyHash owner, Multihash block) {
-            if (! allowNonlocalP2p && ! isLocal.apply(owner))
-                throw new IllegalStateException("Retrieve blocks from user's server or a mirror");
-
             return local.getSize(owner, block);
         }
 

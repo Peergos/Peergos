@@ -971,12 +971,12 @@ public class Main extends Builder {
                     core, allowNonLocalLinks, true, owner -> {
                 synchronized (nonLocal) {
                     if (nonLocal.containsKey(owner))
-                        return true;
+                        return nonLocal.get(owner);
                 }
                 boolean isLocal = userQuotas.getQuota(core.getUsername(owner).join()) > 0;
                 if (! isLocal) {
                     synchronized (nonLocal) {
-                        nonLocal.put(owner, true);
+                        nonLocal.put(owner, isLocal);
                     }
                 }
                 return isLocal;
@@ -986,13 +986,11 @@ public class Main extends Builder {
                     core, allowNonLocalLinks, false, owner -> {
                 synchronized (nonLocalP2p) {
                     if (nonLocalP2p.containsKey(owner))
-                        return true;
+                        return nonLocalP2p.get(owner);
                 }
                 boolean isLocal = userQuotas.getQuota(core.getUsername(owner).join()) > 0;
-                if (! isLocal) {
-                    synchronized (nonLocalP2p) {
-                        nonLocalP2p.put(owner, true);
-                    }
+                synchronized (nonLocalP2p) {
+                    nonLocalP2p.put(owner, isLocal);
                 }
                 return isLocal;
             });
