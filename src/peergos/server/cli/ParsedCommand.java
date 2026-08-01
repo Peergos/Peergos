@@ -19,7 +19,7 @@ public class ParsedCommand {
         boolean inEscape = false;
         for (int i=0; i < args.size(); i++) {
             String arg = args.get(i);
-            if (arg.startsWith("--")) {
+            if (arg.startsWith("-") && arg.length() > 1) {
                 flags.add(arg);
                 continue;
             }
@@ -47,6 +47,10 @@ public class ParsedCommand {
             else
                 arguments.add(arg);
         }
+    }
+
+    public boolean hasFlag(Command.Flag flag) {
+        return flag.isPresentIn(flags);
     }
 
     public boolean hasArguments() {

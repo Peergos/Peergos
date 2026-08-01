@@ -39,6 +39,7 @@ import java.nio.file.*;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.*;
@@ -119,6 +120,7 @@ public class CLI implements Runnable {
     private static final char PASSWORD_MASK = '*';
     private static final String PROMPT = " > ";
     private static final int CAT_BUFFER_SIZE = 32 * 1024;
+    private static final DateTimeFormatter MODIFIED_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
 
     static String formatHelp() {
         StringBuilder sb = new StringBuilder();
@@ -197,15 +199,46 @@ public class CLI implements Runnable {
 
         String pathArg = cmd.hasArguments() ? cmd.firstArgument() : "";
         Path path = resolvedRemotePath(pathArg);
+        boolean longFormat = cmd.hasFlag(Command.Flag.LONG);
 
         Stat stat = checkPath(path);
-        if (stat.fileProperties().isDirectory)
-            return peergosFileSystem.ls(path, false).stream()
-                .map(Path::toString)
+        if (! stat.fileProperties().isDirectory)
+            return longFormat ? formatLong(stat) : path.toString();
+
+        if (longFormat)
+            return peergosFileSystem.lsStats(path, false).stream()
+                    .sorted(Comparator.comparing(s -> s.fileProperties().name))
+                    .map(CLI::formatLong)
+                    .collect(Collectors.joining("\n"));
+
+        return peergosFileSystem.ls(path, false).stream()
+                .map(p -> p.getFileName().toString())
                 .sorted()
                 .collect(Collectors.joining("\n"));
+    }
 
-        return path.toString();
+    public static String formatLong(Stat stat) {
+        FileProperties props = stat.fileProperties();
+        return String.format("%s%s%s  %9s  %s  %s",
+                props.isDirectory ? "d" : "-",
+                stat.isReadable() ? "r" : "-",
+                stat.isWritable() ? "w" : "-",
+                props.isDirectory ? "-" : formatSize(props.size),
+                props.modified.format(MODIFIED_FORMAT),
+                props.name + (props.isDirectory ? "/" : ""));
+    }
+
+    public static String formatSize(long bytes) {
+        if (bytes < 1024)
+            return bytes + " B";
+        String[] units = {"KiB", "MiB", "GiB", "TiB"};
+        double size = bytes;
+        int unit = -1;
+        while (size >= 1024 && unit < units.length - 1) {
+            size /= 1024;
+            unit++;
+        }
+        return String.format(size < 10 ? "%.1f %s" : "%.0f %s", size, units[unit]);
     }
 
     public String lls(ParsedCommand cmd) {
@@ -752,6 +785,15 @@ public class CLI implements Runnable {
                             cmd.flags.stream()
                             .map(f -> new Completers.OptDesc(f.flag, f.flag))
                             .collect(Collectors.toList()), 1)
+            );
+        }
+        else if (cmd.firstArg != null && ! cmd.flags.isEmpty()) {
+            return new ArgumentCompleter(
+                    new StringsCompleter(cmd.name()),
+                    new Completers.OptionCompleter(List.of(getCompleter(cmd.firstArg), NullCompleter.INSTANCE),
+                            cmd.flags.stream()
+                                    .map(f -> new Completers.OptDesc(f.flag, f.flag))
+                                    .collect(Collectors.toList()), 1)
             );
         }
         else if (cmd.firstArg !=  null) {

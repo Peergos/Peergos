@@ -65,6 +65,14 @@ public interface FileSystem {
         return ls(path, true);
     }
 
+    /** The same listing as ls, but including each child's properties.
+     */
+    default List<Stat> lsStats(Path path, boolean showHidden) {
+        return ls(path, showHidden).stream()
+                .map(this::stat)
+                .collect(Collectors.toList());
+    }
+
     default void walk(Path path, Consumer<Path> func)  {
         FileProperties fileProperties = stat(path).fileProperties();
 

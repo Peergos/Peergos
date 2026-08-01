@@ -3,7 +3,9 @@ package peergos.server.cli;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.List;
 import java.util.Set;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 public enum Command {
@@ -13,7 +15,7 @@ public enum Command {
     cat("Print the contents of a remote file.", "cat remote-path", Argument.REMOTE_FILE),
     mkdir("Create a directory", "mkdir dir-name", Argument.REMOTE_DIR),
     put("Upload a file or folder.", "put <--skip-existing> local-path <remote-path> ", Set.of(Flag.SKIP_EXISTING), Argument.LOCAL_FILE, Argument.REMOTE_FILE),
-    ls("List contents of a remote directory.", "ls <path>", Argument.REMOTE_FILE),
+    ls("List contents of a remote directory.", "ls <-l> <path>", Set.of(Flag.LONG), Argument.REMOTE_FILE),
     lls("List contents of a local directory.", "lls <path>", Argument.LOCAL_FILE),
     rm("Remove a remote-file.", "rm remote-path", Argument.REMOTE_FILE),
     space("Show used remote space."),
@@ -110,12 +112,19 @@ public enum Command {
 
     public enum Flag {
         SKIP_EXISTING("--skip-existing"),
-        RESUME_UPLOAD("--resume-upload");
+        RESUME_UPLOAD("--resume-upload"),
+        LONG("-l", "--long");
 
         public final String flag;
+        private final List<String> aliases;
 
-        Flag(String flag) {
+        Flag(String flag, String... aliases) {
             this.flag = flag;
+            this.aliases = Stream.concat(Stream.of(flag), Stream.of(aliases)).collect(Collectors.toList());
+        }
+
+        public boolean isPresentIn(Set<String> suppliedFlags) {
+            return aliases.stream().anyMatch(suppliedFlags::contains);
         }
     }
 

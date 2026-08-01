@@ -94,6 +94,17 @@ public class PeergosFileSystemImpl implements FileSystem {
     }
 
     @Override
+    public List<Stat> lsStats(Path path, boolean showHidden) {
+        // the children already carry their properties, so don't stat each one again
+        return getPath(path).getChildren(userContext.crypto.hasher, userContext.network)
+                .join()
+                .stream()
+                .filter(e -> showHidden || ! e.getFileProperties().isHidden)
+                .map(PeergosFileSystemImpl::stat)
+                .collect(Collectors.toList());
+    }
+
+    @Override
     public void grant(Path path, String user, Permission permission) {
         Set<String> userSet = Stream.of(user).collect(Collectors.toSet());
         switch (permission) {
@@ -123,7 +134,10 @@ public class PeergosFileSystemImpl implements FileSystem {
 
     @Override
     public Stat stat(Path path) {
-        FileWrapper fileWrapper = getPath(path);
+        return stat(getPath(path));
+    }
+
+    private static Stat stat(FileWrapper fileWrapper) {
         return new Stat() {
             @Override
             public boolean isReadable() {
