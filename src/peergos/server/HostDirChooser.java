@@ -1,6 +1,7 @@
 package peergos.server;
 
 import java.io.BufferedReader;
+import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -13,6 +14,11 @@ public interface HostDirChooser {
     CompletableFuture<String> chooseDir();
 
     class Flatpak implements HostDirChooser {
+        /** Zenity's exit code when the user closes the dialog without choosing anything. */
+        private static final int CANCELLED = 1;
+        /** The shell's exit code for a command that isn't installed. */
+        private static final int COMMAND_NOT_FOUND = 127;
+
         @Override
         public CompletableFuture<String> chooseDir() {
             CompletableFuture<String> res = new CompletableFuture<>();
@@ -30,18 +36,50 @@ public interface HostDirChooser {
                         "--title=Select folder to sync with Peergos"
                 );
                 Process p = pb.start();
-                BufferedReader r = new BufferedReader(new InputStreamReader(p.getInputStream()));
-                String selectedDir = r.readLine();
-                p.waitFor();
+                // drain stderr on another thread so a chatty toolkit can't fill the pipe and block us
+                StringBuilder stderr = new StringBuilder();
+                Thread errorDrain = drain(p.getErrorStream(), stderr);
+                String selectedDir;
+                try (BufferedReader r = new BufferedReader(new InputStreamReader(p.getInputStream()))) {
+                    selectedDir = r.readLine();
+                }
+                int exitCode = p.waitFor();
+                errorDrain.join();
 
                 if (selectedDir != null && !selectedDir.isEmpty()) {
                     persistFlatpakPermission(selectedDir);
                     res.complete(selectedDir);
+                } else if (exitCode == 0 || exitCode == CANCELLED) {
+                    res.complete(""); // the user closed the picker without choosing a folder
+                } else {
+                    res.completeExceptionally(new IllegalStateException(pickerFailure(exitCode, stderr.toString())));
                 }
             } catch (Exception e) {
                 res.completeExceptionally(e);
             }
             return res;
+        }
+
+        private static String pickerFailure(int exitCode, String stderr) {
+            String detail = stderr.isBlank() ? "" : " (" + stderr.trim() + ")";
+            if (exitCode == COMMAND_NOT_FOUND)
+                return "Couldn't open the folder picker: zenity isn't installed on the host system." +
+                        " Install it and try again, e.g. 'sudo apt install zenity' or 'sudo pacman -S zenity'." + detail;
+            return "Couldn't open the folder picker: zenity exited with code " + exitCode + "." +
+                    " Check that zenity is installed and working on the host system." + detail;
+        }
+
+        private static Thread drain(InputStream in, StringBuilder into) {
+            Thread t = new Thread(() -> {
+                try (BufferedReader r = new BufferedReader(new InputStreamReader(in))) {
+                    String line;
+                    while ((line = r.readLine()) != null)
+                        into.append(line).append("\n");
+                } catch (Exception ignored) {}
+            });
+            t.setDaemon(true);
+            t.start();
+            return t;
         }
 
         /**
