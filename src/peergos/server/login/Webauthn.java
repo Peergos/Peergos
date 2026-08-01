@@ -23,14 +23,13 @@ public class Webauthn {
     public static class Verifier implements Authenticator, Cborable {
 
         private final AttestedCredentialData credData;
-        private final AttestationStatement statement;
         private long signCount;
 
-        public Verifier(AttestedCredentialData credData, AttestationStatement statement, long signCount) {
-            if (!(statement instanceof NoneAttestationStatement))
-                throw new IllegalStateException("Attested keys not supported!");
+        // We never use the attestation statement, so we don't retain it. Keys without a batch attestation
+        // certificate, e.g. a Nitrokey, use self attestation, which the browser doesn't replace with a none
+        // attestation, so we must accept those as well.
+        public Verifier(AttestedCredentialData credData, long signCount) {
             this.credData = credData;
-            this.statement = statement;
             this.signCount = signCount;
         }
 
@@ -54,7 +53,7 @@ public class Webauthn {
             SortedMap<String, Cborable> state = new TreeMap<>();
             CborConverter cborConverter = new ObjectConverter().getCborConverter();
             state.put("d", new CborObject.CborByteArray(cborConverter.writeValueAsBytes(credData)));
-            state.put("s", new CborObject.CborByteArray(cborConverter.writeValueAsBytes((statement))));
+            state.put("s", new CborObject.CborByteArray(cborConverter.writeValueAsBytes(new NoneAttestationStatement())));
             state.put("c", new CborObject.CborLong(signCount));
             return CborObject.CborMap.build(state);
         }
@@ -69,9 +68,8 @@ public class Webauthn {
                 CborObject cb = CborObject.fromByteArray(s);
                 if (! (cb instanceof CborObject.CborMap && ((CborObject.CborMap) cb).keySet().isEmpty()))
                     throw new IllegalStateException("Unsupported Webauthn Attestation type");
-                AttestationStatement statement = new NoneAttestationStatement();
                 long signCount = ((CborObject.CborMap) cbor).getLong("c");
-                return new Verifier(credData, statement, signCount);
+                return new Verifier(credData, signCount);
             } catch (Exception e) {
                 return fromLegacyCbor(cbor);
             }
@@ -98,9 +96,8 @@ public class Webauthn {
                         new AAGUID(aguid),
                         credentialId,
                         new EC2COSEKey(null, COSEAlgorithmIdentifier.ES256, null, Curve.SECP256R1, x, y, null));
-                AttestationStatement statement = new NoneAttestationStatement();
                 long signCount = ((CborObject.CborMap) cbor).getLong("c");
-                return new Verifier(credData, statement, signCount);
+                return new Verifier(credData, signCount);
             }
             AttestedCredentialData credData = new AttestedCredentialData(AAGUID.ZERO,
                     Arrays.copyOfRange(rawD, 1059, 1059+128 + (rawD.length - 1187)),
@@ -108,9 +105,8 @@ public class Webauthn {
             byte[] rawS = ((CborObject.CborMap) cbor).getByteArray("s");
             if (! Arrays.equals(rawS, NO_ATTESTATION))
                 throw new IllegalStateException("Unknown webauthn attestation type!");
-            AttestationStatement statement = new NoneAttestationStatement();
             long signCount = ((CborObject.CborMap) cbor).getLong("c");
-            return new Verifier(credData, statement, signCount);
+            return new Verifier(credData, signCount);
         }
     }
 
@@ -148,7 +144,6 @@ public class Webauthn {
 
         return new Verifier(
                 registrationData.getAttestationObject().getAuthenticatorData().getAttestedCredentialData(),
-                registrationData.getAttestationObject().getAttestationStatement(),
                 registrationData.getAttestationObject().getAuthenticatorData().getSignCount()
         );
     }
