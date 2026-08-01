@@ -893,7 +893,8 @@ public class CLI implements Runnable {
                 writer.println("Passwords don't match!");
                 System.exit(0);
             }
-            writer.println("Enter any signup token (or press enter if none):");
+            writer.println("Enter a signup token, or press enter if this server doesn't require one.");
+            writer.println("(An admin of the server can create one with: java -jar Peergos.jar quota token create)");
             String token = reader.readLine(PROMPT).trim();;
 
             UserContext userContext = UserContext.signUp(username, password, token, Optional.empty(), s -> {},
