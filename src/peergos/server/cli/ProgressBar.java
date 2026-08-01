@@ -14,6 +14,7 @@ public class ProgressBar {
     private final Path relativePath;
     private final String filename;
     private long accumulatedBytes;
+    private boolean started;
     private int animationPosition;
 
     public ProgressBar(AtomicLong currentFile, AtomicLong totalFiles, Path relativePath, String filename) {
@@ -35,7 +36,10 @@ public class ProgressBar {
 
     private String progressBar(long bytes, long  total) {
         accumulatedBytes += bytes;
-        int barsProgressed = (int) (accumulatedBytes * PROGRESS_BAR_LENGTH / total);
+        // an empty file has nothing to transfer, so it is immediately complete
+        int barsProgressed = total <= 0 ?
+                PROGRESS_BAR_LENGTH :
+                (int) Math.min(PROGRESS_BAR_LENGTH, accumulatedBytes * PROGRESS_BAR_LENGTH / total);
 
         StringBuilder sb = new StringBuilder();
         sb.append('[');
@@ -51,7 +55,8 @@ public class ProgressBar {
 
     private String format(long bytes, long total) {
         StringBuilder sb =  new StringBuilder("\r");
-        if (accumulatedBytes == 0) {
+        if (! started) {
+            started = true;
             sb.append("\n");
             currentFile.incrementAndGet();
         }
