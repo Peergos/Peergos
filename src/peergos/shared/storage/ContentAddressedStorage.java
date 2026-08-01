@@ -753,11 +753,11 @@ public interface ContentAddressedStorage {
 
         @Override
         public CompletableFuture<EncryptedCapability> getSecretLink(SecretLink link) {
-            if (! allowNonlocalP2p)
-                return local.getSecretLink(link);
             PublicKeyHash owner = link.owner;
             if (! allowNonLocalLinks && ! isLocal.apply(owner))
                 throw new IllegalStateException("Please use the link owner's server");
+            if (! allowNonlocalP2p)
+                return local.getSecretLink(link);
             return Proxy.redirectCall(core,
                     ourNodeIds,
                     link.owner,
