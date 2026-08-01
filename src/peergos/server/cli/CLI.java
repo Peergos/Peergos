@@ -176,6 +176,8 @@ public class CLI implements Runnable {
 //                case share:
                 case share_read:
                     return shareReadAccess(parsedCommand);
+                case share_write:
+                    return shareWriteAccess(parsedCommand);
                 case cd:
                     return cd(parsedCommand);
                 case lcd:
@@ -585,6 +587,14 @@ public class CLI implements Runnable {
 
 
     public String shareReadAccess(ParsedCommand cmd) {
+        return shareAccess(cmd, FileSystem.Permission.READ);
+    }
+
+    public String shareWriteAccess(ParsedCommand cmd) {
+        return shareAccess(cmd, FileSystem.Permission.WRITE);
+    }
+
+    private String shareAccess(ParsedCommand cmd, FileSystem.Permission permission) {
 
         if (!cmd.hasSecondArgument())
             throw new IllegalStateException();
@@ -595,18 +605,21 @@ public class CLI implements Runnable {
         Stat stat = checkPath(remotePath);
         boolean isDirectory = stat.fileProperties().isDirectory;
         String type = isDirectory ? "directory" : "file";
+        String access = permission == FileSystem.Permission.READ ? "read" : "write";
 
-        String userToGrantReadAccess = cmd.secondArgument();
+        String userToGrantAccess = cmd.secondArgument();
         Set<String> followerUsernames = cliContext.userContext.getFollowerNames().join();
-        if (!followerUsernames.contains(userToGrantReadAccess))
-            return capitalise(type) + " not shared: specified-user " + userToGrantReadAccess + " is not following you";
+        if (!followerUsernames.contains(userToGrantAccess))
+            return capitalise(type) + " not shared: specified-user " + userToGrantAccess + " is not following you";
+        if (permission == FileSystem.Permission.WRITE && ! cliContext.username.equals(stat.user()))
+            return capitalise(type) + " not shared: only the owner (" + stat.user() + ") can grant write access";
         try {
-            cliContext.userContext.shareReadAccessWith(remotePath, new HashSet<>(Arrays.asList(userToGrantReadAccess))).join();
+            peergosFileSystem.grant(remotePath, userToGrantAccess, permission);
         } catch (Exception ex) {
             ex.printStackTrace();
             return "Failed to share " + type + " '" + remotePath + "': " + errorMessage(ex);
         }
-        return "Shared read-access to " + type + " '" + remotePath + "' with " + userToGrantReadAccess
+        return "Shared " + access + "-access to " + type + " '" + remotePath + "' with " + userToGrantAccess
                 + (isDirectory ? ", including everything it contains." : "");
     }
 
