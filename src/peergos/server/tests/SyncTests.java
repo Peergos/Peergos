@@ -693,4 +693,42 @@ public class SyncTests {
         Snapshot s = synced.getSnapshot("/some/dir");
         Assert.assertTrue(s.equals(original));
     }
+
+    @Test
+    public void syncStatusAggregation() {
+        // no pairs configured => nothing to report, rather than "all good"
+        Assert.assertEquals(SyncStatus.NONE, SyncStatus.aggregate(Collections.emptyList(), false));
+        Assert.assertEquals(SyncStatus.NONE, SyncStatus.aggregate(Collections.emptyList(), true));
+
+        Assert.assertEquals(SyncStatus.SYNCED, SyncStatus.aggregate(List.of(SyncStatus.SYNCED, SyncStatus.SYNCED), false));
+        Assert.assertEquals(SyncStatus.SYNCING, SyncStatus.aggregate(List.of(SyncStatus.SYNCED, SyncStatus.SYNCING), false));
+        // an error anywhere wins over a sync in progress
+        Assert.assertEquals(SyncStatus.ERROR, SyncStatus.aggregate(List.of(SyncStatus.SYNCING, SyncStatus.ERROR), false));
+        // a global error with all pairs happy still reports an error
+        Assert.assertEquals(SyncStatus.ERROR, SyncStatus.aggregate(List.of(SyncStatus.SYNCED), true));
+    }
+
+    @Test
+    public void pairStatusState() throws IOException {
+        Path peergosDir = Files.createTempDirectory("peergos-sync-test");
+        String hash = "1234";
+        PairStatus status = new PairStatus(peergosDir, hash);
+        Assert.assertEquals(SyncStatus.SYNCED, status.getStatus());
+
+        status.setStatus("Syncing /local to+from /remote");
+        status.setStatus(SyncStatus.SYNCING);
+        Assert.assertEquals(SyncStatus.SYNCING, status.getStatus());
+
+        // the state survives a round trip through disk
+        Assert.assertEquals(SyncStatus.SYNCING, new PairStatus(peergosDir, hash).getStatus());
+        status.setStatus(SyncStatus.ERROR);
+        Assert.assertEquals(SyncStatus.ERROR, new PairStatus(peergosDir, hash).getStatus());
+
+        // a status file written by an older version has no state, and defaults to SYNCED
+        Path file = PairStatus.statusPath(peergosDir, hash);
+        Files.write(file, "{\"msg\":\"Dir sync took 3s\",\"error\":\"\",\"time\":\"2026-07-17T11:04:22\"}".getBytes(StandardCharsets.UTF_8));
+        PairStatus old = new PairStatus(peergosDir, hash);
+        Assert.assertEquals(SyncStatus.SYNCED, old.getStatus());
+        Assert.assertEquals("Dir sync took 3s", old.getMessage());
+    }
 }
