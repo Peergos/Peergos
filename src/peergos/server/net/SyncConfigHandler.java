@@ -9,6 +9,7 @@ import peergos.server.sync.PairLogger;
 import peergos.server.sync.PairStatus;
 import peergos.server.sync.SyncConfig;
 import peergos.server.sync.SyncRunner;
+import peergos.server.sync.SyncStatus;
 import peergos.server.util.Args;
 import peergos.server.util.HttpUtil;
 import peergos.server.util.Logging;
@@ -293,12 +294,11 @@ public class SyncConfigHandler implements HttpHandler {
                 resp.write(res);
                 exchange.close();
             } else if (action.equals("status")) {
-                LinkedHashMap<Object, Object> reply = new LinkedHashMap<>();
-                reply.put("msg", syncer.getStatusHolder().getStatusAndTime());
-                Optional<String> error = syncer.getStatusHolder().getError();
-                error.ifPresent(err -> reply.put("error", err));
+                SyncRunner.StatusHolder global = syncer.getStatusHolder();
+                Optional<String> error = global.getError();
                 SyncConfig cfg = getUpdatedArgs();
                 List<Object> pairs = new ArrayList<>();
+                List<SyncStatus> pairStates = new ArrayList<>();
                 for (int i = 0; i < cfg.links.size(); i++) {
                     String link = cfg.links.get(i);
                     String label = link.substring(link.lastIndexOf("/", link.indexOf("#")) + 1, link.indexOf("#"));
@@ -307,9 +307,16 @@ public class SyncConfigHandler implements HttpHandler {
                     LinkedHashMap<String, Object> p = new LinkedHashMap<>();
                     p.put("label", label);
                     p.put("msg", ps.getStatusAndTime());
+                    p.put("state", ps.getStatus().name());
                     ps.getError().ifPresent(err -> p.put("error", err));
                     pairs.add(p);
+                    pairStates.add(ps.getStatus());
                 }
+                LinkedHashMap<Object, Object> reply = new LinkedHashMap<>();
+                reply.put("msg", global.getStatusAndTime());
+                boolean globalError = error.isPresent() || global.getStatus() == SyncStatus.ERROR;
+                reply.put("state", SyncStatus.aggregate(pairStates, globalError).name());
+                error.ifPresent(err -> reply.put("error", err));
                 reply.put("pairs", pairs);
                 byte[] res = JSONParser.toString(reply).getBytes(StandardCharsets.UTF_8);
                 exchange.sendResponseHeaders(200, res.length);

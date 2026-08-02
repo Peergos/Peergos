@@ -227,6 +227,7 @@ public class DirectorySync {
         while (true) {
             LOG.accept("Syncing " + links.size() + " pairs of directories: " + IntStream.range(0, links.size()).mapToObj(i -> Arrays.asList(localDirs.get(i), linkPaths.get(i))).collect(Collectors.toList()));
             boolean errored = false;
+            status.setStatus(SyncStatus.SYNCING);
             for (int i=0; i < links.size(); i++) {
                 SyncState syncedState = null;
                 PairLogger pairLog = pairLoggers.get(i);
@@ -246,6 +247,7 @@ public class DirectorySync {
                     Path remoteDir = PathUtil.get(linkPaths.get(i));
                     syncedState = syncedStates.get(i).get();
                     perPairLog.accept("Syncing " + localDir + " to+from " + remoteDir);
+                    pairStatus.setStatus(SyncStatus.SYNCING);
                     long t0 = System.currentTimeMillis();
                     String username = remoteDir.getName(0).toString();
                     PublicKeyHash owner = network.coreNode.getPublicKeyHash(username).join().get();
@@ -256,6 +258,7 @@ public class DirectorySync {
                         perPairLog.accept(isFlatpak ?
                                 "Restart Peergos to start syncing " + localDirs.get(i) :
                                 "Local dir does not exist! Please remove and recreate the sync.");
+                        pairStatus.setStatus(SyncStatus.ERROR);
                         errored = true;
                     } else {
                         SyncFilesystem local = localBuilder.apply(localDirs.get(i));
@@ -265,6 +268,7 @@ public class DirectorySync {
                         long t1 = System.currentTimeMillis();
                         perPairLog.accept("Dir sync took " + (t1 - t0) / 1000 + "s");
                         pairStatus.setError(null);
+                        pairStatus.setStatus(SyncStatus.SYNCED);
                     }
                 } catch (Exception e) {
                     errored = true;
@@ -272,6 +276,7 @@ public class DirectorySync {
                     if (pairLog != null)
                         pairLog.error(e.getMessage());
                     pairStatus.setError(e.getMessage());
+                    pairStatus.setStatus(SyncStatus.ERROR);
                     e.printStackTrace();
                     DirectorySync.LOG.log(Level.WARNING, e, e::getMessage);
                 } finally {
@@ -283,6 +288,7 @@ public class DirectorySync {
                         }
                 }
             }
+            status.setStatus(errored ? SyncStatus.ERROR : SyncStatus.SYNCED);
             if (!errored)
                 ERROR.accept(null);
             if (oneRun)

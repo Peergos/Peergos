@@ -18,8 +18,10 @@ public class DesktopApp {
 
         try {
             if (flatpak) {
+                // The window hides to the tray when closed, so this only exits
+                // when the user picks "Close Peergos" (or has no tray at all).
                 ProcessBuilder pb = new ProcessBuilder(
-                        "flatpak.sh",
+                        "peergos-window",
                         Integer.toString(port)
                 );
                 pb.inheritIO();

@@ -37,6 +37,7 @@ public interface SyncRunner {
         private String status;
         private LocalDateTime updateTime;
         private Optional<String> error = Optional.empty();
+        private SyncStatus state = SyncStatus.SYNCED;
         private final AtomicBoolean cancelled = new AtomicBoolean(false);
 
         public synchronized void cancel() {
@@ -60,6 +61,14 @@ public interface SyncRunner {
             this.error = error == null || error.isEmpty() ?
                     Optional.empty() :
                     Optional.of(error);
+        }
+
+        public synchronized void setStatus(SyncStatus newState) {
+            state = newState;
+        }
+
+        public synchronized SyncStatus getStatus() {
+            return state;
         }
 
         public synchronized String getStatusAndTime() {

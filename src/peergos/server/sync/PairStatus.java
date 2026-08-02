@@ -21,6 +21,7 @@ public class PairStatus {
     private String status;
     private LocalDateTime updateTime;
     private Optional<String> error = Optional.empty();
+    private SyncStatus state = SyncStatus.SYNCED;
 
     public PairStatus(Path peergosDir, String pairHash) {
         this.pairHash = pairHash;
@@ -47,6 +48,9 @@ public class PairStatus {
             updateTime = t == null ? null : LocalDateTime.parse(t.toString(), TS);
             Object e = json.get("error");
             error = e == null || e.toString().isEmpty() ? Optional.empty() : Optional.of(e.toString());
+            // status files written by older versions have no state
+            Object s = json.get("state");
+            state = SyncStatus.parseOrDefault(s == null ? null : s.toString(), SyncStatus.SYNCED);
         } catch (Exception ex) {
             // Corrupt or unreadable status file — start fresh, don't crash sync.
             System.err.println("Failed to load sync status " + file + ": " + ex.getMessage());
@@ -62,6 +66,15 @@ public class PairStatus {
     public synchronized void setError(String err) {
         error = err == null || err.isEmpty() ? Optional.empty() : Optional.of(err);
         persist();
+    }
+
+    public synchronized void setStatus(SyncStatus newState) {
+        state = newState;
+        persist();
+    }
+
+    public synchronized SyncStatus getStatus() {
+        return state;
     }
 
     public synchronized String getStatusAndTime() {
@@ -88,6 +101,7 @@ public class PairStatus {
             LinkedHashMap<String, Object> json = new LinkedHashMap<>();
             json.put("msg", status == null ? "" : status);
             json.put("error", error.orElse(""));
+            json.put("state", state.name());
             json.put("time", updateTime == null ? "" : updateTime.format(TS));
             byte[] bytes = JSONParser.toString(json).getBytes(StandardCharsets.UTF_8);
             Path tmp = file.resolveSibling(file.getFileName() + ".tmp");
