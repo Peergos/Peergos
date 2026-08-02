@@ -648,7 +648,7 @@ public interface ContentAddressedStorage {
         private final ContentAddressedStorageProxy p2p;
         private final List<Cid> ourNodeIds;
         private final CoreNode core;
-        private final boolean allowNonLocalLinks;
+        private final boolean allowNonLocalLinks, allowNonlocalP2p;
         private final Function<PublicKeyHash, Boolean> isLocal;
 
         public Proxying(ContentAddressedStorage local,
@@ -656,18 +656,20 @@ public interface ContentAddressedStorage {
                         List<Cid> ourNodeIds,
                         CoreNode core,
                         boolean allowNonLocalLinks,
+                        boolean allowNonlocalP2p,
                         Function<PublicKeyHash, Boolean> isLocal) {
             this.local = local;
             this.p2p = p2p;
             this.ourNodeIds = ourNodeIds;
             this.core = core;
             this.allowNonLocalLinks = allowNonLocalLinks;
+            this.allowNonlocalP2p = allowNonlocalP2p;
             this.isLocal = isLocal;
         }
 
         @Override
         public ContentAddressedStorage directToOrigin() {
-            return new Proxying(local.directToOrigin(), p2p, ourNodeIds, core, allowNonLocalLinks, isLocal);
+            return new Proxying(local.directToOrigin(), p2p, ourNodeIds, core, allowNonLocalLinks, allowNonlocalP2p, isLocal);
         }
 
         @Override
@@ -687,6 +689,9 @@ public interface ContentAddressedStorage {
 
         @Override
         public CompletableFuture<String> linkHost(PublicKeyHash owner) {
+            if (! allowNonlocalP2p)
+                return local.linkHost(owner);
+
             return Proxy.redirectCall(core,
                     ourNodeIds,
                     owner,
@@ -712,6 +717,9 @@ public interface ContentAddressedStorage {
 
         @Override
         public CompletableFuture<TransactionId> startTransaction(PublicKeyHash owner) {
+            if (! allowNonlocalP2p)
+                return local.startTransaction(owner);
+
             return Proxy.redirectCall(core,
                     ourNodeIds,
                     owner,
@@ -721,6 +729,9 @@ public interface ContentAddressedStorage {
 
         @Override
         public CompletableFuture<Boolean> closeTransaction(PublicKeyHash owner, TransactionId tid) {
+            if (! allowNonlocalP2p)
+                return local.closeTransaction(owner, tid);
+
             return Proxy.redirectCall(core,
                     ourNodeIds,
                     owner,
@@ -730,6 +741,9 @@ public interface ContentAddressedStorage {
 
         @Override
         public CompletableFuture<List<byte[]>> getChampLookup(PublicKeyHash owner, Cid root, List<ChunkMirrorCap> caps, Optional<Cid> committedRoot) {
+            if (! allowNonlocalP2p)
+                return local.getChampLookup(owner, root, caps, committedRoot);
+
             return Proxy.redirectCall(core,
                     ourNodeIds,
                     owner,
@@ -742,6 +756,8 @@ public interface ContentAddressedStorage {
             PublicKeyHash owner = link.owner;
             if (! allowNonLocalLinks && ! isLocal.apply(owner))
                 throw new IllegalStateException("Please use the link owner's server");
+            if (! allowNonlocalP2p)
+                return local.getSecretLink(link);
             return Proxy.redirectCall(core,
                     ourNodeIds,
                     link.owner,
@@ -751,6 +767,8 @@ public interface ContentAddressedStorage {
 
         @Override
         public CompletableFuture<LinkCounts> getLinkCounts(String owner, LocalDateTime after, BatWithId mirrorBat) {
+            if (! allowNonlocalP2p)
+                return local.getLinkCounts(owner, after, mirrorBat);
             return core.getPublicKeyHash(owner)
                     .thenCompose(id -> Proxy.redirectCall(core,
                             ourNodeIds,
@@ -761,6 +779,9 @@ public interface ContentAddressedStorage {
 
         @Override
         public CompletableFuture<Optional<CborObject>> get(PublicKeyHash owner, Cid object, Optional<BatWithId> bat) {
+            if (! allowNonlocalP2p)
+                return local.get(owner, object, bat);
+
             return Proxy.redirectCall(core,
                     ourNodeIds,
                     owner,
@@ -770,6 +791,9 @@ public interface ContentAddressedStorage {
 
         @Override
         public CompletableFuture<Optional<byte[]>> getRaw(PublicKeyHash owner, Cid object, Optional<BatWithId> bat) {
+            if (! allowNonlocalP2p)
+                return local.getRaw(owner, object, bat);
+
             return Proxy.redirectCall(core,
                     ourNodeIds,
                     owner,
@@ -793,6 +817,9 @@ public interface ContentAddressedStorage {
                                                 List<byte[]> signedHashes,
                                                 List<byte[]> blocks,
                                                 TransactionId tid) {
+            if (! allowNonlocalP2p && ! isLocal.apply(owner))
+                throw new IllegalStateException("Write blocks to user's server");
+
             return Proxy.redirectCall(core,
                     ourNodeIds,
                     owner,
@@ -807,6 +834,9 @@ public interface ContentAddressedStorage {
                                                    List<byte[]> blocks,
                                                    TransactionId tid,
                                                    ProgressConsumer<Long> progressConsumer) {
+            if (! allowNonlocalP2p && ! isLocal.apply(owner))
+                throw new IllegalStateException("Write blocks to user's server");
+
             return Proxy.redirectCall(core,
                     ourNodeIds,
                     owner,
