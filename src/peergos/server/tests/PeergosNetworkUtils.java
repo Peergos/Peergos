@@ -4,6 +4,7 @@ import org.junit.Assert;
 import peergos.server.*;
 import peergos.server.apps.email.*;
 import peergos.server.storage.ResetableFileInputStream;
+import peergos.server.tests.util.*;
 import peergos.shared.Crypto;
 import peergos.shared.NetworkAccess;
 import peergos.shared.crypto.hash.*;
@@ -495,7 +496,7 @@ public class PeergosNetworkUtils {
                     .findAny();
             assertTrue("Shared file present via root.getChildren()", sharedFile.isPresent());
         }
-        MultiUserTests.checkUserValidity(sharerNode, sharerUsername);
+        UserValidity.checkUserValidity(sharerNode, sharerUsername);
 
         UserContext userToUnshareWith = shareeUsers.stream().findFirst().get();
 
@@ -567,7 +568,7 @@ public class PeergosNetworkUtils {
 
         byte[] expected = ArrayOps.concat(ArrayOps.concat(originalFileContents, suffix), suffix2);
         equalArrays(newFileContents2, expected);
-        MultiUserTests.checkUserValidity(sharerNode, sharerUsername);
+        UserValidity.checkUserValidity(sharerNode, sharerUsername);
     }
 
     public static void equalArrays(byte[] a, byte[] b) {
@@ -996,7 +997,7 @@ public class PeergosNetworkUtils {
             Assert.assertTrue("Correct children", sharedChildNames.equals(childNames));
         }
 
-        MultiUserTests.checkUserValidity(sharerNode, sharerUsername);
+        UserValidity.checkUserValidity(sharerNode, sharerUsername);
 
         UserContext updatedSharer = PeergosNetworkUtils.ensureSignedUp(sharerUsername, sharerPassword, sharerNode.clear(), crypto);
 
@@ -1047,7 +1048,7 @@ public class PeergosNetworkUtils {
                 Assert.assertTrue("Correct children", sharedChildNames.equals(childNames));
             }
         }
-        MultiUserTests.checkUserValidity(sharerNode, sharerUsername);
+        UserValidity.checkUserValidity(sharerNode, sharerUsername);
     }
 
     public static void grantAndRevokeNestedDirWriteAccess(NetworkAccess network,
@@ -1121,7 +1122,7 @@ public class PeergosNetworkUtils {
                 .collect(Collectors.toSet());
         Assert.assertTrue("Correct children", sharedChildNames.equals(childNames));
 
-        MultiUserTests.checkUserValidity(network, sharer.username);
+        UserValidity.checkUserValidity(network, sharer.username);
 
         UserContext updatedSharer = PeergosNetworkUtils.ensureSignedUp(sharer.username, password, network.clear(), crypto);
 
@@ -1168,7 +1169,7 @@ public class PeergosNetworkUtils {
                 .collect(Collectors.toSet());
         Assert.assertTrue("Correct children", childNamesAgain.equals(childNames));
 
-        MultiUserTests.checkUserValidity(network, sharer.username);
+        UserValidity.checkUserValidity(network, sharer.username);
     }
 
     public static void grantAndRevokeParentNestedWriteAccess(NetworkAccess network,
@@ -1445,7 +1446,7 @@ public class PeergosNetworkUtils {
                 .collect(Collectors.toSet());
         Assert.assertTrue("Correct children", sharedChildNames.equals(childNames));
 
-        MultiUserTests.checkUserValidity(network, sharer.username);
+        UserValidity.checkUserValidity(network, sharer.username);
 
         Set<AbsoluteCapability> childCaps = getAllChildCaps(sharer.getByPath(dirPath).join().get(), network);
         Assert.assertTrue("Correct number of child caps on dir", childCaps.size() == 22);
@@ -1484,7 +1485,7 @@ public class PeergosNetworkUtils {
         Optional<FileWrapper> subdirAgain = otherUser.getByPath(subdirPath).join();
         Assert.assertTrue("Shared folder present via direct path", subdirAgain.isPresent());
 
-        MultiUserTests.checkUserValidity(network, sharer.username);
+        UserValidity.checkUserValidity(network, sharer.username);
     }
 
     public static void socialFeed(NetworkAccess network, Random random) {

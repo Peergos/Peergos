@@ -410,7 +410,7 @@ public abstract class UserTests {
         PublicKeyHash initialIdentity = keyPairs.left;
         String newPassword = "newPassword";
         UserContext updated = userContext.changePassword(password, newPassword, UserTests::noMfa).join();
-        MultiUserTests.checkUserValidity(network, username);
+        UserValidity.checkUserValidity(network, username);
 
         Pair<PublicKeyHash, PublicBoxingKey> updatedPairs = updated.getPublicKeys(username).join().get();
         PublicBoxingKey newBoxer = updatedPairs.right;
@@ -422,7 +422,7 @@ public abstract class UserTests {
         // change it again
         String password3 = "pass3";
         changedPassword.changePassword(newPassword, password3, UserTests::noMfa).get();
-        MultiUserTests.checkUserValidity(network, username);
+        UserValidity.checkUserValidity(network, username);
         PeergosNetworkUtils.ensureSignedUp(username, password3, network, crypto);
     }
 
@@ -451,7 +451,7 @@ public abstract class UserTests {
 
         String newPassword = "newPassword";
         login.changePassword(password, newPassword, UserTests::noMfa).get();
-        MultiUserTests.checkUserValidity(network, username);
+        UserValidity.checkUserValidity(network, username);
 
         List<String> progress2 = new ArrayList<>();
         UserContext changedPassword = UserContext.signIn(username, newPassword, UserTests::noMfa, false, false, network, crypto, progress2::add).join();
@@ -492,7 +492,7 @@ public abstract class UserTests {
 
         String newPassword = "newPassword";
         userContext.changePassword(password, newPassword, UserTests::noMfa).get();
-        MultiUserTests.checkUserValidity(network, username);
+        UserValidity.checkUserValidity(network, username);
 
         List<String> progress2 = new ArrayList<>();
         // changing password also upgrade to PQ
@@ -2107,6 +2107,24 @@ public abstract class UserTests {
         Assert.assertTrue("Quota updated " + updatedQuota + " != 2 * " + quota, updatedQuota == 2 * quota);
     }
 
+    /** The server recalculates a user's usage asynchronously, off a queue of mutable
+     *  pointer events, so the figure it reports lags writes by an unbounded amount
+     *  under a loaded CI machine. checkRawUsage compares that figure against the real
+     *  block sizes for an exact match, so call it in a bounded poll rather than once:
+     *  a genuine accounting bug still fails, but a recalc that simply hasn't run yet
+     *  no longer does. */
+    protected static void checkRawUsageEventually(UserContext context) throws Exception {
+        for (int i = 0; i < 60; i++) {
+            try {
+                UserCleanup.checkRawUsage(context);
+                return;
+            } catch (IllegalStateException e) {
+                Thread.sleep(1_000);
+            }
+        }
+        UserCleanup.checkRawUsage(context);
+    }
+
     @Test
     public void correctUsageAndSpaceRecovery() throws Exception {
         String username = generateUsername();
@@ -2114,15 +2132,14 @@ public abstract class UserTests {
         UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
         long initialUsage = context.getSpaceUsage(false).join();
 
-        UserCleanup.checkRawUsage(context);
+        checkRawUsageEventually(context);
         String filename = "test.bin";
         context.getUserRoot().join().uploadFileJS(filename, AsyncReader.build(new byte[10*1024*1024]),
                 0, 10*1024*1024, true, context.mirrorBatId(), network, crypto, x-> {},
                 context.getTransactionService(), f -> Futures.of(true)).join();
         String dirName = "subdir";
         context.getUserRoot().join().mkdir(dirName, network, false, context.mirrorBatId(), crypto).join();
-        Thread.sleep(5_000); // Allow time for space usage recalculation
-        UserCleanup.checkRawUsage(context);
+        checkRawUsageEventually(context);
 
         // now delete the file and dir
         Path filePath = PathUtil.get(username, filename);
@@ -2137,7 +2154,7 @@ public abstract class UserTests {
             Thread.sleep(1_000);
             finalUsage = context.getSpaceUsage(false).join();
         }
-        UserCleanup.checkRawUsage(context);
+        checkRawUsageEventually(context);
 
         long diff = finalUsage - initialUsage;
         Assert.assertTrue("usage didn't return to initial after delete", diff < 5000);

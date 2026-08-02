@@ -48,15 +48,29 @@ public class TestPorts {
         return acquire(true);
     }
 
+    private static final int MAX_ATTEMPTS = 200;
+
     private static int acquire(boolean needUdp) {
         IOException last = null;
-        for (int attempt = 0; attempt < 50; attempt++) {
+        for (int attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
             try {
                 Integer port = IS_WINDOWS ? acquireCoordinated(needUdp) : acquireLocal(needUdp);
                 if (port != null)
                     return port;
             } catch (IOException e) {
                 last = e;
+            }
+            // Pause before retrying. Without this the whole budget is spent in a
+            // few milliseconds, against a port space that is only ever contended
+            // transiently — the ports another fork has probed but not yet bound,
+            // or that a short-lived OS service is using. Sleeping lets that churn
+            // resolve, and lets a concurrent fork's claim land in the claims file
+            // so we stop probing the same numbers it is about to take.
+            try {
+                Thread.sleep(20);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
             }
         }
         throw new RuntimeException(needUdp
@@ -99,7 +113,6 @@ public class TestPorts {
     }
 
     private static int probeTcpAndUdp() throws IOException {
-        int port;
         // Probe UDP first. Windows' dynamic-port range is shared between TCP
         // and UDP, but UDP is much busier (mDNS, SSDP, NLA, AV agents, Hyper-V
         // excluded ranges) — letting the OS pick from the UDP-free space and
@@ -107,19 +120,22 @@ public class TestPorts {
         // the other way around. Without this, every TCP-free ephemeral port we
         // got back was already in use by some UDP socket and the retry loop
         // ran out without finding a candidate.
-        try (DatagramSocket udp = new DatagramSocket(null)) {
+        //
+        // Both sockets are held open together, and the UDP one is only released
+        // once TCP has been verified on the same number. Closing UDP first left
+        // a window in which another process could take the UDP side of a port we
+        // were about to hand out as free on both.
+        try (DatagramSocket udp = new DatagramSocket(null);
+             ServerSocket tcp = new ServerSocket()) {
             udp.setReuseAddress(true);
             udp.bind(new InetSocketAddress((InetAddress) null, 0));
-            port = udp.getLocalPort();
-        }
-        // Verify TCP on the same number. SO_REUSEADDR matches what netty/libp2p
-        // sets when it eventually binds, so TIME_WAIT and recent-close states
-        // aren't reported as taken.
-        try (ServerSocket tcp = new ServerSocket()) {
+            int port = udp.getLocalPort();
+            // SO_REUSEADDR matches what netty/libp2p sets when it eventually
+            // binds, so TIME_WAIT and recent-close states aren't reported as taken.
             tcp.setReuseAddress(true);
             tcp.bind(new InetSocketAddress((InetAddress) null, port));
+            return port;
         }
-        return port;
     }
 
     /** Reads the claims file, keeping only entries newer than the TTL. */

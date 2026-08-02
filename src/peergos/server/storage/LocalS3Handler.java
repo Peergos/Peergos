@@ -20,6 +20,9 @@ import java.util.stream.*;
 class LocalS3Handler implements HttpHandler {
     private static final String ALGORITHM = "AWS4-HMAC-SHA256";
     private static final String UNSIGNED = "UNSIGNED-PAYLOAD";
+    /** Suffix of the scratch files PUT writes before atomically publishing them.
+     *  Excluded from listings so an in-flight write is never reported as a key. */
+    private static final String TMP_SUFFIX = ".s3-inflight";
 
     private final Path storageRoot;
     private final String bucket;
@@ -95,8 +98,12 @@ class LocalS3Handler implements HttpHandler {
 
     private void handleGet(HttpExchange exchange, String rawPath) throws IOException {
         Path file = keyToPath(rawPath);
-        if (!Files.exists(file)) throw new FileNotFoundException(rawPath);
-        byte[] data = Files.readAllBytes(file);
+        byte[] data;
+        try {
+            data = Files.readAllBytes(file);
+        } catch (NoSuchFileException e) { // may have been deleted since we checked
+            throw new FileNotFoundException(rawPath);
+        }
         exchange.getResponseHeaders().set("Content-Type", "application/octet-stream");
         exchange.getResponseHeaders().set("ETag", "\"" + etag(data) + "\"");
         exchange.sendResponseHeaders(200, data.length);
@@ -105,18 +112,37 @@ class LocalS3Handler implements HttpHandler {
 
     private void handleHead(HttpExchange exchange, String rawPath) throws IOException {
         Path file = keyToPath(rawPath);
-        if (!Files.exists(file)) throw new FileNotFoundException(rawPath);
-        exchange.getResponseHeaders().set("Content-Length", String.valueOf(Files.size(file)));
+        long size;
+        try {
+            size = Files.size(file);
+        } catch (NoSuchFileException e) {
+            throw new FileNotFoundException(rawPath);
+        }
+        exchange.getResponseHeaders().set("Content-Length", String.valueOf(size));
         exchange.sendResponseHeaders(200, -1);
     }
 
     private void handlePut(HttpExchange exchange, String rawPath) throws IOException {
         Path file = keyToPath(rawPath);
-        Files.createDirectories(file.getParent());
         byte[] body = exchange.getRequestBody().readAllBytes();
-        Files.write(file, body);
+        Files.createDirectories(file.getParent());
+        // Publish atomically. Files.write truncates in place, so a GET concurrent with
+        // a re-PUT of the same key could read an empty or half written object — and
+        // since keys here are content hashes, that block would no longer match the hash
+        // it is stored under.
+        Path tmp = Files.createTempFile(file.getParent(), file.getFileName().toString(), TMP_SUFFIX);
+        try {
+            Files.write(tmp, body);
+            try {
+                Files.move(tmp, file, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+            } catch (AtomicMoveNotSupportedException e) {
+                Files.move(tmp, file, StandardCopyOption.REPLACE_EXISTING);
+            }
+        } finally {
+            Files.deleteIfExists(tmp);
+        }
         exchange.getResponseHeaders().set("ETag", "\"" + etag(body) + "\"");
-        exchange.sendResponseHeaders(200, 0);
+        exchange.sendResponseHeaders(200, -1);
         exchange.getResponseBody().close();
     }
 
@@ -173,10 +199,16 @@ class LocalS3Handler implements HttpHandler {
         }
         for (String key : page) {
             Path file = storageRoot.resolve(key);
-            long size = Files.size(file);
-            String modified = Files.getLastModifiedTime(file).toInstant()
-                    .truncatedTo(ChronoUnit.SECONDS).atOffset(ZoneOffset.UTC)
-                    .format(S3_DATE);
+            long size;
+            String modified;
+            try {
+                size = Files.size(file);
+                modified = Files.getLastModifiedTime(file).toInstant()
+                        .truncatedTo(ChronoUnit.SECONDS).atOffset(ZoneOffset.UTC)
+                        .format(S3_DATE);
+            } catch (NoSuchFileException e) { // deleted since we listed it
+                continue;
+            }
             sb.append("<Version>");
             sb.append("<Key>").append(escapeXml(key)).append("</Key>");
             sb.append("<VersionId>null</VersionId>");
@@ -208,10 +240,16 @@ class LocalS3Handler implements HttpHandler {
             sb.append("<NextContinuationToken>").append(escapeXml(page.get(page.size() - 1))).append("</NextContinuationToken>");
         for (String key : page) {
             Path file = storageRoot.resolve(key);
-            long size = Files.size(file);
-            String modified = Files.getLastModifiedTime(file).toInstant()
-                    .truncatedTo(ChronoUnit.SECONDS).atOffset(ZoneOffset.UTC)
-                    .format(S3_DATE);
+            long size;
+            String modified;
+            try {
+                size = Files.size(file);
+                modified = Files.getLastModifiedTime(file).toInstant()
+                        .truncatedTo(ChronoUnit.SECONDS).atOffset(ZoneOffset.UTC)
+                        .format(S3_DATE);
+            } catch (NoSuchFileException e) { // deleted since we listed it
+                continue;
+            }
             sb.append("<Contents>");
             sb.append("<Key>").append(escapeXml(key)).append("</Key>");
             sb.append("<LastModified>").append(modified).append("</LastModified>");
@@ -232,6 +270,7 @@ class LocalS3Handler implements HttpHandler {
             return stream
                     .filter(Files::isRegularFile)
                     .map(p -> storageRoot.relativize(p).toString().replace(File.separatorChar, '/'))
+                    .filter(k -> ! k.endsWith(TMP_SUFFIX))
                     .filter(k -> k.startsWith(prefix))
                     .sorted()
                     .collect(Collectors.toList());
