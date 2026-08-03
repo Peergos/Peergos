@@ -37,6 +37,26 @@ public class MultibaseTests {
     }
 
     @Test
+    public void base36Test() {
+        // a leading byte >= 0x80 gains a sign byte in BigInteger.toByteArray()
+        for (int leadingByte = 0x80; leadingByte <= 0xFF; leadingByte++) {
+            byte[] original = new byte[]{(byte) leadingByte, 0x01};
+            String encoded = Multibase.encode(Multibase.Base.Base36, original);
+            assertArrayEquals(original, Multibase.decode(encoded));
+        }
+    }
+
+    @Test
+    public void zeroBytesBase36() {
+        for (int i=0; i < 32; i++) {
+            String encoded = Multibase.encode(Multibase.Base.Base36, new byte[i]);
+            byte[] output = Multibase.decode(encoded);
+            if (! Arrays.equals(output, new byte[i]))
+                throw new IllegalStateException("Failed to round trip zero array of length " + i);
+        }
+    }
+
+    @Test
     public void base16Test() {
         List<String> examples = Arrays.asList("f234abed8debede",
                 "f87ad873defc2b288",
