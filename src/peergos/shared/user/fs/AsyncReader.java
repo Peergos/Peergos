@@ -59,19 +59,20 @@ public interface AsyncReader extends AutoCloseable {
     default <T> CompletableFuture<Long> parseStreamRecurse(byte[] prefix, Function<Cborable, T> fromCbor, Consumer<T> accumulator, long maxBytesToRead) {
         if (maxBytesToRead == 0)
             return CompletableFuture.completedFuture(0L);
-        byte[] buf = new byte[Chunk.MAX_SIZE];
+        int toRead = (int) Math.min(Chunk.MAX_SIZE - prefix.length, maxBytesToRead);
+        byte[] buf = new byte[prefix.length + toRead];
         System.arraycopy(prefix, 0, buf, 0, prefix.length);
         ByteArrayInputStream in = new ByteArrayInputStream(buf);
-        return readIntoArray(buf, prefix.length, (int) Math.min((long)(buf.length - prefix.length), maxBytesToRead))
+        return readIntoArray(buf, prefix.length, toRead)
                 .thenCompose(bytesRead -> {
-                    for (int localOffset = 0; localOffset < bytesRead;) {
+                    for (int localOffset = 0; localOffset < prefix.length + bytesRead;) {
                         try {
-                            CborObject readObject = CborObject.read(in, bytesRead);
+                            CborObject readObject = CborObject.read(in, prefix.length + bytesRead);
                             accumulator.accept(fromCbor.apply(readObject));
                             localOffset += readObject.toByteArray().length;
                         } catch (RuntimeException e) {
                             int fromThisChunk = localOffset;
-                            return parseStreamRecurse(Arrays.copyOfRange(buf, localOffset, bytesRead), fromCbor, accumulator,
+                            return parseStreamRecurse(Arrays.copyOfRange(buf, localOffset, prefix.length + bytesRead), fromCbor, accumulator,
                                     maxBytesToRead - bytesRead)
                                     .thenApply(rest -> rest + fromThisChunk);
                         }
