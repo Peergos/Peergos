@@ -16,6 +16,7 @@ public class Constants {
     public static final String CONFIG = PEERGOS_API_PREFIX + "config/";
     public static final String SYNC = PEERGOS_API_PREFIX + "sync/";
     public static final String MOUNT = PEERGOS_API_PREFIX + "mount/";
+    public static final String WEBAUTHN = PEERGOS_API_PREFIX + "webauthn/";
 
     public static final String PUBLIC_FILES_URL = "public/";
 }

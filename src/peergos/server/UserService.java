@@ -313,6 +313,11 @@ public class UserService {
                 addHandler(localhostServer, null, "/" + Constants.MOUNT,
                         mount, basicAuth, local, host, nodeIds, false);
             });
+            // the desktop webview has no WebAuthn of its own, so we drive the key here
+            localAppProps.ifPresent(props ->
+                    addHandler(localhostServer, null, "/" + Constants.WEBAUTHN,
+                            new peergos.server.net.WebAuthnHandler(props.currentServerUrl, local.getPort()),
+                            basicAuth, local, host, nodeIds, false));
         }
         addHandler(localhostServer, tlsServer, UI_URL, handler, basicAuth, local, host, nodeIds, true);
 
