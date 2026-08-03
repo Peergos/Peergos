@@ -1480,9 +1480,15 @@ public abstract class UserTests {
 
         // truncate to first chunk
         int truncateLength2 = 1 * 1024 * 1024;
+        Pair<byte[], Optional<Bat>> secondChunkLabel = truncated.getMapKey(6 * 1024 * 1024, network, crypto).join();
         FileWrapper truncated2 = truncated.truncate(truncateLength2, network, crypto).join();
         checkFileContents(Arrays.copyOfRange(data, 0, truncateLength2), truncated2, context);
         Assert.assertTrue("File has correct size", truncated2.getFileProperties().size == truncateLength2);
+        // check we can't get the second chunk any more
+        WritableAbsoluteCapability pointer2 = truncated.writableFilePointer();
+        CommittedWriterData cwd2 = network.synchronizer.getValue(pointer2.owner, pointer2.writer).join().get(pointer2.writer);
+        Optional<CryptreeNode> secondChunk = network.getMetadata(cwd2, pointer2.withMapKey(secondChunkLabel.left, secondChunkLabel.right)).join();
+        Assert.assertTrue("Orphaned chunk is deleted", ! secondChunk.isPresent());
 
         // truncate within first chunk
         int truncateLength3 = 1024 * 1024 / 2;
