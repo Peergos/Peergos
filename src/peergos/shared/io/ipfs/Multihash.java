@@ -159,6 +159,8 @@ public class Multihash implements Comparable<Multihash> {
         int s=0;
         for (int i=0; i < 10; i++) {
             int b = in.read();
+            if (b == -1)
+                throw new EOFException();
             if (b < 0x80) {
                 if (i == 9 && b > 1) {
                     throw new IllegalStateException("Overflow reading varint!");
