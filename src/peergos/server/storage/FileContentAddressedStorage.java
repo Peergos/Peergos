@@ -24,6 +24,7 @@ import peergos.shared.util.*;
 import java.io.*;
 import java.nio.file.*;
 import java.nio.file.attribute.*;
+import java.security.SecureRandom;
 import java.time.*;
 import java.util.*;
 import java.util.concurrent.*;
@@ -43,6 +44,7 @@ public class FileContentAddressedStorage implements DeletableContentAddressedSto
     private final PartitionStatus partitionStatus;
     private final Hasher hasher;
     private final Cid ourId;
+    private final SecureRandom rnd = new SecureRandom();
     private volatile CoreNode pki;
 
     public FileContentAddressedStorage(Path root,
@@ -434,7 +436,9 @@ public class FileContentAddressedStorage implements DeletableContentAddressedSto
                         throw new IllegalStateException("Could not make " + someParent.toString() + ", ancestor of " + parentDir.toString() + " writable");
                 }
             }
-            Files.write(target, data, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.CREATE, StandardOpenOption.WRITE);
+            Path tmp = parent.resolve(target.getFileName() + "-" + rnd.nextInt(Integer.MAX_VALUE) + ".tmp");
+            Files.write(tmp, data, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.CREATE, StandardOpenOption.WRITE);
+            Files.move(tmp, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
         } catch (IOException e) {
             throw new RuntimeException(e.getMessage(), e);
         }
