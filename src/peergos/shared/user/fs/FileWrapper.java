@@ -633,9 +633,17 @@ public class FileWrapper {
                             return originalReader.seek(startOfLastChunk).thenCompose(seekedOriginal -> {
                                 byte[] lastChunk = new byte[(int)(newSize % Chunk.MAX_SIZE)];
                                 return seekedOriginal.readIntoArray(lastChunk, 0, lastChunk.length).thenCompose(read -> {
-                                    if (newSize <= Chunk.MAX_SIZE)
-                                        return CompletableFuture.completedFuture(snapshot);
                                     int currentChunk = (int) (newSize / Chunk.MAX_SIZE);
+                                    if (currentChunk == 0) {
+                                        if (props.chunkCount() <= 1)
+                                            return CompletableFuture.completedFuture(snapshot);
+                                        // chunk 0 is the file's entry point, so start deleting from chunk 1
+                                        return getMapKey(Chunk.MAX_SIZE, network, crypto).thenCompose(secondChunk ->
+                                                IpfsTransaction.call(owner(), tid ->
+                                                                deleteFileChunks(props.streamSecret.get(), props.chunkCount() - 1, writableFilePointer().withMapKey(secondChunk.left, secondChunk.right),
+                                                                        signingPair(), tid, crypto.hasher, network, snapshot, committer),
+                                                        network.dhtClient));
+                                    }
                                     return IpfsTransaction.call(owner(), tid ->
                                                     deleteFileChunks(props.streamSecret.get(), props.chunkCount() - currentChunk, writableFilePointer().withMapKey(endMapKey.left, endMapKey.right),
                                                             signingPair(), tid, crypto.hasher, network, snapshot, committer),
