@@ -3,8 +3,10 @@ package peergos.server.tests;
 import org.junit.*;
 import peergos.shared.cbor.*;
 import peergos.shared.io.ipfs.Multihash;
+import peergos.shared.user.fs.AsyncReader;
 import peergos.shared.util.*;
 
+import java.io.*;
 import java.util.*;
 
 public class CborObjects {
@@ -104,6 +106,27 @@ public class CborObjects {
         list.add(new CborObject.CborBoolean(true));
         CborObject.CborList cborList = new CborObject.CborList(list);
         compatibleAndIdempotentSerialization(cborList);
+    }
+
+    @Test
+    public void parseStreamAcrossChunkBoundary() throws Exception {
+        // these sizes make the second object straddle a Chunk.MAX_SIZE read boundary, which used to
+        // result in the third object being dropped
+        List<CborObject> objects = new ArrayList<>();
+        objects.add(new CborObject.CborByteArray(random(2_000_000)));
+        objects.add(new CborObject.CborByteArray(random(4_000_000)));
+        objects.add(new CborObject.CborByteArray(random(500_000)));
+
+        ByteArrayOutputStream bout = new ByteArrayOutputStream();
+        for (CborObject o : objects)
+            bout.write(o.toByteArray());
+        byte[] serialized = bout.toByteArray();
+
+        List<CborObject> parsed = new ArrayList<>();
+        new AsyncReader.ArrayBacked(serialized).parseStream(c -> (CborObject) c, parsed::add, serialized.length).join();
+
+        Assert.assertEquals("All objects parsed", objects.size(), parsed.size());
+        Assert.assertEquals(objects, parsed);
     }
 
     public void compatibleAndIdempotentSerialization(CborObject value) {
