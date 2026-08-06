@@ -10,8 +10,15 @@ import java.nio.file.Path;
 
 public class DesktopApp {
 
+    /** Set when we were started by the user's login item, and so should come up as a
+     *  tray icon with no window. The GUI host is a separate process on every platform,
+     *  so this has to be handed on to it; each host ignores it if it has no tray, since
+     *  a hidden window with no tray is an app the user cannot reach or quit. */
+    private static final String MINIMISED_ENV = "PEERGOS_MINIMISED";
+
     public static void launch(Args args, int port, URI api) throws IOException {
         boolean flatpak = args.hasArg("flatpak");
+        boolean minimised = args.getBoolean("minimised", false);
         boolean isLinux = "linux".equalsIgnoreCase(System.getProperty("os.name"));
         boolean isWindows = System.getProperty("os.name").toLowerCase().startsWith("windows");
         boolean isMacOS = System.getProperty("os.name").toLowerCase().startsWith("mac");
@@ -24,6 +31,8 @@ public class DesktopApp {
                         "peergos-window",
                         Integer.toString(port)
                 );
+                if (minimised)
+                    pb.environment().put(MINIMISED_ENV, "1");
                 pb.inheritIO();
                 Process p = pb.start();
                 p.onExit().thenAccept(done -> {
@@ -38,6 +47,8 @@ public class DesktopApp {
                 if (webviewExe.toFile().exists()) {
                     ProcessBuilder pb = new ProcessBuilder(webviewExe.toString());
                     pb.environment().put("PEERGOS_PORT", "" + port);
+                    if (minimised)
+                        pb.environment().put(MINIMISED_ENV, "1");
                     pb.inheritIO();
                     Process webviewProcess = pb.start();
                     webviewProcess.onExit().thenAccept(done -> {
@@ -98,6 +109,8 @@ public class DesktopApp {
         }
     }
 
+    // No WebView2, so no tray either: this shows a window even when minimised was asked
+    // for, on the same grounds as the hosts' own degrade gate - visible beats unreachable.
     private static void launchWindowsFallback(int port, URI api) {
         String edgePath = "C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe";
         if (!new File(edgePath).exists())

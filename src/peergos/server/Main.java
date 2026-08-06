@@ -1356,7 +1356,8 @@ public class Main extends Builder {
             },
             Arrays.asList(
                     ARG_SERVER_URL,
-                    new Command.Arg("port", "Localhost server port for app/proxy mode", false, "7777")
+                    new Command.Arg("port", "Localhost server port for app/proxy mode", false, "7777"),
+                    new Command.Arg("minimised", "Start in the tray with no window (used by the login item)", false, "false")
             ),
             Arrays.asList(
                     PEERGOS,
