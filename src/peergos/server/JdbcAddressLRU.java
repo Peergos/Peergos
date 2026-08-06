@@ -35,13 +35,27 @@ public class JdbcAddressLRU implements AddressBook {
     private static final String DELETE = "DELETE FROM addressbook WHERE peerid IN " +
             "(SELECT peerid FROM addressbook ORDER BY lastaccess ASC LIMIT ?);";
 
+    /** A peer legitimately announces a handful of addresses. The LRU bounds how many peers we hold,
+     *  but a peer we keep serving is touched on every read and never evicted, so without this its
+     *  address list grows without limit. */
+    public static final int MAX_ADDRESSES_PER_PEER = 32;
+    public static final long DEFAULT_TTL_MILLIS = 7 * 24 * 3600_000L;
+    /** Separates an address from the time it was last announced. Multiaddrs never contain it. */
+    private static final String TIME_SEPARATOR = "|";
+
     private volatile boolean isClosed;
     private Supplier<Connection> conn;
     private final int maxSize;
+    private final Supplier<Long> time;
 
     public JdbcAddressLRU(int maxSize, Supplier<Connection> conn, SqlSupplier commands) {
+        this(maxSize, conn, commands, System::currentTimeMillis);
+    }
+
+    public JdbcAddressLRU(int maxSize, Supplier<Connection> conn, SqlSupplier commands, Supplier<Long> time) {
         this.maxSize = maxSize;
         this.conn = conn;
+        this.time = time;
         init(commands);
     }
 
@@ -73,19 +87,23 @@ public class JdbcAddressLRU implements AddressBook {
     @NotNull
     @Override
     public CompletableFuture<Void> addAddrs(@NotNull PeerId peerId, long ttl, @NotNull Multiaddr... multiaddrs) {
-        Collection<Multiaddr> existing = getAddrs(peerId).join();
-        HashSet<Multiaddr> updated = new HashSet<>();
-        updated.addAll(existing);
+        Map<Multiaddr, Long> updated = new HashMap<>(readAddrs(peerId));
+        long now = time.get();
         for (Multiaddr addr : multiaddrs) {
-            updated.add(addr);
+            updated.put(addr, now);
         }
-        setAddrs(peerId, 0L, updated.toArray(Multiaddr[]::new));
+        writeAddrs(peerId, updated);
         return Futures.of(null);
     }
 
     @NotNull
     @Override
     public CompletableFuture<Collection<Multiaddr>> getAddrs(@NotNull PeerId peerId) {
+        return Futures.of(new ArrayList<>(readAddrs(peerId).keySet()));
+    }
+
+    /** The addresses we hold for a peer with the time each was last announced, stale ones dropped. */
+    private Map<Multiaddr, Long> readAddrs(@NotNull PeerId peerId) {
         try (Connection conn = getConnection();
              PreparedStatement present = conn.prepareStatement(GET);
              PreparedStatement touch = conn.prepareStatement(TOUCH)) {
@@ -95,15 +113,49 @@ public class JdbcAddressLRU implements AddressBook {
             if (rs.next()) {
                 touch.setString(1, peerId.toBase58());
                 touch.executeUpdate();
-                return Futures.of(Arrays.stream(rs.getString("addresses").split(","))
-                        .map(Multiaddr::new)
-                        .toList());
+                Map<Multiaddr, Long> addrs = parseAddresses(rs.getString("addresses"), time.get());
+                prune(addrs);
+                return addrs;
             } else
-                return Futures.of(Collections.emptySet());
+                return Collections.emptyMap();
         } catch (SQLException sqe) {
             LOG.log(Level.WARNING, sqe.getMessage(), sqe);
             throw new RuntimeException(sqe);
         }
+    }
+
+    /** Addresses stored before they carried a last announced time are treated as just seen, so an
+     *  upgrade doesn't drop a node's whole address book at once. */
+    public static Map<Multiaddr, Long> parseAddresses(String stored, long now) {
+        Map<Multiaddr, Long> res = new HashMap<>();
+        for (String entry : stored.split(",")) {
+            if (entry.isBlank())
+                continue;
+            int split = entry.lastIndexOf(TIME_SEPARATOR);
+            if (split < 0) {
+                res.put(new Multiaddr(entry), now);
+                continue;
+            }
+            try {
+                res.put(new Multiaddr(entry.substring(0, split)), Long.parseLong(entry.substring(split + 1)));
+            } catch (NumberFormatException e) {
+                res.put(new Multiaddr(entry.substring(0, split)), now);
+            }
+        }
+        return res;
+    }
+
+    /** Drop addresses not announced within the ttl, then the oldest of what remains until we are
+     *  within the per peer cap. */
+    private void prune(Map<Multiaddr, Long> addrs) {
+        long cutoff = time.get() - DEFAULT_TTL_MILLIS;
+        addrs.values().removeIf(lastSeen -> lastSeen < cutoff);
+        if (addrs.size() <= MAX_ADDRESSES_PER_PEER)
+            return;
+        List<Map.Entry<Multiaddr, Long>> oldestFirst = new ArrayList<>(addrs.entrySet());
+        oldestFirst.sort(Map.Entry.comparingByValue());
+        for (int i = 0; i < oldestFirst.size() - MAX_ADDRESSES_PER_PEER; i++)
+            addrs.remove(oldestFirst.get(i).getKey());
     }
 
     public int size() {
@@ -132,23 +184,32 @@ public class JdbcAddressLRU implements AddressBook {
     @NotNull
     @Override
     public CompletableFuture<Void> setAddrs(@NotNull PeerId peerId, long ttl, @NotNull Multiaddr... multiaddrs) {
+        long now = time.get();
+        Map<Multiaddr, Long> addrs = new HashMap<>();
+        for (Multiaddr addr : multiaddrs) {
+            addrs.put(addr, now);
+        }
+        writeAddrs(peerId, addrs);
+        return Futures.of(null);
+    }
+
+    private void writeAddrs(@NotNull PeerId peerId, Map<Multiaddr, Long> addrs) {
+        prune(addrs);
         try (Connection conn = getConnection();
              PreparedStatement insert = conn.prepareStatement(SET)) {
             conn.setTransactionIsolation(Connection.TRANSACTION_SERIALIZABLE);
 
             insert.setString(1, peerId.toBase58());
-            insert.setString(2, new String(Arrays.stream(multiaddrs)
-                    .map(a -> a.toString())
-                    .collect(Collectors.joining(","))));
+            insert.setString(2, addrs.entrySet().stream()
+                    .map(e -> e.getKey().toString() + TIME_SEPARATOR + e.getValue())
+                    .collect(Collectors.joining(",")));
             int changed = insert.executeUpdate();
             int size = size();
             if (size > maxSize) {
                 removeOldest(size - maxSize*8/10);
             }
-            return Futures.of(null);
         } catch (SQLException sqe) {
             LOG.log(Level.WARNING, sqe.getMessage(), sqe);
-            return Futures.of(null);
         }
     }
 
@@ -160,11 +221,15 @@ public class JdbcAddressLRU implements AddressBook {
     }
 
     public static JdbcAddressLRU buildSqlite(int maxSize, String db) {
+        return buildSqlite(maxSize, db, System::currentTimeMillis);
+    }
+
+    public static JdbcAddressLRU buildSqlite(int maxSize, String db, Supplier<Long> time) {
         try {
             Connection file = Sqlite.build(db);
             // We need a connection that ignores close
             Connection instance = new Sqlite.UncloseableConnection(file);
-            return new JdbcAddressLRU(maxSize, () -> instance, new SqliteCommands());
+            return new JdbcAddressLRU(maxSize, () -> instance, new SqliteCommands(), time);
         } catch (SQLException e) {
             throw new RuntimeException(e);
         }

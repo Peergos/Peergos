@@ -8,6 +8,7 @@ import peergos.server.JdbcAddressLRU;
 
 import java.util.HashMap;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 
 public class JdbcAddressBookTest {
@@ -37,6 +38,67 @@ public class JdbcAddressBookTest {
         Multiaddr addr2 = new Multiaddr("/ip4/127.0.0.0/tcp/9000");
         lru.addAddrs(peer, 0, addr2);
         Assert.assertEquals(Set.of(addr1, addr2), lru.getAddrs(peer).join().stream().collect(Collectors.toSet()));
+    }
+
+    /** The LRU evicts whole peers, but a peer we keep serving is touched on every read and so is
+     *  never evicted, while its address list only ever grows. Bound it per peer. */
+    @Test
+    public void addressesPerPeerAreBounded() {
+        JdbcAddressLRU lru = JdbcAddressLRU.buildSqlite(10, ":memory:");
+        PeerId peer = PeerId.random();
+        for (int i = 0; i < 500; i++)
+            lru.addAddrs(peer, 0, new Multiaddr("/ip4/8." + (i / 256) + "." + (i % 256) + ".7/tcp/4001"));
+
+        int held = lru.getAddrs(peer).join().size();
+        Assert.assertTrue("held " + held + " addresses for one peer",
+                held <= JdbcAddressLRU.MAX_ADDRESSES_PER_PEER);
+    }
+
+    @Test
+    public void addressesNotSeenRecentlyArePruned() {
+        AtomicLong now = new AtomicLong(1_000_000L);
+        JdbcAddressLRU lru = JdbcAddressLRU.buildSqlite(10, ":memory:", now::get);
+        PeerId peer = PeerId.random();
+        Multiaddr old = new Multiaddr("/ip4/8.1.1.1/tcp/4001");
+        lru.addAddrs(peer, 0, old);
+
+        now.addAndGet(2 * JdbcAddressLRU.DEFAULT_TTL_MILLIS);
+        Multiaddr fresh = new Multiaddr("/ip4/8.2.2.2/tcp/4001");
+        lru.addAddrs(peer, 0, fresh);
+
+        Assert.assertEquals(Set.of(fresh), Set.copyOf(lru.getAddrs(peer).join()));
+    }
+
+    @Test
+    public void reannouncingKeepsAnAddressAlive() {
+        AtomicLong now = new AtomicLong(1_000_000L);
+        JdbcAddressLRU lru = JdbcAddressLRU.buildSqlite(10, ":memory:", now::get);
+        PeerId peer = PeerId.random();
+        Multiaddr addr = new Multiaddr("/ip4/8.1.1.1/tcp/4001");
+
+        for (int i = 0; i < 5; i++) {
+            lru.addAddrs(peer, 0, addr);
+            now.addAndGet(JdbcAddressLRU.DEFAULT_TTL_MILLIS / 2);
+        }
+
+        Assert.assertEquals("a peer that keeps announcing should stay reachable",
+                Set.of(addr), Set.copyOf(lru.getAddrs(peer).join()));
+    }
+
+    /** Rows written before addresses carried a last seen time must still load. */
+    @Test
+    public void legacyRowsWithoutTimestampsAreReadable() {
+        Multiaddr addr1 = new Multiaddr("/ip4/8.1.1.1/tcp/4001");
+        Multiaddr addr2 = new Multiaddr("/ip4/8.2.2.2/tcp/4001");
+        long now = 1234L;
+
+        Assert.assertEquals(Set.of(addr1, addr2),
+                JdbcAddressLRU.parseAddresses(addr1 + "," + addr2, now).keySet());
+        Assert.assertEquals("legacy addresses are treated as just seen",
+                Set.of(now), Set.copyOf(JdbcAddressLRU.parseAddresses(addr1 + "," + addr2, now).values()));
+        Assert.assertEquals("a mix of legacy and timestamped entries still loads",
+                Set.of(addr1, addr2),
+                JdbcAddressLRU.parseAddresses(addr1 + "|500," + addr2, now).keySet());
     }
 
     @Test
