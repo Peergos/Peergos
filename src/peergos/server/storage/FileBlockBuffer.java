@@ -10,7 +10,6 @@ import peergos.shared.util.*;
 
 import java.io.*;
 import java.nio.file.*;
-import java.security.SecureRandom;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.function.*;
@@ -23,7 +22,6 @@ public class FileBlockBuffer implements BlockBuffer {
     private static final Logger LOG = Logging.LOG();
     private final Path root;
     private final UsageStore usage;
-    private final SecureRandom rnd = new SecureRandom();
 
     public FileBlockBuffer(Path root, UsageStore usage) {
         this.root = root;
@@ -117,9 +115,9 @@ public class FileBlockBuffer implements BlockBuffer {
                         throw new IllegalStateException("Could not make " + someParent + ", ancestor of " + parentDir + " writable");
                 }
             }
-            Path tmp = parent.resolve(target.getFileName() + "-" + rnd.nextInt(Integer.MAX_VALUE) + ".tmp");
+            Path tmp = root.resolve(filePath.getFileName().toString() + ".tmp");
             Files.write(tmp, data, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.CREATE, StandardOpenOption.WRITE);
-            Files.move(tmp, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+            Files.move(tmp, target, StandardCopyOption.ATOMIC_MOVE);
             return Futures.of(true);
         } catch (IOException e) {
             throw new RuntimeException(e.getMessage(), e);
