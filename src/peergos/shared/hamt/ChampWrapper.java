@@ -148,10 +148,22 @@ public class ChampWrapper<V extends Cborable> implements ImmutableTree<V>
         Map<ByteArrayWrapper, Optional<V>> expectedMap = new HashMap<>();
         for (Pair<byte[], Optional<V>> p : keysAndExpected)
             expectedMap.put(new ByteArrayWrapper(p.left), p.right);
+        // Use a named method rather than an inline lambda to avoid deep lambda nesting that
+        // causes GWT's Eclipse JDT to OOM during type inference (it copies the source file
+        // once per lambda copy, so nested lambdas cause exponential memory usage).
         return Futures.combineAllInOrder(hashFutures)
-                .thenCompose(keysAndHashes ->
-                    root.left.removeAll(owner, writer, keysAndHashes, expectedMap, 0, BIT_WIDTH,
-                            MAX_HASH_COLLISIONS_PER_LEVEL, mirrorBat, tid, storage, writeHasher, root.right))
+                .thenCompose(khs -> doRemoveAll(khs, expectedMap, owner, writer, mirrorBat, tid));
+    }
+
+    private CompletableFuture<Multihash> doRemoveAll(
+            List<Pair<ByteArrayWrapper, byte[]>> keysAndHashes,
+            Map<ByteArrayWrapper, Optional<V>> expectedMap,
+            PublicKeyHash owner,
+            SigningPrivateKeyAndPublicHash writer,
+            Optional<BatId> mirrorBat,
+            TransactionId tid) {
+        return root.left.removeAll(owner, writer, keysAndHashes, expectedMap, 0, BIT_WIDTH,
+                        MAX_HASH_COLLISIONS_PER_LEVEL, mirrorBat, tid, storage, writeHasher, root.right)
                 .thenCompose(newRoot -> commit(writer, newRoot));
     }
 
