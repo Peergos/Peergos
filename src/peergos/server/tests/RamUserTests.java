@@ -679,6 +679,42 @@ public class RamUserTests extends UserTests {
     }
 
     @Test
+    public void bufferedReaderPartialLastChunk() {
+        String username = generateUsername();
+        String password = "test";
+        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
+        FileWrapper userRoot = context.getUserRoot().join();
+
+        String filename = "partial-last-chunk.bin";
+        int size = 2 * Chunk.MAX_SIZE + 1024 * 1024;
+        byte[] fileData = new byte[size];
+        new Random(42).nextBytes(fileData);
+
+        userRoot.uploadOrReplaceFile(filename, new AsyncReader.ArrayBacked(fileData), fileData.length,
+                context.network, context.crypto, () -> false, l -> {}).join();
+
+        FileWrapper file = context.getByPath(PathUtil.get(username, filename)).join().get();
+        FileProperties props = file.getFileProperties();
+        AsyncReader reader = file.getBufferedInputStream(network, crypto, props.sizeHigh(), props.sizeLow(), 5, l -> {}).join();
+
+        byte[] read = new byte[size];
+        // the first read schedules the prefetch of the remaining chunks, including the short final one
+        reader.readIntoArray(read, 0, 1).join();
+        ForkJoinPool.commonPool().awaitQuiescence(120, TimeUnit.SECONDS);
+
+        Assert.assertEquals(size - 1, (int) reader.readIntoArray(read, 1, size - 1).join());
+        Assert.assertArrayEquals(fileData, read);
+
+        boolean readPastEnd = true;
+        try {
+            reader.readIntoArray(new byte[1], 0, 1).join();
+        } catch (Exception e) {
+            readPastEnd = false;
+        }
+        Assert.assertFalse("Final chunk must not be padded to " + Chunk.MAX_SIZE + " bytes", readPastEnd);
+    }
+
+    @Test
     public void testReuseOfAsyncReader() throws Exception {
 
         String username = generateUsername();

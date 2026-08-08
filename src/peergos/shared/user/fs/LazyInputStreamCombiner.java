@@ -119,7 +119,7 @@ public class LazyInputStreamCombiner implements AsyncReader {
                                         AbsoluteCapability nextChunkCap) {
         for (int i=1; i < finalCount + 1; i++) {
             long lastChunkLen = totalLength % Chunk.MAX_SIZE;
-            int size = lastBufferedChunk / Chunk.MAX_SIZE + i < totalChunks ? Chunk.MAX_SIZE : (int) (lastChunkLen == 0 ? Chunk.MAX_SIZE : lastChunkLen);
+            int size = lastBufferedChunk / Chunk.MAX_SIZE + i < totalChunks - 1 ? Chunk.MAX_SIZE : (int) (lastChunkLen == 0 ? Chunk.MAX_SIZE : lastChunkLen);
             Pair<byte[], Optional<Bat>> mapKey = mapKeys.get(i - 1);
             long chunkOffset = lastBufferedChunk + (i * Chunk.MAX_SIZE);
             if (inProgress.containsKey(chunkOffset) || bufferedChunks.containsKey(chunkOffset))
