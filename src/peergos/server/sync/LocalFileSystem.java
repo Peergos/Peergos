@@ -108,6 +108,12 @@ public class LocalFileSystem implements SyncFilesystem {
     }
 
     @Override
+    public Set<String> getChildNames(Path dir) {
+        String[] names = root.resolve(dir).toFile().list();
+        return names == null ? Set.of() : Set.of(names);
+    }
+
+    @Override
     public void moveTo(Path src, Path target) {
         try {
             Files.createDirectories(root.resolve(target).getParent());

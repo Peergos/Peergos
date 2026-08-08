@@ -690,8 +690,8 @@ public class DirectorySync {
                     if (hasSynced) { // delete
                         if (syncRemoteDeletes) {
                             LOG.accept("Sync local: delete dir " + dirPath);
-                            localFS.delete(localFS.resolve(dirPath));
-                            syncedVersions.removeDir(dirPath);
+                            if (deleteEmptyDir(localFS, localFS.resolve(dirPath), LOG))
+                                syncedVersions.removeDir(dirPath);
                         }
                     } else {
                         LOG.accept("Sync Remote: mkdir " + dirPath);
@@ -702,8 +702,8 @@ public class DirectorySync {
                     if (hasSynced) { // delete
                         if (syncLocalDeletes) {
                             LOG.accept("Sync Remote: delete dir " + dirPath);
-                            remoteFS.delete(remoteFS.resolve(dirPath));
-                            syncedVersions.removeDir(dirPath);
+                            if (deleteEmptyDir(remoteFS, remoteFS.resolve(dirPath), LOG))
+                                syncedVersions.removeDir(dirPath);
                         }
                     } else {
                         LOG.accept("Sync Local: mkdir " + dirPath);
@@ -723,6 +723,32 @@ public class DirectorySync {
                 File remoteState = new File(remoteStatePath);
                 if (remoteState.exists())
                     remoteState.delete();
+            }
+        }
+    }
+
+    /** A dir we have synced as empty can still contain files we never sync, like the .DS_Store the
+     *  Finder creates in any dir it displays, which makes the delete fail. Remove those first.
+     *
+     * @return whether the dir was deleted
+     */
+    private static boolean deleteEmptyDir(SyncFilesystem fs, Path dir, Consumer<String> LOG) {
+        try {
+            fs.delete(dir);
+            return true;
+        } catch (RuntimeException e) {
+            Set<String> remaining = fs.getChildNames(dir);
+            if (remaining.isEmpty() || ! IGNORED_FILENAMES.containsAll(remaining))
+                throw e;
+            LOG.accept("Deleting ignored files " + remaining + " from " + dir);
+            try {
+                fs.bulkDelete(dir, remaining);
+                fs.delete(dir);
+                return true;
+            } catch (RuntimeException e2) {
+                // something raced with us, leave this dir for a later sync
+                LOG.accept("Couldn't delete dir " + dir + ": " + e2.getMessage());
+                return false;
             }
         }
     }
