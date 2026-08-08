@@ -2734,7 +2734,6 @@ public class CloudFilesProvider {
         @Override public void mkdirs(Path p) { throw new UnsupportedOperationException(); }
         @Override public void delete(Path p) { throw new UnsupportedOperationException(); }
         @Override public void bulkDelete(Path dir, java.util.Set<String> children) { throw new UnsupportedOperationException(); }
-        @Override public java.util.Set<String> getChildNames(Path dir) { throw new UnsupportedOperationException(); }
         @Override public void setModificationTime(Path p, long t) { throw new UnsupportedOperationException(); }
         @Override public void setHash(Path p, peergos.shared.user.fs.HashTree h, long sz) { throw new UnsupportedOperationException(); }
         @Override public void setHashes(java.util.List<peergos.shared.util.Triple<String, FileWrapper, peergos.shared.user.fs.HashTree>> u) { throw new UnsupportedOperationException(); }

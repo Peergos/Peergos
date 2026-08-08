@@ -106,16 +106,6 @@ public class PeergosSyncFS implements SyncFilesystem {
     }
 
     @Override
-    public Set<String> getChildNames(Path dir) {
-        Optional<FileWrapper> dirOpt = context.getByPath(root.resolve(dir)).join();
-        if (dirOpt.isEmpty())
-            return Collections.emptySet();
-        return dirOpt.get().getChildrenCapabilities(context.crypto.hasher, context.network).join().stream()
-                .map(c -> c.name.name)
-                .collect(Collectors.toSet());
-    }
-
-    @Override
     public void moveTo(Path src, Path target) {
         if (Objects.equals(target.getParent(), src.getParent())) { // rename
             Optional<FileWrapper> parentOpt = context.getByPath(root.resolve(src).getParent()).join();

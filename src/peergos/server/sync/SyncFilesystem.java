@@ -32,11 +32,6 @@ public interface SyncFilesystem {
 
     void bulkDelete(Path dir, Set<String> children);
 
-    /**
-     * @return the names of the children of dir, or empty if dir is absent or not a directory
-     */
-    Set<String> getChildNames(Path dir);
-
     void moveTo(Path src, Path target);
 
     long getLastModified(Path p);
