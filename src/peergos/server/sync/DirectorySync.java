@@ -55,7 +55,7 @@ import java.util.stream.Stream;
 
 public class DirectorySync {
     private static final Logger LOG = Logging.LOG();
-    private static Set<String> IGNORED_FILENAMES = Stream.of(".DS_Store")
+    static Set<String> IGNORED_FILENAMES = Stream.of(".DS_Store")
             .collect(Collectors.toSet());
 
     private static void disableLogSpam() {

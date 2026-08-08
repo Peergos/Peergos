@@ -210,6 +210,53 @@ public class SyncTests {
     }
 
     @Test
+    public void ignoredFileInDirIsCleanedUpOnDelete() throws Exception {
+        // The Finder drops a .DS_Store into any dir it displays. We never sync those, so when the
+        // dir is deleted remotely, the local dir looks empty to us, but still has the .DS_Store in it.
+        Path base1 = Files.createTempDirectory("peergos-sync");
+        Path base2 = Files.createTempDirectory("peergos-sync");
+
+        LocalFileSystem localFs = new LocalFileSystem(base1, Main.initCrypto().hasher);
+        LocalFileSystem remoteFs = new LocalFileSystem(base2, Main.initCrypto().hasher);
+        SyncState syncedState = new JdbcTreeState(":memory:");
+
+        DirectorySync.syncDir(localFs, remoteFs, true, true, null, null, syncedState, 32, 5, Files.createTempDirectory("peergos-sync"), crypto, () -> false, DirectorySync::log);
+
+        // sync a subdir containing a file
+        byte[] data = new byte[1024];
+        new Random(42).nextBytes(data);
+        String dirname = "subdir";
+        String filename = "file.bin";
+        String fileRelPath = dirname + "/" + filename;
+        Files.createDirectory(base1.resolve(dirname));
+        Files.write(base1.resolve(dirname).resolve(filename), data, StandardOpenOption.CREATE);
+
+        DirectorySync.syncDir(localFs, remoteFs, true, true, null, null, syncedState, 32, 5, Files.createTempDirectory("peergos-sync"), crypto, () -> false, DirectorySync::log);
+        Assert.assertNotNull(syncedState.byPath(fileRelPath));
+        Assert.assertTrue(base2.resolve(dirname).resolve(filename).toFile().exists());
+
+        // the Finder adds a .DS_Store to the local dir
+        String ignored = ".DS_Store";
+        Files.write(base1.resolve(dirname).resolve(ignored), "finder".getBytes(StandardCharsets.UTF_8), StandardOpenOption.CREATE);
+
+        // delete the dir and its file remotely
+        Files.delete(base2.resolve(dirname).resolve(filename));
+        Files.delete(base2.resolve(dirname));
+
+        DirectorySync.syncDir(localFs, remoteFs, true, true, null, null, syncedState, 32, 5, Files.createTempDirectory("peergos-sync"), crypto, () -> false, DirectorySync::log);
+        Assert.assertNull(syncedState.byPath(fileRelPath));
+        Assert.assertFalse(base1.resolve(dirname).resolve(ignored).toFile().exists());
+        Assert.assertFalse(base1.resolve(dirname).toFile().exists());
+        Assert.assertFalse(base2.resolve(dirname).toFile().exists());
+
+        // sync should be stable
+        DirectorySync.syncDir(localFs, remoteFs, true, true, null, null, syncedState, 32, 5, Files.createTempDirectory("peergos-sync"), crypto, () -> false, DirectorySync::log);
+        Assert.assertTrue(syncedState.allFilePaths().isEmpty());
+        Assert.assertFalse(base1.resolve(dirname).toFile().exists());
+        Assert.assertFalse(base2.resolve(dirname).toFile().exists());
+    }
+
+    @Test
     public void androidModTime() throws Exception {
         Path base1 = Files.createTempDirectory("peergos-sync");
         Path base2 = Files.createTempDirectory("peergos-sync");

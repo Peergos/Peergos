@@ -87,10 +87,19 @@ public class LocalFileSystem implements SyncFilesystem {
     public void delete(Path p) {
         p = root.resolve(p);
         try {
-            if (Files.isDirectory(p))
+            if (Files.isDirectory(p)) {
+                List<Path> children;
                 try (Stream<Path> stream = Files.list(p)) {
-                    if (stream.anyMatch(f -> true))
+                    children = stream.toList();
+                }
+                // A dir we have synced as empty can still contain files we never sync, like the .DS_Store
+                // the Finder creates in any dir it displays. Delete those rather than failing.
+                if (! children.isEmpty()) {
+                    if (! children.stream().allMatch(c -> DirectorySync.IGNORED_FILENAMES.contains(c.getFileName().toString())))
                         throw new IllegalStateException("Trying to delete non empty directory: " + p);
+                    for (Path child : children)
+                        Files.delete(child);
+                }
             }
         } catch (IOException e) {
             throw new RuntimeException(e);
