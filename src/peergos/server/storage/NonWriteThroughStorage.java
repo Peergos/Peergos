@@ -103,7 +103,7 @@ public class NonWriteThroughStorage implements ContentAddressedStorage {
     @Override
     public CompletableFuture<Optional<Integer>> getSize(PublicKeyHash owner, Multihash block) {
         try {
-            Optional<CborObject> modified = modifications.get(owner, (Cid)block, Optional.empty()).get();
+            Optional<CborObject> modified = modifications.get(null, (Cid)block, Optional.empty()).get();
             if (modified.isPresent())
                 return CompletableFuture.completedFuture(modified.map(cbor -> cbor.toByteArray().length));
             return source.getSize(owner, block);
