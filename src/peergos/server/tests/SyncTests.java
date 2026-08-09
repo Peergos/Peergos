@@ -5,6 +5,7 @@ import org.junit.Test;
 import peergos.server.JavaCrypto;
 import peergos.server.Main;
 import peergos.server.sync.*;
+import peergos.server.sync.SyncFilesystem.FileProps;
 import peergos.shared.Crypto;
 import peergos.shared.MaybeMultihash;
 import peergos.shared.crypto.hash.PublicKeyHash;
@@ -17,6 +18,7 @@ import peergos.shared.user.fs.ChunkHashList;
 import peergos.shared.user.fs.HashTree;
 import peergos.shared.user.fs.RootHash;
 import peergos.shared.util.Pair;
+import peergos.shared.util.PathUtil;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -26,6 +28,10 @@ import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
 import java.time.LocalDateTime;
 import java.util.*;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Consumer;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 public class SyncTests {
 
@@ -709,6 +715,159 @@ public class SyncTests {
         // Verify the file is synced correctly
         Assert.assertArrayEquals(newData, Files.readAllBytes(base1.resolve(filename)));
         Assert.assertArrayEquals(newData, Files.readAllBytes(base2.resolve(filename)));
+    }
+
+    /**
+     * A local file system that dies once the initial sync phase has finished walking it, so a
+     * pass never reaches the main phase. Stands in for the sync process being killed part way
+     * through (on Android WorkManager stops a Worker after 10 minutes, and the initial phase
+     * takes far longer than that on a big tree). The initial phase walks the subtree once, and
+     * buildDirState walks it again, so dying on the second walk leaves exactly the state a
+     * killed pass would: whatever the initial phase recorded, and no completed sync.
+     */
+    private static class DyingLocalFileSystem extends LocalFileSystem {
+        private final AtomicInteger walks = new AtomicInteger(0);
+
+        public DyingLocalFileSystem(Path root, peergos.shared.crypto.hash.Hasher hasher) {
+            super(root, hasher);
+        }
+
+        @Override
+        public Optional<PublicKeyHash> applyToSubtree(Consumer<FileProps> file, Consumer<FileProps> dir, boolean parallel) throws IOException {
+            if (walks.incrementAndGet() > 1)
+                throw new RuntimeException("Simulated process kill");
+            return super.applyToSubtree(file, dir, parallel);
+        }
+    }
+
+    /**
+     * Signal's backup dir holds a shared media store (files/**, all > 1 MiB) plus one dir per
+     * backup containing main (6 MiB) and two small files, metadata and files. Each cycle it
+     * creates a new backup dir and deletes the oldest.
+     *
+     * The initial sync phase only seeds the sync state db with files over 1 MiB
+     * (DirectorySync line 395). While no pass has completed, small files therefore have no
+     * row. If Signal deletes a backup dir in that window, the next completing pass sees
+     * synced == null && local == null for metadata and files, calls them remote additions,
+     * and pulls them back down — so the backup dir is never deleted from Peergos.
+     */
+    @Test
+    public void signalBackupRotationDuringInitialSync() throws Exception {
+        Path base1 = Files.createTempDirectory("peergos-sync"); // phone
+        Path base2 = Files.createTempDirectory("peergos-sync"); // peergos
+        Path root = PathUtil.get("Backups", "SignalBackups");
+        int big = 1024 * 1024 + 1024; // over the initial phase's 1 MiB threshold
+        int small = 4096;             // under it
+
+        // The remote is already fully populated (the pair was re-added, or its state db reset),
+        // so both sides start byte identical with an empty sync state db.
+        List<String> backups = List.of("signal-backup-1", "signal-backup-2", "signal-backup-3");
+        List<String> bigFiles = new ArrayList<>(List.of("files/07/aaa", "files/06/bbb"));
+        List<String> smallFiles = new ArrayList<>();
+        for (String b : backups) {
+            bigFiles.add(b + "/main");
+            smallFiles.add(b + "/metadata");
+            smallFiles.add(b + "/files");
+        }
+        int seed = 0;
+        for (String rel : bigFiles)
+            writeBothSides(base1, base2, root.resolve(rel), randomData(seed++, big));
+        for (String rel : smallFiles)
+            writeBothSides(base1, base2, root.resolve(rel), randomData(seed++, small));
+
+        SyncState syncedState = new JdbcTreeState(":memory:");
+        Path peergosDir = Files.createTempDirectory("peergos-sync");
+        LocalFileSystem remoteFs = new LocalFileSystem(base2, crypto.hasher);
+
+        // Passes keep getting killed part way through, so the initial phase seeds the sync state
+        // db but no pass ever completes.
+        for (int run = 0; run < 3; run++) {
+            try {
+                DirectorySync.syncDir(new DyingLocalFileSystem(base1, crypto.hasher), remoteFs, true, true,
+                        null, null, syncedState, 32, 5, peergosDir, crypto, () -> false, m -> {});
+                Assert.fail("pass should have been killed before completing");
+            } catch (RuntimeException expected) {
+                // killed mid pass
+            }
+        }
+        Assert.assertFalse("no pass has completed", syncedState.hasCompletedSync());
+        // whatever the initial phase chooses to seed, every file it has seen exists on both
+        // sides unchanged, so a later local delete must propagate rather than be undone
+        for (String rel : bigFiles)
+            Assert.assertNotNull("big file seeded: " + rel, syncedState.byPath(root.resolve(rel).toString()));
+
+        // Signal rotates: the two oldest backup dirs are deleted locally.
+        List<String> deleted = List.of("signal-backup-1", "signal-backup-2");
+        for (String b : deleted)
+            deleteRecursive(base1.resolve(root).resolve(b));
+
+        // Now a pass finally runs to completion.
+        LocalFileSystem localFs = new LocalFileSystem(base1, crypto.hasher);
+        // downloads are dispatched to the common pool, so this is written from several threads
+        List<String> ops = Collections.synchronizedList(new ArrayList<>());
+        DirectorySync.syncDir(localFs, remoteFs, true, true, null, null, syncedState, 32, 5,
+                peergosDir, crypto, () -> false, ops::add);
+
+        // and a second, to show whatever state we land in is stable rather than self correcting
+        List<String> secondRunOps = Collections.synchronizedList(new ArrayList<>());
+        DirectorySync.syncDir(localFs, remoteFs, true, true, null, null, syncedState, 32, 5,
+                peergosDir, crypto, () -> false, secondRunOps::add);
+
+        StringBuilder diagnostic = new StringBuilder();
+        for (String op : ops)
+            diagnostic.append("\n  first pass: ").append(op);
+        for (String op : secondRunOps)
+            diagnostic.append("\n  second pass: ").append(op);
+        for (String b : deleted)
+            diagnostic.append("\n  local ").append(b).append(": ").append(listTree(base1.resolve(root).resolve(b)))
+                    .append("\n  remote ").append(b).append(": ").append(listTree(base2.resolve(root).resolve(b)));
+
+        for (String b : deleted) {
+            Assert.assertFalse("locally deleted backup must be deleted from Peergos: " + b + diagnostic,
+                    base2.resolve(root).resolve(b).toFile().exists());
+            Assert.assertFalse("locally deleted backup must not be recreated locally: " + b + diagnostic,
+                    base1.resolve(root).resolve(b).toFile().exists());
+        }
+        // the surviving backup and the shared media store are untouched
+        Assert.assertTrue(base2.resolve(root).resolve("signal-backup-3").resolve("main").toFile().exists());
+        Assert.assertTrue(base2.resolve(root).resolve("files/07/aaa").toFile().exists());
+    }
+
+    private static byte[] randomData(int seed, int size) {
+        byte[] data = new byte[size];
+        new Random(seed).nextBytes(data);
+        return data;
+    }
+
+    private static void writeBothSides(Path base1, Path base2, Path relPath, byte[] data) throws IOException {
+        for (Path base : List.of(base1, base2)) {
+            Path target = base.resolve(relPath);
+            Files.createDirectories(target.getParent());
+            Files.write(target, data, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
+        }
+        // identical mod times, as they would be after a successful sync
+        Files.setLastModifiedTime(base2.resolve(relPath), Files.getLastModifiedTime(base1.resolve(relPath)));
+    }
+
+    private static void deleteRecursive(Path p) throws IOException {
+        if (Files.isDirectory(p)) {
+            try (Stream<Path> kids = Files.list(p)) {
+                for (Path kid : kids.collect(Collectors.toList()))
+                    deleteRecursive(kid);
+            }
+        }
+        Files.delete(p);
+    }
+
+    private static List<String> listTree(Path base) throws IOException {
+        if (! Files.exists(base))
+            return Collections.emptyList();
+        try (Stream<Path> all = Files.walk(base)) {
+            return all.map(p -> base.relativize(p).toString())
+                    .filter(s -> ! s.isEmpty())
+                    .sorted()
+                    .collect(Collectors.toList());
+        }
     }
 
     @Test
