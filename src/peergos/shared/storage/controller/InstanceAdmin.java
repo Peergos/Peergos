@@ -58,6 +58,18 @@ public interface InstanceAdmin {
         }
 
         @Override
+        public boolean equals(Object o) {
+            if (o == null || getClass() != o.getClass()) return false;
+            VersionInfo that = (VersionInfo) o;
+            return Objects.equals(version, that.version) && Objects.equals(sourceVersion, that.sourceVersion);
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(version, sourceVersion);
+        }
+
+        @Override
         public String toString() {
             return version + "-" + sourceVersion;
         }
