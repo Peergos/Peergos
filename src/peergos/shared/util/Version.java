@@ -39,6 +39,29 @@ public class Version implements Comparable<Version> {
         return suffix.compareTo(other.suffix);
     }
 
+    // Consistent with compareTo, which is 0 only when all four fields match.
+    // Without this two parses of the same version are unequal, and callers
+    // comparing a version read from a server with their own never match.
+    @Override
+    public boolean equals(Object other) {
+        if (this == other)
+            return true;
+        if (other == null || getClass() != other.getClass())
+            return false;
+        Version that = (Version) other;
+        return major == that.major && minor == that.minor && patch == that.patch
+                && suffix.equals(that.suffix);
+    }
+
+    @Override
+    public int hashCode() {
+        int result = major;
+        result = 31 * result + minor;
+        result = 31 * result + patch;
+        result = 31 * result + suffix.hashCode();
+        return result;
+    }
+
     public static Version parse(String version) {
         int first = version.indexOf(".");
         int second = version.indexOf(".", first + 1);
