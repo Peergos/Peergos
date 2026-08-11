@@ -286,12 +286,16 @@ public class WriterData implements Cborable {
                                 return new UserStaticData(staticData.entries, newKey, identity, boxer);
                             });
                     return network.account.setLoginData(new LoginData(username, newEntryPoints.get(), newLogin, Optional.empty()), oldSigner, false)
-                            .thenCompose(b -> network.hasher.sha256(followRequestReceiver.serialize())
+                            .thenCompose(b -> {
+                                if (! b)
+                                    throw new IllegalStateException("Couldn't store new login data for " + username);
+                                return network.hasher.sha256(followRequestReceiver.serialize());
+                            })
                                     .thenCompose(boxerHash -> oldSigner.secret.signMessage(boxerHash)
                                             .thenCompose(signedBoxer -> network.dhtClient.putBoxingKey(oldSigner.publicKeyHash,
                                                     signedBoxer,
                                                     followRequestReceiver.publicBoxingKey, tid
-                                            )))).thenCompose(boxerHash -> OwnedKeyChamp.createEmpty(oldSigner.publicKeyHash, oldSigner,
+                                            ))).thenCompose(boxerHash -> OwnedKeyChamp.createEmpty(oldSigner.publicKeyHash, oldSigner,
                                             network.dhtClient, network.hasher, tid)
                                     .thenCompose(ownedRoot -> {
                                         return Futures.combineAll(namedOwnedKeys.entrySet()

@@ -7,6 +7,8 @@ import peergos.server.sql.*;
 import peergos.server.util.Logging;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.asymmetric.*;
+import peergos.shared.crypto.hash.*;
+import peergos.shared.io.ipfs.*;
 import peergos.shared.login.*;
 import peergos.shared.login.mfa.*;
 import peergos.shared.user.*;
@@ -30,6 +32,12 @@ public class JdbcAccount implements LoginCache {
     private static final String UPDATE = "UPDATE login SET entry=?, reader=? WHERE username = ?";
     private static final String GET_LOGIN = "SELECT * FROM login WHERE username = ? AND reader = ? LIMIT 1;";
     private static final String GET = "SELECT * FROM login WHERE username = ? LIMIT 1;";
+    private static final String CREATE_PENDING = "INSERT INTO pendinglogin (username, entry, reader, writer, target, created) VALUES(?, ?, ?, ?, ?, ?)";
+    private static final String UPDATE_PENDING = "UPDATE pendinglogin SET entry=?, writer=?, target=?, created=? WHERE username = ? AND reader = ?";
+    private static final String GET_PENDING = "SELECT * FROM pendinglogin WHERE username = ? AND reader = ? LIMIT 1;";
+    private static final String GET_ALL_PENDING = "SELECT * FROM pendinglogin WHERE username = ?;";
+    private static final String COUNT_PENDING = "SELECT COUNT(*) FROM pendinglogin WHERE username = ?;";
+    private static final String REMOVE_PENDING = "DELETE FROM pendinglogin WHERE username=?;";
     private static final String CREATE_MFA = "INSERT INTO mfa (username, name, credid, type, enabled, created, value) VALUES(?, ?, ?, ?, ?, ?, ?);";
     private static final String UPDATE_MFA = "UPDATE mfa SET value=? WHERE username = ? AND credid = ?;";
     private static final String GET_TYPE = "SELECT type FROM mfa WHERE username = ? AND credid = ?;";
@@ -42,8 +50,22 @@ public class JdbcAccount implements LoginCache {
     private static final String GET_AUTH_METHODS = "SELECT name, credid, created, type, enabled FROM mfa WHERE username = ?;";
 
     public static final int MAX_MFA = 10;
+    /** A staged login is only left behind by a password change that was interrupted between staging and
+     *  updating the login table. They are all cleared by the next successful login data write, so this
+     *  should never be reached in practice. We refuse to stage more rather than deleting the oldest,
+     *  because we can't tell from here which of them (if any) is the one being logged in with.
+     */
+    public static final int MAX_PENDING_LOGINS = 20;
+
+    /** Tells us whether a staged password change has published its new WriterData, which is the point
+     *  at which its login data becomes the live one.
+     */
+    public interface PublishedChecker {
+        boolean isPublished(PublicKeyHash writer, Cid target);
+    }
 
     private volatile boolean isClosed;
+    private volatile Optional<PublishedChecker> published = Optional.empty();
     private Supplier<Connection> conn;
     private final SecureRandom rnd = new SecureRandom();
     private final WebAuthnManager webauthn = WebAuthnManager.createNonStrictWebAuthnManager();
@@ -74,6 +96,7 @@ public class JdbcAccount implements LoginCache {
 
         try (Connection conn = getConnection()) {
             commands.createTable(commands.createAccountTableCommand(), conn);
+            commands.createTable(commands.createPendingAccountTableCommand(), conn);
             commands.createTable(commands.createMfaTableCommand(), conn);
             commands.createTable(commands.createMfaChallengeTableCommand(), conn);
         } catch (Exception e) {
@@ -98,6 +121,7 @@ public class JdbcAccount implements LoginCache {
     }
 
     public CompletableFuture<Boolean> setLoginData(LoginData login) {
+        boolean written;
         if (hasEntry(login.username)) {
             try (Connection conn = getConnection();
                  PreparedStatement insert = conn.prepareStatement(UPDATE)) {
@@ -107,10 +131,10 @@ public class JdbcAccount implements LoginCache {
                 insert.setString(2, new String(Base64.getEncoder().encode(login.authorisedReader.serialize())));
                 insert.setString(3, login.username);
                 int changed = insert.executeUpdate();
-                return CompletableFuture.completedFuture(changed > 0);
+                written = changed > 0;
             } catch (SQLException sqe) {
                 LOG.log(Level.WARNING, sqe.getMessage(), sqe);
-                return CompletableFuture.completedFuture(false);
+                throw new RuntimeException(sqe);
             }
         } else {
             try (Connection conn = getConnection();
@@ -119,11 +143,136 @@ public class JdbcAccount implements LoginCache {
                 stmt.setString(2, new String(Base64.getEncoder().encode(login.entryPoints.serialize())));
                 stmt.setString(3, new String(Base64.getEncoder().encode(login.authorisedReader.serialize())));
                 stmt.executeUpdate();
-                return CompletableFuture.completedFuture(true);
+                written = true;
             } catch (SQLException sqe) {
                 LOG.log(Level.WARNING, sqe.getMessage(), sqe);
-                return CompletableFuture.completedFuture(false);
+                throw new RuntimeException(sqe);
             }
+        }
+        if (written) // any staged password change is now either published here, or superseded
+            clearPendingLoginData(login.username);
+        return CompletableFuture.completedFuture(written);
+    }
+
+    /** Supply the means to tell whether staged login data has been published, so that a password change
+     *  interrupted before updating the login table can be completed on the next read.
+     */
+    public void setPublishedChecker(PublishedChecker checker) {
+        this.published = Optional.of(checker);
+    }
+
+    /** Store login data for a password change whose new key generation algorithm hasn't been published yet.
+     *  This is additive - it never invalidates the login data currently in use.
+     *
+     * @param writer the identity key which the new WriterData is committed under
+     * @param target the hash of the WriterData carrying the new key generation algorithm
+     */
+    public CompletableFuture<Boolean> setPendingLoginData(LoginData login, PublicKeyHash writer, Cid target) {
+        String entry = new String(Base64.getEncoder().encode(login.entryPoints.serialize()));
+        String reader = new String(Base64.getEncoder().encode(login.authorisedReader.serialize()));
+        String writerString = new String(Base64.getEncoder().encode(writer.serialize()));
+        if (hasPendingEntry(login.username, reader)) {
+            // a retry of the same password change
+            try (Connection conn = getConnection();
+                 PreparedStatement update = conn.prepareStatement(UPDATE_PENDING)) {
+                update.setString(1, entry);
+                update.setString(2, writerString);
+                update.setString(3, target.toString());
+                update.setLong(4, System.currentTimeMillis());
+                update.setString(5, login.username);
+                update.setString(6, reader);
+                return CompletableFuture.completedFuture(update.executeUpdate() > 0);
+            } catch (SQLException sqe) {
+                LOG.log(Level.WARNING, sqe.getMessage(), sqe);
+                throw new RuntimeException(sqe);
+            }
+        }
+        if (countPendingEntries(login.username) >= MAX_PENDING_LOGINS)
+            throw new IllegalStateException("Too many incomplete password changes for " + login.username);
+        try (Connection conn = getConnection();
+             PreparedStatement stmt = conn.prepareStatement(CREATE_PENDING)) {
+            stmt.setString(1, login.username);
+            stmt.setString(2, entry);
+            stmt.setString(3, reader);
+            stmt.setString(4, writerString);
+            stmt.setString(5, target.toString());
+            stmt.setLong(6, System.currentTimeMillis());
+            stmt.executeUpdate();
+            return CompletableFuture.completedFuture(true);
+        } catch (SQLException sqe) {
+            LOG.log(Level.WARNING, sqe.getMessage(), sqe);
+            throw new RuntimeException(sqe);
+        }
+    }
+
+    /** Complete any password change for this user that published its new WriterData, but was interrupted
+     *  before its login data made it into the login table.
+     *
+     * @return true if the login table was updated
+     */
+    public boolean completeInterruptedPasswordChange(String username) {
+        if (published.isEmpty())
+            return false;
+        List<LoginData> candidates = new ArrayList<>();
+        try (Connection conn = getConnection();
+             PreparedStatement stmt = conn.prepareStatement(GET_ALL_PENDING)) {
+            stmt.setString(1, username);
+            ResultSet rs = stmt.executeQuery();
+            while (rs.next()) {
+                PublicKeyHash writer = PublicKeyHash.fromCbor(CborObject.fromByteArray(Base64.getDecoder().decode(rs.getString("writer"))));
+                if (! published.get().isPublished(writer, Cid.decode(rs.getString("target"))))
+                    continue;
+                candidates.add(new LoginData(username,
+                        UserStaticData.fromCbor(CborObject.fromByteArray(Base64.getDecoder().decode(rs.getString("entry")))),
+                        PublicSigningKey.fromCbor(CborObject.fromByteArray(Base64.getDecoder().decode(rs.getString("reader")))),
+                        Optional.empty()));
+            }
+        } catch (Exception e) {
+            // healing is best effort - the staged login data is still served directly
+            LOG.log(Level.WARNING, e.getMessage(), e);
+            return false;
+        }
+        if (candidates.isEmpty())
+            return false;
+        // only one WriterData is current, so at most one staged login can be the published one
+        LoginData live = candidates.get(0);
+        LOG.info("Completing an interrupted password change for " + username);
+        setLoginData(live).join();
+        return true;
+    }
+
+    private void clearPendingLoginData(String username) {
+        try (Connection conn = getConnection();
+             PreparedStatement stmt = conn.prepareStatement(REMOVE_PENDING)) {
+            stmt.setString(1, username);
+            stmt.executeUpdate();
+        } catch (SQLException sqe) {
+            // Stale staged login data is harmless - it is unreachable without the matching password
+            LOG.log(Level.WARNING, sqe.getMessage(), sqe);
+        }
+    }
+
+    private boolean hasPendingEntry(String username, String reader) {
+        try (Connection conn = getConnection();
+             PreparedStatement stmt = conn.prepareStatement(GET_PENDING)) {
+            stmt.setString(1, username);
+            stmt.setString(2, reader);
+            return stmt.executeQuery().next();
+        } catch (SQLException sqe) {
+            LOG.log(Level.WARNING, sqe.getMessage(), sqe);
+            throw new RuntimeException(sqe);
+        }
+    }
+
+    private int countPendingEntries(String username) {
+        try (Connection conn = getConnection();
+             PreparedStatement stmt = conn.prepareStatement(COUNT_PENDING)) {
+            stmt.setString(1, username);
+            ResultSet rs = stmt.executeQuery();
+            return rs.next() ? rs.getInt(1) : 0;
+        } catch (SQLException sqe) {
+            LOG.log(Level.WARNING, sqe.getMessage(), sqe);
+            throw new RuntimeException(sqe);
         }
     }
 
@@ -133,6 +282,7 @@ public class JdbcAccount implements LoginCache {
                  PreparedStatement stmt = conn.prepareStatement(REMOVE)) {
                 stmt.setString(1, username);
                 stmt.executeUpdate();
+                clearPendingLoginData(username);
                 return CompletableFuture.completedFuture(true);
             } catch (SQLException sqe) {
                 LOG.log(Level.WARNING, sqe.getMessage(), sqe);
@@ -190,13 +340,33 @@ public class JdbcAccount implements LoginCache {
     }
 
     public CompletableFuture<UserStaticData> getEntryData(String username, PublicSigningKey authorisedReader) {
+        String reader = new String(Base64.getEncoder().encode(authorisedReader.serialize()));
         try (Connection conn = getConnection();
              PreparedStatement stmt = conn.prepareStatement(GET_LOGIN)) {
             stmt.setString(1, username);
-            stmt.setString(2, new String(Base64.getEncoder().encode(authorisedReader.serialize())));
+            stmt.setString(2, reader);
             ResultSet rs = stmt.executeQuery();
             if (rs.next()) {
                 return CompletableFuture.completedFuture(UserStaticData.fromCbor(CborObject.fromByteArray(Base64.getDecoder().decode(rs.getString("entry")))));
+            }
+        } catch (SQLException sqe) {
+            LOG.log(Level.WARNING, sqe.getMessage(), sqe);
+            return Futures.errored(sqe);
+        }
+
+        // A password change that published its new key generation algorithm, but was interrupted before
+        // updating the login table, is served from here. Only the matching password can derive this reader.
+        try (Connection conn = getConnection();
+             PreparedStatement stmt = conn.prepareStatement(GET_PENDING)) {
+            stmt.setString(1, username);
+            stmt.setString(2, reader);
+            ResultSet rs = stmt.executeQuery();
+            if (rs.next()) {
+                LOG.info("Serving login data for " + username + " from an incomplete password change");
+                UserStaticData entry = UserStaticData.fromCbor(CborObject.fromByteArray(Base64.getDecoder().decode(rs.getString("entry"))));
+                // finish that password change now, rather than leaving the login table stale until the next one
+                completeInterruptedPasswordChange(username);
+                return CompletableFuture.completedFuture(entry);
             }
 
             return Futures.errored(new IllegalStateException("Incorrect username or password"));
@@ -207,6 +377,8 @@ public class JdbcAccount implements LoginCache {
     }
 
     public Optional<LoginData> getLoginData(String username) {
+        // this is what gets mirrored and migrated, so make sure it isn't a password change out of date
+        completeInterruptedPasswordChange(username);
         try (Connection conn = getConnection();
              PreparedStatement stmt = conn.prepareStatement(GET)) {
             stmt.setString(1, username);

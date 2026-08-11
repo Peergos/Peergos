@@ -1381,8 +1381,12 @@ public class UserContext {
                                                                         OpLog.PointerWrite pointerWrite = new OpLog.PointerWrite(signer.publicKeyHash, signedCas);
                                                                         LoginData updatedLoginData = new LoginData(username, updatedEntry, newLoginPublicKey, Optional.of(new Pair<>(blockWrite, pointerWrite)));
                                                                         return network.account.setLoginData(updatedLoginData, signer, false)
-                                                                                .thenCompose(b -> UserContext.login(username, newIdBlock, entry,
-                                                                                        signer, entry.boxer.get(), updatedLogin.getRoot(), new Pair<>(pointerCas, newIdBlock.toCbor()), network.clear(), crypto, p -> {}));
+                                                                                .thenCompose(b -> {
+                                                                                    if (! b)
+                                                                                        throw new IllegalStateException("Couldn't change password! Your old password is still active.");
+                                                                                    return UserContext.login(username, newIdBlock, entry,
+                                                                                        signer, entry.boxer.get(), updatedLogin.getRoot(), new Pair<>(pointerCas, newIdBlock.toCbor()), network.clear(), crypto, p -> {});
+                                                                                });
                                                                     });
                                                         });
                                             });
@@ -2429,7 +2433,11 @@ public class UserContext {
         if (wd.staticData.isEmpty()) {
             UserStaticData updated = new UserStaticData(current.getData(rootKey).addEntryPoint(entry), rootKey);
             return network.account.setLoginData(new LoginData(entry.ownerName, updated, loginPublic, Optional.empty()), owner, false)
-                    .thenApply(b -> version);
+                    .thenApply(b -> {
+                        if (! b)
+                            throw new IllegalStateException("Couldn't store new entry point for " + entry.ownerName);
+                        return version;
+                    });
         } else {
             // legacy account
             Optional<UserStaticData> updated = wd.staticData.map(sd -> new UserStaticData(sd.getData(rootKey).addEntryPoint(entry), rootKey));
@@ -2453,10 +2461,14 @@ public class UserContext {
         if (wd.staticData.isEmpty()) {
             UserStaticData updated = new UserStaticData(current.getData(rootKey).withBoxer(newBoxer), rootKey);
             return network.account.setLoginData(new LoginData(username, updated, loginPublic, Optional.empty()), owner, false)
-                    .thenCompose(x -> crypto.hasher.sha256(newBoxer.publicBoxingKey.serialize())
+                    .thenCompose(x -> {
+                        if (! x)
+                            throw new IllegalStateException("Couldn't store new social keypair for " + username);
+                        return crypto.hasher.sha256(newBoxer.publicBoxingKey.serialize())
                             .thenCompose(boxerHash -> owner.secret.signMessage(boxerHash)
                                     .thenCompose(signedBoxerHash -> network.dhtClient.putBoxingKey(owner.publicKeyHash, signedBoxerHash, newBoxer.publicBoxingKey, tid)
-                                            .thenCompose(kh -> c.commit(owner.publicKeyHash, owner, wd.withBoxer(Optional.of(kh)), cwd, tid)))))
+                                            .thenCompose(kh -> c.commit(owner.publicKeyHash, owner, wd.withBoxer(Optional.of(kh)), cwd, tid))));
+                    })
                     .thenApply(b -> version);
         } else {
             // legacy account
