@@ -2,6 +2,8 @@ package peergos.shared.util;
 
 import jsinterop.annotations.JsType;
 
+import java.util.Objects;
+
 @JsType
 public class Version implements Comparable<Version> {
 
@@ -37,6 +39,18 @@ public class Version implements Comparable<Version> {
         if (suffix.length() == 0 || other.suffix.length() == 0)
             return other.suffix.length() - suffix.length();
         return suffix.compareTo(other.suffix);
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (o == null || getClass() != o.getClass()) return false;
+        Version version = (Version) o;
+        return major == version.major && minor == version.minor && patch == version.patch && Objects.equals(suffix, version.suffix);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(major, minor, patch, suffix);
     }
 
     public static Version parse(String version) {
