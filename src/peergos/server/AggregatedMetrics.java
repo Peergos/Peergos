@@ -57,6 +57,7 @@ public class AggregatedMetrics {
     public static final Counter LOGIN_GET  = build("login_get", "Total successful login get calls.");
     public static final Counter LOGIN_GET_FAILURE_PASSWORD  = build("login_get_failure_password", "Total login get calls with incorrect signature.");
     public static final Counter LOGIN_GET_FAILURE_EXTERNAL  = build("login_get_failure_external", "Total failed login get calls for external users.");
+    public static final Counter LOGIN_GET_FAILURE_EXPIRED  = build("login_get_failure_expired", "Total failed login get calls for local users with an expired subscription.");
     public static final Counter LOGIN_GET_MFA  = build("login_get_mfa", "Total get mfa calls.");
     public static final Counter LOGIN_ADD_TOTP  = build("login_add_totp", "Total add totp calls.");
     public static final Counter LOGIN_ENABLE_TOTP  = build("login_enable_totp", "Total enable totp calls.");

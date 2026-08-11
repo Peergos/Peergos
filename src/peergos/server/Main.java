@@ -1016,7 +1016,7 @@ public class Main extends Builder {
             Account p2pAccount = new ProxyingAccount(nodeIds, core, account, accountProxy);
             boolean isPublicServer = a.getBoolean("public-server", false);
             boolean allowExternalLogin = a.getBoolean("allow-external-login", !isPublicServer);
-            LocalOnlyAccount verifyingAccount = new LocalOnlyAccount(new VerifyingAccount(p2pAccount, core, localStorage), userQuotas, allowExternalLogin);
+            LocalOnlyAccount verifyingAccount = new LocalOnlyAccount(new VerifyingAccount(p2pAccount, core, localStorage), userQuotas, core, nodeIds, allowExternalLogin);
             ContentAddressedStorage cachingStorage = new AuthedCachingStorage(p2pDht, blockAuth, hasher, blockCacheSize, maxCachedBlockSize);
             ContentAddressedStorage p2pInboundCachingStorage = new AuthedCachingStorage(p2pInboundStorage, blockAuth, hasher, blockCacheSize, maxCachedBlockSize);
 

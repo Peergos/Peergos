@@ -5,6 +5,8 @@ import peergos.server.util.TimeLimited;
 import peergos.shared.corenode.CoreNode;
 import peergos.shared.crypto.asymmetric.PublicSigningKey;
 import peergos.shared.crypto.hash.PublicKeyHash;
+import peergos.shared.io.ipfs.Cid;
+import peergos.shared.io.ipfs.Multihash;
 import peergos.shared.login.mfa.MultiFactorAuthMethod;
 import peergos.shared.login.mfa.MultiFactorAuthRequest;
 import peergos.shared.login.mfa.MultiFactorAuthResponse;
@@ -24,13 +26,20 @@ import java.util.concurrent.CompletableFuture;
 
 public class LocalOnlyAccount implements Account {
 
+    public static final String EXPIRED_ERROR = "Your subscription has expired, please contact us to renew";
+    public static final String EXTERNAL_ERROR = "Please login on your home server";
+
     private final Account target;
     private final QuotaAdmin quotas;
+    private final CoreNode core;
+    private final List<Cid> serverIds;
     private final boolean allowExternalLogin;
 
-    public LocalOnlyAccount(Account target, QuotaAdmin quotas, boolean allowExternalLogin) {
+    public LocalOnlyAccount(Account target, QuotaAdmin quotas, CoreNode core, List<Cid> serverIds, boolean allowExternalLogin) {
         this.target = target;
         this.quotas = quotas;
+        this.core = core;
+        this.serverIds = serverIds;
         this.allowExternalLogin = allowExternalLogin;
     }
 
@@ -47,6 +56,20 @@ public class LocalOnlyAccount implements Account {
         }
     }
 
+    /** Is this server the user's home server, according to the pki?
+     */
+    private boolean isHomeServer(String username) {
+        try {
+            Optional<Multihash> home = core.getHomeServer(username).join();
+            return home.map(h -> serverIds.stream()
+                            .map(Cid::bareMultihash)
+                            .anyMatch(id -> id.equals(h.bareMultihash())))
+                    .orElse(false);
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
     @Override
     public CompletableFuture<Either<UserStaticData, MultiFactorAuthRequest>> getLoginData(String username,
                                                                                           PublicSigningKey authorisedReader,
@@ -56,7 +79,7 @@ public class LocalOnlyAccount implements Account {
                                                                                           boolean forceProxy,
                                                                                           boolean forceNoCache) {
         if (! allowExternalLogin && ! hasQuota(username) && !forceProxy)
-            throw new IllegalStateException("Please login on your home server");
+            throw new IllegalStateException(isHomeServer(username) ? EXPIRED_ERROR : EXTERNAL_ERROR);
         return target.getLoginData(username, authorisedReader, auth, mfa, cacheMfaLoginData, forceProxy, forceNoCache).thenApply(res -> {
             TimeLimited.isAllowedTime(auth, 24*3600, authorisedReader);
             return res;

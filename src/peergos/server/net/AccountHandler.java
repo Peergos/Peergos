@@ -2,6 +2,7 @@ package peergos.server.net;
 
 import com.sun.net.httpserver.*;
 import peergos.server.*;
+import peergos.server.login.*;
 import peergos.server.util.*;
 import peergos.shared.cbor.*;
 import peergos.shared.crypto.asymmetric.*;
@@ -78,8 +79,10 @@ public class AccountHandler implements HttpHandler {
                         String msg = e.getMessage();
                         if (msg != null && msg.contains("Incorrect password")) {
                             AggregatedMetrics.LOGIN_GET_FAILURE_PASSWORD.inc();
-                        } else if (msg != null && msg.contains("home server")) {
+                        } else if (msg != null && msg.equals(LocalOnlyAccount.EXTERNAL_ERROR)) {
                             AggregatedMetrics.LOGIN_GET_FAILURE_EXTERNAL.inc();
+                        } else if (msg != null && msg.equals(LocalOnlyAccount.EXPIRED_ERROR)) {
+                            AggregatedMetrics.LOGIN_GET_FAILURE_EXPIRED.inc();
                         }
                         HttpUtil.replyError(exchange, e);
                     }
