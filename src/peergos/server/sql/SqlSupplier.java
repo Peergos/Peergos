@@ -40,6 +40,18 @@ public interface SqlSupplier {
                 "CREATE UNIQUE INDEX IF NOT EXISTS login_index ON login (username);";
     }
 
+    /** Login data for a password change that has been staged, but whose new key generation algorithm
+     *  hasn't been published in the user's WriterData yet. There is a row per (username, reader) so
+     *  that staging a new password change can never overwrite the login data for the current one.
+     *  writer and target identify the WriterData this login data belongs to, so that we can tell
+     *  whether it has since been published, and promote it into the login table if so.
+     */
+    default String createPendingAccountTableCommand() {
+        return "CREATE TABLE IF NOT EXISTS pendinglogin (username text not null, entry text not null, " +
+                "reader text not null, writer text not null, target text not null, created BIGINT not null, " +
+                "PRIMARY KEY (username, reader));";
+    }
+
     // credid is <= 1023 bytes
     default String createMfaTableCommand() {
         return "CREATE TABLE IF NOT EXISTS mfa (username text not null, name text not null, credid " + getByteArrayType() + " not null, " +
