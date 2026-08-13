@@ -13,7 +13,8 @@ import java.util.function.*;
 public interface AsyncReader extends AutoCloseable {
 
     default CompletableFuture<AsyncReader> seekJS(int high32, int low32) {
-        return seek(low32 | (((long)high32)) << 32);
+        // mask low32 rather than sign extending it, else offsets in 2-4 GiB, 6-8 GiB, ... go negative
+        return seek((low32 & 0xFFFFFFFFL) | (((long) high32) << 32));
     }
 
     @JsIgnore

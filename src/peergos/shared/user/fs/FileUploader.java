@@ -143,7 +143,7 @@ public class FileUploader implements AutoCloseable {
                                                   SafeRandom random,
                                                   Hasher hasher) {
         if (startChunkIndex > 0) hashBuilder = null;
-        return reader.seek(startChunkIndex * Chunk.MAX_SIZE).thenCompose(seeked -> {
+        return reader.seek((long) startChunkIndex * Chunk.MAX_SIZE).thenCompose(seeked -> {
             long t1 = System.currentTimeMillis();
 
             AsyncUploadQueue queue = new AsyncUploadQueue();
