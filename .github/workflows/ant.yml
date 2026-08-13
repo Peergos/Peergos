@@ -36,7 +36,34 @@ jobs:
         sleep 2
     - name: Run tests
       timeout-minutes: 120
-      run: ant -noinput -buildfile build.xml test
+      shell: bash
+      run: |
+        mkdir -p test.reports
+        (
+          done_count=-1
+          stalled=0
+          while sleep 300; do
+            current=$(find test.reports -name 'TEST-*.xml' 2>/dev/null | wc -l)
+            if [ "$current" != "$done_count" ]; then
+              done_count=$current
+              stalled=0
+              continue
+            fi
+            stalled=$((stalled + 1))
+            if [ $stalled -lt 2 ]; then
+              continue
+            fi
+            for p in $(jcmd -l 2>/dev/null | awk '/JUnitTestRunner/{print $1}'); do
+              {
+                jcmd -l 2>/dev/null | grep "^$p " || true
+                jcmd "$p" Thread.print 2>&1 || true
+              } > "test.reports/stack-$p-$(date +%H%M%S).txt"
+            done
+          done
+        ) &
+        watchdog=$!
+        trap 'kill $watchdog 2>/dev/null || true' EXIT
+        ant -noinput -buildfile build.xml test
     - name: Upload test reports
       if: always()
       uses: actions/upload-artifact@v7
