@@ -39,25 +39,15 @@ public class OfflineAccountStore implements Account {
                                                                                           boolean forceProxy,
                                                                                           boolean forceNoCache) {
         return Futures.asyncExceptionally(() -> {
-                    if (online.isOnline()) {
-                        CompletableFuture<Either<UserStaticData, MultiFactorAuthRequest>> res = new CompletableFuture<>();
-                        target.getLoginData(username, authorisedReader, auth, mfa, cacheMfaLoginData, forceProxy, forceNoCache)
-                                .thenAccept(login -> {
+                    if (online.isOnline())
+                        return target.getLoginData(username, authorisedReader, auth, mfa, cacheMfaLoginData, forceProxy, forceNoCache)
+                                .thenApply(login -> {
                                     if (login.isA() && (mfa.isEmpty() || cacheMfaLoginData))
                                         local.setLoginData(new LoginData(username, login.a(), authorisedReader, Optional.empty()));
                                     else // disable offline login if MFA is enabled
                                         local.removeLoginData(username);
-                                    res.complete(login);
-                                }).exceptionally(t -> {
-                                    if (! res.isDone())
-                                        res.completeExceptionally(t);
-                                    return null;
+                                    return login;
                                 });
-                        if (! forceNoCache)
-                            local.getEntryData(username, authorisedReader)
-                                    .thenApply(cached -> res.complete(Either.a(cached)));
-                        return res;
-                    }
                     online.updateAsync();
                     return local.getEntryData(username, authorisedReader).thenApply(Either::a);
                 },
@@ -77,7 +67,14 @@ public class OfflineAccountStore implements Account {
 
     @Override
     public CompletableFuture<Boolean> enableTotpFactor(String username, byte[] credentialId, String code, byte[] auth) {
-        return target.enableTotpFactor(username, credentialId, code, auth);
+        return target.enableTotpFactor(username, credentialId, code, auth)
+                .thenCompose(enabled -> disableOfflineLogin(username, enabled));
+    }
+
+    private CompletableFuture<Boolean> disableOfflineLogin(String username, boolean enabled) {
+        if (! enabled)
+            return Futures.of(false);
+        return local.removeLoginData(username).thenApply(x -> true);
     }
 
     @Override
@@ -87,7 +84,8 @@ public class OfflineAccountStore implements Account {
 
     @Override
     public CompletableFuture<Boolean> registerSecurityKeyComplete(String username, String keyName, MultiFactorAuthResponse resp, byte[] auth) {
-        return target.registerSecurityKeyComplete(username, keyName, resp, auth);
+        return target.registerSecurityKeyComplete(username, keyName, resp, auth)
+                .thenCompose(registered -> disableOfflineLogin(username, registered));
     }
 
     @Override
