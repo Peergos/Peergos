@@ -5,7 +5,7 @@ import com.sun.net.httpserver.HttpHandler;
 import peergos.server.util.HttpUtil;
 import peergos.server.util.Logging;
 import peergos.server.webauthn.Ctap2;
-import peergos.server.webauthn.CtapHid;
+import peergos.server.webauthn.SecurityKey;
 import peergos.shared.io.ipfs.api.JSONParser;
 import peergos.shared.util.Constants;
 import peergos.shared.util.Serialize;
@@ -14,23 +14,25 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /** Drives a security key on behalf of the local web ui.
  *
- *  The webview in the desktop app has no WebAuthn of its own, so the app is the
- *  user agent here, exactly as the android app is: it builds the clientDataJSON
- *  and asks the key to sign it. That is also what lets a key registered in a
- *  browser for peergos.net be used from localhost, which no browser will do,
- *  because the origin we claim follows the relying party rather than the window.
+ *  The webview in the desktop app either has no WebAuthn of its own, or has one that
+ *  can only mint credentials for rpId localhost, so the app is the user agent here,
+ *  exactly as the android app is: it builds the clientDataJSON and asks the key to
+ *  sign it. That is also what lets a key registered in a browser for peergos.net be
+ *  used from localhost, which no browser will do, because the origin we claim follows
+ *  the relying party rather than the window.
+ *
+ *  How we then reach the key is the one platform specific part, and lives behind
+ *  SecurityKey.
  */
 public class WebAuthnHandler implements HttpHandler {
     private static final Logger LOG = Logging.LOG();
@@ -39,11 +41,13 @@ public class WebAuthnHandler implements HttpHandler {
 
     private final String defaultRpId;
     private final int localPort;
+    private final SecurityKey key;
     private final Object oneAtATime = new Object();
 
     public WebAuthnHandler(String appServerUrl, int localPort) {
         this.defaultRpId = hostOf(appServerUrl);
         this.localPort = localPort;
+        this.key = SecurityKey.forThisPlatform();
     }
 
     private static String hostOf(String serverUrl) {
@@ -108,6 +112,12 @@ public class WebAuthnHandler implements HttpHandler {
             String action = path.substring(Constants.WEBAUTHN.length());
             Map<String, Object> body = (Map<String, Object>) JSONParser.parse(
                     new String(Serialize.readFully(exchange.getRequestBody()), StandardCharsets.UTF_8));
+
+            if (action.equals("host")) {
+                reply(exchange, setHostWindow(body));
+                return;
+            }
+
             Map<String, Object> options = (Map<String, Object>) body.get("publicKey");
             if (options == null)
                 throw new IllegalArgumentException("No publicKey options");
@@ -125,11 +135,7 @@ public class WebAuthnHandler implements HttpHandler {
                     return;
                 }
             }
-            byte[] reply = JSONParser.toString(result).getBytes(StandardCharsets.UTF_8);
-            exchange.sendResponseHeaders(200, reply.length);
-            try (OutputStream out = exchange.getResponseBody()) {
-                out.write(reply);
-            }
+            reply(exchange, result);
         } catch (Exception e) {
             LOG.log(Level.WARNING, e.getMessage(), e);
             HttpUtil.replyError(exchange, e);
@@ -147,15 +153,13 @@ public class WebAuthnHandler implements HttpHandler {
             throw new IllegalArgumentException("No user in the registration options");
         byte[] clientData = clientDataJson("webauthn.create", bytes(options.get("challenge")), rpId);
 
-        try (CtapHid key = openKey()) {
-            Ctap2.Credential credential = Ctap2.makeCredential(key, sha256(clientData), rpId, rpName,
-                    bytes(user.get("id")), string(user.get("name")), string(user.get("displayName")),
-                    algorithms(options), System.currentTimeMillis() + TOUCH_TIMEOUT_MILLIS);
-            Map<String, Object> response = new LinkedHashMap<>();
-            response.put("attestationObject", base64url(credential.attestationObject));
-            response.put("clientDataJSON", base64url(clientData));
-            return credentialJson(credential.credentialId, response);
-        }
+        Ctap2.Credential credential = key.makeCredential(clientData, rpId, rpName,
+                bytes(user.get("id")), string(user.get("name")), string(user.get("displayName")),
+                algorithms(options), System.currentTimeMillis() + TOUCH_TIMEOUT_MILLIS);
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("attestationObject", base64url(credential.attestationObject));
+        response.put("clientDataJSON", base64url(clientData));
+        return credentialJson(credential.credentialId, response);
     }
 
     private Map<String, Object> authenticate(Map<String, Object> options) throws IOException {
@@ -168,24 +172,40 @@ public class WebAuthnHandler implements HttpHandler {
                 allowed.add(bytes(((Map<String, Object>) entry).get("id")));
         }
 
-        try (CtapHid key = openKey()) {
-            Ctap2.Credential credential = Ctap2.getAssertion(key, rpId, sha256(clientData), allowed,
-                    System.currentTimeMillis() + TOUCH_TIMEOUT_MILLIS);
-            Map<String, Object> response = new LinkedHashMap<>();
-            response.put("clientDataJSON", base64url(clientData));
-            response.put("authenticatorData", base64url(credential.authenticatorData));
-            response.put("signature", base64url(credential.signature));
-            if (credential.userHandle != null)
-                response.put("userHandle", base64url(credential.userHandle));
-            return credentialJson(credential.credentialId, response);
-        }
+        Ctap2.Credential credential = key.getAssertion(clientData, rpId, allowed,
+                System.currentTimeMillis() + TOUCH_TIMEOUT_MILLIS);
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("clientDataJSON", base64url(clientData));
+        response.put("authenticatorData", base64url(credential.authenticatorData));
+        response.put("signature", base64url(credential.signature));
+        if (credential.userHandle != null)
+            response.put("userHandle", base64url(credential.userHandle));
+        return credentialJson(credential.credentialId, response);
     }
 
-    private static CtapHid openKey() throws IOException {
-        Optional<CtapHid> key = CtapHid.openFirst();
-        if (! key.isPresent())
-            throw new IOException("No security key found. Plug your key in and try again.");
-        return key.get();
+    /** The desktop host telling us about its window, so a platform prompt - the windows
+     *  one - can be modal to it and come to the front. The java server has no window of
+     *  its own, and the host is a different process.
+     *
+     *  Nothing is trusted to this beyond where a dialog gets parented: the worst a local
+     *  caller can do with a made up handle is send the prompt somewhere unhelpful, which
+     *  is exactly what happens today with no handle at all.
+     */
+    private Map<String, Object> setHostWindow(Map<String, Object> body) {
+        Object handle = body.get("window");
+        if (! (handle instanceof Number) && ! (handle instanceof String))
+            throw new IllegalArgumentException("No window handle");
+        key.setWindowHandle(handle instanceof Number ? ((Number) handle).longValue()
+                : Long.parseLong(handle.toString()));
+        return Map.of("ok", true);
+    }
+
+    private static void reply(HttpExchange exchange, Map<String, Object> result) throws IOException {
+        byte[] reply = JSONParser.toString(result).getBytes(StandardCharsets.UTF_8);
+        exchange.sendResponseHeaders(200, reply.length);
+        try (OutputStream out = exchange.getResponseBody()) {
+            out.write(reply);
+        }
     }
 
     private static Map<String, Object> credentialJson(byte[] credentialId, Map<String, Object> response) {
@@ -238,13 +258,5 @@ public class WebAuthnHandler implements HttpHandler {
 
     private static String base64url(byte[] data) {
         return Base64.getUrlEncoder().withoutPadding().encodeToString(data);
-    }
-
-    private static byte[] sha256(byte[] data) {
-        try {
-            return MessageDigest.getInstance("SHA-256").digest(data);
-        } catch (Exception e) {
-            throw new RuntimeException(e);
-        }
     }
 }

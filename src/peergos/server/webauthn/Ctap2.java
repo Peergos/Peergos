@@ -130,8 +130,13 @@ public class Ctap2 {
         return new Credential(credentialId, authenticatorData, signature, userHandle, null);
     }
 
-    /** The server only accepts a none attestation, so keep authData - which carries
-     *  the public key - and drop whatever the key said about itself. */
+    /** Keep authData - which carries the public key - and drop whatever the key said
+     *  about itself.
+     *
+     *  The server no longer requires this: since Nitrokey support it accepts a self
+     *  attestation too, and never keeps the statement either way. We still send none
+     *  because it is the same shape from every platform, and the smallest thing that
+     *  registers. */
     static byte[] noneAttestation(byte[] authenticatorData) throws IOException {
         ByteArrayOutputStream bout = new ByteArrayOutputStream();
         CborEncoder out = new CborEncoder(bout);
