@@ -26,6 +26,7 @@ public class FileUploadTransaction implements Transaction {
     private final SigningPrivateKeyAndPublicHash writer;
     private final Location firstChunk;
     public final FileProperties props;
+    public final Optional<HashTree> hash;
     public final Optional<Bat> firstBat;
     public final SymmetricKey baseKey, dataKey, writeKey;
     private final long size;
@@ -35,6 +36,7 @@ public class FileUploadTransaction implements Transaction {
                                  String path,
                                  String name,
                                  FileProperties props,
+                                 Optional<HashTree> hash,
                                  SigningPrivateKeyAndPublicHash writer,
                                  Location firstChunk,
                                  Optional<Bat> firstBat,
@@ -47,6 +49,7 @@ public class FileUploadTransaction implements Transaction {
         this.path = path;
         this.name = name;
         this.props = props;
+        this.hash = hash;
         this.writer = writer;
         this.firstChunk = firstChunk;
         this.firstBat = firstBat;
@@ -145,6 +148,7 @@ public class FileUploadTransaction implements Transaction {
         map.put("mapKey", new CborObject.CborByteArray(firstChunk.getMapKey()));
         map.put("streamSecret", new CborObject.CborByteArray(streamSecret));
         map.put("size", new CborObject.CborLong(size));
+        hash.ifPresent(h -> map.put("hash", h.toCbor()));
 
         return CborObject.CborMap.build(map);
     }
@@ -171,6 +175,7 @@ public class FileUploadTransaction implements Transaction {
                     path,
                     filename,
                     null,
+                    Optional.empty(),
                     writer,
                     new Location(owner, writer.publicKeyHash, map.getByteArray("mapKey")),
                     null,
@@ -185,6 +190,7 @@ public class FileUploadTransaction implements Transaction {
                 path,
                 filename,
                 map.get("props", FileProperties::fromCbor),
+                map.getOptional("hash", HashTree::fromCbor),
                 writer,
                 new Location(owner, writer.publicKeyHash, map.getByteArray("mapKey")),
                 map.getOptional("firstBat", Bat::fromCbor),

@@ -42,6 +42,7 @@ public interface Transaction extends Cborable {
     static CompletableFuture<FileUploadTransaction> buildFileUploadTransaction(String path,
                                                                                long fileSize,
                                                                                FileProperties props,
+                                                                               Optional<HashTree> hash,
                                                                                byte[] streamSecret,
                                                                                SymmetricKey baseKey,
                                                                                SymmetricKey dataKey,
@@ -51,7 +52,7 @@ public interface Transaction extends Cborable {
                                                                                Optional<Bat> firstBat,
                                                                                Hasher h) {
         return h.hash(path.getBytes(), true)
-                .thenApply(cid -> new FileUploadTransaction(System.currentTimeMillis(), path, cid.toString(), props, writer,
-                        firstChunkLocation, firstBat, fileSize, baseKey, dataKey, writeKey, streamSecret));
+                .thenApply(cid -> new FileUploadTransaction(System.currentTimeMillis(), path, cid.toString(), props,
+                        hash, writer, firstChunkLocation, firstBat, fileSize, baseKey, dataKey, writeKey, streamSecret));
     }
 }

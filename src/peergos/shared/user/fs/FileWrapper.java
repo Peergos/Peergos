@@ -909,6 +909,7 @@ public class FileWrapper {
                                                 filename, filename, new FileProperties(filename,
                                                 false, false, mimeType, length, modificationTime.orElseGet(() -> LocalDateTime.now(ZoneOffset.UTC)),
                                                 modificationTime.orElseGet(() -> LocalDateTime.now(ZoneOffset.UTC)), false, thumbnail, props.map(p -> p.streamSecret), hash.map(t -> t.branch(0))),
+                                                hash,
                                                 signingPair(), new Location(owner(), writer(), props.get().firstChunkMapKey),
                                                 props.map(p -> p.firstChunkBat), length, props.get().baseKey, props.get().dataKey,
                                                 props.get().writeKey, props.get().streamSecret), resetData, isCancelled, monitor, current, committer, network, crypto))) :
@@ -1305,7 +1306,7 @@ public class FileWrapper {
                         false, false, mimeType, f.length,
                         now, now, false, Optional.empty(), Optional.of(crypto.random.randomBytes(32)), f.hash.map(t -> t.branch(0)));
                 return Transaction.buildFileUploadTransaction(toParent.resolve(f.filename).toString(), f.length,
-                        props, props.streamSecret.get(), SymmetricKey.random(), SymmetricKey.random(),
+                        props, f.hash, props.streamSecret.get(), SymmetricKey.random(), SymmetricKey.random(),
                         SymmetricKey.random(), parent.signingPair(), new Location(parent.owner(), parent.writer(),
                                 crypto.random.randomBytes(32)), Optional.of(Bat.random(crypto.random)), crypto.hasher);
             }).thenCompose(txn -> transactions.open(flushedVersion, c, txn)
