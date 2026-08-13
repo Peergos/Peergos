@@ -86,7 +86,7 @@ public abstract class UserTests {
                     "-ipfs-swarm-port", Integer.toString(ipfsSwarmPort),
                     "-ipfs.metrics.port", Integer.toString(TestPorts.getPort()),
                     "-admin-usernames", "peergos",
-                    "-logToConsole", "true",
+                    "-log-to-console", "true",
                     "-enable-gc", "true",
                     "-gc.period.millis", "60000",
                     "max-users", "10000",
