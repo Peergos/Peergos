@@ -298,6 +298,42 @@ Run the Peergos image with:
 docker run --volume $(PEERGOS_PATH):/opt/peergos/data ghcr.io/peergos/web-ui:master daemon -listen-host 0.0.0.0 -public-domain $YOUR_DOMAIN_NAME -public-server true -announce-ipfs-addresses /ip4/$IP/tcp/4001,/ip4/$IP/udp/4001/quic-v1 -log-to-console true
 ```
 
+### Creating a user
+
+Any Peergos command can be run in the container the daemon is already running in. Note that `docker exec` doesn't use the image's entrypoint, so name it explicitly:
+```bash
+docker exec -it $CONTAINER /opt/peergos/docker-entrypoint.sh $COMMAND
+```
+
+Signing up needs a token, so first create one:
+```bash
+docker exec -it $CONTAINER /opt/peergos/docker-entrypoint.sh quota token create
+```
+This prints the token it created. Add `-count $N` to create several at once, and list the ones not yet used with `quota token list`.
+
+Then sign up with that token, either in the web interface, at:
+```
+https://$YOUR_DOMAIN_NAME/?signup=true&token=$TOKEN
+```
+or in the shell:
+```bash
+docker exec -it $CONTAINER /opt/peergos/docker-entrypoint.sh shell -peergos-url http://localhost:8000
+```
+The shell asks for a username, and if that name isn't taken yet it generates a password for you and asks for the signup token.
+
+Signing up consumes the token and gives the new user the default quota, which is 1 GiB unless you started the daemon with `-default-quota`.
+
+### Setting a user's quota
+
+```bash
+docker exec -it $CONTAINER /opt/peergos/docker-entrypoint.sh quota set -username $USERNAME -quota 50g
+```
+The quota is in bytes, or with a k, m, g or t suffix. To check it:
+```bash
+docker exec -it $CONTAINER /opt/peergos/docker-entrypoint.sh quota show -username $USERNAME
+```
+Leave off `-username` to show every user on the server. These commands read and write the same quota database in your data volume that the daemon uses, so changes take effect immediately, without a restart.
+
 Usage - self hosting (with S3 compatible blockstore)
 -----
 Follow the instructions for self hosting but add the following parameters (either on the command line, or in the .peergos/config file after first run):
