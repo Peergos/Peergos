@@ -74,6 +74,7 @@ public class JdbcTransactionStore implements TransactionStore {
             insert.executeUpdate();
         } catch (SQLException sqe) {
             LOG.log(Level.WARNING, sqe.getMessage(), sqe);
+            throw new IllegalStateException(sqe);
         }
     }
 
@@ -95,6 +96,7 @@ public class JdbcTransactionStore implements TransactionStore {
             }
         } catch (SQLException sqe) {
             LOG.log(Level.WARNING, sqe.getMessage(), sqe);
+            throw new IllegalStateException(sqe);
         }
     }
 
