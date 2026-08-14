@@ -54,6 +54,14 @@ public class JavaPoster implements HttpPoster {
         }
     }
 
+    private String describe(String method) {
+        try {
+            return buildURL(method).toString();
+        } catch (IOException e) {
+            return dht + " " + method;
+        }
+    }
+
     @Override
     public CompletableFuture<byte[]> postUnzip(String url, byte[] payload, int timeoutMillis) {
         return post(url, payload, true, timeoutMillis);
@@ -110,7 +118,7 @@ public class JavaPoster implements HttpPoster {
                     res.complete(resp);
                 }
             } catch (HttpTimeoutException e) {
-                res.completeExceptionally(new SocketTimeoutException("Socket timeout on: " + dht.toString() + url));
+                res.completeExceptionally(new SocketTimeoutException("Socket timeout on: " + describe(url)));
             } catch (InterruptedException ex) {
                 res.completeExceptionally(new RuntimeException(ex));
             } catch (IOException e) {
@@ -210,7 +218,7 @@ public class JavaPoster implements HttpPoster {
                     res.complete(resp);
                 }
             } catch (HttpTimeoutException e) {
-                res.completeExceptionally(new SocketTimeoutException("Socket timeout on: " + dht.toString() + url));
+                res.completeExceptionally(new SocketTimeoutException("Socket timeout on: " + describe(url)));
             } catch (InterruptedException ex) {
                 res.completeExceptionally(new RuntimeException(ex));
             } catch (IOException e) {
@@ -282,7 +290,7 @@ public class JavaPoster implements HttpPoster {
                     res.complete(resp);
                 }
             } catch (HttpTimeoutException e) {
-                res.completeExceptionally(new SocketTimeoutException("Socket timeout on: " + dht.toString() + url));
+                res.completeExceptionally(new SocketTimeoutException("Socket timeout on: " + describe(url)));
             } catch (InterruptedException ex) {
                 res.completeExceptionally(new RuntimeException(ex));
             } catch (IOException e) {

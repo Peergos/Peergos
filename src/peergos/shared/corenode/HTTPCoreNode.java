@@ -141,7 +141,7 @@ public class HTTPCoreNode implements CoreNode {
             Serialize.serialize(token, dout);
             dout.flush();
 
-            return poster.postUnzip(urlPrefix + Constants.CORE_URL + "signup", bout.toByteArray())
+            return poster.postUnzip(urlPrefix + Constants.CORE_URL + "signup", bout.toByteArray(), 60_000)
                     .thenApply(res -> {
                         DataInputStream din = new DataInputStream(new ByteArrayInputStream(res));
                         try {
