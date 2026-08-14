@@ -48,4 +48,21 @@ public class QuotaStoreTests {
         store.removeToken(token);
         Assert.assertFalse(store.hasToken(token));
     }
+
+    @Test
+    public void listTokens() {
+        Assert.assertTrue(store.listTokens().isEmpty());
+
+        String first = "token1";
+        String second = "token2";
+        store.addToken(first);
+        store.addToken(second);
+        Assert.assertEquals(new HashSet<>(Arrays.asList(first, second)), new HashSet<>(store.listTokens()));
+
+        store.removeToken(first);
+        Assert.assertEquals(Arrays.asList(second), store.listTokens());
+
+        store.removeToken(second);
+        Assert.assertTrue(store.listTokens().isEmpty());
+    }
 }

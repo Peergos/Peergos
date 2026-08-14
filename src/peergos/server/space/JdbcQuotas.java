@@ -13,6 +13,7 @@ public class JdbcQuotas {
 
     private static final String QUOTA_USER_NAME = "name";
     private static final String QUOTA_SIZE = "quota";
+    private static final String SIGNUP_TOKEN = "token";
     private static final String SET_QUOTA = "UPDATE freequotas SET quota = ? WHERE name = ?;";
     private static final String GET_QUOTA = "SELECT quota FROM freequotas WHERE name = ?;";
     private static final String GET_ALL_QUOTAS = "SELECT name, quota FROM freequotas;";
@@ -170,7 +171,7 @@ public class JdbcQuotas {
             ResultSet res = select.executeQuery();
             List<String> results = new ArrayList<>();
             while (res.next())
-                results.add(res.getString(QUOTA_USER_NAME));
+                results.add(res.getString(SIGNUP_TOKEN));
             return results;
         } catch (SQLException sqe) {
             LOG.log(Level.WARNING, sqe.getMessage(), sqe);
