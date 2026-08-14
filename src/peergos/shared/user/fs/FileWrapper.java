@@ -729,14 +729,8 @@ public class FileWrapper {
                                                                                              Crypto crypto) {
         RelativeCapability fromParent = writableFilePointer().relativise(txn.writeCap());
         FileProperties props = txn.props;
-        // a stored branch only covers its own group of 1024 chunks, so above 5 GiB rebuild the whole tree
-        // from the source data; uploadFrom seeks before reading, so consuming the reader here is safe
-        Optional<HashBranch> branch = props.treeHash;
-        CompletableFuture<Optional<HashTree>> txnHash = branch.isEmpty() || txn.size() < 1024L * Chunk.MAX_SIZE ?
-                Futures.of(branch.map(b -> new HashTree(b.rootHash,
-                        b.level1.stream().collect(Collectors.toList()),
-                        b.level2.stream().collect(Collectors.toList()),
-                        b.level3.stream().collect(Collectors.toList())))) :
+        CompletableFuture<Optional<HashTree>> txnHash = txn.hash.isPresent() ?
+                Futures.of(txn.hash) :
                 HashTree.buildParallel(p -> data, (int) (txn.size() >>> 32), (int) txn.size(), crypto.hasher, 1)
                         .thenApply(Optional::of);
         // first find how many chunks were already uploaded, then seek reader to that offset and continue
