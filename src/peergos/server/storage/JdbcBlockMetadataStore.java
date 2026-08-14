@@ -250,6 +250,45 @@ public class JdbcBlockMetadataStore implements BlockMetadataStore {
     }
 
     @Override
+    public synchronized void put(PublicKeyHash owner, List<Cid> blocks, List<byte[]> data) {
+        if (blocks.isEmpty())
+            return;
+        // a single transaction for the whole batch, otherwise each row is committed (and fsynced) separately
+        try (Connection conn = getConnection(false, true)) {
+            conn.setAutoCommit(false);
+            try (PreparedStatement insert = conn.prepareStatement(commands.addMetadataCommand())) {
+                byte[] ownerBytes = owner != null ? owner.toBytes() : null;
+                for (int i=0; i < blocks.size(); i++) {
+                    Cid block = blocks.get(i);
+                    BlockMetadata meta = BlockMetadataStore.extractMetadata(block, data.get(i));
+                    insert.setBytes(1, ownerBytes);
+                    insert.setBytes(2, block.toBytes());
+                    insert.setString(3, null);
+                    insert.setLong(4, meta.size);
+                    insert.setBytes(5, new CborObject.CborList(meta.links.stream()
+                            .map(Cid::toBytes)
+                            .map(CborObject.CborByteArray::new)
+                            .collect(Collectors.toList()))
+                            .toByteArray());
+                    insert.setBytes(6, new CborObject.CborList(meta.batids)
+                            .toByteArray());
+                    insert.addBatch();
+                }
+                insert.executeBatch();
+                conn.commit();
+            } catch (SQLException sqe) {
+                conn.rollback();
+                throw sqe;
+            } finally {
+                conn.setAutoCommit(true);
+            }
+        } catch (SQLException sqe) {
+            LOG.log(Level.WARNING, sqe.getMessage(), sqe);
+            throw new RuntimeException(sqe);
+        }
+    }
+
+    @Override
     public long size(PublicKeyHash owner) {
         try (Connection conn = getConnection();
              PreparedStatement size = conn.prepareStatement(SIZE)) {

@@ -78,6 +78,13 @@ public class CachingBlockMetadataStore implements BlockMetadataStore {
     }
 
     @Override
+    public void put(PublicKeyHash owner, List<Cid> blocks, List<byte[]> data) {
+        target.put(owner, blocks, data);
+        for (int i=0; i < blocks.size(); i++)
+            cache.put(blocks.get(i), BlockMetadataStore.extractMetadata(blocks.get(i), data.get(i)));
+    }
+
+    @Override
     public void remove(Cid block) {
         cache.remove(block);
         target.remove(block);
