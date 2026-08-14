@@ -35,9 +35,14 @@ public class PostgresUserTests extends UserTests {
      *  create user testuser with encrypted password 'testpassword';
      *  create database peergostest;
      *  grant all privileges on database peergostest to testuser;
+     *  \c peergostest;
+     *  GRANT ALL ON SCHEMA public TO testuser;
      *
      *  # Between test runs
-     *  drop database peergostest;create database peergostest;grant all privileges on database peergostest to testuser;
+     *  drop database peergostest;create database peergostest;
+     *  grant all privileges on database peergostest to testuser;
+     *  \c peergostest;
+     *  GRANT ALL ON SCHEMA public TO testuser;
      */
     private static Args args = buildArgs()
             .with("useIPFS", "false")
