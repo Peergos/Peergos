@@ -83,7 +83,7 @@ public final class NettyPinnedHttps {
                                     if (respCode == 500 || respCode == 502 || respCode == 503 || respCode == 504)
                                         result.completeExceptionally(new RateLimitException());
                                     else if (respCode == 404) {
-                                        result.completeExceptionally(new FileNotFoundException());
+                                        result.completeExceptionally(new FileNotFoundException(uri.getHost() + uri.getRawPath()));
                                     } else {
                                         ByteBuf reply = resp.content();
                                         byte[] body = new byte[reply.readableBytes()];

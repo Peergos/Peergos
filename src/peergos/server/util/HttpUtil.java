@@ -7,6 +7,7 @@ import peergos.shared.util.*;
 import java.io.*;
 import java.net.*;
 import java.util.*;
+import java.util.concurrent.*;
 import java.util.logging.*;
 import java.util.stream.*;
 
@@ -120,6 +121,15 @@ public class HttpUtil {
         }
         try {
             return NettyPinnedHttps.get(original, url.fields);
+        } catch (CompletionException e) {
+            Throwable cause = e.getCause();
+            if (cause instanceof IOException)
+                throw (IOException) cause;
+            if (cause instanceof RuntimeException)
+                throw (RuntimeException) cause;
+            throw e;
+        } catch (IOException | RuntimeException e) {
+            throw e;
         } catch (Exception e) {
             throw new RuntimeException(e);
         }

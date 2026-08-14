@@ -18,6 +18,7 @@ import peergos.shared.util.Pair;
 import peergos.shared.util.ProgressConsumer;
 
 import javax.net.ssl.SSLException;
+import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.net.SocketException;
 import java.net.SocketTimeoutException;
@@ -123,14 +124,14 @@ public class DirectS3Proxy implements ContentAddressedStorageProxy {
             if (rateLimited) {
                 throw new RateLimitException();
             }
-            boolean notFound = msg.contains("<Code>NoSuchKey</Code>");
+            boolean notFound = e instanceof FileNotFoundException || (msg != null && msg.contains("<Code>NoSuchKey</Code>"));
             if (!notFound) {
                 LOG.warning("Remote S3 error reading " + path);
                 LOG.log(Level.WARNING, msg, e);
             }
             if (notFound && ! useLegacyPath)
                 return getRawWithoutBackoff(peerIds, owner, hash, true);
-            throw new RuntimeException(e);
+            throw new RuntimeException("Couldn't read block " + hash + " from S3 at " + path, e);
         }
     }
 

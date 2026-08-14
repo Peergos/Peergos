@@ -1054,8 +1054,9 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                     mirrorSemaphore.release();
                 }
             } catch (Throwable t) {
-                LOG.log(Level.SEVERE, "Couldn't retrieve " + c + " (" + hashToKey(owner, c) + ")");
-                firstError.compareAndSet(null, t);
+                LOG.log(Level.SEVERE, "Couldn't retrieve " + c + " (" + hashToKey(owner, c) + ")", t);
+                firstError.compareAndSet(null, new RuntimeException("Couldn't mirror block " + c
+                        + " (" + hashToKey(owner, c) + ") for owner " + owner, t));
             }
         })).toList();
 
@@ -1243,7 +1244,8 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
             try { t.join(); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
         }
         if (firstError.get() != null)
-            throw new RuntimeException("Mirror subtree failed", firstError.get());
+            throw new RuntimeException("Mirror subtree failed under " + updated.get(0)
+                    + (updated.size() > 1 ? " (+ " + (updated.size() - 1) + " siblings)" : ""), firstError.get());
     }
 
     @Override
