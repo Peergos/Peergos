@@ -155,6 +155,137 @@ public class RamUserTests extends UserTests {
         Assert.assertTrue(context.network.account.getSecondAuthMethods(username, context.signer).join().size() == 1);
     }
 
+    @Test
+    public void backupCodes() throws Exception {
+        String username = generateUsername();
+        String password = "password";
+        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
+
+        // backup codes are only allowed once there is another factor for them to back up
+        try {
+            context.network.account.generateBackupCodes(username, context.signer).join();
+            Assert.fail("Backup codes shouldn't be allowed without another second factor");
+        } catch (Exception e) {}
+
+        TimeBasedOneTimePasswordGenerator totp = new TimeBasedOneTimePasswordGenerator(Duration.ofSeconds(30L), 6, TotpKey.ALGORITHM);
+        TotpKey totpKey = addTotpKey(context, totp);
+        // enrolling a totp key must not generate backup codes by itself
+        Assert.assertEquals(1, context.network.account.getSecondAuthMethods(username, context.signer).join().size());
+
+        BackupCodes codes = context.network.account.generateBackupCodes(username, context.signer).join();
+        Assert.assertEquals(BackupCodes.CODE_COUNT, codes.codes.size());
+        Assert.assertEquals(Integer.toString(BackupCodes.CODE_COUNT), remainingBackupCodes(context));
+
+        // a code logs us in, in any of the forms a user might type it
+        testLoginWithBackupCode(username, password, network, codes.credentialId, codes.codes.get(0).toUpperCase());
+        Assert.assertEquals(Integer.toString(BackupCodes.CODE_COUNT - 1), remainingBackupCodes(context));
+        testLoginWithBackupCode(username, password, network, codes.credentialId, BackupCodes.format(codes.codes.get(1)));
+        Assert.assertEquals(Integer.toString(BackupCodes.CODE_COUNT - 2), remainingBackupCodes(context));
+
+        // but only once
+        assertBackupCodeRejected(username, password, network, codes.credentialId, codes.codes.get(0));
+        // and an unknown code never works
+        assertBackupCodeRejected(username, password, network, codes.credentialId, "aaaaaaaaaa");
+        Assert.assertEquals(Integer.toString(BackupCodes.CODE_COUNT - 2), remainingBackupCodes(context));
+
+        // totp still works alongside the codes
+        testLoginRequiresTotp(username, password, network, totp, totpKey);
+
+        // regenerating invalidates the earlier set
+        BackupCodes newCodes = context.network.account.generateBackupCodes(username, context.signer).join();
+        Assert.assertEquals(Integer.toString(BackupCodes.CODE_COUNT), remainingBackupCodes(context));
+        assertBackupCodeRejected(username, password, network, newCodes.credentialId, codes.codes.get(2));
+        testLoginWithBackupCode(username, password, network, newCodes.credentialId, newCodes.codes.get(0));
+
+        // exhausting the set removes it as a login option
+        for (int i = 1; i < BackupCodes.CODE_COUNT; i++)
+            testLoginWithBackupCode(username, password, network, newCodes.credentialId, newCodes.codes.get(i));
+        List<MultiFactorAuthMethod> afterExhaustion = context.network.account.getSecondAuthMethods(username, context.signer).join();
+        Assert.assertEquals(1, afterExhaustion.size());
+        Assert.assertEquals(MultiFactorAuthMethod.Type.TOTP, afterExhaustion.get(0).type);
+
+        // deleting the last real factor deletes the backup codes with it
+        BackupCodes finalCodes = context.network.account.generateBackupCodes(username, context.signer).join();
+        Assert.assertEquals(2, context.network.account.getSecondAuthMethods(username, context.signer).join().size());
+        context.network.account.deleteSecondFactor(username, totpKey.credentialId, context.signer).join();
+        Assert.assertTrue(context.network.account.getSecondAuthMethods(username, context.signer).join().isEmpty());
+        // and login now needs no second factor at all
+        UserContext noMfa = UserContext.signIn(username, password, req -> {
+            throw new IllegalStateException("Shouldn't be asked for a second factor!");
+        }, network, crypto).join();
+        Assert.assertEquals(username, noMfa.username);
+    }
+
+    /** Only one of two logins racing to redeem the same backup code may succeed.
+     */
+    @Test
+    public void concurrentBackupCodeUse() throws Exception {
+        String username = generateUsername();
+        String password = "password";
+        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
+
+        TimeBasedOneTimePasswordGenerator totp = new TimeBasedOneTimePasswordGenerator(Duration.ofSeconds(30L), 6, TotpKey.ALGORITHM);
+        addTotpKey(context, totp);
+        BackupCodes codes = context.network.account.generateBackupCodes(username, context.signer).join();
+        String code = codes.codes.get(0);
+
+        List<CompletableFuture<Boolean>> logins = IntStream.range(0, 2)
+                .mapToObj(i -> CompletableFuture.supplyAsync(() -> {
+                    try {
+                        testLoginWithBackupCode(username, password, network, codes.credentialId, code);
+                        return true;
+                    } catch (Exception e) {
+                        return false;
+                    }
+                }))
+                .collect(Collectors.toList());
+        long succeeded = logins.stream().filter(CompletableFuture::join).count();
+        Assert.assertEquals(1, succeeded);
+        Assert.assertEquals(Integer.toString(BackupCodes.CODE_COUNT - 1), remainingBackupCodes(context));
+    }
+
+    private static String remainingBackupCodes(UserContext context) {
+        return context.network.account.getSecondAuthMethods(context.username, context.signer).join()
+                .stream()
+                .filter(m -> m.type == MultiFactorAuthMethod.Type.BACKUP_CODES)
+                .map(m -> m.name)
+                .findFirst()
+                .orElse("none");
+    }
+
+    private static void testLoginWithBackupCode(String username,
+                                                String password,
+                                                NetworkAccess network,
+                                                byte[] credentialId,
+                                                String code) {
+        AtomicBoolean usedMfa = new AtomicBoolean(false);
+        UserContext freshLogin = UserContext.signIn(username, password, req -> {
+            List<MultiFactorAuthMethod> backups = req.methods.stream()
+                    .filter(m -> m.type == MultiFactorAuthMethod.Type.BACKUP_CODES)
+                    .collect(Collectors.toList());
+            if (backups.isEmpty())
+                throw new IllegalStateException("No backup codes offered! " + req.methods);
+            usedMfa.set(true);
+            return Futures.of(new MultiFactorAuthResponse(credentialId, Either.a(code)));
+        }, network, crypto).join();
+        Assert.assertTrue(usedMfa.get());
+        Assert.assertEquals(username, freshLogin.username);
+    }
+
+    private static void assertBackupCodeRejected(String username,
+                                                 String password,
+                                                 NetworkAccess network,
+                                                 byte[] credentialId,
+                                                 String code) {
+        boolean rejected = false;
+        try {
+            testLoginWithBackupCode(username, password, network, credentialId, code);
+        } catch (Exception e) {
+            rejected = true;
+        }
+        Assert.assertTrue("Backup code should have been rejected", rejected);
+    }
+
     /**
      * Mount login uses the dedicated TOTP credential stored in MountConfig instead of
      * prompting a human. Verifies the round trip: a freshly-issued TOTP key, hex-encoded

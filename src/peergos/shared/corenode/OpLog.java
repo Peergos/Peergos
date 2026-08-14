@@ -118,6 +118,11 @@ public class OpLog implements Cborable, Account, MutablePointers, ContentAddress
     }
 
     @Override
+    public CompletableFuture<BackupCodes> generateBackupCodes(String username, byte[] auth) {
+        throw new IllegalStateException("Unsupported operation!");
+    }
+
+    @Override
     public Optional<Bat> getBat(BatId id) {
         throw new IllegalStateException("Unsupported operation!");
     }

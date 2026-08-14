@@ -14,7 +14,8 @@ public class MultiFactorAuthMethod implements Cborable {
     @JsType
     public enum Type {
         TOTP(0x1, false),
-        WEBAUTHN(0x2, true);
+        WEBAUTHN(0x2, true),
+        BACKUP_CODES(0x3, false);
 
         public final int value;
         public final boolean hasChallenge;

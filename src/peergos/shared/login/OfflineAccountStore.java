@@ -97,4 +97,9 @@ public class OfflineAccountStore implements Account {
     public CompletableFuture<TotpKey> addTotpFactor(String username, byte[] auth) {
         return target.addTotpFactor(username, auth);
     }
+
+    @Override
+    public CompletableFuture<BackupCodes> generateBackupCodes(String username, byte[] auth) {
+        return target.generateBackupCodes(username, auth);
+    }
 }

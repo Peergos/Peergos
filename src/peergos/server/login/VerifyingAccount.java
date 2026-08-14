@@ -68,6 +68,13 @@ public class VerifyingAccount implements Account {
     }
 
     @Override
+    public CompletableFuture<BackupCodes> generateBackupCodes(String username, byte[] auth) {
+        PublicKeyHash identityHash = core.getPublicKeyHash(username).join().get();
+        TimeLimited.isAllowed(Constants.LOGIN_URL + "genBackupCodes", auth, 24*3600, storage, identityHash);
+        return target.generateBackupCodes(username, auth);
+    }
+
+    @Override
     public CompletableFuture<byte[]> registerSecurityKeyStart(String username, byte[] auth) {
         PublicKeyHash identityHash = core.getPublicKeyHash(username).join().get();
         TimeLimited.isAllowed(Constants.LOGIN_URL + "registerWebauthnStart", auth, 24*3600, storage, identityHash);

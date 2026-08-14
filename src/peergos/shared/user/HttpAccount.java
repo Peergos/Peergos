@@ -81,6 +81,19 @@ public class HttpAccount implements AccountProxy {
         return getLoginData(getProxyUrlPrefix(targetServerId), p2p, username, authorisedReader, auth, mfa, true);
     }
 
+    /** Tell the server which second factor types we know how to present, so that a newer server
+     *  doesn't offer an older client a method it would fail to parse.
+     */
+    private static String supportedMfaTypes() {
+        StringBuilder res = new StringBuilder();
+        for (MultiFactorAuthMethod.Type type : MultiFactorAuthMethod.Type.values()) {
+            if (res.length() > 0)
+                res.append(",");
+            res.append(type.value);
+        }
+        return res.toString();
+    }
+
     private CompletableFuture<Either<UserStaticData, MultiFactorAuthRequest>> getLoginData(String urlPrefix,
                                                                                            HttpPoster poster,
                                                                                            String username,
@@ -92,6 +105,7 @@ public class HttpAccount implements AccountProxy {
                         + "&author=" + ArrayOps.bytesToHex(authorisedReader.serialize())
                         + "&auth=" + ArrayOps.bytesToHex(auth)
                         + "&proxy=" + forceProxy
+                        + "&mfaTypes=" + supportedMfaTypes()
                         + mfa.map(mfaCode -> "&mfa=" + ArrayOps.bytesToHex(mfaCode.serialize())).orElse(""))
                 .thenApply(res -> LoginResponse.fromCbor(CborObject.fromByteArray(res)).resp);
     }
@@ -129,6 +143,22 @@ public class HttpAccount implements AccountProxy {
         return poster.get(urlPrefix + Constants.LOGIN_URL + "addTotp?username=" + username
                         + "&auth=" + ArrayOps.bytesToHex(auth))
                 .thenApply(res -> TotpKey.fromString(new String(res)));
+    }
+
+    @Override
+    public CompletableFuture<BackupCodes> generateBackupCodes(String username, byte[] auth) {
+        return generateBackupCodes(directUrlPrefix, direct, username, auth);
+    }
+
+    @Override
+    public CompletableFuture<BackupCodes> generateBackupCodes(Multihash targetServerId, String username, byte[] auth) {
+        return generateBackupCodes(getProxyUrlPrefix(targetServerId), p2p, username, auth);
+    }
+
+    private CompletableFuture<BackupCodes> generateBackupCodes(String urlPrefix, HttpPoster poster, String username, byte[] auth) {
+        return poster.get(urlPrefix + Constants.LOGIN_URL + "genBackupCodes?username=" + username
+                        + "&auth=" + ArrayOps.bytesToHex(auth))
+                .thenApply(res -> BackupCodes.fromCbor(CborObject.fromByteArray(res)));
     }
 
     @Override

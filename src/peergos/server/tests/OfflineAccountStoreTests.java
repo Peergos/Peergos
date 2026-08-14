@@ -11,6 +11,7 @@ import peergos.shared.crypto.asymmetric.PublicSigningKey;
 import peergos.shared.crypto.symmetric.SymmetricKey;
 import peergos.shared.login.LoginCache;
 import peergos.shared.login.OfflineAccountStore;
+import peergos.shared.login.mfa.BackupCodes;
 import peergos.shared.login.mfa.MultiFactorAuthMethod;
 import peergos.shared.login.mfa.MultiFactorAuthRequest;
 import peergos.shared.login.mfa.MultiFactorAuthResponse;
@@ -225,6 +226,11 @@ public class OfflineAccountStoreTests {
 
         @Override
         public CompletableFuture<TotpKey> addTotpFactor(String username, byte[] auth) {
+            throw new IllegalStateException("Not used by these tests");
+        }
+
+        @Override
+        public CompletableFuture<BackupCodes> generateBackupCodes(String username, byte[] auth) {
             throw new IllegalStateException("Not used by these tests");
         }
 

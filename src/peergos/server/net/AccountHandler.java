@@ -29,6 +29,33 @@ public class AccountHandler implements HttpHandler {
         this.isPublicServer = isPublicServer;
     }
 
+    /** A client only sends the second factor types it knows about. Anything else is from before
+     *  those types existed, and would fail to parse a method it doesn't recognise, so only offer
+     *  it the original two.
+     */
+    private static Either<UserStaticData, MultiFactorAuthRequest> filterToSupportedMfaTypes(Either<UserStaticData, MultiFactorAuthRequest> res,
+                                                                                            Map<String, List<String>> params) {
+        if (res.isA())
+            return res;
+        Set<Integer> supported = new HashSet<>();
+        if (params.containsKey("mfaTypes")) {
+            for (String type : params.get("mfaTypes").get(0).split(","))
+                supported.add(Integer.parseInt(type));
+        } else {
+            supported.add(MultiFactorAuthMethod.Type.TOTP.value);
+            supported.add(MultiFactorAuthMethod.Type.WEBAUTHN.value);
+        }
+        MultiFactorAuthRequest req = res.b();
+        List<MultiFactorAuthMethod> filtered = new ArrayList<>();
+        for (MultiFactorAuthMethod method : req.methods) {
+            if (supported.contains(method.type.value))
+                filtered.add(method);
+        }
+        if (filtered.size() == req.methods.size())
+            return res;
+        return Either.b(new MultiFactorAuthRequest(filtered, req.challenge));
+    }
+
     public void handle(HttpExchange exchange) throws IOException {
         long t1 = System.currentTimeMillis();
         DataInputStream din = new DataInputStream(exchange.getRequestBody());
@@ -68,6 +95,7 @@ public class AccountHandler implements HttpHandler {
                                 Optional.empty();
                         boolean forceProxy = params.containsKey("proxy") ? Boolean.parseBoolean(params.get("proxy").get(0)) : false;
                         Either<UserStaticData, MultiFactorAuthRequest> res = account.getLoginData(username, authorisedReader, auth, mfa, false, forceProxy, false).join();
+                        res = filterToSupportedMfaTypes(res, params);
                         AggregatedMetrics.LOGIN_GET.inc();
                         byte[] resBytes = new LoginResponse(res).serialize();
                         dout.write(resBytes);
@@ -109,6 +137,13 @@ public class AccountHandler implements HttpHandler {
                     String code = params.get("code").get(0);
                     boolean res = account.enableTotpFactor(username, credentialId, code, auth).join();
                     dout.write(new CborObject.CborBoolean(res).serialize());
+                    break;
+                }
+                case "genBackupCodes": {
+                    AggregatedMetrics.LOGIN_GEN_BACKUP_CODES.inc();
+                    username = params.get("username").get(0);
+                    BackupCodes res = account.generateBackupCodes(username, auth).join();
+                    dout.write(res.serialize());
                     break;
                 }
                 case "registerWebauthnStart": {
