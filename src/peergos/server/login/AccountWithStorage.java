@@ -126,4 +126,9 @@ public class AccountWithStorage implements Account {
     public CompletableFuture<TotpKey> addTotpFactor(String username, byte[] auth) {
         return target.addTotpFactor(username);
     }
+
+    @Override
+    public CompletableFuture<BackupCodes> generateBackupCodes(String username, byte[] auth) {
+        return target.generateBackupCodes(username);
+    }
 }

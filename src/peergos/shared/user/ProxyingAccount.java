@@ -59,6 +59,15 @@ public class ProxyingAccount implements Account {
     }
 
     @Override
+    public CompletableFuture<BackupCodes> generateBackupCodes(String username, byte[] auth) {
+        return core.getPublicKeyHash(username).thenCompose(idOpt -> Proxy.redirectCall(core,
+                serverIds,
+                idOpt.get(),
+                () -> local.generateBackupCodes(username, auth),
+                target -> p2p.generateBackupCodes(target, username, auth)));
+    }
+
+    @Override
     public CompletableFuture<byte[]> registerSecurityKeyStart(String username, byte[] auth) {
         return core.getPublicKeyHash(username).thenCompose(idOpt -> Proxy.redirectCall(core,
                 serverIds,

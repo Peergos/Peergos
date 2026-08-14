@@ -7,6 +7,7 @@ import peergos.shared.crypto.asymmetric.PublicSigningKey;
 import peergos.shared.crypto.hash.PublicKeyHash;
 import peergos.shared.io.ipfs.Cid;
 import peergos.shared.io.ipfs.Multihash;
+import peergos.shared.login.mfa.BackupCodes;
 import peergos.shared.login.mfa.MultiFactorAuthMethod;
 import peergos.shared.login.mfa.MultiFactorAuthRequest;
 import peergos.shared.login.mfa.MultiFactorAuthResponse;
@@ -94,6 +95,11 @@ public class LocalOnlyAccount implements Account {
     @Override
     public CompletableFuture<TotpKey> addTotpFactor(String username, byte[] auth) {
         return target.addTotpFactor(username, auth);
+    }
+
+    @Override
+    public CompletableFuture<BackupCodes> generateBackupCodes(String username, byte[] auth) {
+        return target.generateBackupCodes(username, auth);
     }
 
     @Override

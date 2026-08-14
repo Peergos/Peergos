@@ -80,6 +80,16 @@ public interface Account {
                 .thenCompose(auth -> addTotpFactor(username, auth));
     }
 
+    CompletableFuture<BackupCodes> generateBackupCodes(String username, byte[] auth);
+
+    @JsMethod
+    default CompletableFuture<BackupCodes> generateBackupCodes(String username, SigningPrivateKeyAndPublicHash identity) {
+        TimeLimitedClient.SignedRequest req =
+                new TimeLimitedClient.SignedRequest(Constants.LOGIN_URL + "genBackupCodes", System.currentTimeMillis());
+        return req.sign(identity.secret)
+                .thenCompose(auth -> generateBackupCodes(username, auth));
+    }
+
     CompletableFuture<byte[]> registerSecurityKeyStart(String username, byte[] auth);
 
     @JsMethod

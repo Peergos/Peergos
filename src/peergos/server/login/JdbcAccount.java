@@ -15,6 +15,7 @@ import peergos.shared.user.*;
 import peergos.shared.util.*;
 
 import javax.crypto.spec.*;
+import java.nio.charset.*;
 import java.security.*;
 import java.sql.*;
 import java.time.*;
@@ -40,6 +41,7 @@ public class JdbcAccount implements LoginCache {
     private static final String REMOVE_PENDING = "DELETE FROM pendinglogin WHERE username=?;";
     private static final String CREATE_MFA = "INSERT INTO mfa (username, name, credid, type, enabled, created, value) VALUES(?, ?, ?, ?, ?, ?, ?);";
     private static final String UPDATE_MFA = "UPDATE mfa SET value=? WHERE username = ? AND credid = ?;";
+    private static final String BURN_BACKUP_CODE = "UPDATE mfa SET value=?, name=? WHERE username = ? AND credid = ? AND value = ?;";
     private static final String GET_TYPE = "SELECT type FROM mfa WHERE username = ? AND credid = ?;";
     private static final String GET_AUTH = "SELECT value FROM mfa WHERE username = ? AND credid = ?;";
     private static final String CREATE_CHALLENGE = "INSERT INTO mfa_challenge (challenge, username) VALUES(?, ?);";
@@ -48,6 +50,7 @@ public class JdbcAccount implements LoginCache {
     private static final String ENABLE_AUTH = "UPDATE mfa SET enabled=? WHERE username = ? AND credid = ?;";
     private static final String DELETE_AUTH = "DELETE FROM mfa WHERE username = ? AND credid = ?";
     private static final String GET_AUTH_METHODS = "SELECT name, credid, created, type, enabled FROM mfa WHERE username = ?;";
+    private static final String GET_IDS_OF_TYPE = "SELECT credid FROM mfa WHERE username = ? AND type = ?;";
 
     public static final int MAX_MFA = 10;
     /** A staged login is only left behind by a password change that was interrupted between staging and
@@ -311,7 +314,8 @@ public class JdbcAccount implements LoginCache {
                                                                                           Optional<MultiFactorAuthResponse> mfa) {
         List<MultiFactorAuthMethod> mfas = getSecondAuthMethods(username).join();
         List<MultiFactorAuthMethod> enabled = mfas.stream().filter(m -> m.enabled).collect(Collectors.toList());
-        if (enabled.isEmpty())
+        // backup codes are never a second factor on their own, only a way of satisfying an existing one
+        if (enabled.stream().allMatch(m -> m.type == MultiFactorAuthMethod.Type.BACKUP_CODES))
             return getEntryData(username, authorisedReader).thenApply(Either::a);
         if (mfa.isEmpty()) {
             byte[] challenge = createChallenge(username);
@@ -334,7 +338,13 @@ public class JdbcAccount implements LoginCache {
             verifier.setCounter(newSignCount);
             updateMFA(username, credentialId, verifier.serialize());
         } else {
-            validateTotpCode(username, credentialId, mfaAuth.response.a());
+            MultiFactorAuthMethod.Type type = getType(username, credentialId);
+            if (type == MultiFactorAuthMethod.Type.BACKUP_CODES)
+                validateBackupCode(username, credentialId, mfaAuth.response.a());
+            else if (type == MultiFactorAuthMethod.Type.TOTP)
+                validateTotpCode(username, credentialId, mfaAuth.response.a());
+            else
+                throw new IllegalStateException("Not a code based credential!");
         }
         return getEntryData(username, authorisedReader).thenApply(Either::a);
     }
@@ -407,8 +417,11 @@ public class JdbcAccount implements LoginCache {
                 MultiFactorAuthMethod.Type type = MultiFactorAuthMethod.Type.byValue(rs.getInt("type"));
                 if (type == MultiFactorAuthMethod.Type.TOTP && !enabled)
                     continue; // Don't return disabled totp
+                String name = rs.getString("name");
+                if (type == MultiFactorAuthMethod.Type.BACKUP_CODES && name.equals("0"))
+                    continue; // an exhausted set is no longer a login option
                 res.add(new MultiFactorAuthMethod(
-                        rs.getString("name"),
+                        name,
                         rs.getBytes("credid"),
                         LocalDate.ofEpochDay(rs.getInt("created")),
                         type,
@@ -451,6 +464,123 @@ public class JdbcAccount implements LoginCache {
             stmt.setBytes(7, rawKey);
             stmt.executeUpdate();
             return Futures.of(new TotpKey(credId, rawKey));
+        } catch (SQLException sqe) {
+            LOG.log(Level.WARNING, sqe.getMessage(), sqe);
+            throw new IllegalStateException(sqe);
+        }
+    }
+
+    /** Generate a fresh set of single use backup codes, invalidating any existing set.
+     *  These are never created automatically - a user has to ask for them, and they are only
+     *  allowed once there is another second factor for them to be a backup for.
+     */
+    public CompletableFuture<BackupCodes> generateBackupCodes(String username) {
+        List<MultiFactorAuthMethod> existing = getSecondAuthMethods(username).join();
+        boolean hasRealFactor = existing.stream()
+                .anyMatch(m -> m.enabled && m.type != MultiFactorAuthMethod.Type.BACKUP_CODES);
+        if (! hasRealFactor)
+            throw new IllegalStateException("Please set up an authenticator app or security key before generating backup codes.");
+
+        List<String> codes = new ArrayList<>();
+        while (codes.size() < BackupCodes.CODE_COUNT) {
+            byte[] random = new byte[BackupCodes.CODE_BYTES];
+            rnd.nextBytes(random);
+            String code = BackupCodes.generate(random);
+            if (! codes.contains(code))
+                codes.add(code);
+        }
+        byte[] credId = new byte[32];
+        rnd.nextBytes(credId);
+
+        // there is only ever 1 set of backup codes, generating replaces any earlier set
+        List<byte[]> older = getBackupCodeIds(username);
+        try (Connection conn = getConnection();
+             PreparedStatement stmt = conn.prepareStatement(CREATE_MFA)) {
+            stmt.setString(1, username);
+            stmt.setString(2, Integer.toString(codes.size())); // backup codes carry their remaining count in the name
+            stmt.setBytes(3, credId);
+            stmt.setInt(4, MultiFactorAuthMethod.Type.BACKUP_CODES.value);
+            stmt.setBoolean(5, true);
+            stmt.setLong(6, LocalDate.now().toEpochDay());
+            stmt.setBytes(7, serializeCodeHashes(codes.stream()
+                    .map(JdbcAccount::hashBackupCode)
+                    .collect(Collectors.toList())));
+            stmt.executeUpdate();
+        } catch (SQLException sqe) {
+            LOG.log(Level.WARNING, sqe.getMessage(), sqe);
+            throw new IllegalStateException(sqe);
+        }
+        for (byte[] oldId : older) {
+            deleteMfa(username, oldId).join();
+        }
+        return Futures.of(new BackupCodes(credId, codes));
+    }
+
+    /** All backup code sets for a user, including any exhausted ones, which are hidden from
+     *  getSecondAuthMethods.
+     */
+    private List<byte[]> getBackupCodeIds(String username) {
+        try (Connection conn = getConnection();
+             PreparedStatement stmt = conn.prepareStatement(GET_IDS_OF_TYPE)) {
+            stmt.setString(1, username);
+            stmt.setInt(2, MultiFactorAuthMethod.Type.BACKUP_CODES.value);
+            ResultSet rs = stmt.executeQuery();
+            List<byte[]> res = new ArrayList<>();
+            while (rs.next()) {
+                res.add(rs.getBytes("credid"));
+            }
+            return res;
+        } catch (SQLException sqe) {
+            LOG.log(Level.WARNING, sqe.getMessage(), sqe);
+            throw new RuntimeException(sqe);
+        }
+    }
+
+    private static byte[] hashBackupCode(String code) {
+        return Hash.sha256(BackupCodes.normalise(code).getBytes(StandardCharsets.UTF_8));
+    }
+
+    private static byte[] serializeCodeHashes(List<byte[]> hashes) {
+        SortedMap<String, Cborable> state = new TreeMap<>();
+        state.put("h", new CborObject.CborList(hashes.stream()
+                .map(CborObject.CborByteArray::new)
+                .collect(Collectors.toList())));
+        return CborObject.CborMap.build(state).serialize();
+    }
+
+    private static List<byte[]> parseCodeHashes(byte[] value) {
+        CborObject.CborMap m = (CborObject.CborMap) CborObject.fromByteArray(value);
+        return m.getList("h", c -> ((CborObject.CborByteArray) c).value);
+    }
+
+    /** Check a backup code and burn it. The remaining codes are written back with a compare and
+     *  set on the old value, so two concurrent logins can't both redeem the same code.
+     */
+    private void validateBackupCode(String username, byte[] credentialId, String code) {
+        byte[] hash = hashBackupCode(code);
+        for (int attempt = 0; attempt < 2; attempt++) {
+            byte[] current = getMfa(username, credentialId);
+            List<byte[]> unused = parseCodeHashes(current);
+            List<byte[]> remaining = unused.stream()
+                    .filter(h -> ! MessageDigest.isEqual(h, hash))
+                    .collect(Collectors.toList());
+            if (remaining.size() == unused.size())
+                throw new IllegalStateException("Invalid backup code for credId " + ArrayOps.bytesToHex(credentialId));
+            if (burnBackupCode(username, credentialId, current, remaining))
+                return;
+        }
+        throw new IllegalStateException("Concurrent modification of backup codes for " + username);
+    }
+
+    private boolean burnBackupCode(String username, byte[] credentialId, byte[] oldValue, List<byte[]> remaining) {
+        try (Connection conn = getConnection();
+             PreparedStatement stmt = conn.prepareStatement(BURN_BACKUP_CODE)) {
+            stmt.setBytes(1, serializeCodeHashes(remaining));
+            stmt.setString(2, Integer.toString(remaining.size()));
+            stmt.setString(3, username);
+            stmt.setBytes(4, credentialId);
+            stmt.setBytes(5, oldValue);
+            return stmt.executeUpdate() == 1;
         } catch (SQLException sqe) {
             LOG.log(Level.WARNING, sqe.getMessage(), sqe);
             throw new IllegalStateException(sqe);
@@ -603,6 +733,13 @@ public class JdbcAccount implements LoginCache {
             update.setBytes(2, credentialId);
             update.executeUpdate();
 
+            // backup codes only exist to back up another factor, so don't outlive the last one
+            List<MultiFactorAuthMethod> remaining = getSecondAuthMethods(username).join();
+            if (remaining.stream().noneMatch(m -> m.enabled && m.type != MultiFactorAuthMethod.Type.BACKUP_CODES)) {
+                for (byte[] backupId : getBackupCodeIds(username)) {
+                    deleteMfa(username, backupId).join();
+                }
+            }
             return Futures.of(true);
         } catch (Exception e) {
             LOG.log(Level.WARNING, e.getMessage(), e);

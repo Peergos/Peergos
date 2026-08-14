@@ -1238,13 +1238,17 @@ public class Main extends Builder {
 
     public static CompletableFuture<MultiFactorAuthResponse> getMfaResponseCLI(MultiFactorAuthRequest req) {
         Optional<MultiFactorAuthMethod> anyTotp = req.methods.stream().filter(m -> m.type == MultiFactorAuthMethod.Type.TOTP).findFirst();
-        if (anyTotp.isEmpty())
+        Optional<MultiFactorAuthMethod> anyBackup = req.methods.stream().filter(m -> m.type == MultiFactorAuthMethod.Type.BACKUP_CODES).findFirst();
+        if (anyTotp.isEmpty() && anyBackup.isEmpty())
             throw new IllegalStateException("No supported 2 factor auth method! " + req.methods);
-        MultiFactorAuthMethod totp = anyTotp.get();
-        System.out.println("Enter TOTP code for login");
+        MultiFactorAuthMethod method = anyTotp.orElseGet(anyBackup::get);
+        if (anyTotp.isPresent())
+            System.out.println("Enter TOTP code for login");
+        else
+            System.out.println("Enter a backup code for login");
         Console console = System.console();
         String code = console.readLine().trim();
-        return Futures.of(new MultiFactorAuthResponse(totp.credentialId, Either.a(code)));
+        return Futures.of(new MultiFactorAuthResponse(method.credentialId, Either.a(code)));
     }
 
     public static IpfsWrapper startIpfs(Args a) {
