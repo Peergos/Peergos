@@ -59,8 +59,7 @@ public class MetadataCachingStorage extends DelegatingDeletableStorage {
     public CompletableFuture<List<Cid>> put(PublicKeyHash owner, PublicKeyHash writer, List<byte[]> signedHashes, List<byte[]> blocks, TransactionId tid) {
         return target.put(owner, writer, signedHashes, blocks, tid)
                 .thenApply(cids -> {
-                    for (int i=0; i < cids.size(); i++)
-                        metadata.put(owner, cids.get(i), null, blocks.get(i));
+                    metadata.put(owner, cids, blocks);
                     return cids;
                 });
     }
@@ -69,8 +68,7 @@ public class MetadataCachingStorage extends DelegatingDeletableStorage {
     public CompletableFuture<List<Cid>> putRaw(PublicKeyHash owner, PublicKeyHash writer, List<byte[]> signedHashes, List<byte[]> blocks, TransactionId tid, ProgressConsumer<Long> progressCounter) {
         return target.putRaw(owner, writer, signedHashes, blocks, tid, progressCounter)
                 .thenApply(cids -> {
-                    for (int i=0; i < cids.size(); i++)
-                        metadata.put(owner, cids.get(i), null, blocks.get(i));
+                    metadata.put(owner, cids, blocks);
                     return cids;
                 });
     }

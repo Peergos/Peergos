@@ -6,6 +6,7 @@ import peergos.server.sql.*;
 import peergos.server.storage.*;
 import peergos.server.util.*;
 import peergos.shared.*;
+import peergos.shared.cbor.*;
 import peergos.shared.crypto.hash.PublicKeyHash;
 import peergos.shared.storage.auth.*;
 import peergos.shared.io.ipfs.Cid;
@@ -73,6 +74,61 @@ public class SqliteBlockMetadataTest {
         List<Cid> all = new ArrayList<>();
         store.applyToAll(all::add);
         Assert.assertTrue(all.size() == 3);
+    }
+
+    @Test
+    public void bulkPutMatchesIndividualPuts() throws Exception {
+        Path dir = Files.createTempDirectory("peergos-block-metadata-bulk");
+        BlockMetadataStore bulkStore = buildStore(dir.resolve("bulk.sql"));
+        BlockMetadataStore oneByOneStore = buildStore(dir.resolve("onebyone.sql"));
+
+        Cid ownerCid = randomCid();
+        PublicKeyHash owner = new PublicKeyHash(ownerCid);
+
+        // a mix of cbor blocks (which have links) and raw blocks (which have bats)
+        List<Cid> cids = new ArrayList<>();
+        List<byte[]> blocks = new ArrayList<>();
+        for (int i=0; i < 50; i++) {
+            if (i % 2 == 0) {
+                byte[] block = new CborObject.CborList(randomCids(3).stream()
+                        .map(CborObject.CborMerkleLink::new)
+                        .collect(Collectors.toList()))
+                        .toByteArray();
+                cids.add(new Cid(1, Cid.Codec.DagCbor, Multihash.Type.sha2_256, RAMStorage.hash(block)));
+                blocks.add(block);
+            } else {
+                byte[] block = new byte[1024];
+                r.nextBytes(block);
+                cids.add(new Cid(1, Cid.Codec.Raw, Multihash.Type.sha2_256, RAMStorage.hash(block)));
+                blocks.add(block);
+            }
+        }
+
+        bulkStore.put(owner, cids, blocks);
+        for (int i=0; i < cids.size(); i++)
+            oneByOneStore.put(owner, cids.get(i), null, blocks.get(i));
+
+        Assert.assertEquals(cids.size(), bulkStore.size(owner));
+        for (Cid cid : cids) {
+            BlockMetadata expected = oneByOneStore.get(cid).get();
+            BlockMetadata actual = bulkStore.get(cid).get();
+            Assert.assertEquals("size of " + cid, expected.size, actual.size);
+            Assert.assertEquals("links of " + cid, expected.links, actual.links);
+            Assert.assertEquals("bats of " + cid, expected.batids, actual.batids);
+            Assert.assertEquals("owner of " + cid, owner, bulkStore.getOwner(cid).get());
+        }
+
+        // versions are null on the bulk path, as they are for the individual puts it replaces
+        Assert.assertTrue(bulkStore.list(owner).allMatch(v -> v.version == null));
+
+        // an empty batch is a no-op, and the connection is still usable afterwards
+        bulkStore.put(owner, Collections.emptyList(), Collections.emptyList());
+        Assert.assertEquals(cids.size(), bulkStore.size(owner));
+    }
+
+    private static BlockMetadataStore buildStore(Path file) throws Exception {
+        Connection conn = new Sqlite.UncloseableConnection(Sqlite.build(file.toString()));
+        return new JdbcBlockMetadataStore(() -> conn, new SqliteCommands());
     }
 
     @Ignore

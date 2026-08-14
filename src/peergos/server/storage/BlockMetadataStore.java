@@ -50,6 +50,12 @@ public interface BlockMetadataStore {
         return meta;
     }
 
+    /** Store the metadata for a batch of blocks written together. */
+    default void put(PublicKeyHash owner, List<Cid> blocks, List<byte[]> data) {
+        for (int i=0; i < blocks.size(); i++)
+            put(owner, blocks.get(i), null, data.get(i));
+    }
+
     static BlockMetadata extractMetadata(Cid block, byte[] data) {
         if (block.isRaw()) {
             BlockMetadata meta = new BlockMetadata(data.length, Collections.emptyList(), Bat.getRawBlockBats(data));
