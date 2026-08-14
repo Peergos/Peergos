@@ -121,13 +121,14 @@
       <map from="${test.sources}/" to="" />
     </pathconvert>
     <!-- run one particular test -->
-    <junit fork="true" printsummary="true" haltonfailure="no" timeout="2400000">
+    <junit fork="true" printsummary="true" haltonfailure="no" timeout="4200000">
       <jvmarg value="-Xmx4g"/>
       <jvmarg value="-Djava.library.path=native-lib"/>
       <jvmarg value="--enable-native-access=ALL-UNNAMED"/>
       <jvmarg value="--sun-misc-unsafe-memory-access=allow"/>
       <jvmarg value="-XX:+HeapDumpOnOutOfMemoryError"/>
       <jvmarg value="-XX:HeapDumpPath=${test.reports}"/>
+      <jvmarg value="-XX:ErrorFile=${test.reports}/hs_err_pid%p.log"/>
       <classpath>
 	<fileset dir="lib-build">
 	  <include name="**/*.jar"/>

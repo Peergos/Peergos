@@ -794,7 +794,7 @@ public class SyncTests {
         // whatever the initial phase chooses to seed, every file it has seen exists on both
         // sides unchanged, so a later local delete must propagate rather than be undone
         for (String rel : bigFiles)
-            Assert.assertNotNull("big file seeded: " + rel, syncedState.byPath(root.resolve(rel).toString()));
+            Assert.assertNotNull("big file seeded: " + rel, syncedState.byPath(root.resolve(rel).toString().replace('\\', '/')));
 
         // Signal rotates: the two oldest backup dirs are deleted locally.
         List<String> deleted = List.of("signal-backup-1", "signal-backup-2");

@@ -309,8 +309,7 @@ public class Main extends Builder {
                 context.makePublic(appGalleryFolder).join();
             }
         } catch (Exception e) {
-            e.printStackTrace();
-            System.exit(1);
+            throw new RuntimeException(e);
         }
     }
 
