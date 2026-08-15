@@ -86,11 +86,46 @@ public class WriteSynchronizer {
      * @return The last committed version of writer, marked read only
      */
     public CompletableFuture<Snapshot> readOnlyValue(PublicKeyHash owner, PublicKeyHash writer) {
-        Supplier<CompletableFuture<Snapshot>> retrieve = () ->
-                getWriterData(mutable.hasUncommittedWrites() ? mutable.committed() : mutable, owner, writer);
-        return pending.computeIfAbsent(new Pair<>(owner, writer), p -> new AsyncLock<>(getWriterData(owner, p.right)))
-                .runWithReadLock(x -> retrieve.get(), retrieve)
-                .thenApply(Snapshot::asReadOnly);
+        AsyncLock<Snapshot> lock = pending.computeIfAbsent(new Pair<>(owner, writer),
+                p -> new AsyncLock<>(getWriterData(owner, p.right)));
+        if (lock.isDone())
+            // No write in flight, so ordering with writes costs nothing, and anything only the write
+            // path knows about - buffered state that hasn't been committed - stays visible
+            return lock.runWithLock(x -> getWriterData(owner, writer), () -> getWriterData(owner, writer))
+                    .thenApply(Snapshot::asReadOnly);
+
+        // A write is in flight. Its buffer is unstable, a flush gcs superseded blocks which were never
+        // uploaded, so retrieve the committed state instead of waiting for the write to finish.
+        Supplier<CompletableFuture<Snapshot>> retrieve = () -> getWriterData(mutable.committed(), owner, writer);
+        return lock.runWithReadLock(x -> retrieve.get(), retrieve)
+                .thenCompose(fresh -> {
+                    if (! fresh.contains(writer))
+                        // The in-flight write is creating this writer, so there is nothing to read yet.
+                        // Wait for it - every caller of this used to wait for all writes, so none of
+                        // them can be inside this writer's lock.
+                        return lock.runWithLock(x -> getWriterData(owner, writer),
+                                        () -> getWriterData(owner, writer))
+                                .thenApply(Snapshot::asReadOnly);
+                    // keep the write path up to date, but only ever forwards: with async IO a retrieval
+                    // can start before a write and complete after it, and it reads committed state, so
+                    // it can be older than the value the write left behind
+                    lock.updateIfIdle(existing -> mostRecent(existing, fresh, writer));
+                    return Futures.of(fresh.asReadOnly());
+                });
+    }
+
+    private static Snapshot mostRecent(Snapshot existing, Snapshot candidate, PublicKeyHash writer) {
+        if (! candidate.contains(writer))
+            return existing;
+        if (! existing.contains(writer))
+            return existing.withVersion(writer, candidate.get(writer));
+        Optional<Long> existingSeq = existing.get(writer).sequence;
+        Optional<Long> candidateSeq = candidate.get(writer).sequence;
+        if (existingSeq.isEmpty() && candidateSeq.isPresent())
+            return existing.withVersion(writer, candidate.get(writer));
+        if (existingSeq.isPresent() && candidateSeq.isPresent() && candidateSeq.get() > existingSeq.get())
+            return existing.withVersion(writer, candidate.get(writer));
+        return existing;
     }
 
     /**

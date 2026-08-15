@@ -57,11 +57,6 @@ public class BufferedPointers implements MutablePointers {
         return commitsToTarget ? target : this;
     }
 
-    @Override
-    public boolean hasUncommittedWrites() {
-        return commitsToTarget && ! isEmpty();
-    }
-
     public boolean isBufferedWrite(PublicKeyHash writer, MaybeMultihash target) {
         WriterUpdate latestWrite = latest.get(writer);
         if (latestWrite == null)

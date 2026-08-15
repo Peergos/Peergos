@@ -62,12 +62,6 @@ public interface MutablePointers {
         return this;
     }
 
-    /** Are there local writes which haven't been committed to the target yet?
-     */
-    default boolean hasUncommittedWrites() {
-        return false;
-    }
-
     MutablePointers clearCache();
 
     static CompletableFuture<PointerUpdate> parsePointerTarget(byte[] pointerCas,

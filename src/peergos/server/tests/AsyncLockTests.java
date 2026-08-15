@@ -86,6 +86,9 @@ public class AsyncLockTests {
         assertEquals(5, (int) next.join());
     }
 
+    /** With async IO a read's retrieval and its completion can straddle a write, so a read that
+     *  started before a write must not resurrect pre-write state afterwards.
+     */
     @Test
     public void aReadDoesntOverwriteAnInflightWritesResult() {
         AsyncLock<Integer> lock = new AsyncLock<>(Futures.of(0));
@@ -120,9 +123,13 @@ public class AsyncLockTests {
         assertEquals(Arrays.asList(9), startedFrom);
     }
 
+    /** A read retrieves committed state, which can be older than what an in-flight write is building,
+     *  so it must never become the value a later write starts from.
+     */
     @Test
-    public void aReadRefreshesAnIdleWriteQueue() {
+    public void aReadNeverChangesTheWriteQueuesValue() {
         AsyncLock<Integer> lock = new AsyncLock<>(Futures.of(0));
+        lock.runWithLock(x -> Futures.of(7)).join();
         read(lock, x -> Futures.of(3)).join();
 
         List<Integer> startedFrom = new ArrayList<>();
@@ -130,7 +137,40 @@ public class AsyncLockTests {
             startedFrom.add(x);
             return Futures.of(x);
         }).join();
-        assertEquals(Arrays.asList(3), startedFrom);
+        assertEquals("write starts from the last written value", Arrays.asList(7), startedFrom);
+    }
+
+    @Test
+    public void updateIfIdleAdvancesTheValueTheNextWriteStartsFrom() {
+        AsyncLock<Integer> lock = new AsyncLock<>(Futures.of(4));
+        lock.updateIfIdle(existing -> Math.max(existing, 9));
+        lock.updateIfIdle(existing -> Math.max(existing, 6));
+
+        List<Integer> startedFrom = new ArrayList<>();
+        lock.runWithLock(x -> {
+            startedFrom.add(x);
+            return Futures.of(x);
+        }).join();
+        assertEquals("only ever advances", Arrays.asList(9), startedFrom);
+    }
+
+    @Test
+    public void updateIfIdleIsIgnoredWhilstAWriteIsInFlight() {
+        AsyncLock<Integer> lock = new AsyncLock<>(Futures.of(0));
+        CompletableFuture<Integer> slowWrite = new CompletableFuture<>();
+        CompletableFuture<Integer> write = lock.runWithLock(x -> slowWrite);
+
+        lock.updateIfIdle(existing -> 99);
+
+        slowWrite.complete(5);
+        assertEquals(5, (int) write.join());
+
+        List<Integer> startedFrom = new ArrayList<>();
+        lock.runWithLock(x -> {
+            startedFrom.add(x);
+            return Futures.of(x);
+        }).join();
+        assertEquals("in-flight write's result is not clobbered", Arrays.asList(5), startedFrom);
     }
 
     @Test
