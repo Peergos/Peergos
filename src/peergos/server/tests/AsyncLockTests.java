@@ -140,38 +140,7 @@ public class AsyncLockTests {
         assertEquals("write starts from the last written value", Arrays.asList(7), startedFrom);
     }
 
-    @Test
-    public void updateIfIdleAdvancesTheValueTheNextWriteStartsFrom() {
-        AsyncLock<Integer> lock = new AsyncLock<>(Futures.of(4));
-        lock.updateIfIdle(existing -> Math.max(existing, 9));
-        lock.updateIfIdle(existing -> Math.max(existing, 6));
 
-        List<Integer> startedFrom = new ArrayList<>();
-        lock.runWithLock(x -> {
-            startedFrom.add(x);
-            return Futures.of(x);
-        }).join();
-        assertEquals("only ever advances", Arrays.asList(9), startedFrom);
-    }
-
-    @Test
-    public void updateIfIdleIsIgnoredWhilstAWriteIsInFlight() {
-        AsyncLock<Integer> lock = new AsyncLock<>(Futures.of(0));
-        CompletableFuture<Integer> slowWrite = new CompletableFuture<>();
-        CompletableFuture<Integer> write = lock.runWithLock(x -> slowWrite);
-
-        lock.updateIfIdle(existing -> 99);
-
-        slowWrite.complete(5);
-        assertEquals(5, (int) write.join());
-
-        List<Integer> startedFrom = new ArrayList<>();
-        lock.runWithLock(x -> {
-            startedFrom.add(x);
-            return Futures.of(x);
-        }).join();
-        assertEquals("in-flight write's result is not clobbered", Arrays.asList(5), startedFrom);
-    }
 
     @Test
     public void writesAreStillSerialised() {

@@ -106,26 +106,8 @@ public class WriteSynchronizer {
                         return lock.runWithLock(x -> getWriterData(owner, writer),
                                         () -> getWriterData(owner, writer))
                                 .thenApply(Snapshot::asReadOnly);
-                    // keep the write path up to date, but only ever forwards: with async IO a retrieval
-                    // can start before a write and complete after it, and it reads committed state, so
-                    // it can be older than the value the write left behind
-                    lock.updateIfIdle(existing -> mostRecent(existing, fresh, writer));
                     return Futures.of(fresh.asReadOnly());
                 });
-    }
-
-    private static Snapshot mostRecent(Snapshot existing, Snapshot candidate, PublicKeyHash writer) {
-        if (! candidate.contains(writer))
-            return existing;
-        if (! existing.contains(writer))
-            return existing.withVersion(writer, candidate.get(writer));
-        Optional<Long> existingSeq = existing.get(writer).sequence;
-        Optional<Long> candidateSeq = candidate.get(writer).sequence;
-        if (existingSeq.isEmpty() && candidateSeq.isPresent())
-            return existing.withVersion(writer, candidate.get(writer));
-        if (existingSeq.isPresent() && candidateSeq.isPresent() && candidateSeq.get() > existingSeq.get())
-            return existing.withVersion(writer, candidate.get(writer));
-        return existing;
     }
 
     /**

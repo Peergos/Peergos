@@ -1,6 +1,5 @@
 package peergos.shared.util;
 
-import java.util.*;
 import java.util.concurrent.*;
 import java.util.function.*;
 
@@ -17,18 +16,9 @@ public class AsyncLock<T> {
 
     private CompletableFuture<T> queueHead;
     private CompletableFuture<T> readHead;
-    // the most recent value the write side settled on, which can hold local state that has not been
-    // committed anywhere else yet
-    private Optional<T> lastValue = Optional.empty();
-
     public AsyncLock(CompletableFuture<T> initialValue) {
         this.queueHead = initialValue;
         this.readHead = initialValue;
-        initialValue.thenAccept(this::record);
-    }
-
-    private synchronized void record(T value) {
-        lastValue = Optional.of(value);
     }
 
     public synchronized boolean isDone() {
@@ -54,7 +44,6 @@ public class AsyncLock<T> {
         CompletableFuture<T> result = new CompletableFuture<>();
         existing.thenCompose(current -> processor.apply(current)
                 .thenApply(res -> {
-                    record(res);
                     publishToReaders(res);
                     newHead.complete(res);
                     return result.complete(res);
@@ -62,7 +51,6 @@ public class AsyncLock<T> {
                 .exceptionally(t -> {
                     updater.get()
                             .thenApply(res -> {
-                                record(res);
                                 newHead.complete(res);
                                 return result.completeExceptionally(t);
                             })
@@ -120,18 +108,6 @@ public class AsyncLock<T> {
                 });
 
         return result;
-    }
-
-    /** Update the value the next write starts from, if no write is in flight. The merge function is
-     *  given the current value and returns the value to keep, so a retrieval that completed after a
-     *  write can't move the value backwards.
-     */
-    public synchronized void updateIfIdle(Function<T, T> merge) {
-        if (queueHead.isDone() && ! queueHead.isCompletedExceptionally() && lastValue.isPresent()) {
-            T merged = merge.apply(lastValue.get());
-            queueHead = CompletableFuture.completedFuture(merged);
-            record(merged);
-        }
     }
 
     /** Make the result of a write visible to subsequent reads, unless a read is already in flight,
