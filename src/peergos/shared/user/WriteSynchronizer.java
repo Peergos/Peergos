@@ -63,12 +63,34 @@ public class WriteSynchronizer {
     }
 
     public CompletableFuture<Snapshot> getWriterData(PublicKeyHash owner, PublicKeyHash writer) {
-        return mutable.getPointerTarget(owner, writer, dht)
+        return getWriterData(mutable, owner, writer);
+    }
+
+    private CompletableFuture<Snapshot> getWriterData(MutablePointers source, PublicKeyHash owner, PublicKeyHash writer) {
+        return source.getPointerTarget(owner, writer, dht)
                 .thenCompose(x -> x.updated.isPresent() ?
                         WriterData.getWriterData(owner, (Cid)x.updated.get(), x.sequence, dht)
                                 .thenApply(cwd -> new Snapshot(writer, cwd)) :
                         Futures.of(new Snapshot(Collections.emptyMap()))
                 );
+    }
+
+    /** The current version committed by writer, without waiting for any in-flight local write.
+     *
+     *  Whilst a local write is buffered the buffer is unstable - committing it gcs superseded blocks
+     *  which were never uploaded - so the committed state is retrieved in that case. At rest the
+     *  buffer is empty, so this is the same as getValue without the queueing.
+     *
+     * @param owner
+     * @param writer
+     * @return The last committed version of writer, marked read only
+     */
+    public CompletableFuture<Snapshot> readOnlyValue(PublicKeyHash owner, PublicKeyHash writer) {
+        Supplier<CompletableFuture<Snapshot>> retrieve = () ->
+                getWriterData(mutable.hasUncommittedWrites() ? mutable.committed() : mutable, owner, writer);
+        return pending.computeIfAbsent(new Pair<>(owner, writer), p -> new AsyncLock<>(getWriterData(owner, p.right)))
+                .runWithReadLock(x -> retrieve.get(), retrieve)
+                .thenApply(Snapshot::asReadOnly);
     }
 
     /**
@@ -115,6 +137,7 @@ public class WriteSynchronizer {
                                                 wd.get().commit(aOwner, signer, existing.hash, existing.sequence, mutable, dht, hasher, tid) :
                                                 WriterData.commitDeletion(aOwner, signer, existing.hash, existing.sequence, mutable))
                                                 .thenCompose(s -> updateWriterState(owner, signer.publicKeyHash, s).thenApply(x -> s)), owner, commitWatcher))
+                                .thenApply(Snapshot::asWritable)
                                 .thenCompose(v -> flusher.commit(owner, v, commitWatcher)),
                         () -> getWriterData(owner, writer.publicKeyHash));
     }
@@ -160,7 +183,7 @@ public class WriteSynchronizer {
                                                         .thenCompose(s -> updateWriterState(owner, signer.publicKeyHash, s)
                                                                 .thenApply(x -> s)),
                                         owner, () -> true))
-                                .thenCompose(p -> flusher.commit(owner, p.left, () -> true).thenApply(x -> p))
+                                .thenCompose(p -> flusher.commit(owner, p.left.asWritable(), () -> true).thenApply(x -> p))
                                 .thenApply(p -> {
                                     res.complete(p);
                                     return p.left;

@@ -744,7 +744,7 @@ public class MultiUserTests {
 
         Path filePath = PathUtil.get(u1.username, subdirName, filename);
 
-        shareFunction.apply(u1, userContexts, filePath);
+        shareFunction.apply(u1, userContexts, filePath).join();
 
         FileWrapper theFile = u1.getByPath(filePath).get().get();
         Set<String> sharedWriteAccessWithBefore = u1.sharedWith(filePath).join().get(sharedWithAccess);
@@ -802,7 +802,7 @@ public class MultiUserTests {
 
         Path dirPath = PathUtil.get(u1.username, subdirName);
 
-        shareFunction.apply(u1, userContexts, dirPath);
+        shareFunction.apply(u1, userContexts, dirPath).join();
 
         FileWrapper theDir = u1.getByPath(dirPath).get().get();
         Set<String> sharedWriteAccessWithBefore = u1.sharedWith(dirPath).join().get(sharedWithAccess);
@@ -836,7 +836,7 @@ public class MultiUserTests {
         //read access
         TriFunction<UserContext, List<UserContext>, Path, Object> readAccessSharingFunction =
                 (u1, u2List, filePath) ->
-                        u1.shareReadAccessWith(filePath, u2List.stream().map(u -> u.username).collect(Collectors.toSet()));
+                        u1.shareReadAccessWith(filePath, u2List.stream().map(u -> u.username).collect(Collectors.toSet())).join();
 
         moveToFileSharedWith(readAccessSharingFunction, s -> ! s.readAccess.isEmpty());
         //write access
@@ -910,7 +910,7 @@ public class MultiUserTests {
         //read access
         TriFunction<UserContext, List<UserContext>, Path, Object> readAccessSharingFunction =
                 (u1, u2List, filePath) ->
-                        u1.shareReadAccessWith(filePath, u2List.stream().map(u -> u.username).collect(Collectors.toSet()));
+                        u1.shareReadAccessWith(filePath, u2List.stream().map(u -> u.username).collect(Collectors.toSet())).join();
 
         moveFileToDifferentWriter(readAccessSharingFunction, s -> ! s.readAccess.isEmpty());
         //write access

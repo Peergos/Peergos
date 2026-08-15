@@ -116,7 +116,7 @@ public class FileWrapper {
     public CompletableFuture<FileWrapper> getLatest(NetworkAccess network) {
         if (isRoot())
             return Futures.of(this);
-        return network.synchronizer.getValue(owner(), writer())
+        return network.synchronizer.readOnlyValue(owner(), writer())
                 .thenCompose(latest -> getUpdated(latest, network));
 
     }
@@ -2954,7 +2954,7 @@ public CompletableFuture<Boolean> copyTo(FileWrapper target, UserContext context
     public CompletableFuture<? extends AsyncReader> getInputStream(NetworkAccess network,
                                                                    Crypto crypto,
                                                                    ProgressConsumer<Long> monitor) {
-        return network.synchronizer.getValue(owner(), writer())
+        return network.synchronizer.readOnlyValue(owner(), writer())
                 .thenCompose(state -> getInputStream(state.get(writer()), network, crypto, getFileProperties().size, 1, monitor));
     }
 
@@ -2985,7 +2985,7 @@ public CompletableFuture<Boolean> copyTo(FileWrapper target, UserContext context
                                                                    int fileSizeHi,
                                                                    int fileSizeLow,
                                                                    ProgressConsumer<Long> monitor) {
-        return network.synchronizer.getValue(owner(), writer())
+        return network.synchronizer.readOnlyValue(owner(), writer())
                 .thenCompose(state -> getInputStream(state.get(writer()), network, crypto, fileSize(fileSizeHi, fileSizeLow), 1, monitor));
     }
 
@@ -3001,7 +3001,7 @@ public CompletableFuture<Boolean> copyTo(FileWrapper target, UserContext context
                                                                    long fileSize,
                                                                    int nBufferedChunks,
                                                                    ProgressConsumer<Long> monitor) {
-        return network.synchronizer.getValue(owner(), writer())
+        return network.synchronizer.readOnlyValue(owner(), writer())
                 .thenCompose(state -> getInputStream(state.get(writer()), network, crypto, fileSize, nBufferedChunks, monitor));
     }
 

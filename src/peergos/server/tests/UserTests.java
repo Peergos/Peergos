@@ -400,6 +400,247 @@ public abstract class UserTests {
         Assert.assertTrue(updatedFile.getFileProperties().modified.isAfter(emptyFile.getFileProperties().modified));
     }
 
+    /** An in-flight upload holds the write lock for the whole file, so reads must not queue behind it.
+     */
+    @Test
+    public void navigateDuringUpload() {
+        String username = generateUsername();
+        String password = "password";
+        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
+        byte[] existingData = randomData(1024);
+        context.getUserRoot().join().uploadOrReplaceFile("existing.bin", AsyncReader.build(existingData),
+                existingData.length, context.network, context.crypto, () -> false, l -> {}).join();
+
+        byte[] data = randomData(2 * Chunk.MAX_SIZE);
+        BlockingReader blocking = new BlockingReader(AsyncReader.build(data), Chunk.MAX_SIZE);
+        CompletableFuture<FileWrapper> upload = context.getUserRoot().join()
+                .uploadOrReplaceFile("uploading.bin", blocking, data.length, context.network, context.crypto,
+                        () -> false, l -> {});
+        blocking.awaitBlocked();
+        Assert.assertFalse("upload is still in flight", upload.isDone());
+
+        // all of these queue behind the upload without a separate read queue
+        FileWrapper existing = context.getByPath(PathUtil.get(username, "existing.bin")).join().get();
+        Assert.assertEquals(existingData.length, existing.getSize());
+
+        Set<String> childNames = context.getUserRoot().join().getChildren(crypto.hasher, network).join()
+                .stream().map(FileWrapper::getName).collect(Collectors.toSet());
+        Assert.assertTrue(childNames.contains("existing.bin"));
+
+        byte[] retrieved = Serialize.readFully(existing.getInputStream(network, crypto, x -> {}).join(),
+                existingData.length).join();
+        Assert.assertArrayEquals(existingData, retrieved);
+
+        blocking.unblock();
+        upload.join();
+
+        FileWrapper uploaded = context.getByPath(PathUtil.get(username, "uploading.bin")).join().get();
+        Assert.assertEquals(data.length, uploaded.getSize());
+        Assert.assertArrayEquals(data, Serialize.readFully(uploaded.getInputStream(network, crypto, x -> {}).join(),
+                data.length).join());
+    }
+
+    /** Browsing and then queueing a second upload whilst a first is in flight must not stall the first.
+     */
+    @Test
+    public void secondUploadDuringFirst() throws Exception {
+        String username = generateUsername();
+        String password = "password";
+        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
+        TransactionService txns = context.getTransactionService();
+        context.getUserRoot().join().mkdir("subdir", network, false, context.mirrorBatId(), crypto).join();
+        byte[] existingData = randomData(1024);
+        context.getByPath(PathUtil.get(username, "subdir")).join().get()
+                .uploadOrReplaceFile("existing.bin", AsyncReader.build(existingData), existingData.length,
+                        context.network, context.crypto, () -> false, l -> {}).join();
+
+        byte[] data = randomData(2 * Chunk.MAX_SIZE);
+        BlockingReader blocking = new BlockingReader(AsyncReader.build(data), Chunk.MAX_SIZE);
+        CompletableFuture<FileWrapper> first = context.getUserRoot().join()
+                .uploadFileJS("big.bin", blocking, 0, data.length, false, context.mirrorBatId(),
+                        network, crypto, l -> {}, txns, f -> Futures.of(true));
+        blocking.awaitBlocked();
+        Assert.assertFalse("first upload is still in flight", first.isDone());
+
+        // browse to a sub dir and view a file in it
+        FileWrapper subdir = context.getByPath(PathUtil.get(username, "subdir")).join().get();
+        FileWrapper existing = context.getByPath(PathUtil.get(username, "subdir", "existing.bin")).join().get();
+        Assert.assertArrayEquals(existingData, Serialize.readFully(existing.getInputStream(network, crypto, x -> {})
+                .join(), existingData.length).join());
+
+        // then start a second upload, which must queue behind the first
+        byte[] secondData = randomData(1024);
+        CompletableFuture<FileWrapper> second = subdir.uploadFileJS("second.bin",
+                AsyncReader.build(secondData), 0, secondData.length, false, context.mirrorBatId(),
+                network, crypto, l -> {}, txns, f -> Futures.of(true));
+        Assert.assertFalse("second upload is queued", second.isDone());
+
+        blocking.unblock();
+        first.get(180, TimeUnit.SECONDS);
+        second.get(180, TimeUnit.SECONDS);
+
+        Assert.assertEquals(data.length, context.getByPath(PathUtil.get(username, "big.bin")).join().get().getSize());
+        Assert.assertEquals(secondData.length, context.getByPath(PathUtil.get(username, "subdir", "second.bin"))
+                .join().get().getSize());
+    }
+
+    /** Reads interleaved with an actively progressing upload, as happens in the browser.
+     */
+    @Test
+    public void readsInterleavedWithUpload() throws Exception {
+        String username = generateUsername();
+        String password = "password";
+        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
+        TransactionService txns = context.getTransactionService();
+        context.getUserRoot().join().mkdir("subdir", network, false, context.mirrorBatId(), crypto).join();
+        byte[] existingData = randomData(1024);
+        context.getByPath(PathUtil.get(username, "subdir")).join().get()
+                .uploadOrReplaceFile("existing.bin", AsyncReader.build(existingData), existingData.length,
+                        context.network, context.crypto, () -> false, l -> {}).join();
+
+        byte[] data = randomData(4 * Chunk.MAX_SIZE);
+        ExecutorService pool = Executors.newFixedThreadPool(2);
+        CompletableFuture<Boolean> firstDone = new CompletableFuture<>();
+        pool.submit(() -> {
+            try {
+                context.getUserRoot().join().uploadFileJS("big.bin", AsyncReader.build(data), 0, data.length,
+                        false, context.mirrorBatId(), network, crypto, l -> {}, txns, f -> Futures.of(true)).join();
+                firstDone.complete(true);
+            } catch (Throwable t) {
+                firstDone.completeExceptionally(t);
+            }
+        });
+
+        int reads = 0;
+        boolean startedSecond = false;
+        CompletableFuture<Boolean> secondDone = new CompletableFuture<>();
+        long deadline = System.currentTimeMillis() + 240_000;
+        while (! firstDone.isDone() && System.currentTimeMillis() < deadline) {
+            FileWrapper home = context.getByPath(PathUtil.get(username)).join().get();
+            home.getChildren(crypto.hasher, network).join();
+            home.getLatest(network).join();
+            FileWrapper subdir = context.getByPath(PathUtil.get(username, "subdir")).join().get();
+            subdir.getChildren(crypto.hasher, network).join();
+            FileWrapper existing = context.getByPath(PathUtil.get(username, "subdir", "existing.bin")).join().get();
+            Serialize.readFully(existing.getInputStream(network, crypto, x -> {}).join(), existingData.length).join();
+            reads++;
+            if (reads == 3 && ! startedSecond) {
+                startedSecond = true;
+                byte[] secondData = randomData(1024);
+                pool.submit(() -> {
+                    try {
+                        subdir.uploadFileJS("second.bin", AsyncReader.build(secondData), 0, secondData.length,
+                                false, context.mirrorBatId(), network, crypto, l -> {}, txns, f -> Futures.of(true)).join();
+                        secondDone.complete(true);
+                    } catch (Throwable t) {
+                        secondDone.completeExceptionally(t);
+                    }
+                });
+            }
+        }
+        pool.shutdown();
+        Assert.assertTrue("did some reads during the upload", reads > 2);
+        firstDone.get(120, TimeUnit.SECONDS);
+        secondDone.get(120, TimeUnit.SECONDS);
+        Assert.assertEquals(data.length, context.getByPath(PathUtil.get(username, "big.bin")).join().get().getSize());
+    }
+
+    /** An upload waits for the replace/resume callbacks whilst holding the writer's lock, so a prompt
+     *  the user never answers parks the upload with no network activity and no error.
+     */
+    @Test
+    public void uploadParkedOnReplacePrompt() throws Exception {
+        String username = generateUsername();
+        String password = "password";
+        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
+        TransactionService txns = context.getTransactionService();
+        FileWrapper home = context.getUserRoot().join();
+        byte[] original = randomData(1024);
+        home.uploadOrReplaceFile("collides.bin", AsyncReader.build(original), original.length,
+                context.network, context.crypto, () -> false, l -> {}).join();
+
+        // a prompt the user never answers
+        CompletableFuture<Boolean> neverAnswered = new CompletableFuture<>();
+        CompletableFuture<Boolean> prompted = new CompletableFuture<>();
+        byte[] replacement = randomData(2048);
+        FileWrapper.FileUploadProperties file = new FileWrapper.FileUploadProperties("collides.bin",
+                () -> AsyncReader.build(replacement), 0, replacement.length, Optional.empty(), Optional.empty(),
+                false, false, l -> {});
+        CompletableFuture<FileWrapper> upload = context.getUserRoot().join()
+                .uploadSubtree(Stream.of(new FileWrapper.FolderUploadProperties(Collections.emptyList(),
+                                Collections.singletonList(file))), context.mirrorBatId(), network, crypto, txns,
+                        f -> Futures.of(false),
+                        name -> {
+                            prompted.complete(true);
+                            return neverAnswered;
+                        }, () -> true);
+        prompted.get(60, TimeUnit.SECONDS);
+
+        // reads still work, exactly as reported from the UI
+        Assert.assertEquals(original.length, context.getByPath(PathUtil.get(username, "collides.bin"))
+                .join().get().getSize());
+        context.getUserRoot().join().getChildren(crypto.hasher, network).join();
+
+        // but any write for that writer is stuck behind the unanswered prompt
+        CompletableFuture<FileWrapper> queuedWrite = context.getUserRoot().join()
+                .mkdir("newdir", network, false, context.mirrorBatId(), crypto);
+        Thread.sleep(2000);
+        Assert.assertFalse("upload is parked on the prompt", upload.isDone());
+        Assert.assertFalse("later writes are stuck behind it", queuedWrite.isDone());
+
+        neverAnswered.complete(true);
+        upload.get(120, TimeUnit.SECONDS);
+        queuedWrite.get(120, TimeUnit.SECONDS);
+    }
+
+    /** Pauses a read once a threshold of bytes has been read, so an upload can be held mid flight.
+     */
+    private static class BlockingReader implements AsyncReader {
+        private final AsyncReader source;
+        private final long blockAfter;
+        private final CompletableFuture<Boolean> blocked = new CompletableFuture<>();
+        private final CompletableFuture<Boolean> unblocked = new CompletableFuture<>();
+        private long totalRead = 0;
+
+        public BlockingReader(AsyncReader source, long blockAfter) {
+            this.source = source;
+            this.blockAfter = blockAfter;
+        }
+
+        public void awaitBlocked() {
+            blocked.join();
+        }
+
+        public void unblock() {
+            unblocked.complete(true);
+        }
+
+        @Override
+        public CompletableFuture<Integer> readIntoArray(byte[] res, int offset, int length) {
+            totalRead += length;
+            if (totalRead > blockAfter) {
+                blocked.complete(true);
+                return unblocked.thenCompose(x -> source.readIntoArray(res, offset, length));
+            }
+            return source.readIntoArray(res, offset, length);
+        }
+
+        @Override
+        public CompletableFuture<AsyncReader> seekJS(int high32, int low32) {
+            return source.seekJS(high32, low32).thenApply(x -> this);
+        }
+
+        @Override
+        public CompletableFuture<AsyncReader> reset() {
+            return source.reset().thenApply(x -> this);
+        }
+
+        @Override
+        public void close() {
+            source.close();
+        }
+    }
+
     @Test
     public void changePassword() throws Exception {
         String username = generateUsername();
