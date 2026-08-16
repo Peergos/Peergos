@@ -12,6 +12,7 @@ public class SyncConfig implements Jsonable {
     public final List<String> localDirs, remotePaths, links;
     public final List<Boolean> syncLocalDeletes, syncRemoteDeletes, allowOnMobile;
     public final int maxDownloadParallelism, minFreeSpacePercent;
+    public final boolean paused;
 
     public SyncConfig(List<String> localDirs,
                       List<String> remotePaths,
@@ -20,7 +21,8 @@ public class SyncConfig implements Jsonable {
                       List<Boolean> syncRemoteDeletes,
                       List<Boolean> allowOnMobile,
                       int maxDownloadParallelism,
-                      int minFreeSpacePercent) {
+                      int minFreeSpacePercent,
+                      boolean paused) {
         if (localDirs.size() != remotePaths.size())
             throw new IllegalStateException("Invalid SyncConfig!");
         if (localDirs.size() != links.size())
@@ -39,6 +41,7 @@ public class SyncConfig implements Jsonable {
         this.allowOnMobile = allowOnMobile;
         this.maxDownloadParallelism = maxDownloadParallelism;
         this.minFreeSpacePercent = minFreeSpacePercent;
+        this.paused = paused;
     }
 
     public Map<String, Object> toJsonWithoutCaps() {
@@ -79,6 +82,7 @@ public class SyncConfig implements Jsonable {
         res.put("pairs", pairs);
         res.put("maxParallelism", maxDownloadParallelism);
         res.put("minPercentFreeSpace", minFreeSpacePercent);
+        res.put("paused", paused);
         return res;
     }
 
@@ -100,8 +104,10 @@ public class SyncConfig implements Jsonable {
             Boolean allow = (Boolean) pair.get("allowOnMobile");
             allowOnMobile.add(allow != null && allow);
         }
+        // Older config files predate this flag; treat missing as running.
+        Boolean paused = (Boolean) json.get("paused");
         return new SyncConfig(localDirs, remoteDirs, links, syncLocalDeletes, syncRemoteDeletes, allowOnMobile,
-                (Integer)json.get("maxParallelism"), (Integer)json.get("minPercentFreeSpace"));
+                (Integer)json.get("maxParallelism"), (Integer)json.get("minPercentFreeSpace"), paused != null && paused);
     }
 
     public static List<String> getLinks(Args updated) {
@@ -156,7 +162,8 @@ public class SyncConfig implements Jsonable {
                 getSyncRemoteDeletes(a),
                 getAllowOnMobile(a, localDirs.size()),
                 a.getInt("max-parallelism", 32),
-                a.getInt("min-free-space-percent", 5));
+                a.getInt("min-free-space-percent", 5),
+                false);
     }
 
     private static boolean isWindows() {

@@ -227,6 +227,9 @@ public class DirectorySync {
         while (true) {
             LOG.accept("Syncing " + links.size() + " pairs of directories: " + IntStream.range(0, links.size()).mapToObj(i -> Arrays.asList(localDirs.get(i), linkPaths.get(i))).collect(Collectors.toList()));
             boolean errored = false;
+            // a cancel that stopped the previous pass must not abort this one before it
+            // syncs anything; a pause is held by its own flag, so this cannot resume one
+            status.resume();
             status.setStatus(SyncStatus.SYNCING);
             for (int i=0; i < links.size(); i++) {
                 SyncState syncedState = null;
@@ -247,6 +250,8 @@ public class DirectorySync {
                     Path remoteDir = PathUtil.get(linkPaths.get(i));
                     syncedState = syncedStates.get(i).get();
                     perPairLog.accept("Syncing " + localDir + " to+from " + remoteDir);
+                    // else a stale failure is shown for the whole of a long transfer
+                    pairStatus.setError(null);
                     pairStatus.setStatus(SyncStatus.SYNCING);
                     long t0 = System.currentTimeMillis();
                     String username = remoteDir.getName(0).toString();
@@ -271,6 +276,16 @@ public class DirectorySync {
                         pairStatus.setStatus(SyncStatus.SYNCED);
                     }
                 } catch (Exception e) {
+                    if (status.isPaused() || status.isCancelled()) {
+                        // stopped on request (paused, or the pair was removed), so not a
+                        // failure; the message keeps the progress reached, which is what
+                        // is useful to see while stopped
+                        pairStatus.setError(null);
+                        pairStatus.setStatus(SyncStatus.SYNCED);
+                        if (pairLog != null)
+                            pairLog.log(status.isPaused() ? "Sync paused" : "Sync stopped");
+                        return false;
+                    }
                     errored = true;
                     ERROR.accept(e);
                     if (pairLog != null)
@@ -400,6 +415,7 @@ public class DirectorySync {
             try {
                 SyncState initialRemote = new JdbcTreeState(initialRemotePath);
                 long r0 = System.currentTimeMillis();
+                LOG.accept("Checking files in Drive");
                 buildDirState(remoteFS, initialRemote, syncedVersions);
                 LOG.accept("Found " + initialRemote.filesCount() + " remote files in " + (System.currentTimeMillis() - r0)/1_000 + "s");
 
@@ -474,8 +490,12 @@ public class DirectorySync {
             remoteStatePath = File.createTempFile("peergos-sync", ".sqlite", peergosDir.toFile()).toString();
             SyncState remoteState = remoteChange ? new JdbcTreeState(remoteStatePath) : syncedVersions;
             long t3 = System.currentTimeMillis();
-            if (remoteChange)
+            if (remoteChange) {
+                // this rehashes anything it cannot match from cache, which for a file of
+                // several GiB is minutes with nothing else to report
+                LOG.accept("Checking files in Drive");
                 remoteVersion = buildDirState(remoteFS, remoteState, syncedVersions);
+            }
             long t4 = System.currentTimeMillis();
             LOG.accept("Found " + remoteState.filesCount() + " remote files in " + (t4-t3)/1_000 + "s");
 

@@ -78,7 +78,9 @@ public class PairStatus {
     }
 
     public synchronized String getStatusAndTime() {
-        if (status == null)
+        // a record can hold a state with no message yet, and loadFromDisk leaves the
+        // time unset when it cannot parse one, so both halves have to be checked
+        if (status == null || status.isEmpty() || updateTime == null)
             return "";
         return status + " at " + updateTime.toLocalDate() + " " + updateTime.toLocalTime().withNano(0);
     }

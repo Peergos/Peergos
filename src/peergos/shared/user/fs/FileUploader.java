@@ -155,7 +155,12 @@ public class FileUploader implements AutoCloseable {
                             (a, b) -> b)
                     .exceptionally(res::completeExceptionally);
             Futures.reduceAll(input, current,
-                            (s, i) -> queue.poll().thenCompose(chunk -> uploadChunk(s, c, chunk, writer, network, monitor)),
+                            (s, i) -> {
+                                // else every already encrypted chunk still uploads first
+                                if (isCancelled.get())
+                                    throw new IllegalStateException("Upload cancelled!");
+                                return queue.poll().thenCompose(chunk -> uploadChunk(s, c, chunk, writer, network, monitor));
+                            },
                             (a, b) -> b)
                     .thenApply(x -> {
                         LOG.info("File encryption, upload took: " + (System.currentTimeMillis() - t1) + " mS");
