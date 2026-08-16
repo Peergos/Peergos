@@ -39,7 +39,6 @@ import java.util.concurrent.ForkJoinPool;
 import java.util.function.Function;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 public class SyncConfigHandler implements HttpHandler {
@@ -94,18 +93,51 @@ public class SyncConfigHandler implements HttpHandler {
         }
     }
 
-    public void updateRemotePaths(SyncConfig updated) {
-        List<String> links = updated.links;
-        List<String> remotePaths = links.stream()
-                .map(this::getRemotePath)
-                .collect(Collectors.toList());
-        saveConfigToFile(new SyncConfig(updated.localDirs, remotePaths, links, updated.syncLocalDeletes, updated.syncRemoteDeletes,
-                updated.allowOnMobile, updated.maxDownloadParallelism, updated.minFreeSpacePercent));
+    public void updateRemotePaths(SyncConfig snapshot) {
+        // resolving the links hits the network, so do it before taking the lock
+        Map<String, String> resolved = new LinkedHashMap<>();
+        for (String link : snapshot.links)
+            resolved.put(link, getRemotePath(link));
+        synchronized (this) {
+            // pairs can be added or removed while the paths are being resolved, so merge
+            // into the config as it is now: writing the old one back would bring a
+            // removed pair straight back
+            SyncConfig current = getUpdatedArgs();
+            List<String> remotePaths = new ArrayList<>();
+            boolean changed = false;
+            for (int i = 0; i < current.links.size(); i++) {
+                String path = resolved.getOrDefault(current.links.get(i), current.remotePaths.get(i));
+                changed |= ! path.equals(current.remotePaths.get(i));
+                remotePaths.add(path);
+            }
+            if (changed)
+                saveConfigToFile(new SyncConfig(current.localDirs, remotePaths, current.links,
+                        current.syncLocalDeletes, current.syncRemoteDeletes, current.allowOnMobile,
+                        current.maxDownloadParallelism, current.minFreeSpacePercent));
+        }
     }
 
     public void start() {
         if (! getUpdatedArgs().links.isEmpty())
             syncer.start();
+    }
+
+    /** Windows and macOS treat local paths as case insensitive, so comparing them
+     *  literally would let an overlapping pair through. Drive paths always match exactly. */
+    private static String localCompare(String path) {
+        return isWindows() || isMac() ? path.toLowerCase() : path;
+    }
+
+    /** True when either path is the other, or lies inside it. */
+    private static boolean nested(String a, String b) {
+        // local paths use the platform separator, remote ones always "/"
+        String x = a.replace('\\', '/');
+        String y = b.replace('\\', '/');
+        if (! x.endsWith("/"))
+            x = x + "/";
+        if (! y.endsWith("/"))
+            y = y + "/";
+        return x.startsWith(y) || y.startsWith(x);
     }
 
     private String getRemotePath(String link) {
@@ -128,6 +160,18 @@ public class SyncConfigHandler implements HttpHandler {
             String host = exchange.getRequestHeaders().get("Host").get(0);
             if (! host.startsWith("localhost:")) {
                 exchange.sendResponseHeaders(404, 0);
+                exchange.close();
+                return;
+            }
+            // A page in the user's browser can POST here cross site without a preflight,
+            // so anything that admits to another origin is refused: otherwise any site
+            // the user visits could pause their sync or remove a folder. No
+            // Access-Control-Allow-Origin is ever sent, so such a caller cannot read a
+            // reply either.
+            List<String> origins = exchange.getRequestHeaders().get("Origin");
+            if (origins != null && ! origins.isEmpty() && ! origins.get(0).equals("http://" + host)) {
+                LOG.info("Refusing sync request from origin " + origins.get(0));
+                exchange.sendResponseHeaders(403, 0);
                 exchange.close();
                 return;
             }
@@ -156,9 +200,29 @@ public class SyncConfigHandler implements HttpHandler {
                     exchange.sendResponseHeaders(200, 0);
                     exchange.close();
                 } else {
+                    // one pair's folder must not sit inside another's, on either side:
+                    // the outer pair would mirror the inner one's files and propagate
+                    // its deletions, copying data back and forth and losing it
+                    String newRemote = getRemotePath(link);
+                    for (int i = 0; i < links.size(); i++) {
+                        if (nested(newRemote, remotePaths.get(i)))
+                            throw new IllegalStateException("That Drive folder overlaps the one already synced with "
+                                    + localDirs.get(i));
+                        if (nested(localCompare(localDir), localCompare(localDirs.get(i))))
+                            throw new IllegalStateException("That folder overlaps the one already synced with "
+                                    + remotePaths.get(i));
+                    }
+                    // a folder added back after being removed must not report the old status
+                    String pairHash = PairLogger.hash(newRemote, localDir);
+                    try {
+                        PairLogger.deleteFor(peergosDir, pairHash);
+                        PairStatus.deleteFor(peergosDir, pairHash);
+                    } catch (IOException e) {
+                        LOG.info("Error clearing sync log/status for " + pairHash + ": " + e.getMessage());
+                    }
                     links.add(link);
                     localDirs.add(localDir);
-                    remotePaths.add(getRemotePath(link));
+                    remotePaths.add(newRemote);
                     syncLocalDeletes.add(newSyncLocalDeletes);
                     syncRemoteDeletes.add(newSyncRemoteDeletes);
                     // New pairs default to Wi-Fi only; flip via set-allow-mobile.
@@ -210,7 +274,10 @@ public class SyncConfigHandler implements HttpHandler {
                 }
                 SyncRunner.StatusHolder status = syncer.getStatusHolder();
                 status.setStatus("Removed sync of " + removedLocal);
+                // cancelling stops the whole pass, so ask for another one straight away:
+                // the folders it had not reached should not wait for the next schedule
                 status.cancel();
+                syncer.runNow();
                 // clear sync state db again if it was recreated by an in progress sync
                 if (Files.exists(syncDb)) {
                     Files.delete(syncDb);
@@ -361,5 +428,9 @@ public class SyncConfigHandler implements HttpHandler {
 
     private static boolean isWindows() {
         return System.getProperty("os.name").toLowerCase().startsWith("windows");
+    }
+
+    private static boolean isMac() {
+        return System.getProperty("os.name").toLowerCase().startsWith("mac");
     }
 }
