@@ -175,7 +175,7 @@ public class LocalFileSystem implements SyncFilesystem {
                 raf.write(buf, 0, read);
                 done += read;
                 if (done >= 1024*1024)
-                    progress.accept("Downloaded " + (done/1024/1024) + " / " + (size / 1024/1024) + " MiB of " + p.getFileName().toString());
+                    progress.accept("Downloaded " + (done/1024/1024) + " / " + (size / 1024/1024) + " MiB of " + p.toString());
             }
             if (modificationTime.isPresent()) {
                 long time = modificationTime.get().toInstant(ZoneOffset.UTC).toEpochMilli() / 1000 * 1000;

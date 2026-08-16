@@ -209,6 +209,9 @@ public class PeergosSyncFS implements SyncFilesystem {
                                             Consumer<String> progress) throws IOException {
         Optional<FileWrapper> existing = context.getByPath(root.resolve(p)).join();
         String filename = p.getFileName().toString();
+        // progress names the path within the synced folder, not just the leaf: several
+        // subfolders can hold the same filename, and the log has to say which one
+        String relPath = p.toString();
         if (existing.isEmpty() && fileOffset == 0) {
             Optional<FileWrapper> parentOpt = context.getByPath(root.resolve(p).getParent()).join();
             if (parentOpt.isEmpty()) {
@@ -222,7 +225,7 @@ public class PeergosSyncFS implements SyncFilesystem {
                     context.network, context.crypto, isCancelled, x -> {
                         long total = done.addAndGet(x);
                         if (total >= 1024*1024)
-                            progress.accept("Uploaded " + (total/1024/1024) + " / " + (size / 1024/1024) + " MiB of " + filename);
+                            progress.accept("Uploaded " + (total/1024/1024) + " / " + (size / 1024/1024) + " MiB of " + relPath);
                     }).join();
         } else {
             FileWrapper f = existing.get();
@@ -238,7 +241,7 @@ public class PeergosSyncFS implements SyncFilesystem {
             f.overwriteSectionJS(data, (int) (fileOffset >>> 32), (int) fileOffset, (int) (end >>> 32), (int) end, modificationTime, context.network, context.crypto, x -> {
                 long total = done.addAndGet(x);
                 if (total >= 1024*1024)
-                    progress.accept("Uploaded " + (total/1024/1024) + " / " + (size / 1024/1024) + " MiB of " + filename);
+                    progress.accept("Uploaded " + (total/1024/1024) + " / " + (size / 1024/1024) + " MiB of " + relPath);
             }).join();
         }
         return modificationTime;
