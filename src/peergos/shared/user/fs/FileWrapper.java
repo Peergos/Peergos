@@ -2053,9 +2053,15 @@ public class FileWrapper {
             return getChild(elements.get(0), crypto.hasher, network)
                     .thenCompose(kid -> kid.get().getOrMkdirs(PathUtil.get(elements.subList(1, elements.size())
                             .stream().collect(Collectors.joining("/"))), network, isSystemFolder, mirrorBat, crypto));
-        return network.synchronizer.applyComplexComputation(owner(), signingPair(),
-                (state, committer) -> getOrMkdirs(elements, isSystemFolder, mirrorBat, network, crypto, state, committer))
-                .thenApply(p -> p.right);
+        // Only take the write lock if something is actually missing, otherwise opening an app whilst
+        // an upload is in flight would wait for the upload
+        return getLatest(network)
+                .thenCompose(latest -> latest.getDescendentByPath(finalPath, crypto.hasher, network))
+                .thenCompose(existing -> existing.isPresent() ?
+                        Futures.of(existing.get()) :
+                        network.synchronizer.applyComplexComputation(owner(), signingPair(),
+                                        (state, committer) -> getOrMkdirs(elements, isSystemFolder, mirrorBat, network, crypto, state, committer))
+                                .thenApply(p -> p.right));
     }
 
     public CompletableFuture<Pair<Snapshot, FileWrapper>> getOrMkdirs(List<String> subPath,

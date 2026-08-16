@@ -440,6 +440,32 @@ public abstract class UserTests {
                 data.length).join());
     }
 
+    /** Opening an app whose data dir already exists must not wait for an in-flight upload.
+     */
+    @Test
+    public void openAppDuringUpload() throws Exception {
+        String username = generateUsername();
+        String password = "password";
+        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
+        App.init(context, "calendar").join();
+
+        byte[] data = randomData(2 * Chunk.MAX_SIZE);
+        BlockingReader blocking = new BlockingReader(AsyncReader.build(data), Chunk.MAX_SIZE);
+        CompletableFuture<FileWrapper> upload = context.getUserRoot().join()
+                .uploadOrReplaceFile("uploading.bin", blocking, data.length, context.network, context.crypto,
+                        () -> false, l -> {});
+        blocking.awaitBlocked();
+        Assert.assertFalse("upload is still in flight", upload.isDone());
+
+        App calendar = App.init(context, "calendar").get(60, TimeUnit.SECONDS);
+        Assert.assertTrue(calendar.dirInternal(null, null).get(60, TimeUnit.SECONDS).isEmpty());
+
+        blocking.unblock();
+        upload.join();
+
+        Assert.assertEquals(data.length, context.getByPath(PathUtil.get(username, "uploading.bin")).join().get().getSize());
+    }
+
     /** Browsing and then queueing a second upload whilst a first is in flight must not stall the first.
      */
     @Test
