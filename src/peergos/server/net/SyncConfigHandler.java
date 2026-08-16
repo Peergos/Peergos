@@ -113,13 +113,24 @@ public class SyncConfigHandler implements HttpHandler {
             if (changed)
                 saveConfigToFile(new SyncConfig(current.localDirs, remotePaths, current.links,
                         current.syncLocalDeletes, current.syncRemoteDeletes, current.allowOnMobile,
-                        current.maxDownloadParallelism, current.minFreeSpacePercent));
+                        current.maxDownloadParallelism, current.minFreeSpacePercent, current.paused));
         }
     }
 
     public void start() {
-        if (! getUpdatedArgs().links.isEmpty())
+        SyncConfig config = getUpdatedArgs();
+        if (config.paused)
+            syncer.getStatusHolder().pause();
+        if (! config.links.isEmpty())
             syncer.start();
+    }
+
+    // under the same lock as the other whole config rewrites, so a pause cannot be
+    // lost against the path refresh that every get-pairs schedules
+    private synchronized void setPaused(boolean paused) {
+        SyncConfig c = getUpdatedArgs();
+        saveConfigToFile(new SyncConfig(c.localDirs, c.remotePaths, c.links, c.syncLocalDeletes,
+                c.syncRemoteDeletes, c.allowOnMobile, c.maxDownloadParallelism, c.minFreeSpacePercent, paused));
     }
 
     /** Windows and macOS treat local paths as case insensitive, so comparing them
@@ -228,7 +239,7 @@ public class SyncConfigHandler implements HttpHandler {
                     // New pairs default to Wi-Fi only; flip via set-allow-mobile.
                     allowOnMobile.add(false);
                     saveConfigToFile(new SyncConfig(localDirs, remotePaths, links, syncLocalDeletes, syncRemoteDeletes,
-                            allowOnMobile, updated.maxDownloadParallelism, updated.minFreeSpacePercent));
+                            allowOnMobile, updated.maxDownloadParallelism, updated.minFreeSpacePercent, updated.paused));
                     // run sync client now
                     syncer.start();
                     System.out.println("Syncing " + localDir + " syncLocalDeletes: " + newSyncLocalDeletes + ", syncRemoteDeletes: " + newSyncRemoteDeletes);
@@ -260,7 +271,7 @@ public class SyncConfigHandler implements HttpHandler {
                 allowOnMobile.remove(toRemove);
 
                 saveConfigToFile(new SyncConfig(localDirs, remotePaths, links, syncLocalDeletes, syncRemoteDeletes,
-                        allowOnMobile, updated.maxDownloadParallelism, updated.minFreeSpacePercent));
+                        allowOnMobile, updated.maxDownloadParallelism, updated.minFreeSpacePercent, updated.paused));
                 // clear sync state db as well
                 String linkPath = UserContext.fromSecretLinksV2(Arrays.asList(link), Arrays.asList(() -> Futures.of("")), network, crypto).join().getEntryPath().join();
                 Path syncDb = DirectorySync.getSyncStateDbPath(peergosDir, linkPath, removedLocal);
@@ -354,7 +365,21 @@ public class SyncConfigHandler implements HttpHandler {
                 resp.write(res);
                 exchange.close();
             } else if (action.equals("sync-now")) {
+                // also clears the cancellation, else the triggered run aborts immediately
+                syncer.getStatusHolder().unpause();
+                setPaused(false);
                 syncer.runNow();
+                byte[] res = JSONParser.toString(new LinkedHashMap<>()).getBytes(StandardCharsets.UTF_8);
+                exchange.sendResponseHeaders(200, res.length);
+                OutputStream resp = exchange.getResponseBody();
+                resp.write(res);
+                exchange.close();
+            } else if (action.equals("pause")) {
+                SyncRunner.StatusHolder holder = syncer.getStatusHolder();
+                holder.pause();
+                setPaused(true);
+                // no further pass is coming, so settle the state rather than leave it SYNCING
+                holder.setStatus(SyncStatus.SYNCED);
                 byte[] res = JSONParser.toString(new LinkedHashMap<>()).getBytes(StandardCharsets.UTF_8);
                 exchange.sendResponseHeaders(200, res.length);
                 OutputStream resp = exchange.getResponseBody();
@@ -383,6 +408,7 @@ public class SyncConfigHandler implements HttpHandler {
                 reply.put("msg", global.getStatusAndTime());
                 boolean globalError = error.isPresent() || global.getStatus() == SyncStatus.ERROR;
                 reply.put("state", SyncStatus.aggregate(pairStates, globalError).name());
+                reply.put("paused", global.isPaused());
                 error.ifPresent(err -> reply.put("error", err));
                 reply.put("pairs", pairs);
                 byte[] res = JSONParser.toString(reply).getBytes(StandardCharsets.UTF_8);

@@ -39,6 +39,8 @@ public interface SyncRunner {
         private Optional<String> error = Optional.empty();
         private SyncStatus state = SyncStatus.SYNCED;
         private final AtomicBoolean cancelled = new AtomicBoolean(false);
+        // a pass clears cancelled as it aborts, so holding a pause needs its own flag
+        private final AtomicBoolean paused = new AtomicBoolean(false);
 
         public synchronized void cancel() {
             cancelled.set(true);
@@ -50,6 +52,21 @@ public interface SyncRunner {
 
         public synchronized boolean isCancelled() {
             return cancelled.get();
+        }
+
+        /** Stops the pass in flight and the scheduled ones until unpause(). */
+        public synchronized void pause() {
+            paused.set(true);
+            cancel();
+        }
+
+        public synchronized void unpause() {
+            paused.set(false);
+            resume();
+        }
+
+        public synchronized boolean isPaused() {
+            return paused.get();
         }
 
         public synchronized void setStatus(String newStatus) {
@@ -101,6 +118,13 @@ public interface SyncRunner {
                     crypto.hasher, Collections.emptyList(), false);
             this.runner = new Thread(() -> {
                 while (true) {
+                    if (status.isPaused()) {
+                        // runNow() interrupts this, so unpausing resumes the schedule at once
+                        try {
+                            Thread.sleep(30_000);
+                        } catch (InterruptedException e) {}
+                        continue;
+                    }
                     inPass.set(true);
                     try {
                         Path peergosDir = args.getPeergosDir();
