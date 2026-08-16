@@ -86,6 +86,8 @@ public interface SyncRunner {
         private static final Logger LOG = Logging.LOG();
         private final Thread runner;
         private final AtomicBoolean started = new AtomicBoolean(false);
+        private final AtomicBoolean inPass = new AtomicBoolean(false);
+        private final AtomicBoolean rerun = new AtomicBoolean(false);
         private final StatusHolder status = new StatusHolder();
 
         public ThreadBased(Args args,
@@ -99,6 +101,7 @@ public interface SyncRunner {
                     crypto.hasher, Collections.emptyList(), false);
             this.runner = new Thread(() -> {
                 while (true) {
+                    inPass.set(true);
                     try {
                         Path peergosDir = args.getPeergosDir();
                         Path jsonSyncConfig = peergosDir.resolve(SYNC_CONFIG_FILENAME);
@@ -123,6 +126,7 @@ public interface SyncRunner {
                                     DirectorySync.log(e.getMessage());
                                 }
                             };
+                            status.setError(null);
                             DirectorySync.syncDirs(links, localDirs, syncLocalDeletes, syncRemoteDeletes,
                                     maxDownloadParallelism, minFreeSpacePercent, true,
                                     root -> new LocalFileSystem(Paths.get(root), crypto.hasher),
@@ -146,7 +150,11 @@ public interface SyncRunner {
                         }
                     } catch (Exception e) {
                         LOG.log(Level.WARNING, e.getMessage(), e);
+                    } finally {
+                        inPass.set(false);
                     }
+                    if (rerun.getAndSet(false))
+                        continue;
                     try {
                         Thread.sleep(30_000);
                     } catch (InterruptedException e) {}
@@ -160,12 +168,22 @@ public interface SyncRunner {
                 runner.start();
                 started.set(true);
             } else
+                wake();
+        }
+
+        /** Interrupting only helps while the thread is asleep: during a pass it cannot
+         *  start anything, and tears the transfer in flight. Asking for a rerun instead
+         *  picks up a changed config as soon as the pass unwinds, rather than a sleep later. */
+        private void wake() {
+            if (inPass.get())
+                rerun.set(true);
+            else
                 runner.interrupt();
         }
 
         @Override
         public void runNow() {
-            runner.interrupt();
+            wake();
         }
 
         @Override
