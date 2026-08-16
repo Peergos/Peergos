@@ -276,6 +276,16 @@ public class DirectorySync {
                         pairStatus.setStatus(SyncStatus.SYNCED);
                     }
                 } catch (Exception e) {
+                    if (status.isPaused() || status.isCancelled()) {
+                        // stopped on request (paused, or the pair was removed), so not a
+                        // failure; the message keeps the progress reached, which is what
+                        // is useful to see while stopped
+                        pairStatus.setError(null);
+                        pairStatus.setStatus(SyncStatus.SYNCED);
+                        if (pairLog != null)
+                            pairLog.log(status.isPaused() ? "Sync paused" : "Sync stopped");
+                        return false;
+                    }
                     errored = true;
                     ERROR.accept(e);
                     if (pairLog != null)

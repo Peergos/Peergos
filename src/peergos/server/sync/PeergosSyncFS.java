@@ -239,6 +239,10 @@ public class PeergosSyncFS implements SyncFilesystem {
             long end = fileOffset + size;
             AtomicLong done = new AtomicLong(0);
             f.overwriteSectionJS(data, (int) (fileOffset >>> 32), (int) fileOffset, (int) (end >>> 32), (int) end, modificationTime, context.network, context.crypto, x -> {
+                // this path carries no cancel check of its own, so a resumed upload would
+                // otherwise run to the end after a pause
+                if (isCancelled.get())
+                    throw new IllegalStateException("Upload cancelled!");
                 long total = done.addAndGet(x);
                 if (total >= 1024*1024)
                     progress.accept("Uploaded " + (total/1024/1024) + " / " + (size / 1024/1024) + " MiB of " + relPath);

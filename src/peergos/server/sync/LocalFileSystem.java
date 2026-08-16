@@ -171,6 +171,9 @@ public class LocalFileSystem implements SyncFilesystem {
             byte[] buf = new byte[4096];
             long done = 0;
             while (done < size) {
+                // a paused or removed pair must stop here too, not just on upload
+                if (isCancelled.get())
+                    throw new IllegalStateException("Download cancelled!");
                 int read = fin.readIntoArray(buf, 0, (int) Math.min(buf.length, size - done)).join();
                 raf.write(buf, 0, read);
                 done += read;
