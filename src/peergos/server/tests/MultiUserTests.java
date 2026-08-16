@@ -32,7 +32,7 @@ import static peergos.server.tests.PeergosNetworkUtils.getUserContextsForNode;
 
 public class MultiUserTests {
 
-    private static Args args = UserTests.buildArgs()
+    private static Args args = UserTests.useMemoryDbs(UserTests.buildArgs())
             .with("enable-gc", "false")
             .with("log-to-console", "true");
     private static UserService service;

@@ -101,6 +101,31 @@ public abstract class UserTests {
         }
     }
 
+    private static final List<String> SERVER_DBS = Arrays.asList(
+            "transactions-sql-file",
+            "bat-store",
+            "mutable-pointers-file",
+            "social-sql-file",
+            "space-requests-sql-file",
+            "account-sql-file",
+            "quotas-sql-file",
+            "space-usage-sql-file",
+            "link-counts-sql-file",
+            "server-messages-sql-file",
+            "serverids-file",
+            "partition-status-file",
+            "block-metadata-sql-file");
+
+    /** Run all the server's databases in RAM. Only safe for tests that never restart a server,
+     *  as nothing survives the process it was written in.
+     */
+    public static Args useMemoryDbs(Args args) {
+        Args res = args;
+        for (String db : SERVER_DBS)
+            res = res.with(db, ":memory:");
+        return res;
+    }
+
     public static void deleteFiles(File f) {
         if (! f.exists())
             return;

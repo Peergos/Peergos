@@ -24,6 +24,11 @@ public class Sqlite {
         return sqlFile.equals(":memory:") ? sqlFile : a.fromPeergosDir(type).toString();
     }
 
+    public static String getDbPath(Args a, String type, String defaultName) {
+        String sqlFile = a.getArg(type, defaultName);
+        return sqlFile.equals(":memory:") ? sqlFile : a.fromPeergosDir(type, defaultName).toString();
+    }
+
     public static class UncloseableConnection implements Connection {
 
         private final Connection target;
