@@ -41,6 +41,7 @@ import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.ForkJoinTask;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -472,6 +473,7 @@ public class DirectorySync {
         String localStatePath = File.createTempFile("peergos-sync", ".sqlite", peergosDir.toFile()).toString();
         String remoteStatePath = null;
         try {
+            syncedVersions.copyTo(localStatePath);
             SyncState localState = new JdbcTreeState(localStatePath);
             long t1 = System.currentTimeMillis();
             buildDirState(localFS, localState, syncedVersions);
@@ -1222,9 +1224,12 @@ public class DirectorySync {
         SnapshotTracker version = new SnapshotTracker(new Snapshot(new HashMap<>()));
         List<Triple<String, FileWrapper, HashTree>> toUpdate = new ArrayList<>();
         AtomicLong downloadedSize = new AtomicLong(0);
+        Set<String> presentFiles = ConcurrentHashMap.newKeySet();
+        Set<String> presentDirs = ConcurrentHashMap.newKeySet();
 
         Optional<PublicKeyHash> baseDirWriter = fs.applyToSubtree(props -> {
             String relPath = props.relPath;
+            presentFiles.add(relPath);
             FileState atSync = synced.byPath(relPath);
             if (atSync != null && atSync.modificationTime == props.modifiedTime && atSync.size == props.size) {
                 res.add(atSync);
@@ -1262,9 +1267,19 @@ public class DirectorySync {
             }
         }, p -> {
             String relPath = p.relPath;
+            presentDirs.add(relPath);
             p.meta.ifPresent(d -> version.update(d.version));
             res.addDir(relPath);
         }, synced.hasCompletedSync());
+
+        for (String path : new HashSet<>(res.allFilePaths())) {
+            if (! presentFiles.contains(path))
+                res.remove(path);
+        }
+        for (String dir : new HashSet<>(res.getDirs())) {
+            if (! presentDirs.contains(dir))
+                res.removeDir(dir);
+        }
         if (! toUpdate.isEmpty()) {
             log("REMOTE: Updating " + toUpdate.size() + " hashes: " + toUpdate.stream().limit(10).map(p -> p.left).collect(Collectors.toList()));
             fs.setHashes(toUpdate);

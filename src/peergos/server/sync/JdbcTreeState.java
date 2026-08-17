@@ -11,7 +11,10 @@ import peergos.shared.user.fs.ResumeUploadProps;
 import peergos.shared.user.fs.RootHash;
 
 import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.nio.file.Files;
 import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -48,8 +51,10 @@ public class JdbcTreeState implements SyncState {
 
     private final Supplier<Sqlite.UncloseableConnection> conn;
     private final SqlSupplier cmds = new SqliteCommands();
+    private final String sqlFile;
 
     public JdbcTreeState(String sqlFile) {
+        this.sqlFile = sqlFile;
         try {
             Connection db = Sqlite.build(sqlFile);
             // We need a connection that ignores close
@@ -323,10 +328,23 @@ public class JdbcTreeState implements SyncState {
     }
 
     @Override
+    public void copyTo(String targetFile) {
+        if (sqlFile.equals(":memory:"))
+            return;
+        try {
+            Files.copy(Paths.get(sqlFile), Paths.get(targetFile), StandardCopyOption.REPLACE_EXISTING);
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+    }
+
+    @Override
     public void add(FileState fs) {
         if (fs.relPath.contains("\\"))
             throw new IllegalStateException("Relative paths must be normalised to use /'s not \\'s!");
         FileState existing = byPath(fs.relPath);
+        if (fs.equals(existing))
+            return;
         if (existing != null) {
             try (Connection conn = getConnection();
                  PreparedStatement update = conn.prepareStatement(UPDATE)) {

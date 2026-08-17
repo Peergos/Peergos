@@ -19,6 +19,12 @@ public interface SyncState extends Closeable {
 
     void add(FileState fs);
 
+    /** Copy this state to a new db at the given path, overwriting anything already there.
+     *  A rebuild on top of the copy only has to write the entries that have actually changed.
+     *  A no-op for states that aren't db backed, which just makes the rebuild slower.
+     */
+    default void copyTo(String targetFile) {}
+
     void remove(String path);
 
     FileState byPath(String path);
