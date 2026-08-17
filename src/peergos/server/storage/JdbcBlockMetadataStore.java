@@ -20,6 +20,9 @@ public class JdbcBlockMetadataStore implements BlockMetadataStore {
     private static final String GET_OWNER = "SELECT owner FROM blockmetadata WHERE cid = ?;";
     private static final String REMOVE = "DELETE FROM blockmetadata where cid = ?;";
     public static final int PAGE_LIMIT = 100_000;
+    private static final int INSERT_COLUMNS = 6;
+    // keep the bound parameter count per statement well below sqlite's limit of 32766
+    private static final int MAX_INSERT_ROWS = 1_000;
     private static final String LIST_PAGINATED_FIRST = "SELECT cid, version FROM blockmetadata ORDER BY cid LIMIT " + PAGE_LIMIT + ";";
     private static final String LIST_PAGINATED = "SELECT cid, version FROM blockmetadata WHERE cid > ? ORDER BY cid LIMIT " + PAGE_LIMIT + ";";
     private static final String LIST_SIZE_PAGINATED_FIRST = "SELECT cid, size FROM blockmetadata ORDER BY cid LIMIT " + PAGE_LIMIT + ";";
@@ -229,7 +232,7 @@ public class JdbcBlockMetadataStore implements BlockMetadataStore {
     @Override
     public void put(PublicKeyHash owner, Cid block, String version, BlockMetadata meta) {
         try (Connection conn = getConnection();
-             PreparedStatement insert = conn.prepareStatement(commands.addMetadataCommand())) {
+             PreparedStatement insert = conn.prepareStatement(commands.addMetadataCommand(1))) {
 
             insert.setBytes(1, owner != null ? owner.toBytes() : null);
             insert.setBytes(2, block.toBytes());
@@ -250,38 +253,36 @@ public class JdbcBlockMetadataStore implements BlockMetadataStore {
     }
 
     @Override
-    public synchronized void put(PublicKeyHash owner, List<Cid> blocks, List<byte[]> data) {
-        if (blocks.isEmpty())
-            return;
-        // a single transaction for the whole batch, otherwise each row is committed (and fsynced) separately
-        try (Connection conn = getConnection(false, true)) {
-            conn.setAutoCommit(false);
-            try (PreparedStatement insert = conn.prepareStatement(commands.addMetadataCommand())) {
-                byte[] ownerBytes = owner != null ? owner.toBytes() : null;
-                for (int i=0; i < blocks.size(); i++) {
-                    Cid block = blocks.get(i);
-                    BlockMetadata meta = BlockMetadataStore.extractMetadata(block, data.get(i));
-                    insert.setBytes(1, ownerBytes);
-                    insert.setBytes(2, block.toBytes());
-                    insert.setString(3, null);
-                    insert.setLong(4, meta.size);
-                    insert.setBytes(5, new CborObject.CborList(meta.links.stream()
-                            .map(Cid::toBytes)
-                            .map(CborObject.CborByteArray::new)
-                            .collect(Collectors.toList()))
-                            .toByteArray());
-                    insert.setBytes(6, new CborObject.CborList(meta.batids)
-                            .toByteArray());
-                    insert.addBatch();
-                }
-                insert.executeBatch();
-                conn.commit();
-            } catch (SQLException sqe) {
-                conn.rollback();
-                throw sqe;
-            } finally {
-                conn.setAutoCommit(true);
+    public void put(PublicKeyHash owner, List<Cid> blocks, List<byte[]> data) {
+        // Insert each chunk with a single statement, otherwise each row is committed (and fsynced) separately.
+        // We can't use a transaction here because the sqlite connection is shared between all threads.
+        for (int start = 0; start < blocks.size(); start += MAX_INSERT_ROWS) {
+            int end = Math.min(start + MAX_INSERT_ROWS, blocks.size());
+            putChunk(owner, blocks.subList(start, end), data.subList(start, end));
+        }
+    }
+
+    private void putChunk(PublicKeyHash owner, List<Cid> blocks, List<byte[]> data) {
+        try (Connection conn = getConnection();
+             PreparedStatement insert = conn.prepareStatement(commands.addMetadataCommand(blocks.size()))) {
+            byte[] ownerBytes = owner != null ? owner.toBytes() : null;
+            for (int i=0; i < blocks.size(); i++) {
+                Cid block = blocks.get(i);
+                BlockMetadata meta = BlockMetadataStore.extractMetadata(block, data.get(i));
+                int param = i * INSERT_COLUMNS;
+                insert.setBytes(param + 1, ownerBytes);
+                insert.setBytes(param + 2, block.toBytes());
+                insert.setString(param + 3, null);
+                insert.setLong(param + 4, meta.size);
+                insert.setBytes(param + 5, new CborObject.CborList(meta.links.stream()
+                        .map(Cid::toBytes)
+                        .map(CborObject.CborByteArray::new)
+                        .collect(Collectors.toList()))
+                        .toByteArray());
+                insert.setBytes(param + 6, new CborObject.CborList(meta.batids)
+                        .toByteArray());
             }
+            insert.executeUpdate();
         } catch (SQLException sqe) {
             LOG.log(Level.WARNING, sqe.getMessage(), sqe);
             throw new RuntimeException(sqe);
