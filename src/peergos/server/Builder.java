@@ -202,8 +202,8 @@ public class Builder {
             if (usePostgres) {
                 return new CachingBlockMetadataStore(new JdbcBlockMetadataStore(getPostgresConnector(a, "metadb."), new PostgresCommands()), 200_000);
             } else {
-                File metaFile = a.fromPeergosDir("block-metadata-sql-file", "blockmetadata-v3.sql").toFile();
-                Connection instance = new Sqlite.UncloseableConnection(Sqlite.build(metaFile.getPath()));
+                String metaPath = Sqlite.getDbPath(a, "block-metadata-sql-file", "blockmetadata-v3.sql");
+                Connection instance = new Sqlite.UncloseableConnection(Sqlite.build(metaPath));
                 return new JdbcBlockMetadataStore(() -> instance, new SqliteCommands());
             }
         } catch (SQLException e) {

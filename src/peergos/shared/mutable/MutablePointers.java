@@ -55,6 +55,13 @@ public interface MutablePointers {
                         Futures.of(PointerUpdate.empty()));
     }
 
+    /** The source of committed state, bypassing any local write buffer. Retrievals which must not
+     *  observe in-flight local writes use this.
+     */
+    default MutablePointers committed() {
+        return this;
+    }
+
     MutablePointers clearCache();
 
     static CompletableFuture<PointerUpdate> parsePointerTarget(byte[] pointerCas,

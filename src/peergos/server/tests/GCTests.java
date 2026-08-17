@@ -32,18 +32,15 @@ import java.util.stream.*;
 public class GCTests {
     private static final Crypto crypto = JavaCrypto.init();
 
-    private Supplier<Connection> getDb(Path file) throws Exception {
-        File storeFile = file.toFile();
-        String sqlFilePath = storeFile.getPath();
-        Connection db = Sqlite.build(sqlFilePath);
+    private Supplier<Connection> getDb() throws Exception {
+        Connection db = Sqlite.build(":memory:");
         Connection instance = new Sqlite.UncloseableConnection(db);
         return () -> instance;
     }
 
     @Test
     public void linksInDb() throws Exception {
-        Path dir = Files.createTempDirectory("peergos-gc-test");
-        SqliteBlockReachability rdb = SqliteBlockReachability.createReachabilityDb(dir.resolve("reachability.sqlite"));
+        SqliteBlockReachability rdb = new SqliteBlockReachability(getDb(), new SqliteCommands());
         Cid block = new Cid(1, Cid.Codec.DagCbor, Multihash.Type.sha2_256, crypto.random.randomBytes(32));
         List<Cid> links = new ArrayList<>();
         for (int i=0; i<10; i++)
@@ -60,11 +57,11 @@ public class GCTests {
     public void versionedGC() throws Exception {
         Path dir = Files.createTempDirectory("peergos-gc-test");
         SqliteCommands cmds = new SqliteCommands();
-        RequestCountingBlockMetadataStore metadb = new RequestCountingBlockMetadataStore(new JdbcBlockMetadataStore(getDb(dir.resolve("metadata.sqlite")), cmds));
+        RequestCountingBlockMetadataStore metadb = new RequestCountingBlockMetadataStore(new JdbcBlockMetadataStore(getDb(), cmds));
 
         VersionedWriteOnlyStorage storage = new VersionedWriteOnlyStorage(metadb);
-        JdbcIpnsAndSocial pointers = new JdbcIpnsAndSocial(getDb(dir.resolve("mutable.sqlite")), cmds);
-        JdbcUsageStore usage = new JdbcUsageStore(getDb(dir.resolve("usage.sqlite")), cmds);
+        JdbcIpnsAndSocial pointers = new JdbcIpnsAndSocial(getDb(), cmds);
+        JdbcUsageStore usage = new JdbcUsageStore(getDb(), cmds);
 
         GarbageCollector gc = new GarbageCollector(storage, pointers, usage, new RamPki(), dir, (x, y, z) -> Futures.of(true), u -> Futures.of(true), true);
         gc.collect(s -> Futures.of(true));
@@ -156,11 +153,11 @@ public class GCTests {
     public void fullGC() throws Exception {
         Path dir = Files.createTempDirectory("peergos-gc-test");
         SqliteCommands cmds = new SqliteCommands();
-        RequestCountingBlockMetadataStore metadb = new RequestCountingBlockMetadataStore(new JdbcBlockMetadataStore(getDb(dir.resolve("metadata.sqlite")), cmds));
+        RequestCountingBlockMetadataStore metadb = new RequestCountingBlockMetadataStore(new JdbcBlockMetadataStore(getDb(), cmds));
 
         WriteOnlyStorage storage = new WriteOnlyStorage(metadb);
-        JdbcIpnsAndSocial pointers = new JdbcIpnsAndSocial(getDb(dir.resolve("mutable.sqlite")), cmds);
-        JdbcUsageStore usage = new JdbcUsageStore(getDb(dir.resolve("usage.sqlite")), cmds);
+        JdbcIpnsAndSocial pointers = new JdbcIpnsAndSocial(getDb(), cmds);
+        JdbcUsageStore usage = new JdbcUsageStore(getDb(), cmds);
 
         GarbageCollector gc = new GarbageCollector(storage, pointers, usage, new RamPki(), dir, (x, y, z) -> Futures.of(true), u -> Futures.of(true), true);
         gc.collect(s -> Futures.of(true));
@@ -280,17 +277,10 @@ public class GCTests {
     }
 
     @Test
-    public void correctMarkPhase() throws IOException, SQLException {
-        Path dir = Files.createTempDirectory("peergos-block-metadata");
-        File storeFile = dir.resolve("metadata.sql" + System.currentTimeMillis()).toFile();
-        String sqlFilePath = storeFile.getPath();
-        Connection db = Sqlite.build(sqlFilePath);
-        Connection instance = new Sqlite.UncloseableConnection(db);
-        BlockMetadataStore metadb = new JdbcBlockMetadataStore(() -> instance, new SqliteCommands());
+    public void correctMarkPhase() throws Exception {
+        BlockMetadataStore metadb = new JdbcBlockMetadataStore(getDb(), new SqliteCommands());
 
-        String filename = "temp.sql";
-        Path file = Path.of(filename);
-        SqliteBlockReachability reachability = SqliteBlockReachability.createReachabilityDb(file);
+        SqliteBlockReachability reachability = new SqliteBlockReachability(getDb(), new SqliteCommands());
         PublicKeyHash owner = new PublicKeyHash(randomCbor(new Random(42)));
 
         int nUsers = 1;

@@ -28,6 +28,7 @@ import java.time.*;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.*;
+import java.util.concurrent.locks.*;
 import java.util.function.*;
 import java.util.logging.*;
 import java.util.stream.*;
@@ -64,7 +65,7 @@ public class MirrorCoreNode implements CoreNode {
     private volatile CorenodeState state;
     private final Path statePath;
     private volatile boolean running = true, initialized = false;
-    private final AtomicBoolean updating = new AtomicBoolean(false);
+    private final ReentrantLock updating = new ReentrantLock();
 
     public MirrorCoreNode(CoreNode writeTarget,
                           JdbcAccount rawAccount,
@@ -367,13 +368,34 @@ public class MirrorCoreNode implements CoreNode {
         return new Pair<>(new CorenodeRoots(pkiOwnerIdentity, pkiKey, newPeergosRoot, currentPkiRoot), newPointer);
     }
 
-    /**
+    /** Update our mirror of the pki, unless another update is already in flight
      *
      * @return whether there was a change
      */
     public boolean update() {
-        if (!updating.compareAndSet(false, true))
+        if (! updating.tryLock())
             return false;
+        try {
+            return updateMirror();
+        } finally {
+            updating.unlock();
+        }
+    }
+
+    /** Update our mirror of the pki, waiting for any in flight update to complete first
+     *
+     * @return whether there was a change
+     */
+    public boolean forceUpdate() {
+        updating.lock();
+        try {
+            return updateMirror();
+        } finally {
+            updating.unlock();
+        }
+    }
+
+    private boolean updateMirror() {
         try {
             Pair<CorenodeRoots, byte[]> remoteState = getPkiState();
             CorenodeRoots remote = remoteState.left;
@@ -449,8 +471,6 @@ public class MirrorCoreNode implements CoreNode {
             return true;
         } catch (Exception e) {
             throw new RuntimeException(e.getMessage(), e);
-        } finally {
-            updating.set(false);
         }
     }
 

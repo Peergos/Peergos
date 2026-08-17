@@ -18,15 +18,36 @@ import java.util.stream.Stream;
 public class Snapshot implements Cborable {
 
     public final Map<PublicKeyHash, CommittedWriterData> versions;
+    /** True if this was retrieved without waiting for in-flight writes, in which case any further
+     *  writer retrievals from it are also read only.
+     */
+    public final boolean readOnly;
 
     public Snapshot(Map<PublicKeyHash, CommittedWriterData> versions) {
+        this(versions, false);
+    }
+
+    public Snapshot(Map<PublicKeyHash, CommittedWriterData> versions, boolean readOnly) {
         this.versions = Collections.unmodifiableMap(versions);
+        this.readOnly = readOnly;
     }
 
     public Snapshot(PublicKeyHash writer, CommittedWriterData base) {
         HashMap<PublicKeyHash, CommittedWriterData> state = new HashMap<>();
         state.put(writer, base);
         this.versions = Collections.unmodifiableMap(state);
+        this.readOnly = false;
+    }
+
+    public Snapshot asReadOnly() {
+        return readOnly ? this : new Snapshot(versions, true);
+    }
+
+    /** The value stored in a write queue must never route subsequent retrievals to the read only path,
+     *  even if a mutation returned a version it retrieved read only.
+     */
+    public Snapshot asWritable() {
+        return readOnly ? new Snapshot(versions, false) : this;
     }
 
     public Snapshot merge(Snapshot other) {
@@ -36,7 +57,7 @@ public class Snapshot implements Cborable {
                 throw new IllegalStateException("Conflicting merge of Snapshots!");
             merge.put(entry.getKey(), entry.getValue());
         }
-        return new Snapshot(merge);
+        return new Snapshot(merge, readOnly && other.readOnly);
     }
 
     public Snapshot mergeAndOverwriteWith(Snapshot other) {
@@ -44,11 +65,13 @@ public class Snapshot implements Cborable {
         for (Map.Entry<PublicKeyHash, CommittedWriterData> entry : other.versions.entrySet()) {
             merge.put(entry.getKey(), entry.getValue());
         }
-        return new Snapshot(merge);
+        return new Snapshot(merge, readOnly && other.readOnly);
     }
 
     public Snapshot retainOnly(PublicKeyHash writer) {
-        return new Snapshot(writer, versions.get(writer));
+        HashMap<PublicKeyHash, CommittedWriterData> retained = new HashMap<>();
+        retained.put(writer, versions.get(writer));
+        return new Snapshot(retained, readOnly);
     }
 
     public boolean contains(PublicKeyHash writer) {
@@ -70,19 +93,22 @@ public class Snapshot implements Cborable {
     public Snapshot remove(PublicKeyHash w) {
         HashMap<PublicKeyHash, CommittedWriterData> removed = new HashMap<>(versions);
         removed.remove(w);
-        return new Snapshot(removed);
+        return new Snapshot(removed, readOnly);
     }
 
     public Snapshot withVersion(PublicKeyHash writer, CommittedWriterData version) {
         HashMap<PublicKeyHash, CommittedWriterData> result = new HashMap<>(versions);
         result.put(writer, version);
-        return new Snapshot(result);
+        return new Snapshot(result, readOnly);
     }
 
     public CompletableFuture<Snapshot> withWriter(PublicKeyHash owner, PublicKeyHash writer, NetworkAccess network) {
         if (versions.containsKey(writer))
             return CompletableFuture.completedFuture(this);
-        return network.synchronizer.getValue(owner, writer).thenApply(s -> s.merge(this));
+        return (readOnly ?
+                network.synchronizer.readOnlyValue(owner, writer) :
+                network.synchronizer.getValue(owner, writer))
+                .thenApply(s -> s.merge(this));
     }
 
     public CompletableFuture<Snapshot> withWriters(PublicKeyHash owner, Set<PublicKeyHash> writers, NetworkAccess network) {

@@ -63,12 +63,51 @@ public class WriteSynchronizer {
     }
 
     public CompletableFuture<Snapshot> getWriterData(PublicKeyHash owner, PublicKeyHash writer) {
-        return mutable.getPointerTarget(owner, writer, dht)
+        return getWriterData(mutable, owner, writer);
+    }
+
+    private CompletableFuture<Snapshot> getWriterData(MutablePointers source, PublicKeyHash owner, PublicKeyHash writer) {
+        return source.getPointerTarget(owner, writer, dht)
                 .thenCompose(x -> x.updated.isPresent() ?
                         WriterData.getWriterData(owner, (Cid)x.updated.get(), x.sequence, dht)
                                 .thenApply(cwd -> new Snapshot(writer, cwd)) :
                         Futures.of(new Snapshot(Collections.emptyMap()))
                 );
+    }
+
+    /** The current version committed by writer, without waiting for any in-flight local write.
+     *
+     *  Whilst a local write is buffered the buffer is unstable - committing it gcs superseded blocks
+     *  which were never uploaded - so the committed state is retrieved in that case. At rest the
+     *  buffer is empty, so this is the same as getValue without the queueing.
+     *
+     * @param owner
+     * @param writer
+     * @return The last committed version of writer, marked read only
+     */
+    public CompletableFuture<Snapshot> readOnlyValue(PublicKeyHash owner, PublicKeyHash writer) {
+        AsyncLock<Snapshot> lock = pending.computeIfAbsent(new Pair<>(owner, writer),
+                p -> new AsyncLock<>(getWriterData(owner, p.right)));
+        if (lock.isDone())
+            // No write in flight, so ordering with writes costs nothing, and anything only the write
+            // path knows about - buffered state that hasn't been committed - stays visible
+            return lock.runWithLock(x -> getWriterData(owner, writer), () -> getWriterData(owner, writer))
+                    .thenApply(Snapshot::asReadOnly);
+
+        // A write is in flight. Its buffer is unstable, a flush gcs superseded blocks which were never
+        // uploaded, so retrieve the committed state instead of waiting for the write to finish.
+        Supplier<CompletableFuture<Snapshot>> retrieve = () -> getWriterData(mutable.committed(), owner, writer);
+        return lock.runWithReadLock(x -> retrieve.get(), retrieve)
+                .thenCompose(fresh -> {
+                    if (! fresh.contains(writer))
+                        // The in-flight write is creating this writer, so there is nothing to read yet.
+                        // Wait for it - every caller of this used to wait for all writes, so none of
+                        // them can be inside this writer's lock.
+                        return lock.runWithLock(x -> getWriterData(owner, writer),
+                                        () -> getWriterData(owner, writer))
+                                .thenApply(Snapshot::asReadOnly);
+                    return Futures.of(fresh.asReadOnly());
+                });
     }
 
     /**
@@ -115,6 +154,7 @@ public class WriteSynchronizer {
                                                 wd.get().commit(aOwner, signer, existing.hash, existing.sequence, mutable, dht, hasher, tid) :
                                                 WriterData.commitDeletion(aOwner, signer, existing.hash, existing.sequence, mutable))
                                                 .thenCompose(s -> updateWriterState(owner, signer.publicKeyHash, s).thenApply(x -> s)), owner, commitWatcher))
+                                .thenApply(Snapshot::asWritable)
                                 .thenCompose(v -> flusher.commit(owner, v, commitWatcher)),
                         () -> getWriterData(owner, writer.publicKeyHash));
     }
@@ -160,7 +200,7 @@ public class WriteSynchronizer {
                                                         .thenCompose(s -> updateWriterState(owner, signer.publicKeyHash, s)
                                                                 .thenApply(x -> s)),
                                         owner, () -> true))
-                                .thenCompose(p -> flusher.commit(owner, p.left, () -> true).thenApply(x -> p))
+                                .thenCompose(p -> flusher.commit(owner, p.left.asWritable(), () -> true).thenApply(x -> p))
                                 .thenApply(p -> {
                                     res.complete(p);
                                     return p.left;

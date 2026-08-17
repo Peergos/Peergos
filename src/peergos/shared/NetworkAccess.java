@@ -156,7 +156,7 @@ public class NetworkAccess {
                                                                Hasher hasher) {
         BufferedStorage blockBuffer = new BufferedStorage(dht, hasher);
         MutablePointers unbufferedMutable = mutable;
-        BufferedPointers mutableBuffer = new BufferedPointers(unbufferedMutable);
+        BufferedPointers mutableBuffer = new BufferedPointers(unbufferedMutable, false);
         WriteSynchronizer synchronizer = new WriteSynchronizer(mutableBuffer, blockBuffer, hasher);
         MutableTree tree = new MutableTreeImpl(mutableBuffer, blockBuffer, hasher, synchronizer);
 
@@ -560,7 +560,7 @@ public class NetworkAccess {
     }
 
     public CompletableFuture<Optional<FileWrapper>> retrieveEntryPoint(EntryPoint e) {
-        return synchronizer.getValue(e.pointer.owner, e.pointer.writer)
+        return synchronizer.readOnlyValue(e.pointer.owner, e.pointer.writer)
                 .thenCompose(version -> getFile(version, e.pointer, Optional.empty(), e.ownerName))
                 .exceptionally(t -> {
                     LOG.log(Level.SEVERE, t.getMessage(), t);
@@ -601,7 +601,7 @@ public class NetworkAccess {
 
     @JsMethod
     public CompletableFuture<Optional<FileWrapper>> getFile(AbsoluteCapability cap, String owner) {
-        return synchronizer.getValue(cap.owner, cap.writer)
+        return synchronizer.readOnlyValue(cap.owner, cap.writer)
                 .thenCompose(version -> getFile(version, cap, Optional.empty(), owner))
                 .exceptionally(t -> {
                     LOG.log(Level.SEVERE, t.getMessage(), t);

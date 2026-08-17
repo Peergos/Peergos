@@ -221,7 +221,7 @@ public class MultiNodeNetworkTests {
             CoreNode core = service.localApi.coreNode;
             CoreNode target = ((SignUpFilter) ((CorenodeEventPropagator) core).target).target;
             if (target instanceof MirrorCoreNode)
-                ((MirrorCoreNode)target).update();
+                ((MirrorCoreNode)target).forceUpdate();
         }
     }
 

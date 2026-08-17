@@ -116,7 +116,7 @@ public class FileWrapper {
     public CompletableFuture<FileWrapper> getLatest(NetworkAccess network) {
         if (isRoot())
             return Futures.of(this);
-        return network.synchronizer.getValue(owner(), writer())
+        return network.synchronizer.readOnlyValue(owner(), writer())
                 .thenCompose(latest -> getUpdated(latest, network));
 
     }
@@ -2053,9 +2053,15 @@ public class FileWrapper {
             return getChild(elements.get(0), crypto.hasher, network)
                     .thenCompose(kid -> kid.get().getOrMkdirs(PathUtil.get(elements.subList(1, elements.size())
                             .stream().collect(Collectors.joining("/"))), network, isSystemFolder, mirrorBat, crypto));
-        return network.synchronizer.applyComplexComputation(owner(), signingPair(),
-                (state, committer) -> getOrMkdirs(elements, isSystemFolder, mirrorBat, network, crypto, state, committer))
-                .thenApply(p -> p.right);
+        // Only take the write lock if something is actually missing, otherwise opening an app whilst
+        // an upload is in flight would wait for the upload
+        return getLatest(network)
+                .thenCompose(latest -> latest.getDescendentByPath(finalPath, crypto.hasher, network))
+                .thenCompose(existing -> existing.isPresent() ?
+                        Futures.of(existing.get()) :
+                        network.synchronizer.applyComplexComputation(owner(), signingPair(),
+                                        (state, committer) -> getOrMkdirs(elements, isSystemFolder, mirrorBat, network, crypto, state, committer))
+                                .thenApply(p -> p.right));
     }
 
     public CompletableFuture<Pair<Snapshot, FileWrapper>> getOrMkdirs(List<String> subPath,
@@ -2954,7 +2960,7 @@ public CompletableFuture<Boolean> copyTo(FileWrapper target, UserContext context
     public CompletableFuture<? extends AsyncReader> getInputStream(NetworkAccess network,
                                                                    Crypto crypto,
                                                                    ProgressConsumer<Long> monitor) {
-        return network.synchronizer.getValue(owner(), writer())
+        return network.synchronizer.readOnlyValue(owner(), writer())
                 .thenCompose(state -> getInputStream(state.get(writer()), network, crypto, getFileProperties().size, 1, monitor));
     }
 
@@ -2985,7 +2991,7 @@ public CompletableFuture<Boolean> copyTo(FileWrapper target, UserContext context
                                                                    int fileSizeHi,
                                                                    int fileSizeLow,
                                                                    ProgressConsumer<Long> monitor) {
-        return network.synchronizer.getValue(owner(), writer())
+        return network.synchronizer.readOnlyValue(owner(), writer())
                 .thenCompose(state -> getInputStream(state.get(writer()), network, crypto, fileSize(fileSizeHi, fileSizeLow), 1, monitor));
     }
 
@@ -3001,7 +3007,7 @@ public CompletableFuture<Boolean> copyTo(FileWrapper target, UserContext context
                                                                    long fileSize,
                                                                    int nBufferedChunks,
                                                                    ProgressConsumer<Long> monitor) {
-        return network.synchronizer.getValue(owner(), writer())
+        return network.synchronizer.readOnlyValue(owner(), writer())
                 .thenCompose(state -> getInputStream(state.get(writer()), network, crypto, fileSize, nBufferedChunks, monitor));
     }
 

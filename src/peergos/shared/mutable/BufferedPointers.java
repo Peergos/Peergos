@@ -33,6 +33,8 @@ public class BufferedPointers implements MutablePointers {
     }
 
     private final MutablePointers target;
+    // during signup nothing is ever committed to the target, so the buffer is the only source of truth
+    private final boolean commitsToTarget;
     private final Map<PublicKeyHash, SigningPrivateKeyAndPublicHash> writers = new HashMap<>();
     private final Map<PublicKeyHash, WriterUpdate> latest = new HashMap<>();
     private final Map<PublicKeyHash, WriterUpdate> lastCommits = new LRUCache<>(20);
@@ -40,9 +42,19 @@ public class BufferedPointers implements MutablePointers {
     private final Set<MaybeMultihash> mergedTargets = new HashSet();
 
     public BufferedPointers(MutablePointers target) {
+        this(target, true);
+    }
+
+    public BufferedPointers(MutablePointers target, boolean commitsToTarget) {
         if (target instanceof BufferedPointers)
             throw new IllegalStateException("Nested BufferedPointers!");
         this.target = target;
+        this.commitsToTarget = commitsToTarget;
+    }
+
+    @Override
+    public MutablePointers committed() {
+        return commitsToTarget ? target : this;
     }
 
     public boolean isBufferedWrite(PublicKeyHash writer, MaybeMultihash target) {
@@ -181,7 +193,7 @@ public class BufferedPointers implements MutablePointers {
 
     @Override
     public MutablePointers clearCache() {
-        return new BufferedPointers(target.clearCache());
+        return new BufferedPointers(target.clearCache(), commitsToTarget);
     }
 
     public void recordCommitted(List<WriterUpdate> updates) {
