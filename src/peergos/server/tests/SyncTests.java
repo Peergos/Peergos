@@ -901,6 +901,25 @@ public class SyncTests {
     }
 
     @Test
+    public void pauseBetweenRunnerCheckAndPassIsNotLost() {
+        SyncRunner.StatusHolder status = new SyncRunner.StatusHolder();
+
+        // ThreadBased has already passed its top-of-loop pause check.
+        Assert.assertFalse(status.isPaused());
+        status.pause();
+
+        // DirectorySync resets cancellation when starting a pass.
+        status.resume();
+
+        Assert.assertTrue(status.isPaused());
+        Assert.assertTrue(status.isCancelled());
+
+        status.unpause();
+        Assert.assertFalse(status.isPaused());
+        Assert.assertFalse(status.isCancelled());
+    }
+
+    @Test
     public void syncStatusAggregation() {
         // no pairs configured => nothing to report, rather than "all good"
         Assert.assertEquals(SyncStatus.NONE, SyncStatus.aggregate(Collections.emptyList(), false));
