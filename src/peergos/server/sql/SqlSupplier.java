@@ -1,6 +1,7 @@
 package peergos.server.sql;
 
 import java.sql.*;
+import java.util.*;
 
 public interface SqlSupplier {
 
@@ -22,13 +23,18 @@ public interface SqlSupplier {
 
     String ensureColumnExistsCommand(String table, String column, String type);
 
-    String addMetadataCommand();
+    String addMetadataCommand(int rows);
 
     String updateMetadataCommand();
 
     String setMetadataVersionAndOwnerCommand();
 
     String vacuumCommand();
+
+    static String valuePlaceholders(int columns, int rows) {
+        String row = "(" + String.join(", ", Collections.nCopies(columns, "?")) + ")";
+        return String.join(", ", Collections.nCopies(rows, row));
+    }
 
     default String createMutablePointersTableCommand() {
         return "CREATE TABLE IF NOT EXISTS metadatablobs (writingkey text primary key not null, hash text not null); " +

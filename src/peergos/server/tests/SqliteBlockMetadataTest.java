@@ -126,6 +126,54 @@ public class SqliteBlockMetadataTest {
         Assert.assertEquals(cids.size(), bulkStore.size(owner));
     }
 
+    @Test
+    public void concurrentBulkAndIndividualPuts() throws Exception {
+        Path dir = Files.createTempDirectory("peergos-block-metadata-concurrent");
+        BlockMetadataStore store = buildStore(dir.resolve("concurrent.sql"));
+        PublicKeyHash owner = new PublicKeyHash(randomCid());
+
+        // more rows than a single insert statement takes, so the bulk put is split over several statements
+        int bulkCount = 2200;
+        List<Cid> bulkCids = new ArrayList<>();
+        List<byte[]> bulkBlocks = new ArrayList<>();
+        for (int i=0; i < bulkCount; i++) {
+            byte[] block = new byte[32];
+            r.nextBytes(block);
+            bulkCids.add(new Cid(1, Cid.Codec.Raw, Multihash.Type.sha2_256, RAMStorage.hash(block)));
+            bulkBlocks.add(block);
+        }
+        List<Cid> singleCids = randomCids(500);
+        BlockMetadata singleMeta = new BlockMetadata(1024, Collections.emptyList(), Collections.emptyList());
+
+        // all the threads share a single sqlite connection, so no put may leave it in a transaction
+        List<Throwable> errors = Collections.synchronizedList(new ArrayList<>());
+        Thread bulk = new Thread(() -> {
+            try {
+                store.put(owner, bulkCids, bulkBlocks);
+            } catch (Throwable t) {
+                errors.add(t);
+            }
+        });
+        Thread individual = new Thread(() -> {
+            try {
+                for (Cid cid : singleCids) {
+                    store.put(owner, cid, null, singleMeta);
+                    store.size(owner);
+                }
+            } catch (Throwable t) {
+                errors.add(t);
+            }
+        });
+        bulk.start();
+        individual.start();
+        bulk.join();
+        individual.join();
+        if (! errors.isEmpty())
+            throw new RuntimeException(errors.get(0));
+
+        Assert.assertEquals(bulkCount + singleCids.size(), store.size(owner));
+    }
+
     private static BlockMetadataStore buildStore(Path file) throws Exception {
         Connection conn = new Sqlite.UncloseableConnection(Sqlite.build(file.toString()));
         return new JdbcBlockMetadataStore(() -> conn, new SqliteCommands());

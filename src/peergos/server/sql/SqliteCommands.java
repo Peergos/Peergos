@@ -18,8 +18,9 @@ public class SqliteCommands implements SqlSupplier {
     }
 
     @Override
-    public String addMetadataCommand() {
-        return "INSERT OR IGNORE INTO blockmetadata (owner, cid, version, size, links, batids) VALUES(?, ?, ?, ?, ?, ?);";
+    public String addMetadataCommand(int rows) {
+        return "INSERT OR IGNORE INTO blockmetadata (owner, cid, version, size, links, batids) VALUES " +
+                SqlSupplier.valuePlaceholders(6, rows) + ";";
     }
 
     @Override
