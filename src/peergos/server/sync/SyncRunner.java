@@ -47,7 +47,8 @@ public interface SyncRunner {
         }
 
         public synchronized void resume() {
-            cancelled.set(false);
+            if (! paused.get())
+                cancelled.set(false);
         }
 
         public synchronized boolean isCancelled() {
