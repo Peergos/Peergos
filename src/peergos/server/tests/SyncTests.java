@@ -611,6 +611,31 @@ public class SyncTests {
     }
 
     @Test
+    public void aStoppedSyncStopsScanning() throws Exception {
+        // Pausing used to stop only the transfers: the walk carried on hashing every file and
+        // logging a skip line for each one, which on a large folder is minutes of work after
+        // the user asked for it to stop.
+        Path dir = Files.createTempDirectory("peergos-sync");
+        byte[] data = new byte[1024];
+        new Random(1).nextBytes(data);
+        Files.createDirectory(dir.resolve("sub"));
+        for (int i = 0; i < 25; i++)
+            Files.write(dir.resolve("sub").resolve("f" + i + ".bin"), data, StandardOpenOption.CREATE);
+        LocalFileSystem fs = new LocalFileSystem(dir, crypto.hasher);
+        SyncState scanned = new JdbcTreeState(":memory:");
+        SyncState synced = new JdbcTreeState(":memory:");
+
+        boolean threw = false;
+        try {
+            DirectorySync.buildDirState(fs, scanned, synced, () -> true);
+        } catch (RuntimeException e) {
+            threw = true;
+        }
+        Assert.assertTrue("A stopped sync must abort the scan", threw);
+        Assert.assertEquals("and must not keep scanning files after it is stopped", 0, scanned.filesCount());
+    }
+
+    @Test
     public void cancelledCopyStaysResumable() throws Exception {
         // Reproduces the race where a queued parallel download runs after the user cancelled:
         // applyCopyOp sees isCancelled==true at its top guard and never writes. It must abort

@@ -417,10 +417,12 @@ public class DirectorySync {
                 SyncState initialRemote = new JdbcTreeState(initialRemotePath);
                 long r0 = System.currentTimeMillis();
                 LOG.accept("Checking files in Drive");
-                buildDirState(remoteFS, initialRemote, syncedVersions);
+                buildDirState(remoteFS, initialRemote, syncedVersions, isCancelled);
                 LOG.accept("Found " + initialRemote.filesCount() + " remote files in " + (System.currentTimeMillis() - r0)/1_000 + "s");
 
                 localFS.applyToSubtree(file -> {
+                    if (isCancelled.get())
+                        throw new RuntimeException("Sync cancelled during initial scan");
                     FileState synced = syncedVersions.byPath(file.relPath);
                     if (synced != null)
                         return;
@@ -458,6 +460,8 @@ public class DirectorySync {
                         }
                     }
                 }, dir -> {
+                    if (isCancelled.get())
+                        throw new RuntimeException("Sync cancelled during initial scan");
                     // and the same for dirs: an unrecorded dir that is deleted locally looks like
                     // a remote addition, so it would be recreated locally rather than deleted
                     if (initialRemote.hasDir(dir.relPath))
@@ -476,7 +480,7 @@ public class DirectorySync {
             syncedVersions.copyTo(localStatePath);
             SyncState localState = new JdbcTreeState(localStatePath);
             long t1 = System.currentTimeMillis();
-            buildDirState(localFS, localState, syncedVersions);
+            buildDirState(localFS, localState, syncedVersions, isCancelled);
             long t2 = System.currentTimeMillis();
             LOG.accept("Found " + localState.filesCount() + " local files in " + (t2-t1)/1_000 + "s");
 
@@ -496,7 +500,7 @@ public class DirectorySync {
                 // this rehashes anything it cannot match from cache, which for a file of
                 // several GiB is minutes with nothing else to report
                 LOG.accept("Checking files in Drive");
-                remoteVersion = buildDirState(remoteFS, remoteState, syncedVersions);
+                remoteVersion = buildDirState(remoteFS, remoteState, syncedVersions, isCancelled);
             }
             long t4 = System.currentTimeMillis();
             LOG.accept("Found " + remoteState.filesCount() + " remote files in " + (t4-t3)/1_000 + "s");
@@ -1220,7 +1224,8 @@ public class DirectorySync {
         }
     }
 
-    public static Snapshot buildDirState(SyncFilesystem fs, SyncState res, SyncState synced) throws IOException {
+    public static Snapshot buildDirState(SyncFilesystem fs, SyncState res, SyncState synced,
+                                         Supplier<Boolean> isCancelled) throws IOException {
         SnapshotTracker version = new SnapshotTracker(new Snapshot(new HashMap<>()));
         List<Triple<String, FileWrapper, HashTree>> toUpdate = new ArrayList<>();
         AtomicLong downloadedSize = new AtomicLong(0);
@@ -1228,6 +1233,10 @@ public class DirectorySync {
         Set<String> presentDirs = ConcurrentHashMap.newKeySet();
 
         Optional<PublicKeyHash> baseDirWriter = fs.applyToSubtree(props -> {
+            // a pause stops the walk, not just the transfers: scanning a large tree is
+            // minutes of hashing and listing that the user has asked us to stop
+            if (isCancelled.get())
+                throw new RuntimeException("Sync cancelled while scanning " + props.relPath);
             String relPath = props.relPath;
             presentFiles.add(relPath);
             FileState atSync = synced.byPath(relPath);
@@ -1266,6 +1275,8 @@ public class DirectorySync {
                     res.add(fstat);
             }
         }, p -> {
+            if (isCancelled.get())
+                throw new RuntimeException("Sync cancelled while scanning " + p.relPath);
             String relPath = p.relPath;
             presentDirs.add(relPath);
             p.meta.ifPresent(d -> version.update(d.version));
