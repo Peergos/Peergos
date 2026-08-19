@@ -278,11 +278,14 @@ public class DirectorySync {
                     }
                 } catch (Exception e) {
                     if (status.isPaused() || status.isCancelled()) {
-                        // stopped on request (paused, or the pair was removed), so not a
-                        // failure; the message keeps the progress reached, which is what
-                        // is useful to see while stopped
+                        // stopped on request, so not a failure, and the folder is not synced
+                        // either: it stopped part way. A pause keeps the progress it reached,
+                        // which is what is worth seeing next to a paused sync; any other stop
+                        // clears it, since a message like "Checking files in Drive" left behind
+                        // reads as though the sync were still running
                         pairStatus.setError(null);
-                        pairStatus.setStatus(SyncStatus.SYNCED);
+                        if (! status.isPaused())
+                            pairStatus.setStatus("");
                         if (pairLog != null)
                             pairLog.log(status.isPaused() ? "Sync paused" : "Sync stopped");
                         return false;
