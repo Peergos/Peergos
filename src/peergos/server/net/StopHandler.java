@@ -40,17 +40,6 @@ public class StopHandler implements HttpHandler {
     @Override
     public void handle(HttpExchange exchange) {
         try {
-            String host = exchange.getRequestHeaders().get("Host").get(0);
-            if (! host.startsWith("localhost:")) {
-                exchange.sendResponseHeaders(404, 0);
-                exchange.close();
-                return;
-            }
-            if (! HttpUtil.allowedQuery(exchange, false)) {
-                exchange.sendResponseHeaders(405, 0);
-                return;
-            }
-
             exchange.sendResponseHeaders(200, 0);
             exchange.close();
             System.exit(0);

@@ -88,24 +88,6 @@ public class WebAuthnHandler implements HttpHandler {
     @Override
     public void handle(HttpExchange exchange) {
         try {
-            if (! HttpUtil.allowedQuery(exchange, false)) {
-                exchange.sendResponseHeaders(405, 0);
-                return;
-            }
-            String host = exchange.getRequestHeaders().get("Host").get(0);
-            if (! host.startsWith("localhost:")) {
-                exchange.sendResponseHeaders(404, 0);
-                return;
-            }
-            // A page in the user's browser can POST here cross site without a preflight,
-            // so anything that admits to another origin is refused. We never send any
-            // Access-Control-Allow-Origin, so such a caller cannot read a reply either.
-            List<String> origins = exchange.getRequestHeaders().get("Origin");
-            if (origins != null && ! origins.isEmpty() && ! uiOrigin().equals(origins.get(0))) {
-                LOG.info("Refusing webauthn request from origin " + origins.get(0));
-                exchange.sendResponseHeaders(403, 0);
-                return;
-            }
             String path = exchange.getRequestURI().getPath();
             if (path.startsWith("/"))
                 path = path.substring(1);

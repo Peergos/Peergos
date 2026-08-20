@@ -132,16 +132,6 @@ public class ConfigHandler implements HttpHandler {
         long t1 = System.currentTimeMillis();
         String path = exchange.getRequestURI().getPath();
         try {
-            if (! HttpUtil.allowedQuery(exchange, false)) {
-                exchange.sendResponseHeaders(405, 0);
-                return;
-            }
-            String host = exchange.getRequestHeaders().get("Host").get(0);
-            if (! host.startsWith("localhost:")) {
-                exchange.sendResponseHeaders(404, 0);
-                exchange.close();
-                return;
-            }
             if (path.startsWith("/"))
                 path = path.substring(1);
             String action = path.substring(Constants.CONFIG.length());

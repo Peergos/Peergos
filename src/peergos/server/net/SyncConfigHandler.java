@@ -164,28 +164,6 @@ public class SyncConfigHandler implements HttpHandler {
         long t1 = System.currentTimeMillis();
         String path = exchange.getRequestURI().getPath();
         try {
-            if (! HttpUtil.allowedQuery(exchange, false)) {
-                exchange.sendResponseHeaders(405, 0);
-                return;
-            }
-            String host = exchange.getRequestHeaders().get("Host").get(0);
-            if (! host.startsWith("localhost:")) {
-                exchange.sendResponseHeaders(404, 0);
-                exchange.close();
-                return;
-            }
-            // A page in the user's browser can POST here cross site without a preflight,
-            // so anything that admits to another origin is refused: otherwise any site
-            // the user visits could pause their sync or remove a folder. No
-            // Access-Control-Allow-Origin is ever sent, so such a caller cannot read a
-            // reply either.
-            List<String> origins = exchange.getRequestHeaders().get("Origin");
-            if (origins != null && ! origins.isEmpty() && ! origins.get(0).equals("http://" + host)) {
-                LOG.info("Refusing sync request from origin " + origins.get(0));
-                exchange.sendResponseHeaders(403, 0);
-                exchange.close();
-                return;
-            }
             if (path.startsWith("/"))
                 path = path.substring(1);
             String action = path.substring(Constants.SYNC.length());

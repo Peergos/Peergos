@@ -52,12 +52,6 @@ public class AndroidFileReflector implements HttpHandler {
         long t1 = System.currentTimeMillis();
         String path = httpExchange.getRequestURI().getPath();
         try {
-            String host = httpExchange.getRequestHeaders().get("Host").get(0);
-            if (! host.startsWith("localhost:")) {
-                httpExchange.sendResponseHeaders(404, 0);
-                httpExchange.close();
-                return;
-            }
             if (path.startsWith("/"))
                 path = path.substring(1);
             String rest = path.substring(Constants.ANDROID_FILE_REFLECTOR.length());

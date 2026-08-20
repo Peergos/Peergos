@@ -294,29 +294,30 @@ public class UserService {
                 new PublicFileHandler(crypto.hasher, coreNode, mutable, storage),
                 basicAuth, local, host, nodeIds, false);
         if (! isPublicServer && publicHostname.isEmpty()) {
+            // the file reflector is loaded by navigating to it, the rest are called from script
             addHandler(localhostServer, null, "/" + Constants.ANDROID_FILE_REFLECTOR,
-                    new AndroidFileReflector(crypto, coreNode, mutable, storage),
+                    new LocalOnlyHandler(new AndroidFileReflector(crypto, coreNode, mutable, storage), local.getPort(), true),
                     basicAuth, local, host, nodeIds, false);
             addHandler(localhostServer, null, "/" + Constants.STOP,
-                    new StopHandler(), basicAuth, local, host, nodeIds, false);
+                    new LocalOnlyHandler(new StopHandler(), local.getPort()), basicAuth, local, host, nodeIds, false);
             blockCache.ifPresent(cache -> addHandler(localhostServer, null, "/" + Constants.CONFIG,
-                    new ConfigHandler(cache, localAppProps),
+                    new LocalOnlyHandler(new ConfigHandler(cache, localAppProps), local.getPort()),
                     basicAuth, local, host, nodeIds, false));
             syncProps.ifPresent(props -> {
                 SyncConfigHandler sync = new SyncConfigHandler(props.config, props.peergosDir, props.syncer, storage, mutable, props.hostDirs, coreNode, crypto);
                 sync.start();
                 addHandler(localhostServer, null, "/" + Constants.SYNC,
-                        sync, basicAuth, local, host, nodeIds, false);
+                        new LocalOnlyHandler(sync, local.getPort()), basicAuth, local, host, nodeIds, false);
             });
             mountHandler.ifPresent(mount -> {
                 mount.start();
                 addHandler(localhostServer, null, "/" + Constants.MOUNT,
-                        mount, basicAuth, local, host, nodeIds, false);
+                        new LocalOnlyHandler(mount, local.getPort()), basicAuth, local, host, nodeIds, false);
             });
             // the desktop webview has no WebAuthn of its own, so we drive the key here
             localAppProps.ifPresent(props ->
                     addHandler(localhostServer, null, "/" + Constants.WEBAUTHN,
-                            new peergos.server.net.WebAuthnHandler(props.currentServerUrl, local.getPort()),
+                            new LocalOnlyHandler(new peergos.server.net.WebAuthnHandler(props.currentServerUrl, local.getPort()), local.getPort()),
                             basicAuth, local, host, nodeIds, false));
         }
         addHandler(localhostServer, tlsServer, UI_URL, handler, basicAuth, local, host, nodeIds, true);
