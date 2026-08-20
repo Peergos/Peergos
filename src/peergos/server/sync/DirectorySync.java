@@ -483,6 +483,9 @@ public class DirectorySync {
             syncedVersions.copyTo(localStatePath);
             SyncState localState = new JdbcTreeState(localStatePath);
             long t1 = System.currentTimeMillis();
+            // the remote scan reports itself, so the local one has to as well: hashing a
+            // large folder takes minutes, and silence there looks like a hang
+            LOG.accept("Checking files on this device");
             buildDirState(localFS, localState, syncedVersions, isCancelled);
             long t2 = System.currentTimeMillis();
             LOG.accept("Found " + localState.filesCount() + " local files in " + (t2-t1)/1_000 + "s");
