@@ -284,8 +284,16 @@ public class DirectorySync {
                         // clears it, since a message like "Checking files in Drive" left behind
                         // reads as though the sync were still running
                         pairStatus.setError(null);
-                        if (! status.isPaused())
-                            pairStatus.setStatus("");
+                        if (! status.isPaused()) {
+                            // a stop with a reason is worth showing: a folder that stopped for
+                            // the network needs the user to act, not to look idle
+                            Optional<String> why = status.getStopReason();
+                            if (why.isPresent()) {
+                                pairStatus.setError(why.get());
+                                pairStatus.setStatus(SyncStatus.ERROR);
+                            } else
+                                pairStatus.setStatus("");
+                        }
                         if (pairLog != null)
                             pairLog.log(status.isPaused() ? "Sync paused" : "Sync stopped");
                         return false;
