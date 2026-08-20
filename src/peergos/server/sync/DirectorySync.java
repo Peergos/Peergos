@@ -639,6 +639,11 @@ public class DirectorySync {
                                 },
                                 (int) (local.size >> 32), (int) local.size, Optional.of(modificationTime), Optional.of(local.hashTree), false, true,
                                 x -> {
+                                    // the batch is one call, and the check after it only runs once
+                                    // the whole batch is done: without this a stopped sync keeps
+                                    // uploading, on mobile data too, until every queued file is sent
+                                    if (isCancelled.get())
+                                        throw new RuntimeException("Sync cancelled while uploading " + relPath);
                                     if (!uploadStarted.get()) {
                                         LOG.accept("REMOTE: Uploading " + relPath + " " + progress);
                                         uploadStarted.set(true);
@@ -678,6 +683,8 @@ public class DirectorySync {
                     }
                 }
                 byFolder.forEach((dir, files) -> {
+                    if (isCancelled.get())
+                        throw new RuntimeException("Sync cancelled before deleting from " + dir);
                     LOG.accept("REMOTE: bulk deleting " + files.size() + " from " + remoteFS.resolve(dir));
                     remoteFS.bulkDelete(remoteFS.resolve(dir), files);
                     for (String file : files) {
