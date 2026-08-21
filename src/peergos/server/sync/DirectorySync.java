@@ -34,6 +34,7 @@ import java.io.*;
 import java.net.ProxySelector;
 import java.net.URL;
 import java.nio.file.Files;
+import java.net.UnknownHostException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.Instant;
@@ -796,6 +797,21 @@ public class DirectorySync {
                     remoteState.delete();
             }
         }
+    }
+
+    /** A failed request is thrown with the url as its message, which tells the user nothing
+     *  they can act on, and repeats their owner key back at them. */
+    public static String describeError(Throwable t) {
+        String msg = t.getMessage();
+        // android reports a name lookup failure as a raw resolver error, not as the exception
+        // type, so the text is what tells them apart
+        if (t instanceof UnknownHostException
+                || (msg != null && (msg.contains("getaddrinfo") || msg.contains("Unable to resolve host"))))
+            return "Cannot reach the server. Check your connection.";
+        if (msg == null || ! msg.startsWith("http"))
+            return msg;
+        int query = msg.indexOf('?');
+        return "No answer from the server for " + (query < 0 ? msg : msg.substring(0, query));
     }
 
     public static void log(String msg) {

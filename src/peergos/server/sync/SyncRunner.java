@@ -193,7 +193,7 @@ public interface SyncRunner {
                             };
                             Consumer<Throwable> errorUpdater = e -> {
                                 if (e != null) {
-                                    status.setError(e.getMessage());
+                                    status.setError(DirectorySync.describeError(e));
                                     DirectorySync.log(e.getMessage());
                                 }
                             };
