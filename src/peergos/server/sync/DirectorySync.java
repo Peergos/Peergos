@@ -131,14 +131,18 @@ public class DirectorySync {
         return peergosDir.resolve("dir-sync-state-v3-" + ArrayOps.bytesToHex(Hash.sha256(linkPath + "///" + localDir)) + ".sqlite");
     }
 
+    private static <T> List<T> pick(List<T> all, List<Integer> indices) {
+        return indices.stream().map(all::get).collect(Collectors.toList());
+    }
+
     public static String pairHash(String linkPath, String localDir) {
         return PairLogger.hash(linkPath, localDir);
     }
 
-    public static boolean syncDirs(List<String> links,
-                                   List<String> localDirs, //could be paths or URIs
-                                   List<Boolean> syncLocalDeletes,
-                                   List<Boolean> syncRemoteDeletes,
+    public static boolean syncDirs(List<String> allLinks,
+                                   List<String> allLocalDirs, //could be paths or URIs
+                                   List<Boolean> allSyncLocalDeletes,
+                                   List<Boolean> allSyncRemoteDeletes,
                                    int maxDownloadParallelism,
                                    int minFreeSpacePercent,
                                    boolean oneRun,
@@ -149,20 +153,39 @@ public class DirectorySync {
                                    Consumer<Throwable> ERROR,
                                    NetworkAccess network,
                                    Crypto crypto) {
-        if (syncLocalDeletes.size() != links.size())
+        if (allSyncLocalDeletes.size() != allLinks.size())
             throw new IllegalStateException("Incorrect number of sync-local-deletes!");
-        if (syncRemoteDeletes.size() != links.size())
+        if (allSyncRemoteDeletes.size() != allLinks.size())
             throw new IllegalStateException("Incorrect number of sync-remote-deletes!");
 
-        List<String> linkPaths = links.stream()
-                .map(link -> UserContext.fromSecretLinksV2(Arrays.asList(link), Arrays.asList(() -> Futures.of("")), network, crypto).join().getEntryPath().join())
-                .collect(Collectors.toList());
+        List<String> linkPaths = new ArrayList<>();
+        List<Integer> opened = new ArrayList<>();
+        for (int i = 0; i < allLinks.size(); i++) {
+            try {
+                linkPaths.add(UserContext.fromSecretLinksV2(Arrays.asList(allLinks.get(i)),
+                        Arrays.asList(() -> Futures.of("")), network, crypto).join().getEntryPath().join());
+                opened.add(i);
+            } catch (Exception e) {
+                // one link the server will not open must not stop the other pairs syncing
+                LOG.accept("Cannot open the link for " + allLocalDirs.get(i) + ": " + describeError(e));
+                ERROR.accept(new PairFailure(i, e));
+            }
+        }
+        boolean allOpened = opened.size() == allLinks.size();
+        if (opened.isEmpty())
+            return false;
+        List<String> links = pick(allLinks, opened);
+        List<String> localDirs = pick(allLocalDirs, opened);
+        List<Boolean> syncLocalDeletes = pick(allSyncLocalDeletes, opened);
+        List<Boolean> syncRemoteDeletes = pick(allSyncRemoteDeletes, opened);
 
         List<Path> syncDbPaths = IntStream.range(0, linkPaths.size())
                 .mapToObj(i -> getSyncStateDbPath(peergosDir, linkPaths.get(i), localDirs.get(i)))
                 .collect(Collectors.toList());
 
-        // delete any old sync dbs that are no longer referenced
+        // only tidy up when every link opened: the paths of a pair that did not are
+        // unknown this pass, and its db and logs would look unreferenced
+        if (allOpened)
         try (Stream<Path> kids = Files.list(peergosDir)) {
             kids
                     .filter(p -> p.getFileName().endsWith(".sqlite"))
@@ -194,7 +217,7 @@ public class DirectorySync {
         }
         // delete logs/status for pairs that are no longer present
         Path syncLogsDir = PairLogger.logDir(peergosDir);
-        if (Files.exists(syncLogsDir)) {
+        if (allOpened && Files.exists(syncLogsDir)) {
             Set<String> keepHashes = new HashSet<>(pairHashes);
             try (Stream<Path> kids = Files.list(syncLogsDir)) {
                 kids.filter(p -> {
@@ -796,6 +819,17 @@ public class DirectorySync {
                 if (remoteState.exists())
                     remoteState.delete();
             }
+        }
+    }
+
+    /** A pair the pass could not even start, carrying which one it was so the caller can
+     *  show that folder as needing attention rather than leaving it looking busy. */
+    public static class PairFailure extends RuntimeException {
+        public final int pair;
+
+        public PairFailure(int pair, Throwable cause) {
+            super(describeError(cause), cause);
+            this.pair = pair;
         }
     }
 
