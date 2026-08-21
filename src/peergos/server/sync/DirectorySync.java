@@ -153,6 +153,28 @@ public class DirectorySync {
                                    Consumer<Throwable> ERROR,
                                    NetworkAccess network,
                                    Crypto crypto) {
+        return syncDirs(allLinks, allLocalDirs, allSyncLocalDeletes, allSyncRemoteDeletes, maxDownloadParallelism,
+                minFreeSpacePercent, oneRun, localBuilder, peergosDir, status, LOG, ERROR, network, crypto, true);
+    }
+
+    /** @param everyPair these are all the configured pairs, so state belonging to any other
+     *  pair is left over from a removed one. A pass that syncs a subset (only the folders
+     *  allowed on mobile data, say) must say so, or it deletes the rest of their state. */
+    public static boolean syncDirs(List<String> allLinks,
+                                   List<String> allLocalDirs,
+                                   List<Boolean> allSyncLocalDeletes,
+                                   List<Boolean> allSyncRemoteDeletes,
+                                   int maxDownloadParallelism,
+                                   int minFreeSpacePercent,
+                                   boolean oneRun,
+                                   Function<String, SyncFilesystem> localBuilder,
+                                   Path peergosDir,
+                                   SyncRunner.StatusHolder status,
+                                   Consumer<String> LOG,
+                                   Consumer<Throwable> ERROR,
+                                   NetworkAccess network,
+                                   Crypto crypto,
+                                   boolean everyPair) {
         if (allSyncLocalDeletes.size() != allLinks.size())
             throw new IllegalStateException("Incorrect number of sync-local-deletes!");
         if (allSyncRemoteDeletes.size() != allLinks.size())
@@ -171,7 +193,8 @@ public class DirectorySync {
                 ERROR.accept(new PairFailure(i, e));
             }
         }
-        boolean allOpened = opened.size() == allLinks.size();
+        // a pair whose link would not open is still configured, so its state is not stale
+        boolean completeSet = opened.size() == allLinks.size() && everyPair;
         if (opened.isEmpty())
             return false;
         List<String> links = pick(allLinks, opened);
@@ -185,7 +208,7 @@ public class DirectorySync {
 
         // only tidy up when every link opened: the paths of a pair that did not are
         // unknown this pass, and its db and logs would look unreferenced
-        if (allOpened)
+        if (completeSet)
         try (Stream<Path> kids = Files.list(peergosDir)) {
             kids
                     .filter(p -> p.getFileName().endsWith(".sqlite"))
@@ -217,7 +240,7 @@ public class DirectorySync {
         }
         // delete logs/status for pairs that are no longer present
         Path syncLogsDir = PairLogger.logDir(peergosDir);
-        if (allOpened && Files.exists(syncLogsDir)) {
+        if (completeSet && Files.exists(syncLogsDir)) {
             Set<String> keepHashes = new HashSet<>(pairHashes);
             try (Stream<Path> kids = Files.list(syncLogsDir)) {
                 kids.filter(p -> {
