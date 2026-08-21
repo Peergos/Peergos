@@ -33,8 +33,8 @@ import peergos.shared.util.*;
 import java.io.*;
 import java.net.ProxySelector;
 import java.net.URL;
-import java.nio.file.Files;
 import java.net.UnknownHostException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.Instant;
@@ -194,7 +194,8 @@ public class DirectorySync {
             }
         }
         // a pair whose link would not open is still configured, so its state is not stale
-        boolean completeSet = opened.size() == allLinks.size() && everyPair;
+        boolean everyLinkOpened = opened.size() == allLinks.size();
+        boolean completeSet = everyLinkOpened && everyPair;
         if (opened.isEmpty())
             return false;
         List<String> links = pick(allLinks, opened);
@@ -206,23 +207,24 @@ public class DirectorySync {
                 .mapToObj(i -> getSyncStateDbPath(peergosDir, linkPaths.get(i), localDirs.get(i)))
                 .collect(Collectors.toList());
 
-        // only tidy up when every link opened: the paths of a pair that did not are
-        // unknown this pass, and its db and logs would look unreferenced
-        if (completeSet)
-        try (Stream<Path> kids = Files.list(peergosDir)) {
-            kids
-                    .filter(p -> p.getFileName().endsWith(".sqlite"))
-                    .filter(p -> p.getFileName().startsWith("dir-sync-state-v3-"))
-                    .filter(p -> ! syncDbPaths.contains(p))
-                    .forEach(p -> {
-                        try {
-                            Files.delete(p);
-                        } catch (IOException e) {
-                            e.printStackTrace();
-                        }
-                    });
-        } catch (IOException e) {
-            e.printStackTrace();
+        // only tidy up when the pass has every pair and every link opened: the paths of a
+        // pair it is missing are unknown, so its db and logs would look unreferenced
+        if (completeSet) {
+            try (Stream<Path> kids = Files.list(peergosDir)) {
+                kids
+                        .filter(p -> p.getFileName().endsWith(".sqlite"))
+                        .filter(p -> p.getFileName().startsWith("dir-sync-state-v3-"))
+                        .filter(p -> ! syncDbPaths.contains(p))
+                        .forEach(p -> {
+                            try {
+                                Files.delete(p);
+                            } catch (IOException e) {
+                                e.printStackTrace();
+                            }
+                        });
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
         }
 
         List<String> pairHashes = IntStream.range(0, linkPaths.size())
@@ -272,9 +274,10 @@ public class DirectorySync {
         if (links.size() != localDirs.size())
             throw new IllegalArgumentException("Mismatched number of local dirs and links");
 
+        boolean errored = false;
         while (true) {
             LOG.accept("Syncing " + links.size() + " pairs of directories: " + IntStream.range(0, links.size()).mapToObj(i -> Arrays.asList(localDirs.get(i), linkPaths.get(i))).collect(Collectors.toList()));
-            boolean errored = false;
+            errored = false;
             // a cancel that stopped the previous pass must not abort this one before it
             // syncs anything; a pause is held by its own flag, so this cannot resume one
             status.resume();
@@ -369,7 +372,9 @@ public class DirectorySync {
                 break;
             Threads.sleep(30_000);
         }
-        return true;
+        // the caller decides what to do about a folder that did not sync, so say whether
+        // this pass left one behind
+        return ! errored && everyLinkOpened;
     }
 
     public static boolean init(Args args) {
