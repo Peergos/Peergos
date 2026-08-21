@@ -34,6 +34,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.FileSystemException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.*;
 import java.util.concurrent.ForkJoinPool;
 import java.util.function.Function;
@@ -78,7 +79,12 @@ public class SyncConfigHandler implements HttpHandler {
     private synchronized void saveConfigToFile(SyncConfig config) {
         byte[] bytes = org.peergos.util.JSONParser.toString(config.toJson()).getBytes(StandardCharsets.UTF_8);
         try {
-            Files.write(peergosDir.resolve(SYNC_CONFIG_FILENAME), bytes);
+            // this file holds every sync pair, and a crash part way through writing it would
+            // leave it truncated, so write beside it and swap it in
+            Path target = peergosDir.resolve(SYNC_CONFIG_FILENAME);
+            Path tmp = target.resolveSibling(SYNC_CONFIG_FILENAME + ".tmp");
+            Files.write(tmp, bytes);
+            Files.move(tmp, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
         } catch (IOException e) {
             throw new RuntimeException(e);
         }

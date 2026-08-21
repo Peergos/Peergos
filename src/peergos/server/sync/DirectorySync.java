@@ -33,6 +33,7 @@ import peergos.shared.util.*;
 import java.io.*;
 import java.net.ProxySelector;
 import java.net.URL;
+import java.net.UnknownHostException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -130,14 +131,18 @@ public class DirectorySync {
         return peergosDir.resolve("dir-sync-state-v3-" + ArrayOps.bytesToHex(Hash.sha256(linkPath + "///" + localDir)) + ".sqlite");
     }
 
+    private static <T> List<T> pick(List<T> all, List<Integer> indices) {
+        return indices.stream().map(all::get).collect(Collectors.toList());
+    }
+
     public static String pairHash(String linkPath, String localDir) {
         return PairLogger.hash(linkPath, localDir);
     }
 
-    public static boolean syncDirs(List<String> links,
-                                   List<String> localDirs, //could be paths or URIs
-                                   List<Boolean> syncLocalDeletes,
-                                   List<Boolean> syncRemoteDeletes,
+    public static boolean syncDirs(List<String> allLinks,
+                                   List<String> allLocalDirs, //could be paths or URIs
+                                   List<Boolean> allSyncLocalDeletes,
+                                   List<Boolean> allSyncRemoteDeletes,
                                    int maxDownloadParallelism,
                                    int minFreeSpacePercent,
                                    boolean oneRun,
@@ -148,34 +153,78 @@ public class DirectorySync {
                                    Consumer<Throwable> ERROR,
                                    NetworkAccess network,
                                    Crypto crypto) {
-        if (syncLocalDeletes.size() != links.size())
+        return syncDirs(allLinks, allLocalDirs, allSyncLocalDeletes, allSyncRemoteDeletes, maxDownloadParallelism,
+                minFreeSpacePercent, oneRun, localBuilder, peergosDir, status, LOG, ERROR, network, crypto, true);
+    }
+
+    /** @param everyPair these are all the configured pairs, so state belonging to any other
+     *  pair is left over from a removed one. A pass that syncs a subset (only the folders
+     *  allowed on mobile data, say) must say so, or it deletes the rest of their state. */
+    public static boolean syncDirs(List<String> allLinks,
+                                   List<String> allLocalDirs,
+                                   List<Boolean> allSyncLocalDeletes,
+                                   List<Boolean> allSyncRemoteDeletes,
+                                   int maxDownloadParallelism,
+                                   int minFreeSpacePercent,
+                                   boolean oneRun,
+                                   Function<String, SyncFilesystem> localBuilder,
+                                   Path peergosDir,
+                                   SyncRunner.StatusHolder status,
+                                   Consumer<String> LOG,
+                                   Consumer<Throwable> ERROR,
+                                   NetworkAccess network,
+                                   Crypto crypto,
+                                   boolean everyPair) {
+        if (allSyncLocalDeletes.size() != allLinks.size())
             throw new IllegalStateException("Incorrect number of sync-local-deletes!");
-        if (syncRemoteDeletes.size() != links.size())
+        if (allSyncRemoteDeletes.size() != allLinks.size())
             throw new IllegalStateException("Incorrect number of sync-remote-deletes!");
 
-        List<String> linkPaths = links.stream()
-                .map(link -> UserContext.fromSecretLinksV2(Arrays.asList(link), Arrays.asList(() -> Futures.of("")), network, crypto).join().getEntryPath().join())
-                .collect(Collectors.toList());
+        List<String> linkPaths = new ArrayList<>();
+        List<Integer> opened = new ArrayList<>();
+        for (int i = 0; i < allLinks.size(); i++) {
+            try {
+                linkPaths.add(UserContext.fromSecretLinksV2(Arrays.asList(allLinks.get(i)),
+                        Arrays.asList(() -> Futures.of("")), network, crypto).join().getEntryPath().join());
+                opened.add(i);
+            } catch (Exception e) {
+                // one link the server will not open must not stop the other pairs syncing
+                LOG.accept("Cannot open the link for " + allLocalDirs.get(i) + ": " + describeError(e));
+                ERROR.accept(new PairFailure(i, e));
+            }
+        }
+        // a pair whose link would not open is still configured, so its state is not stale
+        boolean everyLinkOpened = opened.size() == allLinks.size();
+        boolean completeSet = everyLinkOpened && everyPair;
+        if (opened.isEmpty())
+            return false;
+        List<String> links = pick(allLinks, opened);
+        List<String> localDirs = pick(allLocalDirs, opened);
+        List<Boolean> syncLocalDeletes = pick(allSyncLocalDeletes, opened);
+        List<Boolean> syncRemoteDeletes = pick(allSyncRemoteDeletes, opened);
 
         List<Path> syncDbPaths = IntStream.range(0, linkPaths.size())
                 .mapToObj(i -> getSyncStateDbPath(peergosDir, linkPaths.get(i), localDirs.get(i)))
                 .collect(Collectors.toList());
 
-        // delete any old sync dbs that are no longer referenced
-        try (Stream<Path> kids = Files.list(peergosDir)) {
-            kids
-                    .filter(p -> p.getFileName().endsWith(".sqlite"))
-                    .filter(p -> p.getFileName().startsWith("dir-sync-state-v3-"))
-                    .filter(p -> ! syncDbPaths.contains(p))
-                    .forEach(p -> {
-                        try {
-                            Files.delete(p);
-                        } catch (IOException e) {
-                            e.printStackTrace();
-                        }
-                    });
-        } catch (IOException e) {
-            e.printStackTrace();
+        // only tidy up when the pass has every pair and every link opened: the paths of a
+        // pair it is missing are unknown, so its db and logs would look unreferenced
+        if (completeSet) {
+            try (Stream<Path> kids = Files.list(peergosDir)) {
+                kids
+                        .filter(p -> p.getFileName().endsWith(".sqlite"))
+                        .filter(p -> p.getFileName().startsWith("dir-sync-state-v3-"))
+                        .filter(p -> ! syncDbPaths.contains(p))
+                        .forEach(p -> {
+                            try {
+                                Files.delete(p);
+                            } catch (IOException e) {
+                                e.printStackTrace();
+                            }
+                        });
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
         }
 
         List<String> pairHashes = IntStream.range(0, linkPaths.size())
@@ -193,7 +242,7 @@ public class DirectorySync {
         }
         // delete logs/status for pairs that are no longer present
         Path syncLogsDir = PairLogger.logDir(peergosDir);
-        if (Files.exists(syncLogsDir)) {
+        if (completeSet && Files.exists(syncLogsDir)) {
             Set<String> keepHashes = new HashSet<>(pairHashes);
             try (Stream<Path> kids = Files.list(syncLogsDir)) {
                 kids.filter(p -> {
@@ -225,9 +274,10 @@ public class DirectorySync {
         if (links.size() != localDirs.size())
             throw new IllegalArgumentException("Mismatched number of local dirs and links");
 
+        boolean errored = false;
         while (true) {
             LOG.accept("Syncing " + links.size() + " pairs of directories: " + IntStream.range(0, links.size()).mapToObj(i -> Arrays.asList(localDirs.get(i), linkPaths.get(i))).collect(Collectors.toList()));
-            boolean errored = false;
+            errored = false;
             // a cancel that stopped the previous pass must not abort this one before it
             // syncs anything; a pause is held by its own flag, so this cannot resume one
             status.resume();
@@ -278,11 +328,22 @@ public class DirectorySync {
                     }
                 } catch (Exception e) {
                     if (status.isPaused() || status.isCancelled()) {
-                        // stopped on request (paused, or the pair was removed), so not a
-                        // failure; the message keeps the progress reached, which is what
-                        // is useful to see while stopped
+                        // stopped on request, so not a failure, and the folder is not synced
+                        // either: it stopped part way. A pause keeps the progress it reached,
+                        // which is what is worth seeing next to a paused sync; any other stop
+                        // clears it, since a message like "Checking files in Drive" left behind
+                        // reads as though the sync were still running
                         pairStatus.setError(null);
-                        pairStatus.setStatus(SyncStatus.SYNCED);
+                        if (! status.isPaused()) {
+                            // a stop with a reason is worth showing: a folder that stopped for
+                            // the network needs the user to act, not to look idle
+                            Optional<String> why = status.getStopReason();
+                            if (why.isPresent()) {
+                                pairStatus.setError(why.get());
+                                pairStatus.setStatus(SyncStatus.ERROR);
+                            } else
+                                pairStatus.setStatus("");
+                        }
                         if (pairLog != null)
                             pairLog.log(status.isPaused() ? "Sync paused" : "Sync stopped");
                         return false;
@@ -311,7 +372,9 @@ public class DirectorySync {
                 break;
             Threads.sleep(30_000);
         }
-        return true;
+        // the caller decides what to do about a folder that did not sync, so say whether
+        // this pass left one behind
+        return ! errored && everyLinkOpened;
     }
 
     public static boolean init(Args args) {
@@ -480,6 +543,9 @@ public class DirectorySync {
             syncedVersions.copyTo(localStatePath);
             SyncState localState = new JdbcTreeState(localStatePath);
             long t1 = System.currentTimeMillis();
+            // the remote scan reports itself, so the local one has to as well: hashing a
+            // large folder takes minutes, and silence there looks like a hang
+            LOG.accept("Checking files on this device");
             buildDirState(localFS, localState, syncedVersions, isCancelled);
             long t2 = System.currentTimeMillis();
             LOG.accept("Found " + localState.filesCount() + " local files in " + (t2-t1)/1_000 + "s");
@@ -633,6 +699,11 @@ public class DirectorySync {
                                 },
                                 (int) (local.size >> 32), (int) local.size, Optional.of(modificationTime), Optional.of(local.hashTree), false, true,
                                 x -> {
+                                    // the batch is one call, and the check after it only runs once
+                                    // the whole batch is done: without this a stopped sync keeps
+                                    // uploading, on mobile data too, until every queued file is sent
+                                    if (isCancelled.get())
+                                        throw new RuntimeException("Sync cancelled while uploading " + relPath);
                                     if (!uploadStarted.get()) {
                                         LOG.accept("REMOTE: Uploading " + relPath + " " + progress);
                                         uploadStarted.set(true);
@@ -672,6 +743,8 @@ public class DirectorySync {
                     }
                 }
                 byFolder.forEach((dir, files) -> {
+                    if (isCancelled.get())
+                        throw new RuntimeException("Sync cancelled before deleting from " + dir);
                     LOG.accept("REMOTE: bulk deleting " + files.size() + " from " + remoteFS.resolve(dir));
                     remoteFS.bulkDelete(remoteFS.resolve(dir), files);
                     for (String file : files) {
@@ -775,6 +848,32 @@ public class DirectorySync {
                     remoteState.delete();
             }
         }
+    }
+
+    /** A pair the pass could not even start, carrying which one it was so the caller can
+     *  show that folder as needing attention rather than leaving it looking busy. */
+    public static class PairFailure extends RuntimeException {
+        public final int pair;
+
+        public PairFailure(int pair, Throwable cause) {
+            super(describeError(cause), cause);
+            this.pair = pair;
+        }
+    }
+
+    /** A failed request is thrown with the url as its message, which tells the user nothing
+     *  they can act on, and repeats their owner key back at them. */
+    public static String describeError(Throwable t) {
+        String msg = t.getMessage();
+        // android reports a name lookup failure as a raw resolver error, not as the exception
+        // type, so the text is what tells them apart
+        if (t instanceof UnknownHostException
+                || (msg != null && (msg.contains("getaddrinfo") || msg.contains("Unable to resolve host"))))
+            return "Cannot reach the server. Check your connection.";
+        if (msg == null || ! msg.startsWith("http"))
+            return msg;
+        int query = msg.indexOf('?');
+        return "No answer from the server for " + (query < 0 ? msg : msg.substring(0, query));
     }
 
     public static void log(String msg) {

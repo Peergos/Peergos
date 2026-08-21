@@ -50,14 +50,28 @@ public interface SyncRunner {
         private final AtomicBoolean cancelled = new AtomicBoolean(false);
         // a pass clears cancelled as it aborts, so holding a pause needs its own flag
         private final AtomicBoolean paused = new AtomicBoolean(false);
+        private String stopReason;
 
         public synchronized void cancel() {
+            cancel(null);
+        }
+
+        /** A stop the user did not ask for needs to say why, or a folder that has quietly
+         *  stopped syncing looks identical to one that is idle. */
+        public synchronized void cancel(String reason) {
+            stopReason = reason;
             cancelled.set(true);
         }
 
+        public synchronized Optional<String> getStopReason() {
+            return Optional.ofNullable(stopReason);
+        }
+
         public synchronized void resume() {
-            if (! paused.get())
+            if (! paused.get()) {
                 cancelled.set(false);
+                stopReason = null;
+            }
         }
 
         public synchronized boolean isCancelled() {
@@ -179,7 +193,7 @@ public interface SyncRunner {
                             };
                             Consumer<Throwable> errorUpdater = e -> {
                                 if (e != null) {
-                                    status.setError(e.getMessage());
+                                    status.setError(DirectorySync.describeError(e));
                                     DirectorySync.log(e.getMessage());
                                 }
                             };
