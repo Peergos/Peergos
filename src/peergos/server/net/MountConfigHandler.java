@@ -35,6 +35,8 @@ import java.util.function.Function;
 import java.io.*;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.attribute.FileAttribute;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.nio.file.*;
 import java.security.SecureRandom;
 import java.util.*;
@@ -154,6 +156,15 @@ public class MountConfigHandler implements HttpHandler {
         }
     }
 
+    /** The config always holds the webdav password, and the peergos password too where no
+     *  keyring is available, so it is created unreadable to anyone else from the start. */
+    private static FileAttribute<?>[] ownerOnly(Path dir) {
+        return dir.getFileSystem().supportedFileAttributeViews().contains("posix") ?
+                new FileAttribute<?>[]{PosixFilePermissions.asFileAttribute(
+                        PosixFilePermissions.fromString("rw-------"))} :
+                new FileAttribute<?>[0];
+    }
+
     private synchronized void saveConfig(MountConfig config) {
         try {
             if (!secretStore.embedsInConfigFile()) {
@@ -166,8 +177,12 @@ public class MountConfigHandler implements HttpHandler {
                     secretStore.delete(SECRET_SERVICE, config.peergosUsername + ":totp");
             }
             MountConfig toWrite = secretStore.embedsInConfigFile() ? config : config.withoutSecrets();
-            Files.write(peergosDir.resolve(MountConfig.FILENAME),
-                    JSONParser.toString(toWrite.toJson()).getBytes(StandardCharsets.UTF_8));
+            // written beside the config and swapped in: a half written file reads as a mount
+            // that cannot log in, and readConfig holds a different lock from this method
+            Path partial = Files.createTempFile(peergosDir, MountConfig.FILENAME, ".tmp", ownerOnly(peergosDir));
+            Files.write(partial, JSONParser.toString(toWrite.toJson()).getBytes(StandardCharsets.UTF_8));
+            Files.move(partial, peergosDir.resolve(MountConfig.FILENAME),
+                    StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
