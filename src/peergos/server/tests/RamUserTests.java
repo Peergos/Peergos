@@ -196,6 +196,32 @@ public class RamUserTests extends UserTests {
         Assert.assertEquals(2, context.network.account.getSecondAuthMethods(username, context.signer).join().size());
     }
 
+    /** A mount's credential is not a factor a person can be challenged with, so it must not gate an
+     *  interactive login on its own, and backup codes have nothing to back up while it is the only one.
+     */
+    @Test
+    public void mountFactorAloneIsNotUsersSecondFactor() throws Exception {
+        String username = generateUsername();
+        String password = "password";
+        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
+
+        TimeBasedOneTimePasswordGenerator totp = new TimeBasedOneTimePasswordGenerator(Duration.ofSeconds(30L), 6, TotpKey.ALGORITHM);
+        addMountKey(context, totp, "Linux drive mount 1");
+
+        // logging in normally must not be challenged with a factor the user can't answer
+        AtomicBoolean challenged = new AtomicBoolean(false);
+        UserContext.signIn(username, password, req -> {
+            challenged.set(true);
+            throw new IllegalStateException("Challenged with " + req.methods + " which no person can satisfy");
+        }, network, crypto).join();
+        Assert.assertFalse(challenged.get());
+
+        try {
+            context.network.account.generateBackupCodes(username, context.signer).join();
+            Assert.fail("Backup codes shouldn't be allowed with only a mount factor to back up");
+        } catch (Exception e) {}
+    }
+
     @Test
     public void backupCodes() throws Exception {
         String username = generateUsername();

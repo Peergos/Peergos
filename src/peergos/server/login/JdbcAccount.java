@@ -525,8 +525,11 @@ public class JdbcAccount implements LoginCache {
      */
     public CompletableFuture<BackupCodes> generateBackupCodes(String username) {
         List<MultiFactorAuthMethod> existing = getSecondAuthMethods(username).join();
+        // a mount's credential is not something backup codes can back up - it never prompts anybody,
+        // and an account holding only one isn't challenged at all, so the codes would go unused
         boolean hasRealFactor = existing.stream()
-                .anyMatch(m -> m.enabled && m.type != MultiFactorAuthMethod.Type.BACKUP_CODES);
+                .anyMatch(m -> m.enabled && m.type.interactive
+                        && m.type != MultiFactorAuthMethod.Type.BACKUP_CODES);
         if (! hasRealFactor)
             throw new IllegalStateException("Please set up an authenticator app or security key before generating backup codes.");
 
