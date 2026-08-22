@@ -1,9 +1,16 @@
 package peergos.server.tests;
 
 import org.junit.*;
+import org.junit.rules.TemporaryFolder;
+import peergos.server.net.MountConfigHandler;
 import peergos.server.util.secrets.*;
+import peergos.server.webdav.MountConfig;
+import peergos.shared.io.ipfs.api.JSONParser;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -11,6 +18,9 @@ import static org.junit.Assert.*;
 import static org.junit.Assume.assumeTrue;
 
 public class SecretStoreTests {
+
+    @Rule
+    public TemporaryFolder tmp = new TemporaryFolder();
 
     /* ------------------------------------------------------------------ */
     /* MemorySecretStore — exercises the interface contract that all      */
@@ -159,5 +169,46 @@ public class SecretStoreTests {
         } finally {
             store.delete(service, account);
         }
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* MountConfigHandler.readConfig — where a saved mount is loaded, on  */
+    /* every desktop start and every android process start.               */
+    /* ------------------------------------------------------------------ */
+
+    private Path writeConfig(MountConfig config) throws IOException {
+        Path dir = tmp.newFolder().toPath();
+        Files.write(dir.resolve(MountConfig.FILENAME),
+                JSONParser.toString(config.toJson()).getBytes(StandardCharsets.UTF_8));
+        return dir;
+    }
+
+    @Test
+    public void readConfig_missingFileIsDisabled() throws IOException {
+        assertFalse(MountConfigHandler.readConfig(tmp.newFolder().toPath(), new MemorySecretStore()).enabled);
+    }
+
+    @Test
+    public void readConfig_readsASavedConfig() throws IOException {
+        MountConfig saved = new MountConfig(true, "alice", "pw", "dav-user", "dav-pass",
+                8090, "digest", "", "");
+        MountConfig read = MountConfigHandler.readConfig(writeConfig(saved), new JsonFileSecretStore());
+        assertTrue(read.enabled);
+        assertEquals("alice", read.peergosUsername);
+        assertEquals(8090, read.webdavPort);
+        assertEquals("digest", read.authType);
+    }
+
+    /** A keyring-backed store redacts the secrets from the file, so a restore that
+     *  cannot splice them back in logs in with nothing and is rejected. */
+    @Test
+    public void readConfig_splicesKeyringSecretsBackIn() throws IOException {
+        SecretStore store = new MemorySecretStore();
+        store.put("peergos-mount", "alice:password", "the-password");
+        MountConfig onDisk = new MountConfig(true, "alice", "pw", "dav-user", "dav-pass",
+                8090, "digest", "", "").withoutSecrets();
+        assertEquals("", onDisk.peergosPassword);
+        MountConfig read = MountConfigHandler.readConfig(writeConfig(onDisk), store);
+        assertEquals("the-password", read.peergosPassword);
     }
 }

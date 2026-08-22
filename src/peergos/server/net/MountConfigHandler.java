@@ -35,6 +35,8 @@ import java.util.function.Function;
 import java.io.*;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.attribute.FileAttribute;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.nio.file.*;
 import java.security.SecureRandom;
 import java.util.*;
@@ -139,7 +141,9 @@ public class MountConfigHandler implements HttpHandler {
         if (!configFile.toFile().exists())
             return MountConfig.disabled();
         try {
-            String json = Files.readString(configFile);
+            // readAllBytes, not readString: android's java.nio.file.Files has no
+            // readString, and this runs there when the app bootstraps a saved mount
+            String json = new String(Files.readAllBytes(configFile), StandardCharsets.UTF_8);
             MountConfig config = MountConfig.fromJson((Map<String, Object>) JSONParser.parse(json));
             if (secretStore.embedsInConfigFile() || config.peergosUsername.isEmpty())
                 return config;
@@ -150,6 +154,15 @@ public class MountConfigHandler implements HttpHandler {
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
+    }
+
+    /** The config always holds the webdav password, and the peergos password too where no
+     *  keyring is available, so it is created unreadable to anyone else from the start. */
+    private static FileAttribute<?>[] ownerOnly(Path dir) {
+        return dir.getFileSystem().supportedFileAttributeViews().contains("posix") ?
+                new FileAttribute<?>[]{PosixFilePermissions.asFileAttribute(
+                        PosixFilePermissions.fromString("rw-------"))} :
+                new FileAttribute<?>[0];
     }
 
     private synchronized void saveConfig(MountConfig config) {
@@ -164,8 +177,12 @@ public class MountConfigHandler implements HttpHandler {
                     secretStore.delete(SECRET_SERVICE, config.peergosUsername + ":totp");
             }
             MountConfig toWrite = secretStore.embedsInConfigFile() ? config : config.withoutSecrets();
-            Files.write(peergosDir.resolve(MountConfig.FILENAME),
-                    JSONParser.toString(toWrite.toJson()).getBytes(StandardCharsets.UTF_8));
+            // written beside the config and swapped in: a half written file reads as a mount
+            // that cannot log in, and readConfig holds a different lock from this method
+            Path partial = Files.createTempFile(peergosDir, MountConfig.FILENAME, ".tmp", ownerOnly(peergosDir));
+            Files.write(partial, JSONParser.toString(toWrite.toJson()).getBytes(StandardCharsets.UTF_8));
+            Files.move(partial, peergosDir.resolve(MountConfig.FILENAME),
+                    StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
@@ -390,6 +407,11 @@ public class MountConfigHandler implements HttpHandler {
                         new String(Serialize.readFully(exchange.getRequestBody())));
                 String peergosUsername = (String) body.get("peergosUsername");
                 String peergosPassword = (String) body.get("peergosPassword");
+                // saveConfig only keeps a password it was given, so enabling without one
+                // persists a mount that claims to be on and can never log in again
+                if (peergosUsername == null || peergosUsername.isEmpty()
+                        || peergosPassword == null || peergosPassword.isEmpty())
+                    throw new IllegalStateException("Mounting needs your username and password");
                 boolean autoMount = body.get("autoMount") instanceof Boolean ? (Boolean) body.get("autoMount") : true;
                 String authType = "digest";
                 String webdavUsername = generateToken();
