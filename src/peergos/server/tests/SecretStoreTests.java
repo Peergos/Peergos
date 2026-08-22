@@ -5,6 +5,7 @@ import org.junit.rules.TemporaryFolder;
 import peergos.server.net.MountConfigHandler;
 import peergos.server.util.secrets.*;
 import peergos.server.webdav.MountConfig;
+import peergos.server.webdav.WebdavMount;
 import peergos.shared.io.ipfs.api.JSONParser;
 
 import java.io.IOException;
@@ -210,5 +211,22 @@ public class SecretStoreTests {
         assertEquals("", onDisk.peergosPassword);
         MountConfig read = MountConfigHandler.readConfig(writeConfig(onDisk), store);
         assertEquals("the-password", read.peergosPassword);
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* WebdavMount.alreadyMounted — a mount left behind by a killed         */
+    /* app is the mount being asked for, not a failure.                     */
+    /* ------------------------------------------------------------------ */
+
+    @Test
+    public void alreadyMounted_recognisesGiosWording() {
+        assertTrue(WebdavMount.alreadyMounted(
+                "Command failed (exit 2): gio mount dav://x@localhost:1\ngio: dav://x@localhost:1/: Location is already mounted"));
+    }
+
+    @Test
+    public void alreadyMounted_ignoresOtherFailures() {
+        assertFalse(WebdavMount.alreadyMounted("gio: Could not connect: Connection refused"));
+        assertFalse(WebdavMount.alreadyMounted(null));
     }
 }

@@ -131,11 +131,24 @@ public class WebdavMount implements Closeable {
         return letters;
     }
 
+    /** gio's wording when the location it was asked to mount is mounted already. */
+    public static boolean alreadyMounted(String message) {
+        return message != null && message.toLowerCase().contains("already mounted");
+    }
+
     private static WebdavMount mountLinux(int port, String user, String pass) throws IOException {
         // gio mount ignores credentials in the URL and prompts interactively;
         // pipe the password to its stdin instead.
         String url = "dav://" + urlEncode(user) + "@localhost:" + port;
-        runCheckedWithStdin(pass, host("gio", "mount", url));
+        try {
+            runCheckedWithStdin(pass, host("gio", "mount", url));
+        } catch (IOException e) {
+            // a mount this app left behind, by being killed while mounted, is the mount we
+            // are asking for: gio refusing to make a second one is not a failure to be here
+            if (! alreadyMounted(e.getMessage()))
+                throw e;
+            LOG.info("WebDAV was already mounted at " + url);
+        }
         String mountPoint = findGvfsMountPoint(port);
         LOG.info("WebDAV mounted at " + mountPoint);
         return new WebdavMount(mountPoint, () -> runSilent(host("gio", "mount", "--unmount", url)));
