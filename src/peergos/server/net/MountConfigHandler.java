@@ -139,7 +139,9 @@ public class MountConfigHandler implements HttpHandler {
         if (!configFile.toFile().exists())
             return MountConfig.disabled();
         try {
-            String json = Files.readString(configFile);
+            // readAllBytes, not readString: android's java.nio.file.Files has no
+            // readString, and this runs there when the app bootstraps a saved mount
+            String json = new String(Files.readAllBytes(configFile), StandardCharsets.UTF_8);
             MountConfig config = MountConfig.fromJson((Map<String, Object>) JSONParser.parse(json));
             if (secretStore.embedsInConfigFile() || config.peergosUsername.isEmpty())
                 return config;
