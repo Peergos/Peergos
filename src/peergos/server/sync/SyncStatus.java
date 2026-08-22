@@ -11,6 +11,9 @@ public enum SyncStatus {
     NONE,
     SYNCED,
     SYNCING,
+    /** The user has paused syncing, so no pass will run until they resume. Only ever the
+     *  global aggregate: a pause stops the whole sync, not an individual pair. */
+    PAUSED,
     ERROR;
 
     public static SyncStatus parseOrDefault(String name, SyncStatus fallback) {
@@ -27,12 +30,17 @@ public enum SyncStatus {
      *
      * @param pairStates the state of every configured sync pair
      * @param globalError whether the global status holder is reporting an error
+     * @param paused whether the user has paused syncing
      */
-    public static SyncStatus aggregate(List<SyncStatus> pairStates, boolean globalError) {
+    public static SyncStatus aggregate(List<SyncStatus> pairStates, boolean globalError, boolean paused) {
         if (pairStates.isEmpty())
             return NONE;
+        // an error outlives a pause: it is something the user has to act on, and hiding it
+        // behind the pause they already know about would lose it
         if (globalError || pairStates.contains(ERROR))
             return ERROR;
+        if (paused)
+            return PAUSED;
         if (pairStates.contains(SYNCING))
             return SYNCING;
         return SYNCED;

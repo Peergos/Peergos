@@ -947,15 +947,24 @@ public class SyncTests {
     @Test
     public void syncStatusAggregation() {
         // no pairs configured => nothing to report, rather than "all good"
-        Assert.assertEquals(SyncStatus.NONE, SyncStatus.aggregate(Collections.emptyList(), false));
-        Assert.assertEquals(SyncStatus.NONE, SyncStatus.aggregate(Collections.emptyList(), true));
+        Assert.assertEquals(SyncStatus.NONE, SyncStatus.aggregate(Collections.emptyList(), false, false));
+        Assert.assertEquals(SyncStatus.NONE, SyncStatus.aggregate(Collections.emptyList(), true, false));
+        // and nothing to pause either
+        Assert.assertEquals(SyncStatus.NONE, SyncStatus.aggregate(Collections.emptyList(), false, true));
 
-        Assert.assertEquals(SyncStatus.SYNCED, SyncStatus.aggregate(List.of(SyncStatus.SYNCED, SyncStatus.SYNCED), false));
-        Assert.assertEquals(SyncStatus.SYNCING, SyncStatus.aggregate(List.of(SyncStatus.SYNCED, SyncStatus.SYNCING), false));
+        Assert.assertEquals(SyncStatus.SYNCED, SyncStatus.aggregate(List.of(SyncStatus.SYNCED, SyncStatus.SYNCED), false, false));
+        Assert.assertEquals(SyncStatus.SYNCING, SyncStatus.aggregate(List.of(SyncStatus.SYNCED, SyncStatus.SYNCING), false, false));
         // an error anywhere wins over a sync in progress
-        Assert.assertEquals(SyncStatus.ERROR, SyncStatus.aggregate(List.of(SyncStatus.SYNCING, SyncStatus.ERROR), false));
+        Assert.assertEquals(SyncStatus.ERROR, SyncStatus.aggregate(List.of(SyncStatus.SYNCING, SyncStatus.ERROR), false, false));
         // a global error with all pairs happy still reports an error
-        Assert.assertEquals(SyncStatus.ERROR, SyncStatus.aggregate(List.of(SyncStatus.SYNCED), true));
+        Assert.assertEquals(SyncStatus.ERROR, SyncStatus.aggregate(List.of(SyncStatus.SYNCED), true, false));
+
+        // a pause is what the tray shows, whatever the last pass left the pairs on
+        Assert.assertEquals(SyncStatus.PAUSED, SyncStatus.aggregate(List.of(SyncStatus.SYNCED), false, true));
+        Assert.assertEquals(SyncStatus.PAUSED, SyncStatus.aggregate(List.of(SyncStatus.SYNCING), false, true));
+        // except an error, which the user still has to act on
+        Assert.assertEquals(SyncStatus.ERROR, SyncStatus.aggregate(List.of(SyncStatus.ERROR), false, true));
+        Assert.assertEquals(SyncStatus.ERROR, SyncStatus.aggregate(List.of(SyncStatus.SYNCED), true, true));
     }
 
     @Test

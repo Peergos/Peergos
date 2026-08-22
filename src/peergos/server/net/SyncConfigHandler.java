@@ -391,8 +391,9 @@ public class SyncConfigHandler implements HttpHandler {
                 LinkedHashMap<Object, Object> reply = new LinkedHashMap<>();
                 reply.put("msg", global.getStatusAndTime());
                 boolean globalError = error.isPresent() || global.getStatus() == SyncStatus.ERROR;
-                reply.put("state", SyncStatus.aggregate(pairStates, globalError).name());
-                reply.put("paused", global.isPaused());
+                boolean paused = global.isPaused();
+                reply.put("state", SyncStatus.aggregate(pairStates, globalError, paused).name());
+                reply.put("paused", paused);
                 error.ifPresent(err -> reply.put("error", err));
                 reply.put("pairs", pairs);
                 byte[] res = JSONParser.toString(reply).getBytes(StandardCharsets.UTF_8);
