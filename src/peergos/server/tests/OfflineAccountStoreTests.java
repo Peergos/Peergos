@@ -230,6 +230,17 @@ public class OfflineAccountStoreTests {
         }
 
         @Override
+        public CompletableFuture<TotpKey> addMountFactor(String username, String name, byte[] auth) {
+            throw new IllegalStateException("Not used by these tests");
+        }
+
+        @Override
+        public CompletableFuture<Boolean> enableMountFactor(String username, byte[] credentialId, String code, byte[] auth) {
+            mfaEnabled = mfaEnabled || acceptFactors;
+            return whenReachable(acceptFactors);
+        }
+
+        @Override
         public CompletableFuture<BackupCodes> generateBackupCodes(String username, byte[] auth) {
             throw new IllegalStateException("Not used by these tests");
         }

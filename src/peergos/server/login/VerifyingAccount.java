@@ -68,6 +68,20 @@ public class VerifyingAccount implements Account {
     }
 
     @Override
+    public CompletableFuture<TotpKey> addMountFactor(String username, String name, byte[] auth) {
+        PublicKeyHash identityHash = core.getPublicKeyHash(username).join().get();
+        TimeLimited.isAllowed(Constants.LOGIN_URL + "addMount", auth, 24*3600, storage, identityHash);
+        return target.addMountFactor(username, name, auth);
+    }
+
+    @Override
+    public CompletableFuture<Boolean> enableMountFactor(String username, byte[] credentialId, String code, byte[] auth) {
+        PublicKeyHash identityHash = core.getPublicKeyHash(username).join().get();
+        TimeLimited.isAllowed(Constants.LOGIN_URL + "enableMount", auth, 24*3600, storage, identityHash);
+        return target.enableMountFactor(username, credentialId, code, auth);
+    }
+
+    @Override
     public CompletableFuture<BackupCodes> generateBackupCodes(String username, byte[] auth) {
         PublicKeyHash identityHash = core.getPublicKeyHash(username).join().get();
         TimeLimited.isAllowed(Constants.LOGIN_URL + "genBackupCodes", auth, 24*3600, storage, identityHash);

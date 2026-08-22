@@ -9,6 +9,7 @@ import peergos.shared.login.mfa.*;
 import peergos.shared.util.*;
 
 import java.io.*;
+import java.net.*;
 import java.util.*;
 import java.util.concurrent.*;
 
@@ -32,6 +33,17 @@ public class HttpAccount implements AccountProxy {
 
     private static String getProxyUrlPrefix(Multihash targetId) {
         return "/p2p/" + targetId.toString() + P2P_PROXY_PROTOCOL + "/";
+    }
+
+    /** The server reads its query from URI.getQuery(), which has already percent decoded it, so a
+     *  space has to go over as %20 - URLEncoder's form encoded '+' would arrive as a literal plus.
+     */
+    private static String encode(String component) {
+        try {
+            return URLEncoder.encode(component, "UTF-8").replace("+", "%20");
+        } catch (UnsupportedEncodingException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     @Override
@@ -143,6 +155,46 @@ public class HttpAccount implements AccountProxy {
         return poster.get(urlPrefix + Constants.LOGIN_URL + "addTotp?username=" + username
                         + "&auth=" + ArrayOps.bytesToHex(auth))
                 .thenApply(res -> TotpKey.fromString(new String(res)));
+    }
+
+    @Override
+    public CompletableFuture<TotpKey> addMountFactor(String username, String name, byte[] auth) {
+        return addMountFactor(directUrlPrefix, direct, username, name, auth);
+    }
+
+    @Override
+    public CompletableFuture<TotpKey> addMountFactor(Multihash targetServerId, String username, String name, byte[] auth) {
+        return addMountFactor(getProxyUrlPrefix(targetServerId), p2p, username, name, auth);
+    }
+
+    private CompletableFuture<TotpKey> addMountFactor(String urlPrefix, HttpPoster poster, String username, String name, byte[] auth) {
+        return poster.get(urlPrefix + Constants.LOGIN_URL + "addMount?username=" + username
+                        + "&name=" + encode(name) // mount names have spaces in them
+                        + "&auth=" + ArrayOps.bytesToHex(auth))
+                .thenApply(res -> TotpKey.fromString(new String(res)));
+    }
+
+    @Override
+    public CompletableFuture<Boolean> enableMountFactor(String username, byte[] credentialId, String code, byte[] auth) {
+        return enableMountFactor(directUrlPrefix, direct, username, credentialId, code, auth);
+    }
+
+    @Override
+    public CompletableFuture<Boolean> enableMountFactor(Multihash targetServerId, String username, byte[] credentialId, String code, byte[] auth) {
+        return enableMountFactor(getProxyUrlPrefix(targetServerId), p2p, username, credentialId, code, auth);
+    }
+
+    private CompletableFuture<Boolean> enableMountFactor(String urlPrefix,
+                                                         HttpPoster poster,
+                                                         String username,
+                                                         byte[] credentialId,
+                                                         String code,
+                                                         byte[] auth) {
+        return poster.get(urlPrefix + Constants.LOGIN_URL + "enableMount?username=" + username
+                        + "&credid=" + ArrayOps.bytesToHex(credentialId)
+                        + "&auth=" + ArrayOps.bytesToHex(auth)
+                        + "&code=" + code)
+                .thenApply(res -> ((CborObject.CborBoolean)CborObject.fromByteArray(res)).value);
     }
 
     @Override

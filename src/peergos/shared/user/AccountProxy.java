@@ -25,6 +25,14 @@ public interface AccountProxy extends Account {
 
     CompletableFuture<TotpKey> addTotpFactor(Multihash targetServerId, String username, byte[] auth);
 
+    CompletableFuture<TotpKey> addMountFactor(Multihash targetServerId, String username, String name, byte[] auth);
+
+    CompletableFuture<Boolean> enableMountFactor(Multihash targetServerId,
+                                                 String username,
+                                                 byte[] credentialId,
+                                                 String code,
+                                                 byte[] auth);
+
     CompletableFuture<BackupCodes> generateBackupCodes(Multihash targetServerId, String username, byte[] auth);
 
     CompletableFuture<Boolean> enableTotpFactor(Multihash targetServerId,

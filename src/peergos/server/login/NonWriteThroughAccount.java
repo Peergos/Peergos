@@ -69,6 +69,16 @@ public class NonWriteThroughAccount implements Account {
     }
 
     @Override
+    public CompletableFuture<TotpKey> addMountFactor(String username, String name, byte[] auth) {
+        throw new IllegalStateException("TODO");
+    }
+
+    @Override
+    public CompletableFuture<Boolean> enableMountFactor(String username, byte[] credentialId, String code, byte[] auth) {
+        throw new IllegalStateException("TODO");
+    }
+
+    @Override
     public CompletableFuture<BackupCodes> generateBackupCodes(String username, byte[] auth) {
         throw new IllegalStateException("TODO");
     }

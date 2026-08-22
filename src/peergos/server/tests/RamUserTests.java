@@ -7,6 +7,7 @@ import org.junit.runners.*;
 import peergos.server.*;
 import peergos.server.cli.CLI;
 import peergos.server.crypto.hash.ScryptJava;
+import peergos.server.net.MountConfigHandler;
 import peergos.server.tests.util.*;
 import peergos.server.util.*;
 import peergos.shared.*;
@@ -153,6 +154,46 @@ public class RamUserTests extends UserTests {
         }
         // test that the old totp is deleted when new one is enabled
         Assert.assertTrue(context.network.account.getSecondAuthMethods(username, context.signer).join().size() == 1);
+    }
+
+    /** Mounting a drive used to delete whatever totp the user already had, because enabling a totp
+     *  replaces any other. A mount gets its own type of factor now, so the two coexist.
+     */
+    @Test
+    public void mountFactorLeavesTotpAlone() throws Exception {
+        String username = generateUsername();
+        String password = "password";
+        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
+
+        TimeBasedOneTimePasswordGenerator totp = new TimeBasedOneTimePasswordGenerator(Duration.ofSeconds(30L), 6, TotpKey.ALGORITHM);
+        TotpKey userTotp = addTotpKey(context, totp);
+        testLoginRequiresTotp(username, password, network, totp, userTotp);
+
+        // mounting a drive provisions the mount a second factor of its own
+        TotpKey mountKey = addMountKey(context, totp, "Linux drive mount 1");
+
+        List<MultiFactorAuthMethod> methods = context.network.account.getSecondAuthMethods(username, context.signer).join();
+        Assert.assertEquals(2, methods.size());
+        MultiFactorAuthMethod stillThere = methods.stream()
+                .filter(m -> m.type == MultiFactorAuthMethod.Type.TOTP)
+                .findFirst()
+                .orElseThrow(() -> new IllegalStateException("Mounting deleted the user's totp!"));
+        Assert.assertTrue(Arrays.equals(stillThere.credentialId, userTotp.credentialId));
+        Assert.assertTrue(stillThere.enabled);
+        // the authenticator app the user already had still logs them in
+        testLoginRequiresTotp(username, password, network, totp, userTotp);
+
+        // and the mount logs in with its own credential, using the responder it really uses
+        UserContext mountLogin = UserContext.signIn(username, password,
+                MountConfigHandler.mountTotpResponder(mountKey.credentialId, mountKey.key), network, crypto).join();
+        Assert.assertEquals(username, mountLogin.username);
+
+        // replacing the authenticator totp later must not take the mount's factor with it
+        TotpKey replacement = addTotpKey(context, totp);
+        testLoginRequiresTotp(username, password, network, totp, replacement);
+        UserContext.signIn(username, password,
+                MountConfigHandler.mountTotpResponder(mountKey.credentialId, mountKey.key), network, crypto).join();
+        Assert.assertEquals(2, context.network.account.getSecondAuthMethods(username, context.signer).join().size());
     }
 
     @Test
@@ -475,6 +516,17 @@ public class RamUserTests extends UserTests {
         String clientCode = totp.generateOneTimePasswordString(key, now);
         context.network.account.enableTotpFactor(context.username, totpKey.credentialId, clientCode, context.signer).join();
         return totpKey;
+    }
+
+    private static TotpKey addMountKey(UserContext context,
+                                       TimeBasedOneTimePasswordGenerator totp,
+                                       String name) throws Exception {
+        TotpKey mountKey = context.network.account.addMountFactor(context.username, name, context.signer).join();
+        Key key = new SecretKeySpec(mountKey.key, TotpKey.ALGORITHM);
+        String code = totp.generateOneTimePasswordString(key, Instant.now());
+        Assert.assertTrue(context.network.account
+                .enableMountFactor(context.username, mountKey.credentialId, code, context.signer).join());
+        return mountKey;
     }
 
     @Test

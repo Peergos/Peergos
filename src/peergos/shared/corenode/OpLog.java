@@ -118,6 +118,16 @@ public class OpLog implements Cborable, Account, MutablePointers, ContentAddress
     }
 
     @Override
+    public CompletableFuture<TotpKey> addMountFactor(String username, String name, byte[] auth) {
+        throw new IllegalStateException("Unsupported operation!");
+    }
+
+    @Override
+    public CompletableFuture<Boolean> enableMountFactor(String username, byte[] credentialId, String code, byte[] auth) {
+        throw new IllegalStateException("Unsupported operation!");
+    }
+
+    @Override
     public CompletableFuture<BackupCodes> generateBackupCodes(String username, byte[] auth) {
         throw new IllegalStateException("Unsupported operation!");
     }

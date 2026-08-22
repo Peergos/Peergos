@@ -32,6 +32,10 @@ public class AccountHandler implements HttpHandler {
     /** A client only sends the second factor types it knows about. Anything else is from before
      *  those types existed, and would fail to parse a method it doesn't recognise, so only offer
      *  it the original two.
+     *
+     *  Non interactive factors are never offered to anybody: a mount answers its own challenge
+     *  from the credential it holds, and nothing else can. Leaving them out keeps them from
+     *  showing up as a login option a person would have no way to satisfy.
      */
     private static Either<UserStaticData, MultiFactorAuthRequest> filterToSupportedMfaTypes(Either<UserStaticData, MultiFactorAuthRequest> res,
                                                                                             Map<String, List<String>> params) {
@@ -48,7 +52,7 @@ public class AccountHandler implements HttpHandler {
         MultiFactorAuthRequest req = res.b();
         List<MultiFactorAuthMethod> filtered = new ArrayList<>();
         for (MultiFactorAuthMethod method : req.methods) {
-            if (supported.contains(method.type.value))
+            if (method.type.interactive && supported.contains(method.type.value))
                 filtered.add(method);
         }
         if (filtered.size() == req.methods.size())
@@ -136,6 +140,23 @@ public class AccountHandler implements HttpHandler {
                     byte[] credentialId = ArrayOps.hexToBytes(params.get("credid").get(0));
                     String code = params.get("code").get(0);
                     boolean res = account.enableTotpFactor(username, credentialId, code, auth).join();
+                    dout.write(new CborObject.CborBoolean(res).serialize());
+                    break;
+                }
+                case "addMount": {
+                    AggregatedMetrics.LOGIN_ADD_MOUNT.inc();
+                    username = params.get("username").get(0);
+                    String name = params.get("name").get(0);
+                    TotpKey res = account.addMountFactor(username, name, auth).join();
+                    dout.write(res.encode().getBytes(StandardCharsets.UTF_8));
+                    break;
+                }
+                case "enableMount": {
+                    AggregatedMetrics.LOGIN_ENABLE_MOUNT.inc();
+                    username = params.get("username").get(0);
+                    byte[] credentialId = ArrayOps.hexToBytes(params.get("credid").get(0));
+                    String code = params.get("code").get(0);
+                    boolean res = account.enableMountFactor(username, credentialId, code, auth).join();
                     dout.write(new CborObject.CborBoolean(res).serialize());
                     break;
                 }

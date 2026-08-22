@@ -80,6 +80,31 @@ public interface Account {
                 .thenCompose(auth -> addTotpFactor(username, auth));
     }
 
+    CompletableFuture<TotpKey> addMountFactor(String username, String name, byte[] auth);
+
+    @JsMethod
+    default CompletableFuture<TotpKey> addMountFactor(String username,
+                                                      String name,
+                                                      SigningPrivateKeyAndPublicHash identity) {
+        TimeLimitedClient.SignedRequest req =
+                new TimeLimitedClient.SignedRequest(Constants.LOGIN_URL + "addMount", System.currentTimeMillis());
+        return req.sign(identity.secret)
+                .thenCompose(auth -> addMountFactor(username, name, auth));
+    }
+
+    CompletableFuture<Boolean> enableMountFactor(String username, byte[] credentialId, String code, byte[] auth);
+
+    @JsMethod
+    default CompletableFuture<Boolean> enableMountFactor(String username,
+                                                         byte[] credentialId,
+                                                         String code,
+                                                         SigningPrivateKeyAndPublicHash identity) {
+        TimeLimitedClient.SignedRequest req =
+                new TimeLimitedClient.SignedRequest(Constants.LOGIN_URL + "enableMount", System.currentTimeMillis());
+        return req.sign(identity.secret)
+                .thenCompose(auth -> enableMountFactor(username, credentialId, code, auth));
+    }
+
     CompletableFuture<BackupCodes> generateBackupCodes(String username, byte[] auth);
 
     @JsMethod

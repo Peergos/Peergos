@@ -59,6 +59,24 @@ public class ProxyingAccount implements Account {
     }
 
     @Override
+    public CompletableFuture<TotpKey> addMountFactor(String username, String name, byte[] auth) {
+        return core.getPublicKeyHash(username).thenCompose(idOpt -> Proxy.redirectCall(core,
+                serverIds,
+                idOpt.get(),
+                () -> local.addMountFactor(username, name, auth),
+                target -> p2p.addMountFactor(target, username, name, auth)));
+    }
+
+    @Override
+    public CompletableFuture<Boolean> enableMountFactor(String username, byte[] credentialId, String code, byte[] auth) {
+        return core.getPublicKeyHash(username).thenCompose(idOpt -> Proxy.redirectCall(core,
+                serverIds,
+                idOpt.get(),
+                () -> local.enableMountFactor(username, credentialId, code, auth),
+                target -> p2p.enableMountFactor(target, username, credentialId, code, auth)));
+    }
+
+    @Override
     public CompletableFuture<BackupCodes> generateBackupCodes(String username, byte[] auth) {
         return core.getPublicKeyHash(username).thenCompose(idOpt -> Proxy.redirectCall(core,
                 serverIds,

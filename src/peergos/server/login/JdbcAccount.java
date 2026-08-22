@@ -51,6 +51,8 @@ public class JdbcAccount implements LoginCache {
     private static final String DELETE_AUTH = "DELETE FROM mfa WHERE username = ? AND credid = ?";
     private static final String GET_AUTH_METHODS = "SELECT name, credid, created, type, enabled FROM mfa WHERE username = ?;";
     private static final String GET_IDS_OF_TYPE = "SELECT credid FROM mfa WHERE username = ? AND type = ?;";
+    private static final String COUNT_MFA = "SELECT COUNT(*) FROM mfa WHERE username = ?;";
+    private static final String DELETE_UNVERIFIED = "DELETE FROM mfa WHERE username = ? AND type = ? AND enabled = ?;";
 
     public static final int MAX_MFA = 10;
     /** A staged login is only left behind by a password change that was interrupted between staging and
@@ -314,8 +316,10 @@ public class JdbcAccount implements LoginCache {
                                                                                           Optional<MultiFactorAuthResponse> mfa) {
         List<MultiFactorAuthMethod> mfas = getSecondAuthMethods(username).join();
         List<MultiFactorAuthMethod> enabled = mfas.stream().filter(m -> m.enabled).collect(Collectors.toList());
-        // backup codes are never a second factor on their own, only a way of satisfying an existing one
-        if (enabled.stream().allMatch(m -> m.type == MultiFactorAuthMethod.Type.BACKUP_CODES))
+        // backup codes are never a second factor on their own, only a way of satisfying an existing one,
+        // and a mount's credential belongs to a device rather than to the user, so neither of them is
+        // something we can challenge a person with
+        if (enabled.stream().allMatch(m -> m.type == MultiFactorAuthMethod.Type.BACKUP_CODES || ! m.type.interactive))
             return getEntryData(username, authorisedReader).thenApply(Either::a);
         if (mfa.isEmpty()) {
             byte[] challenge = createChallenge(username);
@@ -341,7 +345,7 @@ public class JdbcAccount implements LoginCache {
             MultiFactorAuthMethod.Type type = getType(username, credentialId);
             if (type == MultiFactorAuthMethod.Type.BACKUP_CODES)
                 validateBackupCode(username, credentialId, mfaAuth.response.a());
-            else if (type == MultiFactorAuthMethod.Type.TOTP)
+            else if (type == MultiFactorAuthMethod.Type.TOTP || type == MultiFactorAuthMethod.Type.MOUNT)
                 validateTotpCode(username, credentialId, mfaAuth.response.a());
             else
                 throw new IllegalStateException("Not a code based credential!");
@@ -415,8 +419,8 @@ public class JdbcAccount implements LoginCache {
             while (rs.next()) {
                 boolean enabled = rs.getBoolean("enabled");
                 MultiFactorAuthMethod.Type type = MultiFactorAuthMethod.Type.byValue(rs.getInt("type"));
-                if (type == MultiFactorAuthMethod.Type.TOTP && !enabled)
-                    continue; // Don't return disabled totp
+                if ((type == MultiFactorAuthMethod.Type.TOTP || type == MultiFactorAuthMethod.Type.MOUNT) && !enabled)
+                    continue; // Don't return a code based factor that was never verified
                 String name = rs.getString("name");
                 if (type == MultiFactorAuthMethod.Type.BACKUP_CODES && name.equals("0"))
                     continue; // an exhausted set is no longer a login option
@@ -449,6 +453,26 @@ public class JdbcAccount implements LoginCache {
     }
 
     public CompletableFuture<TotpKey> addTotpFactor(String username) {
+        // TOTP don't need names as there is only 1 active at a time
+        return addCodeFactor(username, "", MultiFactorAuthMethod.Type.TOTP);
+    }
+
+    /** Add a code based second factor belonging to a device mount. Unlike a TOTP these are named,
+     *  and any number of them can be active at once - one per device the user has mounted from.
+     */
+    public CompletableFuture<TotpKey> addMountFactor(String username, String name) {
+        return addCodeFactor(username, name, MultiFactorAuthMethod.Type.MOUNT);
+    }
+
+    private CompletableFuture<TotpKey> addCodeFactor(String username, String name, MultiFactorAuthMethod.Type type) {
+        if (name.length() > MultiFactorAuthMethod.MAX_NAME_LENGTH)
+            throw new IllegalStateException("Second factor names must be smaller than "
+                    + (MultiFactorAuthMethod.MAX_NAME_LENGTH + 1) + " characters");
+        // an unverified factor of this type is an abandoned setup attempt - drop it rather than
+        // letting cancelled attempts accumulate rows that count against the limit forever
+        deleteUnverified(username, type);
+        if (countMfa(username) >= MAX_MFA)
+            throw new IllegalStateException("Too many multi factor auth methods. Please delete some.");
         byte[] rawKey = new byte[32];
         rnd.nextBytes(rawKey);
         byte[] credId = new byte[32];
@@ -456,14 +480,39 @@ public class JdbcAccount implements LoginCache {
         try (Connection conn = getConnection();
              PreparedStatement stmt = conn.prepareStatement(CREATE_MFA)) {
             stmt.setString(1, username);
-            stmt.setString(2, ""); // TOTP don't need names as there is only 1 active at a time
+            stmt.setString(2, name);
             stmt.setBytes(3, credId);
-            stmt.setInt(4, MultiFactorAuthMethod.Type.TOTP.value);
+            stmt.setInt(4, type.value);
             stmt.setBoolean(5, false);
             stmt.setLong(6, LocalDate.now().toEpochDay());
             stmt.setBytes(7, rawKey);
             stmt.executeUpdate();
             return Futures.of(new TotpKey(credId, rawKey));
+        } catch (SQLException sqe) {
+            LOG.log(Level.WARNING, sqe.getMessage(), sqe);
+            throw new IllegalStateException(sqe);
+        }
+    }
+
+    private void deleteUnverified(String username, MultiFactorAuthMethod.Type type) {
+        try (Connection conn = getConnection();
+             PreparedStatement stmt = conn.prepareStatement(DELETE_UNVERIFIED)) {
+            stmt.setString(1, username);
+            stmt.setInt(2, type.value);
+            stmt.setBoolean(3, false);
+            stmt.executeUpdate();
+        } catch (SQLException sqe) {
+            LOG.log(Level.WARNING, sqe.getMessage(), sqe);
+            throw new IllegalStateException(sqe);
+        }
+    }
+
+    private int countMfa(String username) {
+        try (Connection conn = getConnection();
+             PreparedStatement stmt = conn.prepareStatement(COUNT_MFA)) {
+            stmt.setString(1, username);
+            ResultSet rs = stmt.executeQuery();
+            return rs.next() ? rs.getInt(1) : 0;
         } catch (SQLException sqe) {
             LOG.log(Level.WARNING, sqe.getMessage(), sqe);
             throw new IllegalStateException(sqe);
@@ -623,10 +672,31 @@ public class JdbcAccount implements LoginCache {
     }
 
     public CompletableFuture<Boolean> enableTotpFactor(String username, byte[] credentialId, String code) {
+        // only one totp is ever active: enabling a new one replaces whatever the user had before
         List<MultiFactorAuthMethod> olderTotp = getSecondAuthMethods(username).join()
                 .stream()
                 .filter(m -> !Arrays.equals(m.credentialId, credentialId) && m.type == MultiFactorAuthMethod.Type.TOTP)
                 .collect(Collectors.toList());
+        return enableCodeFactor(username, credentialId, code, MultiFactorAuthMethod.Type.TOTP, olderTotp);
+    }
+
+    /** Unlike a totp, a mount factor replaces nothing: every mounted device has its own, and the
+     *  user's authenticator app is a different type entirely, so neither disturbs the other.
+     */
+    public CompletableFuture<Boolean> enableMountFactor(String username, byte[] credentialId, String code) {
+        return enableCodeFactor(username, credentialId, code, MultiFactorAuthMethod.Type.MOUNT,
+                Collections.emptyList());
+    }
+
+    private CompletableFuture<Boolean> enableCodeFactor(String username,
+                                                        byte[] credentialId,
+                                                        String code,
+                                                        MultiFactorAuthMethod.Type expected,
+                                                        List<MultiFactorAuthMethod> toReplace) {
+        MultiFactorAuthMethod.Type actual = getType(username, credentialId);
+        if (actual != expected)
+            throw new IllegalStateException("Second factor " + ArrayOps.bytesToHex(credentialId)
+                    + " is not a " + expected + "!");
         validateTotpCode(username, credentialId, code);
         try (Connection conn = getConnection();
              PreparedStatement update = conn.prepareStatement(ENABLE_AUTH)) {
@@ -635,7 +705,7 @@ public class JdbcAccount implements LoginCache {
             update.setBytes(3, credentialId);
             update.executeUpdate();
             // now delete any existing old ones
-            for (MultiFactorAuthMethod mfa : olderTotp) {
+            for (MultiFactorAuthMethod mfa : toReplace) {
                 deleteMfa(username, mfa.credentialId).join();
             }
             return Futures.of(true);
@@ -733,9 +803,11 @@ public class JdbcAccount implements LoginCache {
             update.setBytes(2, credentialId);
             update.executeUpdate();
 
-            // backup codes only exist to back up another factor, so don't outlive the last one
+            // backup codes only exist to back up a factor the user logs in with, so don't outlive
+            // the last one. A mount's credential isn't one of those - it never prompts anybody.
             List<MultiFactorAuthMethod> remaining = getSecondAuthMethods(username).join();
-            if (remaining.stream().noneMatch(m -> m.enabled && m.type != MultiFactorAuthMethod.Type.BACKUP_CODES)) {
+            if (remaining.stream().noneMatch(m -> m.enabled && m.type.interactive
+                    && m.type != MultiFactorAuthMethod.Type.BACKUP_CODES)) {
                 for (byte[] backupId : getBackupCodeIds(username)) {
                     deleteMfa(username, backupId).join();
                 }

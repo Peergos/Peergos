@@ -98,6 +98,16 @@ public class LocalOnlyAccount implements Account {
     }
 
     @Override
+    public CompletableFuture<TotpKey> addMountFactor(String username, String name, byte[] auth) {
+        return target.addMountFactor(username, name, auth);
+    }
+
+    @Override
+    public CompletableFuture<Boolean> enableMountFactor(String username, byte[] credentialId, String code, byte[] auth) {
+        return target.enableMountFactor(username, credentialId, code, auth);
+    }
+
+    @Override
     public CompletableFuture<BackupCodes> generateBackupCodes(String username, byte[] auth) {
         return target.generateBackupCodes(username, auth);
     }

@@ -99,6 +99,19 @@ public class OfflineAccountStore implements Account {
     }
 
     @Override
+    public CompletableFuture<TotpKey> addMountFactor(String username, String name, byte[] auth) {
+        return target.addMountFactor(username, name, auth);
+    }
+
+    /** Unlike a totp, this doesn't disable offline login: a mount factor never gates a person's
+     *  login, so a cached login isn't a way around it.
+     */
+    @Override
+    public CompletableFuture<Boolean> enableMountFactor(String username, byte[] credentialId, String code, byte[] auth) {
+        return target.enableMountFactor(username, credentialId, code, auth);
+    }
+
+    @Override
     public CompletableFuture<BackupCodes> generateBackupCodes(String username, byte[] auth) {
         return target.generateBackupCodes(username, auth);
     }

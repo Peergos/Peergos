@@ -246,15 +246,17 @@ public class MountConfigHandler implements HttpHandler {
         }
     }
 
-    /** True for definitive "your password / TOTP isn't accepted" failures from signIn —
+    /** True for definitive "your password / second factor isn't accepted" failures from signIn —
      *  used to distinguish from transient network/server errors so we only tear down the
-     *  mount when the credentials themselves are the problem. */
+     *  mount when the credentials themselves are the problem. "Unknown credential id" is what
+     *  the server says when the user has revoked this mount's factor from another device. */
     private static boolean isCredentialFailure(Throwable t) {
         while (t != null) {
             String msg = t.getMessage();
             if (msg != null && (msg.contains("Incorrect username or password")
                     || msg.contains("Incorrect password")
-                    || msg.contains("Mount TOTP credential not found"))) {
+                    || msg.contains("Unknown credential id")
+                    || msg.contains("Server rejected second factor auth"))) {
                 return true;
             }
             t = t.getCause();
@@ -285,10 +287,11 @@ public class MountConfigHandler implements HttpHandler {
     }
 
     /**
-     * Build a non-interactive MFA responder that generates a TOTP code from the
-     * mount's stored secret. Matches the request's expected TOTP method against the
-     * stored credentialId — if the user has multiple TOTP factors, we pick OURS so
-     * the rest of the user's authenticator apps don't have to be involved.
+     * Build a non-interactive MFA responder that answers with a code generated from the mount's
+     * own stored secret. It replies with the stored credentialId without consulting the offered
+     * methods: a mount's own factor is deliberately never offered as a login option, and the
+     * server identifies the factor being answered by its credentialId anyway. If the user has
+     * revoked it, the server rejects it and verifyCredentials tears the mount down.
      *
      * Takes the raw bytes (not a {@link MountConfig}) so the returned closure
      * doesn't pin a reference to a config object that may be re-read later from
@@ -301,21 +304,32 @@ public class MountConfigHandler implements HttpHandler {
             totp = new TimeBasedOneTimePasswordGenerator(Duration.ofSeconds(30L), 6, TotpKey.ALGORITHM);
         } catch (Exception e) { throw new RuntimeException(e); }
         return req -> {
-            // Prefer a TOTP entry whose credentialId matches our stored one.
-            MultiFactorAuthMethod ours = req.methods.stream()
-                    .filter(m -> m.type == MultiFactorAuthMethod.Type.TOTP)
-                    .filter(m -> Arrays.equals(m.credentialId, credentialId))
-                    .findFirst()
-                    .orElseThrow(() -> new IllegalStateException(
-                            "Mount TOTP credential not found in user's 2FA methods — was it deleted?"));
             try {
                 String code = totp.generateOneTimePasswordString(
                         new SecretKeySpec(secret, TotpKey.ALGORITHM), Instant.now());
-                return Futures.of(new MultiFactorAuthResponse(ours.credentialId, Either.a(code)));
+                return Futures.of(new MultiFactorAuthResponse(credentialId, Either.a(code)));
             } catch (Exception e) {
-                throw new RuntimeException("Failed to generate mount TOTP code", e);
+                throw new RuntimeException("Failed to generate mount code", e);
             }
         };
+    }
+
+    /** Hand the mount's second factor back before we forget its secret, so unmounting doesn't
+     *  leave a credential on the account that nothing can ever use or identify. Best effort: an
+     *  unreachable server must not stop the user unmounting, it just leaves the factor for them
+     *  to delete from 2FA settings.
+     */
+    private void revokeMountCredential(MountConfig config) {
+        if (! config.hasTotp())
+            return;
+        try {
+            UserContext context = buildContext(config);
+            context.network.account.deleteSecondFactor(config.peergosUsername,
+                    config.totpCredentialIdBytes(), context.signer).join();
+        } catch (Exception e) {
+            LOG.log(Level.WARNING, "Failed to revoke this mount's second factor, it will need "
+                    + "deleting by hand from 2FA settings: " + rootMessage(e), e);
+        }
     }
 
     private void disableMount() {
@@ -478,10 +492,12 @@ public class MountConfigHandler implements HttpHandler {
                 exchange.sendResponseHeaders(200, 0);
 
             } else if (action.equals("disable")) {
-                // Capture the username before tearing down so we know whose keyring
-                // entries to clear; verifyCredentials' transient disables don't take
-                // this path, so they leave keyring entries intact for the next re-mount.
-                String username = readConfig().peergosUsername;
+                // Capture the config before tearing down so we know whose keyring entries to
+                // clear; verifyCredentials' transient disables don't take this path, so they
+                // leave keyring entries intact for the next re-mount.
+                MountConfig previous = readConfig();
+                String username = previous.peergosUsername;
+                revokeMountCredential(previous);
                 disableMount();
                 peergosDir.resolve(MountConfig.FILENAME).toFile().delete();
                 if (!username.isEmpty() && !secretStore.embedsInConfigFile()) {
