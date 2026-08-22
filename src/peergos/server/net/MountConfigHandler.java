@@ -60,6 +60,10 @@ public class MountConfigHandler implements HttpHandler {
     /** Service name used for all mount-related secrets in the OS keyring. */
     private static final String SECRET_SERVICE = "peergos-mount";
 
+    /** Raised when this mount's second factor is no longer on the account, which is how revoking it
+     *  from 2FA settings on another device reaches us. */
+    private static final String REVOKED_ERROR = "This mount's second factor has been revoked";
+
     private final Path peergosDir;
     private final String peergosUrl;
     private final SecretStore secretStore;
@@ -68,6 +72,9 @@ public class MountConfigHandler implements HttpHandler {
     private final java.util.function.Supplier<NetworkAccess> networkFactory;
     private final AtomicReference<String> mountError = new AtomicReference<>(null);
     private final AtomicReference<String> activePeergosUsername = new AtomicReference<>("");
+    /** The context the running mount logged in with, kept so tearing down doesn't have to sign in
+     *  all over again - that means scrypt and a network round trip, which is slow on a phone. */
+    private final AtomicReference<UserContext> activeContext = new AtomicReference<>(null);
     private final ScheduledExecutorService loginScheduler = Executors.newSingleThreadScheduledExecutor(r -> {
         Thread t = new Thread(r, "peergos-mount-relogin");
         t.setDaemon(true);
@@ -197,6 +204,7 @@ public class MountConfigHandler implements HttpHandler {
     private void enableMount(MountConfig config) throws Exception {
         UserContext context = buildContext(config);
         backend.enable(config, context, peergosDir);
+        activeContext.set(context);
         activePeergosUsername.set(config.peergosUsername);
         scheduleCredentialCheck(config);
     }
@@ -230,8 +238,13 @@ public class MountConfigHandler implements HttpHandler {
                             ? mountTotpResponder(config)
                             : req -> Futures.errored(new IllegalStateException(
                                     "Mount credential check requires MFA but no TOTP is stored"));
-            UserContext.signIn(config.peergosUsername, config.peergosPassword,
+            UserContext context = UserContext.signIn(config.peergosUsername, config.peergosPassword,
                     mfa, network, crypto).join();
+            // Signing in isn't proof on its own that our factor survived: revoking it can leave the
+            // account with no second factor at all, and then login isn't challenged for anything and
+            // the password alone would let this check pass forever. Ask whether it is still there.
+            if (config.hasTotp() && ! hasOurCredential(context, config))
+                throw new IllegalStateException(REVOKED_ERROR);
             LOG.fine("Mount credential check OK for " + config.peergosUsername);
         } catch (Throwable t) {
             if (isCredentialFailure(t)) {
@@ -246,6 +259,14 @@ public class MountConfigHandler implements HttpHandler {
         }
     }
 
+    /** Whether the second factor this mount holds is still on the account. */
+    public static boolean hasOurCredential(UserContext context, MountConfig config) {
+        byte[] ours = config.totpCredentialIdBytes();
+        return context.network.account.getSecondAuthMethods(config.peergosUsername, context.signer).join()
+                .stream()
+                .anyMatch(m -> Arrays.equals(m.credentialId, ours));
+    }
+
     /** True for definitive "your password / second factor isn't accepted" failures from signIn —
      *  used to distinguish from transient network/server errors so we only tear down the
      *  mount when the credentials themselves are the problem. "Unknown credential id" is what
@@ -256,7 +277,8 @@ public class MountConfigHandler implements HttpHandler {
             if (msg != null && (msg.contains("Incorrect username or password")
                     || msg.contains("Incorrect password")
                     || msg.contains("Unknown credential id")
-                    || msg.contains("Server rejected second factor auth"))) {
+                    || msg.contains("Server rejected second factor auth")
+                    || msg.contains(REVOKED_ERROR))) {
                 return true;
             }
             t = t.getCause();
@@ -323,7 +345,10 @@ public class MountConfigHandler implements HttpHandler {
         if (! config.hasTotp())
             return;
         try {
-            UserContext context = buildContext(config);
+            // the running mount is already logged in; only fall back to signing in if it isn't
+            UserContext context = activeContext.get();
+            if (context == null)
+                context = buildContext(config);
             context.network.account.deleteSecondFactor(config.peergosUsername,
                     config.totpCredentialIdBytes(), context.signer).join();
         } catch (Exception e) {
@@ -336,6 +361,7 @@ public class MountConfigHandler implements HttpHandler {
         ScheduledFuture<?> check = credentialCheck.getAndSet(null);
         if (check != null) check.cancel(false);
         backend.disable();
+        activeContext.set(null);
         activePeergosUsername.set("");
     }
 

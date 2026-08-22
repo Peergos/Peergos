@@ -222,6 +222,35 @@ public class RamUserTests extends UserTests {
         } catch (Exception e) {}
     }
 
+    /** Revoking a mount's factor can leave the account with no second factor at all, and then login
+     *  isn't challenged for anything - so signing in successfully is not proof the factor survived.
+     *  This is what the hourly credential check has to look at to notice a remote revocation.
+     */
+    @Test
+    public void revokedMountFactorIsNoticedWithNoOtherFactor() throws Exception {
+        String username = generateUsername();
+        String password = "password";
+        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
+
+        TimeBasedOneTimePasswordGenerator totp = new TimeBasedOneTimePasswordGenerator(Duration.ofSeconds(30L), 6, TotpKey.ALGORITHM);
+        TotpKey mountKey = addMountKey(context, totp, "Linux drive mount 1");
+        peergos.server.webdav.MountConfig cfg = new peergos.server.webdav.MountConfig(
+                true, username, password, "webdav-user", "webdav-pass", 8090, "digest",
+                ArrayOps.bytesToHex(mountKey.credentialId), ArrayOps.bytesToHex(mountKey.key));
+
+        UserContext mounted = UserContext.signIn(username, password,
+                MountConfigHandler.mountTotpResponder(cfg), network, crypto).join();
+        Assert.assertTrue(MountConfigHandler.hasOurCredential(mounted, cfg));
+
+        // the user revokes this mount from 2FA settings on another device
+        context.network.account.deleteSecondFactor(username, mountKey.credentialId, context.signer).join();
+
+        // signing in still works, on the password alone - the account has no second factor now
+        UserContext after = UserContext.signIn(username, password,
+                MountConfigHandler.mountTotpResponder(cfg), network, crypto).join();
+        Assert.assertFalse("A revoked mount factor must not look valid", MountConfigHandler.hasOurCredential(after, cfg));
+    }
+
     @Test
     public void backupCodes() throws Exception {
         String username = generateUsername();
