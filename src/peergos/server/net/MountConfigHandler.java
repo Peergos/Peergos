@@ -407,6 +407,11 @@ public class MountConfigHandler implements HttpHandler {
                         new String(Serialize.readFully(exchange.getRequestBody())));
                 String peergosUsername = (String) body.get("peergosUsername");
                 String peergosPassword = (String) body.get("peergosPassword");
+                // saveConfig only keeps a password it was given, so enabling without one
+                // persists a mount that claims to be on and can never log in again
+                if (peergosUsername == null || peergosUsername.isEmpty()
+                        || peergosPassword == null || peergosPassword.isEmpty())
+                    throw new IllegalStateException("Mounting needs your username and password");
                 boolean autoMount = body.get("autoMount") instanceof Boolean ? (Boolean) body.get("autoMount") : true;
                 String authType = "digest";
                 String webdavUsername = generateToken();
