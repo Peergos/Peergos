@@ -51,8 +51,28 @@ public class WebdavMount implements Closeable {
         return m;
     }
 
+    /** Whether our own webdav server is already mounted at this point. Rows of the mount
+     *  table read "<what> on <where> (<options>)"; the endpoint has to match too, or
+     *  anything else mounted there would be adopted as the drive. */
+    public static boolean mountedAt(String mountTable, String mountPoint, int port) {
+        if (mountTable == null)
+            return false;
+        for (String line : mountTable.split("\n")) {
+            boolean here = line.contains(" on " + mountPoint + " ") || line.endsWith(" on " + mountPoint);
+            if (here && line.contains("localhost:" + port))
+                return true;
+        }
+        return false;
+    }
+
     private static WebdavMount mountMacOS(int port, String user, String pass) throws IOException {
         String mountPoint = "/Volumes/Peergos";
+        // a mount this app left behind, by being killed while mounted, is the mount being
+        // asked for: mounting over it fails, and unmounting it first would drop open files
+        if (mountedAt(captureOrEmpty(host("mount")), mountPoint, port)) {
+            LOG.info("WebDAV was already mounted at " + mountPoint);
+            return new WebdavMount(mountPoint, () -> runSilent(host("umount", mountPoint)));
+        }
         new File(mountPoint).mkdirs();
         String url = "http://" + urlEncode(user) + ":" + urlEncode(pass) + "@localhost:" + port;
         runChecked(host("mount_webdav", "-s", "-v", "Peergos", url, mountPoint));
@@ -96,6 +116,14 @@ public class WebdavMount implements Closeable {
     private static WebdavMount mountWindows(int port, String user, String pass) throws IOException {
         ensureWindowsWebDavReady();
         String unc = "\\\\localhost@" + port + "\\Peergos";
+        // as on the other platforms, a mapping left behind is the one being asked for;
+        // mapping the share again would take a second letter every time the app restarts
+        Optional<String> existing = mappedLetter(captureOrEmpty(host("net", "use")), unc);
+        if (existing.isPresent()) {
+            String mapped = existing.get();
+            LOG.info("WebDAV was already mapped to " + mapped);
+            return new WebdavMount(mapped, () -> runSilent(host("net", "use", mapped, "/delete", "/yes")));
+        }
         Set<String> before = driveLetters();
         String letter = null;
         if (!before.contains("P:")) {
@@ -119,6 +147,30 @@ public class WebdavMount implements Closeable {
         String regKey = "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\MountPoints2\\##localhost@" + port + "#Peergos";
         runSilent(host("reg.exe", "add", regKey, "/v", "_LabelFromReg", "/t", "REG_SZ", "/d", "Peergos", "/f"));
         return new WebdavMount(mountedLetter, () -> runSilent(host("net", "use", mountedLetter, "/delete", "/yes")));
+    }
+
+    /** The drive letter already mapped to this share, from `net use` output whose rows
+     *  read "<status> <letter> <remote> <network>". */
+    public static Optional<String> mappedLetter(String netUseOutput, String unc) {
+        if (netUseOutput == null)
+            return Optional.empty();
+        for (String line : netUseOutput.split("\n")) {
+            if (! line.contains(unc))
+                continue;
+            for (String word : line.trim().split("\\s+"))
+                if (word.length() == 2 && word.charAt(1) == ':' && Character.isLetter(word.charAt(0)))
+                    return Optional.of(word.toUpperCase());
+        }
+        return Optional.empty();
+    }
+
+    /** The command's output, or nothing: asking what is mounted must not stop a mount. */
+    private static String captureOrEmpty(String... cmd) {
+        try {
+            return capture(cmd);
+        } catch (IOException cannotAsk) {
+            return "";
+        }
     }
 
     private static Set<String> driveLetters() {

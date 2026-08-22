@@ -229,4 +229,37 @@ public class SecretStoreTests {
         assertFalse(WebdavMount.alreadyMounted("gio: Could not connect: Connection refused"));
         assertFalse(WebdavMount.alreadyMounted(null));
     }
+
+    @Test
+    public void mountedAt_readsTheMountTable() {
+        String table = "/dev/disk1s1 on / (apfs, local, journaled)\n"
+                + "map -hosts on /net (autofs, nosuid)\n"
+                + "//user@localhost:8090 on /Volumes/Peergos (webdav, nodev, noexec)";
+        assertTrue(WebdavMount.mountedAt(table, "/Volumes/Peergos", 8090));
+        assertFalse(WebdavMount.mountedAt(table, "/Volumes/Other", 8090));
+        assertFalse(WebdavMount.mountedAt(null, "/Volumes/Peergos", 8090));
+    }
+
+    /** Adopting whatever happens to sit there would hand back someone else's files. */
+    @Test
+    public void mountedAt_ignoresSomethingElseMountedThere() {
+        String table = "//someone@elsewhere:8090 on /Volumes/Peergos (webdav, nodev)";
+        assertFalse(WebdavMount.mountedAt(table, "/Volumes/Peergos", 8090));
+        assertFalse(WebdavMount.mountedAt("/dev/disk2 on /Volumes/Peergos (hfs, local)",
+                "/Volumes/Peergos", 8090));
+    }
+
+    @Test
+    public void mappedLetter_findsTheShareInNetUseOutput() {
+        String out = "New connections will be remembered.\n\n"
+                + "Status       Local     Remote                    Network\n"
+                + "-------------------------------------------------------\n"
+                + "OK           P:        \\\\localhost@8090\\Peergos    Web Client Network\n"
+                + "OK           Z:        \\\\server\\share            Microsoft Windows Network";
+        assertEquals(Optional.of("P:"), WebdavMount.mappedLetter(out, "\\\\localhost@8090\\Peergos"));
+        assertEquals(Optional.empty(), WebdavMount.mappedLetter(out, "\\\\localhost@9999\\Peergos"));
+        assertEquals(Optional.empty(), WebdavMount.mappedLetter(null, "\\\\localhost@8090\\Peergos"));
+        assertEquals(Optional.empty(), WebdavMount.mappedLetter(
+                "OK  1:  \\\\localhost@8090\\Peergos  Web Client Network", "\\\\localhost@8090\\Peergos"));
+    }
 }
