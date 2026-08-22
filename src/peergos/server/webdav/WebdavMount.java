@@ -121,8 +121,16 @@ public class WebdavMount implements Closeable {
         Optional<String> existing = mappedLetter(captureOrEmpty(host("net", "use")), unc);
         if (existing.isPresent()) {
             String mapped = existing.get();
-            LOG.info("WebDAV was already mapped to " + mapped);
-            return new WebdavMount(mapped, () -> runSilent(host("net", "use", mapped, "/delete", "/yes")));
+            // net use lists a mapping whose server has gone as Disconnected or Unavailable, and
+            // that wording is translated, so open the letter instead of reading the status: the
+            // server is already up by now, so a merely disconnected mapping reconnects here.
+            if (new File(mapped + "\\").exists()) {
+                LOG.info("WebDAV was already mapped to " + mapped);
+                return new WebdavMount(mapped, () -> runSilent(host("net", "use", mapped, "/delete", "/yes")));
+            }
+            // a dead mapping still holds its letter, which would push us onto a second one
+            LOG.info("Dropping a dead WebDAV mapping at " + mapped);
+            runSilent(host("net", "use", mapped, "/delete", "/yes"));
         }
         Set<String> before = driveLetters();
         String letter = null;
@@ -183,11 +191,6 @@ public class WebdavMount implements Closeable {
         return letters;
     }
 
-    /** gio's wording when the location it was asked to mount is mounted already. */
-    public static boolean alreadyMounted(String message) {
-        return message != null && message.toLowerCase().contains("already mounted");
-    }
-
     private static WebdavMount mountLinux(int port, String user, String pass) throws IOException {
         // gio mount ignores credentials in the URL and prompts interactively;
         // pipe the password to its stdin instead.
@@ -196,29 +199,37 @@ public class WebdavMount implements Closeable {
             runCheckedWithStdin(pass, host("gio", "mount", url));
         } catch (IOException e) {
             // a mount this app left behind, by being killed while mounted, is the mount we
-            // are asking for: gio refusing to make a second one is not a failure to be here
-            if (! alreadyMounted(e.getMessage()))
+            // are asking for: gio refusing to make a second one is not a failure to be here.
+            // gio's wording for that is translated, so ask gvfs what it has rather than
+            // reading the message — being mounted is the condition we actually care about.
+            if (gvfsMountPoint(port).isEmpty())
                 throw e;
             LOG.info("WebDAV was already mounted at " + url);
         }
-        String mountPoint = findGvfsMountPoint(port);
+        String mountPoint = gvfsMountPoint(port).orElseThrow(() ->
+                new IOException("Could not find GVFS mount point for port " + port));
         LOG.info("WebDAV mounted at " + mountPoint);
         return new WebdavMount(mountPoint, () -> runSilent(host("gio", "mount", "--unmount", url)));
     }
 
-    private static String findGvfsMountPoint(int port) throws IOException {
-        String uid = capture(host("id", "-u")).trim();
-        String gvfsBase = "/run/user/" + uid + "/gvfs";
-        String portFragment = "port=" + port + ",";
-        // gio mounts on the host, so the mount point only exists in the host's namespace —
-        // under flatpak this directory is not visible to us at all. List it on the host for
-        // the same reason we run gio there.
-        return Stream.of(capture(host("ls", "-1", gvfsBase)).split("\n"))
-                .map(String::trim)
-                .filter(name -> name.startsWith("dav:") && name.contains(portFragment))
-                .findFirst()
-                .map(name -> gvfsBase + "/" + name)
-                .orElseThrow(() -> new IOException("Could not find GVFS mount point for port " + port + " under " + gvfsBase));
+    /** Where gvfs has our webdav port mounted, if it does. Asked both to find the mount point
+     *  and to decide whether a gio failure still left us mounted, so it never throws. */
+    private static Optional<String> gvfsMountPoint(int port) {
+        try {
+            String uid = capture(host("id", "-u")).trim();
+            String gvfsBase = "/run/user/" + uid + "/gvfs";
+            String portFragment = "port=" + port + ",";
+            // gio mounts on the host, so the mount point only exists in the host's namespace —
+            // under flatpak this directory is not visible to us at all. List it on the host for
+            // the same reason we run gio there.
+            return Stream.of(capture(host("ls", "-1", gvfsBase)).split("\n"))
+                    .map(String::trim)
+                    .filter(name -> name.startsWith("dav:") && name.contains(portFragment))
+                    .findFirst()
+                    .map(name -> gvfsBase + "/" + name);
+        } catch (IOException cannotAsk) {
+            return Optional.empty();
+        }
     }
 
     private static void runCheckedWithStdin(String stdin, String... cmd) throws IOException {

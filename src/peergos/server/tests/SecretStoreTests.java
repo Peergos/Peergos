@@ -214,21 +214,9 @@ public class SecretStoreTests {
     }
 
     /* ------------------------------------------------------------------ */
-    /* WebdavMount.alreadyMounted — a mount left behind by a killed         */
-    /* app is the mount being asked for, not a failure.                     */
+    /* WebdavMount — a mount left behind by a killed app is the mount       */
+    /* being asked for, not a failure.                                      */
     /* ------------------------------------------------------------------ */
-
-    @Test
-    public void alreadyMounted_recognisesGiosWording() {
-        assertTrue(WebdavMount.alreadyMounted(
-                "Command failed (exit 2): gio mount dav://x@localhost:1\ngio: dav://x@localhost:1/: Location is already mounted"));
-    }
-
-    @Test
-    public void alreadyMounted_ignoresOtherFailures() {
-        assertFalse(WebdavMount.alreadyMounted("gio: Could not connect: Connection refused"));
-        assertFalse(WebdavMount.alreadyMounted(null));
-    }
 
     @Test
     public void mountedAt_readsTheMountTable() {

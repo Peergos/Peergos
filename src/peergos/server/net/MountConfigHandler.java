@@ -180,9 +180,15 @@ public class MountConfigHandler implements HttpHandler {
             // written beside the config and swapped in: a half written file reads as a mount
             // that cannot log in, and readConfig holds a different lock from this method
             Path partial = Files.createTempFile(peergosDir, MountConfig.FILENAME, ".tmp", ownerOnly(peergosDir));
-            Files.write(partial, JSONParser.toString(toWrite.toJson()).getBytes(StandardCharsets.UTF_8));
-            Files.move(partial, peergosDir.resolve(MountConfig.FILENAME),
-                    StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+            try {
+                Files.write(partial, JSONParser.toString(toWrite.toJson()).getBytes(StandardCharsets.UTF_8));
+                Files.move(partial, peergosDir.resolve(MountConfig.FILENAME),
+                        StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+            } finally {
+                // a successful move leaves nothing behind; a failed one must not leave the
+                // secrets sitting in a file that disabling the mount will never clean up
+                try { Files.deleteIfExists(partial); } catch (IOException ignored) {}
+            }
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
@@ -335,6 +341,17 @@ public class MountConfigHandler implements HttpHandler {
         }
     }
 
+    /** Whether the webdav server could still be started on this port, probed where it binds. */
+    private static boolean isFree(int port) {
+        try (java.net.ServerSocket s = new java.net.ServerSocket()) {
+            s.setReuseAddress(true);
+            s.bind(new java.net.InetSocketAddress("127.0.0.1", port));
+            return true;
+        } catch (IOException taken) {
+            return false;
+        }
+    }
+
     private static void openInFileExplorer(String mountPoint) throws IOException {
         // Android isn't handled here — the host app exposes a JS bridge
         // (MainActivity.openMountInFiles) that fires a SAF browse intent with the
@@ -414,15 +431,23 @@ public class MountConfigHandler implements HttpHandler {
                     throw new IllegalStateException("Mounting needs your username and password");
                 boolean autoMount = body.get("autoMount") instanceof Boolean ? (Boolean) body.get("autoMount") : true;
                 String authType = "digest";
-                String webdavUsername = generateToken();
-                String webdavPassword = generateToken();
-                int webdavPort = findFreePort();
                 // Optional TOTP credential supplied by the UI when the user had 2FA enabled.
                 // Both hex-encoded; empty/missing means the mount logs in with password only.
                 String totpCredentialId = (String) body.getOrDefault("totpCredentialId", "");
                 String totpSecret       = (String) body.getOrDefault("totpSecret", "");
 
                 disableMount();
+                // Re-mounting the same account keeps the previous endpoint while it is free, so a
+                // mount left behind by a kill is the one being asked for and gets adopted. A fresh
+                // port would leave that mount in place and stack a second drive beside it, and the
+                // webdav credentials have to come with it: the OS mount still speaks the old ones.
+                MountConfig previous = readConfig();
+                boolean sameEndpoint = !previous.webdavUsername.isEmpty()
+                        && previous.peergosUsername.equals(peergosUsername)
+                        && isFree(previous.webdavPort);
+                String webdavUsername = sameEndpoint ? previous.webdavUsername : generateToken();
+                String webdavPassword = sameEndpoint ? previous.webdavPassword : generateToken();
+                int webdavPort = sameEndpoint ? previous.webdavPort : findFreePort();
                 MountConfig config = new MountConfig(true, peergosUsername, peergosPassword,
                         webdavUsername, webdavPassword, webdavPort, authType,
                         totpCredentialId, totpSecret);
