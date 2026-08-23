@@ -49,7 +49,7 @@ import java.util.stream.Collectors;
 
 public class ServerAdmin {
     public static final Command.Arg ARG_USERNAME =
-            new Command.Arg("username", "The username to delete", true);
+            new Command.Arg("username", "The username", true);
 
     private static void deleteOwnedKeys(PublicKeyHash id,
                                         MutablePointers pointers,
