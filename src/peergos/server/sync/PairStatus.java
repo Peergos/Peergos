@@ -45,7 +45,8 @@ public class PairStatus {
             Object m = json.get("msg");
             status = m == null ? null : m.toString();
             Object t = json.get("time");
-            updateTime = t == null ? null : LocalDateTime.parse(t.toString(), TS);
+            // a record stamped between passes carries a state but no time yet
+            updateTime = t == null || t.toString().isEmpty() ? null : LocalDateTime.parse(t.toString(), TS);
             Object e = json.get("error");
             error = e == null || e.toString().isEmpty() ? Optional.empty() : Optional.of(e.toString());
             // status files written by older versions have no state
