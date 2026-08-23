@@ -962,9 +962,9 @@ public class SyncTests {
         // a pause is what the tray shows, whatever the last pass left the pairs on
         Assert.assertEquals(SyncStatus.PAUSED, SyncStatus.aggregate(List.of(SyncStatus.SYNCED), false, true));
         Assert.assertEquals(SyncStatus.PAUSED, SyncStatus.aggregate(List.of(SyncStatus.SYNCING), false, true));
-        // except an error, which the user still has to act on
-        Assert.assertEquals(SyncStatus.ERROR, SyncStatus.aggregate(List.of(SyncStatus.ERROR), false, true));
-        Assert.assertEquals(SyncStatus.ERROR, SyncStatus.aggregate(List.of(SyncStatus.SYNCED), true, true));
+        // including one that failed, which the folder itself still reports
+        Assert.assertEquals(SyncStatus.PAUSED, SyncStatus.aggregate(List.of(SyncStatus.ERROR), false, true));
+        Assert.assertEquals(SyncStatus.PAUSED, SyncStatus.aggregate(List.of(SyncStatus.SYNCED), true, true));
     }
 
     @Test
