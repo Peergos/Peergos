@@ -35,12 +35,12 @@ public enum SyncStatus {
     public static SyncStatus aggregate(List<SyncStatus> pairStates, boolean globalError, boolean paused) {
         if (pairStates.isEmpty())
             return NONE;
-        // an error outlives a pause: it is something the user has to act on, and hiding it
-        // behind the pause they already know about would lose it
-        if (globalError || pairStates.contains(ERROR))
-            return ERROR;
+        // nothing runs while it is paused, so that is what every client reports first;
+        // a failure underneath it is still shown on the folder it belongs to
         if (paused)
             return PAUSED;
+        if (globalError || pairStates.contains(ERROR))
+            return ERROR;
         if (pairStates.contains(SYNCING))
             return SYNCING;
         return SYNCED;
