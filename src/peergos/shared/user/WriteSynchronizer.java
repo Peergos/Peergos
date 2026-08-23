@@ -24,6 +24,7 @@ public class WriteSynchronizer {
     private final Map<Pair<PublicKeyHash, PublicKeyHash>, AsyncLock<Snapshot>> pending = new ConcurrentHashMap<>();
     private CommitterBuilder committerBuilder = (c, o, w) -> c;
     private BufferedNetworkAccess.Flusher flusher = (o, v, w) -> Futures.of(v);
+    private volatile CommitObserver commitObserver = (w, s) -> {};
 
     public WriteSynchronizer(MutablePointers mutable, ContentAddressedStorage dht, Hasher hasher) {
         this.mutable = mutable;
@@ -41,6 +42,31 @@ public class WriteSynchronizer {
 
     public void setFlusher(BufferedNetworkAccess.Flusher flusher) {
         this.flusher = flusher;
+    }
+
+    /** Told about every mutable pointer commit, with the sequence number the pointer reached.
+     *  A pointer sequence increments by exactly one per commit, so counting the distinct
+     *  sequences a caller produced tells it how much of a writer's progress was its own.
+     */
+    public interface CommitObserver {
+        void committed(PublicKeyHash writer, Optional<Long> sequence);
+    }
+
+    public void setCommitObserver(CommitObserver observer) {
+        this.commitObserver = observer;
+    }
+
+    /** The buffered committer coalesces several logical commits into one pointer update, and
+     *  reports the sequence that update will reach, so this has to wrap the built committer
+     *  rather than the raw one to see the sequences that are actually committed.
+     */
+    private Committer observe(Committer c) {
+        return (o, w, wd, existing, tid) -> c.commit(o, w, wd, existing, tid)
+                .thenApply(s -> {
+                    if (s.contains(w.publicKeyHash))
+                        commitObserver.committed(w.publicKeyHash, s.get(w.publicKeyHash).sequence);
+                    return s;
+                });
     }
 
     public void put(PublicKeyHash owner, PublicKeyHash writer, CommittedWriterData val) {
@@ -130,8 +156,8 @@ public class WriteSynchronizer {
         // a previous transaction has completed (another node/user with write access may have concurrently updated the mapping)
         return pending.computeIfAbsent(new Pair<>(owner, writer.publicKeyHash), p -> new AsyncLock<>(getWriterData(owner, p.right)))
                 .runWithLock(current -> IpfsTransaction.call(owner, tid -> transformer.apply(current.get(writer).props.get(), tid)
-                                .thenCompose(wd -> committerBuilder.buildCommitter((aOwner, signer, wdr, existing, t) -> wdr.get().commit(aOwner, signer,
-                                        existing.hash, existing.sequence, mutable, dht, hasher, t), owner, () -> true)
+                                .thenCompose(wd -> observe(committerBuilder.buildCommitter((aOwner, signer, wdr, existing, t) -> wdr.get().commit(aOwner, signer,
+                                        existing.hash, existing.sequence, mutable, dht, hasher, t), owner, () -> true))
                                         .commit(owner, writer, wd, current.get(writer), tid)
                                         .thenCompose(v -> flusher.commit(owner, v, () -> true))), dht),
                         () -> getWriterData(owner, writer.publicKeyHash));
@@ -150,10 +176,10 @@ public class WriteSynchronizer {
                                                           Supplier<Boolean> commitWatcher) {
         return pending.computeIfAbsent(new Pair<>(owner, writer.publicKeyHash), p -> new AsyncLock<>(getWriterData(owner, p.right)))
                 .runWithLock(current -> transformer.apply(current,
-                                        committerBuilder.buildCommitter((aOwner, signer, wd, existing, tid) -> (wd.isPresent() ?
+                                        observe(committerBuilder.buildCommitter((aOwner, signer, wd, existing, tid) -> (wd.isPresent() ?
                                                 wd.get().commit(aOwner, signer, existing.hash, existing.sequence, mutable, dht, hasher, tid) :
                                                 WriterData.commitDeletion(aOwner, signer, existing.hash, existing.sequence, mutable))
-                                                .thenCompose(s -> updateWriterState(owner, signer.publicKeyHash, s).thenApply(x -> s)), owner, commitWatcher))
+                                                .thenCompose(s -> updateWriterState(owner, signer.publicKeyHash, s).thenApply(x -> s)), owner, commitWatcher)))
                                 .thenApply(Snapshot::asWritable)
                                 .thenCompose(v -> flusher.commit(owner, v, commitWatcher)),
                         () -> getWriterData(owner, writer.publicKeyHash));
@@ -193,13 +219,13 @@ public class WriteSynchronizer {
         CompletableFuture<Pair<Snapshot, V>> res = new CompletableFuture<>();
         return pending.computeIfAbsent(new Pair<>(owner, writer.publicKeyHash), p -> new AsyncLock<>(getWriterData(owner, p.right)))
                 .runWithLock(current -> transformer.apply(current,
-                                committerBuilder.buildCommitter((aOwner, signer, wd, existing, tid) ->
+                                observe(committerBuilder.buildCommitter((aOwner, signer, wd, existing, tid) ->
                                                 (wd.isPresent() ?
                                                         wd.get().commit(aOwner, signer, existing.hash, existing.sequence, mutable, dht, hasher, tid) :
                                                         WriterData.commitDeletion(aOwner, signer, existing.hash, existing.sequence, mutable))
                                                         .thenCompose(s -> updateWriterState(owner, signer.publicKeyHash, s)
                                                                 .thenApply(x -> s)),
-                                        owner, () -> true))
+                                        owner, () -> true)))
                                 .thenCompose(p -> flusher.commit(owner, p.left.asWritable(), () -> true).thenApply(x -> p))
                                 .thenApply(p -> {
                                     res.complete(p);

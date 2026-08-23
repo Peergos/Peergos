@@ -8,9 +8,11 @@ import peergos.server.*;
 import peergos.server.cli.CLI;
 import peergos.server.crypto.hash.ScryptJava;
 import peergos.server.net.MountConfigHandler;
+import peergos.server.sync.*;
 import peergos.server.tests.util.*;
 import peergos.server.util.*;
 import peergos.shared.*;
+import peergos.shared.crypto.hash.PublicKeyHash;
 import peergos.shared.io.ipfs.Cid;
 import peergos.shared.login.mfa.*;
 import peergos.shared.social.*;
@@ -32,6 +34,7 @@ import java.time.*;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.*;
+import java.util.function.Consumer;
 import java.util.function.Supplier;
 import java.util.stream.*;
 
@@ -1194,5 +1197,99 @@ public class RamUserTests extends UserTests {
         // test creating a secret link from a fresh login
         LinkProperties dirlink = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto)
                 .createSecretLink(filePath.getParent().toString(), writable, Optional.empty(), Optional.empty(), "", false).join();
+    }
+
+    private static final String SCANNING_DRIVE = "Checking files in Drive";
+
+    /** Run one sync pass the way the sync runner does, and return everything it logged. */
+    private List<String> syncPass(String link,
+                                  Path localDir,
+                                  PublicKeyHash owner,
+                                  SyncState synced,
+                                  Path peergosDir,
+                                  Consumer<String> onLog) throws IOException {
+        List<String> log = Collections.synchronizedList(new ArrayList<>());
+        DirectorySync.syncDir(new LocalFileSystem(localDir, crypto.hasher),
+                DirectorySync.buildRemote(link, alternativeNet2, crypto),
+                true, true, owner, alternativeNet2, synced, 32, 5, peergosDir, crypto, () -> false,
+                msg -> {
+                    log.add(msg);
+                    DirectorySync.log(msg);
+                    onLog.accept(msg);
+                });
+        return log;
+    }
+
+    private List<String> syncPass(String link, Path localDir, PublicKeyHash owner, SyncState synced, Path peergosDir) throws IOException {
+        return syncPass(link, localDir, owner, synced, peergosDir, msg -> {});
+    }
+
+    private boolean remoteHas(String link, String relPath) {
+        return DirectorySync.buildRemote(link, alternativeNet1, crypto).exists(PathUtil.get(relPath));
+    }
+
+    /** A sync that uploads leaves the remote at a newer version than the one it scanned, so unless
+     *  it works out that the change was its own, every pass that pushes anything up makes the next
+     *  pass rescan all of Drive. It must only claim its own changes though: a change from another
+     *  device that it hasn't scanned has to leave the snapshot behind.
+     */
+    @Test
+    public void syncSkipsRescanAfterItsOwnChanges() throws Exception {
+        String username = generateUsername();
+        String password = "password";
+        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
+        context.getUserRoot().join().mkdir("sync", context.network, false, context.mirrorBatId(), crypto).join();
+        Path remoteDir = PathUtil.get(username, "sync");
+        String link = DirectorySync.init(context, remoteDir.toString()).toLinkString(context.signer.publicKeyHash);
+
+        Path localDir = Files.createTempDirectory("peergos-sync-local");
+        Path peergosDir = Files.createTempDirectory("peergos-sync-state");
+        PublicKeyHash owner = network.coreNode.getPublicKeyHash(username).join().get();
+        SyncState synced = new JdbcTreeState(":memory:");
+
+        Files.write(localDir.resolve("file1.txt"), "one".getBytes());
+        // the first pass has no snapshot to work from, and its scan of the still empty folder
+        // records no writers, so it takes the second pass to record a version we can use
+        Assert.assertTrue(syncPass(link, localDir, owner, synced, peergosDir).contains(SCANNING_DRIVE));
+        Assert.assertTrue(remoteHas(link, "file1.txt"));
+        Assert.assertTrue(syncPass(link, localDir, owner, synced, peergosDir).contains(SCANNING_DRIVE));
+
+        // nothing has changed at either end
+        Assert.assertFalse(syncPass(link, localDir, owner, synced, peergosDir).contains(SCANNING_DRIVE));
+
+        // a local addition is pushed up, moving the remote version on
+        Files.write(localDir.resolve("file2.txt"), "two".getBytes());
+        Assert.assertFalse(syncPass(link, localDir, owner, synced, peergosDir).contains(SCANNING_DRIVE));
+        Assert.assertTrue(remoteHas(link, "file2.txt"));
+
+        // the change was the sync's own, so there is still nothing new to look for
+        Assert.assertFalse("a pass that only pushed its own changes up must not rescan Drive",
+                syncPass(link, localDir, owner, synced, peergosDir).contains(SCANNING_DRIVE));
+
+        // a change from another device is not the sync's own
+        UserContext other = PeergosNetworkUtils.ensureSignedUp(username, password, alternativeNet1, crypto);
+        byte[] three = "three".getBytes();
+        other.getByPath(remoteDir).join().get()
+                .uploadOrReplaceFile("file3.txt", AsyncReader.build(three), three.length, other.network, crypto, () -> false, x -> {}).join();
+        Assert.assertTrue(syncPass(link, localDir, owner, synced, peergosDir).contains(SCANNING_DRIVE));
+        Assert.assertTrue(Files.exists(localDir.resolve("file3.txt")));
+
+        // and a change from another device that lands while the sync is uploading is still not its
+        // own, even though the sync's own write commits on top of it
+        Files.write(localDir.resolve("file4.txt"), "four".getBytes());
+        byte[] five = "five".getBytes();
+        AtomicBoolean written = new AtomicBoolean(false);
+        try {
+            syncPass(link, localDir, owner, synced, peergosDir, msg -> {
+                if (msg.contains("uploading") && ! written.getAndSet(true))
+                    other.getByPath(remoteDir).join().get()
+                            .uploadOrReplaceFile("file5.txt", AsyncReader.build(five), five.length, other.network, crypto, () -> false, x -> {}).join();
+            });
+        } catch (Exception e) {
+            // a pass that fails on the concurrent write saves nothing, which is also safe
+        }
+        Assert.assertTrue("the concurrent write must have been injected", written.get());
+        Assert.assertTrue(syncPass(link, localDir, owner, synced, peergosDir).contains(SCANNING_DRIVE));
+        Assert.assertTrue(Files.exists(localDir.resolve("file5.txt")));
     }
 }

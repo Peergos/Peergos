@@ -23,10 +23,12 @@ import peergos.shared.social.HttpSocialNetwork;
 import peergos.shared.storage.HttpSpaceUsage;
 import peergos.shared.storage.RetryStorage;
 import peergos.shared.storage.UnauthedCachingStorage;
+import peergos.shared.user.CommittedWriterData;
 import peergos.shared.user.LinkProperties;
 import peergos.shared.user.Snapshot;
 import peergos.shared.user.TrieNodeImpl;
 import peergos.shared.user.UserContext;
+import peergos.shared.user.WriteSynchronizer;
 import peergos.shared.user.fs.*;
 import peergos.shared.util.*;
 
@@ -558,6 +560,11 @@ public class DirectorySync {
                             (v, w) -> v.withWriter(owner, w, network),
                             Snapshot::mergeAndOverwriteWith).join();
 
+            Snapshot initialVersion = remoteVersion;
+            CommitTracker ourCommits = new CommitTracker();
+            if (network != null)
+                network.synchronizer.setCommitObserver(ourCommits);
+
             boolean remoteChange = ! remoteVersion.equals(syncedVersion) || remoteVersion.versions.isEmpty();
             remoteStatePath = File.createTempFile("peergos-sync", ".sqlite", peergosDir.toFile()).toString();
             SyncState remoteState = remoteChange ? new JdbcTreeState(remoteStatePath) : syncedVersions;
@@ -836,9 +843,12 @@ public class DirectorySync {
                 }
             }
 
-            syncedVersions.setSnapshot(remoteFS.getRoot(), remoteVersion);
+            syncedVersions.setSnapshot(remoteFS.getRoot(),
+                    versionToSave(owner, network, initialVersion, remoteVersion, ourCommits));
             syncedVersions.setCompletedSync(true);
         } finally {
+            if (network != null)
+                network.synchronizer.setCommitObserver((w, s) -> {});
             File localState = new File(localStatePath);
             if (localState.exists())
                 localState.delete();
@@ -1305,6 +1315,81 @@ public class DirectorySync {
             targetFs.truncate(op.target, size);
         }
         return res;
+    }
+
+    /** Counts the mutable pointer commits this sync makes, per writer. A pointer's sequence
+     *  advances by one per commit, and buffered writes coalesced into a single commit all
+     *  report the sequence that commit reaches, so counting distinct sequences counts commits.
+     */
+    private static class CommitTracker implements WriteSynchronizer.CommitObserver {
+        private final Map<PublicKeyHash, Set<Long>> sequences = new HashMap<>();
+
+        @Override
+        public synchronized void committed(PublicKeyHash writer, Optional<Long> sequence) {
+            // a pointer that has never had a sequence is at 0, and its first commit is 1
+            sequences.computeIfAbsent(writer, w -> new HashSet<>()).add(sequence.orElse(0L));
+        }
+
+        public synchronized Set<PublicKeyHash> writers() {
+            return new HashSet<>(sequences.keySet());
+        }
+
+        /** A commit that changed nothing reports the sequence the pointer was already at, so
+         *  only the sequences past where we started are advances we made.
+         */
+        public synchronized long commitsSince(PublicKeyHash writer, long sequence) {
+            return sequences.getOrDefault(writer, Collections.emptySet()).stream()
+                    .filter(s -> s > sequence)
+                    .count();
+        }
+    }
+
+    /** The sync's own uploads and deletes move the remote version on from the one we scanned,
+     *  so saving the version from the start of the pass makes the next pass rescan all of
+     *  Drive even when nothing but this sync has touched it. A pointer's sequence increments
+     *  by exactly one per commit, so when a writer's sequence is now the one we started from
+     *  plus the commits we made, every change to it since we looked was ours, and the state we
+     *  have just recorded is the state that is there now.
+     *
+     *  Anything that doesn't add up - a concurrent change from another device, a pointer with
+     *  no sequence - saves the version from before the scan instead, which costs a rescan and
+     *  no more. That is also the version to save for a writer that moved on while we were
+     *  scanning: the scan then read part of the tree before the change and part after, so its
+     *  version claims more than we have seen.
+     */
+    private static Snapshot versionToSave(PublicKeyHash owner,
+                                          NetworkAccess network,
+                                          Snapshot initialVersion,
+                                          Snapshot scannedVersion,
+                                          CommitTracker ourCommits) {
+        // the writers of the tree we just recorded, each at the version it was at before we
+        // read anything. A writer only the scan found was added by a change to its parent,
+        // which is in the baseline, so the scan's version of it is as good as we have.
+        Set<PublicKeyHash> writers = scannedVersion.versions.keySet();
+        HashMap<PublicKeyHash, CommittedWriterData> baseline = new HashMap<>();
+        for (PublicKeyHash w : writers) {
+            baseline.put(w, initialVersion.versions.getOrDefault(w, scannedVersion.get(w)));
+        }
+        Snapshot beforeSync = new Snapshot(baseline);
+        if (network == null)
+            return beforeSync;
+        // a writer we wrote to that isn't in the snapshot we are about to save would leave
+        // later changes under it invisible, so rescan and record it next pass
+        if (! writers.containsAll(ourCommits.writers()))
+            return beforeSync;
+        Snapshot current = Futures.reduceAll(writers,
+                new Snapshot(new HashMap<>()),
+                (v, w) -> v.withWriter(owner, w, network),
+                Snapshot::mergeAndOverwriteWith).join();
+        if (! current.versions.keySet().equals(writers))
+            return beforeSync;
+        for (PublicKeyHash w : writers) {
+            // a writer that didn't exist when we started is at 0, and its first commit is 1
+            long before = baseline.get(w).sequence.orElse(0L);
+            if (current.get(w).sequence.orElse(0L) != before + ourCommits.commitsSince(w, before))
+                return beforeSync;
+        }
+        return current;
     }
 
     private static class SnapshotTracker {
