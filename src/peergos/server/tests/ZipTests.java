@@ -268,6 +268,27 @@ public class ZipTests {
     }
 
     @Test
+    public void readsFillTheWholeBuffer() {
+        // callers expect a read to return everything they asked for, however many inflate calls
+        // that takes, and the browser download path silently writes whatever it didn't get
+        Map<String, byte[]> entries = new LinkedHashMap<>();
+        byte[] text = compressible(1_000_000, 21);
+        byte[] noisy = random(200_000, 22);
+        entries.put("big.txt", text);
+        entries.put("noise.bin", noisy);
+        ZipReader zip = build(entries, false, null).open();
+
+        for (Map.Entry<String, byte[]> e : entries.entrySet()) {
+            ZipEntry entry = zip.getIndex().get(e.getKey()).get();
+            AsyncReader reader = zip.read(entry).join();
+            byte[] res = new byte[(int) entry.size];
+            int read = reader.readIntoArray(res, 0, res.length).join();
+            assertEquals(e.getKey() + ": one read returns everything asked for", res.length, read);
+            assertArrayEquals(e.getKey(), e.getValue(), res);
+        }
+    }
+
+    @Test
     public void seekWithinAnEntry() {
         Map<String, byte[]> entries = new LinkedHashMap<>();
         byte[] deflated = compressible(200_000, 11);

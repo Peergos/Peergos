@@ -33,9 +33,16 @@ class InflatingReader implements AsyncReader {
         int toRead = (int) Math.min(length, size - position);
         if (toRead == 0)
             return Futures.of(0);
+        // callers expect a read to fill what it was asked for, not however much one inflate produced
+        return fill(res, offset, toRead, 0);
+    }
+
+    private CompletableFuture<Integer> fill(byte[] res, int offset, int length, int alreadyRead) {
+        if (alreadyRead == length)
+            return Futures.of(alreadyRead);
         if (session.needsInput()) {
             if (session.finished())
-                return Futures.of(0);
+                return Futures.of(alreadyRead);
             if (inputEnded)
                 throw new IllegalStateException("Truncated deflate stream in zip entry");
             return compressed.readIntoArray(input, 0, INPUT_BUFFER)
@@ -45,15 +52,15 @@ class InflatingReader implements AsyncReader {
                             session.finish();
                         } else
                             session.setInput(input, 0, read);
-                        return readIntoArray(res, offset, length);
+                        return fill(res, offset, length, alreadyRead);
                     });
         }
-        return session.inflate(res, offset, toRead)
+        return session.inflate(res, offset + alreadyRead, length - alreadyRead)
                 .thenCompose(written -> {
-                    if (written == 0)
-                        return session.finished() ? Futures.of(0) : readIntoArray(res, offset, length);
+                    if (written == 0 && session.finished())
+                        return Futures.of(alreadyRead);
                     position += written;
-                    return Futures.of(written);
+                    return fill(res, offset, length, alreadyRead + written);
                 });
     }
 

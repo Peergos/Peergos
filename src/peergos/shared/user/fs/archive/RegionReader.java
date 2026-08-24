@@ -46,9 +46,12 @@ class RegionReader implements AsyncReader {
         if (! positioned)
             return seek(position).thenCompose(x -> readIntoArray(res, offset, length));
         return source.readIntoArray(res, offset, toRead)
-                .thenApply(read -> {
+                .thenCompose(read -> {
                     position += read;
-                    return read;
+                    // a source that returns a short read still owes us the rest of the region
+                    return read == toRead || read <= 0 ?
+                            Futures.of(read) :
+                            readIntoArray(res, offset + read, toRead - read).thenApply(more -> read + more);
                 });
     }
 
