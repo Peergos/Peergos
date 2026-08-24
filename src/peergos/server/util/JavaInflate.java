@@ -42,6 +42,11 @@ public class JavaInflate implements Inflate.Provider {
         }
 
         @Override
+        public void finish() {
+            // the JVM inflater discovers the end of the stream from the stream itself
+        }
+
+        @Override
         public boolean finished() {
             return inflater.finished();
         }

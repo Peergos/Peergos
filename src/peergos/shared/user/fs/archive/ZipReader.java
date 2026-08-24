@@ -75,6 +75,27 @@ public class ZipReader {
                 }));
     }
 
+    /** Open an archive stored in Peergos.
+     */
+    public static CompletableFuture<ZipReader> openJS(FileWrapper file, NetworkAccess network, Crypto crypto) {
+        return open(file, network, crypto);
+    }
+
+    public ZipEntry[] listDirectoryJS(String path) {
+        List<ZipEntry> children = index.listDirectory(path);
+        return children.toArray(new ZipEntry[children.size()]);
+    }
+
+    /** The entry at a path within the archive, or null if there isn't one.
+     */
+    public ZipEntry getEntryJS(String path) {
+        return index.get(path).orElse(null);
+    }
+
+    public CompletableFuture<AsyncReader> readJS(ZipEntry entry) {
+        return read(entry);
+    }
+
     @JsIgnore
     public CompletableFuture<AsyncReader> read(String path) {
         Optional<ZipEntry> entry = index.get(path);

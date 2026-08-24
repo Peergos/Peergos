@@ -1,5 +1,7 @@
 package peergos.shared.user.fs.archive;
 
+import jsinterop.annotations.*;
+
 import java.util.concurrent.*;
 
 /** Raw deflate decompression, supplied by the platform.
@@ -34,6 +36,14 @@ public class Inflate {
          */
         CompletableFuture<Integer> inflate(byte[] res, int offset, int length);
 
+        /** Signal that no more compressed input will be supplied.
+         *
+         *  A decompressor that only produces output asynchronously cannot know that the input it
+         *  has is the last of it, so it is told: the browser implementation closes its stream here
+         *  and drains the remaining output.
+         */
+        void finish();
+
         /** Whether the end of the deflate stream has been reached.
          */
         boolean finished();
@@ -57,6 +67,11 @@ public class Inflate {
 
     public static synchronized boolean isAvailable() {
         return instance != null;
+    }
+
+    @JsMethod
+    public static synchronized void initJS() {
+        setProvider(new JSInflate());
     }
 
     public static synchronized Session start() {

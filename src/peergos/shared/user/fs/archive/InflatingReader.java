@@ -20,6 +20,7 @@ class InflatingReader implements AsyncReader {
     private final Inflate.Session session;
     private final byte[] input = new byte[INPUT_BUFFER];
     private long position = 0;
+    private boolean inputEnded = false;
 
     public InflatingReader(RegionReader compressed, long size) {
         this.compressed = compressed;
@@ -35,11 +36,15 @@ class InflatingReader implements AsyncReader {
         if (session.needsInput()) {
             if (session.finished())
                 return Futures.of(0);
+            if (inputEnded)
+                throw new IllegalStateException("Truncated deflate stream in zip entry");
             return compressed.readIntoArray(input, 0, INPUT_BUFFER)
                     .thenCompose(read -> {
-                        if (read <= 0)
-                            throw new IllegalStateException("Truncated deflate stream in zip entry");
-                        session.setInput(input, 0, read);
+                        if (read <= 0) {
+                            inputEnded = true;
+                            session.finish();
+                        } else
+                            session.setInput(input, 0, read);
                         return readIntoArray(res, offset, length);
                     });
         }
@@ -78,6 +83,7 @@ class InflatingReader implements AsyncReader {
     public CompletableFuture<AsyncReader> reset() {
         session.reset();
         position = 0;
+        inputEnded = false;
         return compressed.reset().thenApply(x -> this);
     }
 
