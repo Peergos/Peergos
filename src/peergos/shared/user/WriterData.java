@@ -186,8 +186,9 @@ public class WriterData implements Cborable {
                                         if (b) // exit early if we find a match
                                             return Futures.of(b);
                                         PublicKeyHash childKey = p.left;
-                                        return UserContext.getWriterData(ipfs, mutable, identityKey, childKey)
-                                                .thenCompose(wd -> wd.props.map(w -> w.ownsKey(identityKey, ownedKey, ipfs, mutable, hasher))
+                                        return UserContext.getWriterDataIfPresent(ipfs, mutable, identityKey, childKey)
+                                                .thenCompose(wd -> wd.flatMap(cwd -> cwd.props)
+                                                        .map(w -> w.ownsKey(identityKey, ownedKey, ipfs, mutable, hasher))
                                                         .orElse(Futures.of(false)));
                                     },
                                     ipfs);

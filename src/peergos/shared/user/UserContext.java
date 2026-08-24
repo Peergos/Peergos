@@ -2874,19 +2874,38 @@ public class UserContext {
                 });
     }
 
-    private static CompletableFuture<Pair<PointerUpdate, CborObject>> getWriterDataCbor(ContentAddressedStorage ipfs,
-                                                                                        MutablePointers mutable,
-                                                                                        PublicKeyHash owner,
-                                                                                        PublicKeyHash writer) {
+    private static CompletableFuture<PointerUpdate> getPointerUpdate(ContentAddressedStorage ipfs,
+                                                                     MutablePointers mutable,
+                                                                     PublicKeyHash owner,
+                                                                     PublicKeyHash writer) {
         return mutable.getPointer(owner, writer)
                 .thenCompose(casOpt -> ipfs.getSigningKey(owner, writer)
                         .thenCompose(signer -> casOpt.map(raw -> signer.get().unsignMessage(raw)
                                         .thenApply(unsigned -> PointerUpdate.fromCbor(CborObject.fromByteArray(unsigned))))
-                                .orElse(Futures.of(PointerUpdate.empty()))))
+                                .orElse(Futures.of(PointerUpdate.empty()))));
+    }
+
+    private static CompletableFuture<Pair<PointerUpdate, CborObject>> getWriterDataCbor(ContentAddressedStorage ipfs,
+                                                                                        MutablePointers mutable,
+                                                                                        PublicKeyHash owner,
+                                                                                        PublicKeyHash writer) {
+        return getPointerUpdate(ipfs, mutable, owner, writer)
                 .thenCompose(pointer -> ipfs.get(owner, (Cid)pointer.updated.get(), Optional.empty())
                         .thenApply(Optional::get)
                         .thenApply(cbor -> new Pair<>(pointer, cbor))
                 );
+    }
+
+    public static CompletableFuture<Optional<CommittedWriterData>> getWriterDataIfPresent(ContentAddressedStorage ipfs,
+                                                                                          MutablePointers mutable,
+                                                                                          PublicKeyHash owner,
+                                                                                          PublicKeyHash writer) {
+        return getPointerUpdate(ipfs, mutable, owner, writer)
+                .thenCompose(pointer -> ! pointer.updated.isPresent() ?
+                        Futures.of(Optional.<CommittedWriterData>empty()) :
+                        ipfs.get(owner, (Cid) pointer.updated.get(), Optional.empty())
+                                .thenApply(cbor -> Optional.of(new CommittedWriterData(pointer.updated,
+                                        WriterData.fromCbor(cbor.get()), pointer.sequence))));
     }
 
     @JsMethod
