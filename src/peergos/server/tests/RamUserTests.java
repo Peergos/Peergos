@@ -6,6 +6,7 @@ import org.junit.runner.*;
 import org.junit.runners.*;
 import peergos.server.*;
 import peergos.server.cli.CLI;
+import peergos.server.cli.CLIContext;
 import peergos.server.crypto.hash.ScryptJava;
 import peergos.server.net.MountConfigHandler;
 import peergos.server.sync.*;
@@ -1291,5 +1292,87 @@ public class RamUserTests extends UserTests {
         Assert.assertTrue("the concurrent write must have been injected", written.get());
         Assert.assertTrue(syncPass(link, localDir, owner, synced, peergosDir).contains(SCANNING_DRIVE));
         Assert.assertTrue(Files.exists(localDir.resolve("file5.txt")));
+    }
+    private static byte[] buildZip(Map<String, byte[]> stored, Map<String, byte[]> deflated) {
+        ByteArrayOutputStream bout = new ByteArrayOutputStream();
+        try (java.util.zip.ZipOutputStream zout = new java.util.zip.ZipOutputStream(bout)) {
+            for (Map.Entry<String, byte[]> e : deflated.entrySet()) {
+                zout.putNextEntry(new java.util.zip.ZipEntry(e.getKey()));
+                zout.write(e.getValue());
+                zout.closeEntry();
+            }
+            for (Map.Entry<String, byte[]> e : stored.entrySet()) {
+                java.util.zip.ZipEntry entry = new java.util.zip.ZipEntry(e.getKey());
+                entry.setMethod(java.util.zip.ZipOutputStream.STORED);
+                entry.setSize(e.getValue().length);
+                entry.setCompressedSize(e.getValue().length);
+                java.util.zip.CRC32 crc = new java.util.zip.CRC32();
+                crc.update(e.getValue());
+                entry.setCrc(crc.getValue());
+                zout.putNextEntry(entry);
+                zout.write(e.getValue());
+                zout.closeEntry();
+            }
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+        return bout.toByteArray();
+    }
+
+    @Test
+    public void browseZipArchive() throws Exception {
+        String username = generateUsername();
+        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, "test01", network.clear(), crypto);
+        JavaInflate.init();
+
+        // bigger than a chunk, so entries are found by seeking rather than by reading the whole file
+        byte[] big = new byte[6 * 1024 * 1024];
+        new Random(42).nextBytes(big);
+        Map<String, byte[]> stored = new LinkedHashMap<>();
+        stored.put("big.bin", big);
+        Map<String, byte[]> deflated = new LinkedHashMap<>();
+        deflated.put("readme.txt", "hello archive".getBytes(StandardCharsets.UTF_8));
+        deflated.put("logs/first.log", "log one".getBytes(StandardCharsets.UTF_8));
+        deflated.put("logs/second.log", "log two".getBytes(StandardCharsets.UTF_8));
+        byte[] zip = buildZip(stored, deflated);
+        context.getUserRoot().join()
+                .uploadOrReplaceFile("data.zip", AsyncReader.build(zip), zip.length, network, crypto, () -> false, x -> {})
+                .join();
+
+        CLI cli = new CLI(new CLIContext(null, context, "", username));
+        StringWriter sink = new StringWriter();
+        PrintWriter writer = new PrintWriter(sink);
+        String archive = "/" + username + "/data.zip";
+
+        Assert.assertEquals("big.bin\nlogs\nreadme.txt", cli.ls(CLI.fromLine("ls " + archive)));
+        Assert.assertEquals("first.log\nsecond.log", cli.ls(CLI.fromLine("ls " + archive + "/logs")));
+        Assert.assertTrue(cli.ls(CLI.fromLine("ls -l " + archive)).contains("-r-    6.0 MiB"));
+
+        cli.cat(CLI.fromLine("cat " + archive + "/readme.txt"), writer);
+        Assert.assertEquals("hello archive", sink.toString());
+
+        // cd descends into the archive, and then relative paths resolve within it
+        cli.cd(CLI.fromLine("cd " + archive + "/logs"));
+        Assert.assertEquals("first.log\nsecond.log", cli.ls(CLI.fromLine("ls")));
+        Assert.assertEquals("log two", cat(cli, "second.log"));
+        cli.cd(CLI.fromLine("cd " + archive));
+
+        Path localDir = Files.createTempDirectory("peergos-archive-test");
+        cli.get(CLI.fromLine("get " + archive + "/big.bin " + localDir), writer);
+        Assert.assertArrayEquals(big, Files.readAllBytes(localDir.resolve("big.bin")));
+
+        cli.get(CLI.fromLine("get " + archive + "/logs " + localDir), writer);
+        Assert.assertArrayEquals("log one".getBytes(StandardCharsets.UTF_8),
+                Files.readAllBytes(localDir.resolve("logs").resolve("first.log")));
+
+        // the archive itself is still an ordinary file to download
+        cli.get(CLI.fromLine("get " + archive + " " + localDir), writer);
+        Assert.assertArrayEquals(zip, Files.readAllBytes(localDir.resolve("data.zip")));
+    }
+
+    private static String cat(CLI cli, String path) throws IOException {
+        StringWriter sink = new StringWriter();
+        cli.cat(CLI.fromLine("cat " + path), new PrintWriter(sink));
+        return sink.toString();
     }
 }

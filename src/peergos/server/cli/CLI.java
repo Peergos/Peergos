@@ -29,6 +29,7 @@ import peergos.shared.social.HttpSocialNetwork;
 import peergos.shared.storage.HttpSpaceUsage;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
+import peergos.shared.user.fs.archive.*;
 import peergos.shared.util.*;
 
 import java.io.*;
@@ -65,6 +66,7 @@ public class CLI implements Runnable {
 
     private final CLIContext cliContext;
     private final FileSystem peergosFileSystem;
+    private final ArchiveNavigator archives;
     private final ListFilesCompleter remoteFilesCompleter, localFilesCompleter, remoteDirsCompleter, localDirsCompleter;
     private final Completer allUsernamesCompleter, followersCompleter, pendingFollowersCompleter, processFollowRequestCompleter;
     private volatile boolean isFinished;
@@ -72,6 +74,7 @@ public class CLI implements Runnable {
     public CLI(CLIContext cliContext) {
         this.cliContext = cliContext;
         this.peergosFileSystem = new PeergosFileSystemImpl(cliContext.userContext);
+        this.archives = new ArchiveNavigator(peergosFileSystem);
         this.remoteFilesCompleter = new ListFilesCompleter(path -> this.remoteFilesLsFiles(path, false));
         this.remoteDirsCompleter = new ListFilesCompleter(path -> this.remoteFilesLsFiles(path, true));
         this.localFilesCompleter = new ListFilesCompleter(path -> this.localFilesLsFiles(path, false));
@@ -205,7 +208,11 @@ public class CLI implements Runnable {
         Path path = resolvedRemotePath(pathArg);
         boolean longFormat = cmd.hasFlag(Command.Flag.LONG);
 
-        Stat stat = checkPath(path);
+        ArchiveNavigator.Target target = resolve(path);
+        if (target.isArchive())
+            return lsArchive(target, longFormat);
+
+        Stat stat = target.stat;
         if (! stat.fileProperties().isDirectory)
             return longFormat ? formatLong(stat) : path.toString();
 
@@ -219,6 +226,35 @@ public class CLI implements Runnable {
                 .map(p -> p.getFileName().toString())
                 .sorted()
                 .collect(Collectors.joining("\n"));
+    }
+
+    private ArchiveNavigator.Target resolve(Path remotePath) {
+        return archives.resolve(remotePath)
+                .orElseThrow(() -> new IllegalStateException("Could not find remote specified remote path '" + remotePath + "'"));
+    }
+
+    private String lsArchive(ArchiveNavigator.Target target, boolean longFormat) {
+        ZipReader zip = archives.open(target);
+        if (! target.entry.isEmpty()) {
+            ZipEntry entry = archives.entry(target);
+            if (! entry.isDirectory)
+                return longFormat ? formatLong(entry) : target.fullPath().toString();
+        }
+        return zip.listDirectory(target.entry).stream()
+                .sorted(Comparator.comparing(ZipEntry::getName))
+                .map(e -> longFormat ? formatLong(e) : e.getName())
+                .collect(Collectors.joining("\n"));
+    }
+
+    /** Entries in an archive are readable but, until archives can be edited, never writable.
+     */
+    public static String formatLong(ZipEntry entry) {
+        return String.format("%s%s-  %9s  %s  %s",
+                entry.isDirectory ? "d" : "-",
+                entry.isSupported() ? "r" : "-",
+                entry.isDirectory ? "-" : formatSize(entry.size),
+                entry.modified.format(MODIFIED_FORMAT),
+                entry.getName() + (entry.isDirectory ? "/" : ""));
     }
 
     public static String formatLong(Stat stat) {
@@ -279,7 +315,11 @@ public class CLI implements Runnable {
 
         Path remotePath = resolvedRemotePath(cmd.firstArgument()).toAbsolutePath().normalize();
 
-        Stat stat = checkPath(remotePath);
+        ArchiveNavigator.Target target = resolve(remotePath);
+        if (target.isInArchive())
+            return getFromArchive(target, cmd, writerForProgress);
+
+        Stat stat = target.stat;
 
         String localPathArg = cmd.hasSecondArgument() ? cmd.secondArgument() : "";
         Path localPath = resolveToPath(localPathArg).toAbsolutePath();
@@ -294,23 +334,71 @@ public class CLI implements Runnable {
             copyDir(remotePath, localPath.getParent(), skipExisting, writerForProgress);
             return "Downloaded " + remotePath + " to " + localPath;
         } else {
-            ProgressBar pb = new ProgressBar(new AtomicLong(0), new AtomicLong(1), remotePath.getParent(), remotePath.getFileName().toString());
-            BiConsumer<Long, Long> progressConsumer = (bytes, size) -> pb.update(writerForProgress, bytes, size);
+            download(peergosFileSystem.reader(remotePath), stat.fileProperties().size, localPath,
+                    remotePath.getParent(), remotePath.getFileName().toString(), writerForProgress);
+            return "Downloaded " + remotePath + " to " + localPath;
+        }
+    }
 
-            AsyncReader reader = peergosFileSystem.reader(remotePath);
-            byte[] buf = new byte[Chunk.MAX_SIZE];
-            try (FileOutputStream fout = new FileOutputStream(localPath.toFile())) {
-                long fileSize = stat.fileProperties().size;
-                for (long offset = 0; offset < fileSize;) {
-                    int read = reader.readIntoArray(buf, 0, Math.min(buf.length, (int) (fileSize - offset))).join();
-                    fout.write(buf, 0, read);
-                    offset += read;
-                    progressConsumer.accept(offset, fileSize);
-                }
-                writerForProgress.println();
-                writerForProgress.flush();
-                return "Downloaded " + remotePath + " to " + localPath;
+    /** Stream size bytes from reader into a local file, showing progress.
+     */
+    private void download(AsyncReader reader,
+                          long size,
+                          Path localFile,
+                          Path remoteParent,
+                          String name,
+                          PrintWriter writerForProgress) throws IOException {
+        ProgressBar pb = new ProgressBar(new AtomicLong(0), new AtomicLong(1), remoteParent, name);
+        byte[] buf = new byte[Chunk.MAX_SIZE];
+        try (FileOutputStream fout = new FileOutputStream(localFile.toFile())) {
+            for (long offset = 0; offset < size;) {
+                int read = reader.readIntoArray(buf, 0, (int) Math.min(buf.length, size - offset)).join();
+                fout.write(buf, 0, read);
+                offset += read;
+                pb.update(writerForProgress, offset, size);
             }
+        }
+        writerForProgress.println();
+        writerForProgress.flush();
+    }
+
+    private String getFromArchive(ArchiveNavigator.Target target, ParsedCommand cmd, PrintWriter writerForProgress) throws IOException {
+        ZipReader zip = archives.open(target);
+        ZipEntry entry = archives.entry(target);
+
+        String localPathArg = cmd.hasSecondArgument() ? cmd.secondArgument() : "";
+        Path localPath = resolveToPath(localPathArg).toAbsolutePath();
+        if (localPath.toFile().isDirectory())
+            localPath = localPath.resolve(entry.getName());
+        else if (! localPath.toFile().getParentFile().isDirectory())
+            throw new IllegalStateException("Specified local path '" + localPath.getParent() + "' is not a directory or does not exist.");
+
+        if (entry.isDirectory)
+            copyArchiveDir(zip, entry, localPath, target.path, cmd.flags.contains(Command.Flag.SKIP_EXISTING.flag), writerForProgress);
+        else
+            download(zip.read(entry).join(), entry.size, localPath, target.path, entry.getName(), writerForProgress);
+        return "Downloaded " + target.fullPath() + " to " + localPath;
+    }
+
+    private void copyArchiveDir(ZipReader zip,
+                                ZipEntry dir,
+                                Path localDir,
+                                Path archive,
+                                boolean skipExisting,
+                                PrintWriter writerForProgress) throws IOException {
+        if (! localDir.toFile().exists())
+            localDir.toFile().mkdirs();
+        if (! localDir.toFile().isDirectory())
+            throw new IllegalStateException(localDir + " already exists and is a file not a directory!");
+        for (ZipEntry child : zip.listDirectory(dir.path)) {
+            Path localChild = localDir.resolve(child.getName());
+            if (child.isDirectory)
+                copyArchiveDir(zip, child, localChild, archive, skipExisting, writerForProgress);
+            else if (localChild.toFile().exists() && skipExisting)
+                writerForProgress.println("Skipping " + localChild);
+            else
+                download(zip.read(child).join(), child.size, localChild,
+                        archive.resolve(child.getParentPath()), child.getName(), writerForProgress);
         }
     }
 
@@ -327,26 +415,13 @@ public class CLI implements Runnable {
             if (stat.fileProperties().isDirectory) {
                 copyDir(remoteChild, localDir, skipExisting, writerForProgress);
             } else {
-                ProgressBar pb = new ProgressBar(new AtomicLong(0), new AtomicLong(1), remoteChild.getParent(), remoteChild.getFileName().toString());
-                BiConsumer<Long, Long> progressConsumer = (bytes, size) -> pb.update(writerForProgress, bytes, size);
-
                 File localFile = localDir.resolve(remoteChild.getFileName()).toFile();
                 if (localFile.exists() && skipExisting) {
                     writerForProgress.println("Skipping " + localFile);
                     continue;
                 }
-                FileOutputStream fout = new FileOutputStream(localFile);
-                long fileSize = stat.fileProperties().size;
-                AsyncReader reader = peergosFileSystem.reader(remoteChild);
-                byte[] buf = new byte[Chunk.MAX_SIZE];
-                for (long offset = 0; offset < fileSize;) {
-                    int read = reader.readIntoArray(buf, 0, Math.min(buf.length, (int) (fileSize - offset))).join();
-                    fout.write(buf, 0, read);
-                    offset += read;
-                    progressConsumer.accept(offset, fileSize);
-                }
-                writerForProgress.println();
-                writerForProgress.flush();
+                download(peergosFileSystem.reader(remoteChild), stat.fileProperties().size, localFile.toPath(),
+                        remoteChild.getParent(), remoteChild.getFileName().toString(), writerForProgress);
             }
         }
     }
@@ -356,7 +431,15 @@ public class CLI implements Runnable {
             throw new IllegalStateException("Usage: " + Command.cat.example());
 
         Path remotePath = resolvedRemotePath(cmd.firstArgument()).toAbsolutePath().normalize();
-        Stat stat = checkPath(remotePath);
+        ArchiveNavigator.Target target = resolve(remotePath);
+        if (target.isInArchive()) {
+            ZipEntry entry = archives.entry(target);
+            if (entry.isDirectory)
+                throw new IllegalStateException("'" + remotePath + "' is a directory.");
+            writeTextTo(archives.open(target).read(entry).join(), entry.size, writer, CAT_BUFFER_SIZE);
+            return "";
+        }
+        Stat stat = target.stat;
         if (stat.fileProperties().isDirectory)
             throw new IllegalStateException("'" + remotePath + "' is a directory.");
 
@@ -690,8 +773,11 @@ public class CLI implements Runnable {
             cliContext.pwd = cliContext.home;
         Path remotePathToCdTo = resolvedRemotePath(remotePathArg).toAbsolutePath().normalize(); // normalize handles ".." etc.
 
-        Stat stat = checkPath(remotePathToCdTo);
-        if (!stat.fileProperties().isDirectory)
+        ArchiveNavigator.Target target = resolve(remotePathToCdTo);
+        boolean isDirectory = target.isArchive() ?
+                target.entry.isEmpty() || archives.entry(target).isDirectory :
+                target.stat.fileProperties().isDirectory;
+        if (! isDirectory)
             return "Specified path '" + remotePathToCdTo + "' is not a directory";
         cliContext.pwd = remotePathToCdTo;
         return "Current directory : " + remotePathToCdTo;
@@ -782,29 +868,38 @@ public class CLI implements Runnable {
      */
     private List<String> remoteFilesLsFiles(String pathArgument, boolean filterDirs) {
         Path path = resolvedRemotePath(pathArgument).toAbsolutePath();
-        Stat stat = null;
-        try {
-            stat = peergosFileSystem.stat(path);
-            if (! stat.fileProperties().isDirectory)
-                throw new Exception();
-        } catch (Exception ex) {
-            //try parent
-            path = path.getParent();
-            try {
-                peergosFileSystem.stat(path);
-            } catch (Exception ex2) {
-                return Collections.emptyList();
-            }
+        Optional<ArchiveNavigator.Target> listable = listable(path);
+        if (! listable.isPresent() && path.getParent() != null) // a partially typed name completes against its parent
+            listable = listable(path.getParent());
+        if (! listable.isPresent())
+            return Collections.emptyList();
 
-        }
-        final Path parentPath = path;
-        List<String> completeOptions = peergosFileSystem.ls(parentPath, false)
-                .stream()
-                .filter(p -> (! filterDirs) || checkPath(p).fileProperties().isDirectory)
+        ArchiveNavigator.Target target = listable.get();
+        Stream<Path> children = target.isArchive() ?
+                archives.open(target).listDirectory(target.entry).stream()
+                        .filter(e -> (! filterDirs) || e.isDirectory)
+                        .map(e -> target.path.resolve(e.path)) :
+                peergosFileSystem.ls(target.path, false)
+                        .stream()
+                        .filter(p -> (! filterDirs) || checkPath(p).fileProperties().isDirectory);
+        return children
                 .map(p -> p.isAbsolute() ? cliContext.pwd.relativize(p): p)
                 .map(Path::toString)
                 .collect(Collectors.toList());
-        return completeOptions;
+    }
+
+    /** A path whose children are completion candidates: a directory, an archive, or a directory in one.
+     */
+    private Optional<ArchiveNavigator.Target> listable(Path path) {
+        Optional<ArchiveNavigator.Target> resolved = archives.resolve(path);
+        if (! resolved.isPresent())
+            return resolved;
+        ArchiveNavigator.Target target = resolved.get();
+        if (target.isArchive())
+            return target.entry.isEmpty() || archives.open(target).getIndex().isDirectory(target.entry) ?
+                    resolved :
+                    Optional.empty();
+        return target.stat.fileProperties().isDirectory ? resolved : Optional.empty();
     }
     /**
      * Build the command completer.
@@ -1023,6 +1118,7 @@ public class CLI implements Runnable {
         PublicSigningKey.addProvider(PublicSigningKey.Type.Ed25519, CRYPTO.signer);
         disableLogSpam();
         JvmThumbnailer.initJava();
+        JavaInflate.init();
         Logging.LOG().setLevel(Level.WARNING);
         CLIContext cliContext = buildContextFromCLI(args);
         new CLI(cliContext).run();
