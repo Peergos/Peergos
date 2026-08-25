@@ -1501,6 +1501,24 @@ public class RamUserTests extends UserTests {
         ZipReader finalZip = ZipReader.open(archive.get(), network, crypto).join();
         Assert.assertArrayEquals(added, readEntry(finalZip, "notes/a-much-longer-name.txt"));
         Assert.assertArrayEquals(noisy, readEntry(finalZip, "big.bin"));
+
+        // a directory goes in as the files under it, in one write, plus a record for the empty one
+        ZipWriter.append(archive.get(), Arrays.asList(
+                        newEntry("tree/docs/notes.txt", added),
+                        newEntry("tree/top.txt", replacement),
+                        ZipWriter.NewEntry.directory("tree/empty", LocalDateTime.of(2026, 8, 25, 10, 30))),
+                network, crypto, x -> {}).join();
+        Path tree = dir.resolve("tree.zip");
+        Files.write(tree, readAll(archive.get(), network));
+        Assert.assertTrue(testWithSystemUnzip(tree), testWithSystemUnzip(tree).contains("No errors detected"));
+        List<String> withTree = listWithSystemUnzip(tree);
+        Assert.assertTrue(withTree.contains("tree/docs/notes.txt"));
+        Assert.assertTrue(withTree.contains("tree/top.txt"));
+        // nothing implies an empty directory, so it needs a record of its own, named with a slash
+        Assert.assertTrue(withTree.contains("tree/empty/"));
+        ZipReader withDirectory = ZipReader.open(archive.get(), network, crypto).join();
+        Assert.assertArrayEquals(added, readEntry(withDirectory, "tree/docs/notes.txt"));
+        Assert.assertTrue(withDirectory.getIndex().get("tree/empty").get().isDirectory);
     }
 
     private Path write(Path target, FileWrapper file) throws Exception {

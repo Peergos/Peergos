@@ -244,17 +244,86 @@ public class CLI implements Runnable {
     }
 
     private void putInArchive(ArchiveNavigator.Target target, Path localPath, long size, PrintWriter writerForProgress) {
-        ProgressBar pb = new ProgressBar(new AtomicLong(0), new AtomicLong(1), target.path, localPath.getFileName().toString());
-        // the file is read twice, once to compress it and once to write it
-        ZipWriter.NewEntry entry = new ZipWriter.NewEntry(target.entry, size,
-                LocalDateTime.ofEpochSecond(localPath.toFile().lastModified() / 1000, 0, ZoneOffset.UTC),
+        ZipWriter.NewEntry entry = new ZipWriter.NewEntry(target.entry, size, modifiedAt(localPath),
                 () -> Futures.of(new FileAsyncReader(localPath.toFile())));
-        ZipWriter.append(archiveFile(target), Collections.singletonList(entry),
+        addToArchive(target, Collections.singletonList(entry), localPath.getFileName().toString(), writerForProgress);
+    }
+
+    /** Add a local directory to an archive, in one rewrite of its tail rather than one per file.
+     *
+     *  The directory lands inside the archive path given, under its own name, which is what put
+     *  does with a directory anywhere else.
+     */
+    private String putDirInArchive(ArchiveNavigator.Target target,
+                                   Path localDir,
+                                   boolean skipExisting,
+                                   PrintWriter writerForProgress) throws IOException {
+        Optional<ZipEntry> destination = target.entry.isEmpty() ?
+                Optional.empty() :
+                archives.open(target).getIndex().get(target.entry);
+        if (destination.isPresent() && ! destination.get().isDirectory)
+            throw new IllegalStateException(remoteString(target.fullPath()) + " is a file in the archive, not a directory");
+        String prefix = (target.entry.isEmpty() ? "" : target.entry + "/") + localDir.getFileName();
+        List<ZipWriter.NewEntry> found = new ArrayList<>();
+        collectForArchive(localDir, prefix, found);
+        List<ZipWriter.NewEntry> entries = found;
+        if (skipExisting) {
+            ZipIndex index = archives.open(target).getIndex();
+            entries = new ArrayList<>();
+            for (ZipWriter.NewEntry entry : found) {
+                if (! index.get(entry.path).isPresent())
+                    entries.add(entry);
+            }
+        }
+        if (entries.isEmpty())
+            return "Everything in " + localDir + " is already in " + remoteString(target.fullPath());
+        addToArchive(target, entries, localDir.getFileName().toString(), writerForProgress);
+        return "Added " + entries.size() + (entries.size() == 1 ? " entry from " : " entries from ") + localDir
+                + " to " + remoteString(target.path.resolve(prefix));
+    }
+
+    private void addToArchive(ArchiveNavigator.Target target,
+                              List<ZipWriter.NewEntry> entries,
+                              String name,
+                              PrintWriter writerForProgress) {
+        long total = 0;
+        for (ZipWriter.NewEntry entry : entries)
+            total += entry.size;
+        // everything is read twice, once to compress it and once to write it
+        long max = 2 * total;
+        ProgressBar pb = new ProgressBar(new AtomicLong(0), new AtomicLong(1), target.path, name);
+        ZipWriter.append(archiveFile(target), entries,
                 cliContext.userContext.network, cliContext.userContext.crypto,
-                bytes -> pb.update(writerForProgress, bytes, 2 * size)).join();
+                bytes -> pb.update(writerForProgress, bytes, max)).join();
         archives.forget();
         writerForProgress.println();
         writerForProgress.flush();
+    }
+
+    /** An empty directory needs a record of its own, since no file's path implies it.
+     */
+    private static void collectForArchive(Path dir, String prefix, List<ZipWriter.NewEntry> entries) throws IOException {
+        List<Path> children;
+        try (Stream<Path> listing = Files.list(dir)) {
+            children = listing.sorted().collect(Collectors.toList());
+        }
+        if (children.isEmpty()) {
+            entries.add(ZipWriter.NewEntry.directory(prefix, modifiedAt(dir)));
+            return;
+        }
+        for (Path child : children) {
+            String path = prefix + "/" + child.getFileName();
+            File file = child.toFile();
+            if (file.isDirectory())
+                collectForArchive(child, path, entries);
+            else
+                entries.add(new ZipWriter.NewEntry(path, file.length(), modifiedAt(child),
+                        () -> Futures.of(new FileAsyncReader(file))));
+        }
+    }
+
+    private static LocalDateTime modifiedAt(Path localPath) {
+        return LocalDateTime.ofEpochSecond(localPath.toFile().lastModified() / 1000, 0, ZoneOffset.UTC);
     }
 
     private ArchiveNavigator.Target resolve(Path remotePath) {
@@ -557,6 +626,9 @@ public class CLI implements Runnable {
         if (localPath.toFile().isDirectory()) {
             Path remotePath = cmd.hasSecondArgument() ? cliContext.pwd.resolve(Paths.get(cmd.secondArgument())) : cliContext.pwd;
             boolean skipExisting = cmd.flags.contains(Command.Flag.SKIP_EXISTING.flag);
+            Optional<ArchiveNavigator.Target> intoArchive = archives.resolve(remotePath);
+            if (intoArchive.isPresent() && intoArchive.get().isArchive())
+                return putDirInArchive(intoArchive.get(), localPath, skipExisting, writerForProgress);
             AtomicLong fileCount = new AtomicLong(0);
             AtomicLong doneFiles = new AtomicLong(0);
             peergosFileSystem.writeSubtree(remotePath, parseLocalFolder(localPath.getFileName(), localPath, skipExisting, fileCount,

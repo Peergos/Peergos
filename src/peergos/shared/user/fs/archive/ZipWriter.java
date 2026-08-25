@@ -29,7 +29,7 @@ public class ZipWriter {
     private static final int MAX_CENTRAL_DIRECTORY = 64 * 1024 * 1024;
     private static final int ERASE_BUFFER = 64 * 1024;
 
-    /** A file to add to an archive.
+    /** A file to add to an archive, or a directory to record in it.
      */
     @JsType
     public static class NewEntry {
@@ -39,14 +39,33 @@ public class ZipWriter {
         public final LocalDateTime modified;
         @JsIgnore
         public final Supplier<CompletableFuture<AsyncReader>> data;
+        public final boolean isDirectory;
 
         @JsIgnore
         public NewEntry(String path, long size, LocalDateTime modified, Supplier<CompletableFuture<AsyncReader>> data) {
+            this(path, size, modified, data, false);
+        }
+
+        @JsIgnore
+        public NewEntry(String path,
+                        long size,
+                        LocalDateTime modified,
+                        Supplier<CompletableFuture<AsyncReader>> data,
+                        boolean isDirectory) {
             this.path = ZipEntry.normalisePath(path)
                     .orElseThrow(() -> new IllegalStateException("Invalid path in an archive: " + path));
             this.size = size;
             this.modified = modified;
             this.data = data;
+            this.isDirectory = isDirectory;
+        }
+
+        /** A directory only needs a record of its own when nothing in the archive implies it, which
+         *  means an empty one: every other directory is implied by the paths of the files under it.
+         */
+        @JsIgnore
+        public static NewEntry directory(String path, LocalDateTime modified) {
+            return new NewEntry(path, 0, modified, () -> Futures.of(AsyncReader.build(new byte[0])), true);
         }
     }
 
@@ -272,6 +291,8 @@ public class ZipWriter {
     }
 
     private static CompletableFuture<Measured> measure(NewEntry entry) {
+        if (entry.isDirectory)
+            return Futures.of(new Measured(entry, 0, 0, STORED));
         DeflatingReader deflating = new DeflatingReader(entry.data, entry.size);
         byte[] scratch = new byte[64 * 1024];
         return countAll(deflating, scratch, 0)
@@ -309,11 +330,13 @@ public class ZipWriter {
             byte[] header = localHeader(measured);
             parts.add(ConcatReader.Part.of(header));
             NewEntry entry = measured.entry;
-            if (measured.method == STORED)
-                parts.add(new ConcatReader.Part(entry.size, entry.data));
-            else
-                parts.add(new ConcatReader.Part(measured.compressedSize,
-                        () -> Futures.of(new DeflatingReader(entry.data, entry.size))));
+            if (! entry.isDirectory) {
+                if (measured.method == STORED)
+                    parts.add(new ConcatReader.Part(entry.size, entry.data));
+                else
+                    parts.add(new ConcatReader.Part(measured.compressedSize,
+                            () -> Futures.of(new DeflatingReader(entry.data, entry.size))));
+            }
             newRecords.add(centralRecord(measured, at - delta));
             at += header.length + measured.compressedSize;
         }
@@ -360,8 +383,14 @@ public class ZipWriter {
 
     // the bytes of the format
 
+    /** A directory is a zip entry whose name ends in a slash, which is the only thing that says so.
+     */
+    private static byte[] entryName(NewEntry entry) {
+        return utf8(entry.isDirectory ? entry.path + "/" : entry.path);
+    }
+
     private static byte[] localHeader(Measured measured) {
-        byte[] name = utf8(measured.entry.path);
+        byte[] name = entryName(measured.entry);
         boolean zip64 = measured.entry.size > U32_MAX || measured.compressedSize > U32_MAX;
         int extraLength = zip64 ? 20 : 0;
         byte[] header = new byte[LOCAL_HEADER_SIZE + name.length + extraLength];
@@ -389,7 +418,7 @@ public class ZipWriter {
     }
 
     private static byte[] centralRecord(Measured measured, long localHeaderOffset) {
-        byte[] name = utf8(measured.entry.path);
+        byte[] name = entryName(measured.entry);
         boolean bigSizes = measured.entry.size > U32_MAX || measured.compressedSize > U32_MAX;
         boolean bigOffset = localHeaderOffset > U32_MAX;
         int extraLength = bigSizes || bigOffset ? 4 + (bigSizes ? 16 : 0) + (bigOffset ? 8 : 0) : 0;
@@ -407,7 +436,9 @@ public class ZipWriter {
         writeU32(record, 24, bigSizes ? U32_MAX : measured.entry.size);
         writeU16(record, 28, name.length);
         writeU16(record, 30, extraLength);
-        writeU32(record, 38, 0x81A40000L); // 0644, as a regular file
+        writeU32(record, 38, measured.entry.isDirectory ?
+                0x41ED0010L : // 0755, and the ms-dos directory bit
+                0x81A40000L); // 0644, as a regular file
         writeU32(record, 42, bigOffset ? U32_MAX : localHeaderOffset);
         System.arraycopy(name, 0, record, CENTRAL_HEADER_SIZE, name.length);
         if (extraLength > 0) {
@@ -619,12 +650,42 @@ public class ZipWriter {
                                                            Crypto crypto,
                                                            ProgressConsumer<Long> monitor) {
         long size = (((long) sizeHi) << 32) | (sizeLo & 0xFFFFFFFFL);
-        long millis = (long) modifiedEpochMillis;
-        LocalDateTime modified = LocalDateTime.ofEpochSecond(Math.floorDiv(millis, 1000L),
-                (int) Math.floorMod(millis, 1000L) * 1_000_000, ZoneOffset.UTC);
-        NewEntry entry = new NewEntry(path, size, modified,
-                () -> data.reset().thenApply(reset -> (AsyncReader) reset));
+        NewEntry entry = new NewEntry(path, size, when(modifiedEpochMillis), reread(data));
         return append(archive, Collections.singletonList(entry), network, crypto, monitor);
+    }
+
+    /** One entry to add, built where a long cannot cross into the browser. A path ending in a slash
+     *  is a directory, which an archive only needs a record of when it is empty.
+     */
+    public static NewEntry newEntryJS(String path, AsyncReader data, double size, double modifiedEpochMillis) {
+        if (path.endsWith("/"))
+            return NewEntry.directory(path.substring(0, path.length() - 1), when(modifiedEpochMillis));
+        return new NewEntry(path, (long) size, when(modifiedEpochMillis), reread(data));
+    }
+
+    /** Add several entries in one rewrite of the tail, which is what uploading a directory does: a
+     *  call per file would rewrite the tail once per file, and leave every earlier tail behind as
+     *  dead weight in the archive.
+     */
+    public static CompletableFuture<FileWrapper> addFilesJS(FileWrapper archive,
+                                                            NewEntry[] entries,
+                                                            NetworkAccess network,
+                                                            Crypto crypto,
+                                                            ProgressConsumer<Long> monitor) {
+        return append(archive, Arrays.asList(entries), network, crypto, monitor);
+    }
+
+    private static LocalDateTime when(double epochMillis) {
+        long millis = (long) epochMillis;
+        return LocalDateTime.ofEpochSecond(Math.floorDiv(millis, 1000L),
+                (int) Math.floorMod(millis, 1000L) * 1_000_000, ZoneOffset.UTC);
+    }
+
+    /** Every entry is read twice, once to compress it and once to write it, so a reader handed in
+     *  from outside has to go back to the start each time it is asked for.
+     */
+    private static Supplier<CompletableFuture<AsyncReader>> reread(AsyncReader data) {
+        return () -> data.reset().thenApply(reset -> (AsyncReader) reset);
     }
 
     public static CompletableFuture<FileWrapper> removeJS(FileWrapper archive,
