@@ -109,6 +109,12 @@ public class CLI implements Runnable {
         return resolveToPath(arg, cliContext.lpwd);
     }
 
+    /** A remote path as peergos writes one, whatever separator the local filesystem prints.
+     */
+    public static String remoteString(Path remotePath) {
+        return "/" + String.join("/", PathUtil.components(remotePath));
+    }
+
     public static ParsedCommand fromLine(String line) {
         String[] split = line.trim().split("\\s+");
         if (split == null || split.length == 0)
@@ -216,7 +222,7 @@ public class CLI implements Runnable {
 
         Stat stat = target.stat;
         if (! stat.fileProperties().isDirectory)
-            return longFormat ? formatLong(stat) : path.toString();
+            return longFormat ? formatLong(stat) : remoteString(path);
 
         if (longFormat)
             return peergosFileSystem.lsStats(path, false).stream()
@@ -233,7 +239,7 @@ public class CLI implements Runnable {
     /** The archive's file, fetched afresh: every write to an archive replaces it.
      */
     private FileWrapper archiveFile(ArchiveNavigator.Target target) {
-        return cliContext.userContext.getByPath(target.path.toString()).join()
+        return cliContext.userContext.getByPath(target.path).join()
                 .orElseThrow(() -> new IllegalStateException("Could not find " + target.path));
     }
 
@@ -261,7 +267,7 @@ public class CLI implements Runnable {
         if (! target.entry.isEmpty()) {
             ZipEntry entry = archives.entry(target);
             if (! entry.isDirectory)
-                return longFormat ? formatLong(entry) : target.fullPath().toString();
+                return longFormat ? formatLong(entry) : remoteString(target.fullPath());
         }
         return zip.listDirectory(target.entry).stream()
                 .sorted(Comparator.comparing(ZipEntry::getName))
@@ -355,11 +361,11 @@ public class CLI implements Runnable {
         if (stat.fileProperties().isDirectory) {
             boolean skipExisting = cmd.flags.contains(Command.Flag.SKIP_EXISTING.flag);
             copyDir(remotePath, localPath.getParent(), skipExisting, writerForProgress);
-            return "Downloaded " + remotePath + " to " + localPath;
+            return "Downloaded " + remoteString(remotePath) + " to " + localPath;
         } else {
             download(peergosFileSystem.reader(remotePath), stat.fileProperties().size, localPath,
                     remotePath.getParent(), remotePath.getFileName().toString(), writerForProgress);
-            return "Downloaded " + remotePath + " to " + localPath;
+            return "Downloaded " + remoteString(remotePath) + " to " + localPath;
         }
     }
 
@@ -400,7 +406,7 @@ public class CLI implements Runnable {
             copyArchiveDir(zip, entry, localPath, target.path, cmd.flags.contains(Command.Flag.SKIP_EXISTING.flag), writerForProgress);
         else
             download(zip.read(entry).join(), entry.size, localPath, target.path, entry.getName(), writerForProgress);
-        return "Downloaded " + target.fullPath() + " to " + localPath;
+        return "Downloaded " + remoteString(target.fullPath()) + " to " + localPath;
     }
 
     private void copyArchiveDir(ZipReader zip,
@@ -556,7 +562,7 @@ public class CLI implements Runnable {
                         ProgressBar pb = new ProgressBar(doneFiles, fileCount, path, name);
                         return bytesWritten -> pb.update(writerForProgress, bytesWritten, size);
                     }), f -> Futures.of(true));
-            return "\nSuccessfully uploaded " + localPath + " to remote " + remotePath;
+            return "\nSuccessfully uploaded " + localPath + " to remote " + remoteString(remotePath);
         } else {
             String remotePathS = cmd.hasSecondArgument() ? cmd.secondArgument() : cliContext.pwd.resolve(localPath.getFileName()).toString();
             Path remotePath = resolvedRemotePath(remotePathS);
@@ -568,13 +574,13 @@ public class CLI implements Runnable {
             Optional<ArchiveNavigator.Target> archive = archives.resolve(remotePath);
             if (archive.isPresent() && archive.get().isInArchive()) {
                 putInArchive(archive.get(), localPath, size, writerForProgress);
-                return "Added " + localPath + " to " + archive.get().fullPath();
+                return "Added " + localPath + " to " + remoteString(archive.get().fullPath());
             }
             boolean resumeUpload = cmd.flags.contains(Command.Flag.RESUME_UPLOAD.flag);
             peergosFileSystem.write(remotePath, reader, size, progressConsumer, resumeUpload);
             writerForProgress.println();
             writerForProgress.flush();
-            return "Successfully uploaded " + localPath + " to remote " + remotePath;
+            return "Successfully uploaded " + localPath + " to remote " + remoteString(remotePath);
         }
     }
 
@@ -584,10 +590,10 @@ public class CLI implements Runnable {
         Optional<ArchiveNavigator.Target> archive = archives.resolve(remoteDirPath);
         if (archive.isPresent() && archive.get().isArchive())
             return "Directories in an archive are implied by the paths of the files in it, so there is nothing to create."
-                    + " Put a file at " + remoteDirPath + "/<name> instead.";
+                    + " Put a file at " + remoteString(remoteDirPath) + "/<name> instead.";
         peergosFileSystem.mkdir(remoteDirPath);
 
-        return "\nSuccessfully created " + remoteDirPath;
+        return "\nSuccessfully created " + remoteString(remoteDirPath);
     }
 
     public String rm(ParsedCommand cmd) {
@@ -600,7 +606,7 @@ public class CLI implements Runnable {
         if (target.isInArchive()) {
             ZipEntry entry = archives.entry(target);
             if (entry.isDirectory) {
-                System.out.println("Delete " + remotePath + " and everything in it from the archive (Y/N)");
+                System.out.println("Delete " + remoteString(remotePath) + " and everything in it from the archive (Y/N)");
                 String res = System.console().readLine().toLowerCase();
                 if (! res.equals("y"))
                     return "Aborting delete";
@@ -609,20 +615,20 @@ public class CLI implements Runnable {
             ZipWriter.remove(archiveFile(target), Collections.singletonList(entry.path), true,
                     cliContext.userContext.network, cliContext.userContext.crypto, x -> {}).join();
             archives.forget();
-            return "Deleted " + remotePath + " from the archive";
+            return "Deleted " + remoteString(remotePath) + " from the archive";
         }
 
         Stat stat = target.stat;
 
         if (stat.fileProperties().isDirectory) {
-            System.out.println("Delete directory and all contents of " + remotePath + " (Y/N)");
+            System.out.println("Delete directory and all contents of " + remoteString(remotePath) + " (Y/N)");
             String res = System.console().readLine().toLowerCase();
             if (! res.equals("y"))
                 return "Aborting delete";
         }
 
         peergosFileSystem.delete(remotePath);
-        return "Deleted " + remotePath;
+        return "Deleted " + remoteString(remotePath);
     }
 
     public String mv(ParsedCommand cmd) {
@@ -645,28 +651,28 @@ public class CLI implements Runnable {
             ZipWriter.moveEntry(archiveFile(target), target.entry, to.entry,
                     cliContext.userContext.network, cliContext.userContext.crypto, x -> {}).join();
             archives.forget();
-            return "Moved " + source + " to " + destination;
+            return "Moved " + remoteString(source) + " to " + remoteString(destination);
         }
 
-        FileWrapper file = cliContext.userContext.getByPath(source.toString()).join()
+        FileWrapper file = cliContext.userContext.getByPath(source).join()
                 .orElseThrow(() -> new IllegalStateException("Could not find " + source));
-        FileWrapper parent = cliContext.userContext.getByPath(source.getParent().toString()).join()
+        FileWrapper parent = cliContext.userContext.getByPath(source.getParent()).join()
                 .orElseThrow(() -> new IllegalStateException("Could not find " + source.getParent()));
         if (destination.getParent().equals(source.getParent())) {
             file.rename(destination.getFileName().toString(), parent, source, cliContext.userContext).join();
-            return "Renamed " + source + " to " + destination.getFileName();
+            return "Renamed " + remoteString(source) + " to " + destination.getFileName();
         }
-        FileWrapper targetDir = cliContext.userContext.getByPath(destination.getParent().toString()).join()
+        FileWrapper targetDir = cliContext.userContext.getByPath(destination.getParent()).join()
                 .orElseThrow(() -> new IllegalStateException("Could not find " + destination.getParent()));
         file.moveTo(targetDir, parent, source, cliContext.userContext, () -> Futures.of(false)).join();
         if (! destination.getFileName().equals(source.getFileName())) {
-            FileWrapper moved = cliContext.userContext.getByPath(destination.getParent().resolve(source.getFileName()).toString()).join()
+            FileWrapper moved = cliContext.userContext.getByPath(destination.getParent().resolve(source.getFileName())).join()
                     .orElseThrow(() -> new IllegalStateException("Could not find the moved file"));
-            FileWrapper movedParent = cliContext.userContext.getByPath(destination.getParent().toString()).join().get();
+            FileWrapper movedParent = cliContext.userContext.getByPath(destination.getParent()).join().get();
             moved.rename(destination.getFileName().toString(), movedParent,
                     destination.getParent().resolve(source.getFileName()), cliContext.userContext).join();
         }
-        return "Moved " + source + " to " + destination;
+        return "Moved " + remoteString(source) + " to " + remoteString(destination);
     }
 
     public String exit(ParsedCommand cmd) {
@@ -789,9 +795,9 @@ public class CLI implements Runnable {
             peergosFileSystem.grant(remotePath, userToGrantAccess, permission);
         } catch (Exception ex) {
             ex.printStackTrace();
-            return "Failed to share " + type + " '" + remotePath + "': " + errorMessage(ex);
+            return "Failed to share " + type + " '" + remoteString(remotePath) + "': " + errorMessage(ex);
         }
-        return "Shared " + access + "-access to " + type + " '" + remotePath + "' with " + userToGrantAccess
+        return "Shared " + access + "-access to " + type + " '" + remoteString(remotePath) + "' with " + userToGrantAccess
                 + (isDirectory ? ", including everything it contains." : "");
     }
 
@@ -814,9 +820,9 @@ public class CLI implements Runnable {
             cliContext.userContext.makePublic(file).join();
         } catch (Exception ex) {
             ex.printStackTrace();
-            return "Failed to publish " + type + " '" + remotePath + "': " + errorMessage(ex);
+            return "Failed to publish " + type + " '" + remoteString(remotePath) + "': " + errorMessage(ex);
         }
-        return "Made " + type + " '" + remotePath + "' public"
+        return "Made " + type + " '" + remoteString(remotePath) + "' public"
                 + (isDirectory ? ", including everything it contains." : ".")
                 + "\nAnyone can now read it at " + publicUrl(remotePath);
     }
@@ -825,7 +831,7 @@ public class CLI implements Runnable {
         String server = cliContext.serverURL.endsWith("/") ?
                 cliContext.serverURL.substring(0, cliContext.serverURL.length() - 1) :
                 cliContext.serverURL;
-        return server + "/public" + remotePath;
+        return server + "/public" + remoteString(remotePath);
     }
 
     private static String capitalise(String s) {
@@ -865,9 +871,9 @@ public class CLI implements Runnable {
                 target.entry.isEmpty() || archives.entry(target).isDirectory :
                 target.stat.fileProperties().isDirectory;
         if (! isDirectory)
-            return "Specified path '" + remotePathToCdTo + "' is not a directory";
+            return "Specified path '" + remoteString(remotePathToCdTo) + "' is not a directory";
         cliContext.pwd = remotePathToCdTo;
-        return "Current directory : " + remotePathToCdTo;
+        return "Current directory : " + remoteString(remotePathToCdTo);
     }
 
     public String lcd(ParsedCommand cmd) {
@@ -881,7 +887,7 @@ public class CLI implements Runnable {
     }
 
     public String pwd(ParsedCommand cmd) {
-        return "Remote working directory: " + cliContext.pwd.toString();
+        return "Remote working directory: " + remoteString(cliContext.pwd);
     }
 
     public String lpwd(ParsedCommand cmd) {
