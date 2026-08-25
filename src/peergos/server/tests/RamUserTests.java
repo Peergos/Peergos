@@ -6,6 +6,7 @@ import org.junit.runner.*;
 import org.junit.runners.*;
 import peergos.server.*;
 import peergos.server.cli.CLI;
+import peergos.server.cli.CLIContext;
 import peergos.server.crypto.hash.ScryptJava;
 import peergos.server.net.MountConfigHandler;
 import peergos.server.sync.*;
@@ -21,6 +22,7 @@ import peergos.shared.storage.UnauthedCachingStorage;
 import peergos.shared.storage.auth.BatId;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
+import peergos.shared.user.fs.archive.*;
 import peergos.shared.user.fs.transaction.*;
 import peergos.shared.util.*;
 
@@ -1291,5 +1293,292 @@ public class RamUserTests extends UserTests {
         Assert.assertTrue("the concurrent write must have been injected", written.get());
         Assert.assertTrue(syncPass(link, localDir, owner, synced, peergosDir).contains(SCANNING_DRIVE));
         Assert.assertTrue(Files.exists(localDir.resolve("file5.txt")));
+    }
+    private static byte[] buildZip(Map<String, byte[]> stored, Map<String, byte[]> deflated) {
+        ByteArrayOutputStream bout = new ByteArrayOutputStream();
+        try (java.util.zip.ZipOutputStream zout = new java.util.zip.ZipOutputStream(bout)) {
+            for (Map.Entry<String, byte[]> e : deflated.entrySet()) {
+                zout.putNextEntry(new java.util.zip.ZipEntry(e.getKey()));
+                zout.write(e.getValue());
+                zout.closeEntry();
+            }
+            for (Map.Entry<String, byte[]> e : stored.entrySet()) {
+                java.util.zip.ZipEntry entry = new java.util.zip.ZipEntry(e.getKey());
+                entry.setMethod(java.util.zip.ZipOutputStream.STORED);
+                entry.setSize(e.getValue().length);
+                entry.setCompressedSize(e.getValue().length);
+                java.util.zip.CRC32 crc = new java.util.zip.CRC32();
+                crc.update(e.getValue());
+                entry.setCrc(crc.getValue());
+                zout.putNextEntry(entry);
+                zout.write(e.getValue());
+                zout.closeEntry();
+            }
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+        return bout.toByteArray();
+    }
+
+    @Test
+    public void browseZipArchive() throws Exception {
+        String username = generateUsername();
+        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, "test01", network.clear(), crypto);
+        JavaInflate.init();
+
+        // bigger than a chunk, so entries are found by seeking rather than by reading the whole file
+        byte[] big = new byte[6 * 1024 * 1024];
+        new Random(42).nextBytes(big);
+        Map<String, byte[]> stored = new LinkedHashMap<>();
+        stored.put("big.bin", big);
+        Map<String, byte[]> deflated = new LinkedHashMap<>();
+        deflated.put("readme.txt", "hello archive".getBytes(StandardCharsets.UTF_8));
+        deflated.put("logs/first.log", "log one".getBytes(StandardCharsets.UTF_8));
+        deflated.put("logs/second.log", "log two".getBytes(StandardCharsets.UTF_8));
+        byte[] zip = buildZip(stored, deflated);
+        context.getUserRoot().join()
+                .uploadOrReplaceFile("data.zip", AsyncReader.build(zip), zip.length, network, crypto, () -> false, x -> {})
+                .join();
+
+        CLI cli = new CLI(new CLIContext(null, context, "", username));
+        StringWriter sink = new StringWriter();
+        PrintWriter writer = new PrintWriter(sink);
+        String archive = "/" + username + "/data.zip";
+
+        Assert.assertEquals("big.bin\nlogs\nreadme.txt", cli.ls(CLI.fromLine("ls " + archive)));
+        Assert.assertEquals("first.log\nsecond.log", cli.ls(CLI.fromLine("ls " + archive + "/logs")));
+        // an entry is writable when the archive holding it is, and this one is our own
+        Assert.assertTrue(cli.ls(CLI.fromLine("ls -l " + archive)).contains("-rw    6.0 MiB"));
+
+        cli.cat(CLI.fromLine("cat " + archive + "/readme.txt"), writer);
+        Assert.assertEquals("hello archive", sink.toString());
+
+        // cd descends into the archive, and then relative paths resolve within it
+        cli.cd(CLI.fromLine("cd " + archive + "/logs"));
+        Assert.assertEquals("first.log\nsecond.log", cli.ls(CLI.fromLine("ls")));
+        Assert.assertEquals("log two", cat(cli, "second.log"));
+        cli.cd(CLI.fromLine("cd " + archive));
+
+        Path localDir = Files.createTempDirectory("peergos-archive-test");
+        cli.get(CLI.fromLine("get " + archive + "/big.bin " + localDir), writer);
+        Assert.assertArrayEquals(big, Files.readAllBytes(localDir.resolve("big.bin")));
+
+        cli.get(CLI.fromLine("get " + archive + "/logs " + localDir), writer);
+        Assert.assertArrayEquals("log one".getBytes(StandardCharsets.UTF_8),
+                Files.readAllBytes(localDir.resolve("logs").resolve("first.log")));
+
+        // the archive itself is still an ordinary file to download
+        cli.get(CLI.fromLine("get " + archive + " " + localDir), writer);
+        Assert.assertArrayEquals(zip, Files.readAllBytes(localDir.resolve("data.zip")));
+    }
+
+    private static String cat(CLI cli, String path) throws IOException {
+        StringWriter sink = new StringWriter();
+        cli.cat(CLI.fromLine("cat " + path), new PrintWriter(sink));
+        return sink.toString();
+    }
+    private static byte[] readAll(FileWrapper file, NetworkAccess network) {
+        long size = file.getFileProperties().size;
+        byte[] res = new byte[(int) size];
+        AsyncReader reader = file.getInputStream(network, crypto, x -> {}).join();
+        int offset = 0;
+        while (offset < res.length) {
+            int read = reader.readIntoArray(res, offset, res.length - offset).join();
+            if (read <= 0)
+                throw new IllegalStateException("Unexpected end of file");
+            offset += read;
+        }
+        return res;
+    }
+
+    private static ZipWriter.NewEntry newEntry(String path, byte[] data) {
+        return new ZipWriter.NewEntry(path, data.length, LocalDateTime.of(2026, 8, 25, 10, 30),
+                () -> Futures.of(AsyncReader.build(data)));
+    }
+
+    private static List<String> listWithSystemUnzip(Path zip) throws Exception {
+        Process process = new ProcessBuilder("unzip", "-Z1", zip.toString()).redirectErrorStream(true).start();
+        String out = new String(process.getInputStream().readAllBytes());
+        process.waitFor();
+        return Stream.of(out.split("\n")).map(String::trim).filter(l -> ! l.isEmpty()).collect(Collectors.toList());
+    }
+
+    private static String testWithSystemUnzip(Path zip) throws Exception {
+        Process process = new ProcessBuilder("unzip", "-t", zip.toString()).redirectErrorStream(true).start();
+        String out = new String(process.getInputStream().readAllBytes());
+        process.waitFor();
+        return out;
+    }
+
+    @Test
+    public void writeIntoZipArchive() throws Exception {
+        String username = generateUsername();
+        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, "test01", network.clear(), crypto);
+        JavaInflate.init();
+        Path dir = Files.createTempDirectory("peergos-zip-write");
+
+        Map<String, byte[]> original = new LinkedHashMap<>();
+        original.put("readme.txt", "the original entry\n".repeat(100).getBytes(StandardCharsets.UTF_8));
+        original.put("logs/first.log", "log line\n".repeat(1000).getBytes(StandardCharsets.UTF_8));
+        byte[] zipBytes = buildZip(new LinkedHashMap<>(), original);
+        context.getUserRoot().join()
+                .uploadOrReplaceFile("data.zip", AsyncReader.build(zipBytes), zipBytes.length, network, crypto,
+                        () -> false, x -> {})
+                .join();
+        Supplier<FileWrapper> archive = () -> context.getByPath("/" + username + "/data.zip").join().get();
+
+        // add entries, including one that has to span a chunk boundary
+        byte[] added = "a new entry that compresses well\n".repeat(2000).getBytes(StandardCharsets.UTF_8);
+        byte[] noisy = new byte[6 * 1024 * 1024];
+        new Random(7).nextBytes(noisy);
+        FileWrapper afterAppend = ZipWriter.append(archive.get(),
+                Arrays.asList(newEntry("notes/added.txt", added), newEntry("big.bin", noisy)),
+                network, crypto, x -> {}).join();
+
+        Path onDisk = dir.resolve("after-append.zip");
+        Files.write(onDisk, readAll(afterAppend, network));
+        Assert.assertTrue(testWithSystemUnzip(onDisk), testWithSystemUnzip(onDisk).contains("No errors detected"));
+        Assert.assertEquals(Arrays.asList("readme.txt", "logs/first.log", "notes/added.txt", "big.bin"),
+                listWithSystemUnzip(onDisk));
+
+        ZipReader zip = ZipReader.open(archive.get(), network, crypto).join();
+        Assert.assertArrayEquals(added, readEntry(zip, "notes/added.txt"));
+        Assert.assertArrayEquals(noisy, readEntry(zip, "big.bin"));
+        Assert.assertArrayEquals(original.get("readme.txt"), readEntry(zip, "readme.txt"));
+
+        // replacing an entry keeps only the new one
+        byte[] replacement = "the replacement\n".repeat(50).getBytes(StandardCharsets.UTF_8);
+        ZipWriter.append(archive.get(), Arrays.asList(newEntry("readme.txt", replacement)), network, crypto, x -> {}).join();
+        ZipReader replaced = ZipReader.open(archive.get(), network, crypto).join();
+        Assert.assertArrayEquals(replacement, readEntry(replaced, "readme.txt"));
+        Assert.assertEquals(4, listWithSystemUnzip(write(dir.resolve("replaced.zip"), archive.get())).size());
+
+        // removing an entry erases the bytes it left behind
+        byte[] marker = "SECRET-MARKER-42".getBytes(StandardCharsets.UTF_8);
+        byte[] secretData = new byte[100_000]; // incompressible, so it is stored as it stands
+        new Random(42).nextBytes(secretData);
+        System.arraycopy(marker, 0, secretData, 5_000, marker.length);
+        ZipWriter.append(archive.get(), Arrays.asList(newEntry("secret.bin", secretData)), network, crypto, x -> {}).join();
+        byte[] withSecret = readAll(archive.get(), network);
+        Assert.assertTrue("the secret is in the archive before the delete", indexOf(withSecret, marker) >= 0);
+        Assert.assertTrue("the entry name is in the archive before the delete",
+                indexOf(withSecret, "secret.bin".getBytes(StandardCharsets.UTF_8)) >= 0);
+
+        ZipWriter.remove(archive.get(), Arrays.asList("secret.bin"), true, network, crypto, x -> {}).join();
+        byte[] afterDelete = readAll(archive.get(), network);
+        Assert.assertTrue("the deleted bytes are gone", indexOf(afterDelete, marker) < 0);
+        Assert.assertTrue("the deleted entry's name is gone too",
+                indexOf(afterDelete, "secret.bin".getBytes(StandardCharsets.UTF_8)) < 0);
+        Path deleted = dir.resolve("deleted.zip");
+        Files.write(deleted, afterDelete);
+        Assert.assertTrue(testWithSystemUnzip(deleted), testWithSystemUnzip(deleted).contains("No errors detected"));
+        Assert.assertFalse(listWithSystemUnzip(deleted).contains("secret.bin"));
+
+        // and the same delete without erasing keeps the data, which is the cheaper option
+        ZipWriter.append(archive.get(), Arrays.asList(newEntry("keep-the-bytes.bin", secretData)), network, crypto, x -> {}).join();
+        ZipWriter.remove(archive.get(), Arrays.asList("keep-the-bytes.bin"), false, network, crypto, x -> {}).join();
+        byte[] afterTombstone = readAll(archive.get(), network);
+        Assert.assertTrue("a tombstone leaves the bytes where they were", indexOf(afterTombstone, marker) >= 0);
+        Path tombstoned = dir.resolve("tombstoned.zip");
+        Files.write(tombstoned, afterTombstone);
+        Assert.assertTrue(testWithSystemUnzip(tombstoned), testWithSystemUnzip(tombstoned).contains("No errors detected"));
+        Assert.assertFalse(listWithSystemUnzip(tombstoned).contains("keep-the-bytes.bin"));
+
+        // a rename of the same length is patched where it stands
+        ZipWriter.rename(archive.get(), "readme.txt", "README.txt", network, crypto, x -> {}).join();
+        Path renamed = dir.resolve("renamed.zip");
+        Files.write(renamed, readAll(archive.get(), network));
+        Assert.assertTrue(testWithSystemUnzip(renamed), testWithSystemUnzip(renamed).contains("No errors detected"));
+        Assert.assertTrue(listWithSystemUnzip(renamed).contains("README.txt"));
+        Assert.assertArrayEquals(replacement, readEntry(ZipReader.open(archive.get(), network, crypto).join(), "README.txt"));
+
+        // a rename of a different length writes the entry again under the new name
+        ZipWriter.rename(archive.get(), "notes/added.txt", "a-much-longer-name.txt", network, crypto, x -> {}).join();
+        Path longer = dir.resolve("longer.zip");
+        Files.write(longer, readAll(archive.get(), network));
+        Assert.assertTrue(testWithSystemUnzip(longer), testWithSystemUnzip(longer).contains("No errors detected"));
+        Assert.assertTrue(listWithSystemUnzip(longer).contains("notes/a-much-longer-name.txt"));
+        Assert.assertFalse(listWithSystemUnzip(longer).contains("notes/added.txt"));
+        ZipReader finalZip = ZipReader.open(archive.get(), network, crypto).join();
+        Assert.assertArrayEquals(added, readEntry(finalZip, "notes/a-much-longer-name.txt"));
+        Assert.assertArrayEquals(noisy, readEntry(finalZip, "big.bin"));
+
+        // a directory goes in as the files under it, in one write, plus a record for the empty one
+        ZipWriter.append(archive.get(), Arrays.asList(
+                        newEntry("tree/docs/notes.txt", added),
+                        newEntry("tree/top.txt", replacement),
+                        ZipWriter.NewEntry.directory("tree/empty", LocalDateTime.of(2026, 8, 25, 10, 30))),
+                network, crypto, x -> {}).join();
+        Path tree = dir.resolve("tree.zip");
+        Files.write(tree, readAll(archive.get(), network));
+        Assert.assertTrue(testWithSystemUnzip(tree), testWithSystemUnzip(tree).contains("No errors detected"));
+        List<String> withTree = listWithSystemUnzip(tree);
+        Assert.assertTrue(withTree.contains("tree/docs/notes.txt"));
+        Assert.assertTrue(withTree.contains("tree/top.txt"));
+        // nothing implies an empty directory, so it needs a record of its own, named with a slash
+        Assert.assertTrue(withTree.contains("tree/empty/"));
+        ZipReader withDirectory = ZipReader.open(archive.get(), network, crypto).join();
+        Assert.assertArrayEquals(added, readEntry(withDirectory, "tree/docs/notes.txt"));
+        Assert.assertTrue(withDirectory.getIndex().get("tree/empty").get().isDirectory);
+
+        // a file copied from the drive goes in as an entry, opened again for each of the two passes
+        byte[] fromDrive = "already in the drive\n".repeat(500).getBytes(StandardCharsets.UTF_8);
+        context.getUserRoot().join()
+                .uploadOrReplaceFile("copied.txt", AsyncReader.build(fromDrive), fromDrive.length, network, crypto,
+                        () -> false, x -> {})
+                .join();
+        FileWrapper source = context.getByPath("/" + username + "/copied.txt").join().get();
+        ZipWriter.append(archive.get(),
+                Arrays.asList(ZipWriter.entryFromFileJS("pasted/copied.txt", source, network, crypto)),
+                network, crypto, x -> {}).join();
+        Path pasted = dir.resolve("pasted.zip");
+        Files.write(pasted, readAll(archive.get(), network));
+        Assert.assertTrue(testWithSystemUnzip(pasted), testWithSystemUnzip(pasted).contains("No errors detected"));
+        Assert.assertArrayEquals(fromDrive,
+                readEntry(ZipReader.open(archive.get(), network, crypto).join(), "pasted/copied.txt"));
+
+        // an entry pasted within an archive reads the version we opened while the new one is written
+        ZipReader before = ZipReader.open(archive.get(), network, crypto).join();
+        peergos.shared.user.fs.archive.ZipEntry toCopy = before.getIndex().get("big.bin").get();
+        ZipWriter.append(archive.get(),
+                Arrays.asList(ZipWriter.entryFromArchiveJS("copy/big.bin", before, toCopy)),
+                network, crypto, x -> {}).join();
+        Path copied = dir.resolve("copied.zip");
+        Files.write(copied, readAll(archive.get(), network));
+        Assert.assertTrue(testWithSystemUnzip(copied), testWithSystemUnzip(copied).contains("No errors detected"));
+        ZipReader withCopy = ZipReader.open(archive.get(), network, crypto).join();
+        Assert.assertArrayEquals(noisy, readEntry(withCopy, "copy/big.bin"));
+        Assert.assertArrayEquals(noisy, readEntry(withCopy, "big.bin"));
+    }
+
+    private Path write(Path target, FileWrapper file) throws Exception {
+        Files.write(target, readAll(file, network));
+        return target;
+    }
+
+    private static int indexOf(byte[] haystack, byte[] needle) {
+        for (int i = 0; i <= haystack.length - needle.length; i++) {
+            int j = 0;
+            while (j < needle.length && haystack[i + j] == needle[j])
+                j++;
+            if (j == needle.length)
+                return i;
+        }
+        return -1;
+    }
+
+    private static byte[] readEntry(ZipReader zip, String path) {
+        peergos.shared.user.fs.archive.ZipEntry entry = zip.getIndex().get(path)
+                .orElseThrow(() -> new IllegalStateException("No entry " + path));
+        AsyncReader reader = zip.read(entry).join();
+        byte[] res = new byte[(int) entry.size];
+        int offset = 0;
+        while (offset < res.length) {
+            int read = reader.readIntoArray(res, offset, res.length - offset).join();
+            if (read <= 0)
+                throw new IllegalStateException("Unexpected end of entry " + path);
+            offset += read;
+        }
+        return res;
     }
 }
