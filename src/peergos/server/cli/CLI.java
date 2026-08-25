@@ -38,6 +38,7 @@ import java.nio.*;
 import java.nio.charset.*;
 import java.nio.file.*;
 import java.time.Instant;
+import java.time.ZoneId;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
@@ -322,8 +323,10 @@ public class CLI implements Runnable {
         }
     }
 
+    /** A zip records the local time of a file, not an instant, so that is what goes in.
+     */
     private static LocalDateTime modifiedAt(Path localPath) {
-        return LocalDateTime.ofEpochSecond(localPath.toFile().lastModified() / 1000, 0, ZoneOffset.UTC);
+        return LocalDateTime.ofInstant(Instant.ofEpochMilli(localPath.toFile().lastModified()), ZoneId.systemDefault());
     }
 
     private ArchiveNavigator.Target resolve(Path remotePath) {
