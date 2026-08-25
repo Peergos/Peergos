@@ -582,5 +582,46 @@ public class ZipWriter {
                 .thenCompose(updated -> remove(updated, old, true, network, crypto, monitor));
     }
 
+    // what the web ui calls
+
+    /** Add one file to an archive, reading it twice: once to find out how far it compresses, and
+     *  again to write it, so the reader has to support reset.
+     */
+    public static CompletableFuture<FileWrapper> addFileJS(FileWrapper archive,
+                                                           String path,
+                                                           AsyncReader data,
+                                                           int sizeHi,
+                                                           int sizeLo,
+                                                           double modifiedEpochMillis,
+                                                           NetworkAccess network,
+                                                           Crypto crypto,
+                                                           ProgressConsumer<Long> monitor) {
+        long size = (((long) sizeHi) << 32) | (sizeLo & 0xFFFFFFFFL);
+        long millis = (long) modifiedEpochMillis;
+        LocalDateTime modified = LocalDateTime.ofEpochSecond(Math.floorDiv(millis, 1000L),
+                (int) Math.floorMod(millis, 1000L) * 1_000_000, ZoneOffset.UTC);
+        NewEntry entry = new NewEntry(path, size, modified,
+                () -> data.reset().thenApply(reset -> (AsyncReader) reset));
+        return append(archive, Collections.singletonList(entry), network, crypto, monitor);
+    }
+
+    public static CompletableFuture<FileWrapper> removeJS(FileWrapper archive,
+                                                          String[] paths,
+                                                          boolean eraseData,
+                                                          NetworkAccess network,
+                                                          Crypto crypto,
+                                                          ProgressConsumer<Long> monitor) {
+        return remove(archive, Arrays.asList(paths), eraseData, network, crypto, monitor);
+    }
+
+    public static CompletableFuture<FileWrapper> renameJS(FileWrapper archive,
+                                                          String path,
+                                                          String newName,
+                                                          NetworkAccess network,
+                                                          Crypto crypto,
+                                                          ProgressConsumer<Long> monitor) {
+        return rename(archive, path, newName, network, crypto, monitor);
+    }
+
     private ZipWriter() {}
 }
