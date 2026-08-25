@@ -1519,6 +1519,22 @@ public class RamUserTests extends UserTests {
         ZipReader withDirectory = ZipReader.open(archive.get(), network, crypto).join();
         Assert.assertArrayEquals(added, readEntry(withDirectory, "tree/docs/notes.txt"));
         Assert.assertTrue(withDirectory.getIndex().get("tree/empty").get().isDirectory);
+
+        // a file copied from the drive goes in as an entry, opened again for each of the two passes
+        byte[] fromDrive = "already in the drive\n".repeat(500).getBytes(StandardCharsets.UTF_8);
+        context.getUserRoot().join()
+                .uploadOrReplaceFile("copied.txt", AsyncReader.build(fromDrive), fromDrive.length, network, crypto,
+                        () -> false, x -> {})
+                .join();
+        FileWrapper source = context.getByPath("/" + username + "/copied.txt").join().get();
+        ZipWriter.append(archive.get(),
+                Arrays.asList(ZipWriter.entryFromFileJS("pasted/copied.txt", source, network, crypto)),
+                network, crypto, x -> {}).join();
+        Path pasted = dir.resolve("pasted.zip");
+        Files.write(pasted, readAll(archive.get(), network));
+        Assert.assertTrue(testWithSystemUnzip(pasted), testWithSystemUnzip(pasted).contains("No errors detected"));
+        Assert.assertArrayEquals(fromDrive,
+                readEntry(ZipReader.open(archive.get(), network, crypto).join(), "pasted/copied.txt"));
     }
 
     private Path write(Path target, FileWrapper file) throws Exception {

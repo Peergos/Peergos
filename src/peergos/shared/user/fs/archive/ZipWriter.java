@@ -663,6 +663,18 @@ public class ZipWriter {
         return new NewEntry(path, (long) size, when(modifiedEpochMillis), reread(data));
     }
 
+    /** An entry to add taken from a file in the drive rather than from the browser, which is what
+     *  pasting into an archive does. The file is opened again for each of the two passes, so
+     *  nothing has to be held while it is compressed and then written.
+     */
+    public static NewEntry entryFromFileJS(String path, FileWrapper file, NetworkAccess network, Crypto crypto) {
+        FileProperties props = file.getFileProperties();
+        if (props.isDirectory)
+            return NewEntry.directory(path, props.modified);
+        return new NewEntry(path, props.size, props.modified,
+                () -> file.getInputStream(network, crypto, x -> {}).thenApply(reader -> (AsyncReader) reader));
+    }
+
     /** Add several entries in one rewrite of the tail, which is what uploading a directory does: a
      *  call per file would rewrite the tail once per file, and leave every earlier tail behind as
      *  dead weight in the archive.
