@@ -264,23 +264,25 @@ public class CLI implements Runnable {
 
     private String lsArchive(ArchiveNavigator.Target target, boolean longFormat) {
         ZipReader zip = archives.open(target);
+        boolean writable = target.stat.isWritable();
         if (! target.entry.isEmpty()) {
             ZipEntry entry = archives.entry(target);
             if (! entry.isDirectory)
-                return longFormat ? formatLong(entry) : remoteString(target.fullPath());
+                return longFormat ? formatLong(entry, writable) : remoteString(target.fullPath());
         }
         return zip.listDirectory(target.entry).stream()
                 .sorted(Comparator.comparing(ZipEntry::getName))
-                .map(e -> longFormat ? formatLong(e) : e.getName())
+                .map(e -> longFormat ? formatLong(e, writable) : e.getName())
                 .collect(Collectors.joining("\n"));
     }
 
-    /** Entries in an archive are readable but, until archives can be edited, never writable.
+    /** An entry is writable when the archive holding it is, since writing to one rewrites the archive.
      */
-    public static String formatLong(ZipEntry entry) {
-        return String.format("%s%s-  %9s  %s  %s",
+    public static String formatLong(ZipEntry entry, boolean writable) {
+        return String.format("%s%s%s  %9s  %s  %s",
                 entry.isDirectory ? "d" : "-",
                 entry.isSupported() ? "r" : "-",
+                writable ? "w" : "-",
                 entry.isDirectory ? "-" : formatSize(entry.size),
                 entry.modified.format(MODIFIED_FORMAT),
                 entry.getName() + (entry.isDirectory ? "/" : ""));

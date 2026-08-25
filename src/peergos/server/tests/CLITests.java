@@ -139,13 +139,16 @@ public class CLITests {
     @Test
     public void longFormatOfArchiveEntries() {
         LocalDateTime modified = LocalDateTime.of(2026, 8, 1, 9, 5);
+        Assert.assertEquals("-rw    1.0 KiB  2026-08-01 09:05  notes.txt",
+                CLI.formatLong(new ZipEntry("logs/notes.txt", false, 1024, 300, 8, 0, 0, modified, 0), true));
+        Assert.assertEquals("drw          -  2026-08-01 09:05  logs/",
+                CLI.formatLong(new ZipEntry("logs", true, 0, 0, 0, 0, 0, modified, 0), true));
+        // an archive shared read only holds nothing writable
         Assert.assertEquals("-r-    1.0 KiB  2026-08-01 09:05  notes.txt",
-                CLI.formatLong(new ZipEntry("logs/notes.txt", false, 1024, 300, 8, 0, 0, modified, 0)));
-        Assert.assertEquals("dr-          -  2026-08-01 09:05  logs/",
-                CLI.formatLong(new ZipEntry("logs", true, 0, 0, 0, 0, 0, modified, 0)));
-        // an encrypted entry can be listed but not read
-        Assert.assertEquals("---    1.0 KiB  2026-08-01 09:05  secret.txt",
-                CLI.formatLong(new ZipEntry("secret.txt", false, 1024, 1024, 8, 0, 0, modified, 1)));
+                CLI.formatLong(new ZipEntry("logs/notes.txt", false, 1024, 300, 8, 0, 0, modified, 0), false));
+        // an encrypted entry can be listed, and removed, but not read
+        Assert.assertEquals("--w    1.0 KiB  2026-08-01 09:05  secret.txt",
+                CLI.formatLong(new ZipEntry("secret.txt", false, 1024, 1024, 8, 0, 0, modified, 1), true));
     }
 
     private static byte[] archive(Map<String, byte[]> entries) {
