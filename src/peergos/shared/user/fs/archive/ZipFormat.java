@@ -115,6 +115,59 @@ class ZipFormat {
         return era * 146097 + doe - 719468;
     }
 
+    static void writeU16(byte[] d, int i, int value) {
+        d[i] = (byte) value;
+        d[i + 1] = (byte) (value >> 8);
+    }
+
+    static void writeU32(byte[] d, int i, long value) {
+        for (int b = 0; b < 4; b++)
+            d[i + b] = (byte) (value >> (8 * b));
+    }
+
+    static void writeU64(byte[] d, int i, long value) {
+        for (int b = 0; b < 8; b++)
+            d[i + b] = (byte) (value >> (8 * b));
+    }
+
+    static byte[] utf8(String value) {
+        try {
+            return value.getBytes("UTF-8");
+        } catch (Exception e) {
+            throw new IllegalStateException("Cannot encode " + value);
+        }
+    }
+
+    /** The MS-DOS date and time pair for a moment, as {time, date}.
+     */
+    static int[] millisToDosTime(long millis) {
+        long seconds = Math.floorDiv(millis, 1000L);
+        long days = Math.floorDiv(seconds, 86400L);
+        int secondOfDay = (int) Math.floorMod(seconds, 86400L);
+        int[] date = civilFromDays(days);
+        if (date[0] < 1980)
+            return new int[]{0, 0x21}; // the earliest the format can express: 1980-01-01
+        int dosDate = ((date[0] - 1980) << 9) | (date[1] << 5) | date[2];
+        int dosTime = ((secondOfDay / 3600) << 11) | (((secondOfDay / 60) % 60) << 5) | ((secondOfDay % 60) / 2);
+        return new int[]{dosTime, dosDate};
+    }
+
+    /** The proleptic Gregorian date of a day count since 1970-01-01, as {year, month, day}, from
+     *  Howard Hinnant's civil_from_days.
+     */
+    private static int[] civilFromDays(long days) {
+        long z = days + 719468;
+        long era = (z >= 0 ? z : z - 146096) / 146097;
+        long doe = z - era * 146097;
+        long yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
+        long y = yoe + era * 400;
+        long doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+        long mp = (5 * doy + 2) / 153;
+        long d = doy - (153 * mp + 2) / 5 + 1;
+        long m = mp + (mp < 10 ? 3 : -9);
+        return new int[]{(int) (y + (m <= 2 ? 1 : 0)), (int) m, (int) d};
+    }
+
     /** Read exactly length bytes, since an AsyncReader is free to return fewer.
      */
     static CompletableFuture<byte[]> readFully(AsyncReader source, byte[] res, int offset, int length) {

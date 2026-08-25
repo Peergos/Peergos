@@ -29,12 +29,45 @@ public class ZipReader {
     private final Supplier<CompletableFuture<AsyncReader>> source;
     private final long fileSize;
     private final ZipIndex index;
+    private final Directory cd;
 
     @JsIgnore
-    public ZipReader(Supplier<CompletableFuture<AsyncReader>> source, long fileSize, ZipIndex index) {
+    public ZipReader(Supplier<CompletableFuture<AsyncReader>> source, long fileSize, ZipIndex index, Directory cd) {
         this.source = source;
         this.fileSize = fileSize;
         this.index = index;
+        this.cd = cd;
+    }
+
+    /** Where the central directory starts, which is also where anything appended to the archive
+     *  goes, and how big it is.
+     */
+    @JsIgnore
+    public long getCentralDirectoryStart() {
+        return cd.start;
+    }
+
+    @JsIgnore
+    public long getCentralDirectorySize() {
+        return cd.size;
+    }
+
+    /** How far the archive's contents are shifted from what its own offsets say, when something
+     *  else is prepended to it.
+     */
+    @JsIgnore
+    public long getOffsetDelta() {
+        return cd.delta;
+    }
+
+    @JsIgnore
+    public long getFileSize() {
+        return fileSize;
+    }
+
+    @JsIgnore
+    public Supplier<CompletableFuture<AsyncReader>> getSource() {
+        return source;
     }
 
     public ZipIndex getIndex() {
@@ -134,7 +167,7 @@ public class ZipReader {
                                 int[] rejected = new int[1];
                                 return parseCentralDirectory(in, cd, rejected)
                                         .thenApply(entries -> new ZipReader(source, fileSize,
-                                                ZipIndex.build(entries, rejected[0])));
+                                                ZipIndex.build(entries, rejected[0]), cd));
                             });
                 }));
     }
@@ -145,7 +178,7 @@ public class ZipReader {
      *  record, so that an archive with data prepended - a self extracting exe, or a concatenation -
      *  still resolves. Every stored offset is then shifted by the same delta.
      */
-    private static class Directory {
+    static class Directory {
         final long start, size, entries, delta;
 
         Directory(long start, long size, long entries, long recordedOffset) {
