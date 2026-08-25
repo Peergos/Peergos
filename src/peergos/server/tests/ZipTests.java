@@ -289,6 +289,20 @@ public class ZipTests {
     }
 
     @Test
+    public void resetBeforeReading() {
+        // the upload path resets a reader before it reads anything from it
+        Map<String, byte[]> entries = new LinkedHashMap<>();
+        byte[] data = compressible(50_000, 31);
+        entries.put("a.txt", data);
+        ZipReader zip = build(entries, false, null).open();
+
+        ZipEntry entry = zip.getIndex().get("a.txt").get();
+        AsyncReader reader = zip.read(entry).join();
+        reader.reset().join();
+        assertArrayEquals(data, readAll(reader, entry.size));
+    }
+
+    @Test
     public void seekWithinAnEntry() {
         Map<String, byte[]> entries = new LinkedHashMap<>();
         byte[] deflated = compressible(200_000, 11);
