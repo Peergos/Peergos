@@ -18,6 +18,7 @@ public enum Command {
     ls("List contents of a remote directory, or of a zip archive.", "ls <-l> <path>", Set.of(Flag.LONG), Argument.REMOTE_FILE),
     lls("List contents of a local directory.", "lls <path>", Argument.LOCAL_FILE),
     rm("Remove a remote-file.", "rm remote-path", Argument.REMOTE_FILE),
+    mv("Rename or move a remote file, including inside a zip archive.", "mv remote-path new-name-or-path", Argument.REMOTE_FILE, Argument.REMOTE_FILE),
     space("Show used remote space."),
     get_follow_requests("Show the users that have sent you a follow request."),
     process_follow_request("Accept or reject a pending follow-request.", "process_follow_request pending-follower accept|accept-and-reciprocate|reject", Argument.PENDING_FOLLOW_REQUEST, Argument.PROCESS_FOLLOW_REQUEST),

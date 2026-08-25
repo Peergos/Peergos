@@ -125,9 +125,31 @@ public class ZipWriter {
                     Optional<ZipEntry> target = zip.getIndex().get(path);
                     if (! target.isPresent())
                         return Futures.errored(new IllegalStateException("No such entry in the archive: " + path));
+                    String parent = target.get().getParentPath();
+                    return moveEntry(archive, path, parent.isEmpty() ? newName : parent + "/" + newName,
+                            network, crypto, monitor);
+                });
+    }
+
+    /** Move an entry, or a directory of them, to another path within the same archive.
+     */
+    @JsIgnore
+    public static CompletableFuture<FileWrapper> moveEntry(FileWrapper archive,
+                                                           String path,
+                                                           String newPath,
+                                                           NetworkAccess network,
+                                                           Crypto crypto,
+                                                           ProgressConsumer<Long> monitor) {
+        Optional<String> normalised = ZipEntry.normalisePath(newPath);
+        if (! normalised.isPresent() || normalised.get().isEmpty())
+            return Futures.errored(new IllegalStateException("Invalid path in an archive: " + newPath));
+        String renamed = normalised.get();
+        return open(archive, network, crypto)
+                .thenCompose(zip -> {
+                    Optional<ZipEntry> target = zip.getIndex().get(path);
+                    if (! target.isPresent())
+                        return Futures.errored(new IllegalStateException("No such entry in the archive: " + path));
                     ZipEntry entry = target.get();
-                    String parent = entry.getParentPath();
-                    String renamed = parent.isEmpty() ? newName : parent + "/" + newName;
                     if (zip.getIndex().get(renamed).isPresent())
                         return Futures.errored(new IllegalStateException("Already in the archive: " + renamed));
                     if (entry.isDirectory)

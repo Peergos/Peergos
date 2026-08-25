@@ -160,6 +160,8 @@ public class CLI implements Runnable {
                     return mkdir(parsedCommand);
                 case rm:
                     return rm(parsedCommand);
+                case mv:
+                    return mv(parsedCommand);
                 case exit:
                 case quit:
                 case bye:
@@ -226,6 +228,27 @@ public class CLI implements Runnable {
                 .map(p -> p.getFileName().toString())
                 .sorted()
                 .collect(Collectors.joining("\n"));
+    }
+
+    /** The archive's file, fetched afresh: every write to an archive replaces it.
+     */
+    private FileWrapper archiveFile(ArchiveNavigator.Target target) {
+        return cliContext.userContext.getByPath(target.path.toString()).join()
+                .orElseThrow(() -> new IllegalStateException("Could not find " + target.path));
+    }
+
+    private void putInArchive(ArchiveNavigator.Target target, Path localPath, long size, PrintWriter writerForProgress) {
+        ProgressBar pb = new ProgressBar(new AtomicLong(0), new AtomicLong(1), target.path, localPath.getFileName().toString());
+        // the file is read twice, once to compress it and once to write it
+        ZipWriter.NewEntry entry = new ZipWriter.NewEntry(target.entry, size,
+                LocalDateTime.ofEpochSecond(localPath.toFile().lastModified() / 1000, 0, ZoneOffset.UTC),
+                () -> Futures.of(new FileAsyncReader(localPath.toFile())));
+        ZipWriter.append(archiveFile(target), Collections.singletonList(entry),
+                cliContext.userContext.network, cliContext.userContext.crypto,
+                bytes -> pb.update(writerForProgress, bytes, 2 * size)).join();
+        archives.forget();
+        writerForProgress.println();
+        writerForProgress.flush();
     }
 
     private ArchiveNavigator.Target resolve(Path remotePath) {
@@ -542,6 +565,11 @@ public class CLI implements Runnable {
             long size = file.length();
             Consumer<Long> progressConsumer = bytesSoFar -> pb.update(writerForProgress, bytesSoFar, size);
             FileAsyncReader reader = new FileAsyncReader(file);
+            Optional<ArchiveNavigator.Target> archive = archives.resolve(remotePath);
+            if (archive.isPresent() && archive.get().isInArchive()) {
+                putInArchive(archive.get(), localPath, size, writerForProgress);
+                return "Added " + localPath + " to " + archive.get().fullPath();
+            }
             boolean resumeUpload = cmd.flags.contains(Command.Flag.RESUME_UPLOAD.flag);
             peergosFileSystem.write(remotePath, reader, size, progressConsumer, resumeUpload);
             writerForProgress.println();
@@ -553,6 +581,10 @@ public class CLI implements Runnable {
     public String mkdir(ParsedCommand cmd) throws IOException {
         String remoteDirArg = cmd.firstArgument();
         Path remoteDirPath = cliContext.pwd.resolve(remoteDirArg);
+        Optional<ArchiveNavigator.Target> archive = archives.resolve(remoteDirPath);
+        if (archive.isPresent() && archive.get().isArchive())
+            return "Directories in an archive are implied by the paths of the files in it, so there is nothing to create."
+                    + " Put a file at " + remoteDirPath + "/<name> instead.";
         peergosFileSystem.mkdir(remoteDirPath);
 
         return "\nSuccessfully created " + remoteDirPath;
@@ -564,12 +596,23 @@ public class CLI implements Runnable {
 
         Path remotePath = resolvedRemotePath(cmd.firstArgument()).toAbsolutePath().normalize();
 
-        Stat stat;
-        try {
-            stat = peergosFileSystem.stat(remotePath);
-        } catch (Exception ex) {
-            throw new IllegalStateException("Could not find remote specified remote path '" + remotePath + "'", ex);
+        ArchiveNavigator.Target target = resolve(remotePath);
+        if (target.isInArchive()) {
+            ZipEntry entry = archives.entry(target);
+            if (entry.isDirectory) {
+                System.out.println("Delete " + remotePath + " and everything in it from the archive (Y/N)");
+                String res = System.console().readLine().toLowerCase();
+                if (! res.equals("y"))
+                    return "Aborting delete";
+            }
+            // the bytes are overwritten in place, not just unlisted
+            ZipWriter.remove(archiveFile(target), Collections.singletonList(entry.path), true,
+                    cliContext.userContext.network, cliContext.userContext.crypto, x -> {}).join();
+            archives.forget();
+            return "Deleted " + remotePath + " from the archive";
         }
+
+        Stat stat = target.stat;
 
         if (stat.fileProperties().isDirectory) {
             System.out.println("Delete directory and all contents of " + remotePath + " (Y/N)");
@@ -580,6 +623,50 @@ public class CLI implements Runnable {
 
         peergosFileSystem.delete(remotePath);
         return "Deleted " + remotePath;
+    }
+
+    public String mv(ParsedCommand cmd) {
+        if (! cmd.hasSecondArgument())
+            throw new IllegalStateException("Usage: " + Command.mv.example());
+        Path source = resolvedRemotePath(cmd.firstArgument()).toAbsolutePath().normalize();
+        String destinationArg = cmd.secondArgument();
+        // a bare name renames where the file is, anything with a slash says where to put it
+        Path destination = destinationArg.contains("/") ?
+                resolvedRemotePath(destinationArg).toAbsolutePath().normalize() :
+                source.getParent().resolve(destinationArg);
+
+        ArchiveNavigator.Target target = resolve(source);
+        if (target.isInArchive()) {
+            ArchiveNavigator.Target to = archives.resolve(destination)
+                    .orElseThrow(() -> new IllegalStateException("Could not find " + destination));
+            if (! to.path.equals(target.path))
+                throw new IllegalStateException("An entry can only be moved within its own archive."
+                        + " Copy it out with get, then put it where you want it.");
+            ZipWriter.moveEntry(archiveFile(target), target.entry, to.entry,
+                    cliContext.userContext.network, cliContext.userContext.crypto, x -> {}).join();
+            archives.forget();
+            return "Moved " + source + " to " + destination;
+        }
+
+        FileWrapper file = cliContext.userContext.getByPath(source.toString()).join()
+                .orElseThrow(() -> new IllegalStateException("Could not find " + source));
+        FileWrapper parent = cliContext.userContext.getByPath(source.getParent().toString()).join()
+                .orElseThrow(() -> new IllegalStateException("Could not find " + source.getParent()));
+        if (destination.getParent().equals(source.getParent())) {
+            file.rename(destination.getFileName().toString(), parent, source, cliContext.userContext).join();
+            return "Renamed " + source + " to " + destination.getFileName();
+        }
+        FileWrapper targetDir = cliContext.userContext.getByPath(destination.getParent().toString()).join()
+                .orElseThrow(() -> new IllegalStateException("Could not find " + destination.getParent()));
+        file.moveTo(targetDir, parent, source, cliContext.userContext, () -> Futures.of(false)).join();
+        if (! destination.getFileName().equals(source.getFileName())) {
+            FileWrapper moved = cliContext.userContext.getByPath(destination.getParent().resolve(source.getFileName()).toString()).join()
+                    .orElseThrow(() -> new IllegalStateException("Could not find the moved file"));
+            FileWrapper movedParent = cliContext.userContext.getByPath(destination.getParent().toString()).join().get();
+            moved.rename(destination.getFileName().toString(), movedParent,
+                    destination.getParent().resolve(source.getFileName()), cliContext.userContext).join();
+        }
+        return "Moved " + source + " to " + destination;
     }
 
     public String exit(ParsedCommand cmd) {

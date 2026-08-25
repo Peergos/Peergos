@@ -109,6 +109,13 @@ public class ArchiveNavigator {
         return zip;
     }
 
+    /** Forget the cached index, which a write to the archive has just made stale.
+     */
+    public synchronized void forget() {
+        cached = null;
+        cachedPath = null;
+    }
+
     /** The entry a path inside an archive points at.
      */
     public ZipEntry entry(Target target) {
