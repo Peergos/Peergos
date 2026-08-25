@@ -1535,6 +1535,19 @@ public class RamUserTests extends UserTests {
         Assert.assertTrue(testWithSystemUnzip(pasted), testWithSystemUnzip(pasted).contains("No errors detected"));
         Assert.assertArrayEquals(fromDrive,
                 readEntry(ZipReader.open(archive.get(), network, crypto).join(), "pasted/copied.txt"));
+
+        // an entry pasted within an archive reads the version we opened while the new one is written
+        ZipReader before = ZipReader.open(archive.get(), network, crypto).join();
+        peergos.shared.user.fs.archive.ZipEntry toCopy = before.getIndex().get("big.bin").get();
+        ZipWriter.append(archive.get(),
+                Arrays.asList(ZipWriter.entryFromArchiveJS("copy/big.bin", before, toCopy)),
+                network, crypto, x -> {}).join();
+        Path copied = dir.resolve("copied.zip");
+        Files.write(copied, readAll(archive.get(), network));
+        Assert.assertTrue(testWithSystemUnzip(copied), testWithSystemUnzip(copied).contains("No errors detected"));
+        ZipReader withCopy = ZipReader.open(archive.get(), network, crypto).join();
+        Assert.assertArrayEquals(noisy, readEntry(withCopy, "copy/big.bin"));
+        Assert.assertArrayEquals(noisy, readEntry(withCopy, "big.bin"));
     }
 
     private Path write(Path target, FileWrapper file) throws Exception {

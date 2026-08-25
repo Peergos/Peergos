@@ -675,6 +675,17 @@ public class ZipWriter {
                 () -> file.getInputStream(network, crypto, x -> {}).thenApply(reader -> (AsyncReader) reader));
     }
 
+    /** An entry to add taken from an archive, which is what pasting between two of them does, or
+     *  within one: reading the version we opened while a new one is written is what renaming an
+     *  entry already relies on. The bytes are inflated and compressed again, so the entry arrives
+     *  compressed however this archive would compress it rather than however the last one did.
+     */
+    public static NewEntry entryFromArchiveJS(String path, ZipReader source, ZipEntry entry) {
+        if (entry.isDirectory)
+            return NewEntry.directory(path, entry.modified);
+        return new NewEntry(path, entry.size, entry.modified, () -> source.read(entry));
+    }
+
     /** Add several entries in one rewrite of the tail, which is what uploading a directory does: a
      *  call per file would rewrite the tail once per file, and leave every earlier tail behind as
      *  dead weight in the archive.
