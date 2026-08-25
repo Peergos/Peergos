@@ -1347,7 +1347,8 @@ public class RamUserTests extends UserTests {
 
         Assert.assertEquals("big.bin\nlogs\nreadme.txt", cli.ls(CLI.fromLine("ls " + archive)));
         Assert.assertEquals("first.log\nsecond.log", cli.ls(CLI.fromLine("ls " + archive + "/logs")));
-        Assert.assertTrue(cli.ls(CLI.fromLine("ls -l " + archive)).contains("-r-    6.0 MiB"));
+        // an entry is writable when the archive holding it is, and this one is our own
+        Assert.assertTrue(cli.ls(CLI.fromLine("ls -l " + archive)).contains("-rw    6.0 MiB"));
 
         cli.cat(CLI.fromLine("cat " + archive + "/readme.txt"), writer);
         Assert.assertEquals("hello archive", sink.toString());
