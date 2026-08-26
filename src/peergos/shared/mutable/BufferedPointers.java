@@ -36,6 +36,7 @@ public class BufferedPointers implements MutablePointers {
     // during signup nothing is ever committed to the target, so the buffer is the only source of truth
     private final boolean commitsToTarget;
     private final Map<PublicKeyHash, SigningPrivateKeyAndPublicHash> writers = new HashMap<>();
+    private final Map<PublicKeyHash, PublicKeyHash> owners = new HashMap<>();
     private final Map<PublicKeyHash, WriterUpdate> latest = new HashMap<>();
     private final Map<PublicKeyHash, WriterUpdate> lastCommits = new LRUCache<>(20);
     private final List<WriterUpdate> writerUpdates = new ArrayList<>();
@@ -90,7 +91,12 @@ public class BufferedPointers implements MutablePointers {
         return new HashMap<>(writers);
     }
 
-    public PointerUpdate addWrite(SigningPrivateKeyAndPublicHash w,
+    public Optional<PublicKeyHash> getOwner(PublicKeyHash writer) {
+        return Optional.ofNullable(owners.get(writer));
+    }
+
+    public PointerUpdate addWrite(PublicKeyHash owner,
+                                  SigningPrivateKeyAndPublicHash w,
                                   MaybeMultihash newHash,
                                   MaybeMultihash prevHash,
                                   Optional<Long> prevSequence) {
@@ -100,6 +106,7 @@ public class BufferedPointers implements MutablePointers {
                 throw new IllegalStateException("Noop pointer update!");
             PublicKeyHash writer = w.publicKeyHash;
             writers.put(writer, w);
+            owners.put(writer, owner);
             if (writerUpdates.isEmpty()) {
                 writerUpdates.add(new WriterUpdate(writer, prevHash, newHash, PointerUpdate.increment(prevSequence)));
             } else {
@@ -156,7 +163,7 @@ public class BufferedPointers implements MutablePointers {
 
     @Override
     public CompletableFuture<Boolean> setPointer(PublicKeyHash owner, SigningPrivateKeyAndPublicHash writer, PointerUpdate casUpdate) {
-        addWrite(writer, casUpdate.updated, casUpdate.original, casUpdate.sequence);
+        addWrite(owner, writer, casUpdate.updated, casUpdate.original, casUpdate.sequence);
         return Futures.of(true);
     }
 
@@ -202,6 +209,7 @@ public class BufferedPointers implements MutablePointers {
 
     public void clear() {
         writers.clear();
+        owners.clear();
         mergedTargets.clear();
         synchronized (writerUpdates) {
             writerUpdates.clear();
