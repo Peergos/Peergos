@@ -5,6 +5,7 @@ import peergos.server.*;
 import peergos.server.storage.*;
 import peergos.server.util.*;
 import peergos.shared.*;
+import peergos.shared.crypto.hash.*;
 import peergos.shared.crypto.symmetric.*;
 import peergos.shared.display.*;
 import peergos.shared.mutable.*;
@@ -49,6 +50,38 @@ public class RequestCountTests {
     @BeforeClass
     public static void init() {
         service = Main.PKI_INIT.main(args).localApi;
+    }
+
+    @Test
+    public void writeGrantRequestCount() {
+        CryptreeNode.setMaxChildLinkPerBlob(500);
+        String password = "notagoodone";
+        UserContext context = PeergosNetworkUtils.ensureSignedUp(generateUsername(random), password, network, crypto);
+        int nFiles = 100;
+        Path dir = PathUtil.get(context.username, "shared-dir");
+        context.getUserRoot().join().mkdir("shared-dir", network, false, context.mirrorBatId(), crypto).join();
+        for (int i = 0; i < nFiles; i++) {
+            byte[] data = new byte[1024];
+            random.nextBytes(data);
+            context.getByPath(dir).join().get()
+                    .uploadOrReplaceFile("file-" + i, AsyncReader.build(data), data.length, network, crypto,
+                            () -> false, x -> {}).join();
+        }
+        AbsoluteCapability before = context.getByPath(dir).join().get().getPointer().capability;
+        PublicKeyHash homeWriter = context.getUserRoot().join().writer();
+
+        storageCounter.reset();
+        context.shareWriteAccessWith(dir, Collections.emptySet()).join();
+        int requests = storageCounter.requestTotal();
+        Assert.assertTrue("granting write access to " + nFiles + " files: " + requests, requests <= 160);
+
+        FileWrapper granted = context.getByPath(dir).join().get();
+        Assert.assertNotEquals("moved to its own writing space", homeWriter, granted.writer());
+        // granting access compromises no key, so the subtree is re-homed unchanged rather than rotated
+        AbsoluteCapability after = granted.getPointer().capability;
+        Assert.assertEquals(before.rBaseKey, after.rBaseKey);
+        Assert.assertArrayEquals(before.getMapKey(), after.getMapKey());
+        Assert.assertEquals(nFiles, granted.getChildren(crypto.hasher, network).join().size());
     }
 
     @Test

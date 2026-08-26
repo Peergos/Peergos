@@ -2344,12 +2344,10 @@ public class UserContext {
         //    in which case, just share a write cap
         //
         // b) file needs to be moved to a different signing key (along with its subtree)
-        // To do this atomically,
-        // 1) rotate all the keys as if we were revoking write access
+        // 1) move the subtree to a new signing key, keeping all its keys and blocks
         // 2) update parent pointer
         // 3) delete old subtree
         // 4) then reshare all sub sharees
-        System.out.println("Sharing write: " + parent.writer() + " child " + file.writer());
         ensureAllowedToShare(file, username, true);
         SigningPrivateKeyAndPublicHash currentSigner = file.signingPair();
         boolean changeSigner = currentSigner.publicKeyHash.equals(parent.signingPair().publicKeyHash);
@@ -2361,22 +2359,77 @@ public class UserContext {
         }
 
         return network.synchronizer.applyComplexUpdate(signer.publicKeyHash,
-                file.signingPair(), (s, c) -> rotateAllKeys(file, parent, true, s, c)
-                        .thenCompose(s2 -> getByPath(pathToFile.toString(), s2)
-                                .thenCompose(newFileOpt -> {
-                                    System.out.println("New child writer: " + newFileOpt.get().writer());
-                                    return sharedWithCache
-                                            .addSharedWith(SharedWithCache.Access.WRITE, pathToFile, writersToAdd, s2, c, network);
-                                })
+                file.signingPair(), (s, c) -> moveToNewWritingSpace(file, parent, s, c)
+                        .thenCompose(s2 -> sharedWithCache
+                                .addSharedWith(SharedWithCache.Access.WRITE, pathToFile, writersToAdd, s2, c, network)
                                 .thenCompose(s3 -> reSendAllSharesAndLinksRecursive(pathToFile, s3, c))
                         ));
+    }
+
+    /** Move a file/dir and its subtree into a new writing space, without rotating any keys.
+     *
+     *  Granting write access doesn't compromise any existing key, so the subtree's cryptree nodes
+     *  are re-homed under a new signing key unchanged, rather than being re-encrypted and rewritten.
+     *  Only the subtree root is rewritten, to hold the new signer link and to point at the link node
+     *  which is created in the parent's writing space to restrict rename access.
+     *
+     *  Revoking access is different, and still requires rotateAllKeys.
+     */
+    private CompletableFuture<Snapshot> moveToNewWritingSpace(FileWrapper file,
+                                                              FileWrapper parent,
+                                                              Snapshot initial,
+                                                              Committer c) {
+        PublicKeyHash owner = parent.owner();
+        SigningPrivateKeyAndPublicHash parentSigner = parent.signingPair();
+        WritableAbsoluteCapability parentCap = parent.writableFilePointer();
+        WritableAbsoluteCapability originalCap = file.writableFilePointer();
+        SigningPrivateKeyAndPublicHash originalSigner = file.signingPair();
+        AbsoluteCapability originalChildLink = file.isLink() ?
+                file.getLinkPointer().capability :
+                file.getPointer().capability;
+        FileProperties props = file.getFileProperties();
+
+        byte[] linkMapKey = crypto.random.randomBytes(RelativeCapability.MAP_KEY_LENGTH);
+        Optional<Bat> linkBat = Optional.of(Bat.random(crypto.random));
+        SymmetricKey linkParentKey = SymmetricKey.random();
+        WritableAbsoluteCapability linkCap = new WritableAbsoluteCapability(owner, parentCap.writer,
+                linkMapKey, linkBat, SymmetricKey.random(), SymmetricKey.random());
+        RelativeCapability newParentLink = new RelativeCapability(Optional.of(parentCap.writer),
+                linkMapKey, linkBat, linkParentKey, Optional.empty());
+
+        return CryptreeNode.initAndAuthoriseSigner(owner, parentSigner,
+                        SigningKeyPair.random(crypto.random, crypto.signer), network, initial, c)
+                .thenCompose(p -> {
+                    SigningPrivateKeyAndPublicHash newSigner = p.right;
+                    WritableAbsoluteCapability newCap = originalCap.withSigner(newSigner.publicKeyHash);
+                    SymmetricLinkToSigner signerLink = SymmetricLinkToSigner
+                            .fromPair(originalCap.wBaseKey.get(), newSigner);
+                    CryptreeNode newRoot = file.getPointer().fileAccess
+                            .withWriterLink(originalCap.rBaseKey, signerLink)
+                            .withParentLink(file.getParentKey(), newParentLink);
+                    return IpfsTransaction.call(owner, tid -> network.uploadChunk(p.left, c, newRoot, owner,
+                                            originalCap.getMapKey(), newSigner, tid)
+                                    .thenCompose(v -> FileWrapper.copyAllChunks(false, originalCap, newSigner,
+                                            tid, crypto.hasher, network, v, c)), network.dhtClient)
+                            .thenCompose(v -> CryptreeNode.createAndCommitLink(parent, newCap, props, linkCap,
+                                    linkParentKey, mirrorBatId(), crypto, network, v, c))
+                            .thenCompose(v -> parent.getPointer().fileAccess.updateChildLink(v, c, parentCap,
+                                    parentSigner, originalChildLink,
+                                    new NamedAbsoluteCapability(file.getName(), linkCap,
+                                            Optional.of(props.isDirectory),
+                                            Optional.of(props.mimeType),
+                                            Optional.of(props.created)),
+                                    network, crypto.random, crypto.hasher))
+                            .thenCompose(v -> IpfsTransaction.call(owner,
+                                    tid -> FileWrapper.deleteAllChunks(originalCap, originalSigner,
+                                            tid, crypto.hasher, network, v, c), network.dhtClient));
+                });
     }
 
     public CompletableFuture<Snapshot> sendWriteCapToAll(Path toFile, Set<String> writersToAdd, Snapshot s, Committer c) {
         if (writersToAdd.isEmpty())
             return Futures.of(s);
 
-        System.out.println("Resharing WRITE cap to " + toFile + " with " + writersToAdd);
         return getByPath(toFile.getParent().toString(), s)
                 .thenCompose(parent -> getByPath(toFile.toString(), s)
                         .thenCompose(fileOpt -> fileOpt.map(file -> sendWriteCapToAll(file, parent.get(), toFile, writersToAdd, s, c))
