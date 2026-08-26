@@ -5,6 +5,7 @@ import peergos.server.*;
 import peergos.server.storage.*;
 import peergos.server.util.*;
 import peergos.shared.*;
+import peergos.shared.crypto.hash.*;
 import peergos.shared.crypto.symmetric.*;
 import peergos.shared.display.*;
 import peergos.shared.mutable.*;
@@ -49,6 +50,77 @@ public class RequestCountTests {
     @BeforeClass
     public static void init() {
         service = Main.PKI_INIT.main(args).localApi;
+    }
+
+    @Test
+    public void writeGrantRequestCount() {
+        CryptreeNode.setMaxChildLinkPerBlob(500);
+        String password = "notagoodone";
+        UserContext context = PeergosNetworkUtils.ensureSignedUp(generateUsername(random), password, network, crypto);
+        int nFiles = 100;
+        Path dir = PathUtil.get(context.username, "shared-dir");
+        context.getUserRoot().join().mkdir("shared-dir", network, false, context.mirrorBatId(), crypto).join();
+        for (int i = 0; i < nFiles; i++) {
+            byte[] data = new byte[1024];
+            random.nextBytes(data);
+            context.getByPath(dir).join().get()
+                    .uploadOrReplaceFile("file-" + i, AsyncReader.build(data), data.length, network, crypto,
+                            () -> false, x -> {}).join();
+        }
+        AbsoluteCapability before = context.getByPath(dir).join().get().getPointer().capability;
+        PublicKeyHash homeWriter = context.getUserRoot().join().writer();
+
+        storageCounter.reset();
+        context.shareWriteAccessWith(dir, Collections.emptySet()).join();
+        int requests = storageCounter.requestTotal();
+        Assert.assertTrue("granting write access to " + nFiles + " files: " + requests, requests <= 160);
+
+        FileWrapper granted = context.getByPath(dir).join().get();
+        Assert.assertNotEquals("moved to its own writing space", homeWriter, granted.writer());
+        // granting access compromises no key, so the subtree is re-homed unchanged rather than rotated
+        AbsoluteCapability after = granted.getPointer().capability;
+        Assert.assertEquals(before.rBaseKey, after.rBaseKey);
+        Assert.assertArrayEquals(before.getMapKey(), after.getMapKey());
+        Assert.assertEquals(nFiles, granted.getChildren(crypto.hasher, network).join().size());
+    }
+
+    @Test
+    public void nestedWritingSpaceSurvivesParentGrant() {
+        CryptreeNode.setMaxChildLinkPerBlob(500);
+        String password = "notagoodone";
+        UserContext context = PeergosNetworkUtils.ensureSignedUp(generateUsername(random), password, network, crypto);
+        Path folder = PathUtil.get(context.username, "folder");
+        Path subdir = folder.resolve("subdir");
+        context.getUserRoot().join().mkdir("folder", network, false, context.mirrorBatId(), crypto).join();
+        context.getByPath(folder).join().get().mkdir("subdir", network, false, context.mirrorBatId(), crypto).join();
+        byte[] data = "nested payload".getBytes();
+        context.getByPath(subdir).join().get()
+                .uploadOrReplaceFile("deep.txt", AsyncReader.build(data), data.length, network, crypto,
+                        () -> false, x -> {}).join();
+
+        context.shareWriteAccessWith(subdir, Collections.emptySet()).join();
+        PublicKeyHash nestedWriter = context.getByPath(subdir).join().get().writer();
+
+        // moving the parent into its own writing space must leave the nested one alone
+        context.shareWriteAccessWith(folder, Collections.emptySet()).join();
+        PublicKeyHash folderWriter = context.getByPath(folder).join().get().writer();
+
+        FileWrapper nested = context.getByPath(subdir).join()
+                .orElseThrow(() -> new AssertionError("nested writing space survives the parent grant"));
+        Assert.assertEquals("nested writer is untouched", nestedWriter, nested.writer());
+        Assert.assertTrue(nested.isWritable());
+        Assert.assertEquals(1, nested.getChildren(crypto.hasher, network).join().size());
+        Assert.assertEquals("/" + subdir, nested.getPath(network).join());
+        Assert.assertTrue("nested writer re-parented onto the new writer",
+                isOwnedBy(context, folderWriter, nestedWriter));
+        Assert.assertFalse("nested writer no longer owned by home",
+                isOwnedBy(context, context.getUserRoot().join().writer(), nestedWriter));
+    }
+
+    private boolean isOwnedBy(UserContext context, PublicKeyHash parent, PublicKeyHash child) {
+        return UserContext.getWriterData(network, context.signer.publicKeyHash, parent).join()
+                .props.get().directOwnedKeys(context.signer.publicKeyHash, network.dhtClient, crypto.hasher)
+                .join().contains(child);
     }
 
     @Test

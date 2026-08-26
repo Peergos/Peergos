@@ -2574,7 +2574,8 @@ public CompletableFuture<Boolean> copyTo(FileWrapper target, UserContext context
         network.synchronizer.putEmpty(owner, signer.publicKeyHash);
         return network.synchronizer.applyComplexUpdate(owner, signer, (version, committer) -> IpfsTransaction.call(owner,
                 tid -> network.uploadChunk(version, committer, newFileAccess, owner, getPointer().capability.getMapKey(), signer, tid)
-                        .thenCompose(newVersion -> copyAllChunks(false, cap, signer, hasher, network, newVersion, committer))
+                        .thenCompose(newVersion -> copyAllChunks(false, cap, signer, tid, hasher, network,
+                                new MovedSubtree(), newVersion, committer))
                         .thenCompose(copiedVersion -> copiedVersion.withWriter(owner, parent.writer(), network))
                         .thenCompose(withParent -> parent.getPointer().fileAccess
                                 .updateChildLink(withParent, committer, parent.writableFilePointer(),
@@ -2589,7 +2590,26 @@ public CompletableFuture<Boolean> copyTo(FileWrapper target, UserContext context
                 .thenApply(updatedUs -> new Pair<>(updatedUs.get(), updatedParent))));
     }
 
-    /** This copies all the cryptree nodes from one signing key to another for a file or subtree
+    /** The result of moving a subtree to a new signing key: the source locations that were moved,
+     *  along with their values in the source CHAMP, and the roots of any nested writing spaces,
+     *  which are left untouched and must be re-parented onto the new signing key by the caller.
+     */
+    public static class MovedSubtree {
+        public final List<Pair<byte[], Optional<Bat>>> moved = new ArrayList<>();
+        public final Map<ByteArrayWrapper, MaybeMultihash> movedValues = new HashMap<>();
+        public final List<AbsoluteCapability> nestedWritingSpaces = new ArrayList<>();
+
+        private void record(AbsoluteCapability cap, CryptreeNode chunk) {
+            moved.add(new Pair<>(cap.getMapKey(), cap.bat));
+            MaybeMultihash existing = chunk.committedHash();
+            if (existing.isPresent())
+                movedValues.put(new ByteArrayWrapper(cap.getMapKey()), existing);
+        }
+    }
+
+    /** This copies all the cryptree nodes from one signing key to another for a file or subtree.
+     *  The traversal stops at a nested writing space, whose blocks belong to a different signing
+     *  key and must not be moved.
      *
      * @param includeFirst
      * @param currentCap
@@ -2597,13 +2617,15 @@ public CompletableFuture<Boolean> copyTo(FileWrapper target, UserContext context
      * @param network
      * @return
      */
-    private static CompletableFuture<Snapshot> copyAllChunks(boolean includeFirst,
-                                                             AbsoluteCapability currentCap,
-                                                             SigningPrivateKeyAndPublicHash targetSigner,
-                                                             Hasher hasher,
-                                                             NetworkAccess network,
-                                                             Snapshot initialVersion,
-                                                             Committer committer) {
+    public static CompletableFuture<Snapshot> copyAllChunks(boolean includeFirst,
+                                                            AbsoluteCapability currentCap,
+                                                            SigningPrivateKeyAndPublicHash targetSigner,
+                                                            TransactionId tid,
+                                                            Hasher hasher,
+                                                            NetworkAccess network,
+                                                            MovedSubtree res,
+                                                            Snapshot initialVersion,
+                                                            Committer committer) {
 
         return initialVersion.withWriter(currentCap.owner, currentCap.writer, network)
                 .thenCompose(version -> network.getMetadata(version.get(currentCap.writer), currentCap)
@@ -2611,33 +2633,65 @@ public CompletableFuture<Boolean> copyTo(FileWrapper target, UserContext context
                             if (! mOpt.isPresent()) {
                                 return CompletableFuture.completedFuture(version);
                             }
-                            return (includeFirst ?
-                                    IpfsTransaction.call(currentCap.owner,
-                                            tid -> network.addPreexistingChunk(mOpt.get(), currentCap.owner, currentCap.getMapKey(),
-                                                    targetSigner, tid, version, committer), network.dhtClient) :
-                                    CompletableFuture.completedFuture(version))
-                                    .thenCompose(updated -> {
-                                        CryptreeNode chunk = mOpt.get();
-                                        Optional<byte[]> streamSecret = chunk.getProperties(chunk
-                                                .getParentKey(currentCap.rBaseKey)).streamSecret;
-                                        return chunk.getNextChunkLocation(currentCap.rBaseKey,
-                                                streamSecret, currentCap.getMapKey(), currentCap.bat, hasher)
-                                                .thenCompose(nextChunkMapKeyAndBat ->
-                                                        copyAllChunks(true, currentCap.withMapKey(nextChunkMapKeyAndBat.left, nextChunkMapKeyAndBat.right),
-                                                                targetSigner, hasher, network, updated, committer));
-                                    })
-                                    .thenCompose(updatedVersion -> {
-                                        if (! mOpt.get().isDirectory())
-                                            return CompletableFuture.completedFuture(updatedVersion);
-                                        return mOpt.get().getDirectChildrenCapabilities(currentCap, updatedVersion, network)
-                                                .thenCompose(childCaps ->
-                                                        Futures.reduceAll(childCaps,
-                                                                updatedVersion,
-                                                                (v, cap) -> copyAllChunks(true, cap.cap,
-                                                                        targetSigner, hasher, network, v, committer),
-                                                                (x, y) -> y));
-                                    });
+                            return copyAllChunks(includeFirst, currentCap, mOpt.get(), targetSigner, tid, hasher,
+                                    network, res, version, committer);
                         }));
+    }
+
+    private static CompletableFuture<Snapshot> copyAllChunks(boolean includeFirst,
+                                                             AbsoluteCapability currentCap,
+                                                             CryptreeNode chunk,
+                                                             SigningPrivateKeyAndPublicHash targetSigner,
+                                                             TransactionId tid,
+                                                             Hasher hasher,
+                                                             NetworkAccess network,
+                                                             MovedSubtree res,
+                                                             Snapshot version,
+                                                             Committer committer) {
+        FileProperties props = chunk.getProperties(chunk.getParentKey(currentCap.rBaseKey));
+        Optional<byte[]> streamSecret = props.streamSecret;
+        boolean normalFile = ! chunk.isDirectory() && streamSecret.isPresent();
+        res.record(currentCap, chunk);
+        return (includeFirst ?
+                network.addPreexistingChunk(chunk, currentCap.owner, currentCap.getMapKey(),
+                        targetSigner, tid, version, committer) :
+                CompletableFuture.completedFuture(version))
+                .thenCompose(updated -> {
+                    if (normalFile) {
+                        // the chunk count tells us the locations, so there is no need to probe for them
+                        if (props.chunkCount() <= 1)
+                            return CompletableFuture.completedFuture(updated);
+                        return getAllChunkLocations(currentCap.getMapKey(), currentCap.bat, streamSecret.get(),
+                                props.chunkCount(), hasher)
+                                .thenCompose(labels -> copyChunks(labels.subList(1, labels.size()), currentCap,
+                                        targetSigner, tid, network, res, updated, committer));
+                    }
+                    return chunk.getNextChunkLocation(currentCap.rBaseKey,
+                            streamSecret, currentCap.getMapKey(), currentCap.bat, hasher)
+                            .thenCompose(nextChunkMapKeyAndBat ->
+                                    copyAllChunks(true, currentCap.withMapKey(nextChunkMapKeyAndBat.left, nextChunkMapKeyAndBat.right),
+                                            targetSigner, tid, hasher, network, res, updated, committer));
+                })
+                .thenCompose(updatedVersion -> {
+                    if (! chunk.isDirectory())
+                        return CompletableFuture.completedFuture(updatedVersion);
+                    return chunk.getDirectChildrenCapabilities(currentCap, updatedVersion, network)
+                            .thenCompose(childCaps -> {
+                                List<AbsoluteCapability> sameSpace = new ArrayList<>();
+                                for (NamedAbsoluteCapability child : childCaps) {
+                                    if (child.cap.writer.equals(currentCap.writer))
+                                        sameSpace.add(child.cap);
+                                    else
+                                        res.nestedWritingSpaces.add(child.cap);
+                                }
+                                return network.retrieveAllMetadata(sameSpace, updatedVersion)
+                                        .thenCompose(retrieved -> Futures.reduceAll(retrieved.left,
+                                                updatedVersion,
+                                                (v, child) -> copyAllChunks(true, child.capability, child.fileAccess,
+                                                        targetSigner, tid, hasher, network, res, v, committer),
+                                                (x, y) -> y));
+                            });
+                });
     }
 
     public static CompletableFuture<Snapshot> deleteAllChunks(WritableAbsoluteCapability currentCap,
@@ -2764,6 +2818,27 @@ public CompletableFuture<Boolean> copyTo(FileWrapper target, UserContext context
                                                                 Committer c) {
         return getAllChunkLocations(startCap.getMapKey(), startCap.bat, streamSecret, nChunks, hasher)
                 .thenCompose(labels -> network.deleteAllChunksIfPresent(current, c, startCap.owner, ourSigner, labels, tid));
+    }
+
+    private static CompletableFuture<Snapshot> copyChunks(List<Pair<byte[], Optional<Bat>>> labels,
+                                                          AbsoluteCapability firstCap,
+                                                          SigningPrivateKeyAndPublicHash targetSigner,
+                                                          TransactionId tid,
+                                                          NetworkAccess network,
+                                                          MovedSubtree res,
+                                                          Snapshot version,
+                                                          Committer committer) {
+        List<AbsoluteCapability> caps = labels.stream()
+                .map(l -> firstCap.withMapKey(l.left, l.right))
+                .collect(Collectors.toList());
+        return network.retrieveAllMetadata(caps, version)
+                .thenCompose(retrieved -> Futures.reduceAll(retrieved.left, version,
+                        (v, c) -> {
+                            res.record(c.capability, c.fileAccess);
+                            return network.addPreexistingChunk(c.fileAccess, firstCap.owner,
+                                    c.capability.getMapKey(), targetSigner, tid, v, committer);
+                        },
+                        (x, y) -> y));
     }
 
     private static CompletableFuture<List<Pair<byte[], Optional<Bat>>>> getAllChunkLocations(byte[] first,

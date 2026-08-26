@@ -820,8 +820,9 @@ public class NetworkAccess {
                                                            Snapshot current,
                                                            Committer committer) {
         CommittedWriterData version = current.get(writer);
-        return tree.put(version.props.get(), owner, writer, mapKey, metadata.committedHash(), metadata.committedHash().get(), tid)
-                .thenCompose(wd -> committer.commit(owner, writer, wd, version, tid));
+        return tree.put(version.props.get(), owner, writer, mapKey, MaybeMultihash.empty(), metadata.committedHash().get(), tid)
+                .thenCompose(wd -> committer.commit(owner, writer, wd, version, tid))
+                .thenApply(committed -> current.withVersion(writer.publicKeyHash, committed.get(writer)));
     }
 
     public CompletableFuture<Snapshot> deleteChunk(Snapshot current,

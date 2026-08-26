@@ -359,32 +359,31 @@ public class BufferedStorage extends DelegatingStorage {
 
     public void gc(List<Cid> roots) {
         synchronized (storage) {
-            List<Cid> all = new ArrayList<>(storage.keySet());
-            List<Boolean> reachable = new ArrayList<>();
-            for (int i = 0; i < all.size(); i++)
-                reachable.add(false);
+            Set<Cid> reachable = new HashSet<>();
             for (Cid root : roots) {
-                markReachable(root, reachable, all, storage);
+                markReachable(root, reachable, storage);
             }
-            for (int i = 0; i < all.size(); i++) {
-                if (!reachable.get(i))
-                    storage.remove(all.get(i));
-            }
+            if (reachable.size() == storage.size())
+                return;
+            List<Cid> unreachable = storage.keySet().stream()
+                    .filter(c -> ! reachable.contains(c))
+                    .collect(Collectors.toList());
+            unreachable.forEach(storage::remove);
         }
     }
 
-    private static void markReachable(Cid current, List<Boolean> reachable, List<Cid> all, Map<Cid, OpLog.BlockWrite> storage) {
+    private static void markReachable(Cid current, Set<Cid> reachable, Map<Cid, OpLog.BlockWrite> storage) {
         OpLog.BlockWrite block = storage.get(current);
         if (block == null)
             return;
-        int index = all.indexOf(current);
-        reachable.set(index, true);
+        if (! reachable.add(current))
+            return;
 
         if (current.isRaw())
             return;
         List<Multihash> links = CborObject.fromByteArray(block.block).links();
         for (Multihash link : links) {
-            markReachable((Cid)link, reachable, all, storage);
+            markReachable((Cid)link, reachable, storage);
         }
     }
 
