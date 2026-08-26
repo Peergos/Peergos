@@ -175,24 +175,52 @@ public class WriterData implements Cborable {
                                               ContentAddressedStorage ipfs,
                                               MutablePointers mutable,
                                               Hasher hasher) {
-        return getOwnedKeyChamp(identityKey, ipfs, hasher)
-                .thenCompose(champ -> champ.get(identityKey, ownedKey)
-                        .thenApply(Optional::isPresent)
-                        .thenCompose(direct -> {
-                            if (direct)
-                                return Futures.of(true);
-                            return champ.applyToAllMappings(identityKey, false,
-                                    (b, p) -> {
-                                        if (b) // exit early if we find a match
-                                            return Futures.of(b);
-                                        PublicKeyHash childKey = p.left;
-                                        return UserContext.getWriterDataIfPresent(ipfs, mutable, identityKey, childKey)
-                                                .thenCompose(wd -> wd.flatMap(cwd -> cwd.props)
-                                                        .map(w -> w.ownsKey(identityKey, ownedKey, ipfs, mutable, hasher))
-                                                        .orElse(Futures.of(false)));
-                                    },
-                                    ipfs);
-                        }));
+        Set<PublicKeyHash> visited = new HashSet<>();
+        visited.add(identityKey);
+        return ownsKey(identityKey, ownedKey, Collections.singletonList(this), visited, ipfs, mutable, hasher);
+    }
+
+    private static CompletableFuture<Boolean> ownsKey(PublicKeyHash identityKey,
+                                                      PublicKeyHash ownedKey,
+                                                      List<WriterData> generation,
+                                                      Set<PublicKeyHash> visited,
+                                                      ContentAddressedStorage ipfs,
+                                                      MutablePointers mutable,
+                                                      Hasher hasher) {
+        if (generation.isEmpty())
+            return Futures.of(false);
+        return Futures.combineAllInOrder(generation.stream()
+                        .map(wd -> wd.directOwnedKeys(identityKey, ipfs, hasher))
+                        .collect(Collectors.toList()))
+                .thenCompose(owned -> {
+                    Set<PublicKeyHash> all = owned.stream()
+                            .flatMap(Set::stream)
+                            .collect(Collectors.toSet());
+                    if (all.contains(ownedKey))
+                        return Futures.of(true);
+                    List<PublicKeyHash> children = all.stream()
+                            .filter(visited::add)
+                            .collect(Collectors.toList());
+                    return Futures.combineAllInOrder(children.stream()
+                                    // a writer with no pointer was authorised, but never written to, so owns nothing
+                                    .map(child -> UserContext.getWriterDataIfPresent(ipfs, mutable, identityKey, child))
+                                    .collect(Collectors.toList()))
+                            .thenCompose(next -> ownsKey(identityKey, ownedKey, next.stream()
+                                    .filter(Optional::isPresent)
+                                    .map(Optional::get)
+                                    .filter(cwd -> cwd.props.isPresent())
+                                    .map(cwd -> cwd.props.get())
+                                    .collect(Collectors.toList()), visited, ipfs, mutable, hasher));
+                });
+    }
+
+    public CompletableFuture<Set<PublicKeyHash>> directOwnedKeys(PublicKeyHash owner,
+                                                                 ContentAddressedStorage ipfs,
+                                                                 Hasher hasher) {
+        return applyToOwnedKeys(owner, champ -> champ.applyToAllMappings(owner, Collections.<PublicKeyHash>emptySet(),
+                        (acc, p) -> Futures.of(Stream.concat(acc.stream(), Stream.of(p.left)).collect(Collectors.toSet())),
+                        ipfs),
+                ipfs, hasher);
     }
 
     public CompletableFuture<OwnedKeyChamp> getOwnedKeyChamp(PublicKeyHash owner, ContentAddressedStorage ipfs, Hasher hasher) {

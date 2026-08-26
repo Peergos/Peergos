@@ -240,6 +240,17 @@ public class SharedWithCache {
         return p.getName(p.getNameCount() - 1).toString();
     }
 
+    public CompletableFuture<Map<Path, SharedWithState>> getAllShares(String username, Snapshot in) {
+        if (base == null) // in a secret link
+            return Futures.of(Collections.emptyMap());
+        return in.withWriter(base.owner(), base.writer(), network)
+                .thenCompose(s -> base.getUpdated(base.version.mergeAndOverwriteWith(s), network))
+                .thenCompose(freshBase -> freshBase.getChild(username, crypto.hasher, network))
+                .thenCompose(opt -> opt.isEmpty() ?
+                        Futures.of(Collections.emptyMap()) :
+                        getAllDescendantSharesRecurse(opt.get(), PathUtil.get(username)));
+    }
+
     public CompletableFuture<Map<Path, SharedWithState>> getAllDescendantShares(Path start, Snapshot in) {
         if (base == null) // in a secret link
             return Futures.of(Collections.emptyMap());
