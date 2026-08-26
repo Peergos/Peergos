@@ -85,6 +85,45 @@ public class RequestCountTests {
     }
 
     @Test
+    public void nestedWritingSpaceSurvivesParentGrant() {
+        CryptreeNode.setMaxChildLinkPerBlob(500);
+        String password = "notagoodone";
+        UserContext context = PeergosNetworkUtils.ensureSignedUp(generateUsername(random), password, network, crypto);
+        Path folder = PathUtil.get(context.username, "folder");
+        Path subdir = folder.resolve("subdir");
+        context.getUserRoot().join().mkdir("folder", network, false, context.mirrorBatId(), crypto).join();
+        context.getByPath(folder).join().get().mkdir("subdir", network, false, context.mirrorBatId(), crypto).join();
+        byte[] data = "nested payload".getBytes();
+        context.getByPath(subdir).join().get()
+                .uploadOrReplaceFile("deep.txt", AsyncReader.build(data), data.length, network, crypto,
+                        () -> false, x -> {}).join();
+
+        context.shareWriteAccessWith(subdir, Collections.emptySet()).join();
+        PublicKeyHash nestedWriter = context.getByPath(subdir).join().get().writer();
+
+        // moving the parent into its own writing space must leave the nested one alone
+        context.shareWriteAccessWith(folder, Collections.emptySet()).join();
+        PublicKeyHash folderWriter = context.getByPath(folder).join().get().writer();
+
+        FileWrapper nested = context.getByPath(subdir).join()
+                .orElseThrow(() -> new AssertionError("nested writing space survives the parent grant"));
+        Assert.assertEquals("nested writer is untouched", nestedWriter, nested.writer());
+        Assert.assertTrue(nested.isWritable());
+        Assert.assertEquals(1, nested.getChildren(crypto.hasher, network).join().size());
+        Assert.assertEquals("/" + subdir, nested.getPath(network).join());
+        Assert.assertTrue("nested writer re-parented onto the new writer",
+                isOwnedBy(context, folderWriter, nestedWriter));
+        Assert.assertFalse("nested writer no longer owned by home",
+                isOwnedBy(context, context.getUserRoot().join().writer(), nestedWriter));
+    }
+
+    private boolean isOwnedBy(UserContext context, PublicKeyHash parent, PublicKeyHash child) {
+        return UserContext.getWriterData(network, context.signer.publicKeyHash, parent).join()
+                .props.get().directOwnedKeys(context.signer.publicKeyHash, network.dhtClient, crypto.hasher)
+                .join().contains(child);
+    }
+
+    @Test
     public void socialFeedRequestCount() {
         CryptreeNode.setMaxChildLinkPerBlob(10);
         String password = "notagoodone";

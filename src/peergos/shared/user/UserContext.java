@@ -2407,23 +2407,61 @@ public class UserContext {
                     CryptreeNode newRoot = file.getPointer().fileAccess
                             .withWriterLink(originalCap.rBaseKey, signerLink)
                             .withParentLink(file.getParentKey(), newParentLink);
+                    FileWrapper.MovedSubtree moved = new FileWrapper.MovedSubtree();
                     return IpfsTransaction.call(owner, tid -> network.uploadChunk(p.left, c, newRoot, owner,
                                             originalCap.getMapKey(), newSigner, tid)
                                     .thenCompose(v -> FileWrapper.copyAllChunks(false, originalCap, newSigner,
-                                            tid, crypto.hasher, network, v, c)), network.dhtClient)
-                            .thenCompose(v -> CryptreeNode.createAndCommitLink(parent, newCap, props, linkCap,
-                                    linkParentKey, mirrorBatId(), crypto, network, v, c))
-                            .thenCompose(v -> parent.getPointer().fileAccess.updateChildLink(v, c, parentCap,
-                                    parentSigner, originalChildLink,
-                                    new NamedAbsoluteCapability(file.getName(), linkCap,
-                                            Optional.of(props.isDirectory),
-                                            Optional.of(props.mimeType),
-                                            Optional.of(props.created)),
-                                    network, crypto.random, crypto.hasher))
-                            .thenCompose(v -> IpfsTransaction.call(owner,
-                                    tid -> FileWrapper.deleteAllChunks(originalCap, originalSigner,
-                                            tid, crypto.hasher, network, v, c), network.dhtClient));
+                                            tid, crypto.hasher, network, moved, v, c))
+                                    .thenCompose(v -> reparentNestedWritingSpaces(moved.nestedWritingSpaces, owner,
+                                            originalSigner, newSigner, tid, v, c))
+                                    .thenCompose(v -> CryptreeNode.createAndCommitLink(parent, newCap, props, linkCap,
+                                            linkParentKey, mirrorBatId(), crypto, network, v, c))
+                                    .thenCompose(v -> parent.getPointer().fileAccess.updateChildLink(v, c, parentCap,
+                                            parentSigner, originalChildLink,
+                                            new NamedAbsoluteCapability(file.getName(), linkCap,
+                                                    Optional.of(props.isDirectory),
+                                                    Optional.of(props.mimeType),
+                                                    Optional.of(props.created)),
+                                            network, crypto.random, crypto.hasher))
+                                    .thenCompose(v -> network.deleteAllChunksIfPresent(v, c, owner, originalSigner,
+                                            moved.moved, moved.movedValues, tid)), network.dhtClient);
                 });
+    }
+
+    /** A writing space nested inside the moved subtree keeps all its blocks and its signing key.
+     *  Only its link to its parent, and which key owns it, change.
+     */
+    private CompletableFuture<Snapshot> reparentNestedWritingSpaces(List<AbsoluteCapability> nested,
+                                                                    PublicKeyHash owner,
+                                                                    SigningPrivateKeyAndPublicHash oldParent,
+                                                                    SigningPrivateKeyAndPublicHash newParent,
+                                                                    TransactionId tid,
+                                                                    Snapshot initial,
+                                                                    Committer c) {
+        return Futures.reduceAll(nested, initial,
+                (v, cap) -> v.withWriter(owner, cap.writer, network)
+                        .thenCompose(withChild -> network.getMetadata(withChild.get(cap.writer), cap)
+                                .thenCompose(mOpt -> {
+                                    if (mOpt.isEmpty())
+                                        return Futures.of(withChild);
+                                    CryptreeNode child = mOpt.get();
+                                    SigningPrivateKeyAndPublicHash childSigner = child.getSigner(cap.rBaseKey,
+                                            cap.wBaseKey.get(), Optional.of(oldParent));
+                                    RelativeCapability toParent = child.getParentCapability(cap.rBaseKey)
+                                            .orElseThrow(() -> new IllegalStateException("Nested writing space with no parent link!"))
+                                            .withWritingKey(Optional.of(newParent.publicKeyHash));
+                                    CryptreeNode updated = child.withParentLink(child.getParentKey(cap.rBaseKey), toParent);
+                                    return network.uploadChunk(withChild, c, updated, owner, cap.getMapKey(), childSigner, tid)
+                                            .thenCompose(v2 -> OwnerProof.build(childSigner, newParent.publicKeyHash)
+                                                    .thenCompose(proof -> v2.get(newParent).props.get()
+                                                            .addOwnedKeyAndCommit(owner, newParent, proof,
+                                                                    v2.get(newParent).hash, v2.get(newParent).sequence,
+                                                                    network, c, tid)
+                                                            .thenApply(v2::mergeAndOverwriteWith)))
+                                            .thenCompose(v3 -> CryptreeNode.deAuthoriseSigner(owner, oldParent,
+                                                    childSigner.publicKeyHash, network, v3, c));
+                                })),
+                (a, b) -> b);
     }
 
     public CompletableFuture<Snapshot> sendWriteCapToAll(Path toFile, Set<String> writersToAdd, Snapshot s, Committer c) {
