@@ -156,7 +156,7 @@ public class UserContext {
                                                         Consumer<String> progressCallback) {
         return Futures.asyncExceptionally(() -> getWriterDataCbor(network, username),
                 e ->  {
-                    if (e.getMessage().contains("hash not present"))
+                    if (e.getMessage().contains("hash not present") || e.getMessage().contains("No pointer present for writer"))
                         return Futures.errored(new IllegalStateException("User has been deleted. Did you mean a different username?"));
                     else if (e.getMessage().contains("No public-key for user"))
                         return Futures.errored(new IllegalStateException("Unknown username. Did you enter it correctly?"));
@@ -596,7 +596,7 @@ public class UserContext {
             Consumer<String> progressCallback) {
         return Futures.asyncExceptionally(() -> getWriterDataCbor(network, username),
                 e ->  {
-                    if (e.getMessage().contains("hash not present"))
+                    if (e.getMessage().contains("hash not present") || e.getMessage().contains("No pointer present for writer"))
                         return Futures.errored(new IllegalStateException("User has been deleted. Did you mean a different username?"));
                     else if (e.getMessage().contains("No public-key for user"))
                         return Futures.errored(new IllegalStateException("Unknown username. Did you enter it correctly?"));
@@ -921,7 +921,13 @@ public class UserContext {
         Path toFile = PathUtil.get(filePath);
         if (! isWritable)
             return updateSecretLink(filePath, props);
-        return getByPath(toFile.getParent())
+        // an interrupted authorisation leaves an owned writer with no pointer, so clear any before adding another
+        return removeOrphanedWriters()
+                .exceptionally(t -> {
+                    LOG.log(Level.WARNING, "Couldn't remove orphaned writers: " + t.getMessage(), t);
+                    return 0;
+                })
+                .thenCompose(removed -> getByPath(toFile.getParent()))
                 .thenCompose(parent -> parent.get().getChild(toFile.getFileName().toString(), crypto.hasher, network)
                         .thenCompose(fopt -> shareWriteAccessWith(toFile, Collections.emptySet())))
                 .thenCompose(s -> writeSynchronizer.applyComplexComputation(signer.publicKeyHash, signer, (v, c) -> updateSecretLink(filePath, props, v.mergeAndOverwriteWith(s), c)))
@@ -2890,10 +2896,13 @@ public class UserContext {
                                                                                         PublicKeyHash owner,
                                                                                         PublicKeyHash writer) {
         return getPointerUpdate(ipfs, mutable, owner, writer)
-                .thenCompose(pointer -> ipfs.get(owner, (Cid)pointer.updated.get(), Optional.empty())
-                        .thenApply(Optional::get)
-                        .thenApply(cbor -> new Pair<>(pointer, cbor))
-                );
+                .thenCompose(pointer -> {
+                    if (! pointer.updated.isPresent())
+                        throw new IllegalStateException("No pointer present for writer " + writer);
+                    return ipfs.get(owner, (Cid) pointer.updated.get(), Optional.empty())
+                            .thenApply(Optional::get)
+                            .thenApply(cbor -> new Pair<>(pointer, cbor));
+                });
     }
 
     public static CompletableFuture<Optional<CommittedWriterData>> getWriterDataIfPresent(ContentAddressedStorage ipfs,
@@ -3038,6 +3047,87 @@ public class UserContext {
     @JsMethod
     public CompletableFuture<Snapshot> cleanPartialUploads() {
         return cleanPartialUploads(t -> true);
+    }
+
+    /** Remove any writer that is owned by one of ours, but has no mutable pointer. Such a writer was authorised,
+     *  but then never written to, which is what an interrupted authorisation leaves behind.
+     *
+     * @return the number of writers removed
+     */
+    @JsMethod
+    public CompletableFuture<Integer> removeOrphanedWriters() {
+        PublicKeyHash owner = signer.publicKeyHash;
+        Set<PublicKeyHash> visited = new HashSet<>();
+        visited.add(owner);
+        return getWriterData(network, owner, owner)
+                .thenCompose(cwd -> findOrphanedWriters(owner, cwd.props.get(), owner, visited, new LinkedHashMap<>()))
+                .thenCompose(orphans -> orphans.isEmpty() ?
+                        Futures.of(0) :
+                        removeOrphans(orphans));
+    }
+
+    private CompletableFuture<Map<PublicKeyHash, PublicKeyHash>> findOrphanedWriters(PublicKeyHash owner,
+                                                                                     WriterData current,
+                                                                                     PublicKeyHash writer,
+                                                                                     Set<PublicKeyHash> visited,
+                                                                                     Map<PublicKeyHash, PublicKeyHash> orphanToParent) {
+        return current.directOwnedKeys(owner, network.dhtClient, crypto.hasher)
+                .thenCompose(children -> Futures.reduceAll(children.stream()
+                                .filter(visited::add)
+                                .collect(Collectors.toList()),
+                        orphanToParent,
+                        (acc, child) -> getWriterDataIfPresent(network.dhtClient, network.mutable, owner, child)
+                                .thenCompose(childData -> {
+                                    if (! childData.isPresent() || ! childData.get().props.isPresent()) {
+                                        acc.put(child, writer);
+                                        return Futures.of(acc);
+                                    }
+                                    return findOrphanedWriters(owner, childData.get().props.get(), child, visited, acc);
+                                }),
+                        (a, b) -> b));
+    }
+
+    private CompletableFuture<Integer> removeOrphans(Map<PublicKeyHash, PublicKeyHash> orphanToParent) {
+        PublicKeyHash owner = signer.publicKeyHash;
+        Map<PublicKeyHash, SigningPrivateKeyAndPublicHash> signers = new HashMap<>();
+        signers.put(owner, signer);
+        Set<PublicKeyHash> parents = new HashSet<>(orphanToParent.values());
+        parents.removeAll(signers.keySet());
+        // the signing key of a writing space is only reachable through the files in it
+        return (parents.isEmpty() ?
+                Futures.of(signers) :
+                getUserRoot().thenCompose(home -> findSigners(home, parents, signers)))
+                .thenCompose(found -> Futures.reduceAll(orphanToParent.entrySet(), 0,
+                        (count, e) -> {
+                            SigningPrivateKeyAndPublicHash parent = found.get(e.getValue());
+                            if (parent == null) {
+                                LOG.info("Couldn't remove orphaned writer " + e.getKey() + ", no key for its owner " + e.getValue());
+                                return Futures.of(count);
+                            }
+                            LOG.info("Removing orphaned writer " + e.getKey() + " from " + e.getValue());
+                            return network.synchronizer.applyComplexUpdate(owner, parent,
+                                            (v, c) -> CryptreeNode.deAuthoriseSigner(owner, parent, e.getKey(), network, v, c))
+                                    .thenApply(x -> count + 1);
+                        },
+                        (a, b) -> b));
+    }
+
+    private CompletableFuture<Map<PublicKeyHash, SigningPrivateKeyAndPublicHash>> findSigners(FileWrapper dir,
+                                                                                              Set<PublicKeyHash> wanted,
+                                                                                              Map<PublicKeyHash, SigningPrivateKeyAndPublicHash> found) {
+        if (dir.isWritable() && wanted.contains(dir.writer()))
+            found.put(dir.writer(), dir.signingPair());
+        if (found.keySet().containsAll(wanted))
+            return Futures.of(found);
+        return dir.getChildren(crypto.hasher, network)
+                .thenCompose(children -> Futures.reduceAll(children.stream()
+                                .filter(FileWrapper::isDirectory)
+                                .collect(Collectors.toList()),
+                        found,
+                        (acc, child) -> acc.keySet().containsAll(wanted) ?
+                                Futures.of(acc) :
+                                findSigners(child, wanted, acc),
+                        (a, b) -> b));
     }
 
     public CompletableFuture<Snapshot> cleanPartialUploads(Predicate<Transaction> filter) {
