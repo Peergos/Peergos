@@ -110,7 +110,7 @@ public class RequestCountTests {
         Assert.assertEquals("nested writer is untouched", nestedWriter, nested.writer());
         Assert.assertTrue(nested.isWritable());
         Assert.assertEquals(1, nested.getChildren(crypto.hasher, network).join().size());
-        Assert.assertEquals("/" + subdir, nested.getPath(network).join());
+        Assert.assertEquals("/" + context.username + "/folder/subdir", nested.getPath(network).join());
         Assert.assertTrue("nested writer re-parented onto the new writer",
                 isOwnedBy(context, folderWriter, nestedWriter));
         Assert.assertFalse("nested writer no longer owned by home",

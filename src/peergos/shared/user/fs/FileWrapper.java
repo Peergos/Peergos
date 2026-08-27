@@ -1731,61 +1731,93 @@ public class FileWrapper {
                                                             });
                                                 }
                                             }
-                                            if (startIndex > 0) {
-                                                // TODO if startIndex > 0 prepend with a zero section
-                                                throw new IllegalStateException("Unimplemented!");
-                                            }
-                                            SymmetricKey fileWriteKey = requestedWriteKey.orElseGet(SymmetricKey::random);
-                                            SymmetricKey fileKey = requestedBaseKey.orElseGet(SymmetricKey::random);
-                                            SymmetricKey dataKey = requestedDataKey.orElseGet(SymmetricKey::random);
-                                            SymmetricKey rootRKey = latest.pointer.capability.rBaseKey;
-                                            CryptreeNode dirAccess = latest.pointer.fileAccess;
-                                            SymmetricKey dirParentKey = dirAccess.getParentKey(rootRKey);
-                                            Location parentLocation = getLocation();
-                                            Optional<Bat> parentBat = writableFilePointer().bat;
-                                            LocalDateTime timestamp = modificationTime.orElseGet(() -> LocalDateTime.now(ZoneOffset.UTC));
-                                            return fileData.reset()
-                                                    .thenCompose(reset -> calculateMimeType(reset, endIndex, filename)).thenCompose(mimeType -> fileData.reset()
-                                                    .thenCompose(resetReader -> {
-                                                        Optional<byte[]> actualStreamSecret = streamSecret.isPresent() ?
-                                                                streamSecret :
-                                                                Optional.of(crypto.random.randomBytes(32));
-                                                        FileProperties fileProps = new FileProperties(filename,
-                                                                false, false, mimeType, endIndex,
-                                                                timestamp, timestamp, isHidden, existingThumbnail, actualStreamSecret, hash.map(t -> t.branch(0)));
-
-                                                        FileUploader chunks = new FileUploader(filename, resetReader,
-                                                                startIndex, endIndex, fileKey, dataKey, parentLocation, parentBat,
-                                                                dirParentKey, monitor, fileProps, hash, firstChunkMapKey, firstBat, isCancelled);
-
-                                                        SigningPrivateKeyAndPublicHash signer = signingPair();
-                                                        WritableAbsoluteCapability fileWriteCap = new
-                                                                WritableAbsoluteCapability(owner(),
-                                                                signer.publicKeyHash,
-                                                                firstChunkMapKey, firstBat, fileKey,
-                                                                fileWriteKey);
-
-                                                        return chunks.upload(current, committer, network, parentLocation.owner,
-                                                                signer, mirrorBat, crypto.random, crypto.hasher)
-                                                                .thenCompose(cwd -> chunks.completeHash(crypto.hasher)
-                                                                        .thenCompose(maybeHash -> maybeHash.isEmpty()
-                                                                                ? Futures.of(cwd)
-                                                                                : network.getFile(cwd, fileWriteCap, getChildsEntryWriter(), ownername)
-                                                                                        .thenCompose(uploaded -> uploaded.get()
-                                                                                                .getHashUpdates(maybeHash.get(), network, crypto.hasher))
-                                                                                        .thenCompose(updates -> updates.isEmpty()
-                                                                                                ? Futures.of(cwd)
-                                                                                                : bulkSetSameNameProperties(cwd, committer, owner(), updates, network))))
-                                                                .thenCompose(cwd -> fileData.reset().thenCompose(resetAgain ->
-                                                                        generateThumbnailAndUpdate(cwd, committer, fileWriteCap, filename, resetAgain,
-                                                                                network, isHidden, mimeType,
-                                                                                endIndex, timestamp, timestamp, actualStreamSecret, monitor)))
-                                                                .thenApply(s -> new Pair<>(s, Optional.of(new NamedRelativeCapability(filename,
-                                                                        writableFilePointer().relativise(fileWriteCap), Optional.of(false), Optional.of(mimeType), Optional.of(timestamp)))));
-                                                    }));
+                                            return latest.uploadNewFile(current, committer, filename, fileData,
+                                                    existingThumbnail, isHidden, startIndex, endIndex, hash, modificationTime,
+                                                    requestedBaseKey, requestedDataKey, requestedWriteKey, network, crypto,
+                                                    isCancelled, monitor, firstChunkMapKey, streamSecret, firstBat, mirrorBat);
                                         })
                         )
                 );
+    }
+
+    /** Upload a new file into this directory. The filename is known not to already be present here.
+     *
+     * @return the new version, along with the child link that the caller must add to this directory
+     */
+    private CompletableFuture<Pair<Snapshot, Optional<NamedRelativeCapability>>> uploadNewFile(
+            Snapshot current,
+            Committer committer,
+            String filename,
+            AsyncReader fileData,
+            Optional<Thumbnail> existingThumbnail,
+            boolean isHidden,
+            long startIndex,
+            long endIndex,
+            Optional<HashTree> hash,
+            Optional<LocalDateTime> modificationTime,
+            Optional<SymmetricKey> requestedBaseKey,
+            Optional<SymmetricKey> requestedDataKey,
+            Optional<SymmetricKey> requestedWriteKey,
+            NetworkAccess network,
+            Crypto crypto,
+            Supplier<Boolean> isCancelled,
+            ProgressConsumer<Long> monitor,
+            byte[] firstChunkMapKey,
+            Optional<byte[]> streamSecret,
+            Optional<Bat> firstBat,
+            Optional<BatId> mirrorBat) {
+        if (startIndex > 0) {
+            // TODO if startIndex > 0 prepend with a zero section
+            throw new IllegalStateException("Unimplemented!");
+        }
+        SymmetricKey fileWriteKey = requestedWriteKey.orElseGet(SymmetricKey::random);
+        SymmetricKey fileKey = requestedBaseKey.orElseGet(SymmetricKey::random);
+        SymmetricKey dataKey = requestedDataKey.orElseGet(SymmetricKey::random);
+        SymmetricKey rootRKey = pointer.capability.rBaseKey;
+        CryptreeNode dirAccess = pointer.fileAccess;
+        SymmetricKey dirParentKey = dirAccess.getParentKey(rootRKey);
+        Location parentLocation = getLocation();
+        Optional<Bat> parentBat = writableFilePointer().bat;
+        LocalDateTime timestamp = modificationTime.orElseGet(() -> LocalDateTime.now(ZoneOffset.UTC));
+        return fileData.reset()
+                .thenCompose(reset -> calculateMimeType(reset, endIndex, filename)).thenCompose(mimeType -> fileData.reset()
+                .thenCompose(resetReader -> {
+                    Optional<byte[]> actualStreamSecret = streamSecret.isPresent() ?
+                            streamSecret :
+                            Optional.of(crypto.random.randomBytes(32));
+                    FileProperties fileProps = new FileProperties(filename,
+                            false, false, mimeType, endIndex,
+                            timestamp, timestamp, isHidden, existingThumbnail, actualStreamSecret, hash.map(t -> t.branch(0)));
+
+                    FileUploader chunks = new FileUploader(filename, resetReader,
+                            startIndex, endIndex, fileKey, dataKey, parentLocation, parentBat,
+                            dirParentKey, monitor, fileProps, hash, firstChunkMapKey, firstBat, isCancelled);
+
+                    SigningPrivateKeyAndPublicHash signer = signingPair();
+                    WritableAbsoluteCapability fileWriteCap = new
+                            WritableAbsoluteCapability(owner(),
+                            signer.publicKeyHash,
+                            firstChunkMapKey, firstBat, fileKey,
+                            fileWriteKey);
+
+                    return chunks.upload(current, committer, network, parentLocation.owner,
+                            signer, mirrorBat, crypto.random, crypto.hasher)
+                            .thenCompose(cwd -> chunks.completeHash(crypto.hasher)
+                                    .thenCompose(maybeHash -> maybeHash.isEmpty()
+                                            ? Futures.of(cwd)
+                                            : network.getFile(cwd, fileWriteCap, getChildsEntryWriter(), ownername)
+                                                    .thenCompose(uploaded -> uploaded.get()
+                                                            .getHashUpdates(maybeHash.get(), network, crypto.hasher))
+                                                    .thenCompose(updates -> updates.isEmpty()
+                                                            ? Futures.of(cwd)
+                                                            : bulkSetSameNameProperties(cwd, committer, owner(), updates, network))))
+                            .thenCompose(cwd -> fileData.reset().thenCompose(resetAgain ->
+                                    generateThumbnailAndUpdate(cwd, committer, fileWriteCap, filename, resetAgain,
+                                            network, isHidden, mimeType,
+                                            endIndex, timestamp, timestamp, actualStreamSecret, monitor)))
+                            .thenApply(s -> new Pair<>(s, Optional.of(new NamedRelativeCapability(filename,
+                                    writableFilePointer().relativise(fileWriteCap), Optional.of(false), Optional.of(mimeType), Optional.of(timestamp)))));
+                }));
     }
 
     @JsMethod
@@ -2441,46 +2473,106 @@ public CompletableFuture<Boolean> copyTo(FileWrapper target, UserContext context
         if (! target.isDirectory()) {
             return Futures.errored(new IllegalStateException("CopyTo target " + target + " must be a directory"));
         }
-        Supplier<Boolean> isCancelled = () -> false;
+        return target.getUpdated(version, network)
+                .thenCompose(freshTarget -> pickUniqueCopyName(freshTarget, version, crypto.hasher, network)
+                        .thenCompose(uniqueName -> copyToUnlinked(freshTarget, uniqueName, existingThumbnail,
+                                targetMirrorBat, network, crypto, version, committer)
+                                .thenCompose(p -> p.right.isEmpty() ?
+                                        Futures.of(p.left) :
+                                        freshTarget.getUpdated(p.left, network)
+                                                .thenCompose(latest -> latest.addChildPointers(p.left, committer,
+                                                        Arrays.asList(p.right.get()), network, crypto)))));
+    }
 
-        return pickUniqueCopyName(target, version, crypto.hasher, network).thenCompose(uniqueName -> {
-            if (isDirectory()) {
-                byte[] newMapKey = crypto.random.randomBytes(32);
-                Optional<Bat> newBat = Optional.of(Bat.random(crypto.random));
-                SymmetricKey newBaseR = SymmetricKey.random();
-                SymmetricKey newBaseW = SymmetricKey.random();
-                WritableAbsoluteCapability newCap = ((WritableAbsoluteCapability)target.getPointer().capability)
-                        .withMapKey(newMapKey, newBat)
-                        .withBaseKey(newBaseR)
-                        .withBaseWriteKey(newBaseW);
-                return withVersion(this.version.mergeAndOverwriteWith(version))
-                        .getChildren(version, crypto.hasher, network, false).thenCompose(children ->
-                        target.mkdir(uniqueName, Optional.of(newBaseR), Optional.of(newBaseW), Optional.of(newMapKey),
-                                newBat, getFileProperties().isHidden, targetMirrorBat, network, crypto, version, committer)
-                                .thenCompose(versionWithDir ->
-                                        network.getFile(versionWithDir, newCap, target.getChildsEntryWriter(), target.ownername)
-                                                .thenCompose(subTargetOpt -> {
-                                                    FileWrapper newTarget = subTargetOpt.get();
-                                                    return Futures.reduceAll(children, versionWithDir,
-                                                            (s, child) -> newTarget.getUpdated(s, network)
-                                                                    .thenCompose(updated ->
-                                                                            child.copyTo(updated, child.getFileProperties().thumbnail, targetMirrorBat, network, crypto, s, committer)),
-                                                            (a, b) -> a.merge(b));
-                                                })));
-            } else {
-                return version.withWriter(owner(), writer(), network).thenCompose(snapshot ->
-                        getInputStream(snapshot.get(writer()), network, crypto, x -> {})
-                                .thenCompose(stream -> getHash(network, crypto.hasher).thenCompose(hashTree -> target.uploadFileSection(snapshot, committer,
-                                                uniqueName, stream, existingThumbnail, false, 0, getSize(), hashTree,
-                                                Optional.of(getFileProperties().modified),
-                                                Optional.empty(), Optional.empty(), Optional.empty(), false, false, false, network, crypto, isCancelled, x -> {},
-                                                crypto.random.randomBytes(32), Optional.empty(),
-                                                Optional.of(Bat.random(crypto.random)), targetMirrorBat))
-                                        .thenCompose(p -> p.right.isEmpty() ?
-                                                Futures.of(p.left) :
-                                                target.addChildPointer(p.left, committer, p.right.get(), network, crypto))));
-            }
-        });
+    /** Copy this file or dir into target under a name that is known not to already be present there.
+     *
+     * @return the new version, along with the child link that the caller must add to target
+     */
+    private CompletableFuture<Pair<Snapshot, Optional<NamedRelativeCapability>>> copyToUnlinked(FileWrapper target,
+                                                                                                String newName,
+                                                                                                Optional<Thumbnail> existingThumbnail,
+                                                                                                Optional<BatId> targetMirrorBat,
+                                                                                                NetworkAccess network,
+                                                                                                Crypto crypto,
+                                                                                                Snapshot version,
+                                                                                                Committer committer) {
+        if (isDirectory()) {
+            byte[] newMapKey = crypto.random.randomBytes(32);
+            Optional<Bat> newBat = Optional.of(Bat.random(crypto.random));
+            SymmetricKey newBaseR = SymmetricKey.random();
+            SymmetricKey newBaseW = SymmetricKey.random();
+            WritableAbsoluteCapability newCap = ((WritableAbsoluteCapability) target.getPointer().capability)
+                    .withMapKey(newMapKey, newBat)
+                    .withBaseKey(newBaseR)
+                    .withBaseWriteKey(newBaseW);
+            return withVersion(this.version.mergeAndOverwriteWith(version))
+                    .getChildren(version, crypto.hasher, network, false)
+                    .thenCompose(children -> target.getPointer().fileAccess.mkdirWithoutLink(
+                                    target.version.mergeAndOverwriteWith(version), committer, newName, network,
+                                    target.writableFilePointer(), target.getChildsEntryWriter(),
+                                    Optional.of(newBaseR), Optional.of(newBaseW), Optional.of(newMapKey), newBat,
+                                    getFileProperties().isHidden, target.mirrorBatId().or(() -> targetMirrorBat), crypto)
+                            .thenCompose(p -> network.getFile(p.left, newCap, target.getChildsEntryWriter(), target.ownername)
+                                    .thenCompose(newTargetOpt -> copyChildren(new ArrayList<>(children), newTargetOpt.get(),
+                                            targetMirrorBat, network, crypto, p.left, committer))
+                                    .thenApply(s -> new Pair<>(s, Optional.of(p.right)))));
+        }
+        return version.withWriter(owner(), writer(), network)
+                .thenCompose(withSource -> withSource.withWriter(target.owner(), target.writer(), network))
+                .thenCompose(snapshot -> getInputStream(snapshot.get(writer()), network, crypto, x -> {})
+                        .thenCompose(stream -> getHash(network, crypto.hasher)
+                                .thenCompose(hashTree -> target.uploadNewFile(snapshot, committer, newName, stream,
+                                        existingThumbnail, false, 0, getSize(), hashTree,
+                                        Optional.of(getFileProperties().modified),
+                                        Optional.empty(), Optional.empty(), Optional.empty(), network, crypto,
+                                        () -> false, x -> {}, crypto.random.randomBytes(32), Optional.empty(),
+                                        Optional.of(Bat.random(crypto.random)),
+                                        target.mirrorBatId().or(() -> targetMirrorBat)))));
+    }
+
+    /** Copy children into a newly created, empty directory. Their names are unique within it already, so no name
+     *  lookups in the target are needed, and their links are added in batches rather than one at a time.
+     */
+    private static CompletableFuture<Snapshot> copyChildren(List<FileWrapper> children,
+                                                            FileWrapper newTarget,
+                                                            Optional<BatId> targetMirrorBat,
+                                                            NetworkAccess network,
+                                                            Crypto crypto,
+                                                            Snapshot version,
+                                                            Committer committer) {
+        int batchSize = Math.max(1, CryptreeNode.getMaxChildLinksPerBlob());
+        List<List<FileWrapper>> batches = new ArrayList<>();
+        for (int i = 0; i < children.size(); i += batchSize)
+            batches.add(children.subList(i, Math.min(children.size(), i + batchSize)));
+        return Futures.reduceAll(batches, new Pair<>(version, newTarget),
+                        (p, batch) -> copyBatch(batch, p.right, targetMirrorBat, network, crypto, p.left, committer)
+                                .thenCompose(s -> p.right.getUpdated(s, network)
+                                        .thenApply(updated -> new Pair<>(s, updated))),
+                        (a, b) -> b)
+                .thenApply(p -> p.left);
+    }
+
+    /** Copy a batch of children, adding all their links to the target in a single update.
+     */
+    private static CompletableFuture<Snapshot> copyBatch(List<FileWrapper> batch,
+                                                         FileWrapper newTarget,
+                                                         Optional<BatId> targetMirrorBat,
+                                                         NetworkAccess network,
+                                                         Crypto crypto,
+                                                         Snapshot version,
+                                                         Committer committer) {
+        List<NamedRelativeCapability> links = new ArrayList<>();
+        return Futures.reduceAll(batch, version,
+                        (s, child) -> child.copyToUnlinked(newTarget, child.getName(),
+                                        child.getFileProperties().thumbnail, targetMirrorBat, network, crypto, s, committer)
+                                .thenApply(p -> {
+                                    p.right.ifPresent(links::add);
+                                    return p.left;
+                                }),
+                        (a, b) -> b)
+                .thenCompose(s -> links.isEmpty() ?
+                        Futures.of(s) :
+                        newTarget.addChildPointers(s, committer, links, network, crypto));
     }
 
 
