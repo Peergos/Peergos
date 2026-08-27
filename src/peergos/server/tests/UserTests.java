@@ -2371,6 +2371,57 @@ public abstract class UserTests {
     }
 
     @Test
+    public void internalCopyLargeDir() {
+        String username = generateUsername();
+        String password = "test01";
+        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network.clear(), crypto);
+        Path home = PathUtil.get(username);
+        int originalMaxLinks = CryptreeNode.getMaxChildLinksPerBlob();
+        CryptreeNode.setMaxChildLinkPerBlob(10);
+        try {
+            context.getUserRoot().join().mkdir("source", context.network, false, context.mirrorBatId(), crypto).join();
+            context.getUserRoot().join().mkdir("dest", context.network, false, context.mirrorBatId(), crypto).join();
+
+            // more children than fit in one directory chunk, so their links have to be spread over several
+            int nFiles = 35;
+            Map<String, byte[]> expected = new HashMap<>();
+            for (int i = 0; i < nFiles; i++) {
+                byte[] data = randomData(300 + i);
+                expected.put("file-" + i, data);
+                context.getByPath(home.resolve("source")).join().get()
+                        .uploadOrReplaceFile("file-" + i, new AsyncReader.ArrayBacked(data), data.length,
+                                context.network, crypto, () -> false, x -> {}).join();
+            }
+            byte[] big = randomData(10 * 1024 * 1024); // 2 chunks to test block chaining
+            expected.put("big.bin", big);
+            context.getByPath(home.resolve("source")).join().get()
+                    .uploadOrReplaceFile("big.bin", new AsyncReader.ArrayBacked(big), big.length,
+                            context.network, crypto, () -> false, x -> {}).join();
+            context.getByPath(home.resolve("source")).join().get()
+                    .mkdir("sub", context.network, false, context.mirrorBatId(), crypto).join();
+            byte[] nested = randomData(1024);
+            context.getByPath(home.resolve("source").resolve("sub")).join().get()
+                    .uploadOrReplaceFile("nested.bin", new AsyncReader.ArrayBacked(nested), nested.length,
+                            context.network, crypto, () -> false, x -> {}).join();
+
+            context.getByPath(home.resolve("source")).join().get()
+                    .copyTo(context.getByPath(home.resolve("dest")).join().get(), context).join();
+
+            Path copied = home.resolve("dest").resolve("source");
+            assertEquals(nFiles + 2, context.getByPath(copied).join().get()
+                    .getChildren(crypto.hasher, context.network).join().size());
+            for (Map.Entry<String, byte[]> e : expected.entrySet())
+                checkFileContents(e.getValue(), context.getByPath(copied.resolve(e.getKey())).join().get(), context);
+            checkFileContents(nested, context.getByPath(copied.resolve("sub").resolve("nested.bin")).join().get(), context);
+
+            assertEquals(nFiles + 2, context.getByPath(home.resolve("source")).join().get()
+                    .getChildren(crypto.hasher, context.network).join().size());
+        } finally {
+            CryptreeNode.setMaxChildLinkPerBlob(originalMaxLinks);
+        }
+    }
+
+    @Test
     public void usage() {
         String username = generateUsername();
         String password = "password";

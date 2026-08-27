@@ -1012,6 +1012,29 @@ public class CryptreeNode implements Cborable {
                                              boolean isSystemFolder,
                                              Optional<BatId> mirrorBat,
                                              Crypto crypto) {
+        return mkdirWithoutLink(base, committer, name, network, us, entryWriter, optionalBaseKey, optionalBaseWriteKey,
+                desiredMapKey, desiredBat, isSystemFolder, mirrorBat, crypto)
+                .thenCompose(p -> addChildrenAndCommit(p.left, committer, Arrays.asList(p.right), us,
+                        getSigner(us.rBaseKey, us.wBaseKey.get(), entryWriter), mirrorBat, network, crypto));
+    }
+
+    /** Create a new empty child directory, without linking it into this directory.
+     *
+     * @return the new version, along with the child link that the caller must add to this directory
+     */
+    public CompletableFuture<Pair<Snapshot, NamedRelativeCapability>> mkdirWithoutLink(Snapshot base,
+                                                                                       Committer committer,
+                                                                                       String name,
+                                                                                       NetworkAccess network,
+                                                                                       WritableAbsoluteCapability us,
+                                                                                       Optional<SigningPrivateKeyAndPublicHash> entryWriter,
+                                                                                       Optional<SymmetricKey> optionalBaseKey,
+                                                                                       Optional<SymmetricKey> optionalBaseWriteKey,
+                                                                                       Optional<byte[]> desiredMapKey,
+                                                                                       Optional<Bat> desiredBat,
+                                                                                       boolean isSystemFolder,
+                                                                                       Optional<BatId> mirrorBat,
+                                                                                       Crypto crypto) {
         SymmetricKey dirReadKey = optionalBaseKey.orElseGet(SymmetricKey::random);
         SymmetricKey dirWriteKey = optionalBaseWriteKey.orElseGet(SymmetricKey::random);
         byte[] dirMapKey = desiredMapKey.orElseGet(() -> crypto.random.randomBytes(32)); // root will be stored under this in the tree
@@ -1034,8 +1057,7 @@ public class CryptreeNode implements Cborable {
                             .thenCompose(updatedBase -> {
                                 RelativeCapability cap = new RelativeCapability(Optional.empty(), dirMapKey, dirBat, dirReadKey, Optional.of(toChildWriteKey));
                                 NamedRelativeCapability subdirPointer = new NamedRelativeCapability(new PathElement(name), cap, Optional.of(true), Optional.of(""), Optional.of(timestamp));
-                                SigningPrivateKeyAndPublicHash signer = getSigner(us.rBaseKey, us.wBaseKey.get(), entryWriter);
-                                return addChildrenAndCommit(updatedBase, committer, Arrays.asList(subdirPointer), us, signer, mirrorBat, network, crypto);
+                                return Futures.of(new Pair<>(updatedBase, subdirPointer));
                             });
                 });
     }
