@@ -14,35 +14,22 @@ import java.util.stream.*;
 
 public class CachingVerifyingStorage extends DelegatingStorage {
 
-    public static final long DEFAULT_MAX_CACHE_BYTES = 64 * 1024 * 1024L;
-
     private final ContentAddressedStorage target;
-    private final LinkedHashMap<Multihash, byte[]> cache = new LinkedHashMap<>(16, 0.75f, true);
-    private long cachedBytes = 0;
+    private final LRUCache<Multihash, byte[]> cache;
     private final LRUCache<Multihash, CompletableFuture<Optional<CborObject>>> pending;
     private final LRUCache<Multihash, CompletableFuture<Optional<byte[]>>> pendingRaw;
     private final int maxValueSize, cacheSize;
-    private final long maxCacheBytes;
     private final List<Cid> nodeIds;
     private final Hasher hasher;
 
     public CachingVerifyingStorage(ContentAddressedStorage target, int maxValueSize, int cacheSize, List<Cid> nodeIds, Hasher hasher) {
-        this(target, maxValueSize, cacheSize, DEFAULT_MAX_CACHE_BYTES, nodeIds, hasher);
-    }
-
-    public CachingVerifyingStorage(ContentAddressedStorage target,
-                                   int maxValueSize,
-                                   int cacheSize,
-                                   long maxCacheBytes,
-                                   List<Cid> nodeIds,
-                                   Hasher hasher) {
         super(target);
         this.target = target;
+        this.cache = new LRUCache<>(cacheSize);
         this.pending = new LRUCache<>(100);
         this.pendingRaw = new LRUCache<>(100);
         this.maxValueSize = maxValueSize;
         this.cacheSize = cacheSize;
-        this.maxCacheBytes = maxCacheBytes;
         this.nodeIds = nodeIds;
         this.hasher = hasher;
     }
@@ -86,14 +73,13 @@ public class CachingVerifyingStorage extends DelegatingStorage {
 
     @Override
     public ContentAddressedStorage directToOrigin() {
-        return new CachingVerifyingStorage(target.directToOrigin(), maxValueSize, cacheSize, maxCacheBytes, nodeIds, hasher);
+        return new CachingVerifyingStorage(target.directToOrigin(), maxValueSize, cacheSize, nodeIds, hasher);
     }
 
     @Override
     public void clearBlockCache() {
         synchronized (cache) {
             cache.clear();
-            cachedBytes = 0;
         }
         target.clearBlockCache();
     }
@@ -101,13 +87,7 @@ public class CachingVerifyingStorage extends DelegatingStorage {
     private boolean cache(Multihash h, byte[] block) {
         if (block.length < maxValueSize) {
             synchronized (cache) {
-                byte[] existing = cache.put(h, block);
-                cachedBytes += block.length - (existing == null ? 0 : existing.length);
-                Iterator<Map.Entry<Multihash, byte[]>> eldestFirst = cache.entrySet().iterator();
-                while ((cachedBytes > maxCacheBytes || cache.size() > cacheSize) && eldestFirst.hasNext()) {
-                    cachedBytes -= eldestFirst.next().getValue().length;
-                    eldestFirst.remove();
-                }
+                cache.put(h, block);
             }
         }
         return true;

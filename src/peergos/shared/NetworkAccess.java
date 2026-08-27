@@ -310,7 +310,7 @@ public class NetworkAccess {
                     ContentAddressedStorageProxy proxingDht = new ContentAddressedStorageProxy.HTTP(p2pPoster);
                     ContentAddressedStorage storage = new ContentAddressedStorage.Proxying(localDht, proxingDht, nodeIds, core, true, true, n -> true);
                     ContentAddressedStorage p2pDht = new CachingVerifyingStorage(new RetryStorage(storage, 7),
-                            100 * 1024, 20_000, nodeIds, hasher);
+                            100 * 1024, 1_000, nodeIds, hasher);
                     MutablePointersProxy httpMutable = new HttpMutablePointers(apiPoster, p2pPoster);
                     Account account = new HttpAccount(apiPoster, p2pPoster);
                     MutablePointers p2pMutable = new ProxyingMutablePointers(nodeIds, core, httpMutable, httpMutable);
@@ -337,7 +337,7 @@ public class NetworkAccess {
                                                      List<String> usernames,
                                                      boolean isJavascript) {
         ContentAddressedStorage p2pDht = new CachingVerifyingStorage(new RetryStorage(localDht, 7),
-                100 * 1024, 20_000, nodeIds, hasher);
+                100 * 1024, 1_000, nodeIds, hasher);
         MutablePointersProxy httpMutable = new HttpMutablePointers(apiPoster, p2pPoster);
         Account account = new HttpAccount(apiPoster, p2pPoster);
 
