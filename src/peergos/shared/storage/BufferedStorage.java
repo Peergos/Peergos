@@ -22,6 +22,7 @@ import java.util.stream.*;
 public class BufferedStorage extends DelegatingStorage {
 
     private final Map<Cid, OpLog.BlockWrite> storage = new LinkedHashMap<>();
+    private int bufferedBytes = 0;
     private final ContentAddressedStorage target;
     private final Hasher hasher;
 
@@ -288,7 +289,8 @@ public class BufferedStorage extends DelegatingStorage {
 
     private synchronized Cid put(Cid cid, OpLog.BlockWrite block) {
         synchronized (storage) {
-            storage.put(cid, block);
+            OpLog.BlockWrite existing = storage.put(cid, block);
+            bufferedBytes += block.block.length - (existing == null ? 0 : existing.block.length);
             if (cid.isRaw())
                 block.progressMonitor.ifPresent(m -> m.accept((long)block.block.length));
         }
@@ -368,8 +370,16 @@ public class BufferedStorage extends DelegatingStorage {
             List<Cid> unreachable = storage.keySet().stream()
                     .filter(c -> ! reachable.contains(c))
                     .collect(Collectors.toList());
-            unreachable.forEach(storage::remove);
+            unreachable.forEach(this::remove);
         }
+    }
+
+    /** Remove a buffered block. Must be called whilst holding the storage monitor.
+     */
+    private void remove(Cid cid) {
+        OpLog.BlockWrite removed = storage.remove(cid);
+        if (removed != null)
+            bufferedBytes -= removed.block.length;
     }
 
     private static void markReachable(Cid current, Set<Cid> reachable, Map<Cid, OpLog.BlockWrite> storage) {
@@ -417,7 +427,7 @@ public class BufferedStorage extends DelegatingStorage {
                 forWriter.add(e.getValue());
                 toRemove.add(e.getKey());
             }
-            toRemove.forEach(storage::remove);
+            toRemove.forEach(this::remove);
         }
 
         int maxBlocksPerBatch = ContentAddressedStorage.MAX_BLOCK_AUTHS;
@@ -489,7 +499,10 @@ public class BufferedStorage extends DelegatingStorage {
     }
 
     public synchronized void clear() {
-        storage.clear();
+        synchronized (storage) {
+            storage.clear();
+            bufferedBytes = 0;
+        }
     }
 
     public int size() {
@@ -513,7 +526,7 @@ public class BufferedStorage extends DelegatingStorage {
 
     public int totalSize() {
         synchronized (storage) {
-            return storage.values().stream().mapToInt(a -> a.block.length).sum();
+            return bufferedBytes;
         }
     }
 }
