@@ -73,7 +73,7 @@ public class RequestCountTests {
         storageCounter.reset();
         context.shareWriteAccessWith(dir, Collections.emptySet()).join();
         int requests = storageCounter.requestTotal();
-        Assert.assertTrue("granting write access to " + nFiles + " files: " + requests, requests <= 160);
+        Assert.assertTrue("granting write access to " + nFiles + " files: " + requests, requests <= 30);
 
         FileWrapper granted = context.getByPath(dir).join().get();
         Assert.assertNotEquals("moved to its own writing space", homeWriter, granted.writer());
