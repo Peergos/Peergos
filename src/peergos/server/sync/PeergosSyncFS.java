@@ -7,6 +7,7 @@ import peergos.shared.storage.auth.Bat;
 import peergos.shared.storage.auth.BatId;
 import peergos.shared.user.UserContext;
 import peergos.shared.user.fs.*;
+import peergos.shared.util.ProgressConsumer;
 import peergos.shared.user.fs.cryptree.CryptreeNode;
 import peergos.shared.util.Futures;
 import peergos.shared.util.Pair;
@@ -219,14 +220,10 @@ public class PeergosSyncFS implements SyncFilesystem {
                 parentOpt = context.getByPath(root.resolve(p).getParent()).join();
             }
             FileWrapper parent = parentOpt.get();
-            AtomicLong done = new AtomicLong(0);
             parent.uploadFileWithHash(filename, data, size, hash, modificationTime, thumbnail,
                     Optional.of(props),
-                    context.network, context.crypto, isCancelled, x -> {
-                        long total = done.addAndGet(x);
-                        if (total >= 1024*1024)
-                            progress.accept("Uploaded " + (total/1024/1024) + " / " + (size / 1024/1024) + " MiB of " + relPath);
-                    }).join();
+                    context.network, context.crypto, isCancelled,
+                    SyncFilesystem.perMiB("Uploaded", size, relPath, progress)).join();
         } else {
             FileWrapper f = existing.get();
             if (f.isDirty()) {
@@ -237,15 +234,13 @@ public class PeergosSyncFS implements SyncFilesystem {
             }
 
             long end = fileOffset + size;
-            AtomicLong done = new AtomicLong(0);
+            ProgressConsumer<Long> reporter = SyncFilesystem.perMiB("Uploaded", size, relPath, progress);
             f.overwriteSectionJS(data, (int) (fileOffset >>> 32), (int) fileOffset, (int) (end >>> 32), (int) end, modificationTime, context.network, context.crypto, x -> {
                 // this path carries no cancel check of its own, so a resumed upload would
                 // otherwise run to the end after a pause
                 if (isCancelled.get())
                     throw new IllegalStateException("Upload cancelled!");
-                long total = done.addAndGet(x);
-                if (total >= 1024*1024)
-                    progress.accept("Uploaded " + (total/1024/1024) + " / " + (size / 1024/1024) + " MiB of " + relPath);
+                reporter.accept(x);
             }).join();
         }
         return modificationTime;

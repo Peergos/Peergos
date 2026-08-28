@@ -2,6 +2,7 @@ package peergos.server.sync;
 
 import peergos.shared.crypto.hash.PublicKeyHash;
 import peergos.shared.user.fs.*;
+import peergos.shared.util.ProgressConsumer;
 import peergos.shared.util.Triple;
 
 import java.io.IOException;
@@ -10,11 +11,25 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
 
 public interface SyncFilesystem {
+
+    /** Progress for a transfer, reported once per MiB. Callers are called per chunk or per
+     *  read, and a repeated figure costs a log line and a status file write for nothing. */
+    static ProgressConsumer<Long> perMiB(String verb, long size, String path, Consumer<String> progress) {
+        AtomicLong done = new AtomicLong(0);
+        AtomicLong reported = new AtomicLong(0);
+        long total = size / 1024 / 1024;
+        return delta -> {
+            long mib = done.addAndGet(delta) / 1024 / 1024;
+            if (mib > 0 && reported.getAndSet(mib) != mib)
+                progress.accept(verb + " " + mib + " / " + total + " MiB of " + path);
+        };
+    }
 
     long totalSpace() throws IOException;
 

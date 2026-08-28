@@ -13,9 +13,11 @@ import peergos.shared.io.ipfs.Cid;
 import peergos.shared.io.ipfs.Multihash;
 import peergos.shared.user.CommittedWriterData;
 import peergos.shared.user.Snapshot;
+import peergos.shared.user.fs.AsyncReader;
 import peergos.shared.user.fs.Chunk;
 import peergos.shared.user.fs.ChunkHashList;
 import peergos.shared.user.fs.HashTree;
+import peergos.shared.user.fs.ResumeUploadProps;
 import peergos.shared.user.fs.RootHash;
 import peergos.shared.util.Pair;
 import peergos.shared.util.PathUtil;
@@ -989,5 +991,61 @@ public class SyncTests {
         PairStatus old = new PairStatus(peergosDir, hash);
         Assert.assertEquals(SyncStatus.SYNCED, old.getStatus());
         Assert.assertEquals("Dir sync took 3s", old.getMessage());
+    }
+
+    @Test
+    public void progressIsReportedOncePerMiB() throws Exception {
+        // The local filesystem reads in 4 KiB, and each read used to report progress: a message
+        // every 4 KiB says the same thing 255 times out of 256, and every one of them is logged
+        // and written to the pair's status file.
+        int fileSize = 5 * 1024 * 1024;
+        byte[] data = new byte[fileSize];
+        new Random(42).nextBytes(data);
+        Path base = Files.createTempDirectory("peergos-sync");
+        LocalFileSystem fs = new LocalFileSystem(base, Main.initCrypto().hasher);
+
+        List<String> reported = new ArrayList<>();
+        fs.setBytes(PathUtil.get("big.bin"), 0, AsyncReader.build(data), fileSize, Optional.empty(),
+                Optional.of(LocalDateTime.now()), Optional.empty(), ResumeUploadProps.random(crypto), () -> false, reported::add);
+
+        Assert.assertEquals(fileSize, Files.size(base.resolve("big.bin")));
+        Assert.assertEquals("one message per MiB", 5, reported.size());
+        Assert.assertEquals("no message repeats the previous one",
+                reported.size(), new LinkedHashSet<>(reported).size());
+        Assert.assertTrue(reported.get(0), reported.get(0).startsWith("Downloaded 1 / 5 MiB of "));
+        Assert.assertTrue(reported.get(4), reported.get(4).startsWith("Downloaded 5 / 5 MiB of "));
+    }
+
+    @Test
+    public void redundantStatusWritesAreSkipped() throws Exception {
+        // A pass clears the error before each folder and sets the state twice, so most of those
+        // calls say what the file already says. Each one used to rewrite it.
+        Path dir = Files.createTempDirectory("peergos-sync");
+        Files.createDirectories(PairLogger.logDir(dir));
+        PairStatus status = new PairStatus(dir, "testpair");
+        Path file = PairStatus.statusPath(dir, "testpair");
+
+        status.setStatus("Checking files on this device");
+        status.setStatus(SyncStatus.SYNCING);
+        // the file is replaced by a rename, so a write shows up as a new file rather than as
+        // different content: a redundant one would write the same bytes back
+        Object beforeWrites = fileKey(file);
+
+        status.setError(null);
+        status.setStatus(SyncStatus.SYNCING);
+        Assert.assertEquals("nothing changed, so nothing was written", beforeWrites, fileKey(file));
+
+        status.setStatus(SyncStatus.SYNCED);
+        Assert.assertNotEquals("a real change still reaches the file", beforeWrites, fileKey(file));
+
+        // the message carries the clock the view shows, so repeating it is still worth writing
+        Object beforeRepeat = fileKey(file);
+        status.setStatus("Dir sync took 2s");
+        status.setStatus("Dir sync took 2s");
+        Assert.assertNotEquals("the same message still restamps the time", beforeRepeat, fileKey(file));
+    }
+
+    private static Object fileKey(Path p) throws IOException {
+        return Files.readAttributes(p, java.nio.file.attribute.BasicFileAttributes.class).fileKey();
     }
 }

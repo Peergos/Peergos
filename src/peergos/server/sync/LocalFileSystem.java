@@ -7,6 +7,7 @@ import peergos.server.simulation.FileAsyncReader;
 import peergos.shared.crypto.hash.Hasher;
 import peergos.shared.crypto.hash.PublicKeyHash;
 import peergos.shared.user.fs.*;
+import peergos.shared.util.ProgressConsumer;
 import peergos.shared.util.PathUtil;
 import peergos.shared.util.Triple;
 
@@ -170,6 +171,7 @@ public class LocalFileSystem implements SyncFilesystem {
             raf.seek(fileOffset);
             byte[] buf = new byte[4096];
             long done = 0;
+            ProgressConsumer<Long> reporter = SyncFilesystem.perMiB("Downloaded", size, p.toString(), progress);
             while (done < size) {
                 // a paused or removed pair must stop here too, not just on upload
                 if (isCancelled.get())
@@ -177,8 +179,7 @@ public class LocalFileSystem implements SyncFilesystem {
                 int read = fin.readIntoArray(buf, 0, (int) Math.min(buf.length, size - done)).join();
                 raf.write(buf, 0, read);
                 done += read;
-                if (done >= 1024*1024)
-                    progress.accept("Downloaded " + (done/1024/1024) + " / " + (size / 1024/1024) + " MiB of " + p.toString());
+                reporter.accept((long) read);
             }
             if (modificationTime.isPresent()) {
                 long time = modificationTime.get().toInstant(ZoneOffset.UTC).toEpochMilli() / 1000 * 1000;
