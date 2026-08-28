@@ -64,12 +64,19 @@ public class PairStatus {
         persist();
     }
 
+    // A pass clears the error before each folder and sets the state twice, so most of these
+    // calls change nothing. Rewriting the file for them is pure cost.
     public synchronized void setError(String err) {
-        error = err == null || err.isEmpty() ? Optional.empty() : Optional.of(err);
+        Optional<String> newError = err == null || err.isEmpty() ? Optional.empty() : Optional.of(err);
+        if (newError.equals(error))
+            return;
+        error = newError;
         persist();
     }
 
     public synchronized void setStatus(SyncStatus newState) {
+        if (newState == state)
+            return;
         state = newState;
         persist();
     }
