@@ -25,7 +25,7 @@ public class CachingVerifyingStorage extends DelegatingStorage {
     public CachingVerifyingStorage(ContentAddressedStorage target, int maxValueSize, int cacheSize, List<Cid> nodeIds, Hasher hasher) {
         super(target);
         this.target = target;
-        this.cache =  new LRUCache<>(cacheSize);
+        this.cache = new LRUCache<>(cacheSize);
         this.pending = new LRUCache<>(100);
         this.pendingRaw = new LRUCache<>(100);
         this.maxValueSize = maxValueSize;
@@ -73,7 +73,7 @@ public class CachingVerifyingStorage extends DelegatingStorage {
 
     @Override
     public ContentAddressedStorage directToOrigin() {
-        return new CachingVerifyingStorage(target.directToOrigin(), cacheSize, maxValueSize, nodeIds, hasher);
+        return new CachingVerifyingStorage(target.directToOrigin(), maxValueSize, cacheSize, nodeIds, hasher);
     }
 
     @Override
@@ -95,12 +95,51 @@ public class CachingVerifyingStorage extends DelegatingStorage {
 
     @Override
     public CompletableFuture<List<byte[]>> getChampLookup(PublicKeyHash owner, Cid root, List<ChunkMirrorCap> caps, Optional<Cid> committedRoot) {
-        return target.getChampLookup(owner, root, caps, committedRoot)
-                .thenCompose(blocks -> Futures.combineAllInOrder(blocks.stream()
-                        .map(b -> hasher.hash(b, false)
-                                .thenApply(h -> cache(h, b)))
-                        .collect(Collectors.toList()))
-                        .thenApply(x -> blocks));
+        // The champ path nodes are shared between lookups against the same root, so try to resolve from the
+        // blocks we already have before asking the server to walk it again and resend them.
+        return Futures.asyncExceptionally(
+                () -> new LocalOnly().getChampLookup(owner, root, caps, committedRoot, hasher),
+                t -> target.getChampLookup(owner, root, caps, committedRoot)
+                        .thenCompose(blocks -> Futures.combineAllInOrder(blocks.stream()
+                                .map(b -> hasher.hash(b, false)
+                                        .thenApply(h -> cache(h, b)))
+                                .collect(Collectors.toList()))
+                                .thenApply(x -> blocks)));
+    }
+
+    /** A view of the cached blocks alone, which fails rather than going to the network for a missing block.
+     */
+    private class LocalOnly extends DelegatingStorage {
+
+        public LocalOnly() {
+            super(CachingVerifyingStorage.this);
+        }
+
+        @Override
+        public ContentAddressedStorage directToOrigin() {
+            return this;
+        }
+
+        @Override
+        public CompletableFuture<Optional<CborObject>> get(PublicKeyHash owner, Cid hash, Optional<BatWithId> bat) {
+            return getRaw(owner, hash, bat).thenApply(raw -> raw.map(CborObject::fromByteArray));
+        }
+
+        @Override
+        public CompletableFuture<Optional<byte[]>> getRaw(PublicKeyHash owner, Cid hash, Optional<BatWithId> bat) {
+            synchronized (cache) {
+                byte[] cached = cache.get(hash);
+                if (cached != null)
+                    return Futures.of(Optional.of(cached));
+            }
+            return Futures.errored(new NotCachedException(hash));
+        }
+    }
+
+    private static class NotCachedException extends RuntimeException {
+        public NotCachedException(Cid hash) {
+            super("Block not cached locally: " + hash);
+        }
     }
 
     @Override
