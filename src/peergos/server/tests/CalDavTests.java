@@ -15,15 +15,19 @@ import peergos.shared.Crypto;
 import peergos.shared.NetworkAccess;
 import peergos.shared.user.App;
 import peergos.shared.user.UserContext;
+import peergos.shared.user.fs.FileWrapper;
 import peergos.shared.util.PathUtil;
+import peergos.shared.util.Serialize;
 
 import java.net.URI;
+import java.net.URL;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.Base64;
+import java.util.Optional;
 import java.util.Random;
 
 /**
@@ -219,6 +223,150 @@ public class CalDavTests {
         } finally {
             server.stop();
         }
+    }
+
+    @Test
+    public void writeEventsWhereTheWebAppLooksForThem() throws Exception {
+        String username = "caldav-write" + Math.abs(random.nextInt() % 1_000_000);
+        String password = "testpassword";
+        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
+
+        App calendar = App.init(context, "calendar").join();
+        write(calendar, "App.config",
+                "{\"calendars\":[{\"name\":\"Work\",\"directory\":\"work\",\"color\":\"#ff0000\"}]}");
+        write(calendar, "work/calendar.inf", "{\"name\":\"Work\",\"color\":\"#ff0000\"}");
+        String configBefore = new String(calendar.readInternal(PathUtil.get("App.config"), null).join(),
+                StandardCharsets.UTF_8);
+        UserContext verifier = verifier(username, password);
+
+        int port = TestPorts.getPort();
+        Server server = WebdavServer.startNonBlocking(port, WEBDAV_USER, WEBDAV_PASSWORD,
+                username, password, "http://localhost:" + args.getInt("port"), "basic", MountConfig.disabled());
+        try {
+            HttpClient client = HttpClient.newHttpClient();
+            String base = "http://localhost:" + port;
+            String auth = "Basic " + Base64.getEncoder()
+                    .encodeToString((WEBDAV_USER + ":" + WEBDAV_PASSWORD).getBytes());
+            String work = base + "/dav/calendars/" + username + "/work/";
+
+            // A new event lands in the UTC month directory the web app reads, named the way
+            // the web app names it. This is the acceptance test that matters most.
+            HttpResponse<String> created = put(client, auth, work + "one.ics",
+                    event("one", "20240915T090000Z", "20240915T100000Z", ""), null);
+            Assert.assertEquals(201, created.statusCode());
+            Assert.assertTrue("PUT should return the new ETag", created.headers().firstValue("ETag").isPresent());
+            Assert.assertTrue("event must be under <dir>/<year>/<month>", exists(verifier, username, "work/2024/9/one.ics"));
+
+            // Moving the event across a month boundary moves the file, leaving nothing behind
+            // for the flat view to show twice.
+            HttpResponse<String> moved = put(client, auth, work + "one.ics",
+                    event("one", "20241015T090000Z", "20241015T100000Z", ""), null);
+            Assert.assertEquals(204, moved.statusCode());
+            Assert.assertTrue(exists(verifier, username, "work/2024/10/one.ics"));
+            Assert.assertFalse("old shard must not keep a copy", exists(verifier, username, "work/2024/9/one.ics"));
+
+            // A recurring event goes to recurring/, which the web app loads for every month.
+            Assert.assertEquals(201, put(client, auth, work + "repeat.ics",
+                    event("repeat", "20240101T090000Z", "20240101T100000Z", "RRULE:FREQ=WEEKLY\r\n"), null).statusCode());
+            Assert.assertTrue(exists(verifier, username, "work/recurring/repeat.ics"));
+
+            // Both are single members of the flat collection whatever shard they sit in.
+            HttpResponse<String> listing = propfind(client, auth, work, "1", null);
+            Assert.assertTrue(listing.body().contains("/work/one.ics"));
+            Assert.assertTrue(listing.body().contains("/work/repeat.ics"));
+
+            // An event with no start has nowhere the web app would ever read it from.
+            HttpResponse<String> undateable = put(client, auth, work + "nodate.ics",
+                    "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:nodate\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n", null);
+            Assert.assertEquals(403, undateable.statusCode());
+            Assert.assertTrue("valid-calendar-data precondition: " + undateable.body(),
+                    undateable.body().contains("valid-calendar-data"));
+            Assert.assertFalse(exists(verifier, username, "work/recurring/nodate.ics"));
+
+            // Conditional requests: a client must not clobber an edit it has not seen.
+            Assert.assertEquals(412, put(client, auth, work + "one.ics",
+                    event("one", "20241015T090000Z", "20241015T100000Z", ""), "if-none-match").statusCode());
+            Assert.assertEquals(412, put(client, auth, work + "one.ics",
+                    event("one", "20241015T090000Z", "20241015T100000Z", ""), "\"not-the-etag\"").statusCode());
+            String etag = etagOf(client, auth, work + "one.ics");
+            Assert.assertEquals(204, put(client, auth, work + "one.ics",
+                    event("one", "20241016T090000Z", "20241016T100000Z", ""), etag).statusCode());
+
+            // DELETE removes the file from its shard.
+            Assert.assertEquals(204, send(client, auth, "DELETE", work + "repeat.ics", null, null).statusCode());
+            Assert.assertFalse(exists(verifier, username, "work/recurring/repeat.ics"));
+            Assert.assertEquals(404, send(client, auth, "GET", work + "repeat.ics", null, null).statusCode());
+
+            // MKCALENDAR creates the directory and calendar.inf, and leaves App.config alone.
+            HttpResponse<String> mkcalendar = send(client, auth, "MKCALENDAR",
+                    base + "/dav/calendars/" + username + "/personal/",
+                    "<C:mkcalendar xmlns:D=\"DAV:\" xmlns:C=\"urn:ietf:params:xml:ns:caldav\" "
+                            + "xmlns:A=\"http://apple.com/ns/ical/\"><D:set><D:prop>"
+                            + "<D:displayname>Personal</D:displayname><A:calendar-color>#00ff00</A:calendar-color>"
+                            + "</D:prop></D:set></C:mkcalendar>", null);
+            Assert.assertEquals(201, mkcalendar.statusCode());
+            Assert.assertEquals("{\"name\":\"Personal\",\"color\":\"#00ff00\"}", read(verifier, username, "personal/calendar.inf"));
+            Assert.assertEquals("App.config must not be rewritten by the bridge", configBefore,
+                    read(verifier, username, "App.config"));
+            Assert.assertEquals("MKCALENDAR over an existing calendar", 405, send(client, auth, "MKCALENDAR",
+                    base + "/dav/calendars/" + username + "/personal/", null, null).statusCode());
+
+            // The new calendar is usable straight away.
+            Assert.assertEquals(201, put(client, auth,
+                    base + "/dav/calendars/" + username + "/personal/two.ics",
+                    event("two", "20240915T090000Z", "20240915T100000Z", ""), null).statusCode());
+            Assert.assertTrue(exists(verifier, username, "personal/2024/9/two.ics"));
+
+            // A calendar the bridge created is its to remove; one the web app lists is not,
+            // because deleting it would strand an App.config entry we will not rewrite.
+            Assert.assertEquals(403, send(client, auth, "DELETE", work, null, null).statusCode());
+            Assert.assertTrue(exists(verifier, username, "work/calendar.inf"));
+            Assert.assertEquals(204, send(client, auth, "DELETE",
+                    base + "/dav/calendars/" + username + "/personal/", null, null).statusCode());
+            Assert.assertFalse(exists(verifier, username, "personal/calendar.inf"));
+        } finally {
+            server.stop();
+        }
+    }
+
+    /**
+     * A session for reading back what the server wrote. It cannot be the one that seeded the
+     * data: {@code buildJavaNetworkAccess} caches each writer's pointer for 7 seconds, so
+     * that session would not see another session's writes until the cache expired.
+     */
+    private static UserContext verifier(String username, String password) throws Exception {
+        NetworkAccess uncached = Builder.buildNonCachingJavaNetworkAccess(
+                new URL("http://localhost:" + args.getInt("port") + "/"), false, 0,
+                Optional.empty(), Optional.empty(), Optional.empty()).join();
+        return PeergosNetworkUtils.ensureSignedUp(username, password, uncached, crypto);
+    }
+
+    private static boolean exists(UserContext verifier, String username, String relative) {
+        return verifier.getByPath(username + "/.apps/calendar/data/" + relative).join().isPresent();
+    }
+
+    private static String read(UserContext verifier, String username, String relative) {
+        FileWrapper file = verifier.getByPath(username + "/.apps/calendar/data/" + relative).join().get();
+        return new String(Serialize.readFully(file
+                .getInputStream(verifier.network, verifier.crypto, file.getSize(), l -> {}).join(),
+                file.getSize()).join(), StandardCharsets.UTF_8);
+    }
+
+    private static String etagOf(HttpClient client, String auth, String url) throws Exception {
+        return send(client, auth, "HEAD", url, null, null).headers().firstValue("ETag").orElse("");
+    }
+
+    private static HttpResponse<String> put(HttpClient client, String auth, String url,
+                                            String ics, String ifHeader) throws Exception {
+        HttpRequest.Builder request = HttpRequest.newBuilder(URI.create(url))
+                .PUT(HttpRequest.BodyPublishers.ofString(ics))
+                .header("Authorization", auth)
+                .header("Content-Type", "text/calendar; charset=utf-8");
+        if ("if-none-match".equals(ifHeader))
+            request = request.header("If-None-Match", "*");
+        else if (ifHeader != null)
+            request = request.header("If-Match", ifHeader);
+        return client.send(request.build(), HttpResponse.BodyHandlers.ofString());
     }
 
     private static String between(String body, String open, String close) {

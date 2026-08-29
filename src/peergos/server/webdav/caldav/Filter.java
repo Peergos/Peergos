@@ -82,7 +82,8 @@ public final class Filter {
         return value == null || value.isEmpty() ? null : value;
     }
 
-    private static List<Node> descendants(Node root, String localName) {
+    /** Every element with this local name anywhere under the node, in document order. */
+    static List<Node> descendants(Node root, String localName) {
         List<Node> found = new ArrayList<>();
         NodeList children = root.getChildNodes();
         for (int i = 0; i < children.getLength(); i++) {

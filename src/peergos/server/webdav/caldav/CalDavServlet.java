@@ -40,9 +40,12 @@ import java.util.logging.Logger;
  *   /dav/calendars/&lt;user&gt;/&lt;dir&gt;/&lt;n&gt;.ics one event
  * </pre>
  *
- * Read-only for now: the write path (PUT, DELETE, MKCALENDAR) is not registered, and
- * current-user-privilege-set advertises read access only, so clients present the
- * calendars as read-only rather than failing writes at the last moment.
+ * Events can be read and written; the calendar list itself is only half writable.
+ * MKCALENDAR creates a directory and its calendar.inf but never touches App.config, which
+ * the web app holds in memory for the life of a tab and writes back whole — a second
+ * writer here would have its entry dropped by the next edit in an open tab. For the same
+ * reason DELETE refuses a calendar that App.config lists, since removing the directory
+ * would strand an entry only the web app can remove.
  *
  * Like the file bridge's method handlers this servlet is a single instance shared across
  * request threads, so all per-request state stays on the stack.
@@ -67,7 +70,6 @@ public class CalDavServlet extends HttpServlet {
     private static final DateTimeFormatter CREATION_DATE = DateTimeFormatter
             .ofPattern("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).withZone(ZoneOffset.UTC);
 
-    private static final String ALLOWED = "OPTIONS, GET, HEAD, PROPFIND, REPORT";
     private static final long MAX_RESOURCE_SIZE = 10 * 1024 * 1024L;
 
     private final CalendarStore store;
@@ -99,8 +101,17 @@ public class CalDavServlet extends HttpServlet {
                 case "HEAD":
                     doRead(req, resp, req.getMethod().equals("GET"));
                     return;
+                case "PUT":
+                    doPut(req, resp);
+                    return;
+                case "DELETE":
+                    doDelete(req, resp);
+                    return;
+                case "MKCALENDAR":
+                    doMkcalendar(req, resp);
+                    return;
                 default:
-                    resp.addHeader("Allow", ALLOWED);
+                    resp.addHeader("Allow", allowed(resolve(req)));
                     resp.sendError(HttpServletResponse.SC_METHOD_NOT_ALLOWED);
             }
         } catch (RuntimeException e) {
@@ -113,9 +124,24 @@ public class CalDavServlet extends HttpServlet {
     protected void doOptions(HttpServletRequest req, HttpServletResponse resp) {
         resp.setStatus(HttpServletResponse.SC_OK);
         resp.addHeader("DAV", "1, 2, 3, calendar-access");
-        resp.addHeader("Allow", ALLOWED);
+        resp.addHeader("Allow", allowed(resolve(req)));
         resp.addHeader("MS-Author-Via", "DAV");
         resp.setContentLength(0);
+    }
+
+    /** RFC 7231 wants the methods allowed for this resource, not for the servlet. */
+    private static String allowed(Optional<Resource> resource) {
+        Kind kind = resource.map(r -> r.kind).orElse(Kind.ROOT);
+        switch (kind) {
+            case OBJECT:
+                return "OPTIONS, GET, HEAD, PUT, DELETE, PROPFIND, REPORT";
+            case CALENDAR:
+                return "OPTIONS, PUT, DELETE, PROPFIND, REPORT";
+            case CALENDAR_HOME:
+                return "OPTIONS, MKCALENDAR, PROPFIND, REPORT";
+            default:
+                return "OPTIONS, PROPFIND, REPORT";
+        }
     }
 
     private void doRead(HttpServletRequest req, HttpServletResponse resp, boolean withBody) throws IOException {
@@ -132,6 +158,159 @@ public class CalDavServlet extends HttpServlet {
         resp.setHeader("ETag", object.etag());
         if (withBody)
             resp.getOutputStream().write(content);
+    }
+
+    // ------------------------------------------------------------------ writing
+
+    @Override
+    protected void doPut(HttpServletRequest req, HttpServletResponse resp) throws IOException {
+        Optional<Slot> resolved = resolveSlot(req);
+        if (resolved.isEmpty()) {
+            resp.sendError(HttpServletResponse.SC_NOT_FOUND);
+            return;
+        }
+        Slot slot = resolved.get();
+        if (! slot.name.endsWith(CalendarStore.ICS_SUFFIX) || slot.name.contains("/")) {
+            // Anything else would be stored but never listed, since the flat view only
+            // surfaces .ics files; better to say so than to swallow it.
+            sendPrecondition(resp, HttpServletResponse.SC_FORBIDDEN, caldav("valid-calendar-object-resource"));
+            return;
+        }
+        if (failsPreconditions(req, slot.existing)) {
+            resp.sendError(HttpServletResponse.SC_PRECONDITION_FAILED);
+            return;
+        }
+        Optional<byte[]> content = readBody(req, resp);
+        if (content.isEmpty())
+            return;
+        ICal.Summary summary = ICal.summarise(new String(content.get(), StandardCharsets.UTF_8));
+        if (CalendarStore.shardFor(summary).isEmpty()) {
+            // Without a start date there is no directory the web app would ever read it
+            // from, so storing it would hide it rather than keep it.
+            sendPrecondition(resp, HttpServletResponse.SC_FORBIDDEN, caldav("valid-calendar-data"));
+            return;
+        }
+        store.putObject(slot.calendar.directory, slot.name, content.get(), slot.existing);
+        store.getObject(slot.calendar.directory, slot.name)
+                .ifPresent(written -> resp.setHeader("ETag", written.etag()));
+        resp.setStatus(slot.existing.isPresent()
+                ? HttpServletResponse.SC_NO_CONTENT : HttpServletResponse.SC_CREATED);
+    }
+
+    @Override
+    protected void doDelete(HttpServletRequest req, HttpServletResponse resp) throws IOException {
+        Optional<Resource> resolved = resolve(req);
+        if (resolved.isEmpty()) {
+            resp.sendError(HttpServletResponse.SC_NOT_FOUND);
+            return;
+        }
+        Resource resource = resolved.get();
+        if (resource.kind == Kind.OBJECT) {
+            if (failsPreconditions(req, Optional.of(resource.object))) {
+                resp.sendError(HttpServletResponse.SC_PRECONDITION_FAILED);
+                return;
+            }
+            store.deleteObject(resource.calendar.directory, resource.object);
+            resp.setStatus(HttpServletResponse.SC_NO_CONTENT);
+            return;
+        }
+        if (resource.kind == Kind.CALENDAR) {
+            if (resource.calendar.configured) {
+                // Removing the directory would leave the web app with an App.config entry
+                // it cannot satisfy and we will not rewrite. Deleting it there works.
+                resp.sendError(HttpServletResponse.SC_FORBIDDEN,
+                        "This calendar is listed in the web app; delete it there instead");
+                return;
+            }
+            store.deleteCalendar(resource.calendar.directory);
+            resp.setStatus(HttpServletResponse.SC_NO_CONTENT);
+            return;
+        }
+        resp.addHeader("Allow", allowed(resolved));
+        resp.sendError(HttpServletResponse.SC_METHOD_NOT_ALLOWED);
+    }
+
+    private void doMkcalendar(HttpServletRequest req, HttpServletResponse resp) throws IOException {
+        Optional<String> directory = newCalendarDirectory(req);
+        if (directory.isEmpty()) {
+            resp.sendError(HttpServletResponse.SC_FORBIDDEN, "Calendars live under /calendars/" + store.username() + "/");
+            return;
+        }
+        if (store.getCalendar(directory.get()).isPresent()) {
+            resp.addHeader("Allow", "OPTIONS, PROPFIND, REPORT");
+            resp.sendError(HttpServletResponse.SC_METHOD_NOT_ALLOWED, "Already exists");
+            return;
+        }
+        Element body = parseBody(req).map(Document::getDocumentElement).orElse(null);
+        store.createCalendar(directory.get(),
+                property(body, "displayname").orElse(directory.get()),
+                property(body, "calendar-color").orElse("#00a9ff"));
+        resp.setStatus(HttpServletResponse.SC_CREATED);
+    }
+
+    /** The directory a MKCALENDAR would create, or empty if the path cannot hold one. */
+    private Optional<String> newCalendarDirectory(HttpServletRequest req) {
+        List<String> segments = segments(req.getPathInfo());
+        if (segments.size() != 3 || ! segments.get(0).equals("calendars")
+                || ! segments.get(1).equals(store.username()))
+            return Optional.empty();
+        String directory = segments.get(2);
+        return directory.contains("/") || directory.startsWith(".") ? Optional.empty() : Optional.of(directory);
+    }
+
+    /** Reads a value out of a MKCALENDAR or PROPPATCH style {@code <set><prop>} body. */
+    private static Optional<String> property(Element body, String localName) {
+        if (body == null)
+            return Optional.empty();
+        for (Node node : Filter.descendants(body, localName)) {
+            String text = node.getTextContent().trim();
+            if (! text.isEmpty())
+                return Optional.of(text);
+        }
+        return Optional.empty();
+    }
+
+    private Optional<byte[]> readBody(HttpServletRequest req, HttpServletResponse resp) throws IOException {
+        byte[] content = req.getInputStream().readNBytes((int) MAX_RESOURCE_SIZE + 1);
+        if (content.length > MAX_RESOURCE_SIZE) {
+            sendPrecondition(resp, HttpServletResponse.SC_FORBIDDEN, caldav("max-resource-size"));
+            return Optional.empty();
+        }
+        return Optional.of(content);
+    }
+
+    /**
+     * If-Match and If-None-Match, which is how a CalDAV client avoids overwriting an edit
+     * it has not seen. Only the forms clients actually send are honoured.
+     */
+    private static boolean failsPreconditions(HttpServletRequest req, Optional<CalendarStore.ObjectRef> existing) {
+        String ifNoneMatch = req.getHeader("If-None-Match");
+        if (ifNoneMatch != null && ifNoneMatch.trim().equals("*") && existing.isPresent())
+            return true;
+        String ifMatch = req.getHeader("If-Match");
+        if (ifMatch == null)
+            return false;
+        if (existing.isEmpty())
+            return true;
+        if (ifMatch.trim().equals("*"))
+            return false;
+        String etag = existing.get().etag();
+        for (String candidate : ifMatch.split(",")) {
+            if (candidate.trim().equals(etag))
+                return false;
+        }
+        return true;
+    }
+
+    private void sendPrecondition(HttpServletResponse resp, int status, String precondition) throws IOException {
+        resp.setStatus(status);
+        resp.setContentType("text/xml; charset=UTF-8");
+        XMLWriter out = new XMLWriter(resp.getWriter(), NAMESPACES);
+        out.writeXMLHeader();
+        out.writeElement(dav("error"), XMLWriter.OPENING);
+        out.writeElement(precondition, XMLWriter.NO_CONTENT);
+        out.writeElement(dav("error"), XMLWriter.CLOSING);
+        out.sendData();
     }
 
     // ---------------------------------------------------------------- PROPFIND
@@ -245,14 +424,7 @@ public class CalDavServlet extends HttpServlet {
         String supplied = token == null ? "" : token.getTextContent().trim();
         String current = syncToken(resource.calendar.directory);
         if (! supplied.isEmpty() && ! supplied.equals(current)) {
-            resp.setStatus(HttpServletResponse.SC_FORBIDDEN);
-            resp.setContentType("text/xml; charset=UTF-8");
-            XMLWriter out = new XMLWriter(resp.getWriter(), NAMESPACES);
-            out.writeXMLHeader();
-            out.writeElement(dav("error"), XMLWriter.OPENING);
-            out.writeElement(dav("valid-sync-token"), XMLWriter.NO_CONTENT);
-            out.writeElement(dav("error"), XMLWriter.CLOSING);
-            out.sendData();
+            sendPrecondition(resp, HttpServletResponse.SC_FORBIDDEN, dav("valid-sync-token"));
             return;
         }
         Optional<List<String>> requested = requestedProperties(root);
@@ -358,7 +530,7 @@ public class CalDavServlet extends HttpServlet {
         }
         if (property.equals(dav("current-user-privilege-set"))) {
             out.writeElement(dav("current-user-privilege-set"), XMLWriter.OPENING);
-            for (String privilege : List.of("read", "read-acl", "read-current-user-privilege-set")) {
+            for (String privilege : privileges(resource.kind)) {
                 out.writeElement(dav("privilege"), XMLWriter.OPENING);
                 out.writeElement(dav(privilege), XMLWriter.NO_CONTENT);
                 out.writeElement(dav("privilege"), XMLWriter.CLOSING);
@@ -465,6 +637,28 @@ public class CalDavServlet extends HttpServlet {
         return false;
     }
 
+    /**
+     * What the client may do here. A calendar and its members are writable; the home only
+     * accepts new collections; everything above it is fixed structure.
+     */
+    private static List<String> privileges(Kind kind) {
+        List<String> privileges = new ArrayList<>(List.of("read", "read-acl", "read-current-user-privilege-set"));
+        switch (kind) {
+            case CALENDAR:
+                privileges.addAll(List.of("write", "write-content", "write-properties", "bind", "unbind"));
+                break;
+            case OBJECT:
+                privileges.addAll(List.of("write", "write-content"));
+                break;
+            case CALENDAR_HOME:
+                privileges.addAll(List.of("bind", "unbind"));
+                break;
+            default:
+                break;
+        }
+        return privileges;
+    }
+
     private static void writeSupportedReport(XMLWriter out, String report) {
         out.writeElement(dav("supported-report"), XMLWriter.OPENING);
         out.writeElement(dav("report"), XMLWriter.OPENING);
@@ -504,7 +698,10 @@ public class CalDavServlet extends HttpServlet {
                 break;
             case OBJECT:
                 properties.addAll(List.of(dav("getetag"), dav("getcontenttype"), dav("getcontentlength"),
-                        dav("getlastmodified"), dav("creationdate")));
+                        dav("getlastmodified"), dav("creationdate"), dav("current-user-privilege-set")));
+                break;
+            case CALENDAR_HOME:
+                properties.add(dav("current-user-privilege-set"));
                 break;
             default:
                 break;
@@ -550,17 +747,47 @@ public class CalDavServlet extends HttpServlet {
         }
     }
 
+    /**
+     * Where a PUT would land. Unlike {@link #resolve} this succeeds for a member that does
+     * not exist yet, which is the whole point of a create.
+     */
+    private static final class Slot {
+        final CalendarInfo calendar;
+        final String name;
+        final Optional<ObjectRef> existing;
+
+        Slot(CalendarInfo calendar, String name, Optional<ObjectRef> existing) {
+            this.calendar = calendar;
+            this.name = name;
+            this.existing = existing;
+        }
+    }
+
+    private Optional<Slot> resolveSlot(HttpServletRequest req) {
+        List<String> segments = segments(req.getPathInfo());
+        if (segments.size() != 4 || ! segments.get(0).equals("calendars")
+                || ! segments.get(1).equals(store.username()))
+            return Optional.empty();
+        return store.getCalendar(segments.get(2)).map(calendar ->
+                new Slot(calendar, segments.get(3), store.getObject(calendar.directory, segments.get(3))));
+    }
+
     private Optional<Resource> resolve(HttpServletRequest req) {
         String pathInfo = req.getPathInfo();
         return resolvePath(pathInfo == null ? "/" : pathInfo);
     }
 
-    private Optional<Resource> resolvePath(String pathInfo) {
+    private static List<String> segments(String pathInfo) {
         List<String> segments = new ArrayList<>();
-        for (String segment : pathInfo.split("/")) {
+        for (String segment : (pathInfo == null ? "/" : pathInfo).split("/")) {
             if (! segment.isEmpty())
                 segments.add(segment);
         }
+        return segments;
+    }
+
+    private Optional<Resource> resolvePath(String pathInfo) {
+        List<String> segments = segments(pathInfo);
         if (segments.isEmpty())
             return Optional.of(Resource.collection(Kind.ROOT, "/"));
         String first = segments.get(0);
