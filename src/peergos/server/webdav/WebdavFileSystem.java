@@ -161,6 +161,11 @@ public class WebdavFileSystem implements IWebdavStore {
                 });
     }
 
+    /** The signed-in session, shared with the CalDAV bridge so both speak for one account. */
+    public UserContext getContext() {
+        return context;
+    }
+
     @Override
     public void destroy() {
     }

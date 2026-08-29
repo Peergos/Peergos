@@ -185,29 +185,42 @@ public class BufferedNetworkAccess extends NetworkAccess {
                     Throwable conflictCause = Exceptions.getRootCause(conflictT);
                     if (!(conflictCause instanceof PointerCasException))
                         return Futures.errored(conflictT);
-                    PointerCasException cas = (PointerCasException) conflictCause;
-                    MaybeMultihash actualExisting = cas.existing;
-                    if (actualExisting.equals(u.left.currentHash))
-                        return Futures.of(true);
-                    return WriterData.getWriterData(owner, (Cid) u.left.prevHash.get(), Optional.empty(), blockBuffer)
-                            .thenCompose(original -> WriterData.getWriterData(owner, (Cid) u.left.currentHash.get(), Optional.empty(), blockBuffer)
-                                    .thenCompose(updated -> WriterData.getWriterData(owner, (Cid) actualExisting.get(), Optional.empty(), blockBuffer)
-                                            .thenCompose(remote -> ChampUtil.merge(owner, writers.get(u.left.writer),
-                                                            MaybeMultihash.of(original.props.get().tree.get()),
-                                                            MaybeMultihash.of(updated.props.get().tree.get()),
-                                                            MaybeMultihash.of(remote.props.get().tree.get()),
-                                                            Optional.empty(), tid, ChampWrapper.BIT_WIDTH,
-                                                            ChampWrapper.MAX_HASH_COLLISIONS_PER_LEVEL, y -> Futures.of(y.data),
-                                                            c -> (CborObject.CborMerkleLink) c, blockBuffer, hasher)
-                                                    .thenApply(p -> remote.props.get().withChamp(p.right)))))
-                            .thenCompose(newWD -> {
-                                Optional<Long> seq = cas.sequence;
-                                return blockBuffer.put(owner, writers.get(u.left.writer), newWD.serialize(), hasher, tid)
-                                        .thenCompose(mergedRoot -> blockBuffer.signBlocks(writers)
-                                                .thenCompose(signedMore -> blockBuffer.commit(owner, u.left.writer, tid, signedMore))
-                                                .thenCompose(z -> pointerBuffer.commit(owner, writers.get(u.left.writer),
-                                                        new PointerUpdate(actualExisting, MaybeMultihash.of(mergedRoot), seq.map(s -> s + 1)))));
-                            });
+                    return mergeAndCommit(owner, u, writers, tid, (PointerCasException) conflictCause);
+                });
+    }
+
+    /**
+     * Resolve a known CAS conflict by merging our champ with the one the server actually has,
+     * then committing that. Split out so a caller that has already been told the CAS failed can
+     * come straight here: re-sending the update the server just rejected only wastes a round trip.
+     */
+    private CompletableFuture<Boolean> mergeAndCommit(
+            PublicKeyHash owner,
+            Pair<BufferedPointers.WriterUpdate, Optional<CommittedWriterData>> u,
+            Map<PublicKeyHash, SigningPrivateKeyAndPublicHash> writers,
+            TransactionId tid,
+            PointerCasException cas) {
+        MaybeMultihash actualExisting = cas.existing;
+        if (actualExisting.equals(u.left.currentHash))
+            return Futures.of(true);
+        return WriterData.getWriterData(owner, (Cid) u.left.prevHash.get(), Optional.empty(), blockBuffer)
+                .thenCompose(original -> WriterData.getWriterData(owner, (Cid) u.left.currentHash.get(), Optional.empty(), blockBuffer)
+                        .thenCompose(updated -> WriterData.getWriterData(owner, (Cid) actualExisting.get(), Optional.empty(), blockBuffer)
+                                .thenCompose(remote -> ChampUtil.merge(owner, writers.get(u.left.writer),
+                                                MaybeMultihash.of(original.props.get().tree.get()),
+                                                MaybeMultihash.of(updated.props.get().tree.get()),
+                                                MaybeMultihash.of(remote.props.get().tree.get()),
+                                                Optional.empty(), tid, ChampWrapper.BIT_WIDTH,
+                                                ChampWrapper.MAX_HASH_COLLISIONS_PER_LEVEL, y -> Futures.of(y.data),
+                                                c -> (CborObject.CborMerkleLink) c, blockBuffer, hasher)
+                                        .thenApply(p -> remote.props.get().withChamp(p.right)))))
+                .thenCompose(newWD -> {
+                    Optional<Long> seq = cas.sequence;
+                    return blockBuffer.put(owner, writers.get(u.left.writer), newWD.serialize(), hasher, tid)
+                            .thenCompose(mergedRoot -> blockBuffer.signBlocks(writers)
+                                    .thenCompose(signedMore -> blockBuffer.commit(owner, u.left.writer, tid, signedMore))
+                                    .thenCompose(z -> pointerBuffer.commit(owner, writers.get(u.left.writer),
+                                            new PointerUpdate(actualExisting, MaybeMultihash.of(mergedRoot), seq.map(s -> s + 1)))));
                 });
     }
 
@@ -282,8 +295,11 @@ public class BufferedNetworkAccess extends NetworkAccess {
                                     Throwable cause = Exceptions.getRootCause(t);
                                     if (writes.size() > 1 || !(cause instanceof PointerCasException))
                                         return Futures.errored(t);
+                                    // The server has just rejected exactly this update, so skip
+                                    // straight to merging rather than proposing it a second time.
                                     return Futures.reduceAll(writes.stream(), true,
-                                            (a, u) -> commitPointerWithMerge(owner, u, writers, tid),
+                                            (a, u) -> mergeAndCommit(owner, u, writers, tid,
+                                                    (PointerCasException) cause),
                                             (x, y) -> x && y);
                                 }
                         )))

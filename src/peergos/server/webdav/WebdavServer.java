@@ -17,6 +17,7 @@ import peergos.server.Main;
 import peergos.server.net.MountConfigHandler;
 import peergos.server.util.JvmThumbnailer;
 import peergos.server.util.Logging;
+import peergos.server.webdav.caldav.DavServlet;
 import peergos.server.webdav.modeshape.webdav.WebdavServlet;
 import peergos.server.util.Args;
 import peergos.shared.Crypto;
@@ -37,6 +38,7 @@ import java.util.logging.Logger;
 public class WebdavServer {
 
     private static final String VERSION= "0.1";
+    private static final String DAV_PREFIX = "/dav";
     private static final Logger logger = Logging.LOG();
 
     /** Overload used by MountConfigHandler when it holds its own WebdavFileSystem reference. */
@@ -124,6 +126,15 @@ public class WebdavServer {
                     "/peergos/v0/mount/snapshot");
         }
 
+        // CalDAV and CardDAV live under their own prefix so a file client mounting / never
+        // sees them, and RFC 6764 discovery points at it from the well known locations.
+        context.addServlet(new ServletHolder("dav", new DavServlet(servlet.getFileSystem().getContext())),
+                DAV_PREFIX + "/*");
+        for (String wellKnown : List.of("/.well-known/caldav", "/.well-known/carddav")) {
+            context.addServlet(new ServletHolder("dav-discovery" + wellKnown.hashCode(),
+                    new RedirectServlet(DAV_PREFIX + "/")), wellKnown);
+        }
+
         ServletHolder holderDef = new ServletHolder("default", servlet);
         holderDef.setInitParameter("rootpath","");
         context.addServlet(holderDef,"/*");
@@ -134,6 +145,18 @@ public class WebdavServer {
             return server;
         } catch (Exception e) {
             throw new RuntimeException(e);
+        }
+    }
+
+    /** RFC 6764 discovery: a client given only the server root still finds the CalDAV tree. */
+    private static final class RedirectServlet extends HttpServlet {
+        private final String target;
+        RedirectServlet(String target) { this.target = target; }
+
+        @Override
+        protected void service(HttpServletRequest req, HttpServletResponse resp) {
+            resp.setStatus(HttpServletResponse.SC_MOVED_PERMANENTLY);
+            resp.setHeader("Location", req.getContextPath() + target);
         }
     }
 
