@@ -369,6 +369,100 @@ public class CalDavTests {
         return client.send(request.build(), HttpResponse.BodyHandlers.ofString());
     }
 
+    @Test
+    public void syncCollectionReportsOnlyWhatChanged() throws Exception {
+        String username = "caldav-sync" + Math.abs(random.nextInt() % 1_000_000);
+        String password = "testpassword";
+        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
+
+        App calendar = App.init(context, "calendar").join();
+        write(calendar, "App.config",
+                "{\"calendars\":[{\"name\":\"Work\",\"directory\":\"work\",\"color\":\"#ff0000\"}]}");
+        write(calendar, "work/calendar.inf", "{\"name\":\"Work\",\"color\":\"#ff0000\"}");
+        write(calendar, "work/2024/3/first.ics", event("first", "20240315T090000Z", "20240315T100000Z", ""));
+        write(calendar, "work/2024/3/second.ics", event("second", "20240316T090000Z", "20240316T100000Z", ""));
+
+        int port = TestPorts.getPort();
+        Server server = WebdavServer.startNonBlocking(port, WEBDAV_USER, WEBDAV_PASSWORD,
+                username, password, "http://localhost:" + args.getInt("port"), "basic", MountConfig.disabled());
+        try {
+            HttpClient client = HttpClient.newHttpClient();
+            String base = "http://localhost:" + port;
+            String auth = "Basic " + Base64.getEncoder()
+                    .encodeToString((WEBDAV_USER + ":" + WEBDAV_PASSWORD).getBytes());
+            String work = base + "/dav/calendars/" + username + "/work/";
+
+            // Initial sync enumerates everything and issues a token.
+            HttpResponse<String> initial = report(client, auth, work, syncRequest(""));
+            Assert.assertEquals(207, initial.statusCode());
+            Assert.assertTrue(initial.body().contains("first.ics"));
+            Assert.assertTrue(initial.body().contains("second.ics"));
+            String token = between(initial.body(), "<D:sync-token>", "</D:sync-token>");
+            Assert.assertFalse(token.isEmpty());
+
+            // Nothing has changed, so the same token comes back with no members.
+            HttpResponse<String> unchanged = report(client, auth, work, syncRequest(token));
+            Assert.assertEquals(207, unchanged.statusCode());
+            Assert.assertFalse("no members when nothing changed: " + unchanged.body(),
+                    unchanged.body().contains(".ics"));
+            Assert.assertEquals("an unchanged collection keeps its token", token,
+                    between(unchanged.body(), "<D:sync-token>", "</D:sync-token>"));
+
+            // Add one and modify another; the untouched one must not be reported.
+            Assert.assertEquals(201, put(client, auth, work + "third.ics",
+                    event("third", "20240317T090000Z", "20240317T100000Z", ""), null).statusCode());
+            Assert.assertEquals(204, put(client, auth, work + "first.ics",
+                    event("first", "20240315T110000Z", "20240315T120000Z", ""), null).statusCode());
+
+            HttpResponse<String> incremental = report(client, auth, work, syncRequest(token));
+            Assert.assertEquals(207, incremental.statusCode());
+            Assert.assertTrue("new member: " + incremental.body(), incremental.body().contains("third.ics"));
+            Assert.assertTrue("changed member: " + incremental.body(), incremental.body().contains("first.ics"));
+            Assert.assertFalse("untouched member must not be resent: " + incremental.body(),
+                    incremental.body().contains("second.ics"));
+            String afterAdds = between(incremental.body(), "<D:sync-token>", "</D:sync-token>");
+            Assert.assertNotEquals(token, afterAdds);
+
+            // A deletion is reported as a 404 response, which is the only way the client
+            // learns to drop it. This is what the forced-resync answer could never express.
+            Assert.assertEquals(204, send(client, auth, "DELETE", work + "second.ics", null, null).statusCode());
+            HttpResponse<String> afterDelete = report(client, auth, work, syncRequest(afterAdds));
+            Assert.assertEquals(207, afterDelete.statusCode());
+            Assert.assertTrue("deleted member reported: " + afterDelete.body(),
+                    afterDelete.body().contains("second.ics"));
+            Assert.assertTrue("deleted member marked 404: " + afterDelete.body(),
+                    afterDelete.body().contains("404"));
+            Assert.assertFalse("surviving members must not be resent: " + afterDelete.body(),
+                    afterDelete.body().contains("third.ics"));
+
+            // A token we never issued still forces a full resync.
+            HttpResponse<String> bogus = report(client, auth, work, syncRequest("urn:x-made-up"));
+            Assert.assertEquals(403, bogus.statusCode());
+            Assert.assertTrue(bogus.body().contains("valid-sync-token"));
+
+            // The ctag tracks the collection, not the account: an unrelated write elsewhere
+            // in the user's space must leave it alone.
+            String ctagBefore = ctag(client, auth, work);
+            write(calendar, "unrelated/calendar.inf", "{\"name\":\"Unrelated\"}");
+            Assert.assertEquals("ctag must not move for a change outside the collection",
+                    ctagBefore, ctag(client, auth, work));
+        } finally {
+            server.stop();
+        }
+    }
+
+    private static String syncRequest(String token) {
+        return "<D:sync-collection xmlns:D=\"DAV:\"><D:sync-token>" + token + "</D:sync-token>"
+                + "<D:sync-level>1</D:sync-level><D:prop><D:getetag/></D:prop></D:sync-collection>";
+    }
+
+    private static String ctag(HttpClient client, String auth, String url) throws Exception {
+        String body = propfind(client, auth, url, "0",
+                "<D:propfind xmlns:D=\"DAV:\" xmlns:CS=\"http://calendarserver.org/ns/\">"
+                        + "<D:prop><CS:getctag/></D:prop></D:propfind>").body();
+        return between(body, "<CS:getctag>", "</CS:getctag>");
+    }
+
     private static String between(String body, String open, String close) {
         int from = body.indexOf(open);
         if (from < 0)

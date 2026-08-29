@@ -9,6 +9,8 @@ import peergos.shared.util.PathUtil;
 import peergos.shared.util.Serialize;
 
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.nio.file.Path;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -88,6 +90,11 @@ public class CalendarStore {
     private final String username;
     private final Path dataDir;
     private volatile App app;
+    /** How many past states a collection remembers before a client has to resync in full. */
+    private static final int MAX_REMEMBERED_STATES = 32;
+    private final Map<String, Listing> listings = new HashMap<>();
+    private final Map<String, String> writerVersions = new HashMap<>();
+    private final Map<String, Map<String, Map<String, String>>> history = new HashMap<>();
 
     public CalendarStore(UserContext context) {
         this.context = context;
@@ -139,8 +146,130 @@ public class CalendarStore {
         return listCalendars().stream().filter(c -> c.directory.equals(directory)).findFirst();
     }
 
+    /**
+     * A collection's members together with the token naming that exact state.
+     *
+     * The token is derived from the members themselves, not from the writer version, so it
+     * only moves when the collection really changes — and it doubles as the key the change
+     * log is indexed by.
+     */
+    public static final class Listing {
+        public final String token;
+        public final List<ObjectRef> objects;
+        /** name to ETag, kept so a later listing can be diffed against this one. */
+        final Map<String, String> etags;
+
+        Listing(String token, List<ObjectRef> objects, Map<String, String> etags) {
+            this.token = token;
+            this.objects = objects;
+            this.etags = etags;
+        }
+    }
+
+    /** What a client holding an older token has yet to see. */
+    public static final class Changes {
+        public final List<ObjectRef> changed;
+        public final List<String> removed;
+        public final String token;
+
+        Changes(List<ObjectRef> changed, List<String> removed, String token) {
+            this.changed = changed;
+            this.removed = removed;
+            this.token = token;
+        }
+    }
+
+    /**
+     * The collection as it is now, reusing the last listing while the writer has not moved.
+     *
+     * The writer version is too coarse to be a token — it moves on any write in the account
+     * — but it is exactly right as a cheap "could anything have changed?" guard, and it is
+     * one pointer read against a full directory walk.
+     */
+    public synchronized Listing listing(String directory) {
+        Optional<String> version = writerVersion(directory);
+        Listing cached = listings.get(directory);
+        if (cached != null && version.isPresent() && version.get().equals(writerVersions.get(directory)))
+            return cached;
+
+        List<ObjectRef> objects = readObjects(directory);
+        Map<String, String> etags = new TreeMap<>();
+        for (ObjectRef object : objects)
+            etags.put(object.name, object.etag());
+        Listing listing = new Listing(tokenFor(etags), objects, etags);
+
+        listings.put(directory, listing);
+        version.ifPresent(v -> writerVersions.put(directory, v));
+        Map<String, Map<String, String>> log = history.computeIfAbsent(directory,
+                d -> new LinkedHashMap<>() {
+                    @Override
+                    protected boolean removeEldestEntry(Map.Entry<String, Map<String, String>> eldest) {
+                        return size() > MAX_REMEMBERED_STATES;
+                    }
+                });
+        log.remove(listing.token);
+        log.put(listing.token, etags);
+        return listing;
+    }
+
+    /**
+     * What changed since the given token, or empty if that state is no longer remembered —
+     * which the caller must answer with DAV:valid-sync-token so the client resyncs in full.
+     *
+     * The history is in memory only. A restart therefore forces one resync per collection,
+     * which is what every change used to cost, and writing a log into the user's app data
+     * would mean a second writer on files the web calendar app owns.
+     */
+    public synchronized Optional<Changes> changesSince(String directory, String token) {
+        Listing now = listing(directory);
+        if (now.token.equals(token))
+            return Optional.of(new Changes(Collections.emptyList(), Collections.emptyList(), now.token));
+        Map<String, String> before = history.getOrDefault(directory, Collections.emptyMap()).get(token);
+        if (before == null)
+            return Optional.empty();
+        List<ObjectRef> changed = now.objects.stream()
+                .filter(o -> ! o.etag().equals(before.get(o.name)))
+                .collect(Collectors.toList());
+        List<String> removed = before.keySet().stream()
+                .filter(name -> ! now.etags.containsKey(name))
+                .collect(Collectors.toList());
+        return Optional.of(new Changes(changed, removed, now.token));
+    }
+
+    /** The current token, used for both DAV:sync-token and the calendarserver getctag. */
+    public String token(String directory) {
+        return listing(directory).token;
+    }
+
+    private static String tokenFor(Map<String, String> etags) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            for (Map.Entry<String, String> entry : etags.entrySet()) {
+                digest.update(entry.getKey().getBytes(StandardCharsets.UTF_8));
+                digest.update((byte) 0);
+                digest.update(entry.getValue().getBytes(StandardCharsets.UTF_8));
+                digest.update((byte) '\n');
+            }
+            return ArrayOps.bytesToHex(digest.digest()).substring(0, 32);
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    private Optional<String> writerVersion(String directory) {
+        Optional<FileWrapper> calendar = getByPath(calendarPath(directory));
+        if (calendar.isEmpty())
+            return Optional.empty();
+        return context.network.mutable.getPointer(calendar.get().owner(), calendar.get().writer()).join()
+                .map(ArrayOps::bytesToHex);
+    }
+
     /** Every .ics under a calendar, from both the month shards and recurring/. */
     public List<ObjectRef> listObjects(String directory) {
+        return listing(directory).objects;
+    }
+
+    private List<ObjectRef> readObjects(String directory) {
         List<ObjectRef> objects = new ArrayList<>();
         for (FileWrapper shard : children(calendarPath(directory))) {
             if (! shard.isDirectory())
@@ -241,9 +370,23 @@ public class CalendarStore {
     /** Writes through App, so the layout is exactly what the web calendar app produces. */
     private void write(String relativePath, byte[] content) {
         app().writeInternal(PathUtil.get(relativePath), content, null).join();
+        forget(relativePath.substring(0, Math.max(0, relativePath.indexOf('/'))));
+    }
+
+    /**
+     * Drop the cached listing for a collection we have just written to. The writer version
+     * would catch it anyway, but only once the pointer cache agrees, and our own writes are
+     * the one case where we already know for certain.
+     */
+    private synchronized void forget(String directory) {
+        listings.remove(directory);
+        writerVersions.remove(directory);
     }
 
     private void remove(Path path) {
+        Path relative = dataDir.relativize(path);
+        if (relative.getNameCount() > 0)
+            forget(relative.getName(0).toString());
         Optional<FileWrapper> file = getByPath(path);
         if (file.isEmpty())
             return;
@@ -261,22 +404,6 @@ public class CalendarStore {
         if (app == null)
             app = App.init(context, APP_NAME).join();
         return app;
-    }
-
-    /**
-     * A value that changes whenever anything in the calendar changes. The writer's mutable
-     * pointer is the cheapest such value we have; it also moves on writes elsewhere under
-     * the same writer, which makes clients poll more often than they need to but never
-     * makes them miss a change.
-     */
-    public String ctag(String directory) {
-        Optional<FileWrapper> calendar = getByPath(calendarPath(directory));
-        if (calendar.isEmpty())
-            return "empty";
-        return context.network.mutable.getPointer(calendar.get().owner(), calendar.get().writer()).join()
-                .map(ArrayOps::bytesToHex)
-                .map(hex -> hex.length() > 32 ? hex.substring(hex.length() - 32) : hex)
-                .orElse("empty");
     }
 
     /**

@@ -407,10 +407,11 @@ public class CalDavServlet extends HttpServlet {
     }
 
     /**
-     * Without a per-collection change log there is no way to answer incrementally, so an
-     * initial (empty) token gets the full listing and any later token is rejected with
-     * DAV:valid-sync-token, which tells the client to resync in full. That is legal, and
-     * costs one extra listing per change rather than risking a missed deletion.
+     * RFC 6578 sync-collection. An empty token enumerates the collection; a token we still
+     * remember gets just what changed since, with removed members reported as 404 responses
+     * so the client can drop them. A token we no longer remember — the history is bounded,
+     * and it does not survive a restart — is answered with DAV:valid-sync-token, which tells
+     * the client to resync in full.
      */
     private void syncCollection(HttpServletRequest req,
                                 HttpServletResponse resp,
@@ -422,25 +423,50 @@ public class CalDavServlet extends HttpServlet {
         }
         Node token = XMLHelper.findSubElement(root, "sync-token");
         String supplied = token == null ? "" : token.getTextContent().trim();
-        String current = syncToken(resource.calendar.directory);
-        if (! supplied.isEmpty() && ! supplied.equals(current)) {
+        Optional<List<String>> requested = requestedProperties(root);
+        String directory = resource.calendar.directory;
+
+        if (supplied.isEmpty()) {
+            CalendarStore.Listing listing = store.listing(directory);
+            XMLWriter out = beginMultistatus(resp);
+            for (ObjectRef object : listing.objects)
+                writeResponse(out, req, resource.child(object), requested);
+            writeSyncToken(out, listing.token);
+            endMultistatus(out);
+            return;
+        }
+
+        Optional<CalendarStore.Changes> changes = tokenValue(supplied)
+                .flatMap(value -> store.changesSince(directory, value));
+        if (changes.isEmpty()) {
             sendPrecondition(resp, HttpServletResponse.SC_FORBIDDEN, dav("valid-sync-token"));
             return;
         }
-        Optional<List<String>> requested = requestedProperties(root);
         XMLWriter out = beginMultistatus(resp);
-        if (supplied.isEmpty()) {
-            for (ObjectRef object : store.listObjects(resource.calendar.directory))
-                writeResponse(out, req, resource.child(object), requested);
-        }
-        out.writeElement(dav("sync-token"), XMLWriter.OPENING);
-        out.writeText(escape(current));
-        out.writeElement(dav("sync-token"), XMLWriter.CLOSING);
+        for (ObjectRef object : changes.get().changed)
+            writeResponse(out, req, resource.child(object), requested);
+        for (String removed : changes.get().removed)
+            writeNotFound(out, base(req) + resource.path + encode(removed));
+        writeSyncToken(out, changes.get().token);
         endMultistatus(out);
     }
 
-    private String syncToken(String directory) {
-        return "https://peergos.org/ns/dav/sync/" + store.ctag(directory);
+    private void writeSyncToken(XMLWriter out, String token) {
+        out.writeElement(dav("sync-token"), XMLWriter.OPENING);
+        out.writeText(escape(syncToken(token)));
+        out.writeElement(dav("sync-token"), XMLWriter.CLOSING);
+    }
+
+    private static final String SYNC_TOKEN_PREFIX = "https://peergos.org/ns/dav/sync/";
+
+    private static String syncToken(String value) {
+        return SYNC_TOKEN_PREFIX + value;
+    }
+
+    /** Anything not in the form we issue is a token we cannot have produced. */
+    private static Optional<String> tokenValue(String syncToken) {
+        return syncToken.startsWith(SYNC_TOKEN_PREFIX) ?
+                Optional.of(syncToken.substring(SYNC_TOKEN_PREFIX.length())) : Optional.empty();
     }
 
     // -------------------------------------------------------------- properties
@@ -590,11 +616,11 @@ public class CalDavServlet extends HttpServlet {
             return true;
         }
         if (property.equals(calserver("getctag"))) {
-            out.writeProperty(calserver("getctag"), escape(syncToken(resource.calendar.directory)));
+            out.writeProperty(calserver("getctag"), escape(syncToken(store.token(resource.calendar.directory))));
             return true;
         }
         if (property.equals(dav("sync-token"))) {
-            out.writeProperty(dav("sync-token"), escape(syncToken(resource.calendar.directory)));
+            out.writeProperty(dav("sync-token"), escape(syncToken(store.token(resource.calendar.directory))));
             return true;
         }
         if (property.equals(appleIcal("calendar-color"))) {
