@@ -7,6 +7,7 @@ import peergos.shared.util.*;
 
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.stream.Collectors;
 
 public class CachingPointers implements MutablePointers {
 
@@ -81,6 +82,9 @@ public class CachingPointers implements MutablePointers {
                 }
             }
             return res;
+        }).exceptionally(t -> {
+            forgetIfStale(t, Collections.singletonList(writer));
+            throw t instanceof RuntimeException ? (RuntimeException) t : new RuntimeException(t);
         });
     }
 
@@ -99,7 +103,26 @@ public class CachingPointers implements MutablePointers {
                 }
             }
             return res;
+        }).exceptionally(t -> {
+            forgetIfStale(t, updates.stream().map(u -> u.writer).collect(Collectors.toList()));
+            throw t instanceof RuntimeException ? (RuntimeException) t : new RuntimeException(t);
         });
+    }
+
+    /**
+     * A rejected CAS means another session moved this pointer, so whatever we hold for that
+     * writer describes a state the server has already left. Dropping it makes the retry read
+     * the truth instead of re-proposing the same doomed update until the entry ages out.
+     */
+    private void forgetIfStale(Throwable t, List<PublicKeyHash> writers) {
+        if (! (Exceptions.getRootCause(t) instanceof PointerCasException))
+            return;
+        synchronized (cache) {
+            writers.forEach(cache::remove);
+        }
+        synchronized (targetCache) {
+            writers.forEach(targetCache::remove);
+        }
     }
 
     @Override
