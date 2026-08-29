@@ -1027,25 +1027,24 @@ public class SyncTests {
 
         status.setStatus("Checking files on this device");
         status.setStatus(SyncStatus.SYNCING);
-        // the file is replaced by a rename, so a write shows up as a new file rather than as
-        // different content: a redundant one would write the same bytes back
-        Object beforeWrites = fileKey(file);
+        Assert.assertTrue(Files.exists(file));
 
+        // a write recreates the file, so whether it comes back is the check: a redundant one
+        // would write the same bytes, and file times and keys are not portable enough to tell
+        Files.delete(file);
         status.setError(null);
         status.setStatus(SyncStatus.SYNCING);
-        Assert.assertEquals("nothing changed, so nothing was written", beforeWrites, fileKey(file));
+        Assert.assertFalse("nothing changed, so nothing was written", Files.exists(file));
 
         status.setStatus(SyncStatus.SYNCED);
-        Assert.assertNotEquals("a real change still reaches the file", beforeWrites, fileKey(file));
+        Assert.assertTrue("a real change still reaches the file", Files.exists(file));
 
-        // the message carries the clock the view shows, so repeating it is still worth writing
-        Object beforeRepeat = fileKey(file);
+        // the message carries the clock the view shows next to it, so repeating it is still
+        // worth a write even though the text has not changed
+        Files.delete(file);
         status.setStatus("Dir sync took 2s");
+        Files.delete(file);
         status.setStatus("Dir sync took 2s");
-        Assert.assertNotEquals("the same message still restamps the time", beforeRepeat, fileKey(file));
-    }
-
-    private static Object fileKey(Path p) throws IOException {
-        return Files.readAttributes(p, java.nio.file.attribute.BasicFileAttributes.class).fileKey();
+        Assert.assertTrue("the same message still restamps the time", Files.exists(file));
     }
 }
