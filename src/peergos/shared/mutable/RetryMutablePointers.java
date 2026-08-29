@@ -3,6 +3,7 @@ package peergos.shared.mutable;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.storage.CasException;
 import peergos.shared.storage.PointerCasException;
+import peergos.shared.util.Exceptions;
 
 import java.net.*;
 import java.util.*;
@@ -38,13 +39,18 @@ public class RetryMutablePointers implements MutablePointers {
             f.get()
                     .thenAccept(res::complete)
                     .exceptionally(e -> {
+                        // The stage this is attached to wraps the failure in a CompletionException,
+                        // so these have to be tested on the cause. Retrying a CAS failure cannot
+                        // help: the update is already signed, so every attempt re-sends the same
+                        // expected value the server has just rejected.
+                        Throwable cause = Exceptions.getRootCause(e);
                         if (retriesLeft == 1) {
                             res.completeExceptionally(e);
-                        } else if (e instanceof ConnectException) {
+                        } else if (cause instanceof ConnectException) {
                             res.completeExceptionally(e);
-                        } else if (e instanceof PointerCasException) {
+                        } else if (cause instanceof PointerCasException) {
                             res.completeExceptionally(e);
-                        } else if (e instanceof CasException) {
+                        } else if (cause instanceof CasException) {
                             res.completeExceptionally(e);
                         } else {
                             retryAfter(() -> recurse(retriesLeft - 1, f)
