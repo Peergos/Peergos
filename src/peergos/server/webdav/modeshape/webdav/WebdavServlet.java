@@ -32,7 +32,7 @@ public class WebdavServlet extends WebDavServletBean {
     private static final long serialVersionUID = 1L;
     private static final String ROOTPATH_PARAMETER = "rootpath";
 
-    private final IWebdavStore webdavStore;
+    private final WebdavFileSystem webdavStore;
 
     public WebdavServlet(String username, String password, String peergosUrl, MountConfig config) {
         webdavStore = new WebdavFileSystem(username, password, peergosUrl, config);
@@ -40,6 +40,10 @@ public class WebdavServlet extends WebDavServletBean {
 
     public WebdavServlet(WebdavFileSystem fs) {
         webdavStore = fs;
+    }
+
+    public WebdavFileSystem getFileSystem() {
+        return webdavStore;
     }
 
     @Override
