@@ -9,8 +9,8 @@ import org.w3c.dom.Node;
 import org.w3c.dom.NodeList;
 import org.xml.sax.InputSource;
 import peergos.server.util.Logging;
-import peergos.server.webdav.caldav.CalendarStore.CalendarInfo;
-import peergos.server.webdav.caldav.CalendarStore.ObjectRef;
+import peergos.server.webdav.caldav.AppDataStore.CollectionInfo;
+import peergos.server.webdav.caldav.AppDataStore.ObjectRef;
 import peergos.server.webdav.modeshape.webdav.fromcatalina.RequestUtil;
 import peergos.server.webdav.modeshape.webdav.fromcatalina.XMLHelper;
 import peergos.server.webdav.modeshape.webdav.fromcatalina.XMLWriter;
@@ -25,6 +25,7 @@ import java.time.Instant;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
+import java.util.function.Supplier;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -50,18 +51,20 @@ import java.util.logging.Logger;
  * Like the file bridge's method handlers this servlet is a single instance shared across
  * request threads, so all per-request state stays on the stack.
  */
-public class CalDavServlet extends HttpServlet {
+public class DavServlet extends HttpServlet {
 
     private static final Logger LOG = Logging.LOG();
 
     static final String NS_DAV = "DAV:";
     static final String NS_CALDAV = "urn:ietf:params:xml:ns:caldav";
+    static final String NS_CARDDAV = "urn:ietf:params:xml:ns:carddav";
     static final String NS_CALSERVER = "http://calendarserver.org/ns/";
     static final String NS_APPLE_ICAL = "http://apple.com/ns/ical/";
 
     private static final Map<String, String> NAMESPACES = Map.of(
             NS_DAV, "D",
             NS_CALDAV, "C",
+            NS_CARDDAV, "CARD",
             NS_CALSERVER, "CS",
             NS_APPLE_ICAL, "ICAL");
 
@@ -72,14 +75,16 @@ public class CalDavServlet extends HttpServlet {
 
     private static final long MAX_RESOURCE_SIZE = 10 * 1024 * 1024L;
 
-    private final CalendarStore store;
+    private final CalendarStore calendars;
+    private final ContactStore contacts;
 
-    public CalDavServlet(UserContext context) {
-        this(new CalendarStore(context));
+    public DavServlet(UserContext context) {
+        this(new CalendarStore(context), new ContactStore(context));
     }
 
-    public CalDavServlet(CalendarStore store) {
-        this.store = store;
+    public DavServlet(CalendarStore calendars, ContactStore contacts) {
+        this.calendars = calendars;
+        this.contacts = contacts;
     }
 
     // ---------------------------------------------------------------- dispatch
@@ -108,7 +113,10 @@ public class CalDavServlet extends HttpServlet {
                     doDelete(req, resp);
                     return;
                 case "MKCALENDAR":
-                    doMkcalendar(req, resp);
+                    doMakeCollection(req, resp, Type.CALENDAR);
+                    return;
+                case "MKCOL":
+                    doMkcol(req, resp);
                     return;
                 default:
                     resp.addHeader("Allow", allowed(resolve(req)));
@@ -123,7 +131,7 @@ public class CalDavServlet extends HttpServlet {
     @Override
     protected void doOptions(HttpServletRequest req, HttpServletResponse resp) {
         resp.setStatus(HttpServletResponse.SC_OK);
-        resp.addHeader("DAV", "1, 2, 3, calendar-access");
+        resp.addHeader("DAV", "1, 2, 3, calendar-access, addressbook");
         resp.addHeader("Allow", allowed(resolve(req)));
         resp.addHeader("MS-Author-Via", "DAV");
         resp.setContentLength(0);
@@ -132,13 +140,15 @@ public class CalDavServlet extends HttpServlet {
     /** RFC 7231 wants the methods allowed for this resource, not for the servlet. */
     private static String allowed(Optional<Resource> resource) {
         Kind kind = resource.map(r -> r.kind).orElse(Kind.ROOT);
+        Type type = resource.map(r -> r.type).orElse(null);
         switch (kind) {
             case OBJECT:
                 return "OPTIONS, GET, HEAD, PUT, DELETE, PROPFIND, REPORT";
-            case CALENDAR:
+            case COLLECTION:
                 return "OPTIONS, PUT, DELETE, PROPFIND, REPORT";
-            case CALENDAR_HOME:
-                return "OPTIONS, MKCALENDAR, PROPFIND, REPORT";
+            case HOME:
+                return type == Type.ADDRESSBOOK ? "OPTIONS, MKCOL, PROPFIND, REPORT"
+                        : "OPTIONS, MKCALENDAR, PROPFIND, REPORT";
             default:
                 return "OPTIONS, PROPFIND, REPORT";
         }
@@ -151,9 +161,9 @@ public class CalDavServlet extends HttpServlet {
             return;
         }
         ObjectRef object = resolved.get().object;
-        byte[] content = store.read(object);
+        byte[] content = resolved.get().store.read(object);
         resp.setStatus(HttpServletResponse.SC_OK);
-        resp.setContentType("text/calendar; charset=utf-8");
+        resp.setContentType(resolved.get().type.contentType);
         resp.setContentLength(content.length);
         resp.setHeader("ETag", object.etag());
         if (withBody)
@@ -170,10 +180,11 @@ public class CalDavServlet extends HttpServlet {
             return;
         }
         Slot slot = resolved.get();
-        if (! slot.name.endsWith(CalendarStore.ICS_SUFFIX) || slot.name.contains("/")) {
+        if (! slot.name.endsWith(slot.type.suffix) || slot.name.contains("/")) {
             // Anything else would be stored but never listed, since the flat view only
             // surfaces .ics files; better to say so than to swallow it.
-            sendPrecondition(resp, HttpServletResponse.SC_FORBIDDEN, caldav("valid-calendar-object-resource"));
+            sendPrecondition(resp, HttpServletResponse.SC_FORBIDDEN, slot.type == Type.CALENDAR ?
+                    caldav("valid-calendar-object-resource") : carddav("valid-address-data"));
             return;
         }
         if (failsPreconditions(req, slot.existing)) {
@@ -183,15 +194,16 @@ public class CalDavServlet extends HttpServlet {
         Optional<byte[]> content = readBody(req, resp);
         if (content.isEmpty())
             return;
-        ICal.Summary summary = ICal.summarise(new String(content.get(), StandardCharsets.UTF_8));
-        if (CalendarStore.shardFor(summary).isEmpty()) {
-            // Without a start date there is no directory the web app would ever read it
-            // from, so storing it would hide it rather than keep it.
-            sendPrecondition(resp, HttpServletResponse.SC_FORBIDDEN, caldav("valid-calendar-data"));
+        if (! slot.store.canStore(content.get())) {
+            // A calendar object with no start date has no directory the web app would ever
+            // read it from, so storing it would hide it rather than keep it; a vCard that
+            // does not parse as one has nothing to identify it by.
+            sendPrecondition(resp, HttpServletResponse.SC_FORBIDDEN, slot.type == Type.CALENDAR ?
+                    caldav("valid-calendar-data") : carddav("valid-address-data"));
             return;
         }
-        store.putObject(slot.calendar.directory, slot.name, content.get(), slot.existing);
-        store.getObject(slot.calendar.directory, slot.name)
+        slot.store.putObject(slot.collection.directory, slot.name, content.get(), slot.existing);
+        slot.store.getObject(slot.collection.directory, slot.name)
                 .ifPresent(written -> resp.setHeader("ETag", written.etag()));
         resp.setStatus(slot.existing.isPresent()
                 ? HttpServletResponse.SC_NO_CONTENT : HttpServletResponse.SC_CREATED);
@@ -210,19 +222,19 @@ public class CalDavServlet extends HttpServlet {
                 resp.sendError(HttpServletResponse.SC_PRECONDITION_FAILED);
                 return;
             }
-            store.deleteObject(resource.calendar.directory, resource.object);
+            resource.store.deleteObject(resource.collection.directory, resource.object);
             resp.setStatus(HttpServletResponse.SC_NO_CONTENT);
             return;
         }
-        if (resource.kind == Kind.CALENDAR) {
-            if (resource.calendar.configured) {
+        if (resource.kind == Kind.COLLECTION) {
+            if (resource.collection.configured) {
                 // Removing the directory would leave the web app with an App.config entry
                 // it cannot satisfy and we will not rewrite. Deleting it there works.
                 resp.sendError(HttpServletResponse.SC_FORBIDDEN,
                         "This calendar is listed in the web app; delete it there instead");
                 return;
             }
-            store.deleteCalendar(resource.calendar.directory);
+            resource.store.deleteCollection(resource.collection.directory);
             resp.setStatus(HttpServletResponse.SC_NO_CONTENT);
             return;
         }
@@ -230,32 +242,46 @@ public class CalDavServlet extends HttpServlet {
         resp.sendError(HttpServletResponse.SC_METHOD_NOT_ALLOWED);
     }
 
-    private void doMkcalendar(HttpServletRequest req, HttpServletResponse resp) throws IOException {
-        Optional<String> directory = newCalendarDirectory(req);
-        if (directory.isEmpty()) {
-            resp.sendError(HttpServletResponse.SC_FORBIDDEN, "Calendars live under /calendars/" + store.username() + "/");
+    /**
+     * MKCALENDAR (RFC 4791) for calendars, and extended MKCOL (RFC 5689) for address books,
+     * which is how a CardDAV client asks for one: the collection kind comes from the
+     * resourcetype in the body, so a plain MKCOL under /addressbooks/ means the same thing.
+     */
+    private void doMakeCollection(HttpServletRequest req, HttpServletResponse resp, Type method)
+            throws IOException {
+        List<String> segments = segments(req.getPathInfo());
+        Optional<Type> type = segments.isEmpty() ? Optional.empty() : Type.forSegment(segments.get(0));
+        if (type.isEmpty() || segments.size() != 3 || ! segments.get(1).equals(username())) {
+            resp.sendError(HttpServletResponse.SC_FORBIDDEN,
+                    "Collections live under /" + method.segment + "/" + username() + "/");
             return;
         }
-        if (store.getCalendar(directory.get()).isPresent()) {
+        if (type.get() != method) {
+            resp.sendError(HttpServletResponse.SC_FORBIDDEN,
+                    "Wrong method for a " + type.get().segment + " collection");
+            return;
+        }
+        String directory = segments.get(2);
+        if (directory.contains("/") || directory.startsWith(".")) {
+            resp.sendError(HttpServletResponse.SC_FORBIDDEN, "Illegal collection name");
+            return;
+        }
+        AppDataStore store = store(type.get());
+        if (store.getCollection(directory).isPresent()) {
             resp.addHeader("Allow", "OPTIONS, PROPFIND, REPORT");
             resp.sendError(HttpServletResponse.SC_METHOD_NOT_ALLOWED, "Already exists");
             return;
         }
         Element body = parseBody(req).map(Document::getDocumentElement).orElse(null);
-        store.createCalendar(directory.get(),
-                property(body, "displayname").orElse(directory.get()),
-                property(body, "calendar-color").orElse("#00a9ff"));
+        store.createCollection(directory,
+                property(body, "displayname").orElse(directory),
+                type.get() == Type.CALENDAR ? property(body, "calendar-color").orElse("#00a9ff") : "");
         resp.setStatus(HttpServletResponse.SC_CREATED);
     }
 
-    /** The directory a MKCALENDAR would create, or empty if the path cannot hold one. */
-    private Optional<String> newCalendarDirectory(HttpServletRequest req) {
-        List<String> segments = segments(req.getPathInfo());
-        if (segments.size() != 3 || ! segments.get(0).equals("calendars")
-                || ! segments.get(1).equals(store.username()))
-            return Optional.empty();
-        String directory = segments.get(2);
-        return directory.contains("/") || directory.startsWith(".") ? Optional.empty() : Optional.of(directory);
+    /** A MKCOL naming an addressbook resourcetype is a CardDAV create; anything else is not. */
+    private void doMkcol(HttpServletRequest req, HttpServletResponse resp) throws IOException {
+        doMakeCollection(req, resp, Type.ADDRESSBOOK);
     }
 
     /** Reads a value out of a MKCALENDAR or PROPPATCH style {@code <set><prop>} body. */
@@ -283,7 +309,7 @@ public class CalDavServlet extends HttpServlet {
      * If-Match and If-None-Match, which is how a CalDAV client avoids overwriting an edit
      * it has not seen. Only the forms clients actually send are honoured.
      */
-    private static boolean failsPreconditions(HttpServletRequest req, Optional<CalendarStore.ObjectRef> existing) {
+    private static boolean failsPreconditions(HttpServletRequest req, Optional<ObjectRef> existing) {
         String ifNoneMatch = req.getHeader("If-None-Match");
         if (ifNoneMatch != null && ifNoneMatch.trim().equals("*") && existing.isPresent())
             return true;
@@ -362,10 +388,14 @@ public class CalDavServlet extends HttpServlet {
         String report = root.getLocalName();
         switch (report) {
             case "calendar-multiget":
-                calendarMultiget(req, resp, root);
+            case "addressbook-multiget":
+                multiget(req, resp, root);
                 return;
             case "calendar-query":
-                calendarQuery(req, resp, resolved.get(), root);
+                query(req, resp, resolved.get(), root, Type.CALENDAR);
+                return;
+            case "addressbook-query":
+                query(req, resp, resolved.get(), root, Type.ADDRESSBOOK);
                 return;
             case "sync-collection":
                 syncCollection(req, resp, resolved.get(), root);
@@ -375,7 +405,7 @@ public class CalDavServlet extends HttpServlet {
         }
     }
 
-    private void calendarMultiget(HttpServletRequest req, HttpServletResponse resp, Element root) throws IOException {
+    private void multiget(HttpServletRequest req, HttpServletResponse resp, Element root) throws IOException {
         Optional<List<String>> requested = requestedProperties(root);
         XMLWriter out = beginMultistatus(resp);
         for (String href : hrefs(root)) {
@@ -388,19 +418,24 @@ public class CalDavServlet extends HttpServlet {
         endMultistatus(out);
     }
 
-    private void calendarQuery(HttpServletRequest req,
-                               HttpServletResponse resp,
-                               Resource resource,
-                               Element root) throws IOException {
-        if (resource.kind != Kind.CALENDAR) {
-            resp.sendError(HttpServletResponse.SC_FORBIDDEN, "calendar-query needs a calendar collection");
+    private void query(HttpServletRequest req,
+                       HttpServletResponse resp,
+                       Resource resource,
+                       Element root,
+                       Type expected) throws IOException {
+        if (resource.kind != Kind.COLLECTION || resource.type != expected) {
+            resp.sendError(HttpServletResponse.SC_FORBIDDEN,
+                    expected.segment + " query needs a matching collection");
             return;
         }
         Optional<List<String>> requested = requestedProperties(root);
-        Filter filter = Filter.parse(XMLHelper.findSubElement(root, "filter"));
+        Node filterNode = XMLHelper.findSubElement(root, "filter");
+        Filter events = expected == Type.CALENDAR ? Filter.parse(filterNode) : null;
+        VCardFilter cards = expected == Type.ADDRESSBOOK ? VCardFilter.parse(filterNode) : null;
         XMLWriter out = beginMultistatus(resp);
-        for (ObjectRef object : store.listObjects(resource.calendar.directory)) {
-            if (filter.matches(() -> new String(store.read(object), StandardCharsets.UTF_8)))
+        for (ObjectRef object : resource.store.listObjects(resource.collection.directory)) {
+            Supplier<String> content = () -> new String(resource.store.read(object), StandardCharsets.UTF_8);
+            if (events != null ? events.matches(content) : cards.matches(content))
                 writeResponse(out, req, resource.child(object), requested);
         }
         endMultistatus(out);
@@ -417,17 +452,17 @@ public class CalDavServlet extends HttpServlet {
                                 HttpServletResponse resp,
                                 Resource resource,
                                 Element root) throws IOException {
-        if (resource.kind != Kind.CALENDAR) {
+        if (resource.kind != Kind.COLLECTION) {
             resp.sendError(HttpServletResponse.SC_FORBIDDEN, "sync-collection needs a calendar collection");
             return;
         }
         Node token = XMLHelper.findSubElement(root, "sync-token");
         String supplied = token == null ? "" : token.getTextContent().trim();
         Optional<List<String>> requested = requestedProperties(root);
-        String directory = resource.calendar.directory;
+        String directory = resource.collection.directory;
 
         if (supplied.isEmpty()) {
-            CalendarStore.Listing listing = store.listing(directory);
+            AppDataStore.Listing listing = resource.store.listing(directory);
             XMLWriter out = beginMultistatus(resp);
             for (ObjectRef object : listing.objects)
                 writeResponse(out, req, resource.child(object), requested);
@@ -436,8 +471,8 @@ public class CalDavServlet extends HttpServlet {
             return;
         }
 
-        Optional<CalendarStore.Changes> changes = tokenValue(supplied)
-                .flatMap(value -> store.changesSince(directory, value));
+        Optional<AppDataStore.Changes> changes = tokenValue(supplied)
+                .flatMap(value -> resource.store.changesSince(directory, value));
         if (changes.isEmpty()) {
             sendPrecondition(resp, HttpServletResponse.SC_FORBIDDEN, dav("valid-sync-token"));
             return;
@@ -475,7 +510,7 @@ public class CalDavServlet extends HttpServlet {
                                HttpServletRequest req,
                                Resource resource,
                                Optional<List<String>> requested) {
-        List<String> properties = requested.orElseGet(() -> allprop(resource.kind));
+        List<String> properties = requested.orElseGet(() -> allprop(resource.kind, resource.type));
         List<String> notFound = new ArrayList<>();
         XMLWriter found = nested();
 
@@ -533,21 +568,22 @@ public class CalDavServlet extends HttpServlet {
             out.writeElement(dav("collection"), XMLWriter.NO_CONTENT);
             if (resource.kind == Kind.PRINCIPAL)
                 out.writeElement(dav("principal"), XMLWriter.NO_CONTENT);
-            if (resource.kind == Kind.CALENDAR)
-                out.writeElement(caldav("calendar"), XMLWriter.NO_CONTENT);
+            if (resource.kind == Kind.COLLECTION)
+                out.writeElement(resource.type == Type.CALENDAR ? caldav("calendar")
+                        : carddav("addressbook"), XMLWriter.NO_CONTENT);
             out.writeElement(dav("resourcetype"), XMLWriter.CLOSING);
             return true;
         }
         if (property.equals(dav("displayname"))) {
-            writeText(out, dav("displayname"), resource.displayName(store.username()));
+            writeText(out, dav("displayname"), resource.displayName(username()));
             return true;
         }
         if (property.equals(dav("current-user-principal")) || property.equals(dav("principal-URL"))) {
-            writeHref(out, property, base(req) + "/principals/" + encode(store.username()) + "/");
+            writeHref(out, property, base(req) + principalPath());
             return true;
         }
         if (property.equals(dav("owner"))) {
-            writeHref(out, dav("owner"), base(req) + "/principals/" + encode(store.username()) + "/");
+            writeHref(out, dav("owner"), base(req) + principalPath());
             return true;
         }
         if (property.equals(dav("principal-collection-set"))) {
@@ -566,9 +602,11 @@ public class CalDavServlet extends HttpServlet {
         }
         if (property.equals(dav("supported-report-set"))) {
             out.writeElement(dav("supported-report-set"), XMLWriter.OPENING);
-            if (resource.kind == Kind.CALENDAR) {
-                writeSupportedReport(out, caldav("calendar-multiget"));
-                writeSupportedReport(out, caldav("calendar-query"));
+            if (resource.kind == Kind.COLLECTION) {
+                String namespace = resource.type == Type.CALENDAR ? NS_CALDAV : NS_CARDDAV;
+                String kind = resource.type == Type.CALENDAR ? "calendar" : "addressbook";
+                writeSupportedReport(out, namespace + ":" + kind + "-multiget");
+                writeSupportedReport(out, namespace + ":" + kind + "-query");
                 writeSupportedReport(out, dav("sync-collection"));
             }
             out.writeElement(dav("supported-report-set"), XMLWriter.CLOSING);
@@ -577,24 +615,41 @@ public class CalDavServlet extends HttpServlet {
         if (property.equals(caldav("calendar-home-set"))) {
             if (resource.kind != Kind.PRINCIPAL && resource.kind != Kind.ROOT)
                 return false;
-            writeHref(out, caldav("calendar-home-set"), base(req) + "/calendars/" + encode(store.username()) + "/");
+            writeHref(out, caldav("calendar-home-set"), base(req) + homePath(Type.CALENDAR));
+            return true;
+        }
+        if (property.equals(carddav("addressbook-home-set"))) {
+            if (resource.kind != Kind.PRINCIPAL && resource.kind != Kind.ROOT)
+                return false;
+            writeHref(out, carddav("addressbook-home-set"), base(req) + homePath(Type.ADDRESSBOOK));
             return true;
         }
         if (property.equals(caldav("calendar-user-address-set"))) {
             if (resource.kind != Kind.PRINCIPAL)
                 return false;
             writeHref(out, caldav("calendar-user-address-set"),
-                    base(req) + "/principals/" + encode(store.username()) + "/");
+                    base(req) + principalPath());
             return true;
         }
-        if (resource.kind == Kind.CALENDAR)
-            return writeCalendarProperty(out, resource, property);
+        if (resource.kind == Kind.COLLECTION)
+            return writeCollectionProperty(out, resource, property);
         if (resource.kind == Kind.OBJECT)
             return writeObjectProperty(out, resource, property);
         return false;
     }
 
-    private boolean writeCalendarProperty(XMLWriter out, Resource resource, String property) {
+    private boolean writeCollectionProperty(XMLWriter out, Resource resource, String property) {
+        // Shared between the two kinds: both are versioned collections with a sync token.
+        if (property.equals(calserver("getctag"))) {
+            out.writeProperty(calserver("getctag"), escape(syncToken(resource.store.token(resource.collection.directory))));
+            return true;
+        }
+        if (property.equals(dav("sync-token"))) {
+            out.writeProperty(dav("sync-token"), escape(syncToken(resource.store.token(resource.collection.directory))));
+            return true;
+        }
+        if (resource.type == Type.ADDRESSBOOK)
+            return writeAddressBookProperty(out, resource, property);
         if (property.equals(caldav("supported-calendar-component-set"))) {
             out.writeElement(caldav("supported-calendar-component-set"), XMLWriter.OPENING);
             out.writeText("<C:comp name=\"VEVENT\"/>");
@@ -608,23 +663,34 @@ public class CalDavServlet extends HttpServlet {
             return true;
         }
         if (property.equals(caldav("calendar-description"))) {
-            writeText(out, caldav("calendar-description"), resource.calendar.name);
+            writeText(out, caldav("calendar-description"), resource.collection.name);
             return true;
         }
         if (property.equals(caldav("max-resource-size"))) {
             out.writeProperty(caldav("max-resource-size"), Long.toString(MAX_RESOURCE_SIZE));
             return true;
         }
-        if (property.equals(calserver("getctag"))) {
-            out.writeProperty(calserver("getctag"), escape(syncToken(store.token(resource.calendar.directory))));
-            return true;
-        }
-        if (property.equals(dav("sync-token"))) {
-            out.writeProperty(dav("sync-token"), escape(syncToken(store.token(resource.calendar.directory))));
-            return true;
-        }
         if (property.equals(appleIcal("calendar-color"))) {
-            writeText(out, appleIcal("calendar-color"), resource.calendar.colour);
+            writeText(out, appleIcal("calendar-color"), resource.collection.colour);
+            return true;
+        }
+        return false;
+    }
+
+    private boolean writeAddressBookProperty(XMLWriter out, Resource resource, String property) {
+        if (property.equals(carddav("supported-address-data"))) {
+            out.writeElement(carddav("supported-address-data"), XMLWriter.OPENING);
+            out.writeText("<CARD:address-data-type content-type=\"text/vcard\" version=\"3.0\"/>"
+                    + "<CARD:address-data-type content-type=\"text/vcard\" version=\"4.0\"/>");
+            out.writeElement(carddav("supported-address-data"), XMLWriter.CLOSING);
+            return true;
+        }
+        if (property.equals(carddav("addressbook-description"))) {
+            writeText(out, carddav("addressbook-description"), resource.collection.name);
+            return true;
+        }
+        if (property.equals(carddav("max-resource-size"))) {
+            out.writeProperty(carddav("max-resource-size"), Long.toString(MAX_RESOURCE_SIZE));
             return true;
         }
         return false;
@@ -637,7 +703,7 @@ public class CalDavServlet extends HttpServlet {
             return true;
         }
         if (property.equals(dav("getcontenttype"))) {
-            out.writeProperty(dav("getcontenttype"), "text/calendar; charset=utf-8");
+            out.writeProperty(dav("getcontenttype"), resource.type.contentType);
             return true;
         }
         if (property.equals(dav("getcontentlength"))) {
@@ -654,10 +720,11 @@ public class CalDavServlet extends HttpServlet {
                     object.file.getFileProperties().created.toInstant(ZoneOffset.UTC)));
             return true;
         }
-        if (property.equals(caldav("calendar-data"))) {
-            out.writeElement(caldav("calendar-data"), XMLWriter.OPENING);
-            out.writeData(new String(store.read(object), StandardCharsets.UTF_8));
-            out.writeElement(caldav("calendar-data"), XMLWriter.CLOSING);
+        String data = resource.type == Type.CALENDAR ? caldav("calendar-data") : carddav("address-data");
+        if (property.equals(data)) {
+            out.writeElement(data, XMLWriter.OPENING);
+            out.writeData(new String(resource.store.read(object), StandardCharsets.UTF_8));
+            out.writeElement(data, XMLWriter.CLOSING);
             return true;
         }
         return false;
@@ -670,13 +737,13 @@ public class CalDavServlet extends HttpServlet {
     private static List<String> privileges(Kind kind) {
         List<String> privileges = new ArrayList<>(List.of("read", "read-acl", "read-current-user-privilege-set"));
         switch (kind) {
-            case CALENDAR:
+            case COLLECTION:
                 privileges.addAll(List.of("write", "write-content", "write-properties", "bind", "unbind"));
                 break;
             case OBJECT:
                 privileges.addAll(List.of("write", "write-content"));
                 break;
-            case CALENDAR_HOME:
+            case HOME:
                 privileges.addAll(List.of("bind", "unbind"));
                 break;
             default:
@@ -707,26 +774,30 @@ public class CalDavServlet extends HttpServlet {
         out.writeElement(property, XMLWriter.CLOSING);
     }
 
-    private static List<String> allprop(Kind kind) {
+    private static List<String> allprop(Kind kind, Type type) {
         List<String> properties = new ArrayList<>(List.of(
                 dav("resourcetype"), dav("displayname"), dav("current-user-principal"),
                 dav("principal-collection-set"), dav("supported-report-set")));
         switch (kind) {
             case PRINCIPAL:
                 properties.addAll(List.of(dav("principal-URL"), caldav("calendar-home-set"),
-                        caldav("calendar-user-address-set")));
+                        carddav("addressbook-home-set"), caldav("calendar-user-address-set")));
                 break;
-            case CALENDAR:
+            case COLLECTION:
                 properties.addAll(List.of(dav("owner"), dav("sync-token"), calserver("getctag"),
-                        caldav("supported-calendar-component-set"), caldav("supported-calendar-data"),
-                        caldav("calendar-description"), caldav("max-resource-size"),
-                        appleIcal("calendar-color"), dav("current-user-privilege-set")));
+                        dav("current-user-privilege-set")));
+                properties.addAll(type == Type.ADDRESSBOOK ?
+                        List.of(carddav("supported-address-data"), carddav("addressbook-description"),
+                                carddav("max-resource-size")) :
+                        List.of(caldav("supported-calendar-component-set"), caldav("supported-calendar-data"),
+                                caldav("calendar-description"), caldav("max-resource-size"),
+                                appleIcal("calendar-color")));
                 break;
             case OBJECT:
                 properties.addAll(List.of(dav("getetag"), dav("getcontenttype"), dav("getcontentlength"),
                         dav("getlastmodified"), dav("creationdate"), dav("current-user-privilege-set")));
                 break;
-            case CALENDAR_HOME:
+            case HOME:
                 properties.add(dav("current-user-privilege-set"));
                 break;
             default:
@@ -737,27 +808,50 @@ public class CalDavServlet extends HttpServlet {
 
     // ----------------------------------------------------------- URL space
 
-    private enum Kind { ROOT, PRINCIPALS, PRINCIPAL, CALENDARS, CALENDAR_HOME, CALENDAR, OBJECT }
+    private enum Kind { ROOT, PRINCIPALS, PRINCIPAL, HOME_ROOT, HOME, COLLECTION, OBJECT }
+
+    /** The two kinds of collection, and everything that differs between them. */
+    private enum Type {
+        CALENDAR("calendars", "Calendars", CalendarStore.ICS_SUFFIX, "text/calendar; charset=utf-8"),
+        ADDRESSBOOK("addressbooks", "Address Books", ContactStore.VCF_SUFFIX, "text/vcard; charset=utf-8");
+
+        final String segment;
+        final String plural;
+        final String suffix;
+        final String contentType;
+
+        Type(String segment, String plural, String suffix, String contentType) {
+            this.segment = segment;
+            this.plural = plural;
+            this.suffix = suffix;
+            this.contentType = contentType;
+        }
+
+        static Optional<Type> forSegment(String segment) {
+            return Arrays.stream(values()).filter(t -> t.segment.equals(segment)).findFirst();
+        }
+    }
 
     private static final class Resource {
         final Kind kind;
+        final Type type;
+        final AppDataStore store;
         final String path;
-        final CalendarInfo calendar;
+        final CollectionInfo collection;
         final ObjectRef object;
 
-        Resource(Kind kind, String path, CalendarInfo calendar, ObjectRef object) {
+        Resource(Kind kind, Type type, AppDataStore store, String path,
+                 CollectionInfo collection, ObjectRef object) {
             this.kind = kind;
+            this.type = type;
+            this.store = store;
             this.path = path;
-            this.calendar = calendar;
+            this.collection = collection;
             this.object = object;
         }
 
-        static Resource collection(Kind kind, String path) {
-            return new Resource(kind, path, null, null);
-        }
-
         Resource child(ObjectRef object) {
-            return new Resource(Kind.OBJECT, path + encode(object.name), calendar, object);
+            return new Resource(Kind.OBJECT, type, store, path + encode(object.name), collection, object);
         }
 
         String displayName(String username) {
@@ -765,9 +859,9 @@ public class CalDavServlet extends HttpServlet {
                 case ROOT: return "Peergos";
                 case PRINCIPALS: return "Principals";
                 case PRINCIPAL: return username;
-                case CALENDARS: return "Calendars";
-                case CALENDAR_HOME: return username;
-                case CALENDAR: return calendar.name;
+                case HOME_ROOT: return type.plural;
+                case HOME: return username;
+                case COLLECTION: return collection.name;
                 default: return object.name;
             }
         }
@@ -778,12 +872,17 @@ public class CalDavServlet extends HttpServlet {
      * not exist yet, which is the whole point of a create.
      */
     private static final class Slot {
-        final CalendarInfo calendar;
+        final Type type;
+        final AppDataStore store;
+        final CollectionInfo collection;
         final String name;
         final Optional<ObjectRef> existing;
 
-        Slot(CalendarInfo calendar, String name, Optional<ObjectRef> existing) {
-            this.calendar = calendar;
+        Slot(Type type, AppDataStore store, CollectionInfo collection,
+             String name, Optional<ObjectRef> existing) {
+            this.type = type;
+            this.store = store;
+            this.collection = collection;
             this.name = name;
             this.existing = existing;
         }
@@ -791,11 +890,15 @@ public class CalDavServlet extends HttpServlet {
 
     private Optional<Slot> resolveSlot(HttpServletRequest req) {
         List<String> segments = segments(req.getPathInfo());
-        if (segments.size() != 4 || ! segments.get(0).equals("calendars")
-                || ! segments.get(1).equals(store.username()))
+        if (segments.size() != 4 || ! segments.get(1).equals(username()))
             return Optional.empty();
-        return store.getCalendar(segments.get(2)).map(calendar ->
-                new Slot(calendar, segments.get(3), store.getObject(calendar.directory, segments.get(3))));
+        Optional<Type> type = Type.forSegment(segments.get(0));
+        if (type.isEmpty())
+            return Optional.empty();
+        AppDataStore store = store(type.get());
+        return store.getCollection(segments.get(2)).map(collection ->
+                new Slot(type.get(), store, collection, segments.get(3),
+                        store.getObject(collection.directory, segments.get(3))));
     }
 
     private Optional<Resource> resolve(HttpServletRequest req) {
@@ -815,56 +918,81 @@ public class CalDavServlet extends HttpServlet {
     private Optional<Resource> resolvePath(String pathInfo) {
         List<String> segments = segments(pathInfo);
         if (segments.isEmpty())
-            return Optional.of(Resource.collection(Kind.ROOT, "/"));
+            return Optional.of(fixed(Kind.ROOT, null, "/"));
         String first = segments.get(0);
         if (first.equals("principals")) {
             if (segments.size() == 1)
-                return Optional.of(Resource.collection(Kind.PRINCIPALS, "/principals/"));
-            if (segments.size() == 2 && segments.get(1).equals(store.username()))
-                return Optional.of(Resource.collection(Kind.PRINCIPAL,
-                        "/principals/" + encode(store.username()) + "/"));
+                return Optional.of(fixed(Kind.PRINCIPALS, null, "/principals/"));
+            if (segments.size() == 2 && segments.get(1).equals(username()))
+                return Optional.of(fixed(Kind.PRINCIPAL, null, principalPath()));
             return Optional.empty();
         }
-        if (! first.equals("calendars"))
+        Optional<Type> maybeType = Type.forSegment(first);
+        if (maybeType.isEmpty() || segments.size() > 4)
             return Optional.empty();
+        Type type = maybeType.get();
+        AppDataStore store = store(type);
         if (segments.size() == 1)
-            return Optional.of(Resource.collection(Kind.CALENDARS, "/calendars/"));
-        if (! segments.get(1).equals(store.username()))
+            return Optional.of(fixed(Kind.HOME_ROOT, type, "/" + type.segment + "/"));
+        if (! segments.get(1).equals(username()))
             return Optional.empty();
-        String home = "/calendars/" + encode(store.username()) + "/";
+        String home = homePath(type);
         if (segments.size() == 2)
-            return Optional.of(Resource.collection(Kind.CALENDAR_HOME, home));
-        Optional<CalendarInfo> calendar = store.getCalendar(segments.get(2));
-        if (calendar.isEmpty() || segments.size() > 4)
+            return Optional.of(fixed(Kind.HOME, type, home));
+        Optional<CollectionInfo> collection = store.getCollection(segments.get(2));
+        if (collection.isEmpty())
             return Optional.empty();
-        String collection = home + encode(calendar.get().directory) + "/";
+        String path = home + encode(collection.get().directory) + "/";
         if (segments.size() == 3)
-            return Optional.of(new Resource(Kind.CALENDAR, collection, calendar.get(), null));
-        return store.getObject(calendar.get().directory, segments.get(3))
-                .map(object -> new Resource(Kind.OBJECT, collection + encode(object.name), calendar.get(), object));
+            return Optional.of(new Resource(Kind.COLLECTION, type, store, path, collection.get(), null));
+        return store.getObject(collection.get().directory, segments.get(3))
+                .map(object -> new Resource(Kind.OBJECT, type, store,
+                        path + encode(object.name), collection.get(), object));
+    }
+
+    private Resource fixed(Kind kind, Type type, String path) {
+        return new Resource(kind, type, type == null ? null : store(type), path, null, null);
+    }
+
+    private String username() {
+        return calendars.username();
+    }
+
+    private AppDataStore store(Type type) {
+        return type == Type.CALENDAR ? calendars : contacts;
+    }
+
+    private String principalPath() {
+        return "/principals/" + encode(username()) + "/";
+    }
+
+    private String homePath(Type type) {
+        return "/" + type.segment + "/" + encode(username()) + "/";
     }
 
     private List<Resource> children(Resource resource) {
         switch (resource.kind) {
-            case ROOT:
-                return List.of(Resource.collection(Kind.PRINCIPALS, "/principals/"),
-                        Resource.collection(Kind.CALENDARS, "/calendars/"));
-            case PRINCIPALS:
-                return List.of(Resource.collection(Kind.PRINCIPAL,
-                        "/principals/" + encode(store.username()) + "/"));
-            case CALENDARS:
-                return List.of(Resource.collection(Kind.CALENDAR_HOME,
-                        "/calendars/" + encode(store.username()) + "/"));
-            case CALENDAR_HOME: {
-                List<Resource> calendars = new ArrayList<>();
-                for (CalendarInfo calendar : store.listCalendars())
-                    calendars.add(new Resource(Kind.CALENDAR,
-                            resource.path + encode(calendar.directory) + "/", calendar, null));
-                return calendars;
+            case ROOT: {
+                List<Resource> roots = new ArrayList<>();
+                roots.add(fixed(Kind.PRINCIPALS, null, "/principals/"));
+                for (Type type : Type.values())
+                    roots.add(fixed(Kind.HOME_ROOT, type, "/" + type.segment + "/"));
+                return roots;
             }
-            case CALENDAR: {
+            case PRINCIPALS:
+                return List.of(fixed(Kind.PRINCIPAL, null, principalPath()));
+            case HOME_ROOT:
+                return List.of(fixed(Kind.HOME, resource.type, homePath(resource.type)));
+            case HOME: {
+                List<Resource> collections = new ArrayList<>();
+                for (CollectionInfo info : resource.store.listCollections())
+                    collections.add(new Resource(Kind.COLLECTION, resource.type, resource.store,
+                            resource.path + encode(info.directory) + "/", info, null));
+                return collections;
+            }
+            case COLLECTION: {
                 List<Resource> objects = new ArrayList<>();
-                for (ObjectRef object : store.listObjects(resource.calendar.directory))
+                for (ObjectRef object : resource.store.listObjects(resource.collection.directory))
                     objects.add(resource.child(object));
                 return objects;
             }
@@ -949,6 +1077,10 @@ public class CalDavServlet extends HttpServlet {
 
     static String dav(String local) {
         return NS_DAV + ":" + local;
+    }
+
+    static String carddav(String local) {
+        return NS_CARDDAV + ":" + local;
     }
 
     static String caldav(String local) {

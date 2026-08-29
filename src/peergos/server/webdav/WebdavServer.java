@@ -17,7 +17,7 @@ import peergos.server.Main;
 import peergos.server.net.MountConfigHandler;
 import peergos.server.util.JvmThumbnailer;
 import peergos.server.util.Logging;
-import peergos.server.webdav.caldav.CalDavServlet;
+import peergos.server.webdav.caldav.DavServlet;
 import peergos.server.webdav.modeshape.webdav.WebdavServlet;
 import peergos.server.util.Args;
 import peergos.shared.Crypto;
@@ -38,7 +38,7 @@ import java.util.logging.Logger;
 public class WebdavServer {
 
     private static final String VERSION= "0.1";
-    private static final String CALDAV_PREFIX = "/dav";
+    private static final String DAV_PREFIX = "/dav";
     private static final Logger logger = Logging.LOG();
 
     /** Overload used by MountConfigHandler when it holds its own WebdavFileSystem reference. */
@@ -126,12 +126,14 @@ public class WebdavServer {
                     "/peergos/v0/mount/snapshot");
         }
 
-        // CalDAV lives under its own prefix so a file client mounting / never sees calendar
-        // collections, and RFC 6764 discovery points at it from the well known location.
-        context.addServlet(new ServletHolder("caldav", new CalDavServlet(servlet.getFileSystem().getContext())),
-                CALDAV_PREFIX + "/*");
-        context.addServlet(new ServletHolder("caldav-discovery", new RedirectServlet(CALDAV_PREFIX + "/")),
-                "/.well-known/caldav");
+        // CalDAV and CardDAV live under their own prefix so a file client mounting / never
+        // sees them, and RFC 6764 discovery points at it from the well known locations.
+        context.addServlet(new ServletHolder("dav", new DavServlet(servlet.getFileSystem().getContext())),
+                DAV_PREFIX + "/*");
+        for (String wellKnown : List.of("/.well-known/caldav", "/.well-known/carddav")) {
+            context.addServlet(new ServletHolder("dav-discovery" + wellKnown.hashCode(),
+                    new RedirectServlet(DAV_PREFIX + "/")), wellKnown);
+        }
 
         ServletHolder holderDef = new ServletHolder("default", servlet);
         holderDef.setInitParameter("rootpath","");
