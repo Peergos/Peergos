@@ -99,15 +99,14 @@ public class GatewayHandler implements HttpHandler {
                 }
             } else {
                 Path toProfileEntry = PathUtil.get(owner).resolve(".profile").resolve("webroot");
-                AbsoluteCapability capToWebRootField = UserContext.getPublicCapability(toProfileEntry, network).join();
-                FileWrapper webRootField = network.getFile(capToWebRootField, owner).join().get();
+                FileWrapper webRootField = UserContext.getPublicFile(toProfileEntry, network, crypto).join()
+                        .orElseThrow(() -> new IllegalStateException("No web root published for " + owner));
                 webRootEntry = new WebRootEntry(webRootField, null, Optional.empty());
             }
 
             if (webRootEntry.webRoot == null) {
                 Path toWebRoot = PathUtil.get(new String(Serialize.readFully(webRootEntry.field, crypto, network).join()));
-                AbsoluteCapability capToWebRoot = UserContext.getPublicCapability(toWebRoot, network).join();
-                Optional<FileWrapper> webRootOpt = network.getFile(capToWebRoot, owner).join();
+                Optional<FileWrapper> webRootOpt = UserContext.getPublicFile(toWebRoot, network, crypto).join();
                 if (webRootOpt.isEmpty())
                     throw new IllegalStateException("web root not present");
                 FileWrapper webRoot = webRootOpt.get();
