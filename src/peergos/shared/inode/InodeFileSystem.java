@@ -112,23 +112,41 @@ public class InodeFileSystem implements Cborable {
                 .thenCompose(hasOtherChildren -> dir.getChild(remainingPath[0]).thenCompose(childOpt -> {
                     if (childOpt.isEmpty())
                         return Futures.of(new Pair<>(this, false));
+                    InodeCap child = childOpt.get();
                     if (remainingPath.length == 1)
-                        return dir.removeChild(childOpt.get(), owner, writer, tid)
-                                .thenCompose(updatedDir -> putValue(owner,
-                                        writer, dirKey, Optional.of(dir), updatedDir, tid))
-                                .thenApply(f -> new Pair<>(f, ! hasOtherChildren));
-                    return getValue(childOpt.get().inode)
+                        return hasDescendants(child)
+                                .thenCompose(hasDescendants -> hasDescendants ?
+                                        // something below is published in its own right, so keep the
+                                        // node and drop only its capability, or we orphan that subtree
+                                        dir.addChild(child.inode.withoutCap(), owner, writer, tid)
+                                                .thenCompose(updatedDir -> putValue(owner,
+                                                        writer, dirKey, Optional.of(dir), updatedDir, tid))
+                                                .thenApply(f -> new Pair<>(f, false)) :
+                                        dir.removeChild(child, owner, writer, tid)
+                                                .thenCompose(updatedDir -> putValue(owner,
+                                                        writer, dirKey, Optional.of(dir), updatedDir, tid))
+                                                .thenApply(f -> new Pair<>(f, ! hasOtherChildren)));
+                    return getValue(child.inode)
                             .thenCompose(childDir ->
                                     childDir.isPresent() ?
-                                            removeCapRecurse(owner, writer, childOpt.get().inode, childDir.get(), tail(remainingPath), tid)
-                                                    .thenCompose(p -> p.right ?
-                                                            dir.removeChild(childOpt.get(), owner, writer, tid)
+                                            removeCapRecurse(owner, writer, child.inode, childDir.get(), tail(remainingPath), tid)
+                                                    // an emptied node that is itself published stays: it is
+                                                    // a live publication, not just a link to the one removed
+                                                    .thenCompose(p -> p.right && child.cap.isEmpty() ?
+                                                            dir.removeChild(child, owner, writer, tid)
                                                                     .thenCompose(updatedDir -> p.left.putValue(owner,
                                                                             writer, dirKey, Optional.of(dir), updatedDir, tid))
                                                                     .thenApply(f -> new Pair<>(f, ! hasOtherChildren)) :
                                                             Futures.of(new Pair<>(p.left, false))) :
                                             Futures.of(new Pair<>(this, false)));
                 }));
+    }
+
+    private CompletableFuture<Boolean> hasDescendants(InodeCap child) {
+        return getValue(child.inode)
+                .thenCompose(childDir -> childDir.isEmpty() ?
+                        Futures.of(false) :
+                        childDir.get().getChildren().thenApply(children -> ! children.isEmpty()));
     }
 
     private CompletableFuture<Pair<InodeFileSystem, DirectoryInode>> getOrMkdir(PublicKeyHash owner,
@@ -176,12 +194,15 @@ public class InodeFileSystem implements Cborable {
                                     if (childOpt.isPresent())
                                         return addCapRecurse(owner, writer, childCapOpt.get().inode,
                                                 childOpt.get(), tail(remainingPath), cap, tid);
-                                    // Here a cap was published to a child dir, but not to any descendants of it yet
-                                    Inode newDir = new Inode(inodeCount, remainingPath[0]);
+                                    // Here a cap was published to a child dir, but not to any descendants of it yet.
+                                    // Give that entry a directory of its own rather than minting a second inode for
+                                    // the same name: the parent still links to the first, so a new one would be an
+                                    // orphan, taking every descendant published through it with it.
+                                    Inode existingDir = childCapOpt.get().inode;
                                     // parent is absent so we don't overwrite existing entry there
                                     Optional<Pair<Inode, DirectoryInode>> parent = Optional.empty();
-                                    return getOrMkdir(owner, writer, parent, newDir, tid)
-                                            .thenCompose(p -> p.left.addCapRecurse(owner, writer, newDir, p.right, tail(remainingPath), cap, tid));
+                                    return getOrMkdir(owner, writer, parent, existingDir, tid)
+                                            .thenCompose(p -> p.left.addCapRecurse(owner, writer, existingDir, p.right, tail(remainingPath), cap, tid));
                                 });
                     Inode newDir = new Inode(inodeCount, remainingPath[0]);
                     return getOrMkdir(owner, writer, Optional.of(new Pair<>(dirKey, dir)), newDir, tid)
