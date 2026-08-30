@@ -455,7 +455,12 @@ public class MountConfigHandler implements HttpHandler {
                 json.put("syncContacts", config.syncContacts);
                 json.put("peergosUsername", sessionActive ? activePeergosUsername.get() : config.peergosUsername);
                 json.put("webdavUsername", config.webdavUsername);
+                // A CalDAV or CardDAV client has to be given these by hand, and this endpoint is
+                // already loopback only. The password is a token generated for the bridge, not
+                // the user's Peergos password.
+                json.put("webdavPassword", config.webdavPassword);
                 json.put("webdavPort", config.webdavPort);
+                json.put("davUrl", "http://localhost:" + config.webdavPort + "/dav/");
                 json.put("authType", config.authType);
                 json.put("mountPoint", mountPoint);
                 String err = mountError.get();
