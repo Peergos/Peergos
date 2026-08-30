@@ -58,7 +58,7 @@ public class CalDavInteropHarness {
         System.out.println("  username      " + WEBDAV_USER);
         System.out.println("  password      " + WEBDAV_PASSWORD);
         System.out.println("  peergos data  " + scratch);
-        System.out.println("Seeded calendars: work (3 events), personal (1 event).");
+        System.out.println("Seeded calendars: work (3 events, 2 tasks), personal (1 event).");
         System.out.println("Ctrl-C to stop.");
         System.out.println();
 
@@ -92,6 +92,23 @@ public class CalDavInteropHarness {
                         .replace("END:VEVENT", "RRULE:FREQ=WEEKLY\r\nEND:VEVENT"));
         write(calendar, "personal/" + today.getYear() + "/" + today.getMonthValue() + "/dentist.ics",
                 event("dentist", today.plusDays(5), "Dentist"));
+
+        // Tasks, for the clients that show a calendar as a task list: one with a due date,
+        // one with none at all, which is the case a month-sharded store cannot hold.
+        write(calendar, "work/tasks/write-notes.ics", todo("write-notes", today.plusDays(1), "Write up notes"));
+        write(calendar, "work/tasks/someday.ics", todo("someday", null, "Someday, maybe"));
+    }
+
+    private static String todo(String uid, LocalDate due, String summary) {
+        return "BEGIN:VCALENDAR\r\n"
+                + "VERSION:2.0\r\n"
+                + "PRODID:-//Peergos//CalDAV interop harness//EN\r\n"
+                + "BEGIN:VTODO\r\n"
+                + "UID:" + uid + "\r\n"
+                + "SUMMARY:" + summary + "\r\n"
+                + (due == null ? "" : "DUE:" + due.format(DateTimeFormatter.BASIC_ISO_DATE) + "T170000Z\r\n")
+                + "END:VTODO\r\n"
+                + "END:VCALENDAR\r\n";
     }
 
     private static String event(String uid, LocalDate day, String summary) {

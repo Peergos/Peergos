@@ -72,6 +72,18 @@ public class CalDavTests {
                 + "END:VCALENDAR\r\n";
     }
 
+    private static String todo(String uid, String extra) {
+        return "BEGIN:VCALENDAR\r\n"
+                + "VERSION:2.0\r\n"
+                + "PRODID:-//Peergos//CalDAV test//EN\r\n"
+                + "BEGIN:VTODO\r\n"
+                + "UID:" + uid + "\r\n"
+                + "SUMMARY:" + uid + "\r\n"
+                + extra
+                + "END:VTODO\r\n"
+                + "END:VCALENDAR\r\n";
+    }
+
     private static void write(App calendar, String relativePath, String content) {
         Assert.assertTrue("seeding " + relativePath,
                 calendar.writeInternal(PathUtil.get(relativePath), content.getBytes(StandardCharsets.UTF_8), null).join());
@@ -93,6 +105,7 @@ public class CalDavTests {
                 event("july-event", "20240715T090000Z", "20240715T100000Z", ""));
         write(calendar, "work/recurring/weekly.ics",
                 event("weekly", "20240101T090000Z", "20240101T100000Z", "RRULE:FREQ=WEEKLY\r\n"));
+        write(calendar, "work/tasks/buy-milk.ics", todo("buy-milk", "DUE:20240320T170000Z\r\n"));
 
         int port = TestPorts.getPort();
         Server server = WebdavServer.startNonBlocking(port, WEBDAV_USER, WEBDAV_PASSWORD,
@@ -142,6 +155,9 @@ public class CalDavTests {
             Assert.assertTrue("displayname: " + home.body(), home.body().contains("Work"));
             Assert.assertTrue("colour: " + home.body(), home.body().contains("#ff0000"));
             Assert.assertTrue("ctag: " + home.body(), home.body().contains("getctag"));
+            // Both components, or a client will never offer the calendar as a task list.
+            Assert.assertTrue("VEVENT advertised: " + home.body(), home.body().contains("name=\"VEVENT\""));
+            Assert.assertTrue("VTODO advertised: " + home.body(), home.body().contains("name=\"VTODO\""));
 
             // Step 4: the calendar is flat, so all three events are direct members however
             // they are sharded on disk.
@@ -149,7 +165,7 @@ public class CalDavTests {
             HttpResponse<String> listing = propfind(client, auth, base + calendarHref, "1",
                     "<D:propfind xmlns:D=\"DAV:\"><D:prop><D:getetag/><D:getcontenttype/></D:prop></D:propfind>");
             Assert.assertEquals(207, listing.statusCode());
-            for (String name : new String[]{"march-event.ics", "july-event.ics", "weekly.ics"})
+            for (String name : new String[]{"march-event.ics", "july-event.ics", "weekly.ics", "buy-milk.ics"})
                 Assert.assertTrue(name + " missing from " + listing.body(),
                         listing.body().contains(calendarHref + name));
             Assert.assertTrue("content type: " + listing.body(), listing.body().contains("text/calendar"));
@@ -177,6 +193,21 @@ public class CalDavTests {
             Assert.assertTrue("recurring events always match: " + query.body(), query.body().contains("weekly.ics"));
             Assert.assertFalse("July event out of range: " + query.body(), query.body().contains("july-event.ics"));
             Assert.assertTrue("calendar-data returned: " + query.body(), query.body().contains("UID:march-event"));
+            Assert.assertFalse("a VEVENT query must not return a task: " + query.body(),
+                    query.body().contains("buy-milk.ics"));
+
+            // The task list view of the same collection: a VTODO comp-filter, which is what
+            // a tasks client sends, returns the tasks and nothing else.
+            HttpResponse<String> tasks = report(client, auth, base + calendarHref,
+                    "<C:calendar-query xmlns:D=\"DAV:\" xmlns:C=\"urn:ietf:params:xml:ns:caldav\">"
+                            + "<D:prop><D:getetag/><C:calendar-data/></D:prop>"
+                            + "<C:filter><C:comp-filter name=\"VCALENDAR\"><C:comp-filter name=\"VTODO\"/>"
+                            + "</C:comp-filter></C:filter></C:calendar-query>");
+            Assert.assertEquals(207, tasks.statusCode());
+            Assert.assertTrue("task in a VTODO query: " + tasks.body(), tasks.body().contains("buy-milk.ics"));
+            Assert.assertTrue("task data returned: " + tasks.body(), tasks.body().contains("UID:buy-milk"));
+            for (String name : new String[]{"march-event.ics", "july-event.ics", "weekly.ics"})
+                Assert.assertFalse("event in a VTODO query: " + tasks.body(), tasks.body().contains(name));
 
             // calendar-multiget returns exactly the hrefs asked for, and 404s the rest.
             HttpResponse<String> multiget = report(client, auth, base + calendarHref,
@@ -274,6 +305,20 @@ public class CalDavTests {
             HttpResponse<String> listing = propfind(client, auth, work, "1", null);
             Assert.assertTrue(listing.body().contains("/work/one.ics"));
             Assert.assertTrue(listing.body().contains("/work/repeat.ics"));
+
+            // A task goes to tasks/, out of the way of the web calendar app, and needs no
+            // date at all - which is the whole reason it cannot be filed by month.
+            HttpResponse<String> task = put(client, auth, work + "milk.ics", todo("milk", ""), null);
+            Assert.assertEquals(201, task.statusCode());
+            Assert.assertTrue("task must be under <dir>/tasks", exists(verifier, username, "work/tasks/milk.ics"));
+            Assert.assertEquals(200, send(client, auth, "GET", work + "milk.ics", null, null).statusCode());
+            // Including a repeating one: recurring/ is the web calendar app's directory.
+            Assert.assertEquals(201, put(client, auth, work + "weekly-task.ics",
+                    todo("weekly-task", "DUE:20240315T170000Z\r\nRRULE:FREQ=WEEKLY\r\n"), null).statusCode());
+            Assert.assertTrue(exists(verifier, username, "work/tasks/weekly-task.ics"));
+            Assert.assertFalse(exists(verifier, username, "work/recurring/weekly-task.ics"));
+            Assert.assertEquals(204, send(client, auth, "DELETE", work + "milk.ics", null, null).statusCode());
+            Assert.assertFalse(exists(verifier, username, "work/tasks/milk.ics"));
 
             // An event with no start has nowhere the web app would ever read it from.
             HttpResponse<String> undateable = put(client, auth, work + "nodate.ics",

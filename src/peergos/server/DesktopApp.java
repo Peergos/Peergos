@@ -16,6 +16,9 @@ public class DesktopApp {
      *  a hidden window with no tray is an app the user cannot reach or quit. */
     private static final String MINIMISED_ENV = "PEERGOS_MINIMISED";
 
+    /** Our own pid, so a window host can tell when the server it belongs to has gone. */
+    private static final String SERVER_PID_ENV = "PEERGOS_SERVER_PID";
+
     public static void launch(Args args, int port, URI api) throws IOException {
         boolean flatpak = args.hasArg("flatpak");
         boolean minimised = args.getBoolean("minimised", false);
@@ -47,6 +50,10 @@ public class DesktopApp {
                 if (webviewExe.toFile().exists()) {
                     ProcessBuilder pb = new ProcessBuilder(webviewExe.toString());
                     pb.environment().put("PEERGOS_PORT", "" + port);
+                    // Windows does not reparent an orphan, so the host cannot spot a dead
+                    // parent by watching its own ppid the way the linux host does. Told the
+                    // pid instead, it can hold a handle on us and exit when we do.
+                    pb.environment().put(SERVER_PID_ENV, Long.toString(ProcessHandle.current().pid()));
                     if (minimised)
                         pb.environment().put(MINIMISED_ENV, "1");
                     pb.inheritIO();
