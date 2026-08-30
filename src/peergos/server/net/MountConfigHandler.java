@@ -5,6 +5,7 @@ import peergos.server.Builder;
 import peergos.server.Main;
 import peergos.server.MountProperties;
 import peergos.server.cfapi.WindowsVersionCheck;
+import peergos.server.mount.CompositeBackend;
 import peergos.server.mount.CloudFilesBackend;
 import peergos.server.mount.MountBackend;
 import peergos.server.mount.WebdavBackend;
@@ -104,7 +105,9 @@ public class MountConfigHandler implements HttpHandler {
 
     private static MountBackend defaultBackend(String peergosUrl) {
         if (WindowsVersionCheck.isCfApiAvailable())
-            return new CloudFilesBackend();
+            // CFAPI gives the drive but serves no CalDAV or CardDAV, so the bridge runs beside it
+            // off the same login rather than the two having a credential each
+            return new CompositeBackend(new CloudFilesBackend(), new WebdavBackend(peergosUrl, false));
         return new WebdavBackend(peergosUrl);
     }
 
@@ -453,14 +456,20 @@ public class MountConfigHandler implements HttpHandler {
                 json.put("mountDrive", config.mountDrive);
                 json.put("syncCalendar", config.syncCalendar);
                 json.put("syncContacts", config.syncContacts);
+                // what this platform can do at all, which is what the UI offers switches for
+                json.put("canSyncCalendar", backend.supportsCalendar());
+                json.put("canSyncContacts", backend.supportsContacts());
+                json.put("davClients", backend.usesDavClients());
                 json.put("peergosUsername", sessionActive ? activePeergosUsername.get() : config.peergosUsername);
                 json.put("webdavUsername", config.webdavUsername);
-                // A CalDAV or CardDAV client has to be given these by hand, and this endpoint is
-                // already loopback only. The password is a token generated for the bridge, not
-                // the user's Peergos password.
-                json.put("webdavPassword", config.webdavPassword);
                 json.put("webdavPort", config.webdavPort);
-                json.put("davUrl", "http://localhost:" + config.webdavPort + "/dav/");
+                if (backend.usesDavClients()) {
+                    // A CalDAV or CardDAV client has to be given these by hand, and this endpoint
+                    // is already loopback only. The password is a token generated for the bridge,
+                    // not the user's Peergos password.
+                    json.put("webdavPassword", config.webdavPassword);
+                    json.put("davUrl", "http://localhost:" + config.webdavPort + "/dav/");
+                }
                 json.put("authType", config.authType);
                 json.put("mountPoint", mountPoint);
                 String err = mountError.get();
@@ -484,6 +493,9 @@ public class MountConfigHandler implements HttpHandler {
                 boolean mountDrive = body.get("mountDrive") instanceof Boolean ? (Boolean) body.get("mountDrive") : true;
                 boolean syncCalendar = body.get("syncCalendar") instanceof Boolean && (Boolean) body.get("syncCalendar");
                 boolean syncContacts = body.get("syncContacts") instanceof Boolean && (Boolean) body.get("syncContacts");
+                // a platform that cannot sync them must not persist a config claiming it does
+                syncCalendar = syncCalendar && backend.supportsCalendar();
+                syncContacts = syncContacts && backend.supportsContacts();
                 if (! mountDrive && ! syncCalendar && ! syncContacts)
                     throw new IllegalStateException("Choose at least one of the drive, calendar or contacts");
                 String authType = "digest";
