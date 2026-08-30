@@ -672,8 +672,10 @@ public class DavServlet extends HttpServlet {
         if (resource.type == Type.ADDRESSBOOK)
             return writeAddressBookProperty(out, resource, property);
         if (property.equals(caldav("supported-calendar-component-set"))) {
+            // Both, on every calendar: a client only offers a collection as a task list if
+            // VTODO is named here, and CalDAV has no separate home set to put one in.
             out.writeElement(caldav("supported-calendar-component-set"), XMLWriter.OPENING);
-            out.writeText("<C:comp name=\"VEVENT\"/>");
+            out.writeText("<C:comp name=\"VEVENT\"/><C:comp name=\"" + CalendarStore.TASK_COMPONENT + "\"/>");
             out.writeElement(caldav("supported-calendar-component-set"), XMLWriter.CLOSING);
             return true;
         }

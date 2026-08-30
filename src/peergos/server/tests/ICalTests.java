@@ -2,6 +2,7 @@ package peergos.server.tests;
 
 import org.junit.Assert;
 import org.junit.Test;
+import peergos.server.webdav.caldav.CalendarStore;
 import peergos.server.webdav.caldav.ICal;
 
 import java.time.*;
@@ -14,6 +15,13 @@ public class ICalTests {
         for (String property : properties)
             ics.append(property).append("\r\n");
         return ics.append("END:VEVENT\r\nEND:VCALENDAR\r\n").toString();
+    }
+
+    private static String todo(String... properties) {
+        StringBuilder ics = new StringBuilder("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VTODO\r\n");
+        for (String property : properties)
+            ics.append(property).append("\r\n");
+        return ics.append("END:VTODO\r\nEND:VCALENDAR\r\n").toString();
     }
 
     @Test
@@ -55,6 +63,41 @@ public class ICalTests {
         // rolls forward into the next month's directory.
         Assert.assertEquals(Optional.of(YearMonth.of(2024, 4)),
                 ICal.shard(ICal.summarise(event("UID:a", "DTSTART;TZID=America/New_York:20240331T230000"))));
+    }
+
+    @Test
+    public void tasksAreShardedAwayFromTheWebApp() {
+        // Being a task wins over recurring: recurring/ is read by the web calendar app,
+        // which would try to draw a repeating task as an event.
+        Assert.assertEquals(Optional.of(CalendarStore.TASKS_DIR),
+                CalendarStore.shardFor(ICal.summarise(todo("UID:t", "DUE:20240315T170000Z"))));
+        Assert.assertEquals(Optional.of(CalendarStore.TASKS_DIR),
+                CalendarStore.shardFor(ICal.summarise(todo("UID:t"))));
+        Assert.assertEquals(Optional.of(CalendarStore.TASKS_DIR),
+                CalendarStore.shardFor(ICal.summarise(todo("UID:t", "DTSTART:20240315T090000Z", "RRULE:FREQ=WEEKLY"))));
+        // Events are untouched by any of this.
+        Assert.assertEquals(Optional.of("2024/3"),
+                CalendarStore.shardFor(ICal.summarise(event("UID:e", "DTSTART:20240315T090000Z"))));
+        Assert.assertEquals(Optional.of(CalendarStore.RECURRING_DIR),
+                CalendarStore.shardFor(ICal.summarise(event("UID:e", "DTSTART:20240315T090000Z", "RRULE:FREQ=WEEKLY"))));
+        // A dateless event still has nowhere to go, which is what makes the PUT a 403.
+        Assert.assertEquals(Optional.empty(), CalendarStore.shardFor(ICal.summarise(event("UID:e"))));
+    }
+
+    @Test
+    public void readsTasks() {
+        ICal.Summary undated = ICal.summarise(todo("UID:t1", "SUMMARY:buy milk"));
+        Assert.assertEquals(Optional.of("VTODO"), undated.componentType);
+        Assert.assertEquals(Optional.of("t1"), undated.uid);
+        // A task need carry no date at all, and one that does usually carries only a DUE.
+        Assert.assertEquals(Optional.empty(), undated.start);
+        Assert.assertEquals(Optional.empty(), undated.end);
+
+        ICal.Summary due = ICal.summarise(todo("UID:t2", "DUE:20240315T170000Z"));
+        Assert.assertEquals(Optional.of(Instant.parse("2024-03-15T17:00:00Z")), due.end);
+        // With no start there is nothing to be sure about, so it matches every time range
+        // rather than risk hiding a task from the client's list.
+        Assert.assertTrue(due.overlaps(Optional.of(Instant.parse("2030-01-01T00:00:00Z")), Optional.empty()));
     }
 
     @Test
