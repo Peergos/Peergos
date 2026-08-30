@@ -15,6 +15,12 @@ public class CloudFilesBackend implements MountBackend {
 
     @Override
     public void enable(MountConfig config, UserContext context, Path peergosDir) throws Exception {
+        // This backend is only the drive. Calendar and contacts are served by the WebDAV bridge,
+        // which this one does not start, so on Windows they still need the WebDAV backend.
+        if (! config.mountDrive) {
+            disable();
+            return;
+        }
         CloudFilesMount mount = CloudFilesMount.mount(context, peergosDir);
         CloudFilesMount prev = active.getAndSet(mount);
         if (prev != null) prev.unmount();

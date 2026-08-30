@@ -33,18 +33,22 @@ public class WebdavBackend implements MountBackend {
 
     @Override
     public void enable(MountConfig config, UserContext context, Path peergosDir) throws Exception {
-        // Drive mount: enable thumbnail-cache seeding (no-op unless running under flatpak).
+        // The bridge is what serves CalDAV and CardDAV as well as files, so it runs for any of the
+        // three; only the drive is gated on mountDrive. Thumbnail-cache seeding is for the drive
+        // (and a no-op unless running under flatpak).
         WebdavFileSystem fs = new WebdavFileSystem(config.peergosUsername, config.peergosPassword,
-                peergosUrl, config, true);
+                peergosUrl, config, config.mountDrive);
         Server server = WebdavServer.startNonBlocking(config.webdavPort, config.webdavUsername,
-                config.webdavPassword, fs, config.authType);
+                config.webdavPassword, fs, config.authType, config.syncCalendar, config.syncContacts);
         Server prevServer = activeServer.getAndSet(server);
         if (prevServer != null) try { prevServer.stop(); } catch (Exception ignored) {}
 
         writeAppGroupConfig(config);
 
-        WebdavMount mount = WebdavMount.mount(config.webdavPort, config.webdavUsername, config.webdavPassword);
-        WebdavMount prevMount = activeMount.getAndSet(mount);
+        WebdavMount prevMount = activeMount.getAndSet(
+                config.mountDrive ?
+                        WebdavMount.mount(config.webdavPort, config.webdavUsername, config.webdavPassword) :
+                        null);
         if (prevMount != null) prevMount.close();
     }
 

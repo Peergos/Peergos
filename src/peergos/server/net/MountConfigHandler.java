@@ -444,11 +444,16 @@ public class MountConfigHandler implements HttpHandler {
             if (action.equals("get-config")) {
                 MountConfig config = readConfig();
                 Optional<String> activeMountPoint = backend.activeMountPoint();
-                boolean mountActive = activeMountPoint.isPresent();
+                // a calendar only login is live with no drive, so the session is what says we are
+                // on, and the mount point only says whether a drive came with it
+                boolean sessionActive = activeContext.get() != null;
                 String mountPoint = activeMountPoint.orElse("");
                 Map<String, Object> json = new LinkedHashMap<>();
-                json.put("enabled", mountActive || config.enabled);
-                json.put("peergosUsername", mountActive ? activePeergosUsername.get() : config.peergosUsername);
+                json.put("enabled", sessionActive || config.enabled);
+                json.put("mountDrive", config.mountDrive);
+                json.put("syncCalendar", config.syncCalendar);
+                json.put("syncContacts", config.syncContacts);
+                json.put("peergosUsername", sessionActive ? activePeergosUsername.get() : config.peergosUsername);
                 json.put("webdavUsername", config.webdavUsername);
                 json.put("webdavPort", config.webdavPort);
                 json.put("authType", config.authType);
@@ -470,6 +475,12 @@ public class MountConfigHandler implements HttpHandler {
                         || peergosPassword == null || peergosPassword.isEmpty())
                     throw new IllegalStateException("Mounting needs your username and password");
                 boolean autoMount = body.get("autoMount") instanceof Boolean ? (Boolean) body.get("autoMount") : true;
+                // a client from before the split only ever asked for the drive
+                boolean mountDrive = body.get("mountDrive") instanceof Boolean ? (Boolean) body.get("mountDrive") : true;
+                boolean syncCalendar = body.get("syncCalendar") instanceof Boolean && (Boolean) body.get("syncCalendar");
+                boolean syncContacts = body.get("syncContacts") instanceof Boolean && (Boolean) body.get("syncContacts");
+                if (! mountDrive && ! syncCalendar && ! syncContacts)
+                    throw new IllegalStateException("Choose at least one of the drive, calendar or contacts");
                 String authType = "digest";
                 // Optional TOTP credential supplied by the UI when the user had 2FA enabled.
                 // Both hex-encoded; empty/missing means the mount logs in with password only.
@@ -488,7 +499,8 @@ public class MountConfigHandler implements HttpHandler {
                 String webdavUsername = sameEndpoint ? previous.webdavUsername : generateToken();
                 String webdavPassword = sameEndpoint ? previous.webdavPassword : generateToken();
                 int webdavPort = sameEndpoint ? previous.webdavPort : findFreePort();
-                MountConfig config = new MountConfig(true, peergosUsername, peergosPassword,
+                MountConfig config = new MountConfig(true, mountDrive, syncCalendar, syncContacts,
+                        peergosUsername, peergosPassword,
                         webdavUsername, webdavPassword, webdavPort, authType,
                         totpCredentialId, totpSecret);
                 if (autoMount) saveConfig(config);

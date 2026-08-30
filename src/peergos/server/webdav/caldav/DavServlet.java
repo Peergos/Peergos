@@ -77,14 +77,35 @@ public class DavServlet extends HttpServlet {
 
     private final CalendarStore calendars;
     private final ContactStore contacts;
+    /** Which collections this user asked for. A disabled one is absent from the home set and
+     *  unreachable by URL, so a client that already knows the path gets a 404 rather than data. */
+    private final Set<Type> served;
 
     public DavServlet(UserContext context) {
-        this(new CalendarStore(context), new ContactStore(context));
+        this(context, true, true);
+    }
+
+    public DavServlet(UserContext context, boolean calendars, boolean contacts) {
+        this(new CalendarStore(context), new ContactStore(context), served(calendars, contacts));
     }
 
     public DavServlet(CalendarStore calendars, ContactStore contacts) {
+        this(calendars, contacts, EnumSet.allOf(Type.class));
+    }
+
+    public DavServlet(CalendarStore calendars, ContactStore contacts, Set<Type> served) {
         this.calendars = calendars;
         this.contacts = contacts;
+        this.served = served;
+    }
+
+    private static Set<Type> served(boolean calendars, boolean contacts) {
+        Set<Type> res = EnumSet.noneOf(Type.class);
+        if (calendars)
+            res.add(Type.CALENDAR);
+        if (contacts)
+            res.add(Type.ADDRESSBOOK);
+        return res;
     }
 
     // ---------------------------------------------------------------- dispatch
@@ -250,7 +271,7 @@ public class DavServlet extends HttpServlet {
     private void doMakeCollection(HttpServletRequest req, HttpServletResponse resp, Type method)
             throws IOException {
         List<String> segments = segments(req.getPathInfo());
-        Optional<Type> type = segments.isEmpty() ? Optional.empty() : Type.forSegment(segments.get(0));
+        Optional<Type> type = segments.isEmpty() ? Optional.empty() : Type.forSegment(segments.get(0), served);
         if (type.isEmpty() || segments.size() != 3 || ! segments.get(1).equals(username())) {
             resp.sendError(HttpServletResponse.SC_FORBIDDEN,
                     "Collections live under /" + method.segment + "/" + username() + "/");
@@ -827,8 +848,8 @@ public class DavServlet extends HttpServlet {
             this.contentType = contentType;
         }
 
-        static Optional<Type> forSegment(String segment) {
-            return Arrays.stream(values()).filter(t -> t.segment.equals(segment)).findFirst();
+        static Optional<Type> forSegment(String segment, Set<Type> served) {
+            return served.stream().filter(t -> t.segment.equals(segment)).findFirst();
         }
     }
 
@@ -892,7 +913,7 @@ public class DavServlet extends HttpServlet {
         List<String> segments = segments(req.getPathInfo());
         if (segments.size() != 4 || ! segments.get(1).equals(username()))
             return Optional.empty();
-        Optional<Type> type = Type.forSegment(segments.get(0));
+        Optional<Type> type = Type.forSegment(segments.get(0), served);
         if (type.isEmpty())
             return Optional.empty();
         AppDataStore store = store(type.get());
@@ -927,7 +948,7 @@ public class DavServlet extends HttpServlet {
                 return Optional.of(fixed(Kind.PRINCIPAL, null, principalPath()));
             return Optional.empty();
         }
-        Optional<Type> maybeType = Type.forSegment(first);
+        Optional<Type> maybeType = Type.forSegment(first, served);
         if (maybeType.isEmpty() || segments.size() > 4)
             return Optional.empty();
         Type type = maybeType.get();
@@ -975,7 +996,7 @@ public class DavServlet extends HttpServlet {
             case ROOT: {
                 List<Resource> roots = new ArrayList<>();
                 roots.add(fixed(Kind.PRINCIPALS, null, "/principals/"));
-                for (Type type : Type.values())
+                for (Type type : served)
                     roots.add(fixed(Kind.HOME_ROOT, type, "/" + type.segment + "/"));
                 return roots;
             }
