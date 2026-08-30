@@ -46,8 +46,16 @@ public class WebdavServer {
                                           String webdavUser, String webdavPassword,
                                           WebdavFileSystem fs,
                                           String authScheme) {
+        return startNonBlocking(port, webdavUser, webdavPassword, fs, authScheme, true, true);
+    }
+
+    public static Server startNonBlocking(int port,
+                                          String webdavUser, String webdavPassword,
+                                          WebdavFileSystem fs,
+                                          String authScheme,
+                                          boolean serveCalendars, boolean serveContacts) {
         return startWithServlet(port, webdavUser, webdavPassword, authScheme,
-                new WebdavServlet(fs), fs);
+                new WebdavServlet(fs), fs, serveCalendars, serveContacts);
     }
 
     public static Server startNonBlocking(int port,
@@ -55,15 +63,19 @@ public class WebdavServer {
                                           String peergosUser, String peergosPassword,
                                           String peergosUrl, String authScheme,
                                           MountConfig config) {
+        // The standalone bridge is asked for explicitly and serves everything; only the drive
+        // mount path picks which collections to expose, from the user's saved config.
         return startWithServlet(port, webdavUser, webdavPassword, authScheme,
-                new WebdavServlet(peergosUser, peergosPassword, peergosUrl, config), null);
+                new WebdavServlet(peergosUser, peergosPassword, peergosUrl, config), null,
+                true, true);
     }
 
     private static Server startWithServlet(int port,
                                            String webdavUser, String webdavPassword,
                                            String authScheme,
                                            WebdavServlet servlet,
-                                           WebdavFileSystem snapshotFs) {
+                                           WebdavFileSystem snapshotFs,
+                                           boolean serveCalendars, boolean serveContacts) {
         logger.info("Starting WEBDAV server version: " + VERSION + " on port: " + port);
         Crypto crypto = Main.initCrypto();
         PublicSigningKey.addProvider(PublicSigningKey.Type.Ed25519, crypto.signer);
@@ -127,12 +139,17 @@ public class WebdavServer {
         }
 
         // CalDAV and CardDAV live under their own prefix so a file client mounting / never
-        // sees them, and RFC 6764 discovery points at it from the well known locations.
-        context.addServlet(new ServletHolder("dav", new DavServlet(servlet.getFileSystem().getContext())),
-                DAV_PREFIX + "/*");
-        for (String wellKnown : List.of("/.well-known/caldav", "/.well-known/carddav")) {
-            context.addServlet(new ServletHolder("dav-discovery" + wellKnown.hashCode(),
-                    new RedirectServlet(DAV_PREFIX + "/")), wellKnown);
+        // sees them, and RFC 6764 discovery points at it from the well known locations. Each
+        // collection is only served if the user asked for it, so a drive only mount exposes
+        // neither and the calendar can be synced without one.
+        if (serveCalendars || serveContacts) {
+            context.addServlet(new ServletHolder("dav",
+                            new DavServlet(servlet.getFileSystem().getContext(), serveCalendars, serveContacts)),
+                    DAV_PREFIX + "/*");
+            for (String wellKnown : List.of("/.well-known/caldav", "/.well-known/carddav")) {
+                context.addServlet(new ServletHolder("dav-discovery" + wellKnown.hashCode(),
+                        new RedirectServlet(DAV_PREFIX + "/")), wellKnown);
+            }
         }
 
         ServletHolder holderDef = new ServletHolder("default", servlet);

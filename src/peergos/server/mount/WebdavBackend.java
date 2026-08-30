@@ -24,28 +24,64 @@ public class WebdavBackend implements MountBackend {
     private static final Logger LOG = Logging.LOG();
 
     private final String peergosUrl;
+    /** False when another backend owns the drive and this one is only here for the bridge, which
+     *  is the Windows CFAPI case. Mounting as well would stack a second drive beside it. */
+    private final boolean canMountDrive;
     private final AtomicReference<WebdavMount> activeMount = new AtomicReference<>();
     private final AtomicReference<Server> activeServer = new AtomicReference<>();
 
     public WebdavBackend(String peergosUrl) {
+        this(peergosUrl, true);
+    }
+
+    public WebdavBackend(String peergosUrl, boolean canMountDrive) {
         this.peergosUrl = peergosUrl;
+        this.canMountDrive = canMountDrive;
     }
 
     @Override
     public void enable(MountConfig config, UserContext context, Path peergosDir) throws Exception {
-        // Drive mount: enable thumbnail-cache seeding (no-op unless running under flatpak).
+        boolean wantsDrive = config.mountDrive && canMountDrive;
+        boolean wantsDav = config.syncCalendar || config.syncContacts;
+        if (! wantsDrive && ! wantsDav) {
+            // bridge only, with nothing asked of it: another backend has the drive
+            disable();
+            return;
+        }
+        // The bridge is what serves CalDAV and CardDAV as well as files, so it runs for any of the
+        // three; only the drive is gated on mountDrive. Thumbnail-cache seeding is for the drive
+        // (and a no-op unless running under flatpak).
         WebdavFileSystem fs = new WebdavFileSystem(config.peergosUsername, config.peergosPassword,
-                peergosUrl, config, true);
+                peergosUrl, config, wantsDrive);
         Server server = WebdavServer.startNonBlocking(config.webdavPort, config.webdavUsername,
-                config.webdavPassword, fs, config.authType);
+                config.webdavPassword, fs, config.authType, config.syncCalendar, config.syncContacts);
         Server prevServer = activeServer.getAndSet(server);
         if (prevServer != null) try { prevServer.stop(); } catch (Exception ignored) {}
 
         writeAppGroupConfig(config);
 
-        WebdavMount mount = WebdavMount.mount(config.webdavPort, config.webdavUsername, config.webdavPassword);
-        WebdavMount prevMount = activeMount.getAndSet(mount);
+        WebdavMount prevMount = activeMount.getAndSet(
+                wantsDrive ?
+                        WebdavMount.mount(config.webdavPort, config.webdavUsername, config.webdavPassword) :
+                        null);
         if (prevMount != null) prevMount.close();
+    }
+
+    // Hidden on macOS for now, drive mount or not: nothing there has been through the CalDAV and
+    // CardDAV client story yet, so offering it would be offering something untested.
+    @Override
+    public boolean supportsCalendar() {
+        return ! isMac();
+    }
+
+    @Override
+    public boolean supportsContacts() {
+        return ! isMac();
+    }
+
+    @Override
+    public boolean usesDavClients() {
+        return ! isMac();
     }
 
     @Override

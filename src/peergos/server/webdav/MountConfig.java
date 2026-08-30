@@ -9,6 +9,12 @@ public class MountConfig implements Jsonable {
     public static final String FILENAME = "mount-config.json";
 
     public final boolean enabled;
+    /** What this login is actually used for. The credential, its keyring entry and its login are
+     *  shared, so turning the calendar on does not mean mounting a drive, and a user who only
+     *  wants their calendar never gets a second secret store. */
+    public final boolean mountDrive;
+    public final boolean syncCalendar;
+    public final boolean syncContacts;
     public final String peergosUsername;
     public final String peergosPassword;
     public final String webdavUsername;
@@ -28,10 +34,22 @@ public class MountConfig implements Jsonable {
     public final String totpCredentialId;
     public final String totpSecret;
 
+    /** Everything on but contacts, which is the shape every config had before the split. */
     public MountConfig(boolean enabled, String peergosUsername, String peergosPassword,
                        String webdavUsername, String webdavPassword, int webdavPort, String authType,
                        String totpCredentialId, String totpSecret) {
+        this(enabled, enabled, false, false, peergosUsername, peergosPassword,
+                webdavUsername, webdavPassword, webdavPort, authType, totpCredentialId, totpSecret);
+    }
+
+    public MountConfig(boolean enabled, boolean mountDrive, boolean syncCalendar, boolean syncContacts,
+                       String peergosUsername, String peergosPassword,
+                       String webdavUsername, String webdavPassword, int webdavPort, String authType,
+                       String totpCredentialId, String totpSecret) {
         this.enabled = enabled;
+        this.mountDrive = mountDrive;
+        this.syncCalendar = syncCalendar;
+        this.syncContacts = syncContacts;
         this.peergosUsername = peergosUsername;
         this.peergosPassword = peergosPassword;
         this.webdavUsername = webdavUsername;
@@ -40,6 +58,11 @@ public class MountConfig implements Jsonable {
         this.authType = authType;
         this.totpCredentialId = totpCredentialId == null ? "" : totpCredentialId;
         this.totpSecret       = totpSecret       == null ? "" : totpSecret;
+    }
+
+    /** Whether this login is being used for anything at all. */
+    public boolean anyFeature() {
+        return mountDrive || syncCalendar || syncContacts;
     }
 
     public boolean hasTotp() {
@@ -56,17 +79,17 @@ public class MountConfig implements Jsonable {
     }
 
     public static MountConfig disabled() {
-        return new MountConfig(false, "", "", "", "", 8090, "digest", "", "");
+        return new MountConfig(false, false, false, false, "", "", "", "", 8090, "digest", "", "");
     }
 
     public MountConfig withoutSecrets() {
-        return new MountConfig(enabled, peergosUsername, "",
+        return new MountConfig(enabled, mountDrive, syncCalendar, syncContacts, peergosUsername, "",
                 webdavUsername, webdavPassword, webdavPort, authType,
                 totpCredentialId, "");
     }
 
     public MountConfig withSecrets(String peergosPassword, String totpSecret) {
-        return new MountConfig(enabled, peergosUsername, peergosPassword,
+        return new MountConfig(enabled, mountDrive, syncCalendar, syncContacts, peergosUsername, peergosPassword,
                 webdavUsername, webdavPassword, webdavPort, authType,
                 totpCredentialId, totpSecret);
     }
@@ -89,6 +112,9 @@ public class MountConfig implements Jsonable {
     public Map<String, Object> toJson() {
         LinkedHashMap<String, Object> res = new LinkedHashMap<>();
         res.put("enabled", enabled);
+        res.put("mountDrive", mountDrive);
+        res.put("syncCalendar", syncCalendar);
+        res.put("syncContacts", syncContacts);
         res.put("peergosUsername", peergosUsername);
         res.put("peergosPassword", peergosPassword);
         res.put("webdavUsername", webdavUsername);
@@ -101,8 +127,13 @@ public class MountConfig implements Jsonable {
     }
 
     public static MountConfig fromJson(Map<String, Object> json) {
+        boolean enabled = (Boolean) json.get("enabled");
         return new MountConfig(
-            (Boolean) json.get("enabled"),
+            enabled,
+            // a config written before the split only ever meant the drive
+            (Boolean) json.getOrDefault("mountDrive", enabled),
+            (Boolean) json.getOrDefault("syncCalendar", false),
+            (Boolean) json.getOrDefault("syncContacts", false),
             (String) json.get("peergosUsername"),
             (String) json.get("peergosPassword"),
             (String) json.get("webdavUsername"),
