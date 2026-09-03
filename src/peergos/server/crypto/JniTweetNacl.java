@@ -58,7 +58,13 @@ public class JniTweetNacl {
                 String[] info = libInfo();
                 String os = info[0], libName = info[1], ext = info[2];
                 Path libPath = PathUtil.get("native-lib", os, arch, libName);
-                InputStream resource = JniTweetNacl.class.getResourceAsStream("/" + libPath);
+                // Jar entries are always / separated, so the resource name cannot be built from a
+                // Path: on windows that asks for /native-lib\windows\amd64\tweetnacl.dll, which
+                // never matches, and the fallback then looks for a file relative to the working
+                // directory instead. The library is in the jar, so windows silently ran the java
+                // implementations of tweetnacl and scrypt.
+                InputStream resource = JniTweetNacl.class
+                        .getResourceAsStream("/native-lib/" + os + "/" + arch + "/" + libName);
                 if (resource != null) {
                     byte[] data = Serialize.readFully(resource);
                     if (providedPath.isPresent()) {
