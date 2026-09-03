@@ -129,7 +129,7 @@ public final class ICal {
         Deque<List<Component>> children = new ArrayDeque<>();
         Component outermost = null;
         for (String line : unfold(ics)) {
-            Optional<Property> parsed = parseLine(line);
+            Optional<Property> parsed = parseProperty(line);
             if (parsed.isEmpty())
                 continue;
             Property p = parsed.get();
@@ -152,8 +152,13 @@ public final class ICal {
         return names.isEmpty() ? Optional.ofNullable(outermost) : Optional.empty();
     }
 
-    /** name[;param=value]*:value, where a colon inside a quoted parameter is not the separator. */
-    private static Optional<Property> parseLine(String line) {
+    /**
+     * name[;param=value]*:value, where a colon inside a quoted parameter is not the separator.
+     *
+     * Public because vCard shares this grammar, so the CardDAV side reads a content line
+     * with the same code rather than a second implementation of it.
+     */
+    public static Optional<Property> parseProperty(String line) {
         boolean quoted = false;
         int colon = -1;
         for (int i = 0; i < line.length(); i++) {
@@ -178,7 +183,9 @@ public final class ICal {
             String pv = param.substring(eq + 1);
             if (pv.length() > 1 && pv.charAt(0) == '"' && pv.endsWith("\""))
                 pv = pv.substring(1, pv.length() - 1);
-            params.put(param.substring(0, eq).trim().toUpperCase(), pv);
+            // vCard 3.0 repeats a parameter where 4.0 gives it one comma separated value, so
+            // repeats are joined into that same form rather than the last one winning.
+            params.merge(param.substring(0, eq).trim().toUpperCase(), pv, (first, next) -> first + "," + next);
         }
         return Optional.of(new Property(nameAndParams[0].trim().toUpperCase(), params, value));
     }
