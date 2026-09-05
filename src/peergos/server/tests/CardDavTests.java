@@ -11,6 +11,8 @@ import peergos.server.tests.util.TestPorts;
 import peergos.server.util.Args;
 import peergos.server.webdav.MountConfig;
 import peergos.server.webdav.WebdavServer;
+import peergos.server.webdav.caldav.AppDataStore;
+import peergos.server.webdav.caldav.ContactStore;
 import peergos.shared.Crypto;
 import peergos.shared.NetworkAccess;
 import peergos.shared.user.UserContext;
@@ -20,7 +22,11 @@ import java.net.URL;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.Base64;
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Random;
 
@@ -179,6 +185,51 @@ public class CardDavTests {
         } finally {
             server.stop();
         }
+    }
+
+    /**
+     * The bulk write, which is what a phone backing up its address book for the first time
+     * uses: hundreds of contacts, and a commit each would take hours.
+     */
+    @Test
+    public void bulkWriteFillsACollectionInOneCommit() throws Exception {
+        String username = "carddav-bulk" + Math.abs(random.nextInt() % 1_000_000);
+        String password = "testpassword";
+        PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
+        UserContext context = verifier(username, password);
+        ContactStore store = new ContactStore(context);
+
+        List<AppDataStore.NewObject> cards = new ArrayList<>();
+        for (int i = 0; i < 25; i++)
+            cards.add(new AppDataStore.NewObject("bulk" + i + ".vcf",
+                    card("bulk" + i, "Contact " + i, "c" + i + "@example.com")
+                            .getBytes(StandardCharsets.UTF_8)));
+
+        Map<String, AppDataStore.ObjectRef> written = store.putObjects("default", cards);
+
+        Assert.assertEquals("every card is reported written", 25, written.size());
+        for (AppDataStore.NewObject card : cards) {
+            AppDataStore.ObjectRef stored = written.get(card.name);
+            Assert.assertNotNull(card.name + " missing from the result", stored);
+            Assert.assertFalse("a written card has an ETag", stored.etag().isEmpty());
+            // the collection was created by the same call that filled it
+            Assert.assertTrue(card.name + " not on disk",
+                    context.getByPath(username + "/.apps/contacts/data/default/" + card.name).join().isPresent());
+        }
+        Assert.assertEquals("and the collection holds exactly those", 25, store.listObjects("default").size());
+        Assert.assertTrue("readable through the store",
+                new String(store.read(store.getObject("default", "bulk7.vcf").orElseThrow()),
+                        StandardCharsets.UTF_8).contains("c7@example.com"));
+
+        // A second batch under names already there replaces them rather than failing.
+        Map<String, AppDataStore.ObjectRef> again = store.putObjects("default",
+                List.of(new AppDataStore.NewObject("bulk7.vcf",
+                        card("bulk7", "Renamed", "new@example.com").getBytes(StandardCharsets.UTF_8))));
+        Assert.assertEquals(1, again.size());
+        Assert.assertEquals("no duplicate member", 25, store.listObjects("default").size());
+        Assert.assertTrue("the new content won",
+                new String(store.read(store.getObject("default", "bulk7.vcf").orElseThrow()),
+                        StandardCharsets.UTF_8).contains("new@example.com"));
     }
 
     private static UserContext verifier(String username, String password) throws Exception {

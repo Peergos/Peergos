@@ -3,8 +3,10 @@ package peergos.server.webdav.caldav;
 import peergos.shared.io.ipfs.api.JSONParser;
 import peergos.shared.user.App;
 import peergos.shared.user.UserContext;
+import peergos.shared.user.fs.AsyncReader;
 import peergos.shared.user.fs.FileWrapper;
 import peergos.shared.util.ArrayOps;
+import peergos.shared.util.Futures;
 import peergos.shared.util.PathUtil;
 import peergos.shared.util.Serialize;
 
@@ -14,6 +16,7 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.*;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /**
  * Collections of DAV resources held in a Peergos app's data directory.
@@ -298,11 +301,81 @@ public abstract class AppDataStore {
         return shardFor(content).isPresent();
     }
 
-    public void putObject(String directory, String name, byte[] content, Optional<ObjectRef> existing) {
+    /** @return the object as it now stands, so a caller needing its ETag does not re-list. */
+    public ObjectRef putObject(String directory, String name, byte[] content, Optional<ObjectRef> existing) {
         String shard = shardFor(content)
                 .orElseThrow(() -> new IllegalArgumentException("Nowhere to file this object"));
         existing.filter(o -> ! o.shard.equals(shard)).ifPresent(old -> deleteObject(directory, old));
-        write(join(directory, shard, name), content);
+        return new ObjectRef(name, shard, write(join(directory, shard, name), content));
+    }
+
+    /** One object to be written as part of a batch. */
+    public static final class NewObject {
+        public final String name;
+        public final byte[] content;
+
+        public NewObject(String name, byte[] content) {
+            this.name = name;
+            this.content = content;
+        }
+    }
+
+    /**
+     * Writes many objects into one collection in a single commit.
+     *
+     * A file at a time costs a commit each — around a second apiece — which is fine for the
+     * one contact a user just edited and hopeless for the several hundred a phone hands over
+     * when it first backs its address book up. One upload of the lot shares that cost, and
+     * the single listing at the end replaces the one per object a caller would otherwise do
+     * to learn their ETags.
+     *
+     * @return what was written, by member name. A name missing from the result was not
+     *         stored, so the caller must not record it as synced.
+     */
+    public Map<String, ObjectRef> putObjects(String directory, List<NewObject> objects) {
+        if (objects.isEmpty())
+            return Collections.emptyMap();
+        Map<String, List<FileWrapper.FileUploadProperties>> byShard = new LinkedHashMap<>();
+        for (NewObject object : objects) {
+            String shard = shardFor(object.content)
+                    .orElseThrow(() -> new IllegalArgumentException("Nowhere to file " + object.name));
+            byShard.computeIfAbsent(shard, s -> new ArrayList<>()).add(upload(object));
+        }
+        // Uploaded relative to the app's data directory rather than the collection, so the
+        // collection and its shards are created by the same call that fills them.
+        Stream<FileWrapper.FolderUploadProperties> folders = byShard.entrySet().stream()
+                .map(shard -> new FileWrapper.FolderUploadProperties(
+                        segments(directory, shard.getKey()), shard.getValue()));
+        // the data directory is made on first write, and this may well be the first
+        app();
+        FileWrapper dataDirectory = getByPath(dataDir)
+                .orElseThrow(() -> new IllegalStateException("No app data directory for " + appName));
+        dataDirectory.uploadSubtree(folders, context.mirrorBatId(), context.network, context.crypto,
+                context.getTransactionService(), f -> Futures.of(false), f -> Futures.of(true),
+                () -> true).join();
+        forget(directory);
+        Map<String, ObjectRef> written = new LinkedHashMap<>();
+        for (ObjectRef object : listObjects(directory))
+            written.put(object.name, object);
+        written.keySet().retainAll(objects.stream().map(o -> o.name).collect(Collectors.toSet()));
+        return written;
+    }
+
+    private static FileWrapper.FileUploadProperties upload(NewObject object) {
+        long length = object.content.length;
+        return new FileWrapper.FileUploadProperties(object.name, () -> AsyncReader.build(object.content),
+                (int) (length >> 32), (int) length, Optional.empty(), Optional.empty(),
+                false, true, l -> {});
+    }
+
+    private static List<String> segments(String directory, String shard) {
+        List<String> segments = new ArrayList<>();
+        segments.add(directory);
+        for (String part : shard.split("/")) {
+            if (! part.isEmpty())
+                segments.add(part);
+        }
+        return segments;
     }
 
     public void deleteObject(String directory, ObjectRef object) {
@@ -345,10 +418,14 @@ public abstract class AppDataStore {
     }
 
     /** Writes through App, so the layout is exactly what a web app for it would produce. */
-    private void write(String relativePath, byte[] content) {
+    private FileWrapper write(String relativePath, byte[] content) {
         app().writeInternal(PathUtil.get(relativePath), content, null).join();
         int slash = relativePath.indexOf('/');
         forget(slash < 0 ? relativePath : relativePath.substring(0, slash));
+        // Read back by path rather than through a listing: the write has just invalidated
+        // the cached one, and rebuilding it walks every object in the collection.
+        return getByPath(dataDir.resolve(relativePath))
+                .orElseThrow(() -> new IllegalStateException("Wrote " + relativePath + " but cannot read it back"));
     }
 
     /**
