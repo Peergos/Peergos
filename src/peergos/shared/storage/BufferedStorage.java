@@ -381,7 +381,38 @@ public class BufferedStorage extends DelegatingStorage {
         }
     }
 
-    /** Take this writer's buffered blocks and partition them into a commit for it.
+    /** Whether any buffered block is too large to travel inline, and so must be written under a
+     *  transaction that keeps it alive until the commit naming it lands.
+     */
+    public boolean needsTransaction() {
+        synchronized (storage) {
+            return storage.values().stream()
+                    .anyMatch(b -> b.isRaw && b.block.length >= DirectS3BlockStore.MAX_SMALL_BLOCK_SIZE);
+        }
+    }
+
+    /** Assign each buffered block to the first of these roots that reaches it.
+     *
+     *  Which writer wrote a block is not a reliable guide to which root reaches it - the same block can
+     *  be written under two writers, and only the last one is recorded - and a commit is only accepted
+     *  if every block in it hangs off the root it signs, so the graph decides.
+     */
+    public List<Set<Cid>> partitionByRoot(List<MaybeMultihash> roots) {
+        synchronized (storage) {
+            Set<Cid> claimed = new HashSet<>();
+            List<Set<Cid>> partitions = new ArrayList<>();
+            for (MaybeMultihash root : roots) {
+                Set<Cid> reachable = new HashSet<>();
+                root.toOptional().ifPresent(h -> markReachable((Cid) h, reachable, storage));
+                reachable.removeAll(claimed);
+                claimed.addAll(reachable);
+                partitions.add(reachable);
+            }
+            return partitions;
+        }
+    }
+
+    /** Take the given buffered blocks and partition them into a commit for one writer.
      *
      *  Large raw blocks are written first, direct to S3 where that is available, so only their
      *  hashes travel in the commit itself. Everything else travels inline.
@@ -390,7 +421,8 @@ public class BufferedStorage extends DelegatingStorage {
                                                              PublicKeyHash writer,
                                                              Optional<SignedPointerUpdate> pointer,
                                                              SigningPrivateKeyAndPublicHash signer,
-                                                             TransactionId tid) {
+                                                             Optional<TransactionId> tid,
+                                                             Set<Cid> blocks) {
         List<byte[]> cborBlocks = new ArrayList<>();
         List<byte[]> rawBlocks = new ArrayList<>();
         List<OpLog.BlockWrite> inlineRaw = new ArrayList<>();
@@ -399,7 +431,7 @@ public class BufferedStorage extends DelegatingStorage {
             List<Cid> toRemove = new ArrayList<>();
             for (Map.Entry<Cid, OpLog.BlockWrite> e : storage.entrySet()) {
                 OpLog.BlockWrite block = e.getValue();
-                if (! Objects.equals(block.writer, writer))
+                if (! blocks.contains(e.getKey()))
                     continue;
                 toRemove.add(e.getKey());
                 if (! block.isRaw)
@@ -424,9 +456,11 @@ public class BufferedStorage extends DelegatingStorage {
                                                   PublicKeyHash writer,
                                                   SigningPrivateKeyAndPublicHash signer,
                                                   List<Pair<Cid, OpLog.BlockWrite>> large,
-                                                  TransactionId tid) {
+                                                  Optional<TransactionId> tid) {
         if (large.isEmpty())
             return Futures.of(Collections.emptyList());
+        if (tid.isEmpty())
+            throw new IllegalStateException("Blocks written ahead of a commit need a transaction to hold them!");
         int MAX_CONCURRENT_BATCH_UPLOADS = 4;
         AsyncSemaphore semaphore = new AsyncSemaphore(MAX_CONCURRENT_BATCH_UPLOADS);
         List<CompletableFuture<List<Cid>>> futures = new ArrayList<>();
@@ -438,7 +472,7 @@ public class BufferedStorage extends DelegatingStorage {
                                             signer.secret.signMessage(p.left.getHash()))
                                     .collect(Collectors.toList()))
                             .thenCompose(sigs -> target.putRaw(owner, writer, sigs,
-                                    batch.stream().map(p -> p.right.block).collect(Collectors.toList()), tid, x -> {}))
+                                    batch.stream().map(p -> p.right.block).collect(Collectors.toList()), tid.get(), x -> {}))
                             .thenApply(res -> {
                                 batch.forEach(p -> p.right.progressMonitor.ifPresent(m -> m.accept((long) p.right.block.length)));
                                 return res;

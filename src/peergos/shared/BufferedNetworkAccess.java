@@ -58,7 +58,8 @@ public class BufferedNetworkAccess extends NetworkAccess {
                 serverMessager, hasher, usernames, isJavascript);
         this.blockBuffer = blockBuffer;
         this.pointerBuffer = mutableBuffer;
-        this.bulkCommitter = new LegacyBulkCommitter(blockBuffer.target(), unbufferedMutable, hasher);
+        this.bulkCommitter = new ServerBulkCommitter(blockBuffer.target(),
+                new LegacyBulkCommitter(blockBuffer.target(), unbufferedMutable, hasher));
         this.bufferSize = bufferSize;
         synchronizer.setCommitterBuilder(this::buildCommitter);
         synchronizer.setFlusher((o, v, w) -> commit(o, w).thenApply(b -> v));
@@ -183,12 +184,14 @@ public class BufferedNetworkAccess extends NetworkAccess {
             PublicKeyHash owner,
             Pair<BufferedPointers.WriterUpdate, Optional<CommittedWriterData>> u,
             Map<PublicKeyHash, SigningPrivateKeyAndPublicHash> writers,
-            TransactionId tid,
+            Optional<TransactionId> tid,
             PointerCasException cas) {
         MaybeMultihash actualExisting = cas.existing;
         if (actualExisting.equals(u.left.currentHash))
             return Futures.of(true);
         SigningPrivateKeyAndPublicHash signer = writers.get(u.left.writer);
+        // The merge only writes cbor into the buffer, which doesn't need a real transaction
+        TransactionId bufferTid = tid.orElseGet(() -> new TransactionId(Long.toString(System.currentTimeMillis())));
         return WriterData.getWriterData(owner, (Cid) u.left.prevHash.get(), Optional.empty(), blockBuffer)
                 .thenCompose(original -> WriterData.getWriterData(owner, (Cid) u.left.currentHash.get(), Optional.empty(), blockBuffer)
                         .thenCompose(updated -> WriterData.getWriterData(owner, (Cid) actualExisting.get(), Optional.empty(), blockBuffer)
@@ -196,11 +199,11 @@ public class BufferedNetworkAccess extends NetworkAccess {
                                                 MaybeMultihash.of(original.props.get().tree.get()),
                                                 MaybeMultihash.of(updated.props.get().tree.get()),
                                                 MaybeMultihash.of(remote.props.get().tree.get()),
-                                                Optional.empty(), tid, ChampWrapper.BIT_WIDTH,
+                                                Optional.empty(), bufferTid, ChampWrapper.BIT_WIDTH,
                                                 ChampWrapper.MAX_HASH_COLLISIONS_PER_LEVEL, y -> Futures.of(y.data),
                                                 c -> (CborObject.CborMerkleLink) c, blockBuffer, hasher)
                                         .thenApply(p -> remote.props.get().withChamp(p.right)))))
-                .thenCompose(newWD -> blockBuffer.put(owner, signer, newWD.serialize(), hasher, tid)
+                .thenCompose(newWD -> blockBuffer.put(owner, signer, newWD.serialize(), hasher, bufferTid)
                         .thenCompose(mergedRoot -> {
                             BufferedPointers.WriterUpdate merged = new BufferedPointers.WriterUpdate(u.left.writer,
                                     actualExisting, MaybeMultihash.of(mergedRoot), cas.sequence.map(s -> s + 1));
@@ -252,8 +255,11 @@ public class BufferedNetworkAccess extends NetworkAccess {
                                                    List<Pair<BufferedPointers.WriterUpdate, Optional<CommittedWriterData>>> writes,
                                                    Map<PublicKeyHash, SigningPrivateKeyAndPublicHash> writers) {
         boolean hasNewWriters = writes.stream().anyMatch(u -> !u.left.prevHash.isPresent());
-
-        return blockBuffer.target().startTransaction(owner)
+        // A transaction is only needed to hold blocks written ahead of the commit that names them,
+        // which is the large raw blocks that go direct to S3. Without any, the commit is one call.
+        return (blockBuffer.needsTransaction() ?
+                blockBuffer.target().startTransaction(owner).thenApply(Optional::of) :
+                Futures.of(Optional.<TransactionId>empty()))
                 .thenCompose(tid -> (hasNewWriters
                         // Sequential path: preserves the invariant that parent pointer commits before child blocks
                         ? Futures.reduceAll(writes.stream(), true,
@@ -266,7 +272,8 @@ public class BufferedNetworkAccess extends NetworkAccess {
                                         .map(cwd -> synchronizer.updateWriterState(owner, u.left.writer, new Snapshot(u.left.writer, cwd)))
                                         .orElse(Futures.of(true)),
                                 (x, y) -> x && y))
-                        .thenCompose(x -> blockBuffer.target().closeTransaction(owner, tid)));
+                        .thenCompose(x -> tid.map(t -> blockBuffer.target().closeTransaction(owner, t))
+                                .orElse(Futures.of(true))));
     }
 
     /** Build a single bulk commit covering these writers' buffered blocks and pointer updates, and apply it.
@@ -276,12 +283,17 @@ public class BufferedNetworkAccess extends NetworkAccess {
     private CompletableFuture<Boolean> commitWrites(PublicKeyHash owner,
                                                     List<Pair<BufferedPointers.WriterUpdate, Optional<CommittedWriterData>>> writes,
                                                     Map<PublicKeyHash, SigningPrivateKeyAndPublicHash> writers,
-                                                    TransactionId tid,
+                                                    Optional<TransactionId> tid,
                                                     boolean mergeOnCas) {
         return buildCommit(owner, writes, writers, tid)
                 .thenCompose(bulk -> Futures.asyncExceptionally(
                         () -> bulkCommitter.commit(owner, bulk, writers)
                                 .thenApply(hashes -> {
+                                    // The pointer updates may not have gone through mutable at all, so tell
+                                    // any cache of them what they now are rather than leaving it stale.
+                                    mutable.recordApplied(owner, bulk.writers.stream()
+                                            .flatMap(w -> w.pointer.stream())
+                                            .collect(Collectors.toList()));
                                     pointerBuffer.recordCommitted(writes.stream()
                                             .map(u -> u.left)
                                             .collect(Collectors.toList()));
@@ -300,18 +312,22 @@ public class BufferedNetworkAccess extends NetworkAccess {
     private CompletableFuture<BulkCommit> buildCommit(PublicKeyHash owner,
                                                       List<Pair<BufferedPointers.WriterUpdate, Optional<CommittedWriterData>>> writes,
                                                       Map<PublicKeyHash, SigningPrivateKeyAndPublicHash> writers,
-                                                      TransactionId tid) {
-        return Futures.combineAllInOrder(writes.stream()
-                        .map(u -> {
-                            SigningPrivateKeyAndPublicHash signer = writers.get(u.left.writer);
-                            PointerUpdate update = new PointerUpdate(u.left.prevHash, u.left.currentHash, u.left.currentSequence);
+                                                      Optional<TransactionId> tid) {
+        List<Set<Cid>> byRoot = blockBuffer.partitionByRoot(writes.stream()
+                .map(u -> u.left.currentHash)
+                .collect(Collectors.toList()));
+        return Futures.combineAllInOrder(IntStream.range(0, writes.size())
+                        .mapToObj(i -> {
+                            BufferedPointers.WriterUpdate u = writes.get(i).left;
+                            SigningPrivateKeyAndPublicHash signer = writers.get(u.writer);
+                            PointerUpdate update = new PointerUpdate(u.prevHash, u.currentHash, u.currentSequence);
                             return signer.secret.signMessage(update.serialize())
-                                    .thenApply(sig -> new SignedPointerUpdate(u.left.writer, sig))
-                                    .thenCompose(pointer -> blockBuffer.buildWriterCommit(owner, u.left.writer,
-                                            Optional.of(pointer), signer, tid));
+                                    .thenApply(sig -> new SignedPointerUpdate(u.writer, sig))
+                                    .thenCompose(pointer -> blockBuffer.buildWriterCommit(owner, u.writer,
+                                            Optional.of(pointer), signer, tid, byRoot.get(i)));
                         })
                         .collect(Collectors.toList()))
-                .thenApply(writerCommits -> new BulkCommit(Optional.of(tid), writerCommits));
+                .thenApply(writerCommits -> new BulkCommit(tid, writerCommits));
     }
 
     @Override

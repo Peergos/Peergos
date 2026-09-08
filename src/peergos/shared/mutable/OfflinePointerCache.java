@@ -47,6 +47,15 @@ public class OfflinePointerCache implements MutablePointers {
     }
 
     @Override
+    public void recordApplied(PublicKeyHash owner, List<SignedPointerUpdate> updates) {
+        updates.forEach(u -> {
+            ramCache.put(u.writer, u.signed);
+            cache.put(owner, u.writer, u.signed);
+        });
+        target.recordApplied(owner, updates);
+    }
+
+    @Override
     public CompletableFuture<Optional<byte[]>> getPointer(PublicKeyHash owner, PublicKeyHash writer) {
         return Futures.asyncExceptionally(() -> {
                     if (online.isOnline()) {

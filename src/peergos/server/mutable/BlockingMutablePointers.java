@@ -26,6 +26,11 @@ public class BlockingMutablePointers implements MutablePointers {
     }
 
     @Override
+    public void recordApplied(PublicKeyHash owner, List<SignedPointerUpdate> updates) {
+        source.recordApplied(owner, updates);
+    }
+
+    @Override
     public CompletableFuture<Boolean> setPointers(PublicKeyHash owner, List<SignedPointerUpdate> updates) {
         for (SignedPointerUpdate u : updates) {
             if (!blacklist.isAllowed(u.writer)) {
