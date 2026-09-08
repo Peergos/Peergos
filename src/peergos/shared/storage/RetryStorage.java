@@ -119,6 +119,13 @@ public class RetryStorage implements ContentAddressedStorage {
     }
 
     @Override
+    public CompletableFuture<List<Cid>> bulkCommit(PublicKeyHash owner, BulkCommit commit) {
+        // Not retried: the pointer half of a commit is a CAS, so a retry of one that actually landed
+        // fails the CAS, which the caller resolves by merging rather than by trying again.
+        return target.bulkCommit(owner, commit);
+    }
+
+    @Override
     public CompletableFuture<Optional<CborObject>> get(PublicKeyHash owner, Cid hash, Optional<BatWithId> bat) {
         return runWithRetry(() -> target.get(owner, hash, bat));
     }

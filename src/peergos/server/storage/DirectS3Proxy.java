@@ -196,4 +196,9 @@ public class DirectS3Proxy implements ContentAddressedStorageProxy {
     public CompletableFuture<List<Cid>> putRaw(Multihash targetServerId, PublicKeyHash owner, PublicKeyHash writer, List<byte[]> signatures, List<byte[]> blocks, TransactionId tid, ProgressConsumer<Long> progressConsumer) {
         throw new IllegalStateException("Unsupported operation!");
     }
+
+    @Override
+    public CompletableFuture<List<Cid>> bulkCommit(Multihash targetServerId, PublicKeyHash owner, BulkCommit commit) {
+        throw new IllegalStateException("Unsupported operation!");
+    }
 }

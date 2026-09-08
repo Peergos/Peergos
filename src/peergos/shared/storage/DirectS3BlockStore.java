@@ -107,6 +107,11 @@ public class DirectS3BlockStore implements ContentAddressedStorage {
         return fallback.put(owner, writer, signedHashes, blocks, tid);
     }
 
+    @Override
+    public CompletableFuture<List<Cid>> bulkCommit(PublicKeyHash owner, BulkCommit commit) {
+        return fallback.bulkCommit(owner, commit);
+    }
+
     private CompletableFuture<Boolean> onOwnersNode(PublicKeyHash owner) {
         Multihash cached = storageNodeByOwner.get(owner);
         if (cached != null)

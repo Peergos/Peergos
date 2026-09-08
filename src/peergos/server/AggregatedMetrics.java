@@ -27,6 +27,7 @@ public class AggregatedMetrics {
     public static final Counter STORAGE_IDS  = build("storage_ids", "Total ids calls.");
     public static final Counter STORAGE_BLOCK_PUT  = build("storage_block_put", "Total DHT block puts.");
     public static final Counter STORAGE_BLOCK_PUT_BULK  = build("storage_block_put_bulk", "Total bulk block puts.");
+    public static final Counter STORAGE_BULK_COMMIT  = build("storage_bulk_commit", "Total bulk commits.");
     public static final Counter STORAGE_BLOCK_GET  = build("storage_block_get", "Total DHT block gets.");
     public static final Counter STORAGE_BLOCK_STAT  = build("storage_block_stat", "Total DHT block stats.");
     public static final Counter STORAGE_BLOCK_REFS  = build("storage_block_refs", "Total DHT block refs.");

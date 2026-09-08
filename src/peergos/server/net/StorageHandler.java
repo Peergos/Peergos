@@ -339,6 +339,16 @@ public class StorageHandler implements HttpHandler {
                     replyJson(httpExchange, jsonStream, Optional.empty());
                     break;
                 }
+                case BULK_COMMIT: {
+                    AggregatedMetrics.STORAGE_BULK_COMMIT.inc();
+                    BulkCommit commit = BulkCommit.fromCbor(CborObject.read(httpExchange.getRequestBody(),
+                            ContentAddressedStorage.MAX_BULK_COMMIT_SIZE));
+                    List<Cid> written = dht.bulkCommit(ownerHash.get(), commit).join();
+                    replyBytes(httpExchange, new CborObject.CborList(written.stream()
+                            .map(CborObject.CborMerkleLink::new)
+                            .collect(Collectors.toList())).serialize(), Optional.empty());
+                    break;
+                }
                 case BLOCK_GET:{
                     AggregatedMetrics.STORAGE_BLOCK_GET.inc();
                     Cid hash = Cid.decode(args.get(0));

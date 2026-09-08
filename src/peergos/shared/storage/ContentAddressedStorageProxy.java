@@ -20,6 +20,7 @@ import java.util.stream.*;
 
 import static peergos.shared.storage.ContentAddressedStorage.HTTP.BLOCK_GET;
 import static peergos.shared.storage.ContentAddressedStorage.HTTP.BLOCK_PUT_BULK;
+import static peergos.shared.storage.ContentAddressedStorage.HTTP.BULK_COMMIT;
 
 public interface ContentAddressedStorageProxy {
 
@@ -53,6 +54,10 @@ public interface ContentAddressedStorageProxy {
                                         List<byte[]> blocks,
                                         TransactionId tid,
                                         ProgressConsumer<Long> progressConsumer);
+
+    /** Forward a whole logical write to the owner's home server, which verifies it as it would from a client.
+     */
+    CompletableFuture<List<Cid>> bulkCommit(Multihash targetServerId, PublicKeyHash owner, BulkCommit commit);
 
     class HTTP implements ContentAddressedStorageProxy {
         private static final String P2P_PROXY_PROTOCOL = "/http";
@@ -211,6 +216,14 @@ public interface ContentAddressedStorageProxy {
                             .stream()
                             .map(json -> getObjectHash(json))
                             .collect(Collectors.toList()));
+        }
+
+        @Override
+        public CompletableFuture<List<Cid>> bulkCommit(Multihash targetServerId, PublicKeyHash owner, BulkCommit commit) {
+            return poster.post(getProxyUrlPrefix(targetServerId) + apiPrefix + BULK_COMMIT
+                            + "?owner=" + encode(owner.toString()), commit.serialize(), false, 60_000)
+                    .thenApply(raw -> ((CborObject.CborList) CborObject.fromByteArray(raw))
+                            .map(c -> (Cid) ((CborObject.CborMerkleLink) c).target));
         }
     }
 }

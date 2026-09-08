@@ -56,6 +56,11 @@ public abstract class DelegatingStorage implements ContentAddressedStorage {
     }
 
     @Override
+    public CompletableFuture<List<Cid>> bulkCommit(PublicKeyHash owner, BulkCommit commit) {
+        return target.bulkCommit(owner, commit);
+    }
+
+    @Override
     public CompletableFuture<List<Cid>> put(PublicKeyHash owner, PublicKeyHash writer, List<byte[]> signedHashes, List<byte[]> blocks, TransactionId tid) {
         if (signedHashes.stream().anyMatch(s -> s.length == 0))
             throw new IllegalStateException("Empty signature!");

@@ -30,6 +30,8 @@ public interface ContentAddressedStorage {
     boolean DEBUG_GC = false;
     int MAX_BLOCK_SIZE  = Fragment.MAX_LENGTH_WITH_BAT_PREFIX;
     int MAX_BLOCK_AUTHS = 50;
+    /** The most a single bulk/commit request body may be. */
+    int MAX_BULK_COMMIT_SIZE = 20 * 1024 * 1024;
     int MAX_CHAMP_GETS = 20;
 
     default CompletableFuture<BlockStoreProperties> blockStoreProperties() {
@@ -62,6 +64,18 @@ public interface ContentAddressedStorage {
                                                              List<List<BatId>> batIds,
                                                              boolean isRaw,
                                                              TransactionId tid) {
+        return Futures.errored(new IllegalStateException("Unimplemented call!"));
+    }
+
+    /** Apply a whole logical write - every block and every pointer update it consists of - in one call.
+     *
+     *  The server verifies the commit is closed and that every block is reachable from the newly signed
+     *  root, which is what authenticates the blocks in place of a signature each. Either all of it is
+     *  applied or none of it is.
+     *
+     * @return the hashes of the blocks written, in the order they appear in the commit
+     */
+    default CompletableFuture<List<Cid>> bulkCommit(PublicKeyHash owner, BulkCommit commit) {
         return Futures.errored(new IllegalStateException("Unimplemented call!"));
     }
 
@@ -306,6 +320,7 @@ public interface ContentAddressedStorage {
         public static final String LINK_COUNTS = "link/counts";
         public static final String BLOCK_PUT = "block/put";
         public static final String BLOCK_PUT_BULK = "block/put/bulk";
+        public static final String BULK_COMMIT = "bulk/commit";
         public static final String BLOCK_GET = "block/get";
         public static final String BLOCK_RM = "block/rm";
         public static final String BLOCK_RM_BULK = "block/rm/bulk";
@@ -585,6 +600,26 @@ public interface ContentAddressedStorage {
         }
 
         @Override
+        public CompletableFuture<List<Cid>> bulkCommit(PublicKeyHash owner, BulkCommit commit) {
+            if (! isPeergosServer)
+                return Futures.errored(new IllegalStateException("Cannot bulk commit when not talking to a Peergos server!"));
+            byte[] body = commit.serialize();
+            if (body.length > MAX_BULK_COMMIT_SIZE)
+                throw new IllegalStateException("Bulk commit too big: " + body.length);
+            return Futures.asyncExceptionally(() -> poster.post(apiPrefix + BULK_COMMIT
+                                    + "?owner=" + encode(owner.toString()),
+                            body, false, 60_000)
+                            .thenApply(raw -> ((CborObject.CborList) CborObject.fromByteArray(raw))
+                                    .map(c -> (Cid) ((CborObject.CborMerkleLink) c).target)),
+                    t -> {
+                        String msg = t.getMessage();
+                        if (msg != null && msg.contains("Storage+quota+reached"))
+                            return Futures.errored(new StorageQuotaExceededException(msg));
+                        return Futures.errored(t);
+                    });
+        }
+
+        @Override
         public CompletableFuture<Optional<CborObject>> get(PublicKeyHash owner, Cid hash, Optional<BatWithId> bat) {
             if (hash.isIdentity())
                 return CompletableFuture.completedFuture(Optional.of(CborObject.fromByteArray(hash.getHash())));
@@ -828,6 +863,18 @@ public interface ContentAddressedStorage {
         @Override
         public CompletableFuture<IpnsEntry> getIpnsEntry(Multihash signer) {
             return local.getIpnsEntry(signer);
+        }
+
+        @Override
+        public CompletableFuture<List<Cid>> bulkCommit(PublicKeyHash owner, BulkCommit commit) {
+            if (! allowNonlocalP2p && ! isLocal.apply(owner))
+                throw new IllegalStateException("Write blocks to user's server");
+
+            return Proxy.redirectCall(core,
+                    ourNodeIds,
+                    owner,
+                    () -> local.bulkCommit(owner, commit),
+                    target -> p2p.bulkCommit(target, owner, commit));
         }
 
         @Override
