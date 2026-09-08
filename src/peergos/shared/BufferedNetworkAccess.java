@@ -59,7 +59,7 @@ public class BufferedNetworkAccess extends NetworkAccess {
         this.blockBuffer = blockBuffer;
         this.pointerBuffer = mutableBuffer;
         this.bulkCommitter = new ServerBulkCommitter(blockBuffer.target(),
-                new LegacyBulkCommitter(blockBuffer.target(), unbufferedMutable, hasher));
+                new LegacyBulkCommitter(blockBuffer.target(), unbufferedMutable, hasher), hasher);
         this.bufferSize = bufferSize;
         synchronizer.setCommitterBuilder(this::buildCommitter);
         synchronizer.setFlusher((o, v, w) -> commit(o, w).thenApply(b -> v));
@@ -280,10 +280,12 @@ public class BufferedNetworkAccess extends NetworkAccess {
                                                     boolean mergeOnCas) {
         return buildCommit(owner, writes, writers, tid)
                 .thenCompose(bulk -> Futures.asyncExceptionally(
-                        () -> bulkCommitter.commit(owner, bulk, new LegacyCommitInfo(writers, writes.stream()
+                        () -> bulkCommitter.commit(owner, bulk, new CommitContext(writers, writes.stream()
                                 .filter(u -> ! u.left.prevHash.isPresent())
                                 .map(u -> u.left.writer)
-                                .collect(Collectors.toSet())))
+                                .collect(Collectors.toSet()),
+                                writes.stream().collect(Collectors.toMap(u -> u.left.writer, u -> u.left.currentHash)),
+                                writes.stream().collect(Collectors.toMap(u -> u.left.writer, u -> u.left.currentSequence))))
                                 .thenApply(hashes -> {
                                     // The pointer updates may not have gone through mutable at all, so tell
                                     // any cache of them what they now are rather than leaving it stale.

@@ -52,23 +52,32 @@ public class BulkCommitStorage extends DelegatingStorage {
     @Override
     public CompletableFuture<List<Cid>> bulkCommit(PublicKeyHash owner, BulkCommit commit) {
         for (WriterCommit w : commit.writers) {
-            if (w.pointer.isEmpty())
-                throw new IllegalStateException("A bulk commit with no pointer update is unauthenticated!");
+            if (w.pointer.isEmpty()) {
+                // Nothing signs a root that names these blocks yet, so the writer signs the list itself,
+                // and they stay unreachable until a later call's pointer update makes them not.
+                if (w.blockListSignature.isEmpty())
+                    throw new IllegalStateException("A bulk commit with no pointer update is unauthenticated!");
+                if (commit.tid.isEmpty())
+                    throw new IllegalStateException("Blocks committed before the pointer that names them need a transaction!");
+            }
             if (Stream.concat(w.cborBlocks.stream(), w.rawBlocks.stream())
                     .anyMatch(b -> b.length > ContentAddressedStorage.MAX_BLOCK_SIZE))
                 throw new IllegalStateException("Block too big!");
         }
         return hashBlocks(commit)
                 .thenCompose(hashes -> updates(owner, commit)
-                        .thenCompose(updates -> verify(owner, commit, hashes, updates)
+                        .thenCompose(updates -> verifyBlockLists(owner, commit, hashes)
+                                .thenCompose(x -> verify(owner, commit, hashes, updates))
                                 .thenCompose(inCall -> registerNewWriters(owner, commit, updates, inCall)))
                         .thenCompose(x -> withTransaction(owner, commit.tid,
                                 tid -> writeBlocks(owner, commit, tid))
                                 .thenCompose(written -> {
-                                    List<SignedPointerUpdate> updates = commit.writers.stream()
+                                    List<SignedPointerUpdate> signed = commit.writers.stream()
                                             .flatMap(w -> w.pointer.stream())
                                             .collect(Collectors.toList());
-                                    return pointers.setPointers(owner, updates).thenApply(b -> written);
+                                    if (signed.isEmpty())
+                                        return Futures.of(written);
+                                    return pointers.setPointers(owner, signed).thenApply(b -> written);
                                 })));
     }
 
@@ -89,21 +98,24 @@ public class BulkCommitStorage extends DelegatingStorage {
     private CompletableFuture<Map<Cid, byte[]>> verify(PublicKeyHash owner,
                                                        BulkCommit commit,
                                                        List<List<Cid>> hashes,
-                                                       List<PointerUpdate> updates) {
+                                                       List<Optional<PointerUpdate>> updates) {
         Map<Cid, byte[]> cborInCall = new HashMap<>();
-        Set<Cid> inCall = new HashSet<>();
+        Set<Cid> mustBeReachable = new HashSet<>();
         Set<Cid> declared = new HashSet<>();
         for (int i = 0; i < commit.writers.size(); i++) {
             WriterCommit w = commit.writers.get(i);
             List<Cid> cids = hashes.get(i);
             for (int j = 0; j < w.cborBlocks.size(); j++)
                 cborInCall.put(cids.get(j), w.cborBlocks.get(j));
-            inCall.addAll(cids);
+            // Blocks sent ahead of the pointer that will name them have nothing to be reachable from yet
+            if (w.pointer.isPresent())
+                mustBeReachable.addAll(cids);
             declared.addAll(cids);
             declared.addAll(w.preWritten);
         }
 
         List<Cid> roots = updates.stream()
+                .flatMap(Optional::stream)
                 .flatMap(u -> u.updated.toOptional().stream())
                 .map(h -> (Cid) h)
                 .collect(Collectors.toList());
@@ -114,19 +126,21 @@ public class BulkCommitStorage extends DelegatingStorage {
         // Every block in the call must be reachable from a root this call signs
         Set<Cid> reachable = new HashSet<>();
         for (Cid root : roots) {
-            if (inCall.contains(root))
+            if (cborInCall.containsKey(root))
                 markReachable(root, reachable, cborInCall);
             else
                 external.add(root);
         }
-        Optional<Cid> orphan = inCall.stream()
+        Optional<Cid> orphan = mustBeReachable.stream()
                 .filter(c -> ! reachable.contains(c))
                 .findFirst();
         if (orphan.isPresent())
             throw new IllegalStateException("Block in a bulk commit is not reachable from the new root: " + orphan.get());
 
-        // Every link out of a new block must resolve, in this call or in what we already hold
+        // Every link out of a block this call is making reachable must resolve, here or in what we hold
         for (Map.Entry<Cid, byte[]> e : cborInCall.entrySet()) {
+            if (! mustBeReachable.contains(e.getKey()))
+                continue;
             for (Multihash link : CborObject.fromByteArray(e.getValue()).links()) {
                 Cid c = (Cid) link;
                 if (c.isIdentity() || declared.contains(c))
@@ -156,11 +170,11 @@ public class BulkCommitStorage extends DelegatingStorage {
      */
     private CompletableFuture<Boolean> registerNewWriters(PublicKeyHash owner,
                                                           BulkCommit commit,
-                                                          List<PointerUpdate> updates,
+                                                          List<Optional<PointerUpdate>> updates,
                                                           Map<Cid, byte[]> cborInCall) {
         List<PublicKeyHash> newWriters = new ArrayList<>();
         for (int i = 0; i < commit.writers.size(); i++)
-            if (! updates.get(i).original.isPresent())
+            if (updates.get(i).map(u -> ! u.original.isPresent()).orElse(false))
                 newWriters.add(commit.writers.get(i).writer);
         if (newWriters.isEmpty())
             return Futures.of(true);
@@ -171,7 +185,7 @@ public class BulkCommitStorage extends DelegatingStorage {
         Set<PublicKeyHash> authorised = new HashSet<>();
         authorised.add(owner);
         for (int i = 0; i < commit.writers.size(); i++)
-            if (updates.get(i).original.isPresent())
+            if (updates.get(i).map(u -> u.original.isPresent()).orElse(true))
                 authorised.add(commit.writers.get(i).writer);
         List<PublicKeyHash> remaining = new ArrayList<>(newWriters);
         while (! remaining.isEmpty()) {
@@ -180,7 +194,7 @@ public class BulkCommitStorage extends DelegatingStorage {
                 WriterCommit w = commit.writers.get(i);
                 if (! authorised.contains(w.writer))
                     continue;
-                updates.get(i).updated.toOptional().ifPresent(root -> owned.addAll(
+                updates.get(i).flatMap(u -> u.updated.toOptional()).ifPresent(root -> owned.addAll(
                         ContentAddressedStorage.getWriterData(owner, (Cid) root, Optional.empty(), withCallBlocks)
                                 .thenCompose(cwd -> cwd.props.get().directOwnedKeys(owner, withCallBlocks, hasher))
                                 .join()));
@@ -227,16 +241,51 @@ public class BulkCommitStorage extends DelegatingStorage {
     }
 
     /** The pointer update each writer is proposing, which also checks the signature we are relying on. */
-    private CompletableFuture<List<PointerUpdate>> updates(PublicKeyHash owner, BulkCommit commit) {
+    private CompletableFuture<List<Optional<PointerUpdate>>> updates(PublicKeyHash owner, BulkCommit commit) {
         return Futures.combineAllInOrder(commit.writers.stream()
-                .map(w -> target.getSigningKey(owner, w.writer)
-                        .thenCompose(keyOpt -> {
-                            if (keyOpt.isEmpty())
-                                throw new IllegalStateException("Couldn't retrieve writer key " + w.writer);
-                            return keyOpt.get().unsignMessage(w.pointer.get().signed);
-                        })
-                        .thenApply(signed -> PointerUpdate.fromCbor(CborObject.fromByteArray(signed))))
+                .map(w -> w.pointer.isEmpty() ?
+                        Futures.of(Optional.<PointerUpdate>empty()) :
+                        writerKey(owner, w.writer)
+                                .thenCompose(key -> key.unsignMessage(w.pointer.get().signed))
+                                .thenApply(signed -> Optional.of(PointerUpdate.fromCbor(CborObject.fromByteArray(signed)))))
                 .collect(Collectors.toList()));
+    }
+
+    private CompletableFuture<PublicSigningKey> writerKey(PublicKeyHash owner, PublicKeyHash writer) {
+        return target.getSigningKey(owner, writer)
+                .thenApply(keyOpt -> {
+                    if (keyOpt.isEmpty())
+                        throw new IllegalStateException("Couldn't retrieve writer key " + writer);
+                    return keyOpt.get();
+                });
+    }
+
+    /** A writer sending blocks with no pointer update signs the ordered list of their hashes, bound to
+     *  the sequence its pointer is heading for so the list can't be replayed against a later state.
+     */
+    private CompletableFuture<Boolean> verifyBlockLists(PublicKeyHash owner, BulkCommit commit, List<List<Cid>> hashes) {
+        List<Integer> blocksOnly = IntStream.range(0, commit.writers.size())
+                .filter(i -> commit.writers.get(i).pointer.isEmpty())
+                .boxed()
+                .collect(Collectors.toList());
+        if (blocksOnly.isEmpty())
+            return Futures.of(true);
+        return Futures.combineAllInOrder(blocksOnly.stream()
+                        .map(i -> {
+                            WriterCommit w = commit.writers.get(i);
+                            return pointers.getPointerTarget(owner, w.writer, target)
+                                    .thenCompose(current -> WriterCommit.blockListPayload(hashes.get(i),
+                                            PointerUpdate.increment(current.sequence), hasher))
+                                    .thenCompose(expected -> writerKey(owner, w.writer)
+                                            .thenCompose(key -> key.unsignMessage(w.blockListSignature.get())
+                                                    .thenApply(signed -> {
+                                                        if (! Arrays.equals(signed, expected))
+                                                            throw new IllegalStateException("Invalid block list signature for " + w.writer);
+                                                        return true;
+                                                    })));
+                        })
+                        .collect(Collectors.toList()))
+                .thenApply(x -> true);
     }
 
     private static void markReachable(Cid current, Set<Cid> reachable, Map<Cid, byte[]> cborInCall) {

@@ -13,8 +13,8 @@ public interface BulkCommitter {
 
     /** Apply the commit. Either everything is applied, or nothing that a reader can reach is.
      *
-     * @param legacy what an implementation that falls back to the pre-bulk endpoints needs
+     * @param context what applying the commit needs beyond the commit itself
      * @return the hashes of the blocks written, in the order they appear in the commit
      */
-    CompletableFuture<List<Cid>> commit(PublicKeyHash owner, BulkCommit commit, LegacyCommitInfo legacy);
+    CompletableFuture<List<Cid>> commit(PublicKeyHash owner, BulkCommit commit, CommitContext context);
 }

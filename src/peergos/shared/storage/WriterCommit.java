@@ -5,7 +5,9 @@ import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.Cid;
 import peergos.shared.mutable.*;
 
+import java.io.*;
 import java.util.*;
+import java.util.concurrent.*;
 import java.util.stream.*;
 
 /** All the writes of a single writer within a {@link BulkCommit}.
@@ -38,6 +40,23 @@ public class WriterCommit implements Cborable {
         this.preWritten = preWritten;
         this.pointer = pointer;
         this.blockListSignature = blockListSignature;
+    }
+
+    /** What a blocks-only commit signs: the ordered hashes of its blocks, bound to the pointer sequence
+     *  this writer is heading for so the same list can't be replayed against a later state.
+     */
+    public static CompletableFuture<byte[]> blockListPayload(List<Cid> blocks, Optional<Long> nextSequence, Hasher hasher) {
+        ByteArrayOutputStream bout = new ByteArrayOutputStream();
+        try {
+            for (Cid block : blocks)
+                bout.write(block.toBytes());
+            long sequence = nextSequence.orElse(0L);
+            for (int i = 7; i >= 0; i--)
+                bout.write((int) ((sequence >> (8 * i)) & 0xff));
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+        return hasher.sha256(bout.toByteArray());
     }
 
     public int inlineSize() {

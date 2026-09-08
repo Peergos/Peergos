@@ -1,16 +1,25 @@
 package peergos.server.tests;
 
 import org.junit.*;
+import peergos.server.*;
+import peergos.shared.*;
 import peergos.shared.cbor.*;
+import peergos.shared.crypto.*;
+import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.Cid;
 import peergos.shared.io.ipfs.Multihash;
 import peergos.shared.mutable.*;
 import peergos.shared.storage.*;
 
+import peergos.shared.util.*;
+
 import java.util.*;
+import java.util.concurrent.*;
+import java.util.stream.*;
 
 public class BulkCommitTests {
+    private static final Crypto crypto = Main.initCrypto();
     private final Random rnd = new Random(42);
 
     private byte[] random(int len) {
@@ -91,6 +100,117 @@ public class BulkCommitTests {
             Assert.assertEquals(e.blockListSignature.isPresent(), a.blockListSignature.isPresent());
             if (e.blockListSignature.isPresent())
                 Assert.assertArrayEquals(e.blockListSignature.get(), a.blockListSignature.get());
+        }
+    }
+
+    /** A commit too big for one request goes as several, of which only the last carries the pointer
+     *  updates, and each block in that last call must be reachable from the root within it.
+     */
+    @Test
+    public void splitsAnOversizedCommit() {
+        SigningKeyPair keys = SigningKeyPair.random(crypto.random, crypto.signer);
+        PublicKeyHash writer = ContentAddressedStorage.hashKey(keys.publicSigningKey);
+        SigningPrivateKeyAndPublicHash signer = new SigningPrivateKeyAndPublicHash(writer, keys.secretSigningKey);
+
+        List<byte[]> children = new ArrayList<>();
+        List<Cborable> links = new ArrayList<>();
+        for (int i = 0; i < 12; i++) {
+            byte[] child = new CborObject.CborByteArray(random(1000)).serialize();
+            children.add(child);
+            links.add(new CborObject.CborMerkleLink(crypto.hasher.hash(child, false).join()));
+        }
+        byte[] root = new CborObject.CborList(links).serialize();
+        Cid rootHash = crypto.hasher.hash(root, false).join();
+        List<byte[]> all = new ArrayList<>();
+        all.add(root);
+        all.addAll(children);
+
+        BulkCommit whole = new BulkCommit(Optional.empty(), Arrays.asList(new WriterCommit(writer, all,
+                Collections.emptyList(), Collections.emptyList(),
+                Optional.of(new SignedPointerUpdate(writer, random(64))), Optional.empty())));
+        CommitContext context = new CommitContext(Collections.singletonMap(writer, signer),
+                Collections.emptySet(),
+                Collections.singletonMap(writer, MaybeMultihash.of(rootHash)),
+                Collections.singletonMap(writer, Optional.of(7L)));
+
+        int ceiling = 4500;
+        RecordingStorage recorder = new RecordingStorage();
+        BulkCommitter committer = new ServerBulkCommitter(recorder, refusingFallback(), crypto.hasher, ceiling);
+        committer.commit(writer, whole, context).join();
+
+        List<BulkCommit> calls = recorder.calls;
+        Assert.assertTrue("split into more than one call", calls.size() > 1);
+        Assert.assertEquals("only the last call carries pointers", 1,
+                calls.stream().filter(BulkCommit::hasPointerUpdate).count());
+        Assert.assertTrue("the pointers are in the last call", calls.get(calls.size() - 1).hasPointerUpdate());
+        Assert.assertEquals("every block is sent exactly once", all.size(),
+                calls.stream().mapToInt(BulkCommit::blockCount).sum());
+        for (BulkCommit call : calls)
+            Assert.assertTrue("each call fits", call.inlineSize() <= ceiling);
+
+        // the blocks-only calls each carry a signature over their own ordered block hashes
+        for (BulkCommit call : calls) {
+            Assert.assertTrue("blocks-only calls are held by a transaction",
+                    call.hasPointerUpdate() || call.tid.isPresent());
+            for (WriterCommit w : call.writers) {
+                if (w.pointer.isPresent())
+                    continue;
+                List<Cid> hashes = w.cborBlocks.stream()
+                        .map(b -> crypto.hasher.hash(b, false).join())
+                        .collect(Collectors.toList());
+                byte[] expected = WriterCommit.blockListPayload(hashes, Optional.of(7L), crypto.hasher).join();
+                byte[] signed = keys.publicSigningKey.unsignMessage(w.blockListSignature.get()).join();
+                Assert.assertArrayEquals("block list signature", expected, signed);
+            }
+        }
+
+        // everything in the final call hangs off the root without leaving it
+        BulkCommit last = calls.get(calls.size() - 1);
+        Map<Cid, byte[]> inLast = new HashMap<>();
+        for (byte[] block : last.writers.get(0).cborBlocks)
+            inLast.put(crypto.hasher.hash(block, false).join(), block);
+        Set<Cid> reachable = new HashSet<>();
+        Deque<Cid> toVisit = new ArrayDeque<>(Collections.singletonList(rootHash));
+        while (! toVisit.isEmpty()) {
+            Cid next = toVisit.poll();
+            byte[] block = inLast.get(next);
+            if (block == null || ! reachable.add(next))
+                continue;
+            CborObject.fromByteArray(block).links().forEach(l -> toVisit.add((Cid) l));
+        }
+        Assert.assertEquals("the last call stands on its own", inLast.keySet(), reachable);
+    }
+
+    private static BulkCommitter refusingFallback() {
+        return (owner, commit, context) -> Futures.errored(new IllegalStateException("Should not fall back!"));
+    }
+
+    private static class RecordingStorage extends DelegatingStorage {
+        final List<BulkCommit> calls = new ArrayList<>();
+
+        RecordingStorage() {
+            super(null);
+        }
+
+        @Override
+        public ContentAddressedStorage directToOrigin() {
+            return this;
+        }
+
+        @Override
+        public CompletableFuture<TransactionId> startTransaction(PublicKeyHash owner) {
+            return Futures.of(new TransactionId("test"));
+        }
+
+        @Override
+        public CompletableFuture<Boolean> closeTransaction(PublicKeyHash owner, TransactionId tid) {
+            return Futures.of(true);
+        }
+
+        @Override
+        public CompletableFuture<List<Cid>> bulkCommit(PublicKeyHash owner, BulkCommit commit) {
+            calls.add(commit);
+            return Futures.of(Collections.emptyList());
         }
     }
 
