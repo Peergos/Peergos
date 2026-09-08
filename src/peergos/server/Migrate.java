@@ -13,6 +13,7 @@ import peergos.shared.util.*;
 import java.io.*;
 import java.net.*;
 import java.util.*;
+import java.util.function.*;
 
 /** Moving a user's account to this server.
  *
@@ -36,8 +37,28 @@ public class Migrate {
             URL api = new URL(peergosUrl);
             NetworkAccess network = Builder.buildJavaNetworkAccess(api, ! peergosUrl.startsWith("http://localhost"), Optional.of("Peergos-" + UserService.CURRENT_VERSION + "-migrate"), Optional.empty()).join();
             Console console = System.console();
+            if (console == null)
+                throw new IllegalStateException("Migrating a user needs a terminal to ask for their password");
             String username = console.readLine("Enter username to migrate to this server: ");
+            return forceMigrate(username,
+                    () -> new String(console.readPassword("Enter password for " + username + ": ")),
+                    network, crypto);
+        } catch (Exception ex) {
+            ex.printStackTrace();
+            return false;
+        }
+    }
 
+    /** The migration itself, with no terminal.
+     *
+     *  The password is a supplier rather than a string so that it is only asked for once the user is
+     *  known to exist and to be somewhere else, which is the order the prompts come in.
+     */
+    public static boolean forceMigrate(String username,
+                                       Supplier<String> password,
+                                       NetworkAccess network,
+                                       Crypto crypto) {
+        try {
             List<UserPublicKeyLink> existing = network.coreNode.getChain(username).join();
             if (existing.isEmpty()) {
                 System.err.println("Unknown username: " + username);
@@ -50,8 +71,7 @@ public class Migrate {
                 return false;
             }
 
-            String password = new String(console.readPassword("Enter password for " + username + ": "));
-            SecretSigningKey identity = loginFromMirror(username, password, network, crypto);
+            SecretSigningKey identity = loginFromMirror(username, password.get(), network, crypto);
 
             System.out.println("Force migrating user from node " + currentStorageNodeId + " to " + newStorageNodeId);
             List<UserPublicKeyLink> newChain = peergos.shared.user.Migrate
