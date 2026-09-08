@@ -167,7 +167,6 @@ public class ServerBulkCommitter implements BulkCommitter {
                                                                 List<List<Block>> deferred,
                                                                 TransactionId tid) {
         List<List<WriterCommit>> calls = new ArrayList<>();
-        List<WriterCommit> current = new ArrayList<>();
         int used = 0;
         List<CompletableFuture<WriterCommit>> pending = new ArrayList<>();
         List<Integer> callOfPending = new ArrayList<>();
@@ -254,7 +253,7 @@ public class ServerBulkCommitter implements BulkCommitter {
             byHash.put(b.hash, b);
         List<Block> ordered = new ArrayList<>();
         Set<Cid> seen = new HashSet<>();
-        Deque<Cid> queue = new ArrayDeque<>();
+        Deque<Cid> queue = new LinkedList<>();
         root.toOptional().ifPresent(h -> queue.add((Cid) h));
         while (! queue.isEmpty()) {
             Cid next = queue.poll();

@@ -2,14 +2,14 @@ package peergos.server.storage;
 
 import peergos.shared.*;
 import peergos.shared.cbor.*;
-import peergos.shared.storage.auth.*;
-import peergos.shared.user.*;
 import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.Cid;
 import peergos.shared.io.ipfs.Multihash;
 import peergos.shared.mutable.*;
 import peergos.shared.storage.*;
+import peergos.shared.storage.auth.*;
+import peergos.shared.user.*;
 import peergos.shared.util.*;
 
 import java.util.*;
