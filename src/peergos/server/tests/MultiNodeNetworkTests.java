@@ -291,7 +291,7 @@ public class MultiNodeNetworkTests {
 
         // migrate to node2
         List<UserPublicKeyLink> existing = user.network.coreNode.getChain(username).join();
-        List<UserPublicKeyLink> newChain = Migrate.buildMigrationChain(existing, newStorageNodeId, user.signer.secret).join();
+        List<UserPublicKeyLink> newChain = peergos.shared.user.Migrate.buildMigrationChain(existing, newStorageNodeId, user.signer.secret).join();
         UserContext userViaNewServer = ensureSignedUp(username, password, node2, crypto);
 
         List<BatWithId> bats = node1.batCave.getUserBats(username, userViaNewServer.signer).join();
