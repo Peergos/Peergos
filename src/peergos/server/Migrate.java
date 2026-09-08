@@ -42,6 +42,11 @@ public class Migrate {
             String username = console.readLine("Enter username to migrate to this server: ");
             return forceMigrate(username,
                     () -> new String(console.readPassword("Enter password for " + username + ": ")),
+                    () -> {
+                        String answer = console.readLine("Continue? [y/N]: ");
+                        return answer != null && Arrays.asList("y", "yes")
+                                .contains(answer.trim().toLowerCase());
+                    },
                     network, crypto);
         } catch (Exception ex) {
             ex.printStackTrace();
@@ -51,11 +56,13 @@ public class Migrate {
 
     /** The migration itself, with no terminal.
      *
-     *  The password is a supplier rather than a string so that it is only asked for once the user is
-     *  known to exist and to be somewhere else, which is the order the prompts come in.
+     *  The password and the confirmation are suppliers rather than values so that neither is asked
+     *  for until the user is known to exist and to be somewhere else, which is the order the
+     *  prompts come in.
      */
     public static boolean forceMigrate(String username,
                                        Supplier<String> password,
+                                       Supplier<Boolean> confirm,
                                        NetworkAccess network,
                                        Crypto crypto) {
         try {
@@ -68,6 +75,14 @@ public class Migrate {
             Multihash newStorageNodeId = network.dhtClient.id().join();
             if (currentStorageNodeId.equals(newStorageNodeId)) {
                 System.err.println("This server is already the home server for " + username + ".");
+                return false;
+            }
+
+            System.out.println("WARNING: " + username + " will be moved to this server using only the copy of");
+            System.out.println("their data mirrored here. Anything their home server accepted since the last");
+            System.out.println("mirror ran will be lost, and the old server is not told about the move.");
+            if (! confirm.get()) {
+                System.out.println("Migration cancelled.");
                 return false;
             }
 

@@ -474,7 +474,7 @@ public class MultiNodeNetworkTests {
         Multihash newStorageNodeId = node2.dhtClient.id().join();
 
         // it refuses to migrate a user to the server they are already on
-        Assert.assertFalse(peergos.server.Migrate.forceMigrate(username, () -> password, node1, crypto));
+        Assert.assertFalse(peergos.server.Migrate.forceMigrate(username, () -> password, () -> true, node1, crypto));
 
         stopServer(iNode1);
         try {
@@ -492,7 +492,13 @@ public class MultiNodeNetworkTests {
             Assert.assertTrue("pointer served from the mirror: " + pointerRead, pointerRead.endsWith(" bytes"));
             Assert.assertEquals("login data present", loginRead);
 
-            Assert.assertTrue(peergos.server.Migrate.forceMigrate(username, () -> password, node2, crypto));
+            // saying no at the warning leaves the user where they are
+            Assert.assertFalse(peergos.server.Migrate.forceMigrate(username, () -> password, () -> false, node2, crypto));
+            List<UserPublicKeyLink> declined = getNode(0).coreNode.getChain(username).join();
+            Assert.assertNotEquals(newStorageNodeId,
+                    declined.get(declined.size() - 1).claim.storageProviders.stream().findFirst().get());
+
+            Assert.assertTrue(peergos.server.Migrate.forceMigrate(username, () -> password, () -> true, node2, crypto));
 
             List<UserPublicKeyLink> chain = getNode(0).coreNode.getChain(username).join();
             Multihash storageNode = chain.get(chain.size() - 1).claim.storageProviders.stream().findFirst().get();
@@ -521,7 +527,7 @@ public class MultiNodeNetworkTests {
         if (iNode1 == 0 || iNode2 == 0)
             return;
         Assert.assertFalse(peergos.server.Migrate.forceMigrate(generateUsername(random), () -> randomString(),
-                getNode(iNode2), crypto));
+                () -> true, getNode(iNode2), crypto));
     }
 
     @Test
