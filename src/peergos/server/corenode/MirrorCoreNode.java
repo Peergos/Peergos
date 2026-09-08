@@ -107,7 +107,7 @@ public class MirrorCoreNode implements CoreNode {
         this.unlistedUsernames = unlistedUsernames;
         this.hasher = crypto.hasher;
         this.crypto = crypto;
-        this.routingPointers = new ProxyingMutablePointers(List.of(ourNodeId), this, localPointers, p2pMutable);
+        this.routingPointers = new ProxyingMutablePointers(List.of(ourNodeId), this, localPointers, p2pMutable, owner -> false);
         try {
             this.state = load(statePath, pkiOwnerIdentity);
         } catch (IOException e) {

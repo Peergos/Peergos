@@ -313,7 +313,7 @@ public class NetworkAccess {
                             100 * 1024, 1_000, nodeIds, hasher);
                     MutablePointersProxy httpMutable = new HttpMutablePointers(apiPoster, p2pPoster);
                     Account account = new HttpAccount(apiPoster, p2pPoster);
-                    MutablePointers p2pMutable = new ProxyingMutablePointers(nodeIds, core, httpMutable, httpMutable);
+                    MutablePointers p2pMutable = new ProxyingMutablePointers(nodeIds, core, httpMutable, httpMutable, owner -> false);
 
                     SocialNetworkProxy httpSocial = new HttpSocialNetwork(apiPoster, p2pPoster);
                     SocialNetwork p2pSocial = new ProxyingSocialNetwork(nodeIds, core, httpSocial, httpSocial);

@@ -556,12 +556,22 @@ public class Main extends Builder {
             ).collect(Collectors.toList())
     );
 
+    public static final Command<Boolean> MIGRATE_FORCE = new Command<>("force",
+            "Move a Peergos account to this server without their home server, which must be unreachable.\n" +
+            "            This requires the user to already be mirrored here, and to have quota on this server.",
+            Main::forceMigrate,
+            Stream.of(
+                      new Command.Arg("peergos-url", "Address of the Peergos server to migrate to", false, "http://localhost:8000")
+            ).collect(Collectors.toList())
+    );
+
     public static final Command<Boolean> MIGRATE = new Command<>("migrate",
             "Move a Peergos account to this server.",
             Main::migrate,
             Stream.of(
                       new Command.Arg("peergos-url", "Address of the Peergos server to migrate to", false, "http://localhost:8000")
-            ).collect(Collectors.toList())
+            ).collect(Collectors.toList()),
+            Arrays.asList(MIGRATE_FORCE)
     );
 
     public static final Command<Boolean> HOME = new Command<>("update-home-server-id",
@@ -997,7 +1007,26 @@ public class Main extends Builder {
             Path blacklistPath = a.fromPeergosDir("blacklist_file", "blacklist.txt");
             PublicKeyBlackList blacklist = new UserBasedBlacklist(blacklistPath, core, localMutable, localStorage, hasher);
             MutablePointers blockingMutablePointers = new BlockingMutablePointers(localMutable, blacklist);
-            MutablePointers p2mMutable = new ProxyingMutablePointers(nodeIds, core, blockingMutablePointers, proxingMutable);
+            // We only mirror the data of a user we have given quota, which is what makes our copy of
+            // their pointers and login data usable when their home server can't be reached
+            LRUCache<PublicKeyHash, Boolean> mirrored = new LRUCache<>(100);
+            Function<PublicKeyHash, Boolean> weMirror = owner -> {
+                synchronized (mirrored) {
+                    if (mirrored.containsKey(owner))
+                        return mirrored.get(owner);
+                }
+                boolean hasQuota;
+                try {
+                    hasQuota = userQuotas.getQuota(core.getUsername(owner).join()) > 0;
+                } catch (Exception e) {
+                    hasQuota = false;
+                }
+                synchronized (mirrored) {
+                    mirrored.put(owner, hasQuota);
+                }
+                return hasQuota;
+            };
+            MutablePointers p2mMutable = new ProxyingMutablePointers(nodeIds, core, blockingMutablePointers, proxingMutable, weMirror);
 
             SocialNetworkProxy httpSocial = new HttpSocialNetwork(p2pHttpProxy, p2pHttpProxy);
 
@@ -1012,7 +1041,7 @@ public class Main extends Builder {
             Admin storageAdmin = new Admin(adminUsernames, userQuotas, core, localStorage, enableWaitlist);
             ProxyingSpaceUsage p2pSpaceUsage = new ProxyingSpaceUsage(nodeIds, corePropagator, spaceChecker, httpSpaceUsage);
 
-            Account p2pAccount = new ProxyingAccount(nodeIds, core, account, accountProxy);
+            Account p2pAccount = new ProxyingAccount(nodeIds, core, account, accountProxy, weMirror);
             boolean isPublicServer = a.getBoolean("public-server", false);
             boolean allowExternalLogin = a.getBoolean("allow-external-login", !isPublicServer);
             LocalOnlyAccount verifyingAccount = new LocalOnlyAccount(new VerifyingAccount(p2pAccount, core, localStorage), userQuotas, core, nodeIds, allowExternalLogin);
@@ -1303,6 +1332,76 @@ public class Main extends Builder {
             ex.printStackTrace();
             return false;
         }
+    }
+
+    /** Move a user to this server when their home server is unreachable.
+     *
+     *  Everything the normal migration does with the old server - taking a final snapshot from it, and
+     *  having it commit the new chain - is skipped here, so any writes it took since we last mirrored
+     *  them are lost. We hold a mirror of their data, so we can read enough of it to log in, and the new
+     *  claim only needs their identity key and the pki to be committed.
+     */
+    public static boolean forceMigrate(Args a) {
+        Crypto crypto = initCrypto();
+        String peergosUrl = a.getArg("peergos-url");
+        try {
+            URL api = new URL(peergosUrl);
+            NetworkAccess network = buildJavaNetworkAccess(api, ! peergosUrl.startsWith("http://localhost"), Optional.of("Peergos-" + UserService.CURRENT_VERSION + "-migrate"), Optional.empty()).join();
+            Console console = System.console();
+            String username = console.readLine("Enter username to migrate to this server: ");
+
+            List<UserPublicKeyLink> existing = network.coreNode.getChain(username).join();
+            if (existing.isEmpty()) {
+                System.err.println("Unknown username: " + username);
+                return false;
+            }
+            Multihash currentStorageNodeId = existing.get(existing.size() - 1).claim.storageProviders.stream().findFirst().get();
+            Multihash newStorageNodeId = network.dhtClient.id().join();
+            if (currentStorageNodeId.equals(newStorageNodeId)) {
+                System.err.println("This server is already the home server for " + username + ".");
+                return false;
+            }
+
+            String password = new String(console.readPassword("Enter password for " + username + ": "));
+            SecretSigningKey identity = loginFromMirror(username, password, network, crypto);
+
+            System.out.println("Force migrating user from node " + currentStorageNodeId + " to " + newStorageNodeId);
+            List<UserPublicKeyLink> newChain = Migrate.buildMigrationChain(existing, newStorageNodeId, identity).join();
+            UserContext.updateChainWithRetry(username, newChain, "", crypto.hasher, network, System.out::println).join();
+            List<UserPublicKeyLink> updatedChain = network.coreNode.getChain(username).join();
+            if (!updatedChain.get(updatedChain.size() - 1).claim.storageProviders.contains(newStorageNodeId))
+                throw new IllegalStateException("Migration failed. Please try again later");
+            System.out.println("Migration complete.");
+            return true;
+        } catch (Exception ex) {
+            ex.printStackTrace();
+            return false;
+        }
+    }
+
+    /** The identity key of a user whose home server is unreachable, from our mirror of their data.
+     *
+     *  A full sign in writes to their filesystem, which their home server would have to accept, so this
+     *  only reads: the login algorithm from their WriterData, and their login data from our mirror.
+     */
+    private static SecretSigningKey loginFromMirror(String username,
+                                                    String password,
+                                                    NetworkAccess network,
+                                                    Crypto crypto) {
+        WriterData userData = WriterData.fromCbor(UserContext.getWriterDataCbor(network, username).join().right);
+        SecretGenerationAlgorithm algorithm = userData.generationAlgorithm
+                .orElseThrow(() -> new IllegalStateException("No login algorithm specified in user data!"));
+        UserWithRoot credentials = UserUtil.generateUser(username, password, crypto, algorithm).join();
+        SigningKeyPair loginKeys = credentials.getUser();
+        byte[] auth = TimeLimitedClient.signNow(loginKeys.secretSigningKey).join();
+        Either<UserStaticData, MultiFactorAuthRequest> login = network.account.getLoginData(username,
+                loginKeys.publicSigningKey, auth, Optional.empty(), false, false, true).join();
+        if (login.isB())
+            throw new IllegalStateException("Second factor auth is never mirrored, so " + username +
+                    " can only be migrated by their home server");
+        return login.a().getData(credentials.getRoot()).identity
+                .orElseThrow(() -> new IllegalStateException("No identity key in login data!"))
+                .secretSigningKey;
     }
 
     public static final Command<Void> MAIN = new Command<>("Main",
