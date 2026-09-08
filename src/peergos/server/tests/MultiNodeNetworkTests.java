@@ -478,9 +478,9 @@ public class MultiNodeNetworkTests {
 
         stopServer(iNode1);
         try {
-            // Isolate the mirror fallback from the migration on top of it: with the home server
-            // down these two reads are all a forced migration needs, so if they work the fault is
-            // in the migration, and if they do not the fallback itself is not engaging.
+            // What a forced migration needs from the mirror, asserted separately so that a failure
+            // here is not reported as the migration failing. Both are answered by this node's own
+            // copy: the home server they would otherwise be proxied to is down.
             PublicKeyHash owner = user.signer.publicKeyHash;
             String pointerRead = describe(() -> node2.mutable.getPointer(owner, owner).join()
                     .map(p -> p.length + " bytes").orElse("no pointer"));

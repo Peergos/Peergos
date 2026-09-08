@@ -90,7 +90,9 @@ public class HttpAccount implements AccountProxy {
                                                                                           PublicSigningKey authorisedReader,
                                                                                           byte[] auth,
                                                                                           Optional<MultiFactorAuthResponse> mfa) {
-        return getLoginData(getProxyUrlPrefix(targetServerId), p2p, username, authorisedReader, auth, mfa, true);
+        // bounded, because whoever asked us has a mirror to fall back on and a finite patience
+        return getLoginData(getProxyUrlPrefix(targetServerId), p2p, username, authorisedReader, auth, mfa, true,
+                Constants.PROXIED_READ_TIMEOUT_MILLIS);
     }
 
     /** Tell the server which second factor types we know how to present, so that a newer server
@@ -113,12 +115,25 @@ public class HttpAccount implements AccountProxy {
                                                                                            byte[] auth,
                                                                                            Optional<MultiFactorAuthResponse> mfa,
                                                                                            boolean forceProxy) {
-        return poster.get(urlPrefix + Constants.LOGIN_URL + "getLogin?username=" + username
+        return getLoginData(urlPrefix, poster, username, authorisedReader, auth, mfa, forceProxy,
+                HttpPoster.DEFAULT_TIMEOUT_MILLIS);
+    }
+
+    private CompletableFuture<Either<UserStaticData, MultiFactorAuthRequest>> getLoginData(String urlPrefix,
+                                                                                           HttpPoster poster,
+                                                                                           String username,
+                                                                                           PublicSigningKey authorisedReader,
+                                                                                           byte[] auth,
+                                                                                           Optional<MultiFactorAuthResponse> mfa,
+                                                                                           boolean forceProxy,
+                                                                                           int timeoutMillis) {
+        return poster.postUnzip(urlPrefix + Constants.LOGIN_URL + "getLogin?username=" + username
                         + "&author=" + ArrayOps.bytesToHex(authorisedReader.serialize())
                         + "&auth=" + ArrayOps.bytesToHex(auth)
                         + "&proxy=" + forceProxy
                         + "&mfaTypes=" + supportedMfaTypes()
-                        + mfa.map(mfaCode -> "&mfa=" + ArrayOps.bytesToHex(mfaCode.serialize())).orElse(""))
+                        + mfa.map(mfaCode -> "&mfa=" + ArrayOps.bytesToHex(mfaCode.serialize())).orElse(""),
+                        new byte[0], timeoutMillis)
                 .thenApply(res -> LoginResponse.fromCbor(CborObject.fromByteArray(res)).resp);
     }
 
