@@ -70,15 +70,16 @@ public class BulkCommitStorage extends DelegatingStorage {
                                 .thenCompose(x -> verify(owner, commit, hashes, updates))
                                 .thenCompose(inCall -> registerNewWriters(owner, commit, updates, inCall)))
                         .thenCompose(x -> withTransaction(owner, commit.tid,
-                                tid -> writeBlocks(owner, commit, tid))
-                                .thenCompose(written -> {
+                                // the transaction has to outlive the pointer update, or the blocks it is
+                                // holding become collectable in the window before they are reachable
+                                tid -> writeBlocks(owner, commit, tid).thenCompose(written -> {
                                     List<SignedPointerUpdate> signed = commit.writers.stream()
                                             .flatMap(w -> w.pointer.stream())
                                             .collect(Collectors.toList());
                                     if (signed.isEmpty())
                                         return Futures.of(written);
                                     return pointers.setPointers(owner, signed).thenApply(b -> written);
-                                })));
+                                }))));
     }
 
     /** The hash of every block travelling inline, in commit order: each writer's cbor blocks then its raw ones. */
