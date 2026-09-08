@@ -421,12 +421,26 @@ public class StorageHandler implements HttpHandler {
         return json;
     }
 
+    /** Content addressed responses never change: answer a revalidation with 304 rather than resending the body */
+    private static boolean setImmutableHeaders(HttpExchange exchange, Optional<Multihash> key) throws IOException {
+        if (key.isEmpty())
+            return false;
+        String etag = "\"" + key.get().toString() + "\"";
+        exchange.getResponseHeaders().set("Cache-Control", "public, max-age=31622400, immutable");
+        exchange.getResponseHeaders().set("ETag", etag);
+        String previous = exchange.getRequestHeaders().getFirst("If-None-Match");
+        if (etag.equals(previous)) {
+            exchange.sendResponseHeaders(304, -1);
+            exchange.getResponseBody().close();
+            return true;
+        }
+        return false;
+    }
+
     private static void replyJson(HttpExchange exchange, String json, Optional<Multihash> key) {
         try {
-            if (key.isPresent()) {
-                exchange.getResponseHeaders().set("Cache-Control", "public, max-age=31622400 immutable");
-                exchange.getResponseHeaders().set("ETag", "\"" + key.get().toString() + "\"");
-            }
+            if (setImmutableHeaders(exchange, key))
+                return;
             byte[] raw = json.getBytes();
             exchange.sendResponseHeaders(200, raw.length);
             DataOutputStream dout = new DataOutputStream(exchange.getResponseBody());
@@ -441,10 +455,8 @@ public class StorageHandler implements HttpHandler {
 
     private static void replyBytes(HttpExchange exchange, byte[] body, Optional<Multihash> key) {
         try {
-            if (key.isPresent()) {
-                exchange.getResponseHeaders().set("Cache-Control", "public, max-age=31622400 immutable");
-                exchange.getResponseHeaders().set("ETag", "\"" + key.get().toString() + "\"");
-            }
+            if (setImmutableHeaders(exchange, key))
+                return;
             exchange.sendResponseHeaders(200, body.length);
             DataOutputStream dout = new DataOutputStream(exchange.getResponseBody());
             dout.write(body);
