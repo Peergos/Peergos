@@ -33,6 +33,7 @@ public class BufferedNetworkAccess extends NetworkAccess {
 
     private final BufferedStorage blockBuffer;
     private final BufferedPointers pointerBuffer;
+    private final BulkCommitter bulkCommitter;
     private final int bufferSize;
     private boolean safeToCommit = true;
 
@@ -57,6 +58,7 @@ public class BufferedNetworkAccess extends NetworkAccess {
                 serverMessager, hasher, usernames, isJavascript);
         this.blockBuffer = blockBuffer;
         this.pointerBuffer = mutableBuffer;
+        this.bulkCommitter = new LegacyBulkCommitter(blockBuffer.target(), unbufferedMutable, hasher);
         this.bufferSize = bufferSize;
         synchronizer.setCommitterBuilder(this::buildCommitter);
         synchronizer.setFlusher((o, v, w) -> commit(o, w).thenApply(b -> v));
@@ -172,23 +174,6 @@ public class BufferedNetworkAccess extends NetworkAccess {
         return Futures.of(true);
     }
 
-    /** Commit a single writer's pointer with CAS merge fallback */
-    private CompletableFuture<Boolean> commitPointerWithMerge(
-            PublicKeyHash owner,
-            Pair<BufferedPointers.WriterUpdate, Optional<CommittedWriterData>> u,
-            Map<PublicKeyHash, SigningPrivateKeyAndPublicHash> writers,
-            TransactionId tid) {
-        return Futures.asyncExceptionally(
-                () -> pointerBuffer.commit(owner, writers.get(u.left.writer),
-                        new PointerUpdate(u.left.prevHash, u.left.currentHash, u.left.currentSequence)),
-                conflictT -> {
-                    Throwable conflictCause = Exceptions.getRootCause(conflictT);
-                    if (!(conflictCause instanceof PointerCasException))
-                        return Futures.errored(conflictT);
-                    return mergeAndCommit(owner, u, writers, tid, (PointerCasException) conflictCause);
-                });
-    }
-
     /**
      * Resolve a known CAS conflict by merging our champ with the one the server actually has,
      * then committing that. Split out so a caller that has already been told the CAS failed can
@@ -203,10 +188,11 @@ public class BufferedNetworkAccess extends NetworkAccess {
         MaybeMultihash actualExisting = cas.existing;
         if (actualExisting.equals(u.left.currentHash))
             return Futures.of(true);
+        SigningPrivateKeyAndPublicHash signer = writers.get(u.left.writer);
         return WriterData.getWriterData(owner, (Cid) u.left.prevHash.get(), Optional.empty(), blockBuffer)
                 .thenCompose(original -> WriterData.getWriterData(owner, (Cid) u.left.currentHash.get(), Optional.empty(), blockBuffer)
                         .thenCompose(updated -> WriterData.getWriterData(owner, (Cid) actualExisting.get(), Optional.empty(), blockBuffer)
-                                .thenCompose(remote -> ChampUtil.merge(owner, writers.get(u.left.writer),
+                                .thenCompose(remote -> ChampUtil.merge(owner, signer,
                                                 MaybeMultihash.of(original.props.get().tree.get()),
                                                 MaybeMultihash.of(updated.props.get().tree.get()),
                                                 MaybeMultihash.of(remote.props.get().tree.get()),
@@ -214,14 +200,13 @@ public class BufferedNetworkAccess extends NetworkAccess {
                                                 ChampWrapper.MAX_HASH_COLLISIONS_PER_LEVEL, y -> Futures.of(y.data),
                                                 c -> (CborObject.CborMerkleLink) c, blockBuffer, hasher)
                                         .thenApply(p -> remote.props.get().withChamp(p.right)))))
-                .thenCompose(newWD -> {
-                    Optional<Long> seq = cas.sequence;
-                    return blockBuffer.put(owner, writers.get(u.left.writer), newWD.serialize(), hasher, tid)
-                            .thenCompose(mergedRoot -> blockBuffer.signBlocks(writers)
-                                    .thenCompose(signedMore -> blockBuffer.commit(owner, u.left.writer, tid, signedMore))
-                                    .thenCompose(z -> pointerBuffer.commit(owner, writers.get(u.left.writer),
-                                            new PointerUpdate(actualExisting, MaybeMultihash.of(mergedRoot), seq.map(s -> s + 1)))));
-                });
+                .thenCompose(newWD -> blockBuffer.put(owner, signer, newWD.serialize(), hasher, tid)
+                        .thenCompose(mergedRoot -> {
+                            BufferedPointers.WriterUpdate merged = new BufferedPointers.WriterUpdate(u.left.writer,
+                                    actualExisting, MaybeMultihash.of(mergedRoot), cas.sequence.map(s -> s + 1));
+                            return commitWrites(owner, Collections.singletonList(new Pair<>(merged, Optional.empty())),
+                                    writers, tid, false);
+                        }));
     }
 
     @Override
@@ -246,10 +231,9 @@ public class BufferedNetworkAccess extends NetworkAccess {
                     .add(write);
 
         CompletableFuture<Boolean> res = new CompletableFuture<>();
-        blockBuffer.signBlocks(writers)
-                .thenCompose(signed -> Futures.reduceAll(byOwner.entrySet(), true,
-                        (done, e) -> commitOwner(e.getKey(), e.getValue(), writers, signed).thenApply(b -> done && b),
-                        (x, y) -> x && y))
+        Futures.reduceAll(byOwner.entrySet(), true,
+                        (done, e) -> commitOwner(e.getKey(), e.getValue(), writers).thenApply(b -> done && b),
+                        (x, y) -> x && y)
                 .thenApply(x -> {
                     pointerBuffer.clear();
                     blockBuffer.clear();
@@ -266,49 +250,68 @@ public class BufferedNetworkAccess extends NetworkAccess {
 
     private CompletableFuture<Boolean> commitOwner(PublicKeyHash owner,
                                                    List<Pair<BufferedPointers.WriterUpdate, Optional<CommittedWriterData>>> writes,
-                                                   Map<PublicKeyHash, SigningPrivateKeyAndPublicHash> writers,
-                                                   Map<Cid, OpLog.BlockWrite> signed) {
+                                                   Map<PublicKeyHash, SigningPrivateKeyAndPublicHash> writers) {
         boolean hasNewWriters = writes.stream().anyMatch(u -> !u.left.prevHash.isPresent());
 
         return blockBuffer.target().startTransaction(owner)
                 .thenCompose(tid -> (hasNewWriters
                         // Sequential path: preserves the invariant that parent pointer commits before child blocks
                         ? Futures.reduceAll(writes.stream(), true,
-                                (a, u) -> blockBuffer.commit(owner, u.left.writer, tid, signed)
-                                        .thenCompose(b -> commitPointerWithMerge(owner, u, writers, tid)),
+                                (a, u) -> commitWrites(owner, Collections.singletonList(u), writers, tid, true),
                                 (x, y) -> x && y)
-                        // Atomic path: no new writers, commit all pointer updates in one transaction
-                        : Futures.reduceAll(writes.stream(), true,
-                                (a, u) -> blockBuffer.commit(owner, u.left.writer, tid, signed),
-                                (x, y) -> x && y)
-                        .thenCompose(x -> Futures.combineAllInOrder(writes.stream()
-                                .map(u -> writers.get(u.left.writer).secret
-                                        .signMessage(new PointerUpdate(u.left.prevHash, u.left.currentHash, u.left.currentSequence).serialize())
-                                        .thenApply(sig -> new SignedPointerUpdate(u.left.writer, sig)))
-                                .collect(Collectors.toList())))
-                        .thenCompose(batch -> Futures.asyncExceptionally(
-                                () -> mutable.setPointers(owner, batch).thenApply(ok -> {
-                                    pointerBuffer.recordCommitted(writes.stream().map(u -> u.left).collect(Collectors.toList()));
-                                    return ok;
-                                }),
-                                t -> {
-                                    Throwable cause = Exceptions.getRootCause(t);
-                                    if (writes.size() > 1 || !(cause instanceof PointerCasException))
-                                        return Futures.errored(t);
-                                    // The server has just rejected exactly this update, so skip
-                                    // straight to merging rather than proposing it a second time.
-                                    return Futures.reduceAll(writes.stream(), true,
-                                            (a, u) -> mergeAndCommit(owner, u, writers, tid,
-                                                    (PointerCasException) cause),
-                                            (x, y) -> x && y);
-                                }
-                        )))
+                        // Atomic path: no new writers, commit all blocks and pointer updates in one bulk commit
+                        : commitWrites(owner, writes, writers, tid, true))
                         .thenCompose(ok -> Futures.reduceAll(writes.stream(), true,
                                 (a, u) -> u.right
                                         .map(cwd -> synchronizer.updateWriterState(owner, u.left.writer, new Snapshot(u.left.writer, cwd)))
                                         .orElse(Futures.of(true)),
                                 (x, y) -> x && y))
                         .thenCompose(x -> blockBuffer.target().closeTransaction(owner, tid)));
+    }
+
+    /** Build a single bulk commit covering these writers' buffered blocks and pointer updates, and apply it.
+     *
+     * @param mergeOnCas whether to resolve a CAS conflict by merging, which is only possible for a single writer
+     */
+    private CompletableFuture<Boolean> commitWrites(PublicKeyHash owner,
+                                                    List<Pair<BufferedPointers.WriterUpdate, Optional<CommittedWriterData>>> writes,
+                                                    Map<PublicKeyHash, SigningPrivateKeyAndPublicHash> writers,
+                                                    TransactionId tid,
+                                                    boolean mergeOnCas) {
+        return buildCommit(owner, writes, writers, tid)
+                .thenCompose(bulk -> Futures.asyncExceptionally(
+                        () -> bulkCommitter.commit(owner, bulk, writers)
+                                .thenApply(hashes -> {
+                                    pointerBuffer.recordCommitted(writes.stream()
+                                            .map(u -> u.left)
+                                            .collect(Collectors.toList()));
+                                    return true;
+                                }),
+                        t -> {
+                            Throwable cause = Exceptions.getRootCause(t);
+                            if (! mergeOnCas || writes.size() > 1 || !(cause instanceof PointerCasException))
+                                return Futures.errored(t);
+                            // The server has just rejected exactly this update, so skip
+                            // straight to merging rather than proposing it a second time.
+                            return mergeAndCommit(owner, writes.get(0), writers, tid, (PointerCasException) cause);
+                        }));
+    }
+
+    private CompletableFuture<BulkCommit> buildCommit(PublicKeyHash owner,
+                                                      List<Pair<BufferedPointers.WriterUpdate, Optional<CommittedWriterData>>> writes,
+                                                      Map<PublicKeyHash, SigningPrivateKeyAndPublicHash> writers,
+                                                      TransactionId tid) {
+        return Futures.combineAllInOrder(writes.stream()
+                        .map(u -> {
+                            SigningPrivateKeyAndPublicHash signer = writers.get(u.left.writer);
+                            PointerUpdate update = new PointerUpdate(u.left.prevHash, u.left.currentHash, u.left.currentSequence);
+                            return signer.secret.signMessage(update.serialize())
+                                    .thenApply(sig -> new SignedPointerUpdate(u.left.writer, sig))
+                                    .thenCompose(pointer -> blockBuffer.buildWriterCommit(owner, u.left.writer,
+                                            Optional.of(pointer), signer, tid));
+                        })
+                        .collect(Collectors.toList()))
+                .thenApply(writerCommits -> new BulkCommit(Optional.of(tid), writerCommits));
     }
 
     @Override
