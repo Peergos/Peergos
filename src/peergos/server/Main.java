@@ -1374,6 +1374,7 @@ public class Main extends Builder {
                     ServerIdentity.SERVER_IDENTITY,
                     GATEWAY,
                     Mirror.MIRROR,
+                    Releases.RELEASE,
                     MIGRATE,
                     VERSION,
                     HOME,
