@@ -479,6 +479,35 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
         return true;
     }
 
+    /** Register a writer that is being created by the commit we are in the middle of applying.
+     *
+     *  The proof that the owner owns it is in that commit - the parent's new WriterData names it - and
+     *  has already been checked, but it isn't in the committed pointers yet, so the self-heal below
+     *  cannot find it and the write would be rejected.
+     *
+     * @return true if the writer is now registered
+     */
+    public boolean registerNewWriter(PublicKeyHash owner, PublicKeyHash writer) {
+        Object lock = healLocks.computeIfAbsent(owner, o -> new Object());
+        synchronized (lock) {
+            try {
+                usageStore.getOwner(writer);
+                return true;
+            } catch (IllegalStateException absent) {}
+            try {
+                String username = core.getUsername(owner).join();
+                if (! quotaAdmin.getLocalUsernames().contains(username))
+                    return false;
+                usageStore.addUserIfAbsent(username);
+                usageStore.addWriter(username, writer);
+                return true;
+            } catch (Exception e) {
+                LOG.log(Level.WARNING, "Couldn't register new writer " + writer + " of owner " + owner, e);
+                return false;
+            }
+        }
+    }
+
     /** A write was attempted with a writer that is absent from the usage store. If the writer is reachable through
      *  the chain of ownership proofs from the owner's identity key then register it, and any other missing owned
      *  keys, and account their current usage.

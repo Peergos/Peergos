@@ -980,7 +980,8 @@ public class Main extends Builder {
             // A bulk commit is applied where the owner lives, so the local block writes and the pointer
             // updates it consists of happen behind one call, below the proxying layer.
             ContentAddressedStorage filteringDht = new BulkCommitStorage(
-                    new WriteFilter(localStorage, spaceChecker::allowWrite), blockingMutablePointers, hasher);
+                    new WriteFilter(localStorage, spaceChecker::allowWrite), blockingMutablePointers, hasher,
+                    spaceChecker::registerNewWriter);
             ContentAddressedStorageProxy proxingDht = new ContentAddressedStorageProxy.HTTP(p2pHttpProxy);
             LRUCache<PublicKeyHash, Boolean> nonLocal = new LRUCache<>(100);
             ContentAddressedStorage p2pDht = new ContentAddressedStorage.Proxying(filteringDht, proxingDht, nodeIds,

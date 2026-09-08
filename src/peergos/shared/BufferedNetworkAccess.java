@@ -254,19 +254,12 @@ public class BufferedNetworkAccess extends NetworkAccess {
     private CompletableFuture<Boolean> commitOwner(PublicKeyHash owner,
                                                    List<Pair<BufferedPointers.WriterUpdate, Optional<CommittedWriterData>>> writes,
                                                    Map<PublicKeyHash, SigningPrivateKeyAndPublicHash> writers) {
-        boolean hasNewWriters = writes.stream().anyMatch(u -> !u.left.prevHash.isPresent());
         // A transaction is only needed to hold blocks written ahead of the commit that names them,
         // which is the large raw blocks that go direct to S3. Without any, the commit is one call.
         return (blockBuffer.needsTransaction() ?
                 blockBuffer.target().startTransaction(owner).thenApply(Optional::of) :
                 Futures.of(Optional.<TransactionId>empty()))
-                .thenCompose(tid -> (hasNewWriters
-                        // Sequential path: preserves the invariant that parent pointer commits before child blocks
-                        ? Futures.reduceAll(writes.stream(), true,
-                                (a, u) -> commitWrites(owner, Collections.singletonList(u), writers, tid, true),
-                                (x, y) -> x && y)
-                        // Atomic path: no new writers, commit all blocks and pointer updates in one bulk commit
-                        : commitWrites(owner, writes, writers, tid, true))
+                .thenCompose(tid -> commitWrites(owner, writes, writers, tid, true)
                         .thenCompose(ok -> Futures.reduceAll(writes.stream(), true,
                                 (a, u) -> u.right
                                         .map(cwd -> synchronizer.updateWriterState(owner, u.left.writer, new Snapshot(u.left.writer, cwd)))
@@ -287,7 +280,10 @@ public class BufferedNetworkAccess extends NetworkAccess {
                                                     boolean mergeOnCas) {
         return buildCommit(owner, writes, writers, tid)
                 .thenCompose(bulk -> Futures.asyncExceptionally(
-                        () -> bulkCommitter.commit(owner, bulk, writers)
+                        () -> bulkCommitter.commit(owner, bulk, new LegacyCommitInfo(writers, writes.stream()
+                                .filter(u -> ! u.left.prevHash.isPresent())
+                                .map(u -> u.left.writer)
+                                .collect(Collectors.toSet())))
                                 .thenApply(hashes -> {
                                     // The pointer updates may not have gone through mutable at all, so tell
                                     // any cache of them what they now are rather than leaving it stale.

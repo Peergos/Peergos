@@ -31,23 +31,34 @@ public class LegacyBulkCommitter implements BulkCommitter {
     }
 
     @Override
-    public CompletableFuture<List<Cid>> commit(PublicKeyHash owner,
-                                               BulkCommit commit,
-                                               Map<PublicKeyHash, SigningPrivateKeyAndPublicHash> signers) {
+    public CompletableFuture<List<Cid>> commit(PublicKeyHash owner, BulkCommit commit, LegacyCommitInfo legacy) {
         if (commit.tid.isPresent())
-            return applyWithin(owner, commit, signers, commit.tid.get());
+            return applyWithin(owner, commit, legacy, commit.tid.get());
         return target.startTransaction(owner)
-                .thenCompose(tid -> applyWithin(owner, commit, signers, tid)
+                .thenCompose(tid -> applyWithin(owner, commit, legacy, tid)
                         .thenCompose(res -> target.closeTransaction(owner, tid).thenApply(x -> res)));
     }
 
     private CompletableFuture<List<Cid>> applyWithin(PublicKeyHash owner,
                                                      BulkCommit commit,
-                                                     Map<PublicKeyHash, SigningPrivateKeyAndPublicHash> signers,
+                                                     LegacyCommitInfo legacy,
                                                      TransactionId tid) {
         List<Cid> written = new ArrayList<>();
+        if (! legacy.newWriters.isEmpty())
+            // A brand new writer's blocks are rejected until its parent's pointer update has registered
+            // it, so each writer's blocks and pointer must land before the next writer's blocks.
+            return Futures.reduceAll(commit.writers, true,
+                            (done, w) -> writeBlocks(owner, w, legacy.signers.get(w.writer), tid)
+                                    .thenApply(hashes -> {
+                                        written.addAll(hashes);
+                                        return done;
+                                    })
+                                    .thenCompose(x -> w.pointer.map(p -> mutable.setPointers(owner, Collections.singletonList(p)))
+                                            .orElse(Futures.of(true))),
+                            (x, y) -> x && y)
+                    .thenApply(x -> written);
         return Futures.reduceAll(commit.writers, true,
-                        (done, w) -> writeBlocks(owner, w, signers.get(w.writer), tid)
+                        (done, w) -> writeBlocks(owner, w, legacy.signers.get(w.writer), tid)
                                 .thenApply(hashes -> {
                                     written.addAll(hashes);
                                     return done;

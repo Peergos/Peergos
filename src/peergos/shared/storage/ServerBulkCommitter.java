@@ -35,20 +35,18 @@ public class ServerBulkCommitter implements BulkCommitter {
     }
 
     @Override
-    public CompletableFuture<List<Cid>> commit(PublicKeyHash owner,
-                                               BulkCommit commit,
-                                               Map<PublicKeyHash, SigningPrivateKeyAndPublicHash> signers) {
+    public CompletableFuture<List<Cid>> commit(PublicKeyHash owner, BulkCommit commit, LegacyCommitInfo legacy) {
         // A buffer can be bigger than a single request may be; splitting it is only safe once both ends
         // support the block list signature, so until then an oversized commit takes the old path.
         boolean tooBig = commit.inlineSize() > ContentAddressedStorage.MAX_BULK_COMMIT_SIZE - 64 * 1024;
         if (tooBig || ! isSupported(owner))
-            return fallback.commit(owner, commit, signers);
+            return fallback.commit(owner, commit, legacy);
         return Futures.asyncExceptionally(() -> target.bulkCommit(owner, commit),
                 t -> {
                     if (! isUnsupported(t))
                         return Futures.errored(t);
                     markUnsupported(owner);
-                    return fallback.commit(owner, commit, signers);
+                    return fallback.commit(owner, commit, legacy);
                 });
     }
 
