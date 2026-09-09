@@ -2728,7 +2728,21 @@ public abstract class UserTests {
                 return this;
             }
         };
-        NetworkAccess deleteNetwork = NetworkAccess.buildBuffered(service.storage, service.bats,
+        // A bulk commit applies every pointer update in one atomic call, so the crash this test
+        // simulates can only happen against a server without that endpoint. Refuse it the way such a
+        // server does, so the client falls back to the sequential path the failure lives on.
+        ContentAddressedStorage noBulkCommit = new DelegatingStorage(service.storage) {
+            @Override
+            public ContentAddressedStorage directToOrigin() {
+                return this;
+            }
+
+            @Override
+            public CompletableFuture<List<Cid>> bulkCommit(PublicKeyHash owner, BulkCommit commit) {
+                return Futures.errored(new IllegalStateException("Unimplemented call!"));
+            }
+        };
+        NetworkAccess deleteNetwork = NetworkAccess.buildBuffered(noBulkCommit, service.bats,
                 service.coreNode, service.account, failAfterFirst, 0, service.social,
                 service.controller, service.usage, service.serverMessages,
                 crypto.hasher, Arrays.asList("peergos"), false);

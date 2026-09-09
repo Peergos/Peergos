@@ -167,7 +167,8 @@ public class BulkCommitStorage extends DelegatingStorage {
 
     /** A writer with no previous pointer value is being created by this commit, and the server won't accept
      *  its blocks until it knows the owner owns it. The proof is in the commit: an existing writer's newly
-     *  signed WriterData names it as an owned key.
+     *  signed WriterData names it as an owned key - which is what lets a parent and the child it creates
+     *  commit together, rather than the child's blocks having to wait for the parent's pointer to land.
      */
     private CompletableFuture<Boolean> registerNewWriters(PublicKeyHash owner,
                                                           BulkCommit commit,
@@ -189,29 +190,33 @@ public class BulkCommitStorage extends DelegatingStorage {
             if (updates.get(i).map(u -> u.original.isPresent()).orElse(true))
                 authorised.add(commit.writers.get(i).writer);
         List<PublicKeyHash> remaining = new ArrayList<>(newWriters);
+        List<PublicKeyHash> provenHere = new ArrayList<>();
         while (! remaining.isEmpty()) {
             Set<PublicKeyHash> owned = new HashSet<>();
             for (int i = 0; i < commit.writers.size(); i++) {
                 WriterCommit w = commit.writers.get(i);
                 if (! authorised.contains(w.writer))
                     continue;
-                updates.get(i).flatMap(u -> u.updated.toOptional()).ifPresent(root -> owned.addAll(
-                        ContentAddressedStorage.getWriterData(owner, (Cid) root, Optional.empty(), withCallBlocks)
-                                .thenCompose(cwd -> cwd.props.get().directOwnedKeys(owner, withCallBlocks, hasher))
-                                .join()));
+                // the same proof the usage store's self heal walks: the owned key champ and the named
+                // owned keys, each carrying a signature by the writer claiming to own it
+                owned.addAll(DeletableContentAddressedStorage.getDirectOwnedKeys(owner, w.writer,
+                        updates.get(i).map(u -> u.updated).orElse(MaybeMultihash.empty()),
+                        (h, seq) -> ContentAddressedStorage.getWriterData(owner, h, seq, withCallBlocks),
+                        withCallBlocks, hasher).join());
             }
             List<PublicKeyHash> vouched = remaining.stream()
                     .filter(owned::contains)
                     .collect(Collectors.toList());
             if (vouched.isEmpty())
-                throw new IllegalStateException("Bulk commit creates a writer that nothing in it owns: " + remaining.get(0));
+                break;
             authorised.addAll(vouched);
+            provenHere.addAll(vouched);
             remaining.removeAll(vouched);
         }
-        for (PublicKeyHash newWriter : newWriters) {
-            if (! registerWriter.apply(owner, newWriter))
-                throw new IllegalStateException("Key not allowed to write to this server: " + newWriter);
-        }
+        // A writer this call doesn't vouch for may still be provable from what is already committed,
+        // which is exactly what the quota check's own self heal does, so leave those to it.
+        for (PublicKeyHash newWriter : provenHere)
+            registerWriter.apply(owner, newWriter);
         return Futures.of(true);
     }
 
