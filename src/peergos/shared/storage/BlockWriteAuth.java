@@ -33,14 +33,18 @@ public class BlockWriteAuth implements Cborable {
         this.signature = signature;
     }
 
-    /** What the writer signs: the ordered hashes of the blocks it is asking to write.
+    /** What the writer signs: the owner whose space is being written to, then the ordered hashes of
+     *  the blocks.
      *
-     *  Not bound to a transaction: re-sending this only ever re-authorises writing the same
-     *  content addressed blocks, which is exactly what the v1 signatures already allow.
+     *  The owner is in here because it is the owner that decides where a block is stored, so a
+     *  signature that only covered the hashes would authorise writing that content into anybody's
+     *  space. It is not bound to a transaction: re-sending this only ever re-authorises writing the
+     *  same content addressed blocks to the same owner, which is what the v1 signatures already allow.
      */
-    public static CompletableFuture<byte[]> payload(List<Cid> hashes, Hasher hasher) {
+    public static CompletableFuture<byte[]> payload(PublicKeyHash owner, List<Cid> hashes, Hasher hasher) {
         ByteArrayOutputStream bout = new ByteArrayOutputStream();
         try {
+            bout.write(owner.toBytes());
             for (Cid hash : hashes)
                 bout.write(hash.toBytes());
         } catch (IOException e) {

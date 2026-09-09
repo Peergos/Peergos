@@ -717,7 +717,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
             if (! isRaw)
                 throw new IllegalStateException("Only raw blocks can be pre-authed for writes");
             PublicSigningKey writer = getSigningKey(owner, writerHash).get().get();
-            byte[] expected = BlockWriteAuth.payload(auth.hashes, hasher).join();
+            byte[] expected = BlockWriteAuth.payload(owner, auth.hashes, hasher).join();
             byte[] signed = writer.unsignMessage(auth.signature).join();
             if (! Arrays.equals(signed, expected))
                 throw new IllegalStateException("Invalid signature for block write auth!");

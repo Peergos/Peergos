@@ -191,7 +191,7 @@ public class DirectS3BlockStore implements ContentAddressedStorage {
             return Futures.combineAllInOrder(blocks.stream()
                             .map(b -> hasher.hash(b, true))
                             .collect(Collectors.toList()))
-                    .thenCompose(hashes -> BlockWriteAuth.payload(hashes, hasher)
+                    .thenCompose(hashes -> BlockWriteAuth.payload(owner, hashes, hasher)
                             .thenCompose(payload -> signer.secret.signMessage(payload))
                             .thenApply(sig -> new BlockWriteAuth(hashes, sizes, batIds, (byte[]) sig)))
                     .thenCompose(auth -> Futures.asyncExceptionally(
