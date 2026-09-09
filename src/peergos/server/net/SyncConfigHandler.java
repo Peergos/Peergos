@@ -77,17 +77,30 @@ public class SyncConfigHandler implements HttpHandler {
     }
 
     private synchronized void saveConfigToFile(SyncConfig config) {
-        byte[] bytes = org.peergos.util.JSONParser.toString(config.toJson()).getBytes(StandardCharsets.UTF_8);
         try {
-            // this file holds every sync pair, and a crash part way through writing it would
-            // leave it truncated, so write beside it and swap it in
-            Path target = peergosDir.resolve(SYNC_CONFIG_FILENAME);
-            Path tmp = target.resolveSibling(SYNC_CONFIG_FILENAME + ".tmp");
-            Files.write(tmp, bytes);
-            Files.move(tmp, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+            writeConfig(peergosDir, org.peergos.util.JSONParser.toString(config.toJson())
+                    .getBytes(StandardCharsets.UTF_8));
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
+    }
+
+    /** Every pair's secret link is a capability, so this goes through a temp file, which createTempFile
+     *  creates readable only by its owner, rather than writing the target under the umask. Swapping it
+     *  in is atomic, so a crash part way through can't truncate the config that is already there.
+     */
+    public static void writeConfig(Path peergosDir, byte[] bytes) throws IOException {
+        Path tmp = Files.createTempFile(peergosDir, SYNC_CONFIG_FILENAME, ".tmp");
+        try {
+            Files.write(tmp, bytes);
+            Files.move(tmp, peergosDir.resolve(SYNC_CONFIG_FILENAME),
+                    StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+        } finally {
+            // a failed swap must not leave the links in a file nothing ever cleans up
+            Files.deleteIfExists(tmp);
+        }
+        // the superseded pre-json config holds the same links, and was written under the umask
+        Files.deleteIfExists(peergosDir.resolve(OLD_SYNC_CONFIG_FILENAME));
     }
 
     private synchronized SyncConfig getUpdatedArgs() {
