@@ -731,6 +731,11 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         }
     }
 
+    /** One auth call covers more blocks than we upload at once, so a url has to outlive the queue in
+     *  front of it. A write is not cached, so the only cost of a longer life is that the url keeps
+     *  authorising a write of that one block, to that one owner, for longer. */
+    private static final int BLOCK_PUT_EXPIRY_SECONDS = 3600;
+
     private List<PresignedUrl> preSignPuts(PublicKeyHash owner,
                                            List<Pair<Cid, BlockMetadata>> blockProps,
                                            boolean isRaw,
@@ -744,8 +749,9 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
             String contentSha256 = ArrayOps.bytesToHex(props.left.getHash());
             Map<String, String> extraHeaders = new LinkedHashMap<>();
             extraHeaders.put("Content-Type", "application/octet-stream");
-            res.add(S3Request.preSignPut(folder + s3Key, props.right.size, contentSha256, storageClass, false,
-                    S3AdminRequests.asAwsDate(ZonedDateTime.now()), host, extraHeaders, region, accessKeyId, secretKey, useHttps, hasher).join());
+            res.add(S3Request.preSignPut(folder + s3Key, props.right.size, contentSha256, storageClass,
+                    Optional.of(BLOCK_PUT_EXPIRY_SECONDS), false, S3AdminRequests.asAwsDate(ZonedDateTime.now()), host,
+                    extraHeaders, region, accessKeyId, secretKey, useHttps, hasher).join());
             blockPutAuths.inc();
             if (isRaw)
                 blockMetadata.put(owner, props.left, null, props.right);

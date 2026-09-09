@@ -85,9 +85,35 @@ public class S3Request {
                                                              String s3SecretKey,
                                                              boolean useHttps,
                                                              Hasher h) {
+        return preSignPut(key, size, contentSha256, storageClass, Optional.empty(), allowPublicReads, datetime, host,
+                extraHeaders, region, accessKeyId, s3SecretKey, useHttps, h);
+    }
+
+    /** Sign a put, optionally with an explicit lifetime.
+     *
+     *  Without one the signature goes in the Authorization header, which is what a read wants because
+     *  a url with no query parameters is cacheable by a browser, but it then only lives as long as the
+     *  clock skew AWS allows for the signed date. A write is never cached, so where the caller has to
+     *  hand out urls ahead of using them it can ask for a lifetime instead. The payload hash stays
+     *  signed either way, so a url still only authorises writing the one block it was issued for.
+     */
+    public static CompletableFuture<PresignedUrl> preSignPut(String key,
+                                                             int size,
+                                                             String contentSha256,
+                                                             Optional<String> storageClass,
+                                                             Optional<Integer> expirySeconds,
+                                                             boolean allowPublicReads,
+                                                             String datetime,
+                                                             String host,
+                                                             Map<String, String> extraHeaders,
+                                                             String region,
+                                                             String accessKeyId,
+                                                             String s3SecretKey,
+                                                             boolean useHttps,
+                                                             Hasher h) {
         extraHeaders.put("Content-Length", "" + size);
-        S3Request policy = new S3Request("PUT", host, key, contentSha256, storageClass, Optional.empty(), allowPublicReads, true,
-                Collections.emptyMap(), extraHeaders, accessKeyId, region, datetime);
+        S3Request policy = new S3Request("PUT", host, key, contentSha256, storageClass, expirySeconds, allowPublicReads,
+                expirySeconds.isEmpty(), Collections.emptyMap(), extraHeaders, accessKeyId, region, datetime);
         return preSignRequest(policy, key, host, s3SecretKey, useHttps, h);
     }
 
@@ -242,9 +268,11 @@ public class S3Request {
     private Map<String, String> getOriginalHeaders() {
         Map<String, String> res = new LinkedHashMap<>();
         res.put("Host", host);
-        if (! useAuthHeader)
+        if (useAuthHeader)
+            res.put("x-amz-date", datetime);
+        else if (UNSIGNED.equals(contentSha256))
+            // a presigned read has no payload to bind, and signs only the host
             return res;
-        res.put("x-amz-date", datetime);
         res.put("x-amz-content-sha256", contentSha256);
         for (Map.Entry<String, String> e : extraHeaders.entrySet()) {
             res.put(e.getKey(), e.getValue());
@@ -274,7 +302,7 @@ public class S3Request {
             res.put("X-Amz-Credential", credential());
             res.put("X-Amz-Date", datetime);
             expiresSeconds.ifPresent(seconds -> res.put("X-Amz-Expires", "" + seconds));
-            res.put("X-Amz-SignedHeaders", "host");
+            res.put("X-Amz-SignedHeaders", headersToSign());
         }
         return res;
     }
