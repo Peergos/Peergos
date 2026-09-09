@@ -30,8 +30,10 @@ public interface ContentAddressedStorage {
     boolean DEBUG_GC = false;
     int MAX_BLOCK_SIZE  = Fragment.MAX_LENGTH_WITH_BAT_PREFIX;
     int MAX_BLOCK_AUTHS = 50;
-    /** The most a single bulk/commit request body may be. */
-    int MAX_BULK_COMMIT_SIZE = 20 * 1024 * 1024;
+    /** The most a single bulk/commit request body may be, which is what a server in front of a proxy
+     *  will accept. A commit bigger than this is split, so it is also the peak memory one commit
+     *  costs the server while it is being applied. */
+    int MAX_BULK_COMMIT_SIZE = 2 * 1024 * 1024;
     int MAX_CHAMP_GETS = 20;
 
     default CompletableFuture<BlockStoreProperties> blockStoreProperties() {

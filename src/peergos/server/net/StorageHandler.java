@@ -341,8 +341,11 @@ public class StorageHandler implements HttpHandler {
                 }
                 case BULK_COMMIT: {
                     AggregatedMetrics.STORAGE_BULK_COMMIT.inc();
-                    BulkCommit commit = BulkCommit.fromCbor(CborObject.read(httpExchange.getRequestBody(),
-                            ContentAddressedStorage.MAX_BULK_COMMIT_SIZE));
+                    // the cbor reader's limit is per byte string, not for the whole body, so bound the
+                    // read itself: the parsed commit is held in memory for the length of the call
+                    byte[] body = Serialize.readFully(httpExchange.getRequestBody(),
+                            ContentAddressedStorage.MAX_BULK_COMMIT_SIZE);
+                    BulkCommit commit = BulkCommit.fromCbor(CborObject.fromByteArray(body));
                     List<Cid> written = dht.bulkCommit(ownerHash.get(), commit).join();
                     replyBytes(httpExchange, new CborObject.CborList(written.stream()
                             .map(CborObject.CborMerkleLink::new)
