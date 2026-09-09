@@ -63,7 +63,8 @@ public class MutationHandler implements HttpHandler {
                 }
                 case "setPointers": {
                     AggregatedMetrics.MUTABLE_POINTERS_SET.inc();
-                    MultiWriterCommit updates = MultiWriterCommit.fromCbor(CborObject.read(din, 1024*1024));
+                    MultiWriterCommit updates = MultiWriterCommit.fromCbor(CborObject.fromByteArray(
+                            Serialize.readFully(din, HttpUtil.MAX_CONTROL_BODY_SIZE)));
                     boolean isAdded = mutable.setPointers(owner, updates.updates).get();
                     dout.writeBoolean(isAdded);
                     break;

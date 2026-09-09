@@ -94,7 +94,7 @@ public class StorageHandler implements HttpHandler {
                 case AUTH_WRITES: {
                     TransactionId tid = new TransactionId(last.apply("transaction"));
                     PublicKeyHash writerHash = PublicKeyHash.fromString(last.apply("writer"));
-                    byte[] reqBody = Serialize.readFully(httpExchange.getRequestBody());
+                    byte[] reqBody = Serialize.readFully(httpExchange.getRequestBody(), HttpUtil.MAX_CONTROL_BODY_SIZE);
                     WriteAuthRequest req = WriteAuthRequest.fromCbor(CborObject.fromByteArray(reqBody));
                     List<byte[]> signatures = req.signatures;
                     List<Integer> blockSizes = req.sizes.stream()
@@ -111,7 +111,8 @@ public class StorageHandler implements HttpHandler {
                     break;
                 }
                 case AUTH_READS: {
-                    CborObject cbor = CborObject.fromByteArray(Serialize.readFully(httpExchange.getRequestBody()));
+                    CborObject cbor = CborObject.fromByteArray(Serialize.readFully(httpExchange.getRequestBody(),
+                            HttpUtil.MAX_CONTROL_BODY_SIZE));
                     List<BlockMirrorCap> blockCaps = ((CborObject.CborList) cbor).map(BlockMirrorCap::fromCbor);
                     PublicKeyHash owner = ownerHash.orElse(null);
                     dht.authReads(owner, blockCaps).thenAccept(res -> {
@@ -284,7 +285,9 @@ public class StorageHandler implements HttpHandler {
                     AggregatedMetrics.STORAGE_BLOCK_PUT_BULK.inc();
                     TransactionId tid = new TransactionId(last.apply("transaction"));
                     PublicKeyHash writerHash = PublicKeyHash.fromString(last.apply("writer"));
-                    BlockWriteGroup writes = BlockWriteGroup.fromCbor(CborObject.read(httpExchange.getRequestBody(), 2 * ContentAddressedStorage.MAX_BLOCK_SIZE));
+                    // the client groups a bulk put to stay under a block's worth of data, plus signatures
+                    BlockWriteGroup writes = BlockWriteGroup.fromCbor(CborObject.fromByteArray(Serialize.readFully(
+                            httpExchange.getRequestBody(), 2 * ContentAddressedStorage.MAX_BLOCK_SIZE)));
                     boolean isRaw = last.apply("format").equals("raw");
 
                     // check writer is allowed to write to this server, and check their free space
