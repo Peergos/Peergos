@@ -25,20 +25,24 @@ public class ServerBulkCommitter implements BulkCommitter {
     private final BulkCommitter fallback;
     private final Hasher hasher;
     private final int maxInlineBytes;
+    private final int maxBlocks;
     private final Set<PublicKeyHash> unsupported = new HashSet<>();
 
     public ServerBulkCommitter(ContentAddressedStorage target, BulkCommitter fallback, Hasher hasher) {
-        this(target, fallback, hasher, ContentAddressedStorage.MAX_BULK_COMMIT_SIZE - 64 * 1024);
+        this(target, fallback, hasher, ContentAddressedStorage.MAX_BULK_COMMIT_SIZE - 64 * 1024,
+                ContentAddressedStorage.MAX_BULK_COMMIT_BLOCKS);
     }
 
     public ServerBulkCommitter(ContentAddressedStorage target,
                                BulkCommitter fallback,
                                Hasher hasher,
-                               int maxInlineBytes) {
+                               int maxInlineBytes,
+                               int maxBlocks) {
         this.target = target;
         this.fallback = fallback;
         this.hasher = hasher;
         this.maxInlineBytes = maxInlineBytes;
+        this.maxBlocks = maxBlocks;
     }
 
     private synchronized boolean isSupported(PublicKeyHash owner) {
@@ -54,7 +58,7 @@ public class ServerBulkCommitter implements BulkCommitter {
         if (! isSupported(owner))
             return fallback.commit(owner, commit, context);
         return Futures.asyncExceptionally(
-                () -> commit.inlineSize() <= maxInlineBytes ?
+                () -> fitsInOneCall(commit) ?
                         target.bulkCommit(owner, commit) :
                         splitAndSend(owner, commit, context),
                 t -> {
@@ -63,6 +67,17 @@ public class ServerBulkCommitter implements BulkCommitter {
                     markUnsupported(owner);
                     return fallback.commit(owner, commit, context);
                 });
+    }
+
+    /** Both bounds matter: the body has to fit, and the server won't spend an unbounded amount of a
+     *  request hashing blocks and checking links. */
+    private boolean fitsInOneCall(BulkCommit commit) {
+        return commit.inlineSize() <= maxInlineBytes
+                && commit.blockCount() + preWrittenCount(commit) <= maxBlocks;
+    }
+
+    private static int preWrittenCount(BulkCommit commit) {
+        return commit.writers.stream().mapToInt(w -> w.preWritten.size()).sum();
     }
 
     private static boolean isUnsupported(Throwable t) {
@@ -130,11 +145,14 @@ public class ServerBulkCommitter implements BulkCommitter {
                     List<List<Block>> finalCall = new ArrayList<>();
                     List<List<Block>> deferred = new ArrayList<>();
                     int budget = maxInlineBytes;
+                    // the pre-written hashes ride along on the final call, and count against it too
+                    int countBudget = maxBlocks - preWrittenCount(commit);
                     for (List<Block> blocks : ordered) {
                         List<Block> keep = new ArrayList<>();
                         int taken = 0;
-                        while (taken < blocks.size() && blocks.get(taken).data.length <= budget) {
+                        while (taken < blocks.size() && blocks.get(taken).data.length <= budget && countBudget > 0) {
                             budget -= blocks.get(taken).data.length;
+                            countBudget--;
                             keep.add(blocks.get(taken));
                             taken++;
                         }
@@ -168,19 +186,22 @@ public class ServerBulkCommitter implements BulkCommitter {
                                                                 TransactionId tid) {
         List<List<WriterCommit>> calls = new ArrayList<>();
         int used = 0;
+        int count = 0;
         List<CompletableFuture<WriterCommit>> pending = new ArrayList<>();
         List<Integer> callOfPending = new ArrayList<>();
         for (int i = 0; i < commit.writers.size(); i++) {
             WriterCommit w = commit.writers.get(i);
             SigningPrivateKeyAndPublicHash signer = context.signers.get(w.writer);
             for (List<Block> group : groupBySize(deferred.get(i))) {
-                if (used > 0 && used + size(group) > maxInlineBytes) {
+                if (used > 0 && (used + size(group) > maxInlineBytes || count + group.size() > maxBlocks)) {
                     calls.add(new ArrayList<>());
                     used = 0;
+                    count = 0;
                 }
                 if (calls.isEmpty())
                     calls.add(new ArrayList<>());
                 used += size(group);
+                count += group.size();
                 callOfPending.add(calls.size() - 1);
                 pending.add(signBlockList(w.writer, signer, group, context));
             }
@@ -218,7 +239,8 @@ public class ServerBulkCommitter implements BulkCommitter {
         List<List<Block>> groups = new ArrayList<>();
         int used = 0;
         for (Block b : blocks) {
-            if (groups.isEmpty() || used + b.data.length > maxInlineBytes) {
+            if (groups.isEmpty() || used + b.data.length > maxInlineBytes
+                    || groups.get(groups.size() - 1).size() >= maxBlocks) {
                 groups.add(new ArrayList<>());
                 used = 0;
             }

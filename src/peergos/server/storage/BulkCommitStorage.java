@@ -64,6 +64,9 @@ public class BulkCommitStorage extends DelegatingStorage {
                     .anyMatch(b -> b.length > ContentAddressedStorage.MAX_BLOCK_SIZE))
                 throw new IllegalStateException("Block too big!");
         }
+        int named = commit.blockCount() + commit.writers.stream().mapToInt(w -> w.preWritten.size()).sum();
+        if (named > ContentAddressedStorage.MAX_BULK_COMMIT_BLOCKS)
+            throw new IllegalStateException("Too many blocks in one commit: " + named);
         return hashBlocks(commit)
                 .thenCompose(hashes -> updates(owner, commit)
                         .thenCompose(updates -> verifyBlockLists(owner, commit, hashes)

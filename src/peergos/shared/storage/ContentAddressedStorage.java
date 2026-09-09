@@ -34,6 +34,10 @@ public interface ContentAddressedStorage {
      *  will accept. A commit bigger than this is split, so it is also the peak memory one commit
      *  costs the server while it is being applied. */
     int MAX_BULK_COMMIT_SIZE = 2 * 1024 * 1024;
+    /** The most blocks a single bulk/commit may name. Bytes alone don't bound the work: the server
+     *  hashes every block and checks every link, so a commit of many tiny blocks - deleting a large
+     *  folder writes a lot of small champ nodes - would hold a request open far too long. */
+    int MAX_BULK_COMMIT_BLOCKS = 1000;
     int MAX_CHAMP_GETS = 20;
 
     default CompletableFuture<BlockStoreProperties> blockStoreProperties() {

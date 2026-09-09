@@ -135,7 +135,7 @@ public class BulkCommitTests {
 
         int ceiling = 4500;
         RecordingStorage recorder = new RecordingStorage();
-        BulkCommitter committer = new ServerBulkCommitter(recorder, refusingFallback(), crypto.hasher, ceiling);
+        BulkCommitter committer = new ServerBulkCommitter(recorder, refusingFallback(), crypto.hasher, ceiling, 1000);
         committer.commit(writer, whole, context).join();
 
         List<BulkCommit> calls = recorder.calls;
@@ -179,6 +179,56 @@ public class BulkCommitTests {
             CborObject.fromByteArray(block).links().forEach(l -> toVisit.add((Cid) l));
         }
         Assert.assertEquals("the last call stands on its own", inLast.keySet(), reachable);
+    }
+
+    /** Bytes are not the only bound: a commit of many tiny blocks - what deleting a large folder
+     *  produces - must be split too, or one request holds the server for far too long.
+     */
+    @Test
+    public void splitsACommitWithTooManyBlocks() {
+        SigningKeyPair keys = SigningKeyPair.random(crypto.random, crypto.signer);
+        PublicKeyHash writer = ContentAddressedStorage.hashKey(keys.publicSigningKey);
+        SigningPrivateKeyAndPublicHash signer = new SigningPrivateKeyAndPublicHash(writer, keys.secretSigningKey);
+
+        int blocks = 25;
+        List<byte[]> children = new ArrayList<>();
+        List<Cborable> links = new ArrayList<>();
+        for (int i = 0; i < blocks; i++) {
+            byte[] child = new CborObject.CborLong(i).serialize();
+            children.add(child);
+            links.add(new CborObject.CborMerkleLink(crypto.hasher.hash(child, false).join()));
+        }
+        byte[] root = new CborObject.CborList(links).serialize();
+        Cid rootHash = crypto.hasher.hash(root, false).join();
+        List<byte[]> all = new ArrayList<>();
+        all.add(root);
+        all.addAll(children);
+
+        BulkCommit whole = new BulkCommit(Optional.empty(), Arrays.asList(new WriterCommit(writer, all,
+                Collections.emptyList(), Collections.emptyList(),
+                Optional.of(new SignedPointerUpdate(writer, random(64))), Optional.empty())));
+        CommitContext context = new CommitContext(Collections.singletonMap(writer, signer),
+                Collections.emptySet(),
+                Collections.singletonMap(writer, MaybeMultihash.of(rootHash)),
+                Collections.singletonMap(writer, Optional.of(3L)));
+
+        int maxBlocks = 10;
+        RecordingStorage recorder = new RecordingStorage();
+        // a byte ceiling far larger than the whole commit, so only the block count can force a split
+        BulkCommitter committer = new ServerBulkCommitter(recorder, refusingFallback(), crypto.hasher,
+                1024 * 1024, maxBlocks);
+        committer.commit(writer, whole, context).join();
+
+        List<BulkCommit> calls = recorder.calls;
+        Assert.assertTrue("split on count alone", calls.size() > 1);
+        for (BulkCommit call : calls)
+            Assert.assertTrue("each call is within the block cap: " + call.blockCount(),
+                    call.blockCount() <= maxBlocks);
+        Assert.assertEquals("every block is sent exactly once", all.size(),
+                calls.stream().mapToInt(BulkCommit::blockCount).sum());
+        Assert.assertEquals("only the last call carries pointers", 1,
+                calls.stream().filter(BulkCommit::hasPointerUpdate).count());
+        Assert.assertTrue(calls.get(calls.size() - 1).hasPointerUpdate());
     }
 
     private static BulkCommitter refusingFallback() {
