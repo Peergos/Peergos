@@ -167,8 +167,28 @@ public class MultiNodeNetworkTests {
                 .with("mirror.bat", mirrorBat.encode())
                 .with("login-keypair", loginKeys.toString()));
         startServer(i);
-        Thread.sleep(20_000); // let the first mirroring pass finish
+        awaitFirstMirroringPass(i, user);
         return loginKeys;
+    }
+
+    /** Wait for the mirroring pass started at boot, rather than guessing how long it takes.
+     *
+     *  It walks every owned key and only then stores the login data, so a pass that has run out of
+     *  time leaves the pointers mirrored and the login data missing. getSize is answered by our own
+     *  blockstore without proxying, which is what makes it a usable measure of the mirror's progress.
+     */
+    private void awaitFirstMirroringPass(int i, UserContext user) throws Exception {
+        PublicKeyHash owner = user.signer.publicKeyHash;
+        MaybeMultihash root = user.network.mutable.getPointerTarget(owner, owner, user.network.dhtClient).join().updated;
+        for (int attempt = 0; attempt < 150; attempt++) {
+            if (root.isPresent() && getService(i).storage.getSize(owner, root.get()).join().isPresent()) {
+                // the login data is written just after the last subspace this was part of
+                Thread.sleep(10_000);
+                return;
+            }
+            Thread.sleep(1_000);
+        }
+        throw new IllegalStateException("Mirroring pass didn't reach " + user.username + "'s root in time");
     }
 
     /** What a read did, rather than only whether the test survived it. */
