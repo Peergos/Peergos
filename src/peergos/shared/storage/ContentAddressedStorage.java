@@ -356,6 +356,7 @@ public interface ContentAddressedStorage {
         public static final String LINK_COUNTS = "link/counts";
         public static final String BLOCK_PUT = "block/put";
         public static final String BLOCK_PUT_BULK = "block/put/bulk";
+        public static final String BLOCK_PUT_BULK_V2 = "block/put/bulk/v2";
         public static final String BULK_COMMIT = "bulk/commit";
         public static final String BLOCK_GET = "block/get";
         public static final String BLOCK_RM = "block/rm";
@@ -370,6 +371,7 @@ public interface ContentAddressedStorage {
         private final boolean isPeergosServer;
         private final Hasher hasher;
         private final Random r = new Random();
+        private volatile boolean batchSignedPutSupported = true;
 
         public HTTP(HttpPoster poster, boolean isPeergosServer, Hasher hasher) {
             this.poster = poster;
@@ -563,6 +565,78 @@ public interface ContentAddressedStorage {
                         if (DEBUG_GC)
                             System.out.println("Added blocks: " + hashes);
                         return hashes;
+                    });
+        }
+
+        /** Post the batch with one signature over the whole list, falling back to a signature per
+         *  block against a server that predates the call. */
+        @Override
+        public CompletableFuture<List<Cid>> putRawBatch(PublicKeyHash owner,
+                                                        SigningPrivateKeyAndPublicHash signer,
+                                                        List<byte[]> blocks,
+                                                        TransactionId tid,
+                                                        ProgressConsumer<Long> progress,
+                                                        Hasher hasher) {
+            if (! isPeergosServer || ! batchSignedPutSupported)
+                return ContentAddressedStorage.super.putRawBatch(owner, signer, blocks, tid, progress, hasher);
+            List<List<byte[]>> groups = groupBySize(blocks);
+            List<CompletableFuture<List<Cid>>> futures = groups.stream()
+                    .map(group -> Futures.combineAllInOrder(group.stream()
+                                    .map(b -> hasher.hash(b, true))
+                                    .collect(Collectors.toList()))
+                            .thenCompose(hashes -> BlockWriteAuth.payload(owner, hashes, hasher)
+                                    .thenCompose(payload -> signer.secret.signMessage(payload)))
+                            .thenCompose(sig -> putBatch(owner, signer.publicKeyHash,
+                                    new BlockWriteBatch(group, (byte[]) sig), "raw", tid))
+                            .thenApply(cids -> {
+                                if (progress != null)
+                                    group.forEach(b -> progress.accept((long) b.length));
+                                return cids;
+                            }))
+                    .collect(Collectors.toList());
+            return Futures.asyncExceptionally(
+                    () -> Futures.combineAllInOrder(futures)
+                            .thenApply(gs -> gs.stream().flatMap(List::stream).collect(Collectors.toList())),
+                    t -> {
+                        String msg = Exceptions.getRootCause(t).getMessage();
+                        if (msg == null || ! (msg.contains("Status code: 404") || msg.contains("Unimplemented call!")))
+                            return Futures.errored(t);
+                        batchSignedPutSupported = false;
+                        return ContentAddressedStorage.super.putRawBatch(owner, signer, blocks, tid, progress, hasher);
+                    });
+        }
+
+        private static List<List<byte[]>> groupBySize(List<byte[]> blocks) {
+            List<List<byte[]>> grouped = new ArrayList<>();
+            int used = 0;
+            for (byte[] block : blocks) {
+                if (grouped.isEmpty() || used + block.length > MAX_BLOCK_SIZE) {
+                    grouped.add(new ArrayList<>());
+                    used = 0;
+                }
+                grouped.get(grouped.size() - 1).add(block);
+                used += block.length;
+            }
+            return grouped;
+        }
+
+        private CompletableFuture<List<Cid>> putBatch(PublicKeyHash owner,
+                                                      PublicKeyHash writer,
+                                                      BlockWriteBatch batch,
+                                                      String format,
+                                                      TransactionId tid) {
+            return Futures.asyncExceptionally(() -> poster.post(apiPrefix + BLOCK_PUT_BULK_V2 + "?format=" + format
+                                            + "&owner=" + encode(owner.toString())
+                                            + "&transaction=" + encode(tid.toString())
+                                            + "&writer=" + encode(writer.toString()),
+                                    batch.serialize(), false, 30_000)
+                            .thenApply(bytes -> ((CborObject.CborList) CborObject.fromByteArray(bytes))
+                                    .map(c -> (Cid) ((CborObject.CborMerkleLink) c).target)),
+                    t -> {
+                        String msg = t.getMessage();
+                        if (msg != null && msg.contains("Storage+quota+reached"))
+                            return Futures.errored(new StorageQuotaExceededException(msg));
+                        return Futures.errored(t);
                     });
         }
 

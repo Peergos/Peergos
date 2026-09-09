@@ -181,11 +181,13 @@ public class DirectS3BlockStore implements ContentAddressedStorage {
                                                     TransactionId tid,
                                                     ProgressConsumer<Long> progressCounter,
                                                     Hasher hasher) {
+        // small blocks, and anything not going direct to S3, are written through the server, which has
+        // its own batch signed call - so delegate rather than falling back to a signature per block
         if (! batchAuthSupported || blocks.stream().allMatch(b -> b.length < MAX_SMALL_BLOCK_SIZE))
-            return ContentAddressedStorage.super.putRawBatch(owner, signer, blocks, tid, progressCounter, hasher);
+            return fallback.putRawBatch(owner, signer, blocks, tid, progressCounter, hasher);
         return onOwnersNode(owner).thenCompose(ownersNode -> {
             if (! ownersNode || ! directWrites)
-                return ContentAddressedStorage.super.putRawBatch(owner, signer, blocks, tid, progressCounter, hasher);
+                return fallback.putRawBatch(owner, signer, blocks, tid, progressCounter, hasher);
             List<Long> sizes = blocks.stream().map(b -> (long) b.length).collect(Collectors.toList());
             List<List<BatId>> batIds = blocks.stream().map(Bat::getRawBlockBats).collect(Collectors.toList());
             return Futures.combineAllInOrder(blocks.stream()
