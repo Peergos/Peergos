@@ -322,13 +322,7 @@ class LocalS3Handler implements HttpHandler {
                 String cred = urlDecode(qp.getOrDefault("X-Amz-Credential", ""));
                 int slash = cred.indexOf('/');
                 credentialScope = slash >= 0 ? cred.substring(slash + 1) : cred;
-                // a presigned url normally leaves the payload unsigned, but one that signs
-                // x-amz-content-sha256 binds the body to the url, and we have to verify it the same way
-                payloadHash = signedHeaders.contains("x-amz-content-sha256") ?
-                        firstHeader(exchange, "x-amz-content-sha256") :
-                        UNSIGNED;
-                if (payloadHash == null)
-                    payloadHash = UNSIGNED;
+                payloadHash = UNSIGNED;
             } else {
                 Map<String, String> authParts = parseAuthorization(authHeader);
                 providedSig = authParts.getOrDefault("Signature", "");

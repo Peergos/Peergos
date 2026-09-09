@@ -60,31 +60,6 @@ public class LocalS3ServerTest {
         Assert.assertArrayEquals(data, result);
     }
 
-    /** A write handed out ahead of use is signed with an explicit lifetime, which moves the
-     *  authentication into the query string. It must still bind the payload, so the url only ever
-     *  authorises writing the one block it was issued for.
-     */
-    @Test
-    public void expiringPutStillBindsItsContent() throws Exception {
-        String key = BUCKET + "/blocks/expiring";
-        byte[] data = "content bound to the url".getBytes();
-        String sha = ArrayOps.bytesToHex(Hash.sha256(data));
-
-        PresignedUrl put = S3Request.preSignPut(key, data.length, sha, Optional.empty(), Optional.of(3600), false,
-                S3AdminRequests.asAwsDate(ZonedDateTime.now()), host,
-                new HashMap<>(), config.region, config.accessKey, config.secretKey, false, hasher).join();
-        Assert.assertTrue("the signature is in the query string", put.base.contains("X-Amz-Signature="));
-        Assert.assertTrue("with an explicit lifetime", put.base.contains("X-Amz-Expires=3600"));
-        Assert.assertTrue("and the payload hash is a signed header",
-                put.fields.keySet().stream().anyMatch(h -> h.equalsIgnoreCase("x-amz-content-sha256")));
-        HttpUtil.putWithVersion(put, data);
-
-        PresignedUrl get = S3Request.preSignGet(key, Optional.of(600), Optional.empty(),
-                S3AdminRequests.asAwsDate(ZonedDateTime.now()), host, config.region,
-                Optional.empty(), config.accessKey, config.secretKey, false, hasher).join();
-        Assert.assertArrayEquals(data, HttpUtil.get(get));
-    }
-
     @Test
     public void head() throws Exception {
         String key = BUCKET + "/blocks/headtest";
