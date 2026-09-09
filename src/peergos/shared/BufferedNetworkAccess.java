@@ -254,8 +254,10 @@ public class BufferedNetworkAccess extends NetworkAccess {
     private CompletableFuture<Boolean> commitOwner(PublicKeyHash owner,
                                                    List<Pair<BufferedPointers.WriterUpdate, Optional<CommittedWriterData>>> writes,
                                                    Map<PublicKeyHash, SigningPrivateKeyAndPublicHash> writers) {
-        // A transaction is only needed to hold blocks written ahead of the commit that names them,
-        // which is the large raw blocks that go direct to S3. Without any, the commit is one call.
+        // Every commit's blocks are written before the pointer that names them, so they all need a
+        // transaction to hold them across that window. The server opens one for the blocks travelling
+        // inside the call and closes it only once the pointer has landed, so the only thing we have to
+        // open one for here is the blocks we write ahead of the call: the large raw ones going to S3.
         return (blockBuffer.needsTransaction() ?
                 blockBuffer.target().startTransaction(owner).thenApply(Optional::of) :
                 Futures.of(Optional.<TransactionId>empty()))
