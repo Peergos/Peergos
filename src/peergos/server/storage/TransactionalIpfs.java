@@ -214,8 +214,8 @@ public class TransactionalIpfs extends DelegatingDeletableStorage {
                                             List<byte[]> signedHashes,
                                             List<byte[]> blocks,
                                             TransactionId tid) {
-        addToTransaction(owner, blocks, Cid.Codec.DagCbor, tid);
-        return target.put(owner, writer, signedHashes, blocks, tid);
+        return addToTransaction(owner, blocks, false, tid)
+                .thenCompose(x -> target.put(owner, writer, signedHashes, blocks, tid));
     }
 
     @Override
@@ -225,8 +225,8 @@ public class TransactionalIpfs extends DelegatingDeletableStorage {
                                                List<byte[]> blocks,
                                                TransactionId tid,
                                                ProgressConsumer<Long> progressConsumer) {
-        addToTransaction(owner, blocks, Cid.Codec.Raw, tid);
-        return target.putRaw(owner, writer, signedHashes, blocks, tid, progressConsumer);
+        return addToTransaction(owner, blocks, true, tid)
+                .thenCompose(x -> target.putRaw(owner, writer, signedHashes, blocks, tid, progressConsumer));
     }
 
     /** Name each block so the transaction holds it until the write that references it is committed.
@@ -234,9 +234,17 @@ public class TransactionalIpfs extends DelegatingDeletableStorage {
      *  This used to read the hash out of the last 32 bytes of the block's signature, which a bulk
      *  commit doesn't have: there the pointer update signs a root that names every block instead.
      */
-    private void addToTransaction(PublicKeyHash owner, List<byte[]> blocks, Cid.Codec codec, TransactionId tid) {
-        for (byte[] block : blocks)
-            transactions.addBlock(new Cid(1, codec, Multihash.Type.sha2_256, RAMStorage.hash(block)), tid, owner);
+    private CompletableFuture<Boolean> addToTransaction(PublicKeyHash owner,
+                                                       List<byte[]> blocks,
+                                                       boolean isRaw,
+                                                       TransactionId tid) {
+        return Futures.combineAllInOrder(blocks.stream()
+                        .map(b -> hasher.hash(b, isRaw))
+                        .collect(Collectors.toList()))
+                .thenApply(cids -> {
+                    cids.forEach(cid -> transactions.addBlock(cid, tid, owner));
+                    return true;
+                });
     }
 
     @Override
