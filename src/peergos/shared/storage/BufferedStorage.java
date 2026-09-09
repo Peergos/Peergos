@@ -22,6 +22,9 @@ import java.util.stream.*;
 public class BufferedStorage extends DelegatingStorage {
 
     private final Map<Cid, OpLog.BlockWrite> storage = new LinkedHashMap<>();
+    /** Blocks taken out of the buffer for a commit that hasn't landed yet. They are still ours to serve:
+     *  until the server has them, a reader that goes looking would find them in neither place. */
+    private final Map<Cid, OpLog.BlockWrite> inFlight = new LinkedHashMap<>();
     private int bufferedBytes = 0;
     private final ContentAddressedStorage target;
     private final Hasher hasher;
@@ -36,7 +39,15 @@ public class BufferedStorage extends DelegatingStorage {
 
     public boolean hasBufferedBlock(Cid c) {
         synchronized (storage) {
-            return storage.containsKey(c);
+            return storage.containsKey(c) || inFlight.containsKey(c);
+        }
+    }
+
+    /** A block we hold, whether it is still awaiting a commit or already in one that is in flight. */
+    private OpLog.BlockWrite buffered(Cid hash) {
+        synchronized (storage) {
+            OpLog.BlockWrite block = storage.get(hash);
+            return block != null ? block : inFlight.get(hash);
         }
     }
 
@@ -107,11 +118,9 @@ public class BufferedStorage extends DelegatingStorage {
                         // root block itself is absent from remoteBlocks. Include it so that any
                         // caller building a LocalRamStorage from these blocks can serve
                         // ChampWrapper.create(root, ..., fromBlocks) without "Champ root not present".
-                        synchronized (storage) {
-                            OpLog.BlockWrite rootWrite = storage.get(root);
-                            if (rootWrite != null)
-                                all.add(rootWrite.block);
-                        }
+                        OpLog.BlockWrite rootWrite = buffered(root);
+                        if (rootWrite != null)
+                            all.add(rootWrite.block);
                         return all;
                     });
                 });
@@ -132,18 +141,14 @@ public class BufferedStorage extends DelegatingStorage {
 
             @Override
             public CompletableFuture<Optional<byte[]>> get(Cid hash) {
-                synchronized (storage) {
-                    return Futures.of(Optional.ofNullable(storage.get(hash))
-                            .map(b -> b.block)
-                            .or(() -> Optional.ofNullable(localCache.get(hash))));
-                }
+                return Futures.of(Optional.ofNullable(buffered(hash))
+                        .map(b -> b.block)
+                        .or(() -> Optional.ofNullable(localCache.get(hash))));
             }
 
             @Override
             public boolean hasBlock(Cid hash) {
-                synchronized (storage) {
-                    return storage.containsKey(hash) || localCache.containsKey(hash);
-                }
+                return buffered(hash) != null || localCache.containsKey(hash);
             }
 
             @Override
@@ -194,18 +199,14 @@ public class BufferedStorage extends DelegatingStorage {
 
             @Override
             public CompletableFuture<Optional<byte[]>> get(Cid hash) {
-                synchronized (storage) {
-                    return Futures.of(Optional.ofNullable(storage.get(hash))
-                            .map(b -> b.block)
-                            .or(() -> Optional.ofNullable(localCache.get(hash))));
-                }
+                return Futures.of(Optional.ofNullable(buffered(hash))
+                        .map(b -> b.block)
+                        .or(() -> Optional.ofNullable(localCache.get(hash))));
             }
 
             @Override
             public boolean hasBlock(Cid hash) {
-                synchronized (storage) {
-                    return storage.containsKey(hash) || localCache.containsKey(hash);
-                }
+                return buffered(hash) != null || localCache.containsKey(hash);
             }
 
             @Override
@@ -309,11 +310,9 @@ public class BufferedStorage extends DelegatingStorage {
 
     @Override
     public CompletableFuture<Optional<byte[]>> getRaw(PublicKeyHash owner, Cid hash, Optional<BatWithId> bat) {
-        synchronized (storage) {
-            OpLog.BlockWrite local = storage.get(hash);
-            if (local != null)
-                return Futures.of(Optional.of(local.block));
-        }
+        OpLog.BlockWrite local = buffered(hash);
+        if (local != null)
+            return Futures.of(Optional.of(local.block));
         return target.getRaw(owner, hash, bat);
     }
 
@@ -442,7 +441,11 @@ public class BufferedStorage extends DelegatingStorage {
                 } else
                     large.add(new Pair<>(e.getKey(), block));
             }
-            toRemove.forEach(this::remove);
+            for (Cid claimed : toRemove) {
+                OpLog.BlockWrite block = storage.get(claimed);
+                remove(claimed);
+                inFlight.put(claimed, block);
+            }
         }
         return preWrite(owner, writer, signer, large, tid)
                 .thenApply(preWritten -> {
@@ -501,6 +504,7 @@ public class BufferedStorage extends DelegatingStorage {
     public synchronized void clear() {
         synchronized (storage) {
             storage.clear();
+            inFlight.clear();
             bufferedBytes = 0;
         }
     }
@@ -513,11 +517,10 @@ public class BufferedStorage extends DelegatingStorage {
 
     @Override
     public CompletableFuture<Optional<Integer>> getSize(PublicKeyHash owner, Multihash block) {
-        synchronized (storage) {
-            if (!storage.containsKey(block))
-                return target.getSize(owner, block);
-            return CompletableFuture.completedFuture(Optional.of(storage.get(block).block.length));
-        }
+        OpLog.BlockWrite local = block instanceof Cid ? buffered((Cid) block) : null;
+        if (local == null)
+            return target.getSize(owner, block);
+        return CompletableFuture.completedFuture(Optional.of(local.block.length));
     }
 
     public CompletableFuture<Cid> hashToCid(byte[] input, boolean isRaw) {
