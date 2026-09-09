@@ -469,13 +469,10 @@ public class BufferedStorage extends DelegatingStorage {
         List<CompletableFuture<List<Cid>>> futures = new ArrayList<>();
         for (List<Pair<Cid, OpLog.BlockWrite>> batch : ArrayOps.group(large, ContentAddressedStorage.MAX_BLOCK_AUTHS)) {
             CompletableFuture<List<Cid>> work = semaphore.acquire()
-                    .thenCompose(v -> Futures.combineAllInOrder(batch.stream()
-                                    .map(p -> p.right.signature.length > 0 ?
-                                            Futures.of(p.right.signature) :
-                                            signer.secret.signMessage(p.left.getHash()))
-                                    .collect(Collectors.toList()))
-                            .thenCompose(sigs -> target.putRaw(owner, writer, sigs,
-                                    batch.stream().map(p -> p.right.block).collect(Collectors.toList()), tid.get(), x -> {}))
+                    // one signature for the batch where the server supports it, rather than one per block
+                    .thenCompose(v -> target.putRawBatch(owner, signer,
+                                    batch.stream().map(p -> p.right.block).collect(Collectors.toList()),
+                                    tid.get(), x -> {}, hasher)
                             .thenApply(res -> {
                                 batch.forEach(p -> p.right.progressMonitor.ifPresent(m -> m.accept((long) p.right.block.length)));
                                 return res;

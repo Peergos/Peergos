@@ -1,6 +1,7 @@
 package peergos.shared.storage;
 
 import peergos.shared.cbor.CborObject;
+import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.Cid;
 import peergos.shared.io.ipfs.Multihash;
@@ -116,6 +117,16 @@ public class RetryStorage implements ContentAddressedStorage {
     @Override
     public CompletableFuture<List<Cid>> put(PublicKeyHash owner, PublicKeyHash writer, List<byte[]> signatures, List<byte[]> blocks, TransactionId tid) {
         return runWithRetry(() -> target.put(owner, writer, signatures, blocks, tid));
+    }
+
+    @Override
+    public CompletableFuture<List<Cid>> putRawBatch(PublicKeyHash owner,
+                                                    SigningPrivateKeyAndPublicHash signer,
+                                                    List<byte[]> blocks,
+                                                    TransactionId tid,
+                                                    ProgressConsumer<Long> progress,
+                                                    Hasher hasher) {
+        return runWithRetry(() -> target.putRawBatch(owner, signer, blocks, tid, progress, hasher));
     }
 
     @Override

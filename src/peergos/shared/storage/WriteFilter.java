@@ -40,6 +40,22 @@ public class WriteFilter extends DelegatingStorage {
     }
 
     @Override
+    public CompletableFuture<List<PresignedUrl>> authWrites(PublicKeyHash owner,
+                                                            PublicKeyHash writer,
+                                                            BlockWriteAuth auth,
+                                                            boolean isRaw,
+                                                            TransactionId tid) {
+        long totalSize = auth.sizes.stream().mapToLong(Long::longValue).sum();
+        if (totalSize > Integer.MAX_VALUE)
+            throw new IllegalStateException("Total write size too large: " + totalSize);
+        if (! keyFilter.apply(owner, writer, (int) totalSize))
+            throw new IllegalStateException("Key not allowed to write to this server: " + writer);
+        if (auth.sizes.stream().anyMatch(s -> s > Fragment.MAX_LENGTH_WITH_BAT_PREFIX))
+            throw new IllegalStateException("Block too big!");
+        return dht.authWrites(owner, writer, auth, isRaw, tid);
+    }
+
+    @Override
     public ContentAddressedStorage directToOrigin() {
         return this;
     }

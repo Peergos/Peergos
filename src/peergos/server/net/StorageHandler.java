@@ -110,6 +110,17 @@ public class StorageHandler implements HttpHandler {
                     }).exceptionally(Futures::logAndThrow).get();
                     break;
                 }
+                case AUTH_WRITES_V2: {
+                    TransactionId tid = new TransactionId(last.apply("transaction"));
+                    PublicKeyHash writerHash = PublicKeyHash.fromString(last.apply("writer"));
+                    BlockWriteAuth auth = BlockWriteAuth.fromCbor(CborObject.fromByteArray(
+                            Serialize.readFully(httpExchange.getRequestBody(), HttpUtil.MAX_CONTROL_BODY_SIZE)));
+                    boolean isRaw = Boolean.parseBoolean(last.apply("raw"));
+                    dht.authWrites(ownerHash.get(), writerHash, auth, isRaw, tid).thenAccept(res -> {
+                        replyBytes(httpExchange, new CborObject.CborList(res).serialize(), Optional.empty());
+                    }).exceptionally(Futures::logAndThrow).get();
+                    break;
+                }
                 case AUTH_READS: {
                     CborObject cbor = CborObject.fromByteArray(Serialize.readFully(httpExchange.getRequestBody(),
                             HttpUtil.MAX_CONTROL_BODY_SIZE));

@@ -3,6 +3,7 @@ package peergos.shared.storage;
 import peergos.shared.*;
 import peergos.shared.cbor.*;
 import peergos.shared.corenode.*;
+import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.Cid;
 import peergos.shared.io.ipfs.Multihash;
@@ -21,6 +22,9 @@ import java.util.stream.*;
 public class DirectS3BlockStore implements ContentAddressedStorage {
 
     public static final int MAX_SMALL_BLOCK_SIZE = 100 * 1024;
+    /** A browser allows 6 connections per host, and the uploads are what should be using them. */
+    private static final int CONCURRENT_DIRECT_UPLOADS = 6;
+    private volatile boolean batchAuthSupported = true;
 
     private final boolean directWrites, publicReads, authedReads;
     private final Optional<String> basePublicReadUrl;
@@ -165,6 +169,84 @@ public class DirectS3BlockStore implements ContentAddressedStorage {
         });
     }
 
+    /** Authorise a whole batch of raw blocks with one signature, then upload them.
+     *
+     *  This is what makes the client's signing cost per call rather than per block. A server that
+     *  predates the v2 auth call answers 404, and we fall back to a signature each for the session.
+     */
+    @Override
+    public CompletableFuture<List<Cid>> putRawBatch(PublicKeyHash owner,
+                                                    SigningPrivateKeyAndPublicHash signer,
+                                                    List<byte[]> blocks,
+                                                    TransactionId tid,
+                                                    ProgressConsumer<Long> progressCounter,
+                                                    Hasher hasher) {
+        if (! batchAuthSupported || blocks.stream().allMatch(b -> b.length < MAX_SMALL_BLOCK_SIZE))
+            return ContentAddressedStorage.super.putRawBatch(owner, signer, blocks, tid, progressCounter, hasher);
+        return onOwnersNode(owner).thenCompose(ownersNode -> {
+            if (! ownersNode || ! directWrites)
+                return ContentAddressedStorage.super.putRawBatch(owner, signer, blocks, tid, progressCounter, hasher);
+            List<Long> sizes = blocks.stream().map(b -> (long) b.length).collect(Collectors.toList());
+            List<List<BatId>> batIds = blocks.stream().map(Bat::getRawBlockBats).collect(Collectors.toList());
+            return Futures.combineAllInOrder(blocks.stream()
+                            .map(b -> hasher.hash(b, true))
+                            .collect(Collectors.toList()))
+                    .thenCompose(hashes -> BlockWriteAuth.payload(hashes, hasher)
+                            .thenCompose(payload -> signer.secret.signMessage(payload))
+                            .thenApply(sig -> new BlockWriteAuth(hashes, sizes, batIds, (byte[]) sig)))
+                    .thenCompose(auth -> Futures.asyncExceptionally(
+                            () -> fallback.authWrites(owner, signer.publicKeyHash, auth, true, tid)
+                                    .thenCompose(preAuthed -> uploadToUrls(preAuthed, blocks, progressCounter)),
+                            t -> {
+                                if (! isUnsupported(t))
+                                    return Futures.errored(t);
+                                batchAuthSupported = false;
+                                return ContentAddressedStorage.super.putRawBatch(owner, signer, blocks, tid, progressCounter, hasher);
+                            }));
+        });
+    }
+
+    private static boolean isUnsupported(Throwable t) {
+        String msg = Exceptions.getRootCause(t).getMessage();
+        if (msg == null)
+            return false;
+        return msg.contains("Status code: 404") || msg.contains("Unimplemented call!");
+    }
+
+    /** Put each block to the url it was authorised for, a few at a time so a browser isn't starved of
+     *  connections. One auth call can now cover more blocks than we want to upload at once.
+     */
+    private CompletableFuture<List<Cid>> uploadToUrls(List<PresignedUrl> preAuthed,
+                                                      List<byte[]> blocks,
+                                                      ProgressConsumer<Long> progressCounter) {
+        AsyncSemaphore concurrency = new AsyncSemaphore(CONCURRENT_DIRECT_UPLOADS);
+        List<CompletableFuture<Cid>> futures = new ArrayList<>();
+        for (int i = 0; i < blocks.size(); i++) {
+            PresignedUrl url = preAuthed.get(i);
+            Cid targetName = keyToHash(url.base.substring(url.base.lastIndexOf("/") + 1));
+            Long size = (long) blocks.get(i).length;
+            int finalI = i;
+            // Allow at least 60s, plus 1ms per 50 bytes (~20KB/s minimum assumed throughput)
+            int timeoutMillis = (int) Math.max(60_000, size / 50);
+            CompletableFuture<Cid> work = concurrency.acquire()
+                    .thenCompose(v -> RetryStorage.runWithRetry(7,
+                                    () -> direct.put(url.base, blocks.get(finalI), url.fields, timeoutMillis))
+                            .thenApply(x -> {
+                                progressCounter.accept(size);
+                                return targetName;
+                            }));
+            work.exceptionally(t -> {
+                concurrency.release();
+                return null;
+            });
+            futures.add(work.thenApply(r -> {
+                concurrency.release();
+                return r;
+            }));
+        }
+        return Futures.combineAllInOrder(futures);
+    }
+
     private CompletableFuture<List<Cid>> bulkPutRaw(PublicKeyHash owner,
                                                     PublicKeyHash writer,
                                                     List<byte[]> signatures,
@@ -175,23 +257,8 @@ public class DirectS3BlockStore implements ContentAddressedStorage {
         List<Integer> sizes = blocks.stream().map(x -> x.length).collect(Collectors.toList());
         List<List<BatId>> batIds = blocks.stream().map(Bat::getRawBlockBats).collect(Collectors.toList());
         fallback.authWrites(owner, writer, signatures, sizes, batIds, true, tid)
-                .thenCompose(preAuthed -> {
-                    List<CompletableFuture<Cid>> futures = new ArrayList<>();
-                    for (int i = 0; i < blocks.size(); i++) {
-                        PresignedUrl url = preAuthed.get(i);
-                        Cid targetName = keyToHash(url.base.substring(url.base.lastIndexOf("/") + 1));
-                        Long size = (long) blocks.get(i).length;
-                        int finalI = i;
-                        // Allow at least 60s, plus 1ms per 50 bytes (~20KB/s minimum assumed throughput)
-                        int timeoutMillis = (int) Math.max(60_000, size / 50);
-                        futures.add(RetryStorage.runWithRetry(7, () -> direct.put(url.base, blocks.get(finalI), url.fields, timeoutMillis))
-                                .thenApply(x -> {
-                                    progressCounter.accept(size);
-                                    return targetName;
-                                }));
-                    }
-                    return Futures.combineAllInOrder(futures);
-                }).thenApply(res::complete)
+                .thenCompose(preAuthed -> uploadToUrls(preAuthed, blocks, progressCounter))
+                .thenApply(res::complete)
                 .exceptionally(res::completeExceptionally);
         return res;
     }

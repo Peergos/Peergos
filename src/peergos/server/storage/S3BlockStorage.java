@@ -694,25 +694,63 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                 Cid cid = new Cid(1, codec, Multihash.Type.sha2_256, writer.unsignMessage(signedHashes.get(i)).join());
                 blockProps.add(new Pair<>(cid, new BlockMetadata(blockSizes.get(i), Collections.emptyList(), batIds.get(i))));
             }
-            List<PresignedUrl> res = new ArrayList<>();
-            for (Pair<Cid, BlockMetadata> props : blockProps) {
-                if (props.left.type != Multihash.Type.sha2_256)
-                    throw new IllegalStateException("Can only pre-auth writes of sha256 hashed blocks!");
-                transactions.addBlock(props.left, tid, owner);
-                String s3Key = hashToKey(owner, props.left);
-                String contentSha256 = ArrayOps.bytesToHex(props.left.getHash());
-                Map<String, String> extraHeaders = new LinkedHashMap<>();
-                extraHeaders.put("Content-Type", "application/octet-stream");
-                res.add(S3Request.preSignPut(folder + s3Key, props.right.size, contentSha256, storageClass, false,
-                        S3AdminRequests.asAwsDate(ZonedDateTime.now()), host, extraHeaders, region, accessKeyId, secretKey, useHttps, hasher).join());
-                blockPutAuths.inc();
-                if (isRaw)
-                    blockMetadata.put(owner, props.left, null, props.right);
-            }
-            return Futures.of(res);
+            return Futures.of(preSignPuts(owner, blockProps, isRaw, tid));
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
+    }
+
+    /** The v2 auth call: one signature over the ordered hashes, instead of one signature per block.
+     *
+     *  The hashes are sent explicitly here because the signature is no longer carrying them, so they
+     *  have to be checked against what the writer actually signed before any url is issued.
+     */
+    @Override
+    public CompletableFuture<List<PresignedUrl>> authWrites(PublicKeyHash owner,
+                                                            PublicKeyHash writerHash,
+                                                            BlockWriteAuth auth,
+                                                            boolean isRaw,
+                                                            TransactionId tid) {
+        try {
+            if (auth.hashes.size() > MAX_BLOCK_AUTHS)
+                throw new IllegalStateException("Too many writes to auth!");
+            if (! isRaw)
+                throw new IllegalStateException("Only raw blocks can be pre-authed for writes");
+            PublicSigningKey writer = getSigningKey(owner, writerHash).get().get();
+            byte[] expected = BlockWriteAuth.payload(auth.hashes, hasher).join();
+            byte[] signed = writer.unsignMessage(auth.signature).join();
+            if (! Arrays.equals(signed, expected))
+                throw new IllegalStateException("Invalid signature for block write auth!");
+            List<Pair<Cid, BlockMetadata>> blockProps = new ArrayList<>();
+            for (int i = 0; i < auth.hashes.size(); i++)
+                blockProps.add(new Pair<>(auth.hashes.get(i),
+                        new BlockMetadata(auth.sizes.get(i).intValue(), Collections.emptyList(), auth.batIds.get(i))));
+            return Futures.of(preSignPuts(owner, blockProps, isRaw, tid));
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    private List<PresignedUrl> preSignPuts(PublicKeyHash owner,
+                                           List<Pair<Cid, BlockMetadata>> blockProps,
+                                           boolean isRaw,
+                                           TransactionId tid) {
+        List<PresignedUrl> res = new ArrayList<>();
+        for (Pair<Cid, BlockMetadata> props : blockProps) {
+            if (props.left.type != Multihash.Type.sha2_256)
+                throw new IllegalStateException("Can only pre-auth writes of sha256 hashed blocks!");
+            transactions.addBlock(props.left, tid, owner);
+            String s3Key = hashToKey(owner, props.left);
+            String contentSha256 = ArrayOps.bytesToHex(props.left.getHash());
+            Map<String, String> extraHeaders = new LinkedHashMap<>();
+            extraHeaders.put("Content-Type", "application/octet-stream");
+            res.add(S3Request.preSignPut(folder + s3Key, props.right.size, contentSha256, storageClass, false,
+                    S3AdminRequests.asAwsDate(ZonedDateTime.now()), host, extraHeaders, region, accessKeyId, secretKey, useHttps, hasher).join());
+            blockPutAuths.inc();
+            if (isRaw)
+                blockMetadata.put(owner, props.left, null, props.right);
+        }
+        return res;
     }
 
     @Override

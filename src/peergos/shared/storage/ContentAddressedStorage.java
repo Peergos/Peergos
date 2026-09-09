@@ -73,6 +73,35 @@ public interface ContentAddressedStorage {
         return Futures.errored(new IllegalStateException("Unimplemented call!"));
     }
 
+    /** Authorise a batch of raw block writes with one signature over the whole list, rather than one
+     *  signature per block. The v1 call above is unchanged and still served.
+     */
+    default CompletableFuture<List<PresignedUrl>> authWrites(PublicKeyHash owner,
+                                                             PublicKeyHash writer,
+                                                             BlockWriteAuth auth,
+                                                             boolean isRaw,
+                                                             TransactionId tid) {
+        return Futures.errored(new IllegalStateException("Unimplemented call!"));
+    }
+
+    /** Write raw blocks that are too big to travel inside a commit.
+     *
+     *  Takes the signer rather than a signature per block, because authorisation here is per batch:
+     *  where the server supports it this costs one signature per call instead of one per block.
+     *  The default keeps the old behaviour, so a store that doesn't override it is unaffected.
+     */
+    default CompletableFuture<List<Cid>> putRawBatch(PublicKeyHash owner,
+                                                     SigningPrivateKeyAndPublicHash signer,
+                                                     List<byte[]> blocks,
+                                                     TransactionId tid,
+                                                     ProgressConsumer<Long> progress,
+                                                     Hasher hasher) {
+        return Futures.combineAllInOrder(blocks.stream()
+                        .map(b -> hasher.sha256(b).thenCompose(h -> signer.secret.signMessage(h)))
+                        .collect(Collectors.toList()))
+                .thenCompose(sigs -> putRaw(owner, signer.publicKeyHash, sigs, blocks, tid, progress));
+    }
+
     /** Apply a whole logical write - every block and every pointer update it consists of - in one call.
      *
      *  The server verifies the commit is closed and that every block is reachable from the newly signed
@@ -318,6 +347,7 @@ public interface ContentAddressedStorage {
         public static final String BLOCKSTORE_PROPERTIES = "blockstore/props";
         public static final String AUTH_READS = "blockstore/auth-reads";
         public static final String AUTH_WRITES = "blockstore/auth";
+        public static final String AUTH_WRITES_V2 = "blockstore/auth/v2";
         public static final String TRANSACTION_START = "transaction/start";
         public static final String TRANSACTION_CLOSE = "transaction/close";
         public static final String CHAMP_GET = "champ/get";
@@ -436,6 +466,24 @@ public interface ContentAddressedStorage {
                     + "&transaction=" + encode(tid.toString())
                     + "&raw=" + isRaw, req.serialize(), 60_000)
                     .thenApply(raw -> ((CborObject.CborList)CborObject.fromByteArray(raw)).value
+                            .stream()
+                            .map(PresignedUrl::fromCbor)
+                            .collect(Collectors.toList()));
+        }
+
+        @Override
+        public CompletableFuture<List<PresignedUrl>> authWrites(PublicKeyHash owner,
+                                                                PublicKeyHash writer,
+                                                                BlockWriteAuth auth,
+                                                                boolean isRaw,
+                                                                TransactionId tid) {
+            if (! isPeergosServer)
+                return Futures.errored(new IllegalStateException("Cannot auth writes when not talking to a Peergos server!"));
+            return poster.postUnzip(apiPrefix + AUTH_WRITES_V2 + "?owner=" + encode(owner.toString())
+                            + "&writer=" + encode(writer.toString())
+                            + "&transaction=" + encode(tid.toString())
+                            + "&raw=" + isRaw, auth.serialize(), 60_000)
+                    .thenApply(raw -> ((CborObject.CborList) CborObject.fromByteArray(raw)).value
                             .stream()
                             .map(PresignedUrl::fromCbor)
                             .collect(Collectors.toList()));
@@ -767,6 +815,15 @@ public interface ContentAddressedStorage {
                                                                 boolean isRaw,
                                                                 TransactionId tid) {
             return local.authWrites(owner, writer, signedHashes, blockSizes, batIds, isRaw, tid);
+        }
+
+        @Override
+        public CompletableFuture<List<PresignedUrl>> authWrites(PublicKeyHash owner,
+                                                                PublicKeyHash writer,
+                                                                BlockWriteAuth auth,
+                                                                boolean isRaw,
+                                                                TransactionId tid) {
+            return local.authWrites(owner, writer, auth, isRaw, tid);
         }
 
         @Override
