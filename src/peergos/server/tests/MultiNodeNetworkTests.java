@@ -8,6 +8,9 @@ import peergos.server.*;
 import peergos.server.corenode.CorenodeEventPropagator;
 import peergos.server.corenode.MirrorCoreNode;
 import peergos.server.corenode.SignUpFilter;
+import com.webauthn4j.data.client.Origin;
+import peergos.server.login.JdbcAccount;
+import peergos.server.sql.SqliteCommands;
 import peergos.server.space.*;
 import peergos.server.storage.*;
 import peergos.server.tests.util.*;
@@ -167,28 +170,29 @@ public class MultiNodeNetworkTests {
                 .with("mirror.bat", mirrorBat.encode())
                 .with("login-keypair", loginKeys.toString()));
         startServer(i);
-        awaitFirstMirroringPass(i, user);
+        awaitFirstMirroringPass(i, username, loginKeys);
         return loginKeys;
     }
 
     /** Wait for the mirroring pass started at boot, rather than guessing how long it takes.
      *
-     *  It walks every owned key and only then stores the login data, so a pass that has run out of
-     *  time leaves the pointers mirrored and the login data missing. getSize is answered by our own
-     *  blockstore without proxying, which is what makes it a usable measure of the mirror's progress.
+     *  It walks every owned key and stores the login data only once that is done, so a pass that has
+     *  run out of time leaves the pointers mirrored and the login data missing. Asking this node for
+     *  the login data over the network would be answered by the home server, which is still up, so
+     *  read the row straight out of the mirror's own account table instead.
      */
-    private void awaitFirstMirroringPass(int i, UserContext user) throws Exception {
-        PublicKeyHash owner = user.signer.publicKeyHash;
-        MaybeMultihash root = user.network.mutable.getPointerTarget(owner, owner, user.network.dhtClient).join().updated;
-        for (int attempt = 0; attempt < 150; attempt++) {
-            if (root.isPresent() && getService(i).storage.getSize(owner, root.get()).join().isPresent()) {
-                // the login data is written just after the last subspace this was part of
-                Thread.sleep(10_000);
+    private void awaitFirstMirroringPass(int i, String username, SigningKeyPair loginKeys) throws Exception {
+        JdbcAccount mirrored = new JdbcAccount(Builder.getDBConnector(argsToCleanUp.get(i), "account-sql-file"),
+                new SqliteCommands(), new Origin("https://localhost"), "localhost");
+        for (int attempt = 0; attempt < 300; attempt++) {
+            try {
+                mirrored.getEntryData(username, loginKeys.publicSigningKey).join();
                 return;
+            } catch (Exception notYet) {
+                Thread.sleep(1_000);
             }
-            Thread.sleep(1_000);
         }
-        throw new IllegalStateException("Mirroring pass didn't reach " + user.username + "'s root in time");
+        throw new IllegalStateException("Mirroring pass didn't store " + username + "'s login data in time");
     }
 
     /** What a read did, rather than only whether the test survived it. */
