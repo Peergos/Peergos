@@ -556,12 +556,22 @@ public class Main extends Builder {
             ).collect(Collectors.toList())
     );
 
+    public static final Command<Boolean> MIGRATE_FORCE = new Command<>("force",
+            "Move a Peergos account to this server without their home server, which must be unreachable.\n" +
+            "            This requires the user to already be mirrored here, and to have quota on this server.",
+            Migrate::forceMigrate,
+            Stream.of(
+                      new Command.Arg("peergos-url", "Address of the Peergos server to migrate to", false, "http://localhost:8000")
+            ).collect(Collectors.toList())
+    );
+
     public static final Command<Boolean> MIGRATE = new Command<>("migrate",
             "Move a Peergos account to this server.",
             Main::migrate,
             Stream.of(
                       new Command.Arg("peergos-url", "Address of the Peergos server to migrate to", false, "http://localhost:8000")
-            ).collect(Collectors.toList())
+            ).collect(Collectors.toList()),
+            Arrays.asList(MIGRATE_FORCE)
     );
 
     public static final Command<Boolean> HOME = new Command<>("update-home-server-id",
@@ -997,7 +1007,26 @@ public class Main extends Builder {
             Path blacklistPath = a.fromPeergosDir("blacklist_file", "blacklist.txt");
             PublicKeyBlackList blacklist = new UserBasedBlacklist(blacklistPath, core, localMutable, localStorage, hasher);
             MutablePointers blockingMutablePointers = new BlockingMutablePointers(localMutable, blacklist);
-            MutablePointers p2mMutable = new ProxyingMutablePointers(nodeIds, core, blockingMutablePointers, proxingMutable);
+            // We only mirror the data of a user we have given quota, which is what makes our copy of
+            // their pointers and login data usable when their home server can't be reached
+            LRUCache<PublicKeyHash, Boolean> mirrored = new LRUCache<>(100);
+            Function<PublicKeyHash, Boolean> weMirror = owner -> {
+                synchronized (mirrored) {
+                    if (mirrored.containsKey(owner))
+                        return mirrored.get(owner);
+                }
+                boolean hasQuota;
+                try {
+                    hasQuota = userQuotas.getQuota(core.getUsername(owner).join()) > 0;
+                } catch (Exception e) {
+                    hasQuota = false;
+                }
+                synchronized (mirrored) {
+                    mirrored.put(owner, hasQuota);
+                }
+                return hasQuota;
+            };
+            MutablePointers p2mMutable = new ProxyingMutablePointers(nodeIds, core, blockingMutablePointers, proxingMutable, weMirror);
 
             SocialNetworkProxy httpSocial = new HttpSocialNetwork(p2pHttpProxy, p2pHttpProxy);
 
@@ -1012,7 +1041,7 @@ public class Main extends Builder {
             Admin storageAdmin = new Admin(adminUsernames, userQuotas, core, localStorage, enableWaitlist);
             ProxyingSpaceUsage p2pSpaceUsage = new ProxyingSpaceUsage(nodeIds, corePropagator, spaceChecker, httpSpaceUsage);
 
-            Account p2pAccount = new ProxyingAccount(nodeIds, core, account, accountProxy);
+            Account p2pAccount = new ProxyingAccount(nodeIds, core, account, accountProxy, weMirror);
             boolean isPublicServer = a.getBoolean("public-server", false);
             boolean allowExternalLogin = a.getBoolean("allow-external-login", !isPublicServer);
             LocalOnlyAccount verifyingAccount = new LocalOnlyAccount(new VerifyingAccount(p2pAccount, core, localStorage), userQuotas, core, nodeIds, allowExternalLogin);
@@ -1289,7 +1318,7 @@ public class Main extends Builder {
                 return false;
             }
             System.out.println("Migrating user from node " + currentStorageNodeId + " to " + newStorageNodeId);
-            List<UserPublicKeyLink> newChain = Migrate.buildMigrationChain(existing, newStorageNodeId, user.signer.secret).join();
+            List<UserPublicKeyLink> newChain = peergos.shared.user.Migrate.buildMigrationChain(existing, newStorageNodeId, user.signer.secret).join();
             user.ensureMirrorId().join().get();
             Optional<BatWithId> current = user.getMirrorBat().join();
             long usage = user.getSpaceUsage(false).join();

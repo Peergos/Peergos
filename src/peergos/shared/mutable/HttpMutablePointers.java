@@ -91,13 +91,19 @@ public class HttpMutablePointers implements MutablePointersProxy {
 
     @Override
     public CompletableFuture<Optional<byte[]>> getPointer(Multihash targetId, PublicKeyHash owner, PublicKeyHash writer) {
-        return getPointer(getProxyUrlPrefix(targetId), p2p, owner, writer);
+        // bounded, because whoever asked us has a mirror to fall back on and a finite patience
+        return getPointer(getProxyUrlPrefix(targetId), p2p, owner, writer, Constants.PROXIED_READ_TIMEOUT_MILLIS);
     }
 
     public CompletableFuture<Optional<byte[]>> getPointer(String urlPrefix, HttpPoster poster, PublicKeyHash owner, PublicKeyHash writer) {
+        return getPointer(urlPrefix, poster, owner, writer, HttpPoster.DEFAULT_TIMEOUT_MILLIS);
+    }
+
+    public CompletableFuture<Optional<byte[]>> getPointer(String urlPrefix, HttpPoster poster, PublicKeyHash owner, PublicKeyHash writer, int timeoutMillis) {
         long t1 = System.currentTimeMillis();
         try {
-            return poster.get(urlPrefix + Constants.MUTABLE_POINTERS_URL + "getPointer?owner=" + owner + "&writer=" + writer)
+            return poster.postUnzip(urlPrefix + Constants.MUTABLE_POINTERS_URL + "getPointer?owner=" + owner + "&writer=" + writer,
+                            new byte[0], timeoutMillis)
                     .thenApply(meta -> meta.length == 0 ? Optional.empty() : Optional.of(meta));
         } catch (Exception ioe) {
             LOG.log(Level.WARNING, ioe.getMessage(), ioe);

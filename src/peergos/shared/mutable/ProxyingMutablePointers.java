@@ -6,6 +6,7 @@ import peergos.shared.io.ipfs.*;
 
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.function.*;
 
 public class ProxyingMutablePointers implements MutablePointers {
 
@@ -13,12 +14,18 @@ public class ProxyingMutablePointers implements MutablePointers {
     private final CoreNode core;
     private final MutablePointers local;
     private final MutablePointersProxy p2p;
+    private final Function<PublicKeyHash, Boolean> weMirror;
 
-    public ProxyingMutablePointers(List<Cid> serverIds, CoreNode core, MutablePointers local, MutablePointersProxy p2p) {
+    public ProxyingMutablePointers(List<Cid> serverIds,
+                                   CoreNode core,
+                                   MutablePointers local,
+                                   MutablePointersProxy p2p,
+                                   Function<PublicKeyHash, Boolean> weMirror) {
         this.serverIds = serverIds;
         this.core = core;
         this.local = local;
         this.p2p = p2p;
+        this.weMirror = weMirror;
     }
 
     @Override
@@ -41,15 +48,17 @@ public class ProxyingMutablePointers implements MutablePointers {
 
     @Override
     public CompletableFuture<Optional<byte[]>> getPointer(PublicKeyHash owner, PublicKeyHash writer) {
-        return Proxy.redirectCall(core,
+        // a pointer can go stale, so our mirror of it is only used when the home server can't be reached
+        return Proxy.redirectCallWithMirrorFallback(core,
                 serverIds,
                 owner,
                 () -> local.getPointer(owner, writer),
-                target -> p2p.getPointer(target, owner, writer));
+                target -> p2p.getPointer(target, owner, writer),
+                weMirror);
     }
 
     @Override
     public MutablePointers clearCache() {
-        return new ProxyingMutablePointers(serverIds, core, local.clearCache(), p2p);
+        return new ProxyingMutablePointers(serverIds, core, local.clearCache(), p2p, weMirror);
     }
 }

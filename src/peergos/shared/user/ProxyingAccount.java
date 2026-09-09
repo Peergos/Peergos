@@ -2,12 +2,14 @@ package peergos.shared.user;
 
 import peergos.shared.corenode.*;
 import peergos.shared.crypto.asymmetric.*;
+import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.*;
 import peergos.shared.login.mfa.*;
 import peergos.shared.util.*;
 
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.function.*;
 
 public class ProxyingAccount implements Account {
 
@@ -15,12 +17,18 @@ public class ProxyingAccount implements Account {
     private final CoreNode core;
     private final Account local;
     private final AccountProxy p2p;
+    private final Function<PublicKeyHash, Boolean> weMirror;
 
-    public ProxyingAccount(List<Cid> serverIds, CoreNode core, Account local, AccountProxy p2p) {
+    public ProxyingAccount(List<Cid> serverIds,
+                           CoreNode core,
+                           Account local,
+                           AccountProxy p2p,
+                           Function<PublicKeyHash, Boolean> weMirror) {
         this.serverIds = serverIds;
         this.core = core;
         this.local = local;
         this.p2p = p2p;
+        this.weMirror = weMirror;
     }
 
     @Override
@@ -42,11 +50,14 @@ public class ProxyingAccount implements Account {
                                                                                           boolean cacheMfaLoginData,
                                                                                           boolean forceProxy,
                                                                                           boolean forceNoCache) {
-        return core.getPublicKeyHash(username).thenCompose(idOpt -> Proxy.redirectCall(core,
+        // a mirror of the login data is only used when the home server can't be reached, and only holds
+        // an entry at all for a user without 2FA, whose login data we were able to mirror
+        return core.getPublicKeyHash(username).thenCompose(idOpt -> Proxy.redirectCallWithMirrorFallback(core,
                 serverIds,
                 idOpt.get(),
                 () -> local.getLoginData(username, authorisedReader, auth, mfa, false, forceProxy, forceNoCache),
-                target -> p2p.getLoginData(target, username, authorisedReader, auth, mfa)));
+                target -> p2p.getLoginData(target, username, authorisedReader, auth, mfa),
+                weMirror));
     }
 
     @Override

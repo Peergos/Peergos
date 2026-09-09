@@ -672,6 +672,19 @@ public interface ContentAddressedStorage {
             return new Proxying(local.directToOrigin(), p2p, ourNodeIds, core, allowNonLocalLinks, allowNonlocalP2p, isLocal);
         }
 
+        /** Whether we hold a mirror of this user's data, which we only do for users we have given quota.
+         *
+         *  This is asked of every owner whose home server isn't us, including keys the pki has never
+         *  seen, so an unknown owner is one we have nothing for rather than an error.
+         */
+        private boolean weMirror(PublicKeyHash owner) {
+            try {
+                return isLocal.apply(owner);
+            } catch (Exception e) {
+                return false;
+            }
+        }
+
         @Override
         public CompletableFuture<Cid> id() {
             return local.id();
@@ -744,11 +757,13 @@ public interface ContentAddressedStorage {
             if (! allowNonlocalP2p)
                 return local.getChampLookup(owner, root, caps, committedRoot);
 
-            return Proxy.redirectCall(core,
+            return Proxy.redirectRead(core,
                     ourNodeIds,
                     owner,
                     () -> local.getChampLookup(owner, root, caps, committedRoot),
-                    target -> p2p.getChampLookup(target, owner, root, caps));
+                    target -> p2p.getChampLookup(target, owner, root, caps),
+                    this::weMirror,
+                    res -> ! res.isEmpty());
         }
 
         @Override
@@ -782,11 +797,13 @@ public interface ContentAddressedStorage {
             if (! allowNonlocalP2p)
                 return local.get(owner, object, bat);
 
-            return Proxy.redirectCall(core,
+            return Proxy.redirectRead(core,
                     ourNodeIds,
                     owner,
                     () -> local.get(owner, object, bat),
-                    target -> p2p.get(target, owner, object, bat));
+                    target -> p2p.get(target, owner, object, bat),
+                    this::weMirror,
+                    Optional::isPresent);
         }
 
         @Override
@@ -794,11 +811,13 @@ public interface ContentAddressedStorage {
             if (! allowNonlocalP2p)
                 return local.getRaw(owner, object, bat);
 
-            return Proxy.redirectCall(core,
+            return Proxy.redirectRead(core,
                     ourNodeIds,
                     owner,
                     () -> local.getRaw(owner, object, bat),
-                    target -> p2p.getRaw(target, owner, object, bat));
+                    target -> p2p.getRaw(target, owner, object, bat),
+                    this::weMirror,
+                    Optional::isPresent);
         }
 
         @Override

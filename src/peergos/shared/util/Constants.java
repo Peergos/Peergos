@@ -5,6 +5,15 @@ public class Constants {
     public static final String PEERGOS_API_PREFIX = "peergos/v0/";
     public static final String ADMIN_URL = PEERGOS_API_PREFIX + "admin/";
     public static final String BATS_URL = PEERGOS_API_PREFIX + "bats/";
+    /** How long to give a read proxied to a user's home server before falling back to our mirror.
+     *
+     *  It has to be comfortably less than the budget of the request we are answering, or the caller
+     *  gives up before the fallback we have is ever tried: a home server that has just died is not
+     *  reported unreachable until the dial times out, which takes longer than a default request
+     *  allows. Only reads with a local copy to fall back on use this.
+     */
+    public static final int PROXIED_READ_TIMEOUT_MILLIS = 5_000;
+
     public static final String MUTABLE_POINTERS_URL = PEERGOS_API_PREFIX + "mutable/";
     public static final String LOGIN_URL = PEERGOS_API_PREFIX + "login/";
     public static final String CORE_URL = PEERGOS_API_PREFIX + "core/";

@@ -1270,7 +1270,7 @@ public class UserContext {
                 });
     }
 
-    private static CompletableFuture<Boolean> updateChainWithRetry(String username,
+    public static CompletableFuture<Boolean> updateChainWithRetry(String username,
                                                                    List<UserPublicKeyLink> claimChain,
                                                                    String token,
                                                                    Hasher hasher,

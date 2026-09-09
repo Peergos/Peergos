@@ -8,6 +8,7 @@ import peergos.server.*;
 import peergos.server.corenode.CorenodeEventPropagator;
 import peergos.server.corenode.MirrorCoreNode;
 import peergos.server.corenode.SignUpFilter;
+import peergos.server.space.*;
 import peergos.server.storage.*;
 import peergos.server.tests.util.*;
 import peergos.server.util.*;
@@ -145,6 +146,50 @@ public class MultiNodeNetworkTests {
 
     private UserService getService(int i)  {
         return services.get(i).localApi;
+    }
+
+    /** Restart a node as a mirror of a user, the way an admin would before taking them over.
+     *
+     *  These are the arguments `mirror init` tells you to give the daemon. The mirroring thread
+     *  runs once at startup and then hourly, so it only has to be given time to do the first pass.
+     */
+    private SigningKeyPair mirrorUserOn(int i, String username, String password, UserContext user) throws Exception {
+        WriterData userData = WriterData.fromCbor(UserContext.getWriterDataCbor(getNode(i), username).join().right);
+        SigningKeyPair loginKeys = UserUtil.generateUser(username, password, crypto,
+                userData.generationAlgorithm.get()).join().getUser();
+        BatWithId mirrorBat = user.getMirrorBat().join().get();
+        stopServer(i);
+        // rotateServerIdentity rebuilds the args from the node's config file on disk, so the
+        // mirror arguments have to be added after it or they are discarded
+        rotateServerIdentity(i);
+        argsToCleanUp.set(i, argsToCleanUp.get(i)
+                .with("mirror.username", username)
+                .with("mirror.bat", mirrorBat.encode())
+                .with("login-keypair", loginKeys.toString()));
+        startServer(i);
+        Thread.sleep(20_000); // let the first mirroring pass finish
+        return loginKeys;
+    }
+
+    /** What a read did, rather than only whether the test survived it. */
+    private static String describe(java.util.function.Supplier<String> read) {
+        try {
+            return read.get();
+        } catch (Throwable t) {
+            return "FAILED: " + peergos.shared.util.Exceptions.getRootCause(t);
+        }
+    }
+
+    /** Give a user quota on a node they did not sign up to, which is what makes it mirror them. */
+    private void giveQuota(int i, String username, long bytes) {
+        // the args a node was started with are the raw ones, without the defaults the command
+        // machinery fills in, so name the quota db the same way Main declares it
+        Args nodeArgs = argsToCleanUp.get(i)
+                .with("quotas-sql-file", argsToCleanUp.get(i).getArg("quotas-sql-file", "quotas.sql"));
+        JdbcQuotas quotas = JdbcQuotas.build(Builder.getDBConnector(nodeArgs, "quotas-sql-file"),
+                Builder.getSqlCommands(nodeArgs));
+        if (! quotas.setQuota(username, bytes))
+            throw new IllegalStateException("Could not give " + username + " quota on node " + i);
     }
 
     @BeforeClass
@@ -291,7 +336,7 @@ public class MultiNodeNetworkTests {
 
         // migrate to node2
         List<UserPublicKeyLink> existing = user.network.coreNode.getChain(username).join();
-        List<UserPublicKeyLink> newChain = Migrate.buildMigrationChain(existing, newStorageNodeId, user.signer.secret).join();
+        List<UserPublicKeyLink> newChain = peergos.shared.user.Migrate.buildMigrationChain(existing, newStorageNodeId, user.signer.secret).join();
         UserContext userViaNewServer = ensureSignedUp(username, password, node2, crypto);
 
         List<BatWithId> bats = node1.batCave.getUserBats(username, userViaNewServer.signer).join();
@@ -397,6 +442,92 @@ public class MultiNodeNetworkTests {
         List<UserPublicKeyLink> chain = userViaNewServer.network.coreNode.getChain(username).join();
         Multihash storageNode = chain.get(chain.size() - 1).claim.storageProviders.stream().findFirst().get();
         Assert.assertTrue(storageNode.equals(originalNodeId));
+    }
+
+    /** Take over a user whose home server is unreachable, from our mirror of their data.
+     *
+     *  The chain assertion reads from the pki node rather than either mirror, so a stale mirror
+     *  cannot make this pass or fail for the wrong reason.
+     */
+    @Test
+    public void forceMigrateFromUnreachableHome() throws Exception {
+        if (iNode1 == 0 || iNode2 == 0)
+            return; // Don't test migration to/from pki node
+        String username = generateUsername(random);
+        String password = randomString();
+        NetworkAccess node1 = getNode(iNode1);
+
+        UserContext user = ensureSignedUp(username, password, node1, crypto);
+        String filename = "somedata.bin";
+        byte[] data = new byte[1024 * 1024];
+        new Random(42).nextBytes(data);
+        user.getUserRoot().join().uploadOrReplaceFile(filename, AsyncReader.build(data),
+                data.length, user.network, crypto, () -> false, x -> {}).join();
+        updatePkis();
+
+        // A forced migration reads the user out of the target's mirror, so the target has to be a
+        // real mirror of them: given them quota, and running the daemon's mirror thread for them.
+        // Quota goes first so a negative answer never lands in the weMirror cache.
+        giveQuota(iNode2, username, 1024L * 1024 * 1024);
+        SigningKeyPair loginKeys = mirrorUserOn(iNode2, username, password, user);
+        NetworkAccess node2 = getNode(iNode2);
+        Multihash newStorageNodeId = node2.dhtClient.id().join();
+
+        // it refuses to migrate a user to the server they are already on
+        Assert.assertFalse(peergos.server.Migrate.forceMigrate(username, () -> password, () -> true, node1, crypto));
+
+        stopServer(iNode1);
+        try {
+            // What a forced migration needs from the mirror, asserted separately so that a failure
+            // here is not reported as the migration failing. Both are answered by this node's own
+            // copy: the home server they would otherwise be proxied to is down.
+            PublicKeyHash owner = user.signer.publicKeyHash;
+            String pointerRead = describe(() -> node2.mutable.getPointer(owner, owner).join()
+                    .map(p -> p.length + " bytes").orElse("no pointer"));
+            String loginRead = describe(() -> node2.account.getLoginData(username, loginKeys.publicSigningKey,
+                    TimeLimitedClient.signNow(loginKeys.secretSigningKey).join(), Optional.empty(),
+                    false, false, true).join().isA() ? "login data present" : "2fa required");
+            System.out.println("  from the mirror, pointer: " + pointerRead);
+            System.out.println("  from the mirror, login:   " + loginRead);
+            Assert.assertTrue("pointer served from the mirror: " + pointerRead, pointerRead.endsWith(" bytes"));
+            Assert.assertEquals("login data present", loginRead);
+
+            // saying no at the warning leaves the user where they are
+            Assert.assertFalse(peergos.server.Migrate.forceMigrate(username, () -> password, () -> false, node2, crypto));
+            List<UserPublicKeyLink> declined = getNode(0).coreNode.getChain(username).join();
+            Assert.assertNotEquals(newStorageNodeId,
+                    declined.get(declined.size() - 1).claim.storageProviders.stream().findFirst().get());
+
+            Assert.assertTrue(peergos.server.Migrate.forceMigrate(username, () -> password, () -> true, node2, crypto));
+
+            List<UserPublicKeyLink> chain = getNode(0).coreNode.getChain(username).join();
+            Multihash storageNode = chain.get(chain.size() - 1).claim.storageProviders.stream().findFirst().get();
+            Assert.assertEquals(newStorageNodeId, storageNode);
+
+            // a fresh login on the new home server, with the old one still down
+            UserContext postMigration = ensureSignedUp(username, password, node2.clear(), crypto);
+            FileWrapper migrated = postMigration.getByPath("/" + username + "/" + filename).join().get();
+            Assert.assertEquals(data.length, migrated.getSize());
+        } finally {
+            // Restarting only works through an identity rotation, and a failure here must not
+            // replace whatever the test was actually asserting.
+            try {
+                rotateServerIdentity(iNode1);
+                startServer(iNode1);
+            } catch (Throwable t) {
+                System.err.println("Could not restart node " + iNode1 + " after the migration test");
+                t.printStackTrace();
+            }
+        }
+    }
+
+    /** An unknown user is refused rather than migrated. */
+    @Test
+    public void forceMigrateUnknownUser() {
+        if (iNode1 == 0 || iNode2 == 0)
+            return;
+        Assert.assertFalse(peergos.server.Migrate.forceMigrate(generateUsername(random), () -> randomString(),
+                () -> true, getNode(iNode2), crypto));
     }
 
     @Test
