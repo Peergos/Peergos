@@ -6,6 +6,7 @@ import peergos.server.JavaCrypto;
 import peergos.server.Main;
 import peergos.server.sync.*;
 import peergos.server.sync.SyncFilesystem.FileProps;
+import peergos.shared.user.fs.ThumbnailGenerator;
 import peergos.shared.Crypto;
 import peergos.shared.MaybeMultihash;
 import peergos.shared.crypto.hash.PublicKeyHash;
@@ -38,6 +39,37 @@ import java.util.stream.Stream;
 public class SyncTests {
 
     private static Crypto crypto = JavaCrypto.init();
+
+    /** ffmpeg is linked into this process, so a file it can't parse doesn't lose a thumbnail, it takes
+     *  the server down with an assertion. Syncing a folder must not hand it everything in there.
+     */
+    @Test
+    public void onlyVideosReachTheVideoThumbnailer() throws Exception {
+        List<String> sentToFfmpeg = new ArrayList<>();
+        ThumbnailGenerator.VideoGenerator videos = ThumbnailGenerator.getVideo();
+        ThumbnailGenerator.setVideoInstance(f -> {
+            sentToFfmpeg.add(f.getName());
+            return Optional.empty();
+        });
+        ThumbnailGenerator.setInstance(bytes -> Optional.empty());
+        try {
+            Path dir = Files.createTempDirectory("peergos-thumbnails");
+            Files.write(dir.resolve("notes.txt"), "text, and definitely not a video".repeat(20).getBytes());
+            Files.write(dir.resolve("archive.zip"), new byte[]{'P', 'K', 3, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0});
+            byte[] mp4 = new byte[64];
+            System.arraycopy(new byte[]{0, 0, 0, 0x18, 'f', 't', 'y', 'p', 'm', 'p', '4', '2'}, 0, mp4, 0, 12);
+            Files.write(dir.resolve("clip.mp4"), mp4);
+
+            LocalFileSystem fs = new LocalFileSystem(dir, Main.initCrypto().hasher);
+            for (String name : List.of("notes.txt", "archive.zip", "clip.mp4"))
+                fs.getThumbnail(PathUtil.get(name));
+
+            Assert.assertEquals("only the video is handed to ffmpeg",
+                    List.of("clip.mp4"), sentToFfmpeg);
+        } finally {
+            ThumbnailGenerator.setVideoInstance(videos);
+        }
+    }
 
     @Test
     public void rename() throws Exception {

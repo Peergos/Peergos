@@ -238,8 +238,20 @@ public class LocalFileSystem implements SyncFilesystem {
                     fullPath.getFileName().toString());
             if (mimeType.startsWith("image/"))
                 return ThumbnailGenerator.get().generateThumbnail(Files.readAllBytes(fullPath));
+            if (mimeType.startsWith("audio/mpeg")) {
+                // cover art comes out in Java, the same way an upload gets it
+                Mp3CoverImage cover = Mp3CoverImage.extractCoverArt(Files.readAllBytes(fullPath));
+                return cover.imageData == null ?
+                        Optional.empty() :
+                        ThumbnailGenerator.get().generateThumbnail(cover.imageData);
+            }
+            // Anything else used to end up here, which handed every file in a synced folder to
+            // ffmpeg. It is linked into this process, so one of its assertions failing on a file it
+            // can't parse takes the whole server down mid sync rather than losing one thumbnail.
+            if (mimeType.startsWith("video/"))
+                return ThumbnailGenerator.getVideo().generateVideoThumbnail(fullPath.toFile());
         } catch (Exception e) {}
-        return ThumbnailGenerator.getVideo().generateVideoThumbnail(fullPath.toFile());
+        return Optional.empty();
     }
 
     @Override
