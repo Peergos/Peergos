@@ -21,6 +21,7 @@ import java.util.stream.*;
 import static peergos.shared.storage.ContentAddressedStorage.HTTP.BLOCK_GET;
 import static peergos.shared.storage.ContentAddressedStorage.HTTP.BLOCK_PUT_BULK;
 import static peergos.shared.storage.ContentAddressedStorage.HTTP.BULK_COMMIT;
+import static peergos.shared.storage.ContentAddressedStorage.HTTP.BLOCK_PUT_BULK_V2;
 
 public interface ContentAddressedStorageProxy {
 
@@ -58,6 +59,15 @@ public interface ContentAddressedStorageProxy {
     /** Forward a whole logical write to the owner's home server, which verifies it as it would from a client.
      */
     CompletableFuture<List<Cid>> bulkCommit(Multihash targetServerId, PublicKeyHash owner, BulkCommit commit);
+
+    /** Forward a batch signed block write, which likewise has to stay intact to be verifiable.
+     */
+    CompletableFuture<List<Cid>> putBatch(Multihash targetServerId,
+                                          PublicKeyHash owner,
+                                          PublicKeyHash writer,
+                                          BlockWriteBatch batch,
+                                          boolean isRaw,
+                                          TransactionId tid);
 
     class HTTP implements ContentAddressedStorageProxy {
         private static final String P2P_PROXY_PROTOCOL = "/http";
@@ -216,6 +226,22 @@ public interface ContentAddressedStorageProxy {
                             .stream()
                             .map(json -> getObjectHash(json))
                             .collect(Collectors.toList()));
+        }
+
+        @Override
+        public CompletableFuture<List<Cid>> putBatch(Multihash targetServerId,
+                                                     PublicKeyHash owner,
+                                                     PublicKeyHash writer,
+                                                     BlockWriteBatch batch,
+                                                     boolean isRaw,
+                                                     TransactionId tid) {
+            return poster.post(getProxyUrlPrefix(targetServerId) + apiPrefix + BLOCK_PUT_BULK_V2
+                            + "?format=" + (isRaw ? "raw" : "dag-cbor")
+                            + "&owner=" + encode(owner.toString())
+                            + "&transaction=" + encode(tid.toString())
+                            + "&writer=" + encode(writer.toString()), batch.serialize(), false, 30_000)
+                    .thenApply(raw -> ((CborObject.CborList) CborObject.fromByteArray(raw))
+                            .map(c -> (Cid) ((CborObject.CborMerkleLink) c).target));
         }
 
         @Override

@@ -382,9 +382,7 @@ public class WriterData implements Cborable {
                                               TransactionId tid) {
         byte[] raw = serialize();
 
-        return hasher.sha256(raw)
-                .thenCompose(hash -> signer.secret.signMessage(hash))
-                .thenCompose(sig -> immutable.put(owner, signer.publicKeyHash, sig, raw, tid))
+        return immutable.put(owner, signer, raw, hasher, tid)
                 .thenCompose(blobHash -> {
                     MaybeMultihash newHash = MaybeMultihash.of(blobHash);
                     if (newHash.equals(currentHash)) {

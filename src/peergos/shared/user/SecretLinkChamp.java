@@ -36,9 +36,7 @@ public class SecretLinkChamp {
                                                      TransactionId tid) {
         Champ<CborObject.CborMerkleLink> newRoot = Champ.empty(c -> (CborObject.CborMerkleLink)c).withBat(mirrorBat);
         byte[] raw = newRoot.serialize();
-        return hasher.sha256(raw)
-                .thenCompose(hash -> writer.secret.signMessage(hash)
-                        .thenCompose(sig -> ipfs.put(owner, writer.publicKeyHash, sig, raw, tid)));
+        return ipfs.put(owner, writer, raw, hasher, tid);
     }
 
     public static CompletableFuture<SecretLinkChamp> build(PublicKeyHash owner, Cid root, Optional<BatWithId> mirrorBat, ContentAddressedStorage ipfs, Hasher hasher) {

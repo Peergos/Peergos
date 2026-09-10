@@ -23,6 +23,7 @@ import java.time.*;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.function.Function;
+import java.util.function.Supplier;
 import java.util.stream.*;
 
 public interface ContentAddressedStorage {
@@ -90,6 +91,21 @@ public interface ContentAddressedStorage {
      *  where the server supports it this costs one signature per call instead of one per block.
      *  The default keeps the old behaviour, so a store that doesn't override it is unaffected.
      */
+    /** Write cbor blocks, authorising the batch with one signature rather than one per block.
+     *
+     *  The default keeps the old behaviour, so a store that doesn't override it is unaffected.
+     */
+    default CompletableFuture<List<Cid>> putBatch(PublicKeyHash owner,
+                                                  SigningPrivateKeyAndPublicHash signer,
+                                                  List<byte[]> blocks,
+                                                  TransactionId tid,
+                                                  Hasher hasher) {
+        return Futures.combineAllInOrder(blocks.stream()
+                        .map(b -> hasher.sha256(b).thenCompose(h -> signer.secret.signMessage(h)))
+                        .collect(Collectors.toList()))
+                .thenCompose(sigs -> put(owner, signer.publicKeyHash, sigs, blocks, tid));
+    }
+
     default CompletableFuture<List<Cid>> putRawBatch(PublicKeyHash owner,
                                                      SigningPrivateKeyAndPublicHash signer,
                                                      List<byte[]> blocks,
@@ -100,6 +116,20 @@ public interface ContentAddressedStorage {
                         .map(b -> hasher.sha256(b).thenCompose(h -> signer.secret.signMessage(h)))
                         .collect(Collectors.toList()))
                 .thenCompose(sigs -> putRaw(owner, signer.publicKeyHash, sigs, blocks, tid, progress));
+    }
+
+    /** Write a batch of blocks authorised by a single signature.
+     *
+     *  Carries the batch rather than the blocks so it can be forwarded to the owner's home server
+     *  intact: the blocks have no signature of their own, so they cannot go through the per block
+     *  endpoints once the batch signature has been stripped off.
+     */
+    default CompletableFuture<List<Cid>> putBatch(PublicKeyHash owner,
+                                                  PublicKeyHash writer,
+                                                  BlockWriteBatch batch,
+                                                  boolean isRaw,
+                                                  TransactionId tid) {
+        return Futures.errored(new IllegalStateException("Unimplemented call!"));
     }
 
     /** Apply a whole logical write - every block and every pointer update it consists of - in one call.
@@ -119,9 +149,8 @@ public interface ContentAddressedStorage {
                                        byte[] block,
                                        Hasher hasher,
                                        TransactionId tid) {
-        return hasher.sha256(block)
-                .thenCompose(hash -> writer.secret.signMessage(hash))
-                .thenCompose(sig -> put(owner, writer.publicKeyHash, sig, block, tid));
+        return putBatch(owner, writer, Collections.singletonList(block), tid, hasher)
+                .thenApply(hashes -> hashes.get(0));
     }
 
     default CompletableFuture<Cid> put(PublicKeyHash owner,
@@ -568,6 +597,18 @@ public interface ContentAddressedStorage {
                     });
         }
 
+        @Override
+        public CompletableFuture<List<Cid>> putBatch(PublicKeyHash owner,
+                                                     SigningPrivateKeyAndPublicHash signer,
+                                                     List<byte[]> blocks,
+                                                     TransactionId tid,
+                                                     Hasher hasher) {
+            if (! isPeergosServer || ! batchSignedPutSupported)
+                return ContentAddressedStorage.super.putBatch(owner, signer, blocks, tid, hasher);
+            return batchSignedPut(owner, signer, blocks, false, tid, null, hasher,
+                    () -> ContentAddressedStorage.super.putBatch(owner, signer, blocks, tid, hasher));
+        }
+
         /** Post the batch with one signature over the whole list, falling back to a signature per
          *  block against a server that predates the call. */
         @Override
@@ -579,15 +620,26 @@ public interface ContentAddressedStorage {
                                                         Hasher hasher) {
             if (! isPeergosServer || ! batchSignedPutSupported)
                 return ContentAddressedStorage.super.putRawBatch(owner, signer, blocks, tid, progress, hasher);
-            List<List<byte[]>> groups = groupBySize(blocks);
-            List<CompletableFuture<List<Cid>>> futures = groups.stream()
+            return batchSignedPut(owner, signer, blocks, true, tid, progress, hasher,
+                    () -> ContentAddressedStorage.super.putRawBatch(owner, signer, blocks, tid, progress, hasher));
+        }
+
+        private CompletableFuture<List<Cid>> batchSignedPut(PublicKeyHash owner,
+                                                            SigningPrivateKeyAndPublicHash signer,
+                                                            List<byte[]> blocks,
+                                                            boolean isRaw,
+                                                            TransactionId tid,
+                                                            ProgressConsumer<Long> progress,
+                                                            Hasher hasher,
+                                                            Supplier<CompletableFuture<List<Cid>>> perBlockSigned) {
+            List<CompletableFuture<List<Cid>>> futures = groupBySize(blocks).stream()
                     .map(group -> Futures.combineAllInOrder(group.stream()
-                                    .map(b -> hasher.hash(b, true))
+                                    .map(b -> hasher.hash(b, isRaw))
                                     .collect(Collectors.toList()))
                             .thenCompose(hashes -> BlockWriteAuth.payload(owner, hashes, hasher)
                                     .thenCompose(payload -> signer.secret.signMessage(payload)))
                             .thenCompose(sig -> putBatch(owner, signer.publicKeyHash,
-                                    new BlockWriteBatch(group, (byte[]) sig), "raw", tid))
+                                    new BlockWriteBatch(group, (byte[]) sig), isRaw ? "raw" : "dag-cbor", tid))
                             .thenApply(cids -> {
                                 if (progress != null)
                                     group.forEach(b -> progress.accept((long) b.length));
@@ -602,7 +654,7 @@ public interface ContentAddressedStorage {
                         if (msg == null || ! (msg.contains("Status code: 404") || msg.contains("Unimplemented call!")))
                             return Futures.errored(t);
                         batchSignedPutSupported = false;
-                        return ContentAddressedStorage.super.putRawBatch(owner, signer, blocks, tid, progress, hasher);
+                        return perBlockSigned.get();
                     });
         }
 
@@ -1000,6 +1052,22 @@ public interface ContentAddressedStorage {
         @Override
         public CompletableFuture<IpnsEntry> getIpnsEntry(Multihash signer) {
             return local.getIpnsEntry(signer);
+        }
+
+        @Override
+        public CompletableFuture<List<Cid>> putBatch(PublicKeyHash owner,
+                                                     PublicKeyHash writer,
+                                                     BlockWriteBatch batch,
+                                                     boolean isRaw,
+                                                     TransactionId tid) {
+            if (! allowNonlocalP2p && ! isLocal.apply(owner))
+                throw new IllegalStateException("Write blocks to user's server");
+
+            return Proxy.redirectCall(core,
+                    ourNodeIds,
+                    owner,
+                    () -> local.putBatch(owner, writer, batch, isRaw, tid),
+                    target -> p2p.putBatch(target, owner, writer, batch, isRaw, tid));
         }
 
         @Override

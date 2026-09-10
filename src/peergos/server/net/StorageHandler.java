@@ -373,29 +373,14 @@ public class StorageHandler implements HttpHandler {
                     BlockWriteBatch batch = BlockWriteBatch.fromCbor(CborObject.fromByteArray(Serialize.readFully(
                             httpExchange.getRequestBody(), 2 * ContentAddressedStorage.MAX_BLOCK_SIZE)));
                     boolean isRaw = last.apply("format").equals("raw");
-                    if (batch.blocks.size() > ContentAddressedStorage.MAX_BULK_COMMIT_BLOCKS)
-                        throw new IllegalStateException("Too many blocks in one write: " + batch.blocks.size());
 
                     // check writer is allowed to write to this server, and check their free space
                     if (! keyFilter.apply(writerHash, batch.blocks.stream().mapToInt(x -> x.length).sum()))
                         throw new IllegalStateException("Key not allowed to write to this server: " + writerHash);
 
-                    // one signature over the owner and the ordered hashes, rather than one per block
-                    PublicSigningKey writer = dht.getSigningKey(writerHash, writerHash).get().get();
-                    List<Cid> hashes = Futures.combineAllInOrder(batch.blocks.stream()
-                            .map(b -> hasher.hash(b, isRaw))
-                            .collect(Collectors.toList())).get();
-                    byte[] expected = BlockWriteAuth.payload(ownerHash.get(), hashes, hasher).get();
-                    byte[] signed = writer.unsignMessage(batch.signature).get();
-                    if (! Arrays.equals(signed, expected))
-                        throw new IllegalStateException("Invalid signature for block write batch!");
-
-                    List<byte[]> unsigned = batch.blocks.stream()
-                            .map(b -> new byte[0])
-                            .collect(Collectors.toList());
-                    List<Cid> written = (isRaw ?
-                            dht.putRaw(ownerHash.get(), writerHash, unsigned, batch.blocks, tid, x -> {}) :
-                            dht.put(ownerHash.get(), writerHash, unsigned, batch.blocks, tid)).get();
+                    // the batch stays whole: it is only verifiable while its one signature still
+                    // covers exactly these blocks, so it is forwarded intact if the owner isn't ours
+                    List<Cid> written = dht.putBatch(ownerHash.get(), writerHash, batch, isRaw, tid).get();
                     replyBytes(httpExchange, new CborObject.CborList(written.stream()
                             .map(CborObject.CborMerkleLink::new)
                             .collect(Collectors.toList())).serialize(), Optional.empty());

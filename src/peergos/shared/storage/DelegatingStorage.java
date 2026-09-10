@@ -66,6 +66,15 @@ public abstract class DelegatingStorage implements ContentAddressedStorage {
     }
 
     @Override
+    public CompletableFuture<List<Cid>> putBatch(PublicKeyHash owner,
+                                                 SigningPrivateKeyAndPublicHash signer,
+                                                 List<byte[]> blocks,
+                                                 TransactionId tid,
+                                                 Hasher hasher) {
+        return target.putBatch(owner, signer, blocks, tid, hasher);
+    }
+
+    @Override
     public CompletableFuture<List<Cid>> putRawBatch(PublicKeyHash owner,
                                                     SigningPrivateKeyAndPublicHash signer,
                                                     List<byte[]> blocks,
@@ -73,6 +82,15 @@ public abstract class DelegatingStorage implements ContentAddressedStorage {
                                                     ProgressConsumer<Long> progress,
                                                     Hasher hasher) {
         return target.putRawBatch(owner, signer, blocks, tid, progress, hasher);
+    }
+
+    @Override
+    public CompletableFuture<List<Cid>> putBatch(PublicKeyHash owner,
+                                                 PublicKeyHash writer,
+                                                 BlockWriteBatch batch,
+                                                 boolean isRaw,
+                                                 TransactionId tid) {
+        return target.putBatch(owner, writer, batch, isRaw, tid);
     }
 
     @Override

@@ -85,6 +85,41 @@ public class BulkCommitStorage extends DelegatingStorage {
                                 }))));
     }
 
+    /** Apply a batch signed block write for an owner whose home server we are.
+     *
+     *  The blocks carry no signature each; what authorises them is one signature over the owner and
+     *  the ordered hashes, so that has to be checked here rather than anywhere the batch has been
+     *  taken apart.
+     */
+    @Override
+    public CompletableFuture<List<Cid>> putBatch(PublicKeyHash owner,
+                                                 PublicKeyHash writer,
+                                                 BlockWriteBatch batch,
+                                                 boolean isRaw,
+                                                 TransactionId tid) {
+        if (batch.blocks.size() > ContentAddressedStorage.MAX_BULK_COMMIT_BLOCKS)
+            throw new IllegalStateException("Too many blocks in one write: " + batch.blocks.size());
+        if (batch.blocks.stream().anyMatch(b -> b.length > ContentAddressedStorage.MAX_BLOCK_SIZE))
+            throw new IllegalStateException("Block too big!");
+        return Futures.combineAllInOrder(batch.blocks.stream()
+                        .map(b -> hasher.hash(b, isRaw))
+                        .collect(Collectors.toList()))
+                .thenCompose(hashes -> BlockWriteAuth.payload(owner, hashes, hasher)
+                        .thenCompose(expected -> writerKey(owner, writer)
+                                .thenCompose(key -> key.unsignMessage(batch.signature)
+                                        .thenApply(signed -> {
+                                            if (! Arrays.equals(signed, expected))
+                                                throw new IllegalStateException("Invalid signature for block write batch!");
+                                            return true;
+                                        }))))
+                .thenCompose(x -> {
+                    List<byte[]> unsigned = unsigned(batch.blocks.size());
+                    return isRaw ?
+                            target.putRaw(owner, writer, unsigned, batch.blocks, tid, y -> {}) :
+                            target.put(owner, writer, unsigned, batch.blocks, tid);
+                });
+    }
+
     /** The hash of every block travelling inline, in commit order: each writer's cbor blocks then its raw ones. */
     private CompletableFuture<List<List<Cid>>> hashBlocks(BulkCommit commit) {
         return Futures.combineAllInOrder(commit.writers.stream()

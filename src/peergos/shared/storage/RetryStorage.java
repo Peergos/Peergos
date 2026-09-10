@@ -120,6 +120,15 @@ public class RetryStorage implements ContentAddressedStorage {
     }
 
     @Override
+    public CompletableFuture<List<Cid>> putBatch(PublicKeyHash owner,
+                                                 SigningPrivateKeyAndPublicHash signer,
+                                                 List<byte[]> blocks,
+                                                 TransactionId tid,
+                                                 Hasher hasher) {
+        return runWithRetry(() -> target.putBatch(owner, signer, blocks, tid, hasher));
+    }
+
+    @Override
     public CompletableFuture<List<Cid>> putRawBatch(PublicKeyHash owner,
                                                     SigningPrivateKeyAndPublicHash signer,
                                                     List<byte[]> blocks,

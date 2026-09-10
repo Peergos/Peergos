@@ -116,6 +116,16 @@ public class DirectS3BlockStore implements ContentAddressedStorage {
         return fallback.bulkCommit(owner, commit);
     }
 
+    @Override
+    public CompletableFuture<List<Cid>> putBatch(PublicKeyHash owner,
+                                                 SigningPrivateKeyAndPublicHash signer,
+                                                 List<byte[]> blocks,
+                                                 TransactionId tid,
+                                                 Hasher hasher) {
+        // cbor never goes direct to S3, so this is the server's batch signed call
+        return fallback.putBatch(owner, signer, blocks, tid, hasher);
+    }
+
     private CompletableFuture<Boolean> onOwnersNode(PublicKeyHash owner) {
         Multihash cached = storageNodeByOwner.get(owner);
         if (cached != null)

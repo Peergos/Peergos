@@ -32,9 +32,7 @@ public class OwnedKeyChamp {
                                                      TransactionId tid) {
         Champ<CborObject.CborMerkleLink> newRoot = Champ.empty(c -> (CborObject.CborMerkleLink)c);
         byte[] raw = newRoot.serialize();
-        return hasher.sha256(raw)
-                .thenCompose(writer.secret::signMessage)
-                .thenCompose(signed -> ipfs.put(owner, writer.publicKeyHash, signed, raw, tid));
+        return ipfs.put(owner, writer, raw, hasher, tid);
     }
 
     public static CompletableFuture<OwnedKeyChamp> build(PublicKeyHash owner, Cid root, ContentAddressedStorage ipfs, Hasher hasher) {
