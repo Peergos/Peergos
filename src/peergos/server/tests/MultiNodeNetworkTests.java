@@ -519,7 +519,7 @@ public class MultiNodeNetworkTests {
         Multihash newStorageNodeId = node2.dhtClient.id().join();
 
         // it refuses to migrate a user to the server they are already on
-        Assert.assertFalse(peergos.server.Migrate.forceMigrate(username, () -> password, () -> true, node1, crypto));
+        Assert.assertFalse(peergos.server.Migrate.migrateFromMirror(username, () -> password, () -> true, node1, crypto));
 
         // signing in above can move the user on, and the mirror thread runs on its own schedule, so
         // let it catch up before the home server it is copying from goes away
@@ -541,12 +541,12 @@ public class MultiNodeNetworkTests {
             Assert.assertEquals("login data present", loginRead);
 
             // saying no at the warning leaves the user where they are
-            Assert.assertFalse(peergos.server.Migrate.forceMigrate(username, () -> password, () -> false, node2, crypto));
+            Assert.assertFalse(peergos.server.Migrate.migrateFromMirror(username, () -> password, () -> false, node2, crypto));
             List<UserPublicKeyLink> declined = getNode(0).coreNode.getChain(username).join();
             Assert.assertNotEquals(newStorageNodeId,
                     declined.get(declined.size() - 1).claim.storageProviders.stream().findFirst().get());
 
-            Assert.assertTrue(peergos.server.Migrate.forceMigrate(username, () -> password, () -> true, node2, crypto));
+            Assert.assertTrue(peergos.server.Migrate.migrateFromMirror(username, () -> password, () -> true, node2, crypto));
 
             List<UserPublicKeyLink> chain = getNode(0).coreNode.getChain(username).join();
             Multihash storageNode = chain.get(chain.size() - 1).claim.storageProviders.stream().findFirst().get();
@@ -574,7 +574,7 @@ public class MultiNodeNetworkTests {
     public void forceMigrateUnknownUser() {
         if (iNode1 == 0 || iNode2 == 0)
             return;
-        Assert.assertFalse(peergos.server.Migrate.forceMigrate(generateUsername(random), () -> randomString(),
+        Assert.assertFalse(peergos.server.Migrate.migrateFromMirror(generateUsername(random), () -> randomString(),
                 () -> true, getNode(iNode2), crypto));
     }
 

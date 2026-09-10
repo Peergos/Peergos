@@ -66,41 +66,53 @@ public class Migrate {
                                        NetworkAccess network,
                                        Crypto crypto) {
         try {
-            List<UserPublicKeyLink> existing = network.coreNode.getChain(username).join();
-            if (existing.isEmpty()) {
-                System.err.println("Unknown username: " + username);
-                return false;
-            }
-            Multihash currentStorageNodeId = existing.get(existing.size() - 1).claim.storageProviders.stream().findFirst().get();
-            Multihash newStorageNodeId = network.dhtClient.id().join();
-            if (currentStorageNodeId.equals(newStorageNodeId)) {
-                System.err.println("This server is already the home server for " + username + ".");
-                return false;
-            }
-
-            System.out.println("WARNING: " + username + " will be moved to this server using only the copy of");
-            System.out.println("their data mirrored here. Anything their home server accepted since the last");
-            System.out.println("mirror ran will be lost, and the old server is not told about the move.");
-            if (! confirm.get()) {
-                System.out.println("Migration cancelled.");
-                return false;
-            }
-
-            SecretSigningKey identity = loginFromMirror(username, password.get(), network, crypto);
-
-            System.out.println("Force migrating user from node " + currentStorageNodeId + " to " + newStorageNodeId);
-            List<UserPublicKeyLink> newChain = peergos.shared.user.Migrate
-                    .buildMigrationChain(existing, newStorageNodeId, identity).join();
-            UserContext.updateChainWithRetry(username, newChain, "", crypto.hasher, network, System.out::println).join();
-            List<UserPublicKeyLink> updatedChain = network.coreNode.getChain(username).join();
-            if (!updatedChain.get(updatedChain.size() - 1).claim.storageProviders.contains(newStorageNodeId))
-                throw new IllegalStateException("Migration failed. Please try again later");
-            System.out.println("Migration complete.");
-            return true;
+            return migrateFromMirror(username, password, confirm, network, crypto);
         } catch (Exception ex) {
             ex.printStackTrace();
             return false;
         }
+    }
+
+    /** The same migration, with the failure left to the caller.
+     *
+     * @return false if the user declined it, or there is nothing to do
+     */
+    public static boolean migrateFromMirror(String username,
+                                            Supplier<String> password,
+                                            Supplier<Boolean> confirm,
+                                            NetworkAccess network,
+                                            Crypto crypto) {
+        List<UserPublicKeyLink> existing = network.coreNode.getChain(username).join();
+        if (existing.isEmpty()) {
+            System.err.println("Unknown username: " + username);
+            return false;
+        }
+        Multihash currentStorageNodeId = existing.get(existing.size() - 1).claim.storageProviders.stream().findFirst().get();
+        Multihash newStorageNodeId = network.dhtClient.id().join();
+        if (currentStorageNodeId.equals(newStorageNodeId)) {
+            System.err.println("This server is already the home server for " + username + ".");
+            return false;
+        }
+
+        System.out.println("WARNING: " + username + " will be moved to this server using only the copy of");
+        System.out.println("their data mirrored here. Anything their home server accepted since the last");
+        System.out.println("mirror ran will be lost, and the old server is not told about the move.");
+        if (! confirm.get()) {
+            System.out.println("Migration cancelled.");
+            return false;
+        }
+
+        SecretSigningKey identity = loginFromMirror(username, password.get(), network, crypto);
+
+        System.out.println("Force migrating user from node " + currentStorageNodeId + " to " + newStorageNodeId);
+        List<UserPublicKeyLink> newChain = peergos.shared.user.Migrate
+                .buildMigrationChain(existing, newStorageNodeId, identity).join();
+        UserContext.updateChainWithRetry(username, newChain, "", crypto.hasher, network, System.out::println).join();
+        List<UserPublicKeyLink> updatedChain = network.coreNode.getChain(username).join();
+        if (!updatedChain.get(updatedChain.size() - 1).claim.storageProviders.contains(newStorageNodeId))
+            throw new IllegalStateException("Migration failed. Please try again later");
+        System.out.println("Migration complete.");
+        return true;
     }
 
     /** The identity key of a user whose home server is unreachable, from our mirror of their data.
