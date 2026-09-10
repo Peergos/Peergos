@@ -94,7 +94,7 @@ public class StorageHandler implements HttpHandler {
                 case AUTH_WRITES: {
                     TransactionId tid = new TransactionId(last.apply("transaction"));
                     PublicKeyHash writerHash = PublicKeyHash.fromString(last.apply("writer"));
-                    byte[] reqBody = Serialize.readFully(httpExchange.getRequestBody());
+                    byte[] reqBody = Serialize.readFully(httpExchange.getRequestBody(), HttpUtil.MAX_CONTROL_BODY_SIZE);
                     WriteAuthRequest req = WriteAuthRequest.fromCbor(CborObject.fromByteArray(reqBody));
                     List<byte[]> signatures = req.signatures;
                     List<Integer> blockSizes = req.sizes.stream()
@@ -110,8 +110,20 @@ public class StorageHandler implements HttpHandler {
                     }).exceptionally(Futures::logAndThrow).get();
                     break;
                 }
+                case AUTH_WRITES_V2: {
+                    TransactionId tid = new TransactionId(last.apply("transaction"));
+                    PublicKeyHash writerHash = PublicKeyHash.fromString(last.apply("writer"));
+                    BlockWriteAuth auth = BlockWriteAuth.fromCbor(CborObject.fromByteArray(
+                            Serialize.readFully(httpExchange.getRequestBody(), HttpUtil.MAX_CONTROL_BODY_SIZE)));
+                    boolean isRaw = Boolean.parseBoolean(last.apply("raw"));
+                    dht.authWrites(ownerHash.get(), writerHash, auth, isRaw, tid).thenAccept(res -> {
+                        replyBytes(httpExchange, new CborObject.CborList(res).serialize(), Optional.empty());
+                    }).exceptionally(Futures::logAndThrow).get();
+                    break;
+                }
                 case AUTH_READS: {
-                    CborObject cbor = CborObject.fromByteArray(Serialize.readFully(httpExchange.getRequestBody()));
+                    CborObject cbor = CborObject.fromByteArray(Serialize.readFully(httpExchange.getRequestBody(),
+                            HttpUtil.MAX_CONTROL_BODY_SIZE));
                     List<BlockMirrorCap> blockCaps = ((CborObject.CborList) cbor).map(BlockMirrorCap::fromCbor);
                     PublicKeyHash owner = ownerHash.orElse(null);
                     dht.authReads(owner, blockCaps).thenAccept(res -> {
@@ -284,7 +296,9 @@ public class StorageHandler implements HttpHandler {
                     AggregatedMetrics.STORAGE_BLOCK_PUT_BULK.inc();
                     TransactionId tid = new TransactionId(last.apply("transaction"));
                     PublicKeyHash writerHash = PublicKeyHash.fromString(last.apply("writer"));
-                    BlockWriteGroup writes = BlockWriteGroup.fromCbor(CborObject.read(httpExchange.getRequestBody(), 2 * ContentAddressedStorage.MAX_BLOCK_SIZE));
+                    // the client groups a bulk put to stay under a block's worth of data, plus signatures
+                    BlockWriteGroup writes = BlockWriteGroup.fromCbor(CborObject.fromByteArray(Serialize.readFully(
+                            httpExchange.getRequestBody(), 2 * ContentAddressedStorage.MAX_BLOCK_SIZE)));
                     boolean isRaw = last.apply("format").equals("raw");
 
                     // check writer is allowed to write to this server, and check their free space
@@ -337,6 +351,39 @@ public class StorageHandler implements HttpHandler {
                             .map(m -> JSONParser.toString(m))
                             .reduce("", (a, b) -> a + b);
                     replyJson(httpExchange, jsonStream, Optional.empty());
+                    break;
+                }
+                case BULK_COMMIT: {
+                    AggregatedMetrics.STORAGE_BULK_COMMIT.inc();
+                    // the cbor reader's limit is per byte string, not for the whole body, so bound the
+                    // read itself: the parsed commit is held in memory for the length of the call
+                    byte[] body = Serialize.readFully(httpExchange.getRequestBody(),
+                            ContentAddressedStorage.MAX_BULK_COMMIT_SIZE);
+                    BulkCommit commit = BulkCommit.fromCbor(CborObject.fromByteArray(body));
+                    List<Cid> written = dht.bulkCommit(ownerHash.get(), commit).join();
+                    replyBytes(httpExchange, new CborObject.CborList(written.stream()
+                            .map(CborObject.CborMerkleLink::new)
+                            .collect(Collectors.toList())).serialize(), Optional.empty());
+                    break;
+                }
+                case BLOCK_PUT_BULK_V2: {
+                    AggregatedMetrics.STORAGE_BLOCK_PUT_BULK.inc();
+                    TransactionId tid = new TransactionId(last.apply("transaction"));
+                    PublicKeyHash writerHash = PublicKeyHash.fromString(last.apply("writer"));
+                    BlockWriteBatch batch = BlockWriteBatch.fromCbor(CborObject.fromByteArray(Serialize.readFully(
+                            httpExchange.getRequestBody(), 2 * ContentAddressedStorage.MAX_BLOCK_SIZE)));
+                    boolean isRaw = last.apply("format").equals("raw");
+
+                    // check writer is allowed to write to this server, and check their free space
+                    if (! keyFilter.apply(writerHash, batch.blocks.stream().mapToInt(x -> x.length).sum()))
+                        throw new IllegalStateException("Key not allowed to write to this server: " + writerHash);
+
+                    // the batch stays whole: it is only verifiable while its one signature still
+                    // covers exactly these blocks, so it is forwarded intact if the owner isn't ours
+                    List<Cid> written = dht.putBatch(ownerHash.get(), writerHash, batch, isRaw, tid).get();
+                    replyBytes(httpExchange, new CborObject.CborList(written.stream()
+                            .map(CborObject.CborMerkleLink::new)
+                            .collect(Collectors.toList())).serialize(), Optional.empty());
                     break;
                 }
                 case BLOCK_GET:{

@@ -23,6 +23,7 @@ import java.time.*;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.function.Function;
+import java.util.function.Supplier;
 import java.util.stream.*;
 
 public interface ContentAddressedStorage {
@@ -30,6 +31,14 @@ public interface ContentAddressedStorage {
     boolean DEBUG_GC = false;
     int MAX_BLOCK_SIZE  = Fragment.MAX_LENGTH_WITH_BAT_PREFIX;
     int MAX_BLOCK_AUTHS = 50;
+    /** The most a single bulk/commit request body may be, which is what a server in front of a proxy
+     *  will accept. A commit bigger than this is split, so it is also the peak memory one commit
+     *  costs the server while it is being applied. */
+    int MAX_BULK_COMMIT_SIZE = 2 * 1024 * 1024;
+    /** The most blocks a single bulk/commit may name. Bytes alone don't bound the work: the server
+     *  hashes every block and checks every link, so a commit of many tiny blocks - deleting a large
+     *  folder writes a lot of small champ nodes - would hold a request open far too long. */
+    int MAX_BULK_COMMIT_BLOCKS = 1000;
     int MAX_CHAMP_GETS = 20;
 
     default CompletableFuture<BlockStoreProperties> blockStoreProperties() {
@@ -65,14 +74,83 @@ public interface ContentAddressedStorage {
         return Futures.errored(new IllegalStateException("Unimplemented call!"));
     }
 
+    /** Authorise a batch of raw block writes with one signature over the whole list, rather than one
+     *  signature per block. The v1 call above is unchanged and still served.
+     */
+    default CompletableFuture<List<PresignedUrl>> authWrites(PublicKeyHash owner,
+                                                             PublicKeyHash writer,
+                                                             BlockWriteAuth auth,
+                                                             boolean isRaw,
+                                                             TransactionId tid) {
+        return Futures.errored(new IllegalStateException("Unimplemented call!"));
+    }
+
+    /** Write raw blocks that are too big to travel inside a commit.
+     *
+     *  Takes the signer rather than a signature per block, because authorisation here is per batch:
+     *  where the server supports it this costs one signature per call instead of one per block.
+     *  The default keeps the old behaviour, so a store that doesn't override it is unaffected.
+     */
+    /** Write cbor blocks, authorising the batch with one signature rather than one per block.
+     *
+     *  The default keeps the old behaviour, so a store that doesn't override it is unaffected.
+     */
+    default CompletableFuture<List<Cid>> putBatch(PublicKeyHash owner,
+                                                  SigningPrivateKeyAndPublicHash signer,
+                                                  List<byte[]> blocks,
+                                                  TransactionId tid,
+                                                  Hasher hasher) {
+        return Futures.combineAllInOrder(blocks.stream()
+                        .map(b -> hasher.sha256(b).thenCompose(h -> signer.secret.signMessage(h)))
+                        .collect(Collectors.toList()))
+                .thenCompose(sigs -> put(owner, signer.publicKeyHash, sigs, blocks, tid));
+    }
+
+    default CompletableFuture<List<Cid>> putRawBatch(PublicKeyHash owner,
+                                                     SigningPrivateKeyAndPublicHash signer,
+                                                     List<byte[]> blocks,
+                                                     TransactionId tid,
+                                                     ProgressConsumer<Long> progress,
+                                                     Hasher hasher) {
+        return Futures.combineAllInOrder(blocks.stream()
+                        .map(b -> hasher.sha256(b).thenCompose(h -> signer.secret.signMessage(h)))
+                        .collect(Collectors.toList()))
+                .thenCompose(sigs -> putRaw(owner, signer.publicKeyHash, sigs, blocks, tid, progress));
+    }
+
+    /** Write a batch of blocks authorised by a single signature.
+     *
+     *  Carries the batch rather than the blocks so it can be forwarded to the owner's home server
+     *  intact: the blocks have no signature of their own, so they cannot go through the per block
+     *  endpoints once the batch signature has been stripped off.
+     */
+    default CompletableFuture<List<Cid>> putBatch(PublicKeyHash owner,
+                                                  PublicKeyHash writer,
+                                                  BlockWriteBatch batch,
+                                                  boolean isRaw,
+                                                  TransactionId tid) {
+        return Futures.errored(new IllegalStateException("Unimplemented call!"));
+    }
+
+    /** Apply a whole logical write - every block and every pointer update it consists of - in one call.
+     *
+     *  The server verifies the commit is closed and that every block is reachable from the newly signed
+     *  root, which is what authenticates the blocks in place of a signature each. Either all of it is
+     *  applied or none of it is.
+     *
+     * @return the hashes of the blocks written, in the order they appear in the commit
+     */
+    default CompletableFuture<List<Cid>> bulkCommit(PublicKeyHash owner, BulkCommit commit) {
+        return Futures.errored(new IllegalStateException("Unimplemented call!"));
+    }
+
     default CompletableFuture<Cid> put(PublicKeyHash owner,
                                        SigningPrivateKeyAndPublicHash writer,
                                        byte[] block,
                                        Hasher hasher,
                                        TransactionId tid) {
-        return hasher.sha256(block)
-                .thenCompose(hash -> writer.secret.signMessage(hash))
-                .thenCompose(sig -> put(owner, writer.publicKeyHash, sig, block, tid));
+        return putBatch(owner, writer, Collections.singletonList(block), tid, hasher)
+                .thenApply(hashes -> hashes.get(0));
     }
 
     default CompletableFuture<Cid> put(PublicKeyHash owner,
@@ -298,6 +376,7 @@ public interface ContentAddressedStorage {
         public static final String BLOCKSTORE_PROPERTIES = "blockstore/props";
         public static final String AUTH_READS = "blockstore/auth-reads";
         public static final String AUTH_WRITES = "blockstore/auth";
+        public static final String AUTH_WRITES_V2 = "blockstore/auth/v2";
         public static final String TRANSACTION_START = "transaction/start";
         public static final String TRANSACTION_CLOSE = "transaction/close";
         public static final String CHAMP_GET = "champ/get";
@@ -306,6 +385,8 @@ public interface ContentAddressedStorage {
         public static final String LINK_COUNTS = "link/counts";
         public static final String BLOCK_PUT = "block/put";
         public static final String BLOCK_PUT_BULK = "block/put/bulk";
+        public static final String BLOCK_PUT_BULK_V2 = "block/put/bulk/v2";
+        public static final String BULK_COMMIT = "bulk/commit";
         public static final String BLOCK_GET = "block/get";
         public static final String BLOCK_RM = "block/rm";
         public static final String BLOCK_RM_BULK = "block/rm/bulk";
@@ -319,6 +400,7 @@ public interface ContentAddressedStorage {
         private final boolean isPeergosServer;
         private final Hasher hasher;
         private final Random r = new Random();
+        private volatile boolean batchSignedPutSupported = true;
 
         public HTTP(HttpPoster poster, boolean isPeergosServer, Hasher hasher) {
             this.poster = poster;
@@ -421,6 +503,24 @@ public interface ContentAddressedStorage {
         }
 
         @Override
+        public CompletableFuture<List<PresignedUrl>> authWrites(PublicKeyHash owner,
+                                                                PublicKeyHash writer,
+                                                                BlockWriteAuth auth,
+                                                                boolean isRaw,
+                                                                TransactionId tid) {
+            if (! isPeergosServer)
+                return Futures.errored(new IllegalStateException("Cannot auth writes when not talking to a Peergos server!"));
+            return poster.postUnzip(apiPrefix + AUTH_WRITES_V2 + "?owner=" + encode(owner.toString())
+                            + "&writer=" + encode(writer.toString())
+                            + "&transaction=" + encode(tid.toString())
+                            + "&raw=" + isRaw, auth.serialize(), 60_000)
+                    .thenApply(raw -> ((CborObject.CborList) CborObject.fromByteArray(raw)).value
+                            .stream()
+                            .map(PresignedUrl::fromCbor)
+                            .collect(Collectors.toList()));
+        }
+
+        @Override
         public CompletableFuture<TransactionId> startTransaction(PublicKeyHash owner) {
             if (! isPeergosServer)
                 return CompletableFuture.completedFuture(new TransactionId(Long.toString(r.nextInt(Integer.MAX_VALUE))));
@@ -494,6 +594,101 @@ public interface ContentAddressedStorage {
                         if (DEBUG_GC)
                             System.out.println("Added blocks: " + hashes);
                         return hashes;
+                    });
+        }
+
+        @Override
+        public CompletableFuture<List<Cid>> putBatch(PublicKeyHash owner,
+                                                     SigningPrivateKeyAndPublicHash signer,
+                                                     List<byte[]> blocks,
+                                                     TransactionId tid,
+                                                     Hasher hasher) {
+            if (! isPeergosServer || ! batchSignedPutSupported)
+                return ContentAddressedStorage.super.putBatch(owner, signer, blocks, tid, hasher);
+            return batchSignedPut(owner, signer, blocks, false, tid, null, hasher,
+                    () -> ContentAddressedStorage.super.putBatch(owner, signer, blocks, tid, hasher));
+        }
+
+        /** Post the batch with one signature over the whole list, falling back to a signature per
+         *  block against a server that predates the call. */
+        @Override
+        public CompletableFuture<List<Cid>> putRawBatch(PublicKeyHash owner,
+                                                        SigningPrivateKeyAndPublicHash signer,
+                                                        List<byte[]> blocks,
+                                                        TransactionId tid,
+                                                        ProgressConsumer<Long> progress,
+                                                        Hasher hasher) {
+            if (! isPeergosServer || ! batchSignedPutSupported)
+                return ContentAddressedStorage.super.putRawBatch(owner, signer, blocks, tid, progress, hasher);
+            return batchSignedPut(owner, signer, blocks, true, tid, progress, hasher,
+                    () -> ContentAddressedStorage.super.putRawBatch(owner, signer, blocks, tid, progress, hasher));
+        }
+
+        private CompletableFuture<List<Cid>> batchSignedPut(PublicKeyHash owner,
+                                                            SigningPrivateKeyAndPublicHash signer,
+                                                            List<byte[]> blocks,
+                                                            boolean isRaw,
+                                                            TransactionId tid,
+                                                            ProgressConsumer<Long> progress,
+                                                            Hasher hasher,
+                                                            Supplier<CompletableFuture<List<Cid>>> perBlockSigned) {
+            List<CompletableFuture<List<Cid>>> futures = groupBySize(blocks).stream()
+                    .map(group -> Futures.combineAllInOrder(group.stream()
+                                    .map(b -> hasher.hash(b, isRaw))
+                                    .collect(Collectors.toList()))
+                            .thenCompose(hashes -> BlockWriteAuth.payload(owner, hashes, hasher)
+                                    .thenCompose(payload -> signer.secret.signMessage(payload)))
+                            .thenCompose(sig -> putBatch(owner, signer.publicKeyHash,
+                                    new BlockWriteBatch(group, (byte[]) sig), isRaw ? "raw" : "dag-cbor", tid))
+                            .thenApply(cids -> {
+                                if (progress != null)
+                                    group.forEach(b -> progress.accept((long) b.length));
+                                return cids;
+                            }))
+                    .collect(Collectors.toList());
+            return Futures.asyncExceptionally(
+                    () -> Futures.combineAllInOrder(futures)
+                            .thenApply(gs -> gs.stream().flatMap(List::stream).collect(Collectors.toList())),
+                    t -> {
+                        String msg = Exceptions.getRootCause(t).getMessage();
+                        if (msg == null || ! (msg.contains("Status code: 404") || msg.contains("Unimplemented call!")))
+                            return Futures.errored(t);
+                        batchSignedPutSupported = false;
+                        return perBlockSigned.get();
+                    });
+        }
+
+        private static List<List<byte[]>> groupBySize(List<byte[]> blocks) {
+            List<List<byte[]>> grouped = new ArrayList<>();
+            int used = 0;
+            for (byte[] block : blocks) {
+                if (grouped.isEmpty() || used + block.length > MAX_BLOCK_SIZE) {
+                    grouped.add(new ArrayList<>());
+                    used = 0;
+                }
+                grouped.get(grouped.size() - 1).add(block);
+                used += block.length;
+            }
+            return grouped;
+        }
+
+        private CompletableFuture<List<Cid>> putBatch(PublicKeyHash owner,
+                                                      PublicKeyHash writer,
+                                                      BlockWriteBatch batch,
+                                                      String format,
+                                                      TransactionId tid) {
+            return Futures.asyncExceptionally(() -> poster.post(apiPrefix + BLOCK_PUT_BULK_V2 + "?format=" + format
+                                            + "&owner=" + encode(owner.toString())
+                                            + "&transaction=" + encode(tid.toString())
+                                            + "&writer=" + encode(writer.toString()),
+                                    batch.serialize(), false, 30_000)
+                            .thenApply(bytes -> ((CborObject.CborList) CborObject.fromByteArray(bytes))
+                                    .map(c -> (Cid) ((CborObject.CborMerkleLink) c).target)),
+                    t -> {
+                        String msg = t.getMessage();
+                        if (msg != null && msg.contains("Storage+quota+reached"))
+                            return Futures.errored(new StorageQuotaExceededException(msg));
+                        return Futures.errored(t);
                     });
         }
 
@@ -579,6 +774,26 @@ public interface ContentAddressedStorage {
                     t -> {
                         String msg = t.getMessage();
                         if (msg.contains("Storage+quota+reached"))
+                            return Futures.errored(new StorageQuotaExceededException(msg));
+                        return Futures.errored(t);
+                    });
+        }
+
+        @Override
+        public CompletableFuture<List<Cid>> bulkCommit(PublicKeyHash owner, BulkCommit commit) {
+            if (! isPeergosServer)
+                return Futures.errored(new IllegalStateException("Cannot bulk commit when not talking to a Peergos server!"));
+            byte[] body = commit.serialize();
+            if (body.length > MAX_BULK_COMMIT_SIZE)
+                throw new IllegalStateException("Bulk commit too big: " + body.length);
+            return Futures.asyncExceptionally(() -> poster.post(apiPrefix + BULK_COMMIT
+                                    + "?owner=" + encode(owner.toString()),
+                            body, false, 60_000)
+                            .thenApply(raw -> ((CborObject.CborList) CborObject.fromByteArray(raw))
+                                    .map(c -> (Cid) ((CborObject.CborMerkleLink) c).target)),
+                    t -> {
+                        String msg = t.getMessage();
+                        if (msg != null && msg.contains("Storage+quota+reached"))
                             return Futures.errored(new StorageQuotaExceededException(msg));
                         return Futures.errored(t);
                     });
@@ -729,6 +944,15 @@ public interface ContentAddressedStorage {
         }
 
         @Override
+        public CompletableFuture<List<PresignedUrl>> authWrites(PublicKeyHash owner,
+                                                                PublicKeyHash writer,
+                                                                BlockWriteAuth auth,
+                                                                boolean isRaw,
+                                                                TransactionId tid) {
+            return local.authWrites(owner, writer, auth, isRaw, tid);
+        }
+
+        @Override
         public CompletableFuture<TransactionId> startTransaction(PublicKeyHash owner) {
             if (! allowNonlocalP2p)
                 return local.startTransaction(owner);
@@ -828,6 +1052,34 @@ public interface ContentAddressedStorage {
         @Override
         public CompletableFuture<IpnsEntry> getIpnsEntry(Multihash signer) {
             return local.getIpnsEntry(signer);
+        }
+
+        @Override
+        public CompletableFuture<List<Cid>> putBatch(PublicKeyHash owner,
+                                                     PublicKeyHash writer,
+                                                     BlockWriteBatch batch,
+                                                     boolean isRaw,
+                                                     TransactionId tid) {
+            if (! allowNonlocalP2p && ! isLocal.apply(owner))
+                throw new IllegalStateException("Write blocks to user's server");
+
+            return Proxy.redirectCall(core,
+                    ourNodeIds,
+                    owner,
+                    () -> local.putBatch(owner, writer, batch, isRaw, tid),
+                    target -> p2p.putBatch(target, owner, writer, batch, isRaw, tid));
+        }
+
+        @Override
+        public CompletableFuture<List<Cid>> bulkCommit(PublicKeyHash owner, BulkCommit commit) {
+            if (! allowNonlocalP2p && ! isLocal.apply(owner))
+                throw new IllegalStateException("Write blocks to user's server");
+
+            return Proxy.redirectCall(core,
+                    ourNodeIds,
+                    owner,
+                    () -> local.bulkCommit(owner, commit),
+                    target -> p2p.bulkCommit(target, owner, commit));
         }
 
         @Override

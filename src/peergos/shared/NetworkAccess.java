@@ -810,10 +810,7 @@ public class NetworkAccess {
                     + " with " + metadata.toCbor().links().size() + " fragments");
             byte[] metaBlob = metadata.serialize();
             CommittedWriterData version = current.get(writer);
-            return hasher.sha256(metaBlob)
-                    .thenCompose(blobSha -> writer.secret.signMessage(blobSha))
-                    .thenCompose(sig -> dhtClient.put(owner, writer.publicKeyHash,
-                            sig, metaBlob, tid))
+            return dhtClient.put(owner, writer, metaBlob, hasher, tid)
                     .thenCompose(blobHash -> tree.put(version.props.get(), owner, writer, mapKey,
                             metadata.committedHash(), blobHash, tid)
                             .thenCompose(wd -> committer.commit(owner, writer, wd, version, tid)

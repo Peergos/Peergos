@@ -125,6 +125,13 @@ public class CrossOwnerWriteTests {
         }
 
         @Override
+        public CompletableFuture<List<Cid>> bulkCommit(PublicKeyHash owner, BulkCommit commit) {
+            for (WriterCommit w : commit.writers)
+                record(owner, w.writer);
+            return target.bulkCommit(owner, commit);
+        }
+
+        @Override
         public CompletableFuture<List<Cid>> put(PublicKeyHash owner,
                                                 PublicKeyHash writer,
                                                 List<byte[]> signedHashes,

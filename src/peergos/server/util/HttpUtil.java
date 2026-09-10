@@ -13,6 +13,11 @@ import java.util.stream.*;
 
 public class HttpUtil {
 
+    /** A ceiling for request bodies that carry control messages rather than block data - signatures,
+     *  pointer updates, capabilities. The cbor reader's limit is per byte string, not for the whole
+     *  body, so the read itself has to be bounded or a body of any size will be parsed into memory. */
+    public static final int MAX_CONTROL_BODY_SIZE = 1024 * 1024;
+
     public static boolean allowedQuery(HttpExchange exchange, boolean isPublicServer) {
         // only allow http POST requests unless we are a public server (not localhost)
         if (! exchange.getRequestMethod().equals("POST") && ! isPublicServer) {

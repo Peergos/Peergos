@@ -109,6 +109,17 @@ public class CachingPointers implements MutablePointers {
         });
     }
 
+    @Override
+    public void recordApplied(PublicKeyHash owner, List<SignedPointerUpdate> updates) {
+        synchronized (targetCache) {
+            updates.forEach(u -> targetCache.remove(u.writer));
+        }
+        synchronized (cache) {
+            updates.forEach(u -> cache.put(u.writer, new Pair<>(Optional.of(u.signed), System.currentTimeMillis())));
+        }
+        target.recordApplied(owner, updates);
+    }
+
     /**
      * A rejected CAS means another session moved this pointer, so whatever we hold for that
      * writer describes a state the server has already left. Dropping it makes the retry read

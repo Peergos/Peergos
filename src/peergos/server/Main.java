@@ -971,9 +971,17 @@ public class Main extends Builder {
             MutableEventPropagator localMutable = new MutableEventPropagator(localPointers);
             localMutable.addListener(spaceChecker::accept);
 
+            Path blacklistPath = a.fromPeergosDir("blacklist_file", "blacklist.txt");
+            PublicKeyBlackList blacklist = new UserBasedBlacklist(blacklistPath, core, localMutable, localStorage, hasher);
+            MutablePointers blockingMutablePointers = new BlockingMutablePointers(localMutable, blacklist);
+
             int blockCacheSize = a.getInt("max-cached-blocks", 1000);
             int maxCachedBlockSize = a.getInt("max-cached-block-size", 50 * 1024);
-            ContentAddressedStorage filteringDht = new WriteFilter(localStorage, spaceChecker::allowWrite);
+            // A bulk commit is applied where the owner lives, so the local block writes and the pointer
+            // updates it consists of happen behind one call, below the proxying layer.
+            ContentAddressedStorage filteringDht = new BulkCommitStorage(
+                    new WriteFilter(localStorage, spaceChecker::allowWrite), localStorage, blockingMutablePointers,
+                    hasher, spaceChecker::registerNewWriter, spaceChecker::allowCommit);
             ContentAddressedStorageProxy proxingDht = new ContentAddressedStorageProxy.HTTP(p2pHttpProxy);
             LRUCache<PublicKeyHash, Boolean> nonLocal = new LRUCache<>(100);
             ContentAddressedStorage p2pDht = new ContentAddressedStorage.Proxying(filteringDht, proxingDht, nodeIds,
@@ -1004,9 +1012,6 @@ public class Main extends Builder {
                 return isLocal;
             });
 
-            Path blacklistPath = a.fromPeergosDir("blacklist_file", "blacklist.txt");
-            PublicKeyBlackList blacklist = new UserBasedBlacklist(blacklistPath, core, localMutable, localStorage, hasher);
-            MutablePointers blockingMutablePointers = new BlockingMutablePointers(localMutable, blacklist);
             // We only mirror the data of a user we have given quota, which is what makes our copy of
             // their pointers and login data usable when their home server can't be reached
             LRUCache<PublicKeyHash, Boolean> mirrored = new LRUCache<>(100);

@@ -22,6 +22,9 @@ import java.util.stream.*;
 public class BufferedStorage extends DelegatingStorage {
 
     private final Map<Cid, OpLog.BlockWrite> storage = new LinkedHashMap<>();
+    /** Blocks taken out of the buffer for a commit that hasn't landed yet. They are still ours to serve:
+     *  until the server has them, a reader that goes looking would find them in neither place. */
+    private final Map<Cid, OpLog.BlockWrite> inFlight = new LinkedHashMap<>();
     private int bufferedBytes = 0;
     private final ContentAddressedStorage target;
     private final Hasher hasher;
@@ -36,7 +39,15 @@ public class BufferedStorage extends DelegatingStorage {
 
     public boolean hasBufferedBlock(Cid c) {
         synchronized (storage) {
-            return storage.containsKey(c);
+            return storage.containsKey(c) || inFlight.containsKey(c);
+        }
+    }
+
+    /** A block we hold, whether it is still awaiting a commit or already in one that is in flight. */
+    private OpLog.BlockWrite buffered(Cid hash) {
+        synchronized (storage) {
+            OpLog.BlockWrite block = storage.get(hash);
+            return block != null ? block : inFlight.get(hash);
         }
     }
 
@@ -107,11 +118,9 @@ public class BufferedStorage extends DelegatingStorage {
                         // root block itself is absent from remoteBlocks. Include it so that any
                         // caller building a LocalRamStorage from these blocks can serve
                         // ChampWrapper.create(root, ..., fromBlocks) without "Champ root not present".
-                        synchronized (storage) {
-                            OpLog.BlockWrite rootWrite = storage.get(root);
-                            if (rootWrite != null)
-                                all.add(rootWrite.block);
-                        }
+                        OpLog.BlockWrite rootWrite = buffered(root);
+                        if (rootWrite != null)
+                            all.add(rootWrite.block);
                         return all;
                     });
                 });
@@ -132,18 +141,14 @@ public class BufferedStorage extends DelegatingStorage {
 
             @Override
             public CompletableFuture<Optional<byte[]>> get(Cid hash) {
-                synchronized (storage) {
-                    return Futures.of(Optional.ofNullable(storage.get(hash))
-                            .map(b -> b.block)
-                            .or(() -> Optional.ofNullable(localCache.get(hash))));
-                }
+                return Futures.of(Optional.ofNullable(buffered(hash))
+                        .map(b -> b.block)
+                        .or(() -> Optional.ofNullable(localCache.get(hash))));
             }
 
             @Override
             public boolean hasBlock(Cid hash) {
-                synchronized (storage) {
-                    return storage.containsKey(hash) || localCache.containsKey(hash);
-                }
+                return buffered(hash) != null || localCache.containsKey(hash);
             }
 
             @Override
@@ -194,18 +199,14 @@ public class BufferedStorage extends DelegatingStorage {
 
             @Override
             public CompletableFuture<Optional<byte[]>> get(Cid hash) {
-                synchronized (storage) {
-                    return Futures.of(Optional.ofNullable(storage.get(hash))
-                            .map(b -> b.block)
-                            .or(() -> Optional.ofNullable(localCache.get(hash))));
-                }
+                return Futures.of(Optional.ofNullable(buffered(hash))
+                        .map(b -> b.block)
+                        .or(() -> Optional.ofNullable(localCache.get(hash))));
             }
 
             @Override
             public boolean hasBlock(Cid hash) {
-                synchronized (storage) {
-                    return storage.containsKey(hash) || localCache.containsKey(hash);
-                }
+                return buffered(hash) != null || localCache.containsKey(hash);
             }
 
             @Override
@@ -309,11 +310,9 @@ public class BufferedStorage extends DelegatingStorage {
 
     @Override
     public CompletableFuture<Optional<byte[]>> getRaw(PublicKeyHash owner, Cid hash, Optional<BatWithId> bat) {
-        synchronized (storage) {
-            OpLog.BlockWrite local = storage.get(hash);
-            if (local != null)
-                return Futures.of(Optional.of(local.block));
-        }
+        OpLog.BlockWrite local = buffered(hash);
+        if (local != null)
+            return Futures.of(Optional.of(local.block));
         return target.getRaw(owner, hash, bat);
     }
 
@@ -332,31 +331,6 @@ public class BufferedStorage extends DelegatingStorage {
         // Do NOT do signature as this block will likely be GC'd before being committed, so we can delay calculating signatures until commit
         return put(writer.publicKeyHash, Collections.singletonList(block), Collections.singletonList(new byte[0]), false, Optional.empty())
                 .thenApply(hashes -> hashes.get(0));
-    }
-
-    public CompletableFuture<Map<Cid, OpLog.BlockWrite>> signBlocks(Map<PublicKeyHash, SigningPrivateKeyAndPublicHash> writers) {
-        synchronized (storage) {
-            List<Pair<Cid, OpLog.BlockWrite>> writes = storage.entrySet()
-                    .stream()
-                    .map(e -> new Pair<>(e.getKey(), e.getValue()))
-                    .collect(Collectors.toList());
-            return Futures.combineAllInOrder(writes.stream()
-                            .map(w -> {
-                                OpLog.BlockWrite block = w.right;
-                                return (block.signature.length > 0 ?
-                                        Futures.of(block.signature) :
-                                        writers.get(block.writer).secret.signMessage(w.left.getHash()))
-                                        .thenApply(sig -> new Pair<>(w.left, new OpLog.BlockWrite(block.writer,
-                                                sig,
-                                                block.block, block.isRaw, block.progressMonitor)));
-                            }).collect(Collectors.toList()))
-                    .thenApply(all -> {
-                        if (all.stream().map(p ->p.right).anyMatch(bw -> bw.signature.length == 0))
-                            throw new IllegalStateException("Blocks with empty signature!");
-                        return all.stream()
-                                .collect(Collectors.toMap(p -> p.left, p -> p.right));
-                    });
-        }
     }
 
     public void gc(List<Cid> roots) {
@@ -406,88 +380,114 @@ public class BufferedStorage extends DelegatingStorage {
         }
     }
 
-    /** Commit the blocks for a given writer
-     *
-     * @param owner
-     * @param writer
-     * @param tid
-     * @return
+    /** Whether any buffered block is too large to travel inline, and so must be written under a
+     *  transaction that keeps it alive until the commit naming it lands.
      */
-    public CompletableFuture<Boolean> commit(PublicKeyHash owner,
-                                             PublicKeyHash writer,
-                                             TransactionId tid,
-                                             Map<Cid, OpLog.BlockWrite> signed) {
-        // write blocks in batches of up to 50 all in 1 transaction
-        List<OpLog.BlockWrite> forWriter = new ArrayList<>();
-        Set<Cid> toRemove = new HashSet<>();
+    public boolean needsTransaction() {
         synchronized (storage) {
-            for (Map.Entry<Cid, OpLog.BlockWrite> e : signed.entrySet()) {
-                if (!Objects.equals(e.getValue().writer, writer))
+            return storage.values().stream()
+                    .anyMatch(b -> b.isRaw && b.block.length >= DirectS3BlockStore.MAX_SMALL_BLOCK_SIZE);
+        }
+    }
+
+    /** Assign each buffered block to the first of these roots that reaches it.
+     *
+     *  Which writer wrote a block is not a reliable guide to which root reaches it - the same block can
+     *  be written under two writers, and only the last one is recorded - and a commit is only accepted
+     *  if every block in it hangs off the root it signs, so the graph decides.
+     */
+    public List<Set<Cid>> partitionByRoot(List<MaybeMultihash> roots) {
+        synchronized (storage) {
+            Set<Cid> claimed = new HashSet<>();
+            List<Set<Cid>> partitions = new ArrayList<>();
+            for (MaybeMultihash root : roots) {
+                Set<Cid> reachable = new HashSet<>();
+                root.toOptional().ifPresent(h -> markReachable((Cid) h, reachable, storage));
+                reachable.removeAll(claimed);
+                claimed.addAll(reachable);
+                partitions.add(reachable);
+            }
+            return partitions;
+        }
+    }
+
+    /** Take the given buffered blocks and partition them into a commit for one writer.
+     *
+     *  Large raw blocks are written first, direct to S3 where that is available, so only their
+     *  hashes travel in the commit itself. Everything else travels inline.
+     */
+    public CompletableFuture<WriterCommit> buildWriterCommit(PublicKeyHash owner,
+                                                             PublicKeyHash writer,
+                                                             Optional<SignedPointerUpdate> pointer,
+                                                             SigningPrivateKeyAndPublicHash signer,
+                                                             Optional<TransactionId> tid,
+                                                             Set<Cid> blocks) {
+        List<byte[]> cborBlocks = new ArrayList<>();
+        List<byte[]> rawBlocks = new ArrayList<>();
+        List<OpLog.BlockWrite> inlineRaw = new ArrayList<>();
+        List<Pair<Cid, OpLog.BlockWrite>> large = new ArrayList<>();
+        synchronized (storage) {
+            List<Cid> toRemove = new ArrayList<>();
+            for (Map.Entry<Cid, OpLog.BlockWrite> e : storage.entrySet()) {
+                OpLog.BlockWrite block = e.getValue();
+                if (! blocks.contains(e.getKey()))
                     continue;
-                forWriter.add(e.getValue());
                 toRemove.add(e.getKey());
+                if (! block.isRaw)
+                    cborBlocks.add(block.block);
+                else if (block.block.length < DirectS3BlockStore.MAX_SMALL_BLOCK_SIZE) {
+                    rawBlocks.add(block.block);
+                    inlineRaw.add(block);
+                } else
+                    large.add(new Pair<>(e.getKey(), block));
             }
-            toRemove.forEach(this::remove);
-        }
-
-        int maxBlocksPerBatch = ContentAddressedStorage.MAX_BLOCK_AUTHS;
-        int maxCborBatchSize = 1024*1024;
-        int maxCborBlocksPerBatch = 1000;
-        List<List<OpLog.BlockWrite>> cborBatches = new ArrayList<>();
-        List<List<OpLog.BlockWrite>> rawBatches = new ArrayList<>();
-        List<List<OpLog.BlockWrite>> smallRawBatches = new ArrayList<>();
-
-        int cborSize = 0, rawcount = 0, smallRawCount = 0;
-        int smallBlockMax = DirectS3BlockStore.MAX_SMALL_BLOCK_SIZE;
-        for (OpLog.BlockWrite val : forWriter) {
-            List<List<OpLog.BlockWrite>> batches = val.isRaw ?
-                    val.block.length < smallBlockMax ? smallRawBatches : rawBatches : cborBatches;
-            int count = val.isRaw ? val.block.length < smallBlockMax ? smallRawCount : rawcount : cborSize;
-            int maxBatchCount = val.isRaw ? maxBlocksPerBatch : maxCborBatchSize;
-            if (val.isRaw && count % maxBatchCount == 0)
-                batches.add(new ArrayList<>());
-            if (! val.isRaw &&
-                    (cborBatches.isEmpty() ||
-                            cborSize + val.block.length > maxCborBatchSize ||
-                            cborBatches.get(cborBatches.size() - 1).size() >= maxCborBlocksPerBatch)) {
-                cborBatches.add(new ArrayList<>());
-                cborSize = 0;
+            for (Cid claimed : toRemove) {
+                OpLog.BlockWrite block = storage.get(claimed);
+                remove(claimed);
+                inFlight.put(claimed, block);
             }
-            batches.get(batches.size() - 1).add(val);
-            count = (count + 1) % maxBatchCount;
-            if (val.isRaw) {
-                if (val.block.length < smallBlockMax)
-                    smallRawCount = count;
-                else
-                    rawcount = count;
-            } else
-                cborSize += val.block.length;
         }
+        return preWrite(owner, writer, signer, large, tid)
+                .thenApply(preWritten -> {
+                    inlineRaw.forEach(b -> b.progressMonitor.ifPresent(m -> m.accept((long) b.block.length)));
+                    return new WriterCommit(writer, cborBlocks, rawBlocks, preWritten, pointer, Optional.empty());
+                });
+    }
+
+    /** Write the blocks that are too large to travel inline, in batches, and return their hashes. */
+    private CompletableFuture<List<Cid>> preWrite(PublicKeyHash owner,
+                                                  PublicKeyHash writer,
+                                                  SigningPrivateKeyAndPublicHash signer,
+                                                  List<Pair<Cid, OpLog.BlockWrite>> large,
+                                                  Optional<TransactionId> tid) {
+        if (large.isEmpty())
+            return Futures.of(Collections.emptyList());
+        if (tid.isEmpty())
+            throw new IllegalStateException("Blocks written ahead of a commit need a transaction to hold them!");
         int MAX_CONCURRENT_BATCH_UPLOADS = 4;
         AsyncSemaphore semaphore = new AsyncSemaphore(MAX_CONCURRENT_BATCH_UPLOADS);
         List<CompletableFuture<List<Cid>>> futures = new ArrayList<>();
-        for (Pair<Boolean, List<OpLog.BlockWrite>> p : Stream.concat(
-                        rawBatches.stream().map(bs -> new Pair<>(true, bs)),
-                        Stream.concat(
-                                smallRawBatches.stream().map(bs -> new Pair<>(true, bs)),
-                                cborBatches.stream().map(bs -> new Pair<>(false, bs))))
-                .filter(p -> !p.right.isEmpty())
-                .collect(Collectors.toList())) {
-            CompletableFuture<List<Cid>> work = semaphore.acquire().thenCompose(v -> p.left ?
-                    target.putRaw(owner, writer,
-                            p.right.stream().map(w -> w.signature).collect(Collectors.toList()),
-                            p.right.stream().map(w -> w.block).collect(Collectors.toList()), tid, x -> {})
+        for (List<Pair<Cid, OpLog.BlockWrite>> batch : ArrayOps.group(large, ContentAddressedStorage.MAX_BLOCK_AUTHS)) {
+            CompletableFuture<List<Cid>> work = semaphore.acquire()
+                    // one signature for the batch where the server supports it, rather than one per block
+                    .thenCompose(v -> target.putRawBatch(owner, signer,
+                                    batch.stream().map(p -> p.right.block).collect(Collectors.toList()),
+                                    tid.get(), x -> {}, hasher)
                             .thenApply(res -> {
-                                p.right.forEach(w -> w.progressMonitor.ifPresent(m -> m.accept((long) w.block.length)));
+                                batch.forEach(p -> p.right.progressMonitor.ifPresent(m -> m.accept((long) p.right.block.length)));
                                 return res;
-                            }) :
-                    target.put(owner, writer,
-                            p.right.stream().map(w -> w.signature).collect(Collectors.toList()),
-                            p.right.stream().map(w -> w.block).collect(Collectors.toList()), tid));
-            work.exceptionally(t -> { semaphore.release(); return null; });
-            futures.add(work.thenApply(r -> { semaphore.release(); return r; }));
+                            }));
+            work.exceptionally(t -> {
+                semaphore.release();
+                return null;
+            });
+            futures.add(work.thenApply(r -> {
+                semaphore.release();
+                return r;
+            }));
         }
-        return Futures.combineAllInOrder(futures).thenApply(a -> true);
+        return Futures.combineAllInOrder(futures)
+                .thenApply(groups -> groups.stream().flatMap(List::stream).collect(Collectors.toList()));
     }
 
     public BufferedStorage clone() {
@@ -501,6 +501,7 @@ public class BufferedStorage extends DelegatingStorage {
     public synchronized void clear() {
         synchronized (storage) {
             storage.clear();
+            inFlight.clear();
             bufferedBytes = 0;
         }
     }
@@ -513,11 +514,10 @@ public class BufferedStorage extends DelegatingStorage {
 
     @Override
     public CompletableFuture<Optional<Integer>> getSize(PublicKeyHash owner, Multihash block) {
-        synchronized (storage) {
-            if (!storage.containsKey(block))
-                return target.getSize(owner, block);
-            return CompletableFuture.completedFuture(Optional.of(storage.get(block).block.length));
-        }
+        OpLog.BlockWrite local = block instanceof Cid ? buffered((Cid) block) : null;
+        if (local == null)
+            return target.getSize(owner, block);
+        return CompletableFuture.completedFuture(Optional.of(local.block.length));
     }
 
     public CompletableFuture<Cid> hashToCid(byte[] input, boolean isRaw) {

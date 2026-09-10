@@ -38,6 +38,11 @@ public class ProxyingMutablePointers implements MutablePointers {
     }
 
     @Override
+    public void recordApplied(PublicKeyHash owner, List<SignedPointerUpdate> updates) {
+        local.recordApplied(owner, updates);
+    }
+
+    @Override
     public CompletableFuture<Boolean> setPointers(PublicKeyHash owner, List<SignedPointerUpdate> updates) {
         return Proxy.redirectCall(core,
                 serverIds,

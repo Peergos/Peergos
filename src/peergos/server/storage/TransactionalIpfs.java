@@ -214,12 +214,8 @@ public class TransactionalIpfs extends DelegatingDeletableStorage {
                                             List<byte[]> signedHashes,
                                             List<byte[]> blocks,
                                             TransactionId tid) {
-        for (byte[] signedHash : signedHashes) {
-            Multihash hash = new Multihash(Multihash.Type.sha2_256, Arrays.copyOfRange(signedHash, signedHash.length - 32, signedHash.length));
-            Cid cid = new Cid(1, Cid.Codec.DagCbor, hash.type, hash.getHash());
-            transactions.addBlock(cid, tid, owner);
-        }
-        return target.put(owner, writer, signedHashes, blocks, tid);
+        return addToTransaction(owner, blocks, false, tid)
+                .thenCompose(x -> target.put(owner, writer, signedHashes, blocks, tid));
     }
 
     @Override
@@ -229,12 +225,26 @@ public class TransactionalIpfs extends DelegatingDeletableStorage {
                                                List<byte[]> blocks,
                                                TransactionId tid,
                                                ProgressConsumer<Long> progressConsumer) {
-        for (byte[] signedHash : signedHashes) {
-            Multihash hash = new Multihash(Multihash.Type.sha2_256, Arrays.copyOfRange(signedHash, signedHash.length - 32, signedHash.length));
-            Cid cid = new Cid(1, Cid.Codec.Raw, hash.type, hash.getHash());
-            transactions.addBlock(cid, tid, owner);
-        }
-        return target.putRaw(owner, writer, signedHashes, blocks, tid, progressConsumer);
+        return addToTransaction(owner, blocks, true, tid)
+                .thenCompose(x -> target.putRaw(owner, writer, signedHashes, blocks, tid, progressConsumer));
+    }
+
+    /** Name each block so the transaction holds it until the write that references it is committed.
+     *
+     *  This used to read the hash out of the last 32 bytes of the block's signature, which a bulk
+     *  commit doesn't have: there the pointer update signs a root that names every block instead.
+     */
+    private CompletableFuture<Boolean> addToTransaction(PublicKeyHash owner,
+                                                       List<byte[]> blocks,
+                                                       boolean isRaw,
+                                                       TransactionId tid) {
+        return Futures.combineAllInOrder(blocks.stream()
+                        .map(b -> hasher.hash(b, isRaw))
+                        .collect(Collectors.toList()))
+                .thenApply(cids -> {
+                    cids.forEach(cid -> transactions.addBlock(cid, tid, owner));
+                    return true;
+                });
     }
 
     @Override

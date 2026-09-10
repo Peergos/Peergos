@@ -746,12 +746,15 @@ public class RamUserTests extends UserTests {
         sub.remove(context.getUserRoot().get(), subdirPath, context).join();
         long usageAfterDelete = context.getSpaceUsage(false).join();
         // Bounded poll — see correctUsageAndSpaceRecovery for the reasoning.
-        for (int i = 0; i < 60 && usageAfterDelete >= initialUsage; i++) {
+        // The upload transaction is still there until cleanPartialUploads below, so the same residue
+        // the sibling test allows applies here: what this asserts is that deleting the writing space
+        // gave back the file, not that usage returned to the byte it started at.
+        for (int i = 0; i < 60 && usageAfterDelete >= initialUsage + CLEANUP_RESIDUE_TOLERANCE; i++) {
             Thread.sleep(2_000);
             usageAfterDelete = context.getSpaceUsage(false).join();
         }
         Assert.assertTrue("usageAfterDelete=" + usageAfterDelete + " initialUsage=" + initialUsage,
-                usageAfterDelete < initialUsage);
+                usageAfterDelete < initialUsage + CLEANUP_RESIDUE_TOLERANCE);
 
         // clean the partial upload
         context.cleanPartialUploads(t -> true).join();

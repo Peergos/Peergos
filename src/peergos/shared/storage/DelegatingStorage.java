@@ -1,6 +1,7 @@
 package peergos.shared.storage;
 
 import peergos.shared.cbor.*;
+import peergos.shared.crypto.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.Cid;
 import peergos.shared.io.ipfs.Multihash;
@@ -53,6 +54,48 @@ public abstract class DelegatingStorage implements ContentAddressedStorage {
     @Override
     public CompletableFuture<Boolean> closeTransaction(PublicKeyHash owner, TransactionId tid) {
         return target.closeTransaction(owner, tid);
+    }
+
+    @Override
+    public CompletableFuture<List<PresignedUrl>> authWrites(PublicKeyHash owner,
+                                                            PublicKeyHash writer,
+                                                            BlockWriteAuth auth,
+                                                            boolean isRaw,
+                                                            TransactionId tid) {
+        return target.authWrites(owner, writer, auth, isRaw, tid);
+    }
+
+    @Override
+    public CompletableFuture<List<Cid>> putBatch(PublicKeyHash owner,
+                                                 SigningPrivateKeyAndPublicHash signer,
+                                                 List<byte[]> blocks,
+                                                 TransactionId tid,
+                                                 Hasher hasher) {
+        return target.putBatch(owner, signer, blocks, tid, hasher);
+    }
+
+    @Override
+    public CompletableFuture<List<Cid>> putRawBatch(PublicKeyHash owner,
+                                                    SigningPrivateKeyAndPublicHash signer,
+                                                    List<byte[]> blocks,
+                                                    TransactionId tid,
+                                                    ProgressConsumer<Long> progress,
+                                                    Hasher hasher) {
+        return target.putRawBatch(owner, signer, blocks, tid, progress, hasher);
+    }
+
+    @Override
+    public CompletableFuture<List<Cid>> putBatch(PublicKeyHash owner,
+                                                 PublicKeyHash writer,
+                                                 BlockWriteBatch batch,
+                                                 boolean isRaw,
+                                                 TransactionId tid) {
+        return target.putBatch(owner, writer, batch, isRaw, tid);
+    }
+
+    @Override
+    public CompletableFuture<List<Cid>> bulkCommit(PublicKeyHash owner, BulkCommit commit) {
+        return target.bulkCommit(owner, commit);
     }
 
     @Override

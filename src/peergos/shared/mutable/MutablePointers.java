@@ -35,6 +35,11 @@ public interface MutablePointers {
                 .thenCompose(signed -> setPointer(owner, writer.publicKeyHash, signed));
     }
 
+    /** Note pointer updates that have already been applied by another route - a bulk commit, which
+     *  carries its blocks and its pointer updates in one call - so that any cache of them stays true.
+     */
+    default void recordApplied(PublicKeyHash owner, List<SignedPointerUpdate> updates) {}
+
     /** Get the current hash a public key maps to
      *
      * @param writer The public signing key

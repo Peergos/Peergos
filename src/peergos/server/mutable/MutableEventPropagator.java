@@ -35,6 +35,11 @@ public class MutableEventPropagator implements MutablePointers {
     }
 
     @Override
+    public void recordApplied(PublicKeyHash owner, List<SignedPointerUpdate> updates) {
+        target.recordApplied(owner, updates);
+    }
+
+    @Override
     public CompletableFuture<Boolean> setPointers(PublicKeyHash owner, List<SignedPointerUpdate> updates) {
         return target.setPointers(owner, updates)
                 .thenApply(res -> {
