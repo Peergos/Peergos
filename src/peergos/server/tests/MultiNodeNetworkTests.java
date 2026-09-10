@@ -7,6 +7,7 @@ import org.junit.Assume;
 import peergos.server.*;
 import peergos.server.corenode.CorenodeEventPropagator;
 import peergos.server.corenode.MirrorCoreNode;
+import peergos.server.corenode.JdbcIpnsAndSocial;
 import peergos.server.corenode.SignUpFilter;
 import com.webauthn4j.data.client.Origin;
 import peergos.server.login.JdbcAccount;
@@ -172,6 +173,26 @@ public class MultiNodeNetworkTests {
         startServer(i);
         awaitFirstMirroringPass(i, username, loginKeys);
         return loginKeys;
+    }
+
+    /** Wait until the mirror holds everything the home server does for this user.
+     *
+     *  The mirror pins a writer's whole tree before it moves that writer's pointer, so the two having
+     *  the same pointer means the mirror has everything under it. Reading the mirror's pointer over
+     *  the network would be answered by the home server while that is still up, so read the row out
+     *  of the mirror's own datastore.
+     */
+    private void awaitMirrorCaughtUp(int mirror, int home, PublicKeyHash owner) throws Exception {
+        JdbcIpnsAndSocial mirrored = Builder.buildRawPointers(argsToCleanUp.get(mirror),
+                Builder.getDBConnector(argsToCleanUp.get(mirror), "mutable-pointers-file"));
+        for (int attempt = 0; attempt < 300; attempt++) {
+            Optional<byte[]> atHome = getService(home).mutable.getPointer(owner, owner).join();
+            Optional<byte[]> atMirror = mirrored.getPointer(owner).join();
+            if (atHome.isPresent() && atMirror.isPresent() && Arrays.equals(atHome.get(), atMirror.get()))
+                return;
+            Thread.sleep(1_000);
+        }
+        throw new IllegalStateException("Mirror didn't catch up with the home server's pointer in time");
     }
 
     /** Wait for the mirroring pass started at boot, rather than guessing how long it takes.
@@ -500,6 +521,9 @@ public class MultiNodeNetworkTests {
         // it refuses to migrate a user to the server they are already on
         Assert.assertFalse(peergos.server.Migrate.forceMigrate(username, () -> password, () -> true, node1, crypto));
 
+        // signing in above can move the user on, and the mirror thread runs on its own schedule, so
+        // let it catch up before the home server it is copying from goes away
+        awaitMirrorCaughtUp(iNode2, iNode1, user.signer.publicKeyHash);
         stopServer(iNode1);
         try {
             // What a forced migration needs from the mirror, asserted separately so that a failure
