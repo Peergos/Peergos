@@ -191,10 +191,13 @@ public class DirectS3BlockStore implements ContentAddressedStorage {
                                                     TransactionId tid,
                                                     ProgressConsumer<Long> progressCounter,
                                                     Hasher hasher) {
-        // small blocks, and anything not going direct to S3, are written through the server, which has
-        // its own batch signed call - so delegate rather than falling back to a signature per block
-        if (! batchAuthSupported || blocks.stream().allMatch(b -> b.length < MAX_SMALL_BLOCK_SIZE))
+        // small blocks never go direct to S3, so let the server write them with its own batch signed call
+        if (blocks.stream().allMatch(b -> b.length < MAX_SMALL_BLOCK_SIZE))
             return fallback.putRawBatch(owner, signer, blocks, tid, progressCounter, hasher);
+        // a server without the v2 auth call still takes direct writes, it just wants a signature per
+        // block - going through the server instead would send every byte twice
+        if (! batchAuthSupported)
+            return ContentAddressedStorage.super.putRawBatch(owner, signer, blocks, tid, progressCounter, hasher);
         return onOwnersNode(owner).thenCompose(ownersNode -> {
             if (! ownersNode || ! directWrites)
                 return fallback.putRawBatch(owner, signer, blocks, tid, progressCounter, hasher);
