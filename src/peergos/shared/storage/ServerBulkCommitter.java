@@ -82,11 +82,7 @@ public class ServerBulkCommitter implements BulkCommitter {
 
     private static boolean isUnsupported(Throwable t) {
         String msg = Exceptions.getRootCause(t).getMessage();
-        if (msg == null)
-            return false;
-        return msg.contains("Status code: 404")
-                || msg.contains("Unimplemented call!")
-                || msg.contains("Cannot bulk commit");
+        return Exceptions.isUnimplemented(t) || (msg != null && msg.contains("Cannot bulk commit"));
     }
 
     /** A commit too big for one request goes as several, of which only the last carries the pointer

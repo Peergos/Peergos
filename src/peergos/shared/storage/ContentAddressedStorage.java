@@ -650,8 +650,7 @@ public interface ContentAddressedStorage {
                     () -> Futures.combineAllInOrder(futures)
                             .thenApply(gs -> gs.stream().flatMap(List::stream).collect(Collectors.toList())),
                     t -> {
-                        String msg = Exceptions.getRootCause(t).getMessage();
-                        if (msg == null || ! (msg.contains("Status code: 404") || msg.contains("Unimplemented call!")))
+                        if (! Exceptions.isUnimplemented(t))
                             return Futures.errored(t);
                         batchSignedPutSupported = false;
                         return perBlockSigned.get();

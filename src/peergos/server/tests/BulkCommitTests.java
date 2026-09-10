@@ -231,6 +231,52 @@ public class BulkCommitTests {
         Assert.assertTrue(calls.get(calls.size() - 1).hasPointerUpdate());
     }
 
+    /** A server that predates the endpoint answers 404, and each client puts that to us in its own
+     *  words: the java one names the status code, a browser hands us the status text, or the body of
+     *  whatever generic page the server serves for an unknown path.
+     */
+    @Test
+    public void fallsBackOnEveryShapeOfMissingEndpoint() {
+        List<String> asSeenByAClient = Arrays.asList(
+                "Unexpected Error. Status code: 404 for url http://localhost:8000/api/v0/bulk/commit",
+                "Not Found",
+                "<!DOCTYPE+html>%0A<html+lang=\"en\">%0A++++<head>%0A++++++++<title>404+Not+Found</title>" +
+                        "%0A++++</head>%0A++++<body><h1>404+Page+Not+Found</h1></body>%0A</html>");
+
+        for (String message : asSeenByAClient) {
+            PublicKeyHash writer = randomWriter();
+            BulkCommit commit = new BulkCommit(Optional.empty(), Arrays.asList(new WriterCommit(writer,
+                    Arrays.asList(random(64)), Collections.emptyList(), Collections.emptyList(),
+                    Optional.of(new SignedPointerUpdate(writer, random(64))), Optional.empty())));
+            CommitContext context = new CommitContext(Collections.emptyMap(), Collections.emptySet(),
+                    Collections.emptyMap(), Collections.emptyMap());
+
+            List<BulkCommit> viaFallback = new ArrayList<>();
+            BulkCommitter committer = new ServerBulkCommitter(unimplemented(message),
+                    (owner, c, ctx) -> {
+                        viaFallback.add(c);
+                        return Futures.of(Collections.emptyList());
+                    }, crypto.hasher);
+            committer.commit(writer, commit, context).join();
+
+            Assert.assertEquals("fell back for: " + message, 1, viaFallback.size());
+        }
+    }
+
+    private static ContentAddressedStorage unimplemented(String message) {
+        return new DelegatingStorage(null) {
+            @Override
+            public ContentAddressedStorage directToOrigin() {
+                return this;
+            }
+
+            @Override
+            public CompletableFuture<List<Cid>> bulkCommit(PublicKeyHash owner, BulkCommit commit) {
+                return Futures.errored(new RuntimeException(message));
+            }
+        };
+    }
+
     private static BulkCommitter refusingFallback() {
         return (owner, commit, context) -> Futures.errored(new IllegalStateException("Should not fall back!"));
     }

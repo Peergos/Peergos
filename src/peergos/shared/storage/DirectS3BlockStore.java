@@ -222,10 +222,7 @@ public class DirectS3BlockStore implements ContentAddressedStorage {
     }
 
     private static boolean isUnsupported(Throwable t) {
-        String msg = Exceptions.getRootCause(t).getMessage();
-        if (msg == null)
-            return false;
-        return msg.contains("Status code: 404") || msg.contains("Unimplemented call!");
+        return Exceptions.isUnimplemented(t);
     }
 
     /** Put each block to the url it was authorised for, a few at a time so a browser isn't starved of
