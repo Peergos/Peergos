@@ -132,14 +132,25 @@ public class QuotaTests {
         Path filePath = PathUtil.get(username, "file-1");
         Threads.sleep(2_000);
 
-        // push them past their quota: the first rejection clears their pending usage, so some of this
-        // lands before the writes start being refused
+        // A write that doesn't fit is refused outright, so the way past the quota is the tolerance:
+        // once a user has been refused once, writes are allowed until they are 1 MiB over. How much
+        // of the refused upload lands isn't fixed, so keep adding small files until they are over.
         try {
             home.uploadOrReplaceFile("file-2", new AsyncReader.ArrayBacked(data), data.length,
                     network, crypto, () -> false, x -> {}).join();
         } catch (Exception overQuota) {}
         Threads.sleep(2_000);
+        byte[] small = new byte[256 * 1024];
+        random.nextBytes(small);
         long stored = context.getSpaceUsage(false).join();
+        for (int i = 0; stored <= quota && i < 3; i++) {
+            try {
+                context.getUserRoot().join().uploadOrReplaceFile("filler-" + i, new AsyncReader.ArrayBacked(small),
+                        small.length, network, crypto, () -> false, x -> {}).join();
+            } catch (Exception overQuota) {}
+            Threads.sleep(2_000);
+            stored = context.getSpaceUsage(false).join();
+        }
         Assert.assertTrue("they are over quota: " + stored + " of " + quota, stored > quota);
 
         // the delete frees far more than it writes, so it is allowed through
