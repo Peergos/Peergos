@@ -34,6 +34,22 @@ public class ThumbnailerHostTests {
         host.get().stop();
     }
 
+    /** A jpackage runtime can have no java command, leaving the app's own launcher to start the
+     *  worker: whatever it is, it comes up in peergos.server.Main. */
+    @Test
+    public void theServerLauncherCanBeTheWorker() throws Exception {
+        Assume.assumeTrue("native thumbnailer available", ThumbnailerHost.create().map(h -> {
+            h.stop();
+            return true;
+        }).orElse(false));
+        ThumbnailerHost host = new ThumbnailerHost(command(peergos.server.Main.class));
+        ByteArrayOutputStream bout = new ByteArrayOutputStream();
+        ImageIO.write(new BufferedImage(800, 600, BufferedImage.TYPE_INT_RGB), "png", bout);
+
+        Assert.assertTrue(host.generateThumbnail(bout.toByteArray()).isPresent());
+        host.stop();
+    }
+
     /** ffmpeg aborts the process it is linked into, which is what put it in a process of its own. */
     @Test
     public void aWorkerCrashLosesOneThumbnailNotTheServer() throws Exception {

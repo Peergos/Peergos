@@ -1431,6 +1431,16 @@ public class Main extends Builder {
     }
 
     public static void main(String[] args) {
+        if (ThumbnailerWorker.isWorker()) {
+            // a packaged app can ship a runtime with no java command, leaving our own launcher as
+            // the only way to start the process that ffmpeg is allowed to abort
+            try {
+                ThumbnailerWorker.main(args);
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+            return;
+        }
         // Netty uses thread count twice the number of CPUs, this undoes that
         System.getProperties().setProperty("io.netty.eventLoopThreads", "2");
         try {

@@ -51,9 +51,14 @@ public class ThumbnailerHost implements ThumbnailGenerator.Generator, ThumbnailG
     }
 
     private static List<String> workerCommand() {
-        String java = Path.of(System.getProperty("java.home"), "bin",
-                System.getProperty("os.name").toLowerCase().contains("windows") ? "java.exe" : "java").toString();
-        return List.of(java, "-cp", classpath(), ThumbnailerWorker.class.getName());
+        Path java = Path.of(System.getProperty("java.home"), "bin",
+                System.getProperty("os.name").toLowerCase().contains("windows") ? "java.exe" : "java");
+        if (java.toFile().exists())
+            return List.of(java.toString(), "-cp", classpath(), ThumbnailerWorker.class.getName());
+        // A packaged app can ship a runtime with no java command. Our own launcher is then the only
+        // thing that can start a jvm here, and it hands over to the worker on the environment below.
+        return List.of(ProcessHandle.current().info().command()
+                .orElseThrow(() -> new IllegalStateException("Nothing to start a thumbnailer worker with")));
     }
 
     /** Absolute, because the worker is started from wherever the server happens to be running. */
@@ -76,6 +81,7 @@ public class ThumbnailerHost implements ThumbnailGenerator.Generator, ThumbnailG
 
     private void start() throws IOException {
         ProcessBuilder pb = new ProcessBuilder(command);
+        pb.environment().put(ThumbnailerWorker.WORKER_ENV, "1");
         // ffmpeg's complaints are worth seeing, and it writes them to stderr
         pb.redirectError(ProcessBuilder.Redirect.INHERIT);
         process = pb.start();

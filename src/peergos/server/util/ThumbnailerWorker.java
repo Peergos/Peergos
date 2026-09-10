@@ -17,6 +17,13 @@ import java.util.*;
  */
 public class ThumbnailerWorker {
 
+    /** Set on a worker started through the app launcher, whose main class is the server's. */
+    public static final String WORKER_ENV = "PEERGOS_THUMBNAILER_WORKER";
+
+    public static boolean isWorker() {
+        return "1".equals(System.getenv(WORKER_ENV));
+    }
+
     public static void main(String[] args) throws Exception {
         PrintStream results = new PrintStream(new FileOutputStream(FileDescriptor.out), true);
         // anything else that fancies printing goes to stderr rather than into the protocol
