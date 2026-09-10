@@ -112,6 +112,42 @@ public class QuotaTests {
         file.remove(home, filePath, context).join();
     }
 
+    /** Committing a delete is itself a write, so charging it only the bytes it adds would leave a user
+     *  who is over quota unable to get back under. A commit carries its blocks and its pointer updates
+     *  together, so the server can see that this one frees more than it writes and let it through.
+     */
+    @Test
+    public void deleteWhenOverQuota() throws Exception {
+        String username = generateUsername();
+        String password = "badpassword";
+
+        UserContext context = ensureSignedUp(username, password, network, crypto);
+        FileWrapper home = context.getByPath(PathUtil.get(username).toString()).join().get();
+        long quota = 2 * 1024 * 1024;
+        int used = context.getSpaceUsage(false).join().intValue();
+        byte[] data = new byte[(int) quota - used - 16 * 1024];
+        random.nextBytes(data);
+        home = home.uploadOrReplaceFile("file-1", new AsyncReader.ArrayBacked(data), data.length,
+                network, crypto, () -> false, x -> {}).join();
+        Path filePath = PathUtil.get(username, "file-1");
+        Threads.sleep(2_000);
+
+        // push them past their quota: the first rejection clears their pending usage, so some of this
+        // lands before the writes start being refused
+        try {
+            home.uploadOrReplaceFile("file-2", new AsyncReader.ArrayBacked(data), data.length,
+                    network, crypto, () -> false, x -> {}).join();
+        } catch (Exception overQuota) {}
+        Threads.sleep(2_000);
+        long stored = context.getSpaceUsage(false).join();
+        Assert.assertTrue("they are over quota: " + stored + " of " + quota, stored > quota);
+
+        // the delete frees far more than it writes, so it is allowed through
+        FileWrapper file = context.getByPath(filePath).join().get();
+        file.remove(context.getUserRoot().join(), filePath, context).join();
+        Assert.assertTrue("the file is gone", context.getByPath(filePath).join().isEmpty());
+    }
+
     @Ignore // Can always just increae their quota for now
     @Test
     public void deletionAfterExceedingQuota() throws Exception {

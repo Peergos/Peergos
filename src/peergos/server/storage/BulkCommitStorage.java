@@ -28,20 +28,32 @@ import java.util.stream.*;
  */
 public class BulkCommitStorage extends DelegatingStorage {
 
+    /** Whether a commit may be applied, given the bytes it writes and, if that alone would be
+     *  refused, the net change in stored bytes its pointer updates will cause. */
+    public interface CommitQuota {
+        boolean allow(PublicKeyHash owner, PublicKeyHash writer, int written, Supplier<Long> delta);
+    }
+
     private final ContentAddressedStorage target;
+    private final DeletableContentAddressedStorage unfiltered;
     private final MutablePointers pointers;
     private final Hasher hasher;
     private final BiFunction<PublicKeyHash, PublicKeyHash, Boolean> registerWriter;
+    private final CommitQuota quota;
 
     public BulkCommitStorage(ContentAddressedStorage target,
+                             DeletableContentAddressedStorage unfiltered,
                              MutablePointers pointers,
                              Hasher hasher,
-                             BiFunction<PublicKeyHash, PublicKeyHash, Boolean> registerWriter) {
+                             BiFunction<PublicKeyHash, PublicKeyHash, Boolean> registerWriter,
+                             CommitQuota quota) {
         super(target);
         this.target = target;
+        this.unfiltered = unfiltered;
         this.pointers = pointers;
         this.hasher = hasher;
         this.registerWriter = registerWriter;
+        this.quota = quota;
     }
 
     @Override
@@ -71,18 +83,21 @@ public class BulkCommitStorage extends DelegatingStorage {
                 .thenCompose(hashes -> updates(owner, commit)
                         .thenCompose(updates -> verifyBlockLists(owner, commit, hashes)
                                 .thenCompose(x -> verify(owner, commit, hashes, updates))
-                                .thenCompose(inCall -> registerNewWriters(owner, commit, updates, inCall)))
-                        .thenCompose(x -> withTransaction(owner, commit.tid,
-                                // the transaction has to outlive the pointer update, or the blocks it is
-                                // holding become collectable in the window before they are reachable
-                                tid -> writeBlocks(owner, commit, tid).thenCompose(written -> {
-                                    List<SignedPointerUpdate> signed = commit.writers.stream()
-                                            .flatMap(w -> w.pointer.stream())
-                                            .collect(Collectors.toList());
-                                    if (signed.isEmpty())
-                                        return Futures.of(written);
-                                    return pointers.setPointers(owner, signed).thenApply(b -> written);
-                                }))));
+                                .thenCompose(inCall -> registerNewWriters(owner, commit, updates, inCall)
+                                        .thenApply(y -> inCall))
+                                .thenCompose(inCall -> withTransaction(owner, commit.tid,
+                                        // the transaction has to outlive the pointer update, or the blocks
+                                        // it holds are collectable in the window before they are reachable
+                                        tid -> writeBlocks(owner, commit, updates, inCall, tid)
+                                                .thenCompose(written -> {
+                                                    List<SignedPointerUpdate> signed = commit.writers.stream()
+                                                            .flatMap(w -> w.pointer.stream())
+                                                            .collect(Collectors.toList());
+                                                    if (signed.isEmpty())
+                                                        return Futures.of(written);
+                                                    return pointers.setPointers(owner, signed)
+                                                            .thenApply(b -> written);
+                                                })))));
     }
 
     /** Apply a batch signed block write for an owner whose home server we are.
@@ -358,24 +373,70 @@ public class BulkCommitStorage extends DelegatingStorage {
                         .thenCompose(res -> target.closeTransaction(owner, tid).thenApply(x -> res)));
     }
 
-    private CompletableFuture<List<Cid>> writeBlocks(PublicKeyHash owner, BulkCommit commit, TransactionId tid) {
+    private CompletableFuture<List<Cid>> writeBlocks(PublicKeyHash owner,
+                                                     BulkCommit commit,
+                                                     List<Optional<PointerUpdate>> updates,
+                                                     Map<Cid, byte[]> cborInCall,
+                                                     TransactionId tid) {
         List<Cid> written = new ArrayList<>();
-        return Futures.reduceAll(commit.writers, true,
-                        (done, w) -> writeBlocks(owner, w, tid).thenApply(cids -> {
-                            written.addAll(cids);
-                            return done;
-                        }),
+        List<Integer> indices = IntStream.range(0, commit.writers.size()).boxed().collect(Collectors.toList());
+        return Futures.reduceAll(indices, true,
+                        (done, i) -> {
+                            WriterCommit w = commit.writers.get(i);
+                            // Committing a delete is still a write, so charging only the bytes it adds
+                            // leaves a user who is over quota unable to get back under. Charge it
+                            // against what the commit will actually leave stored.
+                            int size = w.inlineSize();
+                            if (! quota.allow(owner, w.writer, size, () -> deltaFor(owner, updates.get(i), cborInCall)))
+                                throw new IllegalStateException("Key not allowed to write to this server: " + w.writer);
+                            return writeBlocks(owner, w, tid).thenApply(cids -> {
+                                written.addAll(cids);
+                                return done;
+                            });
+                        },
                         (x, y) -> x && y)
                 .thenApply(x -> written);
     }
 
+    /** The change in stored bytes this writer's pointer update will cause, measured against what we
+     *  already hold. The new root is only in the call at this point, so the diff runs over a view of
+     *  the store that includes the call's own blocks.
+     */
+    private long deltaFor(PublicKeyHash owner, Optional<PointerUpdate> update, Map<Cid, byte[]> cborInCall) {
+        if (update.isEmpty())
+            return 0;
+        PointerUpdate u = update.get();
+        Optional<Cid> before = u.original.toOptional().map(c -> (Cid) c);
+        Optional<Cid> after = u.updated.toOptional().map(c -> (Cid) c);
+        DeletableContentAddressedStorage view = withCallBlocks(cborInCall);
+        if (after.isEmpty())
+            // the whole of this writer's tree goes away
+            return before.map(b -> - view.getRecursiveBlockSize(owner, b,
+                    Collections.singletonList(unfiltered.id().join())).join()).orElse(0L);
+        return view.getChangeInContainedSize(owner, before, after.get()).join();
+    }
+
+    /** The block store as it will look once this commit's blocks are written, for measuring against. */
+    private DeletableContentAddressedStorage withCallBlocks(Map<Cid, byte[]> cborInCall) {
+        return new DelegatingDeletableStorage(unfiltered) {
+            @Override
+            public CompletableFuture<BlockMetadata> getBlockMetadata(PublicKeyHash owner, Cid block) {
+                byte[] raw = cborInCall.get(block);
+                if (raw != null)
+                    return Futures.of(BlockMetadataStore.extractMetadata(block, raw));
+                return unfiltered.getBlockMetadata(owner, block);
+            }
+        };
+    }
+
     private CompletableFuture<List<Cid>> writeBlocks(PublicKeyHash owner, WriterCommit w, TransactionId tid) {
+        // the quota decision was made above against the commit's net effect, so write below the filter
         return (w.cborBlocks.isEmpty() ?
                 Futures.of(Collections.<Cid>emptyList()) :
-                target.put(owner, w.writer, unsigned(w.cborBlocks.size()), w.cborBlocks, tid))
+                unfiltered.put(owner, w.writer, unsigned(w.cborBlocks.size()), w.cborBlocks, tid))
                 .thenCompose(cbor -> (w.rawBlocks.isEmpty() ?
                         Futures.of(Collections.<Cid>emptyList()) :
-                        target.putRaw(owner, w.writer, unsigned(w.rawBlocks.size()), w.rawBlocks, tid, x -> {}))
+                        unfiltered.putRaw(owner, w.writer, unsigned(w.rawBlocks.size()), w.rawBlocks, tid, x -> {}))
                         .thenApply(raw -> {
                             List<Cid> all = new ArrayList<>(cbor);
                             all.addAll(raw);

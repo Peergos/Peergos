@@ -21,6 +21,7 @@ import peergos.shared.util.*;
 
 import java.time.*;
 import java.util.*;
+import java.util.function.*;
 import java.util.concurrent.*;
 import java.util.stream.Collectors;
 
@@ -477,6 +478,35 @@ public class SpaceCheckingKeyFilter implements SpaceUsage {
             throw new IllegalStateException("Couldn't update pending usage for user " + username, e);
         }
         return true;
+    }
+
+    /** Whether a commit may be applied, given the bytes it writes and the net change in stored bytes
+     *  its pointer updates will cause.
+     *
+     *  A write is otherwise allowed only if it fits in the remaining quota, which leaves a user who is
+     *  over quota unable to delete anything: freeing space itself takes a write. A commit carries its
+     *  blocks and its pointer updates together, so the net effect is knowable before anything is
+     *  applied, and one that brings the user back within quota is let through.
+     *
+     * @param delta computes the change in stored bytes, only called when the write would be rejected
+     */
+    public boolean allowCommit(PublicKeyHash owner, PublicKeyHash writer, int written, Supplier<Long> delta) {
+        try {
+            return allowWrite(owner, writer, written);
+        } catch (IllegalStateException e) {
+            String message = e.getMessage();
+            // a rate limit is not something a delete should be able to step around
+            if (message == null || ! message.startsWith("Storage quota reached"))
+                throw e;
+            String username = usageStore.getOwner(writer);
+            long change = delta.get();
+            long quota = getQuota(username, quotaAdmin);
+            UserUsage usage = getUsage(username, usageStore);
+            if (usage.totalUsage() + change > quota)
+                throw e;
+            LOG.info("Allowing a commit for " + username + " over quota: it frees " + (-change) + " bytes");
+            return true;
+        }
     }
 
     /** Register a writer that is being created by the commit we are in the middle of applying.
