@@ -7,7 +7,7 @@ public class JvmThumbnailer {
 
     public static void initJava() {
         try {
-            FFmpegThumbnailer.create().ifPresentOrElse(
+            ThumbnailerHost.create().ifPresentOrElse(
                     ffmpeg -> {
                         ThumbnailGenerator.setInstance(ffmpeg);
                         ThumbnailGenerator.setVideoInstance(ffmpeg);
