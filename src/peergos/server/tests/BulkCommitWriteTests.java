@@ -62,6 +62,24 @@ public class BulkCommitWriteTests {
         Assert.assertTrue("the directory is readable", user.getByPath(PathUtil.get(user.username, "adir")).join().isPresent());
     }
 
+    /** A commit that carries pointer updates is the last call under its transaction, so it closes it:
+     *  an upload pays a round trip to open one and none to close it.
+     */
+    @Test
+    public void aCommitClosesTheTransactionItWasGiven() {
+        UserContext user = ensureSignedUp(generateUsername(random), generatePassword(), network, crypto);
+        // a file with fragments big enough to be written ahead of the commit, which needs a transaction
+        byte[] data = randomBytes(2 * 1024 * 1024);
+        storage.reset();
+        user.getUserRoot().join().uploadOrReplaceFile("big.bin", AsyncReader.build(data), data.length,
+                user.network, crypto, () -> false, x -> {}).join();
+
+        Assert.assertTrue("the upload needed a transaction", storage.transactionsStarted.get() > 0);
+        Assert.assertEquals("but never had to close one", 0, storage.transactionsClosed.get());
+        Assert.assertTrue("and it committed", storage.bulkCommits.get() > 0);
+        Assert.assertEquals(data.length, user.getByPath(PathUtil.get(user.username, "big.bin")).join().get().getSize());
+    }
+
     @Test
     public void rejectsAPointerToABlockNobodyHas() {
         UserContext user = ensureSignedUp(generateUsername(random), generatePassword(), network, crypto);

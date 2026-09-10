@@ -32,9 +32,11 @@ public class LegacyBulkCommitter implements BulkCommitter {
 
     @Override
     public CompletableFuture<List<Cid>> commit(PublicKeyHash owner, BulkCommit commit, CommitContext context) {
-        if (commit.tid.isPresent())
+        // same contract as the bulk endpoint: a commit carrying pointer updates is the last call
+        // under its transaction, so it closes it rather than making the sender do a round trip for it
+        if (commit.tid.isPresent() && ! commit.hasPointerUpdate())
             return applyWithin(owner, commit, context, commit.tid.get());
-        return target.startTransaction(owner)
+        return (commit.tid.isPresent() ? Futures.of(commit.tid.get()) : target.startTransaction(owner))
                 .thenCompose(tid -> applyWithin(owner, commit, context, tid)
                         .thenCompose(res -> target.closeTransaction(owner, tid).thenApply(x -> res)));
     }

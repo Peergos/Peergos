@@ -85,7 +85,7 @@ public class BulkCommitStorage extends DelegatingStorage {
                                 .thenCompose(x -> verify(owner, commit, hashes, updates))
                                 .thenCompose(inCall -> registerNewWriters(owner, commit, updates, inCall)
                                         .thenApply(y -> inCall))
-                                .thenCompose(inCall -> withTransaction(owner, commit.tid,
+                                .thenCompose(inCall -> withTransaction(owner, commit.tid, commit.hasPointerUpdate(),
                                         // the transaction has to outlive the pointer update, or the blocks
                                         // it holds are collectable in the window before they are reachable
                                         tid -> writeBlocks(owner, commit, updates, inCall, tid)
@@ -360,15 +360,19 @@ public class BulkCommitStorage extends DelegatingStorage {
         }
     }
 
-    /** A transaction supplied by the caller stays theirs to close: they may be sending several calls
-     *  under it, and the blocks it is holding are only safe until it closes.
+    /** A commit that carries pointer updates is the last call under its transaction: once those land
+     *  its blocks are reachable and the transaction has done its job, so closing it here saves the
+     *  sender a round trip. A blocks-only call is not the last, so its transaction stays open, and a
+     *  commit whose pointers fail leaves it open too - it may still be retried under it.
      */
     private CompletableFuture<List<Cid>> withTransaction(PublicKeyHash owner,
                                                          Optional<TransactionId> supplied,
+                                                         boolean isLastCall,
                                                          Function<TransactionId, CompletableFuture<List<Cid>>> body) {
-        if (supplied.isPresent())
+        if (supplied.isPresent() && ! isLastCall)
             return body.apply(supplied.get());
-        return target.startTransaction(owner)
+        TransactionId ours = supplied.orElse(null);
+        return (ours != null ? Futures.of(ours) : target.startTransaction(owner))
                 .thenCompose(tid -> body.apply(tid)
                         .thenCompose(res -> target.closeTransaction(owner, tid).thenApply(x -> res)));
     }

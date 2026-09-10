@@ -256,8 +256,9 @@ public class BufferedNetworkAccess extends NetworkAccess {
                                                    Map<PublicKeyHash, SigningPrivateKeyAndPublicHash> writers) {
         // Every commit's blocks are written before the pointer that names them, so they all need a
         // transaction to hold them across that window. The server opens one for the blocks travelling
-        // inside the call and closes it only once the pointer has landed, so the only thing we have to
-        // open one for here is the blocks we write ahead of the call: the large raw ones going to S3.
+        // inside the call, so the only thing we have to open one for here is the blocks we write ahead
+        // of the call: the large raw ones going to S3. The commit closes it for us once its pointer
+        // updates land, which is one round trip we don't have to spend.
         return (blockBuffer.needsTransaction() ?
                 blockBuffer.target().startTransaction(owner).thenApply(Optional::of) :
                 Futures.of(Optional.<TransactionId>empty()))
@@ -266,9 +267,7 @@ public class BufferedNetworkAccess extends NetworkAccess {
                                 (a, u) -> u.right
                                         .map(cwd -> synchronizer.updateWriterState(owner, u.left.writer, new Snapshot(u.left.writer, cwd)))
                                         .orElse(Futures.of(true)),
-                                (x, y) -> x && y))
-                        .thenCompose(x -> tid.map(t -> blockBuffer.target().closeTransaction(owner, t))
-                                .orElse(Futures.of(true))));
+                                (x, y) -> x && y)));
     }
 
     /** Build a single bulk commit covering these writers' buffered blocks and pointer updates, and apply it.
