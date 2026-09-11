@@ -85,9 +85,17 @@ public class ThumbnailerHost implements ThumbnailGenerator.Generator, ThumbnailG
         return "ok".equals(request("probe"));
     }
 
+    /** Waits for the worker to actually go: windows holds its handles - on the log it was appending to
+     *  among others - until it does, and a worker that is still around is one the next request will
+     *  mistake for a live one.
+     */
     public synchronized void stop() {
         if (process != null) {
-            process.destroyForcibly();
+            try {
+                process.destroyForcibly().waitFor(5, TimeUnit.SECONDS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
             process = null;
         }
     }

@@ -93,7 +93,7 @@ public class ThumbnailerHostTests {
 
         Assert.assertTrue("ffmpeg's complaint is kept: " + Files.readString(log),
                 Files.readString(log).contains("Assertion stream_index < ogg->nstreams failed"));
-        Files.deleteIfExists(log);
+        log.toFile().deleteOnExit();
     }
 
     /** An image is not worth losing because ffmpeg is unavailable or can't parse it. */
