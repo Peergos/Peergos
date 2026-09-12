@@ -891,7 +891,8 @@ public class Main extends Builder {
             PartitionStatus partitionStatus = new JdbcPartitionStatus(statusDb, sqlCommands);
             JdbcIpnsAndSocial rawPointers = buildRawPointers(a,
                     getDBConnector(a, "mutable-pointers-file", dbConnectionPool));
-            DeletableContentAddressedStorage localStorageForLinks = buildLocalStorage(a, meta, batStore, transactions, blockAuth,
+            DeletableContentAddressedStorage localStorageForLinks = buildLocalStorage(a, Builder.linkHost(a, webPort),
+                    meta, batStore, transactions, blockAuth,
                     ids, usageStore, rawPointers, partitionStatus, crypto.hasher);
 
             MutablePointers localPointers = UserRepository.build(localStorageForLinks, rawPointers, hasher);

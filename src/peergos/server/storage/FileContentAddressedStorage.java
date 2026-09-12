@@ -44,6 +44,7 @@ public class FileContentAddressedStorage implements DeletableContentAddressedSto
     private final PartitionStatus partitionStatus;
     private final Hasher hasher;
     private final Cid ourId;
+    private final String linkHost;
     private final SecureRandom rnd = new SecureRandom();
     private volatile CoreNode pki;
 
@@ -53,6 +54,17 @@ public class FileContentAddressedStorage implements DeletableContentAddressedSto
                                        BlockRequestAuthoriser authoriser,
                                        PartitionStatus partitioned,
                                        Hasher hasher) {
+        this(root, ourId, transactions, authoriser, partitioned, hasher, "localhost:8000");
+    }
+
+    public FileContentAddressedStorage(Path root,
+                                       Cid ourId,
+                                       TransactionStore transactions,
+                                       BlockRequestAuthoriser authoriser,
+                                       PartitionStatus partitioned,
+                                       Hasher hasher,
+                                       String linkHost) {
+        this.linkHost = linkHost;
         this.root = root;
         this.ourId = ourId;
         this.transactions = transactions;
@@ -155,7 +167,7 @@ public class FileContentAddressedStorage implements DeletableContentAddressedSto
 
     @Override
     public CompletableFuture<String> linkHost(PublicKeyHash owner) {
-        return Futures.of("localhost:8000");
+        return Futures.of(linkHost);
     }
 
     @Override

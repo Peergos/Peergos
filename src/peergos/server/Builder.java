@@ -226,7 +226,26 @@ public class Builder {
         return def;
     }
 
+    public static String linkHost(Args a, int boundPort) {
+        return a.getOptionalArg("public-domain").orElseGet(() -> "localhost:" + boundPort);
+    }
+
     public static DeletableContentAddressedStorage buildLocalStorage(Args a,
+                                                                     BlockMetadataStore meta,
+                                                                     JdbcBatCave bats,
+                                                                     TransactionStore transactions,
+                                                                     BlockRequestAuthoriser authoriser,
+                                                                     ServerIdentityStore ids,
+                                                                     UsageStore usage,
+                                                                     JdbcIpnsAndSocial rawPointers,
+                                                                     PartitionStatus partitionStatus,
+                                                                     Hasher hasher) throws SQLException {
+        return buildLocalStorage(a, linkHost(a, a.getInt("port")), meta, bats, transactions, authoriser,
+                ids, usage, rawPointers, partitionStatus, hasher);
+    }
+
+    public static DeletableContentAddressedStorage buildLocalStorage(Args a,
+                                                                     String linkHost,
                                                                      BlockMetadataStore meta,
                                                                      JdbcBatCave bats,
                                                                      TransactionStore transactions,
@@ -248,7 +267,6 @@ public class Builder {
         if (ourIds.isEmpty())
             ourIds = Collections.singletonList(new PeerId(http.id().join().bareMultihash().toBytes()));
         MultiIdStorage ipfs = new MultiIdStorage(new LocalFirstStorage(http, http, p2pGets, ourIds, hasher), ourIds);
-        String linkHost = a.getOptionalArg("public-domain").orElseGet(() -> "localhost:" + a.getInt("port"));
         if (useIPFS) {
             if (useS3) {
                 // IPFS is already running separately, we can still use an S3BlockStorage
@@ -275,7 +293,7 @@ public class Builder {
             Multihash peerId = Multihash.decode(ourIds.get(ourIds.size() - 1).getBytes());
             Cid ourId = new Cid(1, Cid.Codec.LibP2pKey, peerId.type, peerId.getHash());
             FileContentAddressedStorage files = new FileContentAddressedStorage(blockstorePath(a), ourId,
-                    transactions, authoriser, partitionStatus, hasher);
+                    transactions, authoriser, partitionStatus, hasher, linkHost);
             MultiIdStorage blocks = new MultiIdStorage(new LocalFirstStorage(files, http, p2pGets, ourIds, hasher), ourIds);
             if (enableGC) {
                 TransactionalIpfs txns = new TransactionalIpfs(blocks, transactions, authoriser, ourId, linkHost, hasher);
@@ -313,7 +331,7 @@ public class Builder {
                 // only used for testing
                 Cid ourId = new Cid(1, Cid.Codec.LibP2pKey, Multihash.Type.sha2_256, RAMStorage.hash("FileStorage".getBytes()));
                 FileContentAddressedStorage fileBacked = new FileContentAddressedStorage(blockstorePath(a), ourId,
-                        transactions, authoriser, partitionStatus, hasher);
+                        transactions, authoriser, partitionStatus, hasher, linkHost);
                 MetadataCachingStorage metabs = new MetadataCachingStorage(fileBacked, meta, usage, hasher);
                 return new LocalIpnsStorage(metabs, ids);
             }
