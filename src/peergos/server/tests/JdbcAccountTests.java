@@ -1,5 +1,6 @@
 package peergos.server.tests;
 
+import com.eatthepath.otp.*;
 import com.webauthn4j.data.client.*;
 import org.junit.*;
 import peergos.server.*;
@@ -12,9 +13,13 @@ import peergos.shared.crypto.asymmetric.*;
 import peergos.shared.crypto.hash.*;
 import peergos.shared.io.ipfs.*;
 import peergos.shared.crypto.symmetric.*;
+import peergos.shared.login.mfa.*;
 import peergos.shared.user.*;
+import peergos.shared.util.*;
 
+import javax.crypto.spec.*;
 import java.sql.*;
+import java.time.*;
 import java.util.*;
 
 /** The login table has to stay usable through a password change that is interrupted at any point,
@@ -159,5 +164,62 @@ public class JdbcAccountTests {
         stage(username, reader());
 
         Assert.assertFalse(canLogin(username, reader()));
+    }
+
+    private static String code(TimeBasedOneTimePasswordGenerator totp, TotpKey key) throws Exception {
+        return totp.generateOneTimePasswordString(new SecretKeySpec(key.key, TotpKey.ALGORITHM), Instant.now());
+    }
+
+    /** An enrolment that was started and abandoned is hidden from 2fa settings, so it can be neither
+     *  seen nor revoked. It must not be usable to satisfy a login challenge either.
+     */
+    @Test
+    public void anUnverifiedSecondFactorCantSatisfyMfa() throws Exception {
+        String username = "alice";
+        PublicSigningKey reader = reader();
+        db.setLoginData(loginFor(username, reader)).join();
+        TimeBasedOneTimePasswordGenerator totp =
+                new TimeBasedOneTimePasswordGenerator(Duration.ofSeconds(30L), 6, TotpKey.ALGORITHM);
+
+        // a verified factor, so that logging in requires a second factor at all
+        TotpKey active = db.addTotpFactor(username).join();
+        db.enableTotpFactor(username, active.credentialId, code(totp, active)).join();
+
+        // a second enrolment whose QR was displayed but never verified
+        TotpKey abandoned = db.addTotpFactor(username).join();
+        Assert.assertTrue("an unverified factor isn't listed", db.getSecondAuthMethods(username).join().stream()
+                .noneMatch(m -> Arrays.equals(m.credentialId, abandoned.credentialId)));
+
+        try {
+            db.getEntryData(username, reader, Optional.of(new MultiFactorAuthResponse(abandoned.credentialId,
+                    Either.a(code(totp, abandoned))))).join();
+            Assert.fail("an unverified second factor satisfied the login challenge");
+        } catch (IllegalStateException e) {
+            Assert.assertTrue(e.getMessage(), e.getMessage().contains("Unknown credential id"));
+        }
+
+        // the verified one still works
+        Assert.assertTrue(db.getEntryData(username, reader, Optional.of(new MultiFactorAuthResponse(active.credentialId,
+                Either.a(code(totp, active))))).join().isA());
+    }
+
+    /** A mount's credential is never offered in a challenge, because it isn't interactive, but it
+     *  still has to be able to satisfy one.
+     */
+    @Test
+    public void anEnabledMountFactorCanSatisfyMfa() throws Exception {
+        String username = "alice";
+        PublicSigningKey reader = reader();
+        db.setLoginData(loginFor(username, reader)).join();
+        TimeBasedOneTimePasswordGenerator totp =
+                new TimeBasedOneTimePasswordGenerator(Duration.ofSeconds(30L), 6, TotpKey.ALGORITHM);
+
+        TotpKey user = db.addTotpFactor(username).join();
+        db.enableTotpFactor(username, user.credentialId, code(totp, user)).join();
+        TotpKey mount = db.addMountFactor(username, "a device").join();
+        db.enableMountFactor(username, mount.credentialId, code(totp, mount)).join();
+
+        Assert.assertTrue(db.getEntryData(username, reader, Optional.of(new MultiFactorAuthResponse(mount.credentialId,
+                Either.a(code(totp, mount))))).join().isA());
     }
 }

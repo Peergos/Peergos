@@ -327,6 +327,12 @@ public class JdbcAccount implements LoginCache {
         }
         MultiFactorAuthResponse mfaAuth = mfa.get();
         byte[] credentialId = mfaAuth.credentialId;
+        // only an enabled factor can satisfy a challenge - an enrolment that was never verified isn't
+        // listed in 2fa settings, so it can't be seen or revoked there either. Same wording as an
+        // unknown credential, both so they can't be told apart, and because a revoked mount factor is
+        // recognised by this message
+        if (enabled.stream().noneMatch(m -> Arrays.equals(m.credentialId, credentialId)))
+            throw new IllegalStateException("Unknown credential id for user " + username);
         if (mfaAuth.response.isB()) {
             MultiFactorAuthMethod.Type type = getType(username, credentialId);
             if (type != MultiFactorAuthMethod.Type.WEBAUTHN)
