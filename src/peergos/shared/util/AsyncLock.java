@@ -25,14 +25,23 @@ public class AsyncLock<T> {
         return queueHead.isDone();
     }
 
+    /** Recovers from a failure by retaining the previous value, so this is only usable where that is
+     *  still correct afterwards. Anything backed by the network should supply an updater that
+     *  re-retrieves the value instead.
+     */
     public synchronized CompletableFuture<T> runWithLock(Function<T, CompletionStage<T>> processor) {
-        return runWithLock(processor, () -> queueHead);
+        // capture the previous head: a supplier reading the field would return this call's head, or a
+        // later one that depends on it, and a future can't be completed from a callback on itself
+        CompletableFuture<T> previous = queueHead;
+        return runWithLock(processor, () -> previous);
     }
 
-    /**
+    /** The head installed here is always completed, however the update fails, because every later
+     *  operation on this lock queues behind it.
      *
      * @param processor
-     * @param updater a method to get a fresh value which is called if updater completes exceptionally
+     * @param updater a method to get a fresh value, called if the processor fails, or if the operation
+     *                this one queued behind did
      * @return A future completed with the result from a computation, or exceptionally completed on error
      */
     public synchronized CompletableFuture<T> runWithLock(Function<T, CompletionStage<T>> processor,
@@ -49,7 +58,7 @@ public class AsyncLock<T> {
                     return result.complete(res);
                 })
                 .exceptionally(t -> {
-                    updater.get()
+                    fresh(updater)
                             .thenApply(res -> {
                                 newHead.complete(res);
                                 return result.completeExceptionally(t);
@@ -65,13 +74,25 @@ public class AsyncLock<T> {
                     // The previous queueHead failed - use updater to recover
                     // so subsequent operations aren't permanently poisoned
                     result.completeExceptionally(t);
-                    updater.get()
+                    fresh(updater)
                             .thenApply(newHead::complete)
                             .exceptionally(e -> newHead.completeExceptionally(e));
                     return true;
                 });
 
         return result;
+    }
+
+    /** An updater that throws, or hands back nothing, is a failed recovery rather than a reason to
+     *  leave the queue head incomplete.
+     */
+    private CompletableFuture<T> fresh(Supplier<CompletableFuture<T>> updater) {
+        try {
+            CompletableFuture<T> value = updater.get();
+            return value != null ? value : Futures.errored(new IllegalStateException("No value from updater"));
+        } catch (Throwable t) {
+            return Futures.errored(t);
+        }
     }
 
     /** Run a read only task which never waits for an in-flight write. Read only tasks are still
@@ -101,7 +122,7 @@ public class AsyncLock<T> {
                 .exceptionally(t -> {
                     // The previous readHead failed - use updater to recover
                     result.completeExceptionally(t);
-                    updater.get()
+                    fresh(updater)
                             .thenApply(newHead::complete)
                             .exceptionally(e -> newHead.completeExceptionally(e));
                     return true;
