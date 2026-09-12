@@ -61,8 +61,7 @@ public class SecretLinkStorage extends DelegatingDeletableStorage {
         if (wd.secretLinks.isEmpty())
             throw new IllegalStateException("No secret link published!");
         List<BatWithId> mirrorBats = batstore.getUserBats(username, new byte[0]).join();
-        Optional<BatWithId> mirrorBat = mirrorBats.isEmpty() ? Optional.empty() : Optional.of(mirrorBats.get(mirrorBats.size() - 1));
-        SecretLinkChamp champ = SecretLinkChamp.build(owner, (Cid) wd.secretLinks.get(), mirrorBat, this, hasher).join();
+        SecretLinkChamp champ = buildLinkChamp(owner, (Cid) wd.secretLinks.get(), mirrorBats);
         Optional<SecretLinkTarget> res = champ.get(owner, link.label).join();
         if (res.isEmpty())
             throw new IllegalStateException("No secret link present!");
@@ -84,6 +83,23 @@ public class SecretLinkStorage extends DelegatingDeletableStorage {
         }
         counter.increment(username, link.label);
         return Futures.of(target.cap);
+    }
+
+    // Nothing records which BAT the link champ was written under, so try each of the user's
+    // in turn, most recent first. A user with one BAT - almost all of them - reads exactly as
+    // before; one who has rotated can still open links minted under an older BAT.
+    private SecretLinkChamp buildLinkChamp(PublicKeyHash owner, Cid root, List<BatWithId> mirrorBats) {
+        if (mirrorBats.isEmpty())
+            return SecretLinkChamp.build(owner, root, Optional.empty(), this, hasher).join();
+        RuntimeException last = null;
+        for (int i = mirrorBats.size() - 1; i >= 0; i--) {
+            try {
+                return SecretLinkChamp.build(owner, root, Optional.of(mirrorBats.get(i)), this, hasher).join();
+            } catch (RuntimeException e) {
+                last = e;
+            }
+        }
+        throw last;
     }
 
     @Override
