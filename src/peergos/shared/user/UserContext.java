@@ -1072,21 +1072,12 @@ public class UserContext {
                                                                       SymmetricKey loginRoot,
                                                                       NetworkAccess network) {
         return Futures.asyncExceptionally(
-                        () -> {
-                            CompletableFuture<List<BatWithId>> res = new CompletableFuture<>();
-                            // race the cache
-                            network.batCave.getUserBats(username, identity).thenAccept(bats -> {
-                                if (!bats.isEmpty() && network.batCache.isPresent())
-                                    network.batCache.get().setUserBats(username, bats, loginRoot);
-                                res.complete(bats);
-                            }).exceptionally(t -> {
-                                res.completeExceptionally(t);
-                                return null;
-                            });
-                            if (network.batCache.isPresent())
-                                network.batCache.get().getUserBats(username, loginRoot).thenAccept(res::complete);
-                            return res;
-                        },
+                        () -> network.batCave.getUserBats(username, identity)
+                                .thenApply(bats -> {
+                                    if (!bats.isEmpty() && network.batCache.isPresent())
+                                        network.batCache.get().setUserBats(username, bats, loginRoot);
+                                    return bats;
+                                }),
                         t -> {
                             if (network.batCache.isPresent() &&
                             (t.toString().contains("ConnectException") || t.toString().contains("RateLimitException")))
