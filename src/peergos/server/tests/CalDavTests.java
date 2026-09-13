@@ -414,6 +414,65 @@ public class CalDavTests {
         return client.send(request.build(), HttpResponse.BodyHandlers.ofString());
     }
 
+    /** An entry another user owns reaches the phone, and stays theirs to change. */
+    @Test
+    public void showsEntriesSharedWithTheUserAndRefusesToChangeThem() throws Exception {
+        String username = "caldav-shared" + Math.abs(random.nextInt() % 1_000_000);
+        String password = "testpassword";
+        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
+
+        App calendar = App.init(context, "calendar").join();
+        write(calendar, "App.config",
+                "{\"calendars\":[{\"name\":\"Work\",\"directory\":\"work\",\"color\":\"#ff0000\"}]}");
+        write(calendar, "work/calendar.inf", "{\"name\":\"Work\",\"color\":\"#ff0000\"}");
+        // What the web app keeps when somebody shares one entry: their event, with a pointer
+        // back to the file it came from.
+        String pointer = "X-PEERGOS-SRC-OWNER:alice\r\n"
+                + "X-PEERGOS-SRC-DIR:default\r\n"
+                + "X-PEERGOS-SRC-UID:evt-shared\r\n"
+                + "X-PEERGOS-SRC-PATH:2024/9\r\n"
+                + "X-PEERGOS-SRC-MODIFIED:2024-09-15T09:00\r\n";
+        String snapshot = event("evt-shared", "20240915T090000Z", "20240915T100000Z", pointer);
+        write(calendar, "work/shared/alice-evt-shared.ics", snapshot);
+
+        int port = TestPorts.getPort();
+        Server server = WebdavServer.startNonBlocking(port, WEBDAV_USER, WEBDAV_PASSWORD,
+                username, password, "http://localhost:" + args.getInt("port"), "basic", MountConfig.disabled());
+        try {
+            HttpClient client = HttpClient.newHttpClient();
+            String base = "http://localhost:" + port;
+            String auth = "Basic " + Base64.getEncoder()
+                    .encodeToString((WEBDAV_USER + ":" + WEBDAV_PASSWORD).getBytes());
+            String work = base + "/dav/calendars/" + username + "/work/";
+
+            HttpResponse<String> listing = propfind(client, auth, work, "1",
+                    "<?xml version=\"1.0\"?><D:propfind xmlns:D=\"DAV:\"><D:prop>"
+                            + "<D:getetag/></D:prop></D:propfind>");
+            Assert.assertEquals(207, listing.statusCode());
+            Assert.assertTrue("an entry shared with the user belongs in the listing",
+                    listing.body().contains("alice-evt-shared.ics"));
+
+            HttpResponse<String> fetched = send(client, auth, "GET",
+                    work + "alice-evt-shared.ics", null, null);
+            Assert.assertEquals(200, fetched.statusCode());
+            Assert.assertTrue("and reads back as the owner's event",
+                    fetched.body().contains("UID:evt-shared"));
+
+            // Changing it here would either move it out of shared/, losing the link to its
+            // owner, or keep an edit they never see. Refused, and its file left alone.
+            HttpResponse<String> refused = put(client, auth, work + "alice-evt-shared.ics",
+                    event("evt-shared", "20241015T090000Z", "20241015T100000Z", pointer), null);
+            Assert.assertEquals(403, refused.statusCode());
+            UserContext verifier = verifier(username, password);
+            Assert.assertTrue("the snapshot must still be where it was",
+                    exists(verifier, username, "work/shared/alice-evt-shared.ics"));
+            Assert.assertFalse("and must not have been filed as the user's own",
+                    exists(verifier, username, "work/2024/10/alice-evt-shared.ics"));
+        } finally {
+            server.stop();
+        }
+    }
+
     @Test
     public void syncCollectionReportsOnlyWhatChanged() throws Exception {
         String username = "caldav-sync" + Math.abs(random.nextInt() % 1_000_000);
