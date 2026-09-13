@@ -32,6 +32,13 @@ public class CalendarStore extends AppDataStore {
     public static final String CALENDAR_INFO_FILENAME = "calendar.inf";
     public static final String RECURRING_DIR = "recurring";
     public static final String TASKS_DIR = "tasks";
+    /** Entries another user owns, kept by the web app as a snapshot of their file beside a
+     *  pointer back to it. Listed like any other, so they reach a phone the same way the
+     *  user's own entries do. */
+    public static final String SHARED_DIR = "shared";
+    /** The first line of that pointer, which is what tells one of those snapshots apart
+     *  from an entry of the user's own. */
+    private static final String SHARED_MARKER = "X-PEERGOS-SRC-OWNER:";
     public static final String ICS_SUFFIX = ".ics";
     public static final String TASK_COMPONENT = "VTODO";
 
@@ -46,7 +53,8 @@ public class CalendarStore extends AppDataStore {
         for (FileWrapper shard : children(collectionPath(directory))) {
             if (! shard.isDirectory())
                 continue;
-            if (shard.getName().equals(RECURRING_DIR) || shard.getName().equals(TASKS_DIR)) {
+            if (shard.getName().equals(RECURRING_DIR) || shard.getName().equals(TASKS_DIR)
+                || shard.getName().equals(SHARED_DIR)) {
                 collect(shard, shard.getName(), objects);
             } else if (isYear(shard.getName())) {
                 for (FileWrapper month : children(shard)) {
@@ -60,7 +68,15 @@ public class CalendarStore extends AppDataStore {
 
     @Override
     protected Optional<String> shardFor(byte[] content) {
-        return shardFor(ICal.summarise(new String(content, StandardCharsets.UTF_8)));
+        String ics = new String(content, StandardCharsets.UTF_8);
+        // An entry another user owns is theirs to change, and nothing here can reach them.
+        // Filing it by its date would move it out of shared/, losing the pointer to their
+        // file and leaving a copy that quietly stops matching it; keeping it where it is
+        // would store an edit they never see and the app replaces the next time it looks.
+        // So it is listed and readable, and a write of one is refused.
+        if (ics.contains(SHARED_MARKER))
+            return Optional.empty();
+        return shardFor(ICal.summarise(ics));
     }
 
     /**
