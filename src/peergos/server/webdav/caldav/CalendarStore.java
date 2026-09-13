@@ -36,8 +36,8 @@ public class CalendarStore extends AppDataStore {
      *  pointer back to it. Listed like any other, so they reach a phone the same way the
      *  user's own entries do. */
     public static final String SHARED_DIR = "shared";
-    /** The first line of that pointer, which is what tells one of those snapshots apart
-     *  from an entry of the user's own. */
+    /** The first property of that pointer, which is what tells one of those snapshots
+     *  apart from an entry of the user's own. */
     private static final String SHARED_MARKER = "X-PEERGOS-SRC-OWNER:";
     public static final String ICS_SUFFIX = ".ics";
     public static final String TASK_COMPONENT = "VTODO";
@@ -74,9 +74,15 @@ public class CalendarStore extends AppDataStore {
         // file and leaving a copy that quietly stops matching it; keeping it where it is
         // would store an edit they never see and the app replaces the next time it looks.
         // So it is listed and readable, and a write of one is refused.
-        if (ics.contains(SHARED_MARKER))
+        if (carriesSharedPointer(ics))
             return Optional.empty();
         return shardFor(ICal.summarise(ics));
+    }
+
+    /** A property of its own rather than anywhere in the file: the same text inside a
+     *  description is somebody writing about a shared entry, not one. */
+    private static boolean carriesSharedPointer(String ics) {
+        return ics.lines().anyMatch(line -> line.startsWith(SHARED_MARKER));
     }
 
     /**
