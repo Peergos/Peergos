@@ -136,6 +136,64 @@ public class CLITests {
             Assert.assertEquals("buffer size " + bufferSize, text, cat(text, bufferSize));
     }
 
+    /** An archive entry reader, which reports exhaustion by returning 0 rather than by throwing -
+     *  the behaviour AsyncReader.ArrayBacked does not model, and the reason the copy loop needs a guard.
+     */
+    private static AsyncReader reader(byte[] data) {
+        return new AsyncReader() {
+            private int index = 0;
+
+            @Override
+            public CompletableFuture<AsyncReader> seekJS(int high32, int low32) {
+                index = low32;
+                return Futures.of(this);
+            }
+
+            @Override
+            public CompletableFuture<Integer> readIntoArray(byte[] res, int offset, int length) {
+                int toRead = Math.min(length, data.length - index);
+                System.arraycopy(data, index, res, offset, toRead);
+                index += toRead;
+                return Futures.of(toRead);
+            }
+
+            @Override
+            public CompletableFuture<AsyncReader> reset() {
+                index = 0;
+                return Futures.of(this);
+            }
+
+            @Override
+            public void close() {}
+        };
+    }
+
+    /** An archive declares each entry's size in its own central directory, so a hostile or corrupt
+     *  archive can claim more data than it holds. The readers signal that by returning 0 rather than
+     *  by throwing, so the copy has to stop rather than spin.
+     */
+    @Test
+    public void copyStopsWhenTheDeclaredSizeExceedsTheData() throws Exception {
+        byte[] data = "short".getBytes(StandardCharsets.UTF_8);
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        try {
+            CLI.copy(reader(data), data.length + 4096, out, offset -> {});
+            Assert.fail("a lying declared size should not have been copied");
+        } catch (IllegalStateException e) {
+            Assert.assertTrue(e.getMessage(), e.getMessage().contains("Download truncated after 5 of"));
+        }
+    }
+
+    @Test
+    public void copyReadsExactlyTheDeclaredSize() throws Exception {
+        byte[] data = "0123456789".repeat(1000).getBytes(StandardCharsets.UTF_8);
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        List<Long> progress = new ArrayList<>();
+        CLI.copy(reader(data), data.length, out, progress::add);
+        Assert.assertArrayEquals(data, out.toByteArray());
+        Assert.assertEquals(Long.valueOf(data.length), progress.get(progress.size() - 1));
+    }
+
     @Test
     public void longFormatOfArchiveEntries() {
         LocalDateTime modified = LocalDateTime.of(2026, 8, 1, 9, 5);

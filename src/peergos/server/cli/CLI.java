@@ -443,6 +443,24 @@ public class CLI implements Runnable {
         }
     }
 
+    /** Copy exactly size bytes from reader into out, reporting the running total.
+     *
+     *  size can come from an archive's own central directory, which isn't bound to how much data the
+     *  entry actually holds, and an archive reader signals exhaustion by returning 0 rather than by
+     *  throwing - so a short read has to end the copy instead of spinning on it.
+     */
+    public static void copy(AsyncReader reader, long size, OutputStream out, LongConsumer progress) throws IOException {
+        byte[] buf = new byte[Chunk.MAX_SIZE];
+        for (long offset = 0; offset < size;) {
+            int read = reader.readIntoArray(buf, 0, (int) Math.min(buf.length, size - offset)).join();
+            if (read <= 0)
+                throw new IllegalStateException("Download truncated after " + offset + " of " + size + " bytes");
+            out.write(buf, 0, read);
+            offset += read;
+            progress.accept(offset);
+        }
+    }
+
     /** Stream size bytes from reader into a local file, showing progress.
      */
     private void download(AsyncReader reader,
@@ -452,14 +470,8 @@ public class CLI implements Runnable {
                           String name,
                           PrintWriter writerForProgress) throws IOException {
         ProgressBar pb = new ProgressBar(new AtomicLong(0), new AtomicLong(1), remoteParent, name);
-        byte[] buf = new byte[Chunk.MAX_SIZE];
         try (FileOutputStream fout = new FileOutputStream(localFile.toFile())) {
-            for (long offset = 0; offset < size;) {
-                int read = reader.readIntoArray(buf, 0, (int) Math.min(buf.length, size - offset)).join();
-                fout.write(buf, 0, read);
-                offset += read;
-                pb.update(writerForProgress, offset, size);
-            }
+            copy(reader, size, fout, offset -> pb.update(writerForProgress, offset, size));
         }
         writerForProgress.println();
         writerForProgress.flush();
