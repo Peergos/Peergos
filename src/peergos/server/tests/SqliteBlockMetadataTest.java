@@ -174,6 +174,46 @@ public class SqliteBlockMetadataTest {
         Assert.assertEquals(bulkCount + singleCids.size(), store.size(owner));
     }
 
+    private static Set<Cid> listCbor(BlockMetadataStore store, PublicKeyHash owner) {
+        Set<Cid> listed = new HashSet<>();
+        store.listCbor(owner, batch -> batch.forEach(v -> listed.add(v.cid)));
+        return listed;
+    }
+
+    /** The gc's mark phase walks every cbor block through listCbor, so a batch that is dropped instead
+     *  of delivered makes those blocks - and everything they reference - look unreachable.
+     */
+    @Test
+    public void listCborDeliversEveryBlock() throws Exception {
+        Path dir = Files.createTempDirectory("peergos-block-metadata");
+        BlockMetadataStore store = buildStore(dir.resolve("meta.sql"));
+        PublicKeyHash owner = new PublicKeyHash(randomCid());
+
+        // a partial final batch, which is the normal case for any user whose block count isn't a
+        // multiple of the batch size, and a whole user for anyone below it
+        Set<Cid> expected = new HashSet<>();
+        for (int i = 0; i < 2500; i++) {
+            Cid cid = randomCid();
+            expected.add(cid);
+            store.put(owner, cid, "alpha", new BlockMetadata(1024, randomCids(2), Collections.emptyList()));
+        }
+
+        Assert.assertEquals("every cbor block is reported", expected, listCbor(store, owner));
+    }
+
+    /** A user with fewer blocks than one batch would otherwise be reported as having none at all. */
+    @Test
+    public void listCborReportsAUserSmallerThanOneBatch() throws Exception {
+        Path dir = Files.createTempDirectory("peergos-block-metadata");
+        BlockMetadataStore store = buildStore(dir.resolve("meta.sql"));
+        PublicKeyHash owner = new PublicKeyHash(randomCid());
+
+        Cid only = randomCid();
+        store.put(owner, only, "alpha", new BlockMetadata(1024, Collections.emptyList(), Collections.emptyList()));
+
+        Assert.assertEquals(Set.of(only), listCbor(store, owner));
+    }
+
     private static BlockMetadataStore buildStore(Path file) throws Exception {
         Connection conn = new Sqlite.UncloseableConnection(Sqlite.build(file.toString()));
         return new JdbcBlockMetadataStore(() -> conn, new SqliteCommands());
