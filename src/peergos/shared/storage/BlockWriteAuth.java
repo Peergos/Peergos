@@ -27,6 +27,11 @@ public class BlockWriteAuth implements Cborable {
     public BlockWriteAuth(List<Cid> hashes, List<Long> sizes, List<List<BatId>> batIds, byte[] signature) {
         if (hashes.size() != sizes.size() || hashes.size() != batIds.size())
             throw new IllegalArgumentException("Mismatched hashes, sizes and bats in a write auth request!");
+        // The sizes aren't covered by the signature. They are summed for the quota check, narrowed to
+        // an int for the block's recorded size, and used as the presigned upload's content length.
+        for (long size : sizes)
+            if (size < 0 || size > Integer.MAX_VALUE)
+                throw new IllegalArgumentException("Invalid block size: " + size);
         this.hashes = hashes;
         this.sizes = sizes;
         this.batIds = batIds;
