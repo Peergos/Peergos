@@ -567,7 +567,7 @@ public interface ContentAddressedStorage {
         public CompletableFuture<LinkCounts> getLinkCounts(String owner, LocalDateTime after, BatWithId mirrorBat) {
             return poster.get(apiPrefix + LINK_COUNTS
                     + "?after=" + after.toEpochSecond(ZoneOffset.UTC)
-                    + "?bat=" + mirrorBat.encode()
+                    + "&bat=" + mirrorBat.encode()
                     + "&owner=" + owner
             ).thenApply(CborObject::fromByteArray)
                     .thenApply(LinkCounts::fromCbor);
