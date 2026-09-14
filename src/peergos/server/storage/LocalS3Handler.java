@@ -279,7 +279,7 @@ class LocalS3Handler implements HttpHandler {
 
     private static List<String> parseDeleteXml(byte[] body) {
         try {
-            DocumentBuilder db = DocumentBuilderFactory.newInstance().newDocumentBuilder();
+            DocumentBuilder db = S3AdminRequests.secureXmlFactory().newDocumentBuilder();
             Document doc = db.parse(new ByteArrayInputStream(body));
             NodeList objects = doc.getElementsByTagName("Object");
             List<String> keys = new ArrayList<>();

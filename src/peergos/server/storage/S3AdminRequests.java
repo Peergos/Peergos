@@ -70,12 +70,30 @@ public class S3AdminRequests {
     }
 
     private static XPathFactory xPathFactory = XPathFactory.newInstance();
+
+    /** An xml parser factory that won't resolve external entities.
+     *
+     *  These parse responses from whatever s3 endpoint is configured, and request bodies on the local
+     *  s3 emulator, so neither can be trusted not to name one. Namespace awareness is left off
+     *  deliberately: callers walk the documents by unqualified node name.
+     */
+    public static DocumentBuilderFactory secureXmlFactory() {
+        try {
+            DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
+            factory.setExpandEntityReferences(false);
+            factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
+            return factory;
+        } catch (ParserConfigurationException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
     public static final ThreadLocal<DocumentBuilder> builder =
             new ThreadLocal<>() {
                 @Override
                 protected DocumentBuilder initialValue() {
                     try {
-                        return DocumentBuilderFactory.newInstance().newDocumentBuilder();
+                        return secureXmlFactory().newDocumentBuilder();
                     } catch (ParserConfigurationException exc) {
                         throw new IllegalArgumentException(exc);
                     }
