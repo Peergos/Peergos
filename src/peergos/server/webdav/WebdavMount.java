@@ -192,6 +192,18 @@ public class WebdavMount implements Closeable {
     }
 
     private static WebdavMount mountLinux(int port, String user, String pass) throws IOException {
+        // without gvfsd-fuse, gio mounts inside the gvfs daemon but never gives the mount a
+        // folder, and some distros (Fedora among them) package it separately
+        String gvfsBase = gvfsBase();
+        String mounts;
+        try {
+            mounts = capture(host("cat", "/proc/self/mounts"));
+        } catch (IOException cannotAsk) {
+            mounts = null;
+        }
+        if (mounts != null && ! mounts.contains(" " + gvfsBase + " "))
+            throw new IOException("GVFS FUSE is not running, so the drive would have no folder. " +
+                    "Install gvfs and gvfs-fuse (e.g. sudo dnf install gvfs gvfs-fuse), then log out and back in.");
         // gio mount ignores credentials in the URL and prompts interactively;
         // pipe the password to its stdin instead.
         String url = "dav://" + urlEncode(user) + "@localhost:" + port;
@@ -216,8 +228,7 @@ public class WebdavMount implements Closeable {
      *  and to decide whether a gio failure still left us mounted, so it never throws. */
     private static Optional<String> gvfsMountPoint(int port) {
         try {
-            String uid = capture(host("id", "-u")).trim();
-            String gvfsBase = "/run/user/" + uid + "/gvfs";
+            String gvfsBase = gvfsBase();
             String portFragment = "port=" + port + ",";
             // gio mounts on the host, so the mount point only exists in the host's namespace —
             // under flatpak this directory is not visible to us at all. List it on the host for
@@ -230,6 +241,10 @@ public class WebdavMount implements Closeable {
         } catch (IOException cannotAsk) {
             return Optional.empty();
         }
+    }
+
+    private static String gvfsBase() throws IOException {
+        return "/run/user/" + capture(host("id", "-u")).trim() + "/gvfs";
     }
 
     private static void runCheckedWithStdin(String stdin, String... cmd) throws IOException {
