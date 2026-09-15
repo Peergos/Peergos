@@ -192,18 +192,6 @@ public class WebdavMount implements Closeable {
     }
 
     private static WebdavMount mountLinux(int port, String user, String pass) throws IOException {
-        // without gvfsd-fuse, gio mounts inside the gvfs daemon but never gives the mount a
-        // folder, and some distros (Fedora among them) package it separately
-        String gvfsBase = gvfsBase();
-        String mounts;
-        try {
-            mounts = capture(host("cat", "/proc/self/mounts"));
-        } catch (IOException cannotAsk) {
-            mounts = null;
-        }
-        if (mounts != null && ! mounts.contains(" " + gvfsBase + " "))
-            throw new IOException("GVFS FUSE is not running, so the drive would have no folder. " +
-                    "Install gvfs and gvfs-fuse (e.g. sudo dnf install gvfs gvfs-fuse), then log out and back in.");
         // gio mount ignores credentials in the URL and prompts interactively;
         // pipe the password to its stdin instead.
         String url = "dav://" + urlEncode(user) + "@localhost:" + port;
@@ -218,8 +206,17 @@ public class WebdavMount implements Closeable {
                 throw e;
             LOG.info("WebDAV was already mounted at " + url);
         }
-        String mountPoint = gvfsMountPoint(port).orElseThrow(() ->
-                new IOException("Could not find GVFS mount point for port " + port));
+        Optional<String> found = gvfsMountPoint(port);
+        if (found.isEmpty()) {
+            // without gvfsd-fuse, gio mounts inside the gvfs daemon but never gives the mount a
+            // folder, and some distros (Fedora among them) package it separately
+            String gvfsBase = gvfsBase();
+            if (! captureOrEmpty(host("cat", "/proc/self/mounts")).contains(" " + gvfsBase + " "))
+                throw new IOException("GVFS FUSE is not running, so the drive has no folder. " +
+                        "Install gvfs and gvfs-fuse (e.g. sudo dnf install gvfs gvfs-fuse), then log out and back in.");
+            throw new IOException("Could not find GVFS mount point for port " + port);
+        }
+        String mountPoint = found.get();
         LOG.info("WebDAV mounted at " + mountPoint);
         return new WebdavMount(mountPoint, () -> runSilent(host("gio", "mount", "--unmount", url)));
     }
