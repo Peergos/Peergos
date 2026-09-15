@@ -91,7 +91,16 @@ public class FileUploader implements AutoCloseable {
         private final LinkedList<CompletableFuture<ChunkUpload>> toUpload = new LinkedList<>();
         private final LinkedList<CompletableFuture<Boolean>> waitingWorkers = new LinkedList<>();
         private final LinkedList<CompletableFuture<ChunkUpload>> waitingUploaders = new LinkedList<>();
+        private Throwable failure = null;
         private static final int MAX_QUEUE_SIZE = 10;
+
+        /** No more chunks are coming. Whatever was already encrypted can still be taken, and a
+         *  poll after that fails with the reason, as does one already waiting. */
+        public synchronized void fail(Throwable t) {
+            failure = t;
+            while (! waitingUploaders.isEmpty())
+                waitingUploaders.poll().completeExceptionally(t);
+        }
 
         public synchronized CompletableFuture<Boolean> add(ChunkUpload chunk) {
             if (! waitingUploaders.isEmpty()) {
@@ -116,6 +125,8 @@ public class FileUploader implements AutoCloseable {
                 }
                 return res;
             }
+            if (failure != null)
+                return Futures.errored(failure);
             CompletableFuture<ChunkUpload> wait = new CompletableFuture<>();
             waitingUploaders.add(wait);
             return wait;
@@ -153,7 +164,12 @@ public class FileUploader implements AutoCloseable {
                             (p, i) -> Futures.runAsync(() -> encryptChunk(i, owner, writer, mirrorBat, MaybeMultihash.empty(), random, hasher, network.isJavascript())
                                     .thenCompose(queue::add)),
                             (a, b) -> b)
-                    .exceptionally(res::completeExceptionally);
+                    // failing the upload from here would let it finish while a chunk it is writing is still
+                    // landing, so the upload fails when it next asks for a chunk instead
+                    .exceptionally(t -> {
+                        queue.fail(t);
+                        return true;
+                    });
             Futures.reduceAll(input, current,
                             (s, i) -> {
                                 // else every already encrypted chunk still uploads first

@@ -702,7 +702,6 @@ public class FileWrapper {
         })).thenCompose(finished -> getUpdated(finished, network));
     }
 
-    @JsMethod
     public CompletableFuture<FileWrapper> uploadFileJS(String filename,
                                                        AsyncReader fileData,
                                                        int lengthHi,
@@ -714,9 +713,26 @@ public class FileWrapper {
                                                        ProgressConsumer<Long> monitor,
                                                        TransactionService transactions,
                                                        Function<FileUploadTransaction, CompletableFuture<Boolean>> resumeFile) {
+        return uploadFileJS(filename, fileData, lengthHi, lengthLow, overwriteExisting, mirrorBat, network, crypto,
+                monitor, transactions, resumeFile, () -> false);
+    }
+
+    @JsMethod
+    public CompletableFuture<FileWrapper> uploadFileJS(String filename,
+                                                       AsyncReader fileData,
+                                                       int lengthHi,
+                                                       int lengthLow,
+                                                       boolean overwriteExisting,
+                                                       Optional<BatId> mirrorBat,
+                                                       NetworkAccess network,
+                                                       Crypto crypto,
+                                                       ProgressConsumer<Long> monitor,
+                                                       TransactionService transactions,
+                                                       Function<FileUploadTransaction, CompletableFuture<Boolean>> resumeFile,
+                                                       Supplier<Boolean> isCancelled) {
         FileUploadProperties fileProps = new FileUploadProperties(filename, () -> fileData, lengthHi, lengthLow, Optional.empty(), Optional.empty(), false, overwriteExisting, monitor);
         FolderUploadProperties currentFolder = new FolderUploadProperties(Collections.emptyList(), Collections.singletonList(fileProps));
-        return uploadSubtree(Stream.of(currentFolder), mirrorBat, network, crypto, transactions, resumeFile, f -> Futures.of(true), () -> true);
+        return uploadSubtree(Stream.of(currentFolder), mirrorBat, network, crypto, transactions, resumeFile, f -> Futures.of(true), () -> true, isCancelled);
     }
 
     public CompletableFuture<Pair<Snapshot, Optional<NamedRelativeCapability>>> resumeUpload(FileUploadTransaction txn,
@@ -1152,7 +1168,6 @@ public class FileWrapper {
         }
     }
 
-    @JsMethod
     public CompletableFuture<FileWrapper> uploadSubtree(Stream<FolderUploadProperties> directories,
                                                         Optional<BatId> mirrorBat,
                                                         NetworkAccess network,
@@ -1161,22 +1176,48 @@ public class FileWrapper {
                                                         Function<FileUploadTransaction, CompletableFuture<Boolean>> resumeFile,
                                                         Function<String, CompletableFuture<Boolean>> replaceFile,
                                                         Supplier<Boolean> commitWatcher) {
-        Supplier<Boolean> isCancelled = () -> false; // TODO support this in UI
+        return uploadSubtree(directories, mirrorBat, network, crypto, txns, resumeFile, replaceFile, commitWatcher, () -> false);
+    }
+
+    /**
+     * @param isCancelled checked before each file and each chunk. A cancelled upload keeps the files that were
+     *                    added before it, and removes the chunks of the file it stopped part way through.
+     */
+    @JsMethod
+    public CompletableFuture<FileWrapper> uploadSubtree(Stream<FolderUploadProperties> directories,
+                                                        Optional<BatId> mirrorBat,
+                                                        NetworkAccess network,
+                                                        Crypto crypto,
+                                                        TransactionService txns,
+                                                        Function<FileUploadTransaction, CompletableFuture<Boolean>> resumeFile,
+                                                        Function<String, CompletableFuture<Boolean>> replaceFile,
+                                                        Supplier<Boolean> commitWatcher,
+                                                        Supplier<Boolean> isCancelled) {
         // only use the supplied mirror BAT if the parent doesn't have a mirror BAT
         Optional<BatId> mirror = mirrorBatId().or(() -> mirrorBat);
-        return getPath(network).thenCompose(path ->
+        List<Transaction> opened = new ArrayList<>();
+        return Futures.asyncExceptionally(() -> getPath(network).thenCompose(path ->
                 network.synchronizer.applyComplexUpdate(owner(), signingPair(),
                         (s, c) -> {
                             return getUpdated(s, network).thenCompose(us -> Futures.reduceAll(directories, us,
                                             (dir, children) -> dir.getOrMkdirs(children.relativePath, false, mirror, network, crypto, dir.version, c)
                                                     .thenCompose(p -> uploadFolder(PathUtil.get(path).resolve(children.path()), p.right,
-                                                            children, mirrorBat, txns, resumeFile, replaceFile, commitWatcher, isCancelled, network, crypto, c)
+                                                            children, mirrorBat, txns, resumeFile, replaceFile, commitWatcher, isCancelled, opened, network, crypto, c)
                                                             .thenCompose(v -> dir.getUpdated(v, network))),
                                             (a, b) -> b))
                                     .thenApply(d -> d.version);
                         },
                         commitWatcher
-                )).thenCompose(finished -> getUpdated(finished, network));
+                )).thenCompose(finished -> getUpdated(finished, network)),
+                t -> {
+                    network.enableCommits();
+                    if (! isCancelled.get() || txns == null || opened.isEmpty())
+                        return Futures.errored(t);
+                    Set<String> names = opened.stream().map(Transaction::name).collect(Collectors.toSet());
+                    return network.synchronizer.applyComplexUpdate(txns.getOwner(), txns.getSigner(),
+                                    (s, c) -> txns.clearAndClosePendingTransactions(s, c, txn -> names.contains(txn.name())))
+                            .thenCompose(x -> Futures.<FileWrapper>errored(t));
+                });
     }
 
     public static CompletableFuture<Snapshot> uploadFolder(Path toParent,
@@ -1188,6 +1229,7 @@ public class FileWrapper {
                                                            Function<String, CompletableFuture<Boolean>> replaceFile,
                                                            Supplier<Boolean> commitWatcher,
                                                            Supplier<Boolean> isCancelled,
+                                                           List<Transaction> opened,
                                                            NetworkAccess network,
                                                            Crypto crypto,
                                                            Committer c) {
@@ -1229,6 +1271,8 @@ public class FileWrapper {
                         .collect(Collectors.toMap(rc -> rc.getProperties().name, RetrievedCapability::getProperties)))
                 .thenCompose(existingByName -> Futures.reduceAll(groupedChildren, identity, (id, group) -> Futures.reduceAll(group, id,
                         (p, f) -> {
+                            if (isCancelled.get())
+                                return Futures.errored(new IllegalStateException("Upload cancelled!"));
                             // Fast path: compare hash against the pre-loaded remote state before
                             // doing any per-file network work.
                             FileProperties existingProps = existingByName.get(f.filename);
@@ -1244,11 +1288,11 @@ public class FileWrapper {
                                 return replaceFile.apply(toParent.resolve(f.filename).toString())
                                         .thenCompose(replace -> replace ?
                                                 uploadFilePart(toParent, parent, p, f.withOverwriteExisting(),
-                                                        mirrorBat, transactions, resumeFile, commitWatcher, isCancelled, network, crypto, c) :
+                                                        mirrorBat, transactions, resumeFile, commitWatcher, isCancelled, opened, network, crypto, c) :
                                                 Futures.of(new Pair<>(p.left, p.right)));
                             }
                             return uploadFilePart(toParent, parent, p, f,
-                                    mirrorBat, transactions, resumeFile, commitWatcher, isCancelled, network, crypto, c);
+                                    mirrorBat, transactions, resumeFile, commitWatcher, isCancelled, opened, network, crypto, c);
                         },
                         (a, b) -> new Pair<>(b.left, Stream.concat(a.right.stream(), b.right.stream()).collect(Collectors.toList())))
                 .thenCompose(r -> atomicallyClearTransactionsAndAddToParent(Collections.emptyList(), r.right, parent, transactions, r.left, c, commitWatcher, network, crypto)),
@@ -1266,6 +1310,7 @@ public class FileWrapper {
             Function<FileUploadTransaction, CompletableFuture<Boolean>> resumeFile,
             Supplier<Boolean> commitWatcher,
             Supplier<Boolean> isCancelled,
+            List<Transaction> opened,
             NetworkAccess network,
             Crypto crypto,
             Committer c) {
@@ -1315,6 +1360,7 @@ public class FileWrapper {
                                             .thenCompose(resume -> {
                                                 if (resume) {
                                                     toClose.add(r.b());
+                                                    opened.add(r.b());
                                                     return parent.resumeUpload(r.b(), fileData, isCancelled, f.monitor, flushedVersion, c, network, crypto)
                                                             .thenCompose(res -> fileData.reset().thenCompose(resetAgain ->
                                                                             parent.generateThumbnailAndUpdate(res.left, c, r.b().writeCap(), f.filename, resetAgain,
@@ -1328,6 +1374,7 @@ public class FileWrapper {
                                                             if (r2.isB())
                                                                 throw new IllegalStateException("Error uploading file - concurrent upload of same file?");
                                                             toClose.add(txn);
+                                                            opened.add(txn);
                                                             return fileData.reset().thenCompose(reset -> parent.uploadFileSection(r2.a(), c, f.filename, reset, Optional.empty(),
                                                                     false, 0, f.length, f.hash, f.modifiedTime, Optional.of(txn.baseKey), Optional.of(txn.dataKey), Optional.of(txn.writeKey),
                                                                     f.skipExisting, f.overwriteExisting, true,
@@ -1336,6 +1383,7 @@ public class FileWrapper {
                                                         });
                                             }).thenApply(pair -> new Pair<>(pair.left, pair.right.stream().collect(Collectors.toList())));
                                 toClose.add(txn);
+                                opened.add(txn);
                                 return fileData.reset().thenCompose(reset -> parent.uploadFileSection(r.a(), c, f.filename, fileData, Optional.empty(), false,
                                                 0, f.length, f.hash, f.modifiedTime, Optional.of(txn.baseKey), Optional.of(txn.dataKey), Optional.of(txn.writeKey), f.skipExisting, f.overwriteExisting, true,
                                                 network, crypto, isCancelled, f.monitor, txn.firstMapKey(), Optional.of(txn.streamSecret()), txn.firstBat, mirrorBat))

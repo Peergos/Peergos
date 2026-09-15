@@ -3,6 +3,7 @@ package peergos.shared.user.fs.transaction;
 import jsinterop.annotations.JsMethod;
 import peergos.shared.*;
 import peergos.shared.crypto.*;
+import peergos.shared.crypto.hash.*;
 import peergos.shared.user.*;
 import peergos.shared.util.*;
 
@@ -15,6 +16,8 @@ import java.util.stream.Collectors;
 public interface TransactionService {
 
     SigningPrivateKeyAndPublicHash getSigner();
+
+    PublicKeyHash getOwner();
 
     @JsMethod
     /**

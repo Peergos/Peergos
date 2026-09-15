@@ -2,6 +2,7 @@ package peergos.shared.user.fs.transaction;
 
 import peergos.shared.*;
 import peergos.shared.crypto.*;
+import peergos.shared.crypto.hash.*;
 import peergos.shared.storage.*;
 import peergos.shared.storage.auth.*;
 import peergos.shared.user.*;
@@ -36,6 +37,11 @@ public class TransactionServiceImpl implements TransactionService {
     @Override
     public SigningPrivateKeyAndPublicHash getSigner() {
         return signer;
+    }
+
+    @Override
+    public PublicKeyHash getOwner() {
+        return transactionsDir.owner();
     }
 
     private CompletableFuture<FileWrapper> updatedTransactionDir(Snapshot v) {
