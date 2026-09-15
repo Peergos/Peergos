@@ -180,8 +180,8 @@ public class SqliteBlockMetadataTest {
         return listed;
     }
 
-    /** The gc's mark phase walks every cbor block through listCbor, so a batch that is dropped instead
-     *  of delivered makes those blocks - and everything they reference - look unreachable.
+    /** The gc lists every cbor block through listCbor to build the set of blocks it knows about, so a
+     *  batch that is dropped instead of delivered leaves those blocks uncollectable forever.
      */
     @Test
     public void listCborDeliversEveryBlock() throws Exception {

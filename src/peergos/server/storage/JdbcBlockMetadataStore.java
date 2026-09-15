@@ -402,7 +402,8 @@ public class JdbcBlockMetadataStore implements BlockMetadataStore {
                 }
             }
             // The batching only bounds memory - every cbor block still has to be reported, and the
-            // final batch is rarely full. Dropping it hides those blocks from the gc's mark phase.
+            // final batch is rarely full. The gc builds the set of blocks it knows about from this,
+            // so anything dropped here is never a candidate for collection.
             if (! res.isEmpty())
                 results.accept(res);
         } catch (SQLException sqe) {
