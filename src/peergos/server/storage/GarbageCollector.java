@@ -457,8 +457,9 @@ public class GarbageCollector {
             int markParallelism = 10;
             ForkJoinPool markPool = Threads.newFJPool(markParallelism, "GC-mark-");
             AtomicLong totalReachable = new AtomicLong(0);
+            AtomicLong markFailures = new AtomicLong(0);
             List<ForkJoinTask<Boolean>> usageMarked = usageRoots.stream()
-                    .map(r -> markPool.submit(() -> markReachable(owner, storage, (Cid) r.left, r.middle, reachability, metadata, totalReachable)))
+                    .map(r -> markPool.submit(() -> markReachable(owner, storage, (Cid) r.left, r.middle, reachability, metadata, totalReachable, markFailures)))
                     .collect(Collectors.toList());
             usageMarked.forEach(f -> f.join());
             long t4 = System.nanoTime();
@@ -468,7 +469,7 @@ public class GarbageCollector {
             Set<Multihash> fromUsage = new HashSet<>(usageRoots.size());
             fromUsage.addAll(usageRoots.stream().map(r -> r.left).collect(Collectors.toSet()));
             List<ForkJoinTask<Boolean>> marked = allPointers.entrySet().stream()
-                    .map(e -> markPool.submit(() -> markReachable(owner, e.getKey(), e.getValue(), reachability, storage, usage, fromUsage, metadata, totalReachable)))
+                    .map(e -> markPool.submit(() -> markReachable(owner, e.getKey(), e.getValue(), reachability, storage, usage, fromUsage, metadata, totalReachable, markFailures)))
                     .collect(Collectors.toList());
             long rootsProcessed = marked.stream().filter(ForkJoinTask::join).count();
             markPool.shutdown();
@@ -491,6 +492,17 @@ public class GarbageCollector {
                 cborDelCount.addAndGet(del.stream().filter(v -> ! v.cid.isRaw()).count());
                 rawDelCount.addAndGet(del.stream().filter(v -> v.cid.isRaw()).count());
             });
+            // A block that could not be read leaves a subtree unvisited, which is indistinguishable
+            // from unreachable here, so nothing can be collected this round. No snapshot is written
+            // either, so the next run doesn't skip this user and marks again from scratch. Absent
+            // blocks are deliberately not counted here - see markReachable.
+            long failures = markFailures.get();
+            if (failures > 0) {
+                LOG.log(Level.SEVERE, "Skipping deletion of " + (cborDelCount.get() + rawDelCount.get())
+                        + " apparently unreachable blocks: " + failures + " error(s) during the mark phase");
+                continue;
+            }
+
             boolean delete = deleteConfirm.apply(cborDelCount.get(), rawDelCount.get(), nBlocks).join();
             if (! delete)
                 continue;
@@ -552,15 +564,23 @@ public class GarbageCollector {
                                          UsageStore usage,
                                          Set<Multihash> done,
                                          BlockMetadataStore metadata,
-                                         AtomicLong totalReachable) {
+                                         AtomicLong totalReachable,
+                                         AtomicLong markFailures) {
         try {
             MaybeMultihash updated = parsePointerTarget(owner, writerHash, signedRawCas, storage);
             if (updated.isPresent() && !done.contains(updated.get())) {
-                markReachable(owner, storage, true, new ArrayList<>(1000), (Cid) updated.get(), reachability, metadata, () -> getUsername(writerHash, usage), totalReachable);
+                markReachable(owner, storage, true, new ArrayList<>(1000), (Cid) updated.get(), reachability, metadata, () -> getUsername(writerHash, usage), totalReachable, markFailures);
                 return true;
             }
             return false;
+        } catch (BlockAbsentException absent) {
+            // A pointer target that was never uploaded - see markReachable above.
+            LOG.info("Absent pointer target for user " + getUsername(writerHash, usage) + " " + absent.getMessage());
+            return false;
         } catch (Exception e) {
+            // The return value only distinguishes "marked something" from "nothing to mark", so a
+            // failure has to be recorded separately or this writer's whole tree looks unreachable.
+            markFailures.incrementAndGet();
             LOG.info("Error processing user " + getUsername(writerHash, usage) + " " + e.getMessage());
             LOG.log(Level.SEVERE, e, e::getMessage);
             return false;
@@ -606,8 +626,9 @@ public class GarbageCollector {
                                         String username,
                                         SqliteBlockReachability reachability,
                                         BlockMetadataStore metadata,
-                                        AtomicLong totalReachable) {
-        return markReachable(owner, storage, true, new ArrayList<>(1000), root, reachability, metadata, () -> username, totalReachable);
+                                        AtomicLong totalReachable,
+                                        AtomicLong markFailures) {
+        return markReachable(owner, storage, true, new ArrayList<>(1000), root, reachability, metadata, () -> username, totalReachable, markFailures);
     }
 
     private static boolean markReachable(PublicKeyHash owner,
@@ -618,7 +639,8 @@ public class GarbageCollector {
                                          SqliteBlockReachability reachability,
                                          BlockMetadataStore metadata,
                                          Supplier<String> username,
-                                         AtomicLong totalReachable) {
+                                         AtomicLong totalReachable,
+                                         AtomicLong markFailures) {
         if (isRoot)
             queue.add(block);
 
@@ -644,9 +666,17 @@ public class GarbageCollector {
                 queue.clear();
             }
             for (Cid link : newLinks) {
-                markReachable(owner, storage, false, queue, link, reachability, metadata, username, totalReachable);
+                markReachable(owner, storage, false, queue, link, reachability, metadata, username, totalReachable, markFailures);
             }
+        } catch (BlockAbsentException absent) {
+            // Not a failure: a user can publish a pointer to a block they never uploaded, so this must
+            // not be able to stop their collection. Nothing below an absent block can be walked anyway.
+            LOG.info("Absent block for user " + username.get() + " " + absent.getMessage());
         } catch (Exception e) {
+            // The block is there but could not be read, so everything below it is unvisited and only
+            // looks unreachable. Record that the mark is incomplete - deleting on the strength of it
+            // would drop live data.
+            markFailures.incrementAndGet();
             LOG.info("Error processing user " + username.get() + " " + e.getMessage());
             LOG.log(Level.SEVERE, e, e::getMessage);
         }

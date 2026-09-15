@@ -151,7 +151,10 @@ public class AuthedStorage extends DelegatingDeletableStorage {
                 .thenApply(opt -> opt.map(CborObject::fromByteArray))
                 .thenApply(opt -> opt
                         .map(cbor -> cbor.links().stream().map(c -> (Cid) c).collect(Collectors.toList()))
-                        .orElse(Collections.emptyList())
+                        // A block that isn't here is not a leaf. Returning empty would let the gc
+                        // treat its whole subtree as unreachable; absence is signalled instead, which
+                        // the gc handles distinctly from a failed read. S3BlockStorage does the same.
+                        .orElseThrow(() -> new BlockAbsentException(root))
                 );
     }
 

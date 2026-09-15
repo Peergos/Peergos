@@ -85,7 +85,7 @@ public class GCTests {
         String username = "user";
         usage.addUserIfAbsent(username);
         usage.addWriter(username, writer);
-        usage.updateWriterUsageAtomically(writer, MaybeMultihash.empty(), MaybeMultihash.of(randomCbor(new Random(42))),
+        usage.updateWriterUsageAtomically(writer, MaybeMultihash.empty(), MaybeMultihash.of(root),
                 Collections.emptySet(), Collections.emptySet(), 1024*1024, 0, false);
         usage.confirmUsage(username, writer, 10*1024*1024, false);
 
@@ -114,6 +114,8 @@ public class GCTests {
         metadb.put(writer, root2, rootV1b.version, raw2);
         byte[] signedCas2 = signer.signMessage(new PointerUpdate(MaybeMultihash.of(root), MaybeMultihash.of(root2), Optional.of(1L)).serialize()).join();
         pointers.setPointer(writer, Optional.of(signedCas), signedCas2).join();
+        usage.updateWriterUsageAtomically(writer, MaybeMultihash.of(root), MaybeMultihash.of(root2),
+                Collections.emptySet(), Collections.emptySet(), 1024*1024, 0, false);
         // add a new version of the original leaf block, and check it is kept and the original is deleted
         BlockVersion leafV2 = storage.add(writer, leaf);
         gc.collect(s -> Futures.of(true));
@@ -302,11 +304,12 @@ public class GCTests {
         int markParallelism = 10;
         ForkJoinPool markPool = Threads.newFJPool(markParallelism, "GC-mark-");
         AtomicLong totalReachable = new AtomicLong(0);
+        AtomicLong markFailures = new AtomicLong(0);
         List<ForkJoinTask<Boolean>> usageMarked = roots.stream()
                 .map(r -> markPool.submit(() -> {
                     try {
                         return GarbageCollector.markReachable(owner, null, r,
-                                "user-" + r, reachability, metadb, totalReachable);
+                                "user-" + r, reachability, metadb, totalReachable, markFailures);
                     } catch (Exception e) {
                         e.printStackTrace();
                         throw new RuntimeException(e);
@@ -315,6 +318,7 @@ public class GCTests {
                 .collect(Collectors.toList());
         usageMarked.forEach(ForkJoinTask::join);
 
+        Assert.assertEquals("a complete walk reports no failures", 0, markFailures.get());
         List<BlockVersion> garbage = new ArrayList<>();
         reachability.getUnreachable(garbage::addAll);
         Assert.assertTrue(garbage.isEmpty());
@@ -363,6 +367,146 @@ public class GCTests {
         Assert.assertFalse("the unreferenced cbor block is collected",
                 storage.storage.get(writer).containsKey(garbage));
         Assert.assertTrue("the live tree survives", storage.storage.get(writer).containsKey(root));
+    }
+
+    /** The sweep itself must not run on an incomplete mark. This drives the whole collect() path with
+     *  a block the walk cannot resolve, and asserts nothing is deleted - without the gate the blocks
+     *  below the failure are swept, which is the data loss this fixes.
+     */
+    @Test
+    public void nothingIsSweptWhenTheMarkPhaseFailed() throws Exception {
+        Path dir = Files.createTempDirectory("peergos-gc-test");
+        SqliteCommands cmds = new SqliteCommands();
+        BlockMetadataStore metadb = new JdbcBlockMetadataStore(getDb(), cmds);
+        WriteOnlyStorage storage = new WriteOnlyStorage(metadb);
+        JdbcIpnsAndSocial pointers = new JdbcIpnsAndSocial(getDb(), cmds);
+        JdbcUsageStore usage = new JdbcUsageStore(getDb(), cmds);
+
+        SigningKeyPair signer = SigningKeyPair.random(crypto.random, crypto.signer);
+        PublicKeyHash writer = ContentAddressedStorage.hashKey(signer.publicSigningKey);
+        String username = "user";
+        usage.addUserIfAbsent(username);
+        usage.addWriter(username, writer);
+        usage.confirmUsage(username, writer, 10*1024*1024, false);
+
+        storage.storage.put(writer, new HashMap<>());
+        Map<Cid, List<Cid>> tree = new LinkedHashMap<>();
+        Cid root = generateTree(42, 1000,
+                blocks -> blocks.forEach(b -> storage.storage.get(writer).put(b, true)),
+                (b, kids) -> {
+                    tree.put(b, kids);
+                    metadb.put(writer, b, null, new BlockMetadata(10, kids, Collections.emptyList()));
+                });
+        byte[] signedCas = signer.signMessage(new PointerUpdate(MaybeMultihash.empty(),
+                MaybeMultihash.of(root), Optional.of(1L)).serialize()).join();
+        pointers.setPointer(writer, Optional.empty(), signedCas).join();
+        usage.updateWriterUsageAtomically(writer, MaybeMultihash.empty(), MaybeMultihash.of(root),
+                Collections.emptySet(), Collections.emptySet(), 1024*1024, 0, false);
+
+        // an interior block the walk can no longer resolve: its metadata is gone and WriteOnlyStorage
+        // cannot serve links, so marking fails part way down a live tree
+        Cid interior = tree.entrySet().stream()
+                .filter(e -> ! e.getValue().isEmpty() && ! e.getKey().equals(root))
+                .map(Map.Entry::getKey)
+                .findFirst()
+                .orElseThrow();
+        metadb.remove(interior);
+
+        int before = storage.storage.get(writer).size();
+        GarbageCollector gc = new GarbageCollector(storage, pointers, usage, new RamPki(), dir,
+                (x, y, z) -> Futures.of(true), u -> Futures.of(true), true);
+        gc.collect(s -> Futures.of(true));
+
+        Assert.assertEquals("an incomplete mark must not delete anything",
+                before, storage.storage.get(writer).size());
+        Assert.assertTrue("the live children of the unresolvable block are still there",
+                storage.storage.get(writer).keySet().containsAll(tree.get(interior)));
+    }
+
+    /** An error while walking a tree leaves everything below it unvisited, which is indistinguishable
+     *  from unreachable. The mark phase has to say that it happened, so the sweep can decline to run.
+     */
+    @Test
+    public void aFailureWhileMarkingIsReported() throws Exception {
+        BlockMetadataStore metadb = new JdbcBlockMetadataStore(getDb(), new SqliteCommands());
+        SqliteBlockReachability reachability = new SqliteBlockReachability(getDb(), new SqliteCommands());
+        WriteOnlyStorage storage = new WriteOnlyStorage(metadb);
+        PublicKeyHash owner = new PublicKeyHash(randomCbor(new Random(42)));
+        storage.storage.put(owner, new HashMap<>());
+
+        Map<Cid, List<Cid>> tree = new LinkedHashMap<>();
+        Cid root = generateTree(0, 1 << 9,
+                blocks -> {
+                    blocks.forEach(b -> storage.storage.get(owner).put(b, true));
+                    reachability.addBlocks(blocks.stream()
+                            .map(c -> new BlockVersion(c, null, true)).collect(Collectors.toList()));
+                },
+                (b, links) -> {
+                    tree.put(b, links);
+                    metadb.put(owner, b, null, new BlockMetadata(0, links, Collections.emptyList()));
+                });
+
+        // an interior block that is still stored but whose metadata has gone: present, unreadable, and
+        // so of unknown reachability - the shape of a transient read failure part way down a live tree
+        Cid interior = tree.entrySet().stream()
+                .filter(e -> ! e.getValue().isEmpty() && ! e.getKey().equals(root))
+                .map(Map.Entry::getKey)
+                .findFirst()
+                .orElseThrow();
+        metadb.remove(interior);
+
+        AtomicLong totalReachable = new AtomicLong(0);
+        AtomicLong markFailures = new AtomicLong(0);
+        GarbageCollector.markReachable(owner, storage, root, "alice",
+                reachability, metadb, totalReachable, markFailures);
+
+        Assert.assertTrue("the mark phase reported the failure", markFailures.get() > 0);
+
+        // and this is why it has to: the subtree below the failure now looks collectable
+        List<BlockVersion> garbage = new ArrayList<>();
+        reachability.getUnreachable(garbage::addAll);
+        Assert.assertFalse("live blocks below the failure look unreachable", garbage.isEmpty());
+        Assert.assertTrue("the unvisited children are the ones at risk",
+                garbage.stream().map(v -> v.cid).collect(Collectors.toSet()).containsAll(tree.get(interior)));
+    }
+
+    /** A user controls their own pointers, so a pointer to a block that was never uploaded is a state
+     *  they can create at will. It must not be able to stop the gc collecting their garbage.
+     */
+    @Test
+    public void aDanglingPointerDoesNotDisableTheSweep() throws Exception {
+        Path dir = Files.createTempDirectory("peergos-gc-test");
+        SqliteCommands cmds = new SqliteCommands();
+        BlockMetadataStore metadb = new JdbcBlockMetadataStore(getDb(), cmds);
+        WriteOnlyStorage storage = new WriteOnlyStorage(metadb);
+        JdbcIpnsAndSocial pointers = new JdbcIpnsAndSocial(getDb(), cmds);
+        JdbcUsageStore usage = new JdbcUsageStore(getDb(), cmds);
+
+        SigningKeyPair signer = SigningKeyPair.random(crypto.random, crypto.signer);
+        PublicKeyHash writer = ContentAddressedStorage.hashKey(signer.publicSigningKey);
+        String username = "user";
+        usage.addUserIfAbsent(username);
+        usage.addWriter(username, writer);
+        usage.confirmUsage(username, writer, 10*1024*1024, false);
+        storage.storage.put(writer, new HashMap<>());
+
+        // garbage the gc should collect
+        Cid garbage = randomCbor(new Random(7));
+        storage.storage.get(writer).put(garbage, true);
+        metadb.put(writer, garbage, null, new BlockMetadata(10, Collections.emptyList(), Collections.emptyList()));
+
+        // a pointer to a block that was never uploaded - costs the user nothing to create
+        Cid neverUploaded = randomCbor(new Random(99));
+        byte[] signedCas = signer.signMessage(new PointerUpdate(MaybeMultihash.empty(),
+                MaybeMultihash.of(neverUploaded), Optional.of(1L)).serialize()).join();
+        pointers.setPointer(writer, Optional.empty(), signedCas).join();
+
+        GarbageCollector gc = new GarbageCollector(storage, pointers, usage, new RamPki(), dir,
+                (x, y, z) -> Futures.of(true), u -> Futures.of(true), true);
+        gc.collect(s -> Futures.of(true));
+
+        Assert.assertFalse("a dangling pointer must not stop the sweep",
+                storage.storage.get(writer).containsKey(garbage));
     }
 
     private Cid generateTree(int seed, int nLeafBlocksLeft, Consumer<List<Cid>> listConsumer, BiConsumer<Cid, List<Cid>> linksConsumer) {

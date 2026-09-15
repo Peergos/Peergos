@@ -176,9 +176,18 @@ public class WriteOnlyStorage implements DeletableContentAddressedStorage {
         throw new IllegalStateException("Not implemented!");
     }
 
+    /** Faithful enough for the gc to tell the two apart: a block this store never held is absent, while
+     *  one it holds but has no metadata for stands in for a block that is there but cannot be read.
+     */
     @Override
     public CompletableFuture<List<Cid>> getLinks(PublicKeyHash owner, Cid root, List<Multihash> peerids) {
-        throw new IllegalStateException("Unimplemented!");
+        if (root.isRaw())
+            return CompletableFuture.completedFuture(Collections.emptyList());
+        if (! storage.getOrDefault(owner, Collections.emptyMap()).containsKey(root))
+            throw new BlockAbsentException(root);
+        return CompletableFuture.completedFuture(metadb.get(root)
+                .orElseThrow(() -> new IllegalStateException("Could not read block: " + root))
+                .links);
     }
 
     @Override
