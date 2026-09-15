@@ -320,6 +320,51 @@ public class GCTests {
         Assert.assertTrue(garbage.isEmpty());
     }
 
+    /** With listRawFromBlockstore off, the gc discovers cbor blocks through BlockMetadataStore.listCbor
+     *  rather than by listing the blockstore. Anything that call fails to report is never a candidate
+     *  for collection, so a user below one batch keeps their garbage forever.
+     */
+    @Test
+    public void garbageIsCollectedWhenCborBlocksComeFromTheMetadataStore() throws Exception {
+        Path dir = Files.createTempDirectory("peergos-gc-test");
+        SqliteCommands cmds = new SqliteCommands();
+        BlockMetadataStore metadb = new JdbcBlockMetadataStore(getDb(), cmds);
+        WriteOnlyStorage storage = new WriteOnlyStorage(metadb);
+        JdbcIpnsAndSocial pointers = new JdbcIpnsAndSocial(getDb(), cmds);
+        JdbcUsageStore usage = new JdbcUsageStore(getDb(), cmds);
+
+        SigningKeyPair signer = SigningKeyPair.random(crypto.random, crypto.signer);
+        PublicKeyHash writer = ContentAddressedStorage.hashKey(signer.publicSigningKey);
+        String username = "user";
+        usage.addUserIfAbsent(username);
+        usage.addWriter(username, writer);
+        usage.confirmUsage(username, writer, 10*1024*1024, false);
+
+        // a live tree comfortably below one batch, which is where the dropped batch was the whole user
+        storage.storage.put(writer, new HashMap<>());
+        Cid root = generateTree(42, 10,
+                blocks -> blocks.forEach(b -> storage.storage.get(writer).put(b, true)),
+                (b, kids) -> metadb.put(writer, b, null, new BlockMetadata(10, kids, Collections.emptyList())));
+        byte[] signedCas = signer.signMessage(new PointerUpdate(MaybeMultihash.empty(),
+                MaybeMultihash.of(root), Optional.of(1L)).serialize()).join();
+        pointers.setPointer(writer, Optional.empty(), signedCas).join();
+        usage.updateWriterUsageAtomically(writer, MaybeMultihash.empty(), MaybeMultihash.of(root),
+                Collections.emptySet(), Collections.emptySet(), 1024*1024, 0, false);
+
+        // an unreferenced cbor block - real garbage, reachable from no pointer
+        Cid garbage = randomCbor(new Random(7));
+        storage.storage.get(writer).put(garbage, true);
+        metadb.put(writer, garbage, null, new BlockMetadata(10, Collections.emptyList(), Collections.emptyList()));
+
+        GarbageCollector gc = new GarbageCollector(storage, pointers, usage, new RamPki(), dir,
+                (x, y, z) -> Futures.of(true), u -> Futures.of(true), false);
+        gc.collect(s -> Futures.of(true));
+
+        Assert.assertFalse("the unreferenced cbor block is collected",
+                storage.storage.get(writer).containsKey(garbage));
+        Assert.assertTrue("the live tree survives", storage.storage.get(writer).containsKey(root));
+    }
+
     private Cid generateTree(int seed, int nLeafBlocksLeft, Consumer<List<Cid>> listConsumer, BiConsumer<Cid, List<Cid>> linksConsumer) {
         Random r = new Random(seed);
         List<Cid> buffer = new ArrayList<>(1000);
