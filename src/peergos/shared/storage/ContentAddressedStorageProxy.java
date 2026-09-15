@@ -158,7 +158,7 @@ public interface ContentAddressedStorageProxy {
                                                            BatWithId mirrorBat) {
             return poster.get(getProxyUrlPrefix(targetServerId) + apiPrefix
                     + "link/counts?after=" + after.toEpochSecond(ZoneOffset.UTC)
-                    + "?bat=" + mirrorBat.encode()
+                    + "&bat=" + mirrorBat.encode()
                     + "&owner=" + owner)
                     .thenApply(CborObject::fromByteArray)
                     .thenApply(LinkCounts::fromCbor);
