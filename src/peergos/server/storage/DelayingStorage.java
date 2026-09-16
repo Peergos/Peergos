@@ -83,6 +83,16 @@ public class DelayingStorage implements ContentAddressedStorage {
     }
 
     @Override
+    public CompletableFuture<List<Cid>> putBatch(PublicKeyHash owner,
+                                                 PublicKeyHash writer,
+                                                 BlockWriteBatch batch,
+                                                 boolean isRaw,
+                                                 TransactionId tid) {
+        sleep(writeDelay);
+        return source.putBatch(owner, writer, batch, isRaw, tid);
+    }
+
+    @Override
     public CompletableFuture<Optional<byte[]>> getRaw(PublicKeyHash owner, Cid object, Optional<BatWithId> bat) {
         try {
             sleep(readDelay);

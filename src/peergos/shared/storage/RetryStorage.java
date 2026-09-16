@@ -139,6 +139,15 @@ public class RetryStorage implements ContentAddressedStorage {
     }
 
     @Override
+    public CompletableFuture<List<Cid>> putBatch(PublicKeyHash owner,
+                                                 PublicKeyHash writer,
+                                                 BlockWriteBatch batch,
+                                                 boolean isRaw,
+                                                 TransactionId tid) {
+        return runWithRetry(() -> target.putBatch(owner, writer, batch, isRaw, tid));
+    }
+
+    @Override
     public CompletableFuture<List<Cid>> bulkCommit(PublicKeyHash owner, BulkCommit commit) {
         // Not retried: the pointer half of a commit is a CAS, so a retry of one that actually landed
         // fails the CAS, which the caller resolves by merging rather than by trying again.
@@ -214,6 +223,15 @@ public class RetryStorage implements ContentAddressedStorage {
                                                             boolean isRaw,
                                                             TransactionId tid) {
         return runWithRetry(() -> target.authWrites(owner, writer, signedHashes, blockSizes, batIds, isRaw, tid));
+    }
+
+    @Override
+    public CompletableFuture<List<PresignedUrl>> authWrites(PublicKeyHash owner,
+                                                            PublicKeyHash writer,
+                                                            BlockWriteAuth auth,
+                                                            boolean isRaw,
+                                                            TransactionId tid) {
+        return runWithRetry(() -> target.authWrites(owner, writer, auth, isRaw, tid));
     }
 
     @Override

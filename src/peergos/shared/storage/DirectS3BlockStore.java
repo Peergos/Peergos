@@ -126,6 +126,18 @@ public class DirectS3BlockStore implements ContentAddressedStorage {
         return fallback.putBatch(owner, signer, blocks, tid, hasher);
     }
 
+    /** The batch's one signature covers exactly these blocks, so it cannot be split up to go
+     *  direct to S3 a block at a time: forward it whole.
+     */
+    @Override
+    public CompletableFuture<List<Cid>> putBatch(PublicKeyHash owner,
+                                                 PublicKeyHash writer,
+                                                 BlockWriteBatch batch,
+                                                 boolean isRaw,
+                                                 TransactionId tid) {
+        return fallback.putBatch(owner, writer, batch, isRaw, tid);
+    }
+
     private CompletableFuture<Boolean> onOwnersNode(PublicKeyHash owner) {
         Multihash cached = storageNodeByOwner.get(owner);
         if (cached != null)
