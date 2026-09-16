@@ -15,4 +15,9 @@ public class BlockAbsentException extends IllegalStateException {
     public BlockAbsentException(Cid block) {
         super("Block not present locally: " + block);
     }
+
+    /** Callers match on the existing wording, so a site that already had a message keeps it verbatim. */
+    public BlockAbsentException(String message) {
+        super(message);
+    }
 }

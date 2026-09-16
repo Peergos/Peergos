@@ -958,12 +958,15 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                 // block they never uploaded, so a 404 must not be reported as a failed read, or garbage
                 // collection can be stopped at will. Every other error is a failed read, and reporting
                 // one as absence would let the gc collect a subtree it simply could not walk.
+                // Both messages keep their original wording, and neither wraps a cause, because callers
+                // match on the message and on the root cause. The exception type is what now separates
+                // a block we do not have from one we could not read; the cause is logged above instead.
                 if (! notFound) {
                     LOG.log(Level.SEVERE, cause, cause::getMessage);
-                    throw new IllegalStateException("Could not read block " + hash, cause);
+                    throw new IllegalStateException("Missing block " + hash);
                 }
                 LOG.log(Level.SEVERE, "Missing block for " + owner + " - " + hash);
-                throw new BlockAbsentException(hash);
+                throw new BlockAbsentException("Missing block " + hash);
             }
 
             nonLocalGets.inc();

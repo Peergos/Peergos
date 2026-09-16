@@ -120,6 +120,35 @@ public class S3BlockAbsenceTests {
         }
     }
 
+    /** Callers outside this repo match on the wording of these messages, so changing the exception
+     *  type must not change the text. Both paths kept "Missing block" for that reason.
+     */
+    @Test
+    public void bothPathsKeepTheirOriginalWording() throws Exception {
+        Cid neverUploaded = new Cid(1, Cid.Codec.Raw, Multihash.Type.sha2_256, Hash.sha256("gone".getBytes()));
+        try {
+            s3.getBlockMetadata(owner, neverUploaded).join();
+            Assert.fail("should not have resolved");
+        } catch (Exception e) {
+            Assert.assertTrue("absence keeps the original wording: " + rootOf(e).getMessage(),
+                    rootOf(e).getMessage().contains("Missing block"));
+        }
+
+        byte[] data = "another real block".getBytes();
+        Cid present = putRawBlock(data);
+        Assert.assertEquals(data.length, s3.getBlockMetadata(owner, present).join().size);
+        meta.remove(present);
+        cborCache.clear().join();
+        server.refuseRequestsFor(s3Key(present));
+        try {
+            s3.getBlockMetadata(owner, present).join();
+            Assert.fail("should not have resolved");
+        } catch (Exception e) {
+            Assert.assertTrue("a read failure keeps the original wording: " + rootOf(e).getMessage(),
+                    rootOf(e).getMessage().contains("Missing block"));
+        }
+    }
+
     /** The real failure case: s3 is there but refusing, so reachability is genuinely unknown. */
     @Test
     public void aBlockS3FailsToServeIsNotAbsence() throws Exception {
