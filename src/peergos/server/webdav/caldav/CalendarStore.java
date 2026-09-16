@@ -82,7 +82,9 @@ public class CalendarStore extends AppDataStore {
     /** A property of its own rather than anywhere in the file: the same text inside a
      *  description is somebody writing about a shared entry, not one. */
     private static boolean carriesSharedPointer(String ics) {
-        return ics.lines().anyMatch(line -> line.startsWith(SHARED_MARKER));
+        // not String.lines(): android has no such method before api 34, and unfolding is what
+        // reads a property that the writer wrapped across continuation lines
+        return ICal.unfold(ics).stream().anyMatch(line -> line.startsWith(SHARED_MARKER));
     }
 
     /**
