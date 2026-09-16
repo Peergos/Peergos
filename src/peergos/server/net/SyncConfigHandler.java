@@ -13,6 +13,7 @@ import peergos.server.sync.SyncStatus;
 import peergos.server.util.Args;
 import peergos.server.util.HttpUtil;
 import peergos.server.util.Logging;
+import peergos.server.util.Threads;
 import peergos.shared.Crypto;
 import peergos.shared.NetworkAccess;
 import peergos.shared.corenode.CoreNode;
@@ -170,6 +171,33 @@ public class SyncConfigHandler implements HttpHandler {
         return x.startsWith(y) || y.startsWith(x);
     }
 
+    /** The state db is what tells a pass which files were already synced, so it decides which
+     *  deletions to propagate. An in progress pass holds it open, and an open sqlite file cannot
+     *  be deleted at all on Windows, so retry until the cancelled pass has unwound and closed it.
+     */
+    private static void deleteSyncStateDb(Path peergosDir, String remotePath, String localDir) {
+        Path syncDb = DirectorySync.getSyncStateDbPath(peergosDir, remotePath, localDir);
+        LOG.info("Deleting " + syncDb);
+        FileSystemException last = null;
+        for (int i = 0; i < 100; i++) {
+            if (! Files.exists(syncDb))
+                return;
+            try {
+                Files.delete(syncDb);
+                LOG.info("Deleted " + syncDb);
+                return;
+            } catch (FileSystemException e) {
+                last = e;
+                Threads.sleep(100);
+            } catch (IOException e) {
+                LOG.log(Level.WARNING, e, () -> "Error deleting " + syncDb);
+                return;
+            }
+        }
+        LOG.log(Level.WARNING, last, () -> "Couldn't delete sync state " + syncDb
+                + ", it is still open. A pair added back for " + localDir + " will clear it.");
+    }
+
     private String getRemotePath(String link) {
         return UserContext.fromSecretLinksV2(Arrays.asList(link),
                         Arrays.asList(() -> Futures.of("")), network, crypto)
@@ -220,7 +248,10 @@ public class SyncConfigHandler implements HttpHandler {
                             throw new IllegalStateException("That folder overlaps the one already synced with "
                                     + remotePaths.get(i));
                     }
-                    // a folder added back after being removed must not report the old status
+                    // a folder added back after being removed must not report the old status,
+                    // nor inherit its state db: that would take every file the pair had synced
+                    // before and, with deletes enabled, propagate it as a deletion
+                    deleteSyncStateDb(peergosDir, newRemote, localDir);
                     String pairHash = PairLogger.hash(newRemote, localDir);
                     try {
                         PairLogger.deleteFor(peergosDir, pairHash);
@@ -269,28 +300,15 @@ public class SyncConfigHandler implements HttpHandler {
 
                 saveConfigToFile(new SyncConfig(localDirs, remotePaths, links, syncLocalDeletes, syncRemoteDeletes,
                         allowOnMobile, updated.maxDownloadParallelism, updated.minFreeSpacePercent, updated.paused));
-                // clear sync state db as well
                 String linkPath = UserContext.fromSecretLinksV2(Arrays.asList(link), Arrays.asList(() -> Futures.of("")), network, crypto).join().getEntryPath().join();
-                Path syncDb = DirectorySync.getSyncStateDbPath(peergosDir, linkPath, removedLocal);
-                LOG.info("Deleting " + syncDb);
-                if (Files.exists(syncDb)) {
-                    try {
-                        Files.delete(syncDb);
-                    } catch (FileSystemException e) {
-                        LOG.info("Error deleting " + syncDb);
-                    }
-                }
                 SyncRunner.StatusHolder status = syncer.getStatusHolder();
                 status.setStatus("Removed sync of " + removedLocal);
                 // cancelling stops the whole pass, so ask for another one straight away:
                 // the folders it had not reached should not wait for the next schedule
                 status.cancel();
                 syncer.runNow();
-                // clear sync state db again if it was recreated by an in progress sync
-                if (Files.exists(syncDb)) {
-                    Files.delete(syncDb);
-                    LOG.info("Deleted " + syncDb);
-                }
+                // the pair is out of the config by now, so no pass can recreate this
+                deleteSyncStateDb(peergosDir, linkPath, removedLocal);
                 String pairHash = PairLogger.hash(linkPath, removedLocal);
                 try {
                     PairLogger.deleteFor(peergosDir, pairHash);

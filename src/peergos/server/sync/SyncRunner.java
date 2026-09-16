@@ -206,8 +206,8 @@ public interface SyncRunner {
                             // delete stale async state dbs
                             try (Stream<Path> kids = Files.list(peergosDir)) {
                                 kids
-                                        .filter(p -> p.getFileName().endsWith(".sqlite"))
-                                        .filter(p -> p.getFileName().startsWith("dir-sync-state-v3-"))
+                                        .filter(p -> p.getFileName().toString().endsWith(".sqlite"))
+                                        .filter(p -> p.getFileName().toString().startsWith("dir-sync-state-v3-"))
                                         .forEach(p -> {
                                             try {
                                                 Files.delete(p);
