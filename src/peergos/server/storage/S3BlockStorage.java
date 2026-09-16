@@ -954,11 +954,19 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
 
             if (peerIds.stream().map(Multihash::bareMultihash).anyMatch(this.peerIds::contains)) {
                 // This is the owner's home server, we should have the block!
-                if (! notFound)
+                // Absence and failure have to be distinguishable here: a user can publish a pointer to a
+                // block they never uploaded, so a 404 must not be reported as a failed read, or garbage
+                // collection can be stopped at will. Every other error is a failed read, and reporting
+                // one as absence would let the gc collect a subtree it simply could not walk.
+                // Both messages keep their original wording, and neither wraps a cause, because callers
+                // match on the message and on the root cause. The exception type is what now separates
+                // a block we do not have from one we could not read; the cause is logged above instead.
+                if (! notFound) {
                     LOG.log(Level.SEVERE, cause, cause::getMessage);
-                else
-                    LOG.log(Level.SEVERE, "Missing block for " + owner + " - " + hash);
-                throw new IllegalStateException("Missing block " + hash);
+                    throw new IllegalStateException("Missing block " + hash);
+                }
+                LOG.log(Level.SEVERE, "Missing block for " + owner + " - " + hash);
+                throw new BlockAbsentException("Missing block " + hash);
             }
 
             nonLocalGets.inc();
@@ -1609,7 +1617,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                 Optional.of(new Pair<>(0, Bat.MAX_RAW_BLOCK_PREFIX_SIZE - 1)) :
                 Optional.empty(), false, bat, false).join();
         if (data.isEmpty())
-            throw new IllegalStateException("Block not present locally: " + h);
+            throw new BlockAbsentException(h);
         byte[] bloc = data.get().left;
         String version = data.get().right;
         if (h.isRaw()) {

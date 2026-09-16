@@ -10,11 +10,18 @@ import java.util.concurrent.*;
 
 public class LocalS3Server {
     private final HttpServer server;
+    private final LocalS3Handler handler;
 
     public LocalS3Server(Path storageRoot, String bucket, String accessKey, String secretKey, int port) throws IOException {
         server = HttpServer.create(new InetSocketAddress(port), 128);
-        server.createContext("/", new LocalS3Handler(storageRoot, bucket, accessKey, secretKey));
+        this.handler = new LocalS3Handler(storageRoot, bucket, accessKey, secretKey);
+        server.createContext("/", handler);
         server.setExecutor(Executors.newVirtualThreadPerTaskExecutor());
+    }
+
+    /** Simulate s3 refusing to serve one key, as distinct from not having it. */
+    public void refuseRequestsFor(String keyFragment) {
+        handler.refuseRequestsFor(keyFragment);
     }
 
     public void start() {

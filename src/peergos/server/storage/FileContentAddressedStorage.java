@@ -133,7 +133,15 @@ public class FileContentAddressedStorage implements DeletableContentAddressedSto
 
     private void moveSubtreeToOwner(PublicKeyHash owner, Cid root, List<Multihash> ourIds) {
         moveLegacyBlockToOwner(owner, root);
-        List<Cid> links = getLinks(owner, root, ourIds).join();
+        List<Cid> links;
+        try {
+            links = getLinks(owner, root, ourIds).join();
+        } catch (BlockAbsentException absent) {
+            // A legacy store being partitioned can be missing blocks, and nothing below one we don't
+            // have can be walked. S3BlockStorage.moveSubtreeToOwner tolerates this the same way.
+            LOG.info("Skipping absent block while partitioning: " + root);
+            return;
+        }
         for (Cid link : links) {
             moveSubtreeToOwner(owner, link, ourIds);
         }
@@ -426,7 +434,10 @@ public class FileContentAddressedStorage implements DeletableContentAddressedSto
                 .thenApply(opt -> opt.map(CborObject::fromByteArray))
                 .thenApply(opt -> opt
                         .map(cbor -> cbor.links().stream().map(c -> (Cid) c).collect(Collectors.toList()))
-                        .orElse(Collections.emptyList())
+                        // A block that isn't here is not a leaf. Returning empty would let the gc
+                        // treat its whole subtree as unreachable; absence is signalled instead, which
+                        // the gc handles distinctly from a failed read. S3BlockStorage does the same.
+                        .orElseThrow(() -> new BlockAbsentException(root))
                 );
     }
 
