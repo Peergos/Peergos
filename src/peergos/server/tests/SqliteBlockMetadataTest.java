@@ -214,6 +214,45 @@ public class SqliteBlockMetadataTest {
         Assert.assertEquals(Set.of(only), listCbor(store, owner));
     }
 
+    /** The bats in a block's metadata are supplied by whoever wrote it, so a row written under one
+     *  owner must never answer a lookup for another - that is what let a poisoned row authorise a
+     *  read of someone else's block.
+     */
+    @Test
+    public void metadataLookupIsScopedToItsOwner() throws Exception {
+        Path dir = Files.createTempDirectory("peergos-block-metadata");
+        BlockMetadataStore store = buildStore(dir.resolve("meta.sql"));
+        PublicKeyHash victim = new PublicKeyHash(randomCid());
+        PublicKeyHash attacker = new PublicKeyHash(randomCid());
+
+        Cid block = randomCid();
+        store.put(attacker, block, "alpha", new BlockMetadata(1024, Collections.emptyList(), Collections.emptyList()));
+
+        Assert.assertTrue("the writer's own row is still found",
+                store.getAll(attacker, List.of(block)).containsKey(block));
+        Assert.assertTrue("a row written under another owner must not answer here",
+                store.getAll(victim, List.of(block)).isEmpty());
+        // the owner blind lookup is unchanged, for the paths that legitimately use it
+        Assert.assertTrue(store.getAll(List.of(block)).containsKey(block));
+    }
+
+    /** The caching layer is the half that made this exploitable, so it has to scope too. */
+    @Test
+    public void theMetadataCacheIsScopedToItsOwner() throws Exception {
+        Path dir = Files.createTempDirectory("peergos-block-metadata");
+        BlockMetadataStore store = new CachingBlockMetadataStore(buildStore(dir.resolve("meta.sql")), 1000);
+        PublicKeyHash victim = new PublicKeyHash(randomCid());
+        PublicKeyHash attacker = new PublicKeyHash(randomCid());
+
+        Cid block = randomCid();
+        store.put(attacker, block, "alpha", new BlockMetadata(1024, Collections.emptyList(), Collections.emptyList()));
+
+        // warm the cache under the attacker, then read as the victim
+        Assert.assertTrue(store.getAll(attacker, List.of(block)).containsKey(block));
+        Assert.assertTrue("a cached row must not cross owners",
+                store.getAll(victim, List.of(block)).isEmpty());
+    }
+
     private static BlockMetadataStore buildStore(Path file) throws Exception {
         Connection conn = new Sqlite.UncloseableConnection(Sqlite.build(file.toString()));
         return new JdbcBlockMetadataStore(() -> conn, new SqliteCommands());

@@ -3,6 +3,7 @@ package peergos.server.storage;
 import peergos.shared.crypto.hash.PublicKeyHash;
 import peergos.shared.io.ipfs.Cid;
 import peergos.shared.util.LRUCache;
+import peergos.shared.util.Pair;
 
 import java.util.*;
 import java.util.function.*;
@@ -16,10 +17,12 @@ public class CachingBlockMetadataStore implements BlockMetadataStore {
 
     private final BlockMetadataStore target;
     private final Map<Cid, BlockMetadata> cache;
+    private final Map<Pair<PublicKeyHash, Cid>, BlockMetadata> ownedCache;
 
     public CachingBlockMetadataStore(BlockMetadataStore target, int cacheSize) {
         this.target = target;
         this.cache = Collections.synchronizedMap(new LRUCache<>(cacheSize));
+        this.ownedCache = Collections.synchronizedMap(new LRUCache<>(cacheSize));
     }
 
     @Override
@@ -46,6 +49,28 @@ public class CachingBlockMetadataStore implements BlockMetadataStore {
         if (!misses.isEmpty()) {
             Map<Cid, BlockMetadata> fromDb = target.getAll(misses);
             cache.putAll(fromDb);
+            result.putAll(fromDb);
+        }
+        return result;
+    }
+
+    /** Owner scoped lookups are cached under the owner as well as the block, because the point of
+     *  scoping is that a row written under one owner must not answer for another.
+     */
+    @Override
+    public Map<Cid, BlockMetadata> getAll(PublicKeyHash owner, List<Cid> blocks) {
+        Map<Cid, BlockMetadata> result = new HashMap<>();
+        List<Cid> misses = new ArrayList<>();
+        for (Cid block : blocks) {
+            BlockMetadata cached = ownedCache.get(new Pair<>(owner, block));
+            if (cached != null)
+                result.put(block, cached);
+            else
+                misses.add(block);
+        }
+        if (! misses.isEmpty()) {
+            Map<Cid, BlockMetadata> fromDb = target.getAll(owner, misses);
+            fromDb.forEach((block, meta) -> ownedCache.put(new Pair<>(owner, block), meta));
             result.putAll(fromDb);
         }
         return result;

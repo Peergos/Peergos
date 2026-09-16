@@ -664,9 +664,15 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         if (! blocks.stream().allMatch(c -> c.hash.isRaw()))
             return Futures.errored(new IllegalStateException("Can only auth read for raw blocks, not cbor!"));
 
-        // bulk-fetch all metadata in a single query, then verify BATs concurrently
+        // bulk-fetch all metadata in a single query, then verify BATs concurrently.
+        // The bats in a block's metadata come from whoever wrote it, so this lookup is scoped to the
+        // owner being read for: a row written under another owner must not be able to authorise here.
+        // Legacy rows predating partitioning have a null owner and match no owner, so the scoping only
+        // applies once partitioning is complete; before that this is the pre-existing lookup.
         List<Cid> hashes = blocks.stream().map(b -> b.hash).collect(Collectors.toList());
-        Map<Cid, BlockMetadata> allMeta = blockMetadata.getAll(hashes);
+        Map<Cid, BlockMetadata> allMeta = partitionComplete ?
+                blockMetadata.getAll(owner, hashes) :
+                blockMetadata.getAll(hashes);
         List<CompletableFuture<BlockMetadata>> auths = blocks.stream()
                 .map(b -> {
                     BlockMetadata meta = allMeta.get(b.hash);
@@ -733,6 +739,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                 throw new IllegalStateException("Number of sizes doesn't match number of signed hashes!");
             if (blockSizes.size() != batIds.size())
                 throw new IllegalStateException("Number of sizes doesn't match number of bats!");
+            ensureWriterIsOwnedBy(owner, writerHash);
             PublicSigningKey writer = getSigningKey(owner, writerHash).get().get();
             List<Pair<Cid, BlockMetadata>> blockProps = new ArrayList<>();
             for (int i=0; i < signedHashes.size(); i++) {
@@ -746,6 +753,24 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
+    }
+
+    /** The owner decides where a block is stored and which metadata row it lands in, so a writer that
+     *  is not owned by the owner must not be able to write into their space. The writer is registered
+     *  by the quota check before this runs, including the self heal that proves ownership from the
+     *  owner's own key tree, so an unknown writer here is one that could not be proven.
+     */
+    private void ensureWriterIsOwnedBy(PublicKeyHash owner, PublicKeyHash writer) {
+        if (writer.equals(owner))
+            return;
+        PublicKeyHash registered;
+        try {
+            registered = usage.getOwnerKey(writer);
+        } catch (Exception e) {
+            throw new IllegalStateException("Unknown writer for this owner: " + writer);
+        }
+        if (! owner.equals(registered))
+            throw new IllegalStateException("Writer is not owned by this owner: " + writer);
     }
 
     /** The v2 auth call: one signature over the ordered hashes, instead of one signature per block.
@@ -764,6 +789,7 @@ public class S3BlockStorage implements DeletableContentAddressedStorage {
                 throw new IllegalStateException("Too many writes to auth!");
             if (! isRaw)
                 throw new IllegalStateException("Only raw blocks can be pre-authed for writes");
+            ensureWriterIsOwnedBy(owner, writerHash);
             PublicSigningKey writer = getSigningKey(owner, writerHash).get().get();
             byte[] expected = BlockWriteAuth.payload(owner, auth.hashes, hasher).join();
             byte[] signed = writer.unsignMessage(auth.signature).join();
