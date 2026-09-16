@@ -133,7 +133,15 @@ public class FileContentAddressedStorage implements DeletableContentAddressedSto
 
     private void moveSubtreeToOwner(PublicKeyHash owner, Cid root, List<Multihash> ourIds) {
         moveLegacyBlockToOwner(owner, root);
-        List<Cid> links = getLinks(owner, root, ourIds).join();
+        List<Cid> links;
+        try {
+            links = getLinks(owner, root, ourIds).join();
+        } catch (BlockAbsentException absent) {
+            // A legacy store being partitioned can be missing blocks, and nothing below one we don't
+            // have can be walked. S3BlockStorage.moveSubtreeToOwner tolerates this the same way.
+            LOG.info("Skipping absent block while partitioning: " + root);
+            return;
+        }
         for (Cid link : links) {
             moveSubtreeToOwner(owner, link, ourIds);
         }
