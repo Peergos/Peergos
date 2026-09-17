@@ -51,11 +51,11 @@ public class HttpUtil {
     public static void replyError(HttpExchange exchange, Throwable t) {
         try {
             Logging.LOG().log(Level.WARNING, t.getMessage(), t);
-            Throwable cause = t.getCause();
-            if (cause != null)
-                exchange.getResponseHeaders().set("Trailer", URLEncoder.encode(cause.getMessage(), "UTF-8"));
-            else
-                exchange.getResponseHeaders().set("Trailer", URLEncoder.encode(t.getMessage(), "UTF-8"));
+            // The same unwrapping the client does when it reads this back, so an exception
+            // wrapped to add context reports that context rather than the cause it wrapped.
+            Throwable reported = Exceptions.getRootCause(t);
+            exchange.getResponseHeaders().set("Trailer", URLEncoder.encode(
+                    Optional.ofNullable(reported.getMessage()).orElseGet(reported::toString), "UTF-8"));
 
             exchange.getResponseHeaders().set("Content-Type", "text/plain");
             exchange.sendResponseHeaders(400, 0);
