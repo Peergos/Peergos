@@ -76,6 +76,10 @@ public class MountConfigHandler implements HttpHandler {
     /** The context the running mount logged in with, kept so tearing down doesn't have to sign in
      *  all over again - that means scrypt and a network round trip, which is slow on a phone. */
     private final AtomicReference<UserContext> activeContext = new AtomicReference<>(null);
+    /** What the running mount actually serves. A mount asked for without "mount at startup" is
+     *  never written to disk, so the saved config cannot answer for it: reporting from the file
+     *  told the UI that nothing was mounted while a calendar or contacts session was live. */
+    private final AtomicReference<MountConfig> activeConfig = new AtomicReference<>(null);
     private final ScheduledExecutorService loginScheduler = Executors.newSingleThreadScheduledExecutor(r -> {
         Thread t = new Thread(r, "peergos-mount-relogin");
         t.setDaemon(true);
@@ -209,6 +213,7 @@ public class MountConfigHandler implements HttpHandler {
         backend.enable(config, context, peergosDir);
         activeContext.set(context);
         activePeergosUsername.set(config.peergosUsername);
+        activeConfig.set(config);
         scheduleCredentialCheck(config);
     }
 
@@ -366,6 +371,7 @@ public class MountConfigHandler implements HttpHandler {
         backend.disable();
         activeContext.set(null);
         activePeergosUsername.set("");
+        activeConfig.set(null);
     }
 
     private static String generateToken() {
@@ -450,27 +456,32 @@ public class MountConfigHandler implements HttpHandler {
                 // a calendar only login is live with no drive, so the session is what says we are
                 // on, and the mount point only says whether a drive came with it
                 boolean sessionActive = activeContext.get() != null;
+                // what is running answers for itself; the file answers only for what it saved
+                MountConfig live = activeConfig.get();
+                MountConfig reported = sessionActive && live != null ? live : config;
                 String mountPoint = activeMountPoint.orElse("");
                 Map<String, Object> json = new LinkedHashMap<>();
                 json.put("enabled", sessionActive || config.enabled);
-                json.put("mountDrive", config.mountDrive);
-                json.put("syncCalendar", config.syncCalendar);
-                json.put("syncContacts", config.syncContacts);
+                json.put("mountDrive", reported.mountDrive);
+                json.put("syncCalendar", reported.syncCalendar);
+                json.put("syncContacts", reported.syncContacts);
                 // what this platform can do at all, which is what the UI offers switches for
                 json.put("canSyncCalendar", backend.supportsCalendar());
                 json.put("canSyncContacts", backend.supportsContacts());
                 json.put("davClients", backend.usesDavClients());
                 json.put("peergosUsername", sessionActive ? activePeergosUsername.get() : config.peergosUsername);
-                json.put("webdavUsername", config.webdavUsername);
-                json.put("webdavPort", config.webdavPort);
+                // the credentials a client is told to use are the running mount's: the saved ones
+                // belong to whatever was mounted last, and a client given those cannot connect
+                json.put("webdavUsername", reported.webdavUsername);
+                json.put("webdavPort", reported.webdavPort);
                 if (backend.usesDavClients()) {
                     // A CalDAV or CardDAV client has to be given these by hand, and this endpoint
                     // is already loopback only. The password is a token generated for the bridge,
                     // not the user's Peergos password.
-                    json.put("webdavPassword", config.webdavPassword);
-                    json.put("davUrl", "http://localhost:" + config.webdavPort + "/dav/");
+                    json.put("webdavPassword", reported.webdavPassword);
+                    json.put("davUrl", "http://localhost:" + reported.webdavPort + "/dav/");
                 }
-                json.put("authType", config.authType);
+                json.put("authType", reported.authType);
                 json.put("mountPoint", mountPoint);
                 String err = mountError.get();
                 if (err != null) json.put("error", err);
