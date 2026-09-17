@@ -944,20 +944,30 @@ public class Main extends Builder {
                 core.initialize(mirrorUsers);
             else
                 new Thread(() -> core.initialize(mirrorUsers)).start();
-            if (a.getBoolean("partition-blockstore", true)) {
+            // A blockstore that is already partitioned needs nothing here, and asking the pki for the
+            // key it would be partitioned with is a network call: doing it unconditionally means a
+            // server whose pki is unreachable cannot start at all, long after it last had work to do.
+            if (a.getBoolean("partition-blockstore", true) && ! partitionStatus.isDone()) {
                 ContentAddressedStorageProxy p2pGets = new ContentAddressedStorageProxy.HTTP(p2pHttpProxy);
                 PublicKeyHash pkiOwnerIdentity = PublicKeyHash.fromString(a.getArg("peergos.identity.hash"));
-                PublicKeyHash pkiKey;
-                if (isPki) {
-                    PublicSigningKey pkiPublic =
-                            PublicSigningKey.fromByteArray(
-                                    Files.readAllBytes(a.fromPeergosDir("pki.public.key.path")));
-                    pkiKey = ContentAddressedStorage.hashKey(pkiPublic);
-                } else {
-                    pkiKey = getPkiKey(pkiOwnerIdentity, pkiServerNodeId, proxingMutable,
-                            cid -> p2pGets.get(pkiServerNodeId, pkiOwnerIdentity, cid, Optional.empty()).join().get(), hasher);
+                try {
+                    PublicKeyHash pkiKey;
+                    if (isPki) {
+                        PublicSigningKey pkiPublic =
+                                PublicSigningKey.fromByteArray(
+                                        Files.readAllBytes(a.fromPeergosDir("pki.public.key.path")));
+                        pkiKey = ContentAddressedStorage.hashKey(pkiPublic);
+                    } else {
+                        pkiKey = getPkiKey(pkiOwnerIdentity, pkiServerNodeId, proxingMutable,
+                                cid -> p2pGets.get(pkiServerNodeId, pkiOwnerIdentity, cid, Optional.empty()).join().get(), hasher);
+                    }
+                    localStorage.partitionByUser(usageStore, rawPointers, pkiKey);
+                } catch (Exception e) {
+                    // the partitioning is a migration, so leaving it for a later start is better than
+                    // refusing to serve the users we already have
+                    Logging.LOG().log(Level.WARNING, "Couldn't partition the blockstore, will retry on the next start: "
+                            + e.getMessage(), e);
                 }
-                localStorage.partitionByUser(usageStore, rawPointers, pkiKey);
             }
 
             CoreNode signupFilter = new SignUpFilter(core, userQuotas, nodeIds.get(nodeIds.size() - 1), httpSpaceUsage, hasher,
