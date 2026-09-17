@@ -109,12 +109,19 @@ public class ThumbnailerHostTests {
         Assert.assertTrue(thumbnail.isPresent());
     }
 
-    /** Answers the first request, then goes deaf while staying alive. */
+    /** Answers the first request, then goes deaf while staying alive.
+     *
+     *  Deaf before it answers, so that the host has its reply only once the read end is really
+     *  gone: closing after the reply races the host's next write, which then lands in the pipe
+     *  buffer instead of failing, and the request that nothing will ever answer waits out the
+     *  whole timeout.
+     */
     public static class StdinClosingWorker {
         public static void main(String[] args) throws Exception {
             BufferedReader in = new BufferedReader(new InputStreamReader(System.in));
-            reply(in.readLine());
+            String request = in.readLine();
             System.in.close();
+            reply(request);
             Thread.sleep(60_000);
         }
 
