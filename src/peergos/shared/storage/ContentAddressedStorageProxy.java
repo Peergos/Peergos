@@ -221,7 +221,8 @@ public interface ContentAddressedStorageProxy {
             return poster.post(getProxyUrlPrefix(targetServerId) + apiPrefix + BLOCK_PUT_BULK + "?format=" + format
                     + "&owner=" + encode(owner.toString())
                     + "&transaction=" + encode(tid.toString())
-                    + "&writer=" + encode(writer.toString()), body, false)
+                    + "&writer=" + encode(writer.toString()), body, false,
+                    ContentAddressedStorage.writeTimeoutMillis(30_000, body.length))
                     .thenApply(bytes -> JSONParser.parseStream(new String(bytes))
                             .stream()
                             .map(json -> getObjectHash(json))
@@ -235,19 +236,23 @@ public interface ContentAddressedStorageProxy {
                                                      BlockWriteBatch batch,
                                                      boolean isRaw,
                                                      TransactionId tid) {
+            byte[] body = batch.serialize();
             return poster.post(getProxyUrlPrefix(targetServerId) + apiPrefix + BLOCK_PUT_BULK_V2
                             + "?format=" + (isRaw ? "raw" : "dag-cbor")
                             + "&owner=" + encode(owner.toString())
                             + "&transaction=" + encode(tid.toString())
-                            + "&writer=" + encode(writer.toString()), batch.serialize(), false, 30_000)
+                            + "&writer=" + encode(writer.toString()), body, false,
+                            ContentAddressedStorage.writeTimeoutMillis(30_000, body.length))
                     .thenApply(raw -> ((CborObject.CborList) CborObject.fromByteArray(raw))
                             .map(c -> (Cid) ((CborObject.CborMerkleLink) c).target));
         }
 
         @Override
         public CompletableFuture<List<Cid>> bulkCommit(Multihash targetServerId, PublicKeyHash owner, BulkCommit commit) {
+            byte[] commitBody = commit.serialize();
             return poster.post(getProxyUrlPrefix(targetServerId) + apiPrefix + BULK_COMMIT
-                            + "?owner=" + encode(owner.toString()), commit.serialize(), false, 60_000)
+                            + "?owner=" + encode(owner.toString()), commitBody, false,
+                            ContentAddressedStorage.writeTimeoutMillis(60_000, commitBody.length))
                     .thenApply(raw -> ((CborObject.CborList) CborObject.fromByteArray(raw))
                             .map(c -> (Cid) ((CborObject.CborMerkleLink) c).target));
         }

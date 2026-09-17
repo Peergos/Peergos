@@ -40,6 +40,22 @@ public interface ContentAddressedStorage {
      *  folder writes a lot of small champ nodes - would hold a request open far too long. */
     int MAX_BULK_COMMIT_BLOCKS = 1000;
     int MAX_CHAMP_GETS = 20;
+    /** The slowest upload we keep waiting for, in bytes per second, which is a 64 kbit/s link.
+     *  Anything slower than this times out and is retried rather than finishing. */
+    int MIN_UPLOAD_BYTES_PER_SECOND = 8_000;
+
+    /** How long to wait for a write of this many bytes to be answered.
+     *
+     *  Every write needs a timeout, however big: a request whose stream is lost - an http2 proxy
+     *  rotating the connection under us drops any request it hadn't started, and the java client
+     *  doesn't retry those - is never answered and never fails, so an upload with no timeout stops
+     *  there for good. A fixed one can't do it, because the wait covers sending the body: 1MiB on a
+     *  slow link takes minutes, and a timeout shorter than that fails the write every time it is
+     *  retried. So the body's own transfer time at the slowest rate we support is added to it.
+     */
+    static int writeTimeoutMillis(int baseMillis, int bodyBytes) {
+        return (int) (baseMillis + (long) bodyBytes * 1000 / MIN_UPLOAD_BYTES_PER_SECOND);
+    }
 
     default CompletableFuture<BlockStoreProperties> blockStoreProperties() {
         return Futures.of(BlockStoreProperties.empty());
@@ -676,11 +692,12 @@ public interface ContentAddressedStorage {
                                                       BlockWriteBatch batch,
                                                       String format,
                                                       TransactionId tid) {
+            byte[] body = batch.serialize();
             return Futures.asyncExceptionally(() -> poster.post(apiPrefix + BLOCK_PUT_BULK_V2 + "?format=" + format
                                             + "&owner=" + encode(owner.toString())
                                             + "&transaction=" + encode(tid.toString())
                                             + "&writer=" + encode(writer.toString()),
-                                    batch.serialize(), false, 30_000)
+                                    body, false, writeTimeoutMillis(30_000, body.length))
                             .thenApply(bytes -> ((CborObject.CborList) CborObject.fromByteArray(bytes))
                                     .map(c -> (Cid) ((CborObject.CborMerkleLink) c).target)),
                     t -> {
@@ -752,8 +769,8 @@ public interface ContentAddressedStorage {
             int totalSize = blocks.stream().mapToInt(b -> b.length).sum();
             if (totalSize > MAX_BLOCK_SIZE)
                 throw new IllegalStateException("Can't write group of blocks with total size bigger than " + MAX_BLOCK_SIZE);
-            int timeoutMillis = blocks.size() > 1 ? 30_000 : -1;
             byte[] body = new BlockWriteGroup(blocks, signatures).serialize();
+            int timeoutMillis = writeTimeoutMillis(30_000, body.length);
             return Futures.asyncExceptionally(() -> poster.post(apiPrefix + BLOCK_PUT_BULK + "?format=" + format
                                     + "&owner=" + encode(owner.toString())
                                     + "&transaction=" + encode(tid.toString())
@@ -787,7 +804,7 @@ public interface ContentAddressedStorage {
                 throw new IllegalStateException("Bulk commit too big: " + body.length);
             return Futures.asyncExceptionally(() -> poster.post(apiPrefix + BULK_COMMIT
                                     + "?owner=" + encode(owner.toString()),
-                            body, false, 60_000)
+                            body, false, writeTimeoutMillis(60_000, body.length))
                             .thenApply(raw -> ((CborObject.CborList) CborObject.fromByteArray(raw))
                                     .map(c -> (Cid) ((CborObject.CborMerkleLink) c).target)),
                     t -> {
