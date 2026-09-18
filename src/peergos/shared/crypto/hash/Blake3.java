@@ -575,7 +575,7 @@ public final class Blake3 {
     private static Output parentOutput(final int[] leftChildCV, final int[] rightChildCV, final int[] key, final int flags) {
         final int[] blockWords = Arrays.copyOf(leftChildCV, BLOCK_INTS);
         System.arraycopy(rightChildCV, 0, blockWords, 8, CHAINING_VALUE_INTS);
-        return new Output(key.clone(), blockWords, 0, BLOCK_LEN, flags | PARENT);
+        return new Output(Arrays.copyOf(key, key.length), blockWords, 0, BLOCK_LEN, flags | PARENT);
     }
 
     private static void round(final int[] state, final int[] msg, final byte[] schedule) {
