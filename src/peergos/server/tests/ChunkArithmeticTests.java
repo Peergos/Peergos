@@ -9,6 +9,8 @@ import peergos.shared.storage.auth.Bat;
 import peergos.shared.user.fs.Chunk;
 import peergos.shared.user.fs.FileProperties;
 import peergos.shared.util.ArrayOps;
+import peergos.shared.cbor.CborObject;
+import peergos.shared.cbor.Cborable;
 import peergos.shared.util.Pair;
 
 import java.time.LocalDateTime;
@@ -16,6 +18,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.Random;
+import java.util.SortedMap;
+import java.util.TreeMap;
 
 /**
  * Every place a byte offset becomes a chunk index, tested at the boundaries.
@@ -122,6 +126,58 @@ public class ChunkArithmeticTests {
             Assert.assertEquals(chunks, propsOfSize(exact).chunkCount());
             Assert.assertEquals(chunks, propsOfSize(exact - 1).chunkCount());
             Assert.assertEquals(chunks + 1, propsOfSize(exact + 1).chunkCount());
+        }
+    }
+
+    /** The chunk size survives a cbor round trip, and a legacy file's cbor does not change. */
+    @Test
+    public void chunkSizeRoundTrips() {
+        FileProperties legacy = propsOfSize(1234);
+        Assert.assertEquals("a file with no chunk size is a legacy file",
+                Chunk.LEGACY_SIZE, legacy.chunkSize);
+        Assert.assertFalse("a legacy file writes no chunk size, so its cbor is unchanged",
+                ((CborObject.CborMap) legacy.toCbor()).containsKey("cs"));
+        Assert.assertEquals(Chunk.LEGACY_SIZE,
+                FileProperties.fromCbor(CborObject.fromByteArray(legacy.toCbor().serialize())).chunkSize);
+
+        FileProperties modern = legacy.withChunkSize(Chunk.DEFAULT_SIZE);
+        Assert.assertTrue("a file with a chunk size writes it",
+                ((CborObject.CborMap) modern.toCbor()).containsKey("cs"));
+        Assert.assertEquals(Chunk.DEFAULT_SIZE,
+                FileProperties.fromCbor(CborObject.fromByteArray(modern.toCbor().serialize())).chunkSize);
+    }
+
+    /**
+     * Every with* method has to carry the chunk size through: a rename or a size change that
+     * quietly moved a file back to the legacy size would make every chunk label after the first
+     * point at the wrong place.
+     */
+    @Test
+    public void chunkSizeSurvivesEveryDerivation() {
+        FileProperties props = propsOfSize(4321).withChunkSize(Chunk.DEFAULT_SIZE);
+        Assert.assertEquals("withSize", Chunk.DEFAULT_SIZE, props.withSize(99).chunkSize);
+        Assert.assertEquals("withHash", Chunk.DEFAULT_SIZE, props.withHash(Optional.empty()).chunkSize);
+        Assert.assertEquals("withThumbnail", Chunk.DEFAULT_SIZE, props.withThumbnail(Optional.empty()).chunkSize);
+        Assert.assertEquals("withNoThumbnail", Chunk.DEFAULT_SIZE, props.withNoThumbnail().chunkSize);
+        Assert.assertEquals("withModified", Chunk.DEFAULT_SIZE, props.withModified(LocalDateTime.MIN).chunkSize);
+        Assert.assertEquals("withNewStreamSecret", Chunk.DEFAULT_SIZE, props.withNewStreamSecret(random(32)).chunkSize);
+        Assert.assertEquals("asLink", Chunk.DEFAULT_SIZE, props.asLink().chunkSize);
+    }
+
+    /** A file claiming a size we do not support is a bad file, not a new code path. */
+    @Test
+    public void unsupportedChunkSizesAreRejected() {
+        FileProperties props = propsOfSize(1).withChunkSize(Chunk.DEFAULT_SIZE);
+        CborObject.CborMap m = (CborObject.CborMap) props.toCbor();
+        SortedMap<String, Cborable> values = new TreeMap<>();
+        m.keySet().forEach(k -> values.put(k, m.get(k)));
+        for (long badLog2 : new long[]{25, 0, 31, -1}) {
+            values.put("cs", new CborObject.CborLong(badLog2));
+            try {
+                FileProperties.fromCbor(CborObject.CborMap.build(values));
+                Assert.fail("should have rejected a chunk size of 2^" + badLog2);
+            } catch (IllegalStateException expected) {
+            }
         }
     }
 
