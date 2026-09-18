@@ -335,6 +335,128 @@ public final class Blake3 {
         state[b] = Integer.rotateRight(state[b] ^ state[c], 7);
     }
 
+    /** The length of a chaining value, and of a hash, in bytes. */
+    public static final int CV_LEN = OUT_LEN;
+
+    /** A BLAKE3 chunk, the unit the tree is built from. */
+    public static final int CHUNK_SIZE = CHUNK_LEN;
+
+    /**
+     * The chaining value of one subtree of a larger input, rather than a finished hash.
+     *
+     * This is what lets a file be hashed in independent pieces: hash each piece as a subtree,
+     * merge the chaining values with {@link #mergeNonRoot} and finally {@link #mergeRoot}, and
+     * the result is the BLAKE3 hash of the whole file - the same bytes b3sum prints.
+     *
+     * A subtree is only a part of the tree if it covers a power of two number of 1KiB chunks and
+     * begins at a multiple of its own length, so anything else is rejected rather than silently
+     * producing a value that is not part of any tree.
+     *
+     * @param input      the bytes of this subtree
+     * @param offset     where the subtree starts in {@code input}
+     * @param length     its length, a power of two multiple of {@value #CHUNK_LEN}
+     * @param startChunk the index of its first chunk within the whole input, a multiple of the
+     *                   number of chunks in the subtree
+     * @return the 32 byte chaining value
+     */
+    public static byte[] subtreeChainingValue(final byte[] input, final int offset, final int length, final long startChunk) {
+        checkBufferArgs(input, offset, length);
+        if (length < CHUNK_LEN || length % CHUNK_LEN != 0)
+            throw new IllegalArgumentException("A subtree is a whole number of " + CHUNK_LEN
+                    + " byte chunks, not " + length + " bytes");
+        final long chunks = length / CHUNK_LEN;
+        if ((chunks & (chunks - 1)) != 0)
+            throw new IllegalArgumentException("A subtree covers a power of two number of chunks, not " + chunks);
+        if (startChunk % chunks != 0)
+            throw new IllegalArgumentException("A subtree of " + chunks + " chunks starts at a multiple of "
+                    + chunks + " chunks, not at " + startChunk);
+        return packInts(subtreeCV(input, offset, length, startChunk));
+    }
+
+    /** CV of the aligned power of two subtree at [offset, offset + length). */
+    private static int[] subtreeCV(final byte[] input, final int offset, final int length, final long startChunk) {
+        if (length <= CHUNK_LEN) {
+            final ChunkState chunk = new ChunkState(IV, startChunk, 0);
+            chunk.update(input, offset, length);
+            return chunk.output().chainingValue();
+        }
+        final int half = length / 2;
+        final int[] left = subtreeCV(input, offset, half, startChunk);
+        final int[] right = subtreeCV(input, offset + half, half, startChunk + half / CHUNK_LEN);
+        return parentChainingValue(left, right, IV, 0);
+    }
+
+    /**
+     * The chaining value of a trailing piece of the input, whose length need not be a power of two
+     * number of whole chunks.
+     *
+     * The last piece of a file is the awkward one: a file of arbitrary length ends in a partial
+     * chunk, which is not a subtree of anything, so {@link #subtreeChainingValue} rejects it. This
+     * splits the piece the way the tree does - the largest aligned subtree first, then whatever is
+     * left, recursively - and merges the results, which is what the tree would have done with
+     * those bytes.
+     *
+     * @param startChunk the index of the first chunk of this piece within the whole input
+     */
+    public static byte[] tailChainingValue(final byte[] input, final int offset, final int length, final long startChunk) {
+        checkBufferArgs(input, offset, length);
+        if (length < 1)
+            throw new IllegalArgumentException("A trailing piece has at least one byte");
+        return packInts(anyLengthCV(input, offset, length, startChunk));
+    }
+
+    private static int[] anyLengthCV(final byte[] input, final int offset, final int length, final long startChunk) {
+        if (length <= CHUNK_LEN) {
+            // a short final chunk is still one chunk: it is not padded, it is just short
+            final ChunkState chunk = new ChunkState(IV, startChunk, 0);
+            chunk.update(input, offset, length);
+            return chunk.output().chainingValue();
+        }
+        final int leftChunks = Integer.highestOneBit((length - 1) / CHUNK_LEN);
+        final int leftLength = leftChunks * CHUNK_LEN;
+        final int[] left = subtreeCV(input, offset, leftLength, startChunk);
+        final int[] right = anyLengthCV(input, offset + leftLength, length - leftLength, startChunk + leftChunks);
+        return parentChainingValue(left, right, IV, 0);
+    }
+
+    /**
+     * Merges two subtree chaining values into their parent's chaining value, for a parent that is
+     * not the root of the tree.
+     */
+    public static byte[] mergeNonRoot(final byte[] leftCV, final byte[] rightCV) {
+        checkCV(leftCV);
+        checkCV(rightCV);
+        return packInts(parentChainingValue(unpackInts(leftCV, CHAINING_VALUE_INTS),
+                unpackInts(rightCV, CHAINING_VALUE_INTS), IV, 0));
+    }
+
+    /**
+     * Merges the two halves of the top of the tree into the hash of the whole input: the value
+     * b3sum prints for the file.
+     */
+    public static byte[] mergeRoot(final byte[] leftCV, final byte[] rightCV) {
+        checkCV(leftCV);
+        checkCV(rightCV);
+        final byte[] out = new byte[OUT_LEN];
+        parentOutput(unpackInts(leftCV, CHAINING_VALUE_INTS), unpackInts(rightCV, CHAINING_VALUE_INTS), IV, 0)
+                .rootOutputBytes(out, 0, OUT_LEN);
+        return out;
+    }
+
+    private static void checkCV(final byte[] cv) {
+        Objects.requireNonNull(cv);
+        if (cv.length != CV_LEN)
+            throw new IllegalArgumentException("A chaining value is " + CV_LEN + " bytes, not " + cv.length);
+    }
+
+    private static byte[] packInts(final int[] words) {
+        final byte[] out = new byte[words.length * Integer.BYTES];
+        for (int i = 0; i < words.length; i++) {
+            packInt(words[i], out, i * Integer.BYTES, Integer.BYTES);
+        }
+        return out;
+    }
+
     /**
      * Calculates the Blake3 hash of the provided data.
      *
