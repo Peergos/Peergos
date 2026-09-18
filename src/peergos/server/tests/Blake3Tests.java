@@ -2,7 +2,7 @@ package peergos.server.tests;
 
 import org.junit.Assert;
 import org.junit.Test;
-import peergos.server.crypto.hash.Blake3;
+import peergos.shared.crypto.hash.Blake3;
 import peergos.shared.util.ArrayOps;
 
 import java.util.Random;
