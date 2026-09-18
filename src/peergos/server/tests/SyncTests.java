@@ -937,7 +937,7 @@ public class SyncTests {
         Assert.assertFalse(synced.hasCompletedSync());
         synced.setCompletedSync(true);
         Assert.assertTrue(synced.hasCompletedSync());
-        HashTree hash = HashTree.build(Arrays.asList(new byte[32]), crypto.hasher).join();
+        HashTree hash = HashTree.build(Arrays.asList(new byte[32]), Chunk.LEGACY_SIZE, crypto.hasher).join();
         String path = "some-path";
         FileState state1 = new FileState(path, 12345000, 12345, hash);
         synced.add(state1);

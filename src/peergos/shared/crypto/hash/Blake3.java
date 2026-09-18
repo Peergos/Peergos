@@ -17,6 +17,7 @@
 package peergos.shared.crypto.hash;
 
 import java.util.Arrays;
+import java.util.List;
 import java.util.Objects;
 
 /**
@@ -441,6 +442,43 @@ public final class Blake3 {
         parentOutput(unpackInts(leftCV, CHAINING_VALUE_INTS), unpackInts(rightCV, CHAINING_VALUE_INTS), IV, 0)
                 .rootOutputBytes(out, 0, OUT_LEN);
         return out;
+    }
+
+    /**
+     * The chaining value of the subtree whose consecutive pieces have these chaining values.
+     *
+     * The shape matters and is not pairwise: BLAKE3 puts the largest power of two on the left and
+     * whatever is left on the right, recursively. Folding pairwise level by level agrees for a
+     * power of two number of pieces and differs for every other count.
+     *
+     * @param cvs the chaining values of the subtree's pieces, in order, at least one
+     */
+    public static byte[] mergeSubtree(final List<byte[]> cvs) {
+        if (cvs.isEmpty())
+            throw new IllegalArgumentException("A subtree has at least one piece");
+        if (cvs.size() == 1) {
+            checkCV(cvs.get(0));
+            return cvs.get(0);
+        }
+        final int left = Integer.highestOneBit(cvs.size() - 1);
+        return mergeNonRoot(mergeSubtree(cvs.subList(0, left)), mergeSubtree(cvs.subList(left, cvs.size())));
+    }
+
+    /**
+     * The hash of a whole input whose consecutive pieces have these chaining values: the bytes
+     * b3sum prints for it.
+     *
+     * A single piece has no merge to finalise, and a chaining value cannot be turned into a root
+     * hash afterwards, so a one piece input has to be hashed with {@link #hash} instead of built
+     * from a chaining value.
+     *
+     * @param cvs the chaining values of the input's pieces, in order, at least two
+     */
+    public static byte[] mergeAsRoot(final List<byte[]> cvs) {
+        if (cvs.size() < 2)
+            throw new IllegalArgumentException("A root merge needs at least two pieces, not " + cvs.size());
+        final int left = Integer.highestOneBit(cvs.size() - 1);
+        return mergeRoot(mergeSubtree(cvs.subList(0, left)), mergeSubtree(cvs.subList(left, cvs.size())));
     }
 
     private static void checkCV(final byte[] cv) {

@@ -3,6 +3,7 @@ package peergos.shared.user.fs;
 import jsinterop.annotations.JsMethod;
 import peergos.shared.cbor.CborObject;
 import peergos.shared.cbor.Cborable;
+import peergos.shared.crypto.hash.Blake3;
 import peergos.shared.crypto.hash.Hasher;
 import peergos.shared.util.Futures;
 
@@ -81,6 +82,44 @@ public class HashTree implements Cborable {
         return new HashTree(branches.get(0).rootHash, level1, level2, level3);
     }
 
+    /**
+     * The value stored for one chunk of a file, which is also what a per-chunk comparison uses.
+     *
+     * Defined once because the three things that produce it - a whole file hash, a resumed
+     * upload and {@link FileWrapper#overwriteChangedChunks} - have to agree exactly, and a
+     * disagreement shows up as a wrong root hash written into a cryptree node rather than as an
+     * error.
+     *
+     * For a legacy file that is the chunk's sha256. For a BLAKE3 file it is the chunk's chaining
+     * value, which depends on where the chunk sits in the file - except for a single chunk file,
+     * which has no merges at all, so the chunk's value is the file's root hash itself.
+     */
+    public static CompletableFuture<byte[]> chunkHash(byte[] data,
+                                                      long chunkIndex,
+                                                      int chunkSize,
+                                                      boolean isOnlyChunk,
+                                                      Hasher h) {
+        if (! Chunk.usesBlake3(chunkSize))
+            return h.sha256(data);
+        if (isOnlyChunk)
+            return h.blake3(data);
+        return h.blake3ChainingValue(data, chunkIndex * (chunkSize / Blake3.CHUNK_SIZE));
+    }
+
+    private static CompletableFuture<byte[]> chunkHashOfSection(AsyncReader f,
+                                                                long start,
+                                                                long end,
+                                                                long chunkIndex,
+                                                                int chunkSize,
+                                                                boolean isOnlyChunk,
+                                                                Hasher h) {
+        if (! Chunk.usesBlake3(chunkSize))
+            return h.sha256Section(f, start, end);
+        if (isOnlyChunk)
+            return h.blake3Section(f, start, end);
+        return h.blake3SectionChainingValue(f, start, end, chunkIndex * (chunkSize / Blake3.CHUNK_SIZE));
+    }
+
     private static CompletableFuture<byte[]> readChunk(AsyncReader f, byte[] buf, int offset, int remaining) {
         if (remaining == 0)
             return Futures.of(buf);
@@ -113,7 +152,7 @@ public class HashTree implements Cborable {
                                 long chunkIndex = p * chunksPerThread + i;
                                 long chunkStart = chunkIndex * chunkSize;
                                 long chunkEnd = Math.min(chunkStart + chunkSize, size);
-                                return hasher.sha256Section(reader, chunkStart, chunkEnd)
+                                return chunkHashOfSection(reader, chunkStart, chunkEnd, chunkIndex, chunkSize, nChunks == 1, hasher)
                                         .thenApply(hash -> {
                                             ArrayList<byte[]> next = new ArrayList<>(hashes);
                                             next.add(hash);
@@ -126,7 +165,7 @@ public class HashTree implements Cborable {
                 .thenApply(nested -> nested.stream()
                         .flatMap(Collection::stream)
                         .collect(Collectors.toList()))
-                .thenCompose(level1 -> build(level1, hasher));
+                .thenCompose(level1 -> build(level1, chunkSize, hasher));
     }
 
     @JsMethod
@@ -140,16 +179,19 @@ public class HashTree implements Cborable {
                             long lastChunkSize = size % chunkSize;
                             int remaining = lastOfMultiChunk ? (int) (lastChunkSize == 0 ? chunkSize : lastChunkSize) : chunk.length;
                             return readChunk(f, lastOfMultiChunk ? new byte[remaining] : chunk, 0, remaining)
-                                    .thenCompose(data -> hasher.sha256(data));
+                                    .thenCompose(data -> chunkHash(data, i, chunkSize, nChunks == 1, hasher));
                         })
                         .collect(Collectors.toList()))
-                .thenCompose(level1 -> build(level1, hasher));
+                .thenCompose(level1 -> build(level1, chunkSize, hasher));
     }
 
     public static CompletableFuture<HashTree> build(List<byte[]> chunkHashes,
+                                                    int chunkSize,
                                                     Hasher hasher) {
         if (chunkHashes.isEmpty())
             throw new IllegalStateException("A file cannot have no chunk hashes.");
+        if (Chunk.usesBlake3(chunkSize))
+            return Futures.of(buildBlake3(chunkHashes));
         List<ChunkHashList> level1 = buildLevel(chunkHashes);
         if (level1.size() == 1) {
             return hasher.sha256(new CborObject.CborList(level1).serialize())
@@ -181,6 +223,42 @@ public class HashTree implements Cborable {
                                         });
                             });
                 });
+    }
+
+    /**
+     * The same 1024 per blob storage as a legacy file, but the levels above level 1 are merges
+     * rather than hashes of a serialised blob, so that the root is the file's real BLAKE3 hash.
+     *
+     * The grouping survives the change because 1024 is a power of two: blob j holds the chaining
+     * values of chunks [1024j, 1024j + 1024), a power of two number of chunks starting at a
+     * multiple of its own length, which is exactly BLAKE3's condition for a subtree. So a blob's
+     * merge is a genuine node of the file's tree, and modifying one chunk still means rewriting
+     * one blob per level rather than rehashing the file. Only the rightmost blob at each level
+     * may be partial, and its merge is a valid node because it is rightmost.
+     */
+    private static HashTree buildBlake3(List<byte[]> chunkCVs) {
+        List<ChunkHashList> level1 = buildLevel(chunkCVs);
+        if (chunkCVs.size() == 1) // no merges at all: the single chunk's value is already the root
+            return new HashTree(new RootHash(chunkCVs.get(0)), level1, Collections.emptyList(), Collections.emptyList());
+        if (level1.size() == 1)
+            return new HashTree(new RootHash(Blake3.mergeAsRoot(chunkCVs)), level1,
+                    Collections.emptyList(), Collections.emptyList());
+        List<byte[]> level2CVs = mergeBlobs(level1);
+        List<ChunkHashList> level2 = buildLevel(level2CVs);
+        if (level2.size() == 1)
+            return new HashTree(new RootHash(Blake3.mergeAsRoot(level2CVs)), level1, level2, Collections.emptyList());
+        List<byte[]> level3CVs = mergeBlobs(level2);
+        List<ChunkHashList> level3 = buildLevel(level3CVs);
+        if (level3.size() == 1)
+            return new HashTree(new RootHash(Blake3.mergeAsRoot(level3CVs)), level1, level2, level3);
+        throw new IllegalStateException("Files bigger than 4 EiB are not supported in HashTree!");
+    }
+
+    /** The chaining value of each blob's subtree. */
+    private static List<byte[]> mergeBlobs(List<ChunkHashList> level) {
+        return level.stream()
+                .map(blob -> Blake3.mergeSubtree(blob.hashes()))
+                .collect(Collectors.toList());
     }
 
     private static List<ChunkHashList> buildLevel(List<byte[]> chunkHashes) {

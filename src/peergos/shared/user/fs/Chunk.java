@@ -16,6 +16,17 @@ public class Chunk {
      */
     public static final int DEFAULT_SIZE = 4 * 1024 * 1024;
 
+    /**
+     * Whether a file with this chunk size has a BLAKE3 tree rather than the legacy sha256 one.
+     *
+     * The chunk size carries both facts: the two always change together, because a BLAKE3 root is
+     * only the file's real BLAKE3 hash at a subtree aligned chunk size, and a power of two chunk
+     * size is only worth having for BLAKE3.
+     */
+    public static boolean usesBlake3(int chunkSize) {
+        return chunkSize != LEGACY_SIZE;
+    }
+
     private final SymmetricKey dataKey;
     private final byte[] data, mapKey;
     private final byte[] nonce;

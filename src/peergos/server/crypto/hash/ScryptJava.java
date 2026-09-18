@@ -179,6 +179,6 @@ public class ScryptJava implements Hasher {
                 throw new RuntimeException(e);
             }
         }, Runtime.getRuntime().availableProcessors(), size);
-        return HashTree.build(chunkHashes, hasher).join();
+        return HashTree.build(chunkHashes, Chunk.LEGACY_SIZE, hasher).join();
     }
 }

@@ -313,7 +313,7 @@ public class PeergosSyncFS implements SyncFilesystem {
             if (size == 0 || chunkOffset % Chunk.LEGACY_SIZE != 0)
                 chunkHashes.add(chunkHash.digest());
 
-            return HashTree.build(chunkHashes, context.crypto.hasher).join();
+            return HashTree.build(chunkHashes, Chunk.LEGACY_SIZE, context.crypto.hasher).join();
         } catch (NoSuchAlgorithmException e) {
             throw new RuntimeException(e);
         }

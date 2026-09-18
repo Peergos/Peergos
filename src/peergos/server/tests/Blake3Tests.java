@@ -106,7 +106,7 @@ public class Blake3Tests {
             for (int i = 0; i < totalChunks; i += perSubtree)
                 cvs.add(Blake3.subtreeChainingValue(input, i * 1024, perSubtree * 1024, i));
             Assert.assertEquals("subtrees of " + perSubtree + " chunks of a " + totalChunks + " chunk input",
-                    ArrayOps.bytesToHex(Blake3.hash(input)), ArrayOps.bytesToHex(mergeAll(cvs)));
+                    ArrayOps.bytesToHex(Blake3.hash(input)), ArrayOps.bytesToHex(Blake3.mergeAsRoot(cvs)));
         }
     }
 
@@ -176,7 +176,7 @@ public class Blake3Tests {
             cvs.add(Blake3.tailChainingValue(input, offset, input.length - offset, offset / 1024));
         if (cvs.size() == 1)
             return Blake3.hash(input); // a single chunk is not merged, so there is no tree to fold
-        return mergeAll(cvs);
+        return Blake3.mergeAsRoot(cvs);
     }
 
     /**
@@ -203,32 +203,9 @@ public class Blake3Tests {
                 cvs.add(hasher.blake3SectionChainingValue(AsyncReader.build(input), start, end, start / 1024).join());
             }
             String viaSections = cvs.size() == 1 ? ArrayOps.bytesToHex(Blake3.hash(input))
-                    : ArrayOps.bytesToHex(mergeAll(cvs));
+                    : ArrayOps.bytesToHex(Blake3.mergeAsRoot(cvs));
             Assert.assertEquals("sections of " + length + " merged", ArrayOps.bytesToHex(Blake3.hash(input)), viaSections);
         }
     }
 
-    /**
-     * Fold chaining values into the root hash, in the shape BLAKE3's tree actually has: the left
-     * child is the largest power of two number of chunks, and everything else hangs off the
-     * right. Folding pairwise level by level instead only agrees when the count is a power of
-     * two, which is exactly the case a test of round numbers would not catch.
-     */
-    private static byte[] mergeAll(List<byte[]> cvs) {
-        if (cvs.size() < 2)
-            throw new IllegalArgumentException("the root is a merge of two children");
-        int leftCount = Integer.highestOneBit(cvs.size() - 1);
-        byte[] left = mergeSubtree(cvs.subList(0, leftCount));
-        byte[] right = mergeSubtree(cvs.subList(leftCount, cvs.size()));
-        return Blake3.mergeRoot(left, right);
-    }
-
-    /** The same fold, but for a subtree, so the result is a chaining value. */
-    private static byte[] mergeSubtree(List<byte[]> cvs) {
-        if (cvs.size() == 1)
-            return cvs.get(0);
-        int leftCount = Integer.highestOneBit(cvs.size() - 1);
-        return Blake3.mergeNonRoot(mergeSubtree(cvs.subList(0, leftCount)),
-                mergeSubtree(cvs.subList(leftCount, cvs.size())));
-    }
 }

@@ -1063,7 +1063,7 @@ public class FileWrapper {
                                             int chunkLen = (int) Math.min(chunkSize, newSize - chunkStart);
                                             byte[] chunkBuf = new byte[chunkLen];
                                             return readFully(newData, chunkBuf, 0, chunkLen)
-                                                    .thenCompose(ignored -> crypto.hasher.sha256(chunkBuf))
+                                                    .thenCompose(ignored -> HashTree.chunkHash(chunkBuf, chunkIndex, chunkSize, nChunks == 1, crypto.hasher))
                                                     .thenCompose(chunkHash -> {
                                                         if (chunkIndex < existingChunkHashes.nChunks()) {
                                                             byte[] existing = Arrays.copyOfRange(
