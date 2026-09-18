@@ -2,7 +2,11 @@ package peergos.server.tests;
 
 import org.junit.Assert;
 import org.junit.Test;
+import peergos.server.Main;
+import peergos.shared.Crypto;
 import peergos.shared.crypto.hash.Blake3;
+import peergos.shared.crypto.hash.Hasher;
+import peergos.shared.user.fs.AsyncReader;
 import peergos.shared.util.ArrayOps;
 
 import java.util.ArrayList;
@@ -173,6 +177,35 @@ public class Blake3Tests {
         if (cvs.size() == 1)
             return Blake3.hash(input); // a single chunk is not merged, so there is no tree to fold
         return mergeAll(cvs);
+    }
+
+    /**
+     * The Hasher api, which is how the rest of the code reaches this: hashing a file section by
+     * section through a stream must give what hashing the bytes in one go gives.
+     */
+    @Test
+    public void hasherApi() {
+        Hasher hasher = Main.initCrypto().hasher;
+        int chunkSize = 4096;
+        for (int length : new int[]{1, 1023, 1024, chunkSize, chunkSize + 1, 3 * chunkSize, 3 * chunkSize + 77}) {
+            byte[] input = vectorInput(length);
+            Assert.assertEquals("whole input of " + length,
+                    ArrayOps.bytesToHex(Blake3.hash(input)),
+                    ArrayOps.bytesToHex(hasher.blake3(input).join()));
+            Assert.assertEquals("section api over the whole of " + length,
+                    ArrayOps.bytesToHex(Blake3.hash(input)),
+                    ArrayOps.bytesToHex(hasher.blake3Section(AsyncReader.build(input), 0, length).join()));
+
+            // and section by section, merged, as an upload would
+            List<byte[]> cvs = new ArrayList<>();
+            for (long start = 0; start < length; start += chunkSize) {
+                long end = Math.min(start + chunkSize, length);
+                cvs.add(hasher.blake3SectionChainingValue(AsyncReader.build(input), start, end, start / 1024).join());
+            }
+            String viaSections = cvs.size() == 1 ? ArrayOps.bytesToHex(Blake3.hash(input))
+                    : ArrayOps.bytesToHex(mergeAll(cvs));
+            Assert.assertEquals("sections of " + length + " merged", ArrayOps.bytesToHex(Blake3.hash(input)), viaSections);
+        }
     }
 
     /**
