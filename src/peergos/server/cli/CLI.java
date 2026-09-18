@@ -450,7 +450,7 @@ public class CLI implements Runnable {
      *  throwing - so a short read has to end the copy instead of spinning on it.
      */
     public static void copy(AsyncReader reader, long size, OutputStream out, LongConsumer progress) throws IOException {
-        byte[] buf = new byte[Chunk.MAX_SIZE];
+        byte[] buf = new byte[Chunk.LEGACY_SIZE];
         for (long offset = 0; offset < size;) {
             int read = reader.readIntoArray(buf, 0, (int) Math.min(buf.length, size - offset)).join();
             if (read <= 0)

@@ -49,7 +49,7 @@ public class ChunkArithmeticTests {
     /** The number of chunks a file of each size occupies, either side of every boundary. */
     @Test
     public void chunkCountAtBoundaries() {
-        int chunk = Chunk.MAX_SIZE;
+        int chunk = Chunk.LEGACY_SIZE;
         long[][] cases = {
                 {0, 1}, {1, 1}, {chunk - 1, 1}, {chunk, 1}, {chunk + 1, 2},
                 {2L * chunk - 1, 2}, {2L * chunk, 2}, {2L * chunk + 1, 3},
@@ -68,7 +68,7 @@ public class ChunkArithmeticTests {
      */
     @Test
     public void mapKeyChangesExactlyAtChunkBoundaries() {
-        int chunk = Chunk.MAX_SIZE;
+        int chunk = Chunk.LEGACY_SIZE;
         byte[] streamSecret = random(32);
         byte[] firstMapKey = random(32);
         Optional<Bat> firstBat = Optional.of(Bat.random(crypto.random));
@@ -101,7 +101,7 @@ public class ChunkArithmeticTests {
      */
     @Test
     public void subsequentMapKeysMatchSeeking() {
-        int chunk = Chunk.MAX_SIZE;
+        int chunk = Chunk.LEGACY_SIZE;
         byte[] streamSecret = random(32);
         byte[] firstMapKey = random(32);
         Optional<Bat> firstBat = Optional.of(Bat.random(crypto.random));
@@ -120,7 +120,7 @@ public class ChunkArithmeticTests {
     /** Truncating to a boundary leaves that many chunks; one byte more needs another. */
     @Test
     public void truncationAtBoundaries() {
-        int chunk = Chunk.MAX_SIZE;
+        int chunk = Chunk.LEGACY_SIZE;
         for (int chunks = 1; chunks <= 3; chunks++) {
             long exact = (long) chunks * chunk;
             Assert.assertEquals(chunks, propsOfSize(exact).chunkCount());
@@ -183,6 +183,6 @@ public class ChunkArithmeticTests {
 
     private static String labelAt(byte[] streamSecret, byte[] firstMapKey, Optional<Bat> firstBat, long offset) {
         return ArrayOps.bytesToHex(
-                FileProperties.calculateMapKey(streamSecret, firstMapKey, firstBat, offset, hasher).join().left);
+                FileProperties.calculateMapKey(streamSecret, firstMapKey, firstBat, offset, Chunk.LEGACY_SIZE, hasher).join().left);
     }
 }

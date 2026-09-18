@@ -62,7 +62,8 @@ public class FileUploader implements AutoCloseable {
         long offset = (offsetLow & 0xFFFFFFFFL) + ((offsetHi & 0xFFFFFFFFL) << 32);
 
         // Process and upload chunk by chunk to avoid running out of RAM, in reverse order to build linked list
-        this.nchunks = length > 0 ? (length + Chunk.MAX_SIZE - 1) / Chunk.MAX_SIZE : 1;
+        int chunkSize = fileProperties.chunkSize;
+        this.nchunks = length > 0 ? (length + chunkSize - 1) / chunkSize : 1;
         this.name = name;
         this.offset = offset;
         this.length = length;
@@ -76,7 +77,7 @@ public class FileUploader implements AutoCloseable {
         this.firstLocation = firstLocation;
         this.firstBat = firstBat;
         this.isCancelled = isCancelled;
-        this.hashBuilder = hash.isEmpty() ? new HashTreeBuilder(length) : null;
+        this.hashBuilder = hash.isEmpty() ? new HashTreeBuilder(length, fileProperties.chunkSize) : null;
     }
 
     public FileUploader(String name, AsyncReader fileData, long offset, long length,
@@ -154,7 +155,7 @@ public class FileUploader implements AutoCloseable {
                                                   SafeRandom random,
                                                   Hasher hasher) {
         if (startChunkIndex > 0) hashBuilder = null;
-        return reader.seek((long) startChunkIndex * Chunk.MAX_SIZE).thenCompose(seeked -> {
+        return reader.seek((long) startChunkIndex * props.chunkSize).thenCompose(seeked -> {
             long t1 = System.currentTimeMillis();
 
             AsyncUploadQueue queue = new AsyncUploadQueue();
@@ -212,11 +213,11 @@ public class FileUploader implements AutoCloseable {
         if (isCancelled.get())
             throw new IllegalStateException("Upload cancelled!");
         LOG.info("encrypting chunk: "+chunkIndex + " of "+name);
-        long position = chunkIndex * Chunk.MAX_SIZE;
+        long position = chunkIndex * props.chunkSize;
 
         long fileLength = length;
-        boolean isLastChunk = fileLength < position + Chunk.MAX_SIZE;
-        int length =  isLastChunk ? (int)(fileLength -  position) : Chunk.MAX_SIZE;
+        boolean isLastChunk = fileLength < position + props.chunkSize;
+        int length =  isLastChunk ? (int)(fileLength -  position) : props.chunkSize;
         byte[] data = new byte[length];
         return reader.readIntoArray(data, 0, data.length).thenCompose(b ->
                 (hashBuilder == null
@@ -225,7 +226,7 @@ public class FileUploader implements AutoCloseable {
                 .thenCompose(__ -> {
             byte[] nonce = baseKey.createNonce();
             return FileProperties.calculateMapKey(props.streamSecret.get(), firstLocation, firstBat,
-                    chunkIndex * Chunk.MAX_SIZE, hasher)
+                    chunkIndex * props.chunkSize, props.chunkSize, hasher)
                     .thenCompose(mapKeyAndBat -> {
                         Chunk rawChunk = new Chunk(data, dataKey, mapKeyAndBat.left, nonce);
                         LocatedChunk chunk = new LocatedChunk(new Location(owner, writer.publicKeyHash, rawChunk.mapKey()), mapKeyAndBat.right, ourExistingHash, rawChunk);

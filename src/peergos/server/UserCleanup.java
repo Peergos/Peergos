@@ -234,10 +234,11 @@ public class UserCleanup {
                 Optional<Bat> firstBat = cap.bat;
                 SigningPrivateKeyAndPublicHash childSigner = child.signingPair();
                 visitor.apply(childSigner, cap, path + "/" + child.getName(), Optional.of(child));
-                for (int i=0; i < child.getSize()/ (5*1024*1024); i++) {
+                int childChunkSize = child.getFileProperties().chunkSize;
+                for (int i=0; i < child.getSize() / childChunkSize; i++) {
                     byte[] streamSecret = child.getFileProperties().streamSecret.get();
                     Pair<byte[], Optional<Bat>> chunk = FileProperties.calculateMapKey(streamSecret, firstChunk,
-                            firstBat, 5 * 1024 * 1024 * (i + 1), c.crypto.hasher).join();
+                            firstBat, (long) childChunkSize * (i + 1), childChunkSize, c.crypto.hasher).join();
                     visitor.apply(childSigner, cap.withMapKey(chunk.left, chunk.right), path + "/" + child.getName() + "[" + i + "]", Optional.empty());
                 }
             } else

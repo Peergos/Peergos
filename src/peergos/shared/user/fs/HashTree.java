@@ -94,10 +94,11 @@ public class HashTree implements Cborable {
     public static CompletableFuture<HashTree> buildParallel(Function<Integer, AsyncReader> f,
                                                             int sizeHi,
                                                             int sizeLow,
+                                                            int chunkSize,
                                                             Hasher hasher,
                                                             int parallelism) {
         long size = ((long)sizeHi) << 32 | (sizeLow & 0xFFFFFFFFL);
-        long nChunks = size == 0 ? 1 : (size + Chunk.MAX_SIZE - 1) / Chunk.MAX_SIZE;
+        long nChunks = size == 0 ? 1 : (size + chunkSize - 1) / chunkSize;
         long chunksPerThread = (nChunks + parallelism - 1) / parallelism;
         int actualParallelism = (int) Math.min((nChunks + chunksPerThread - 1)/chunksPerThread, Math.min(parallelism, nChunks));
         long chunksInLastThread = nChunks - ((actualParallelism - 1) * chunksPerThread);
@@ -110,8 +111,8 @@ public class HashTree implements Cborable {
                             new ArrayList<byte[]>(),
                             (hashes, i) -> {
                                 long chunkIndex = p * chunksPerThread + i;
-                                long chunkStart = chunkIndex * Chunk.MAX_SIZE;
-                                long chunkEnd = Math.min(chunkStart + Chunk.MAX_SIZE, size);
+                                long chunkStart = chunkIndex * chunkSize;
+                                long chunkEnd = Math.min(chunkStart + chunkSize, size);
                                 return hasher.sha256Section(reader, chunkStart, chunkEnd)
                                         .thenApply(hash -> {
                                             ArrayList<byte[]> next = new ArrayList<>(hashes);
@@ -129,15 +130,15 @@ public class HashTree implements Cborable {
     }
 
     @JsMethod
-    public static CompletableFuture<HashTree> build(AsyncReader f, int sizeHi, int sizeLow, Hasher hasher) {
+    public static CompletableFuture<HashTree> build(AsyncReader f, int sizeHi, int sizeLow, int chunkSize, Hasher hasher) {
         long size = ((long)sizeHi) << 32 | (sizeLow & 0xFFFFFFFFL);
-        long nChunks = size == 0 ? 1 : (size + Chunk.MAX_SIZE - 1) / Chunk.MAX_SIZE;
-        byte[] chunk = new byte[(int) Math.min(Chunk.MAX_SIZE, size)];
+        long nChunks = size == 0 ? 1 : (size + chunkSize - 1) / chunkSize;
+        byte[] chunk = new byte[(int) Math.min(chunkSize, size)];
         return Futures.combineAllInOrder(LongStream.range(0, nChunks)
                         .mapToObj(i -> {
                             boolean lastOfMultiChunk = i == nChunks - 1 && nChunks > 1;
-                            long lastChunkSize = size % Chunk.MAX_SIZE;
-                            int remaining = lastOfMultiChunk ? (int) (lastChunkSize == 0 ? Chunk.MAX_SIZE : lastChunkSize) : chunk.length;
+                            long lastChunkSize = size % chunkSize;
+                            int remaining = lastOfMultiChunk ? (int) (lastChunkSize == 0 ? chunkSize : lastChunkSize) : chunk.length;
                             return readChunk(f, lastOfMultiChunk ? new byte[remaining] : chunk, 0, remaining)
                                     .thenCompose(data -> hasher.sha256(data));
                         })

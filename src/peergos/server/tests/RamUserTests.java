@@ -454,7 +454,7 @@ public class RamUserTests extends UserTests {
 
         byte[] content = new byte[256 * 1024];
         new Random(7).nextBytes(content);
-        HashTree expected = HashTree.build(AsyncReader.build(content), 0, content.length, crypto.hasher).join();
+        HashTree expected = HashTree.build(AsyncReader.build(content), 0, content.length, Chunk.LEGACY_SIZE, crypto.hasher).join();
 
         ResumeUploadProps props = ResumeUploadProps.random(crypto);
         String filename = "resumable.bin";
@@ -932,7 +932,7 @@ public class RamUserTests extends UserTests {
         FileWrapper userRoot = context.getUserRoot().join();
 
         String filename = "partial-last-chunk.bin";
-        int size = 2 * Chunk.MAX_SIZE + 1024 * 1024;
+        int size = 2 * Chunk.LEGACY_SIZE + 1024 * 1024;
         byte[] fileData = new byte[size];
         new Random(42).nextBytes(fileData);
 
@@ -957,7 +957,7 @@ public class RamUserTests extends UserTests {
         } catch (Exception e) {
             readPastEnd = false;
         }
-        Assert.assertFalse("Final chunk must not be padded to " + Chunk.MAX_SIZE + " bytes", readPastEnd);
+        Assert.assertFalse("Final chunk must not be padded to " + Chunk.LEGACY_SIZE + " bytes", readPastEnd);
     }
 
     @Test

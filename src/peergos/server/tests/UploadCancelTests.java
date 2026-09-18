@@ -44,14 +44,14 @@ public class UploadCancelTests {
         byte[] small1 = randomData(1024);
         byte[] small2 = randomData(100 * 1024);
         // past the 20MiB the network buffers before committing, as a browser upload is when it is cancelled
-        byte[] large = randomData(24 * Chunk.MAX_SIZE);
+        byte[] large = randomData(24 * Chunk.LEGACY_SIZE);
         AtomicBoolean cancelled = new AtomicBoolean(false);
         AtomicLong largeProgress = new AtomicLong(0);
         List<FileWrapper.FileUploadProperties> files = Arrays.asList(
                 props("small1", small1, x -> {}),
                 props("small2", small2, x -> {}),
                 props("large", large, n -> {
-                    if (largeProgress.addAndGet(n) >= 8L * Chunk.MAX_SIZE)
+                    if (largeProgress.addAndGet(n) >= 8L * Chunk.LEGACY_SIZE)
                         cancelled.set(true);
                 }));
         try {
@@ -115,7 +115,7 @@ public class UploadCancelTests {
                 checkFileContents(contents.get(i), fresh.getByPath(dir.resolve("file" + i)).join().get(), fresh);
 
         // the session that cancelled can still write, and what it writes is committed
-        byte[] after = randomData(3 * Chunk.MAX_SIZE);
+        byte[] after = randomData(3 * Chunk.LEGACY_SIZE);
         upload(context, "many", Arrays.asList(props("after", after, x -> {})), () -> false, f -> Futures.of(false));
         UserContext again = UserContext.signIn(username, password, UserTests::noMfa, network, crypto).join();
         checkFileContents(after, again.getByPath(dir.resolve("after")).join().get(), again);

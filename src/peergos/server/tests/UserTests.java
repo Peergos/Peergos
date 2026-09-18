@@ -405,7 +405,7 @@ public abstract class UserTests {
         String password = "password";
         UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
         byte[] contents = new byte[0];
-        HashTreeBuilder hash = new HashTreeBuilder(0);
+        HashTreeBuilder hash = new HashTreeBuilder(0, Chunk.LEGACY_SIZE);
         hash.setChunk(0, contents, context.crypto.hasher).join();
         HashTree h = hash.complete(context.crypto.hasher).join();
         String filename = "afile.bin";
@@ -436,8 +436,8 @@ public abstract class UserTests {
         context.getUserRoot().join().uploadOrReplaceFile("existing.bin", AsyncReader.build(existingData),
                 existingData.length, context.network, context.crypto, () -> false, l -> {}).join();
 
-        byte[] data = randomData(2 * Chunk.MAX_SIZE);
-        BlockingReader blocking = new BlockingReader(AsyncReader.build(data), Chunk.MAX_SIZE);
+        byte[] data = randomData(2 * Chunk.LEGACY_SIZE);
+        BlockingReader blocking = new BlockingReader(AsyncReader.build(data), Chunk.LEGACY_SIZE);
         CompletableFuture<FileWrapper> upload = context.getUserRoot().join()
                 .uploadOrReplaceFile("uploading.bin", blocking, data.length, context.network, context.crypto,
                         () -> false, l -> {});
@@ -474,8 +474,8 @@ public abstract class UserTests {
         UserContext context = PeergosNetworkUtils.ensureSignedUp(username, password, network, crypto);
         App.init(context, "calendar").join();
 
-        byte[] data = randomData(2 * Chunk.MAX_SIZE);
-        BlockingReader blocking = new BlockingReader(AsyncReader.build(data), Chunk.MAX_SIZE);
+        byte[] data = randomData(2 * Chunk.LEGACY_SIZE);
+        BlockingReader blocking = new BlockingReader(AsyncReader.build(data), Chunk.LEGACY_SIZE);
         CompletableFuture<FileWrapper> upload = context.getUserRoot().join()
                 .uploadOrReplaceFile("uploading.bin", blocking, data.length, context.network, context.crypto,
                         () -> false, l -> {});
@@ -505,8 +505,8 @@ public abstract class UserTests {
                 .uploadOrReplaceFile("existing.bin", AsyncReader.build(existingData), existingData.length,
                         context.network, context.crypto, () -> false, l -> {}).join();
 
-        byte[] data = randomData(2 * Chunk.MAX_SIZE);
-        BlockingReader blocking = new BlockingReader(AsyncReader.build(data), Chunk.MAX_SIZE);
+        byte[] data = randomData(2 * Chunk.LEGACY_SIZE);
+        BlockingReader blocking = new BlockingReader(AsyncReader.build(data), Chunk.LEGACY_SIZE);
         CompletableFuture<FileWrapper> first = context.getUserRoot().join()
                 .uploadFileJS("big.bin", blocking, 0, data.length, false, context.mirrorBatId(),
                         network, crypto, l -> {}, txns, f -> Futures.of(true));
@@ -549,7 +549,7 @@ public abstract class UserTests {
                 .uploadOrReplaceFile("existing.bin", AsyncReader.build(existingData), existingData.length,
                         context.network, context.crypto, () -> false, l -> {}).join();
 
-        byte[] data = randomData(4 * Chunk.MAX_SIZE);
+        byte[] data = randomData(4 * Chunk.LEGACY_SIZE);
         ExecutorService pool = Executors.newFixedThreadPool(2);
         CompletableFuture<Boolean> firstDone = new CompletableFuture<>();
         pool.submit(() -> {
@@ -949,7 +949,7 @@ public abstract class UserTests {
 
 
         // check multiple read calls in multiple chunks
-        int bigLength = Chunk.MAX_SIZE * 3;
+        int bigLength = Chunk.LEGACY_SIZE * 3;
         byte[] bigData = new byte[bigLength];
         random.nextBytes(bigData);
         FileWrapper updatedRoot2 = uploadFileSection(updatedRoot, filename, new AsyncReader.ArrayBacked(bigData), 0, bigData.length, context.network,

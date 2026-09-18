@@ -64,7 +64,7 @@ public class FileState implements Cborable {
             }
         }
         return diffChunks.stream()
-                .map(c -> new Pair<>(c * Chunk.MAX_SIZE, Math.min((c + 1) * Chunk.MAX_SIZE, size)))
+                .map(c -> new Pair<>(c * Chunk.LEGACY_SIZE, Math.min((c + 1) * Chunk.LEGACY_SIZE, size)))
                 .collect(Collectors.toList());
     }
 

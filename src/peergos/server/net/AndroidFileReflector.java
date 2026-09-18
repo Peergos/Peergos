@@ -83,7 +83,7 @@ public class AndroidFileReflector implements HttpHandler {
                 httpExchange.sendResponseHeaders(200, fileSize);
                 byte[] buf = new byte[5 * 1024 * 1024];
                 for (long offset = 0; offset < fileSize; ) {
-                    int read = reader.readIntoArray(buf, 0, (int) Math.min(Chunk.MAX_SIZE, fileSize - offset)).join();
+                    int read = reader.readIntoArray(buf, 0, (int) Math.min(Chunk.LEGACY_SIZE, fileSize - offset)).join();
                     offset += read;
                     resp.write(buf, 0, read);
                     resp.flush();
@@ -141,7 +141,7 @@ public class AndroidFileReflector implements HttpHandler {
                     AsyncReader reader = zip.read(entry.get()).join();
                     OutputStream resp = httpExchange.getResponseBody();
                     httpExchange.sendResponseHeaders(200, size);
-                    byte[] buf = new byte[(int) Math.max(1, Math.min(size, Chunk.MAX_SIZE))];
+                    byte[] buf = new byte[(int) Math.max(1, Math.min(size, Chunk.LEGACY_SIZE))];
                     for (long offset = 0; offset < size; ) {
                         int read = reader.readIntoArray(buf, 0, (int) Math.min(buf.length, size - offset)).join();
                         if (read <= 0)
@@ -204,7 +204,7 @@ public class AndroidFileReflector implements HttpHandler {
             long size = entry.size;
             AsyncReader reader = zip.read(entry).join();
             zout.putNextEntry(new ZipEntry(ourZipPath.toString()));
-            byte[] buf = new byte[(int) Math.max(1, Math.min(size, Chunk.MAX_SIZE))];
+            byte[] buf = new byte[(int) Math.max(1, Math.min(size, Chunk.LEGACY_SIZE))];
             for (long offset = 0; offset < size; ) {
                 int read = reader.readIntoArray(buf, 0, (int) Math.min(buf.length, size - offset)).join();
                 if (read <= 0)
@@ -247,7 +247,7 @@ public class AndroidFileReflector implements HttpHandler {
         AsyncReader reader = f.getInputStream(network, crypto, x -> {}).join();
         zout.putNextEntry(new ZipEntry(ourZipPath.toString()));
         for (long offset = 0; offset < fileSize; ) {
-            int read = reader.readIntoArray(buf, 0, (int) Math.min(Chunk.MAX_SIZE, fileSize - offset)).join();
+            int read = reader.readIntoArray(buf, 0, (int) Math.min(Chunk.LEGACY_SIZE, fileSize - offset)).join();
             offset += read;
             zout.write(buf, 0, read);
             zout.flush();

@@ -159,11 +159,12 @@ public class PeergosSyncFS implements SyncFilesystem {
         Optional<FileWrapper> parent = context.getByPath(root.resolve(p).getParent()).join();
         FileProperties withHash = f.getFileProperties().withHash(Optional.of(hashTree.branch(0)));
         f.setProperties(withHash, context.crypto.hasher, context.network, parent).join();
-        long nBranches = (fileSize + 1024L * Chunk.MAX_SIZE - 1) / (1024L * Chunk.MAX_SIZE);
+        int chunkSize = withHash.chunkSize;
+        long nBranches = (fileSize + 1024L * chunkSize - 1) / (1024L * chunkSize);
         for (long b = 1; b < nBranches; b++) {
             WritableAbsoluteCapability cap = f.writableFilePointer();
             Pair<byte[], Optional<Bat>> loc = FileProperties.calculateMapKey(withHash.streamSecret.get(),
-                    cap.getMapKey(), cap.bat, b * 1024 * Chunk.MAX_SIZE, context.crypto.hasher).join();
+                    cap.getMapKey(), cap.bat, b * 1024 * chunkSize, chunkSize, context.crypto.hasher).join();
             WritableAbsoluteCapability chunkCap = cap.withMapKey(loc.left, loc.right);
             long chunkIndex = b * 1024;
             context.network.synchronizer.applyComplexUpdate(f.owner(), f.signingPair(),
@@ -277,7 +278,7 @@ public class PeergosSyncFS implements SyncFilesystem {
             HashBranch branch = props.treeHash.get();
             if (synced != null && synced.hashTree.rootHash.equals(branch.rootHash))
                 return synced.hashTree;
-            if (props.size < 1024L * Chunk.MAX_SIZE)
+            if (props.size < 1024L * Chunk.LEGACY_SIZE)
                 return new HashTree(branch.rootHash, branch.level1.map(List::of)
                         .orElseThrow(() -> new IllegalStateException("Invalid hash branch")),
                         Collections.emptyList(),
@@ -296,8 +297,8 @@ public class PeergosSyncFS implements SyncFilesystem {
             for (long i = 0; i < size; ) {
                 int read = reader.readIntoArray(buf, 0, (int) Math.min(buf.length, size - i)).join();
                 chunkOffset += read;
-                if (chunkOffset >= Chunk.MAX_SIZE) {
-                    int thisChunk = read - chunkOffset + Chunk.MAX_SIZE;
+                if (chunkOffset >= Chunk.LEGACY_SIZE) {
+                    int thisChunk = read - chunkOffset + Chunk.LEGACY_SIZE;
                     chunkHash.update(buf, 0, thisChunk);
                     chunkHashes.add(chunkHash.digest());
                     chunkHash = MessageDigest.getInstance("SHA-256");
@@ -309,7 +310,7 @@ public class PeergosSyncFS implements SyncFilesystem {
                     chunkHash.update(buf, 0, read);
                 i += read;
             }
-            if (size == 0 || chunkOffset % Chunk.MAX_SIZE != 0)
+            if (size == 0 || chunkOffset % Chunk.LEGACY_SIZE != 0)
                 chunkHashes.add(chunkHash.digest());
 
             return HashTree.build(chunkHashes, context.crypto.hasher).join();

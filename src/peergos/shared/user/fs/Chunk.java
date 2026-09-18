@@ -15,8 +15,6 @@ public class Chunk {
      * real BLAKE3 hash. 5 MiB is 5120 chunks and never a subtree of anything.
      */
     public static final int DEFAULT_SIZE = 4 * 1024 * 1024;
-    /** The largest chunk size any file may use, which bounds every buffer sized in chunks. */
-    public static final int MAX_SIZE = LEGACY_SIZE;
 
     private final SymmetricKey dataKey;
     private final byte[] data, mapKey;

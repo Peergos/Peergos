@@ -619,7 +619,7 @@ public class DirectorySync {
                 FileState synced = syncedVersions.byPath(relativePath);
                 FileState local = localState.byPath(relativePath);
                 FileState remote = remoteState.byPath(relativePath);
-                boolean isSmallRemoteCopy = synced == null && remote == null && local.size < Chunk.MAX_SIZE;
+                boolean isSmallRemoteCopy = synced == null && remote == null && local.size < Chunk.LEGACY_SIZE;
                 if (isSmallRemoteCopy) {
                     List<FileState> remoteByHash = remoteState.byHash(local.hashTree.rootHash);
                     List<FileState> localByHash = localState.byHash(local.hashTree.rootHash);

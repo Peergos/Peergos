@@ -78,12 +78,12 @@ public class HashTreeTests {
         chunkHashes.get(diffChunk)[0] = 5;
         HashTree tree2 = HashTree.build(chunkHashes, crypto.hasher).join();
 
-        long fileSize = ((long)nChunks) * Chunk.MAX_SIZE;
+        long fileSize = ((long)nChunks) * Chunk.LEGACY_SIZE;
         FileState updated = new FileState("", 0, fileSize, tree);
         FileState old = new FileState("", 0, fileSize, tree2);
         List<Pair<Long, Long>> diff = updated.diffRanges(old);
         Assert.assertTrue(diff.size() == 1);
-        Assert.assertTrue(diff.get(0).equals(new Pair<>(diffChunk * (long)Chunk.MAX_SIZE, (diffChunk + 1)* (long)Chunk.MAX_SIZE)));
+        Assert.assertTrue(diff.get(0).equals(new Pair<>(diffChunk * (long)Chunk.LEGACY_SIZE, (diffChunk + 1)* (long)Chunk.LEGACY_SIZE)));
     }
 
     @Test
@@ -99,8 +99,8 @@ public class HashTreeTests {
             byte[] data = new byte[s];
             rnd.nextBytes(data);
             AsyncReader reader = AsyncReader.build(data);
-            HashTree serial = HashTree.build(reader, 0, data.length, crypto.hasher).join();
-            HashTree parallel = HashTree.buildParallel(i -> AsyncReader.build(data), 0, data.length, crypto.hasher, 8).join();
+            HashTree serial = HashTree.build(reader, 0, data.length, Chunk.LEGACY_SIZE, crypto.hasher).join();
+            HashTree parallel = HashTree.buildParallel(i -> AsyncReader.build(data), 0, data.length, Chunk.LEGACY_SIZE, crypto.hasher, 8).join();
             Assert.assertEquals(serial, parallel);
         }
     }

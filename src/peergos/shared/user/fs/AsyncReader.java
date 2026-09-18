@@ -12,6 +12,8 @@ import java.util.function.*;
 @JsType
 public interface AsyncReader extends AutoCloseable {
 
+    int MAX_PARSE_BUFFER = 5 * 1024 * 1024;
+
     default CompletableFuture<AsyncReader> seekJS(int high32, int low32) {
         // mask low32 rather than sign extending it, else offsets in 2-4 GiB, 6-8 GiB, ... go negative
         return seek((low32 & 0xFFFFFFFFL) | (((long) high32) << 32));
@@ -60,7 +62,7 @@ public interface AsyncReader extends AutoCloseable {
     default <T> CompletableFuture<Long> parseStreamRecurse(byte[] prefix, Function<Cborable, T> fromCbor, Consumer<T> accumulator, long maxBytesToRead) {
         if (maxBytesToRead == 0)
             return CompletableFuture.completedFuture(0L);
-        int toRead = (int) Math.min(Chunk.MAX_SIZE - prefix.length, maxBytesToRead);
+        int toRead = (int) Math.min(MAX_PARSE_BUFFER - prefix.length, maxBytesToRead);
         byte[] buf = new byte[prefix.length + toRead];
         System.arraycopy(prefix, 0, buf, 0, prefix.length);
         ByteArrayInputStream in = new ByteArrayInputStream(buf);
@@ -112,7 +114,7 @@ public interface AsyncReader extends AutoCloseable {
                                                                   long maxBytesToRead) {
         if (maxObjectsToRead == 0 || maxBytesToRead == 0)
             return CompletableFuture.completedFuture(0L);
-        int toRead = (int) Math.min(Chunk.MAX_SIZE - prefix.length, maxBytesToRead);
+        int toRead = (int) Math.min(MAX_PARSE_BUFFER - prefix.length, maxBytesToRead);
         byte[] buf = new byte[prefix.length + toRead];
         System.arraycopy(prefix, 0, buf, 0, prefix.length);
         ByteArrayInputStream in = new ByteArrayInputStream(buf);

@@ -635,13 +635,13 @@ public class SyncTests {
         HashTree grown = new HashTree(new RootHash(rootA), grownLevel1, Collections.emptyList(), Collections.emptyList());
         HashTree old = new HashTree(new RootHash(rootB), oldLevel1, Collections.emptyList(), Collections.emptyList());
 
-        FileState grownFs = new FileState("big.bin", 1000, 1025L * Chunk.MAX_SIZE, grown);
-        FileState oldFs = new FileState("big.bin", 1000, 1024L * Chunk.MAX_SIZE, old);
+        FileState grownFs = new FileState("big.bin", 1000, 1025L * Chunk.LEGACY_SIZE, grown);
+        FileState oldFs = new FileState("big.bin", 1000, 1024L * Chunk.LEGACY_SIZE, old);
 
         List<Pair<Long, Long>> diff = grownFs.diffRanges(oldFs);
         Assert.assertEquals(1, diff.size());
-        Assert.assertEquals(1024L * Chunk.MAX_SIZE, (long) diff.get(0).left);
-        Assert.assertEquals(1025L * Chunk.MAX_SIZE, (long) diff.get(0).right);
+        Assert.assertEquals(1024L * Chunk.LEGACY_SIZE, (long) diff.get(0).left);
+        Assert.assertEquals(1025L * Chunk.LEGACY_SIZE, (long) diff.get(0).right);
     }
 
     @Test

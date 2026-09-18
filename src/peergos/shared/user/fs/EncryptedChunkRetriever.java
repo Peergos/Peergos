@@ -41,17 +41,18 @@ public class EncryptedChunkRetriever implements FileRetriever {
                                                   AbsoluteCapability ourCap,
                                                   Optional<byte[]> streamSecret,
                                                   long fileSize,
+                                                  int chunkSize,
                                                   MaybeMultihash ourExistingHash,
                                                   int nBufferedChunks,
                                                   ProgressConsumer<Long> monitor) {
-        return getChunk(version, network, crypto, 0, fileSize, ourCap, streamSecret, ourExistingHash, monitor)
+        return getChunk(version, network, crypto, 0, fileSize, chunkSize, ourCap, streamSecret, ourExistingHash, monitor)
                 .thenApply(chunk -> {
                     AbsoluteCapability nextChunk = ourCap.withMapKey(nextChunkLabel, nextChunkBat);
                     Location nextChunkPointer = nextChunk.getLocation();
                     return new LazyInputStreamCombiner(version, 0,
                             chunk.get().chunk.data(), nextChunkPointer, nextChunkBat,
                             chunk.get().chunk.data(), ourCap.getMapKey(), ourCap.bat, streamSecret, nextChunkPointer,
-                            nextChunkBat, network, crypto, ourCap.rBaseKey, fileSize, nBufferedChunks, monitor);
+                            nextChunkBat, network, crypto, ourCap.rBaseKey, fileSize, chunkSize, nBufferedChunks, monitor);
                 });
     }
 
@@ -59,14 +60,15 @@ public class EncryptedChunkRetriever implements FileRetriever {
                                                                                   AbsoluteCapability startCap,
                                                                                   Optional<byte[]> streamSecret,
                                                                                   long offset,
+                                                                                  int chunkSize,
                                                                                   Hasher hasher,
                                                                                   NetworkAccess network) {
-        if (offset < Chunk.MAX_SIZE)
+        if (offset < chunkSize)
             return CompletableFuture.completedFuture(Optional.of(new Pair<>(startCap.getMapKey(), startCap.bat)));
-        if (offset < 2*Chunk.MAX_SIZE)
+        if (offset < 2L * chunkSize)
             return CompletableFuture.completedFuture(Optional.of(new Pair<>(nextChunkLabel, nextChunkBat))); // chunk at this location hasn't been written yet, only referenced by previous chunk
         if (streamSecret.isPresent()) {
-            return FileProperties.calculateMapKey(streamSecret.get(), startCap.getMapKey(), startCap.bat, offset, hasher)
+            return FileProperties.calculateMapKey(streamSecret.get(), startCap.getMapKey(), startCap.bat, offset, chunkSize, hasher)
                     .thenApply(Optional::of);
         }
         return network.getMetadata(version, startCap.withMapKey(nextChunkLabel, nextChunkBat))
@@ -74,7 +76,7 @@ public class EncryptedChunkRetriever implements FileRetriever {
                         meta.get().retriever(startCap.rBaseKey, streamSecret, nextChunkLabel, nextChunkBat, hasher)
                                 .thenCompose(retriever ->
                                         retriever.getMapLabelAt(version, startCap.withMapKey(nextChunkLabel, nextChunkBat), streamSecret,
-                                                offset - Chunk.MAX_SIZE, hasher, network)) :
+                                                offset - chunkSize, chunkSize, hasher, network)) :
                         CompletableFuture.completedFuture(Optional.empty())
                 );
     }
@@ -84,19 +86,20 @@ public class EncryptedChunkRetriever implements FileRetriever {
                                                               Crypto crypto,
                                                               long startIndex,
                                                               long truncateTo,
+                                                              int chunkSize,
                                                               AbsoluteCapability ourCap,
                                                               Optional<byte[]> streamSecret,
                                                               MaybeMultihash ourExistingHash,
                                                               ProgressConsumer<Long> monitor) {
-        if (startIndex >= Chunk.MAX_SIZE) {
+        if (startIndex >= chunkSize) {
             AbsoluteCapability nextChunkCap = ourCap.withMapKey(nextChunkLabel, nextChunkBat);
             return network.getMetadata(version, nextChunkCap)
                     .thenCompose(meta -> {
                         if (meta.isPresent())
                             return meta.get().retriever(ourCap.rBaseKey, streamSecret, nextChunkLabel, nextChunkBat, crypto.hasher)
                                     .thenCompose(retriever -> retriever
-                                            .getChunk(version, network, crypto, startIndex - Chunk.MAX_SIZE,
-                                                    truncateTo - Chunk.MAX_SIZE,
+                                            .getChunk(version, network, crypto, startIndex - chunkSize,
+                                                    truncateTo - chunkSize, chunkSize,
                                                     nextChunkCap, streamSecret, meta.get().committedHash(), l -> {}));
                         Chunk newEmptyChunk = new Chunk(new byte[0], dataKey, nextChunkLabel, dataKey.createNonce());
                         LocatedChunk withLocation = new LocatedChunk(nextChunkCap.getLocation(), nextChunkBat,
@@ -106,7 +109,7 @@ public class EncryptedChunkRetriever implements FileRetriever {
         }
         return linksToData.getAndDecrypt(ourCap.owner, dataKey, c -> ((CborObject.CborByteArray)c).value, crypto.hasher, network, monitor)
                 .thenApply(data ->  Optional.of(new LocatedChunk(ourCap.getLocation(), ourCap.bat, ourExistingHash,
-                        new Chunk(truncate(data, (int) Math.min(Chunk.MAX_SIZE, truncateTo)),
+                        new Chunk(truncate(data, (int) Math.min(chunkSize, truncateTo)),
                                 dataKey, ourCap.getMapKey(), ourCap.rBaseKey.createNonce()))));
     }
 

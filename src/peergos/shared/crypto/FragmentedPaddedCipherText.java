@@ -178,7 +178,7 @@ public class FragmentedPaddedCipherText implements Cborable {
     }
 
     private static byte[][] generateCache() {
-        return new byte[Chunk.MAX_SIZE/Fragment.MAX_LENGTH][Fragment.MAX_LENGTH];
+        return new byte[Chunk.LEGACY_SIZE/Fragment.MAX_LENGTH][Fragment.MAX_LENGTH];
     }
 
     private static ThreadLocal<byte[][]> arrayCache = ThreadLocal.withInitial(FragmentedPaddedCipherText::generateCache);

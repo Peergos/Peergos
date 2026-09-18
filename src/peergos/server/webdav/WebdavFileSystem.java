@@ -39,6 +39,7 @@ import peergos.shared.user.fs.AsyncReader;
 import peergos.shared.user.fs.FileWrapper;
 import peergos.shared.user.fs.HashTree;
 import peergos.shared.user.fs.HashTreeBuilder;
+import peergos.shared.user.fs.Chunk;
 import peergos.shared.util.PathUtil;
 import peergos.shared.util.Futures;
 
@@ -279,7 +280,7 @@ public class WebdavFileSystem implements IWebdavStore {
         }
         byte[] contents = new byte[0];
         try {
-            HashTreeBuilder hash = new HashTreeBuilder(0);
+            HashTreeBuilder hash = new HashTreeBuilder(0, Chunk.LEGACY_SIZE);
             hash.setChunk(0, contents, context.crypto.hasher).join();
             HashTree h = hash.complete(context.crypto.hasher).join();
             parentFolder.get().uploadFileWithHash(path.getFileName().toString(), new AsyncReader.ArrayBacked(contents),

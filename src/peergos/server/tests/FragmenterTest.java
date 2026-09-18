@@ -34,7 +34,7 @@ public class FragmenterTest {
     @Test
     public void testSeries() throws IOException {
         for (int i = 1; i < 10; i++) {
-            int length = random.nextInt(Chunk.MAX_SIZE);
+            int length = random.nextInt(Chunk.LEGACY_SIZE);
             byte[] b = new byte[length];
             test(b);
         }

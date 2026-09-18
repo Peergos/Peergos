@@ -56,7 +56,7 @@ public class CachingPeergosFS extends PeergosFS {
         if (DEBUG)
             System.out.printf("read(%s, offset=%d, size=%d)\n", s, offset, size);
         if (!containedInOneChunk(offset, offset + size)) {
-            long boundary = alignToChunkSize(offset + Chunk.MAX_SIZE);
+            long boundary = alignToChunkSize(offset + Chunk.LEGACY_SIZE);
             int r1 = read(s, pointer, 0, boundary - offset, offset, fuseFileInfo);
             if (r1 <= 0)
                 return r1;
@@ -89,7 +89,7 @@ public class CachingPeergosFS extends PeergosFS {
         if (DEBUG)
             System.out.printf("write(%s, offset=%d, size=%d)\n", s, offset, size);
         if  (! containedInOneChunk(offset, offset+size)) {
-            long boundary = alignToChunkSize(offset + Chunk.MAX_SIZE);
+            long boundary = alignToChunkSize(offset + Chunk.LEGACY_SIZE);
             int w1 = write(s, pointer, 0, boundary - offset, offset, fuseFileInfo);
             if (w1 <= 0)
                 return w1;
@@ -165,10 +165,10 @@ public class CachingPeergosFS extends PeergosFS {
     }
 
     private long alignToChunkSize(long pos) {
-        return Math.max(0, pos / Chunk.MAX_SIZE) * Chunk.MAX_SIZE;
+        return Math.max(0, pos / Chunk.LEGACY_SIZE) * Chunk.LEGACY_SIZE;
     }
     private int intraChunkOffset(long  pos) {
-        return (int) pos % Chunk.MAX_SIZE;
+        return (int) pos % Chunk.LEGACY_SIZE;
     }
 
     private class CacheEntryHolder {
@@ -227,7 +227,7 @@ public class CachingPeergosFS extends PeergosFS {
         public CacheEntry(String path, long offset) {
             this.path = path;
             this.offset = offset;
-            this.data = new byte[Chunk.MAX_SIZE];
+            this.data = new byte[Chunk.LEGACY_SIZE];
             //read current data into data view
             PeergosStat stat = getByPath(path).orElseThrow(() -> new IllegalStateException("missing" + path));
             byte[] readData = CachingPeergosFS.this.read(stat, data.length, offset)

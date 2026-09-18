@@ -117,8 +117,8 @@ public class ScryptJava implements Hasher {
             for (long i = 0; i < size; ) {
                 int read = fin.read(buf);
                 chunkOffset += read;
-                if (chunkOffset >= Chunk.MAX_SIZE) {
-                    int thisChunk = read - chunkOffset + Chunk.MAX_SIZE;
+                if (chunkOffset >= Chunk.LEGACY_SIZE) {
+                    int thisChunk = read - chunkOffset + Chunk.LEGACY_SIZE;
                     chunkHash.update(buf, 0, thisChunk);
                     chunkHashes.add(chunkHash.digest());
                     chunkHash = MessageDigest.getInstance("SHA-256");
@@ -130,7 +130,7 @@ public class ScryptJava implements Hasher {
                     chunkHash.update(buf, 0, read);
                 i += read;
             }
-            if (size == 0 || size % Chunk.MAX_SIZE != 0)
+            if (size == 0 || size % Chunk.LEGACY_SIZE != 0)
                 chunkHashes.add(chunkHash.digest());
             return chunkHashes;
         } catch (IOException | NoSuchAlgorithmException e) {
@@ -139,9 +139,9 @@ public class ScryptJava implements Hasher {
     }
 
     public static List<byte[]> parallelHashChunks(Supplier<InputStream> fins, int nThreads, long size) {
-        int nChunks = (int) ((size + Chunk.MAX_SIZE - 1)/ Chunk.MAX_SIZE);
+        int nChunks = (int) ((size + Chunk.LEGACY_SIZE - 1)/ Chunk.LEGACY_SIZE);
         long chunksPerThread = (nChunks + nThreads - 1) / nThreads;
-        if (size < Chunk.MAX_SIZE)
+        if (size < Chunk.LEGACY_SIZE)
             try (InputStream fin = fins.get()) {
                 return hashChunks(fin, size);
             } catch (IOException e) {
@@ -151,8 +151,8 @@ public class ScryptJava implements Hasher {
                 .parallel()
                 .mapToObj(i -> {
                     try (InputStream fin = fins.get()) {
-                        long start = i * chunksPerThread * Chunk.MAX_SIZE;
-                        long end = Math.min(size, (i + 1) * chunksPerThread * Chunk.MAX_SIZE);
+                        long start = i * chunksPerThread * Chunk.LEGACY_SIZE;
+                        long end = Math.min(size, (i + 1) * chunksPerThread * Chunk.LEGACY_SIZE);
                         if (start == end || start > size)
                             return Collections.<byte[]>emptyList();
                         long skipped = fin.skip(start);

@@ -342,7 +342,7 @@ public class CloudFilesProvider {
             // inside the same chunk hit the local NTFS stream instead of firing more
             // FETCH_DATA callbacks. Turns a sequential read of an N-chunk file from
             // O(N²) chunk fetches into O(N).
-            long chunkBoundary = ((requiredOffset / Chunk.MAX_SIZE) + 1) * (long) Chunk.MAX_SIZE;
+            long chunkBoundary = ((requiredOffset / Chunk.LEGACY_SIZE) + 1) * (long) Chunk.LEGACY_SIZE;
             long end = Math.min(Math.max(requiredOffset + requiredLength, chunkBoundary), fileSize);
             java.util.concurrent.atomic.AtomicLong afterDelivLastReported =
                     new java.util.concurrent.atomic.AtomicLong(-1);
@@ -1705,7 +1705,7 @@ public class CloudFilesProvider {
         try (peergos.server.simulation.FileAsyncReader reader =
                      new peergos.server.simulation.FileAsyncReader(localPath.toFile())) {
             return peergos.shared.user.fs.HashTree.build(
-                    reader, (int) (size >>> 32), (int) size, context.crypto.hasher).join();
+                    reader, (int) (size >>> 32), (int) size, Chunk.LEGACY_SIZE, context.crypto.hasher).join();
         } catch (Exception e) {
             LOG.log(Level.WARNING, "Local hash failed for " + localPath, e);
             return null;

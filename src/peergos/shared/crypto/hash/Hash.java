@@ -27,11 +27,11 @@ public class Hash {
     public static CompletableFuture<byte[]> sha256(AsyncReader input, long length) {
         try {
             MessageDigest md = MessageDigest.getInstance(HASH);
-            return sha256(input, length, md, new byte[Chunk.MAX_SIZE]);
+            return sha256(input, length, md, new byte[Chunk.LEGACY_SIZE]);
         } catch (NoSuchAlgorithmException e) {
             // This is only here to work around a bug in Doppio JVM
             Sha256 sha256 = new Sha256();
-            return sha256(input, length, sha256, new byte[Chunk.MAX_SIZE]);
+            return sha256(input, length, sha256, new byte[Chunk.LEGACY_SIZE]);
         }
     }
 

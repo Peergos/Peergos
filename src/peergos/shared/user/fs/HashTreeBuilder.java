@@ -9,8 +9,8 @@ public class HashTreeBuilder {
 
     private final byte[][] chunkHashes;
 
-    public HashTreeBuilder(long filesize) {
-        this.chunkHashes = new byte[filesize == 0 ? 1 : ((int)((filesize + Chunk.MAX_SIZE - 1) / Chunk.MAX_SIZE))][];
+    public HashTreeBuilder(long filesize, int chunkSize) {
+        this.chunkHashes = new byte[filesize == 0 ? 1 : ((int)((filesize + chunkSize - 1) / chunkSize))][];
     }
 
     public CompletableFuture<Boolean> setChunk(int chunkIndex, byte[] chunk, Hasher h) {

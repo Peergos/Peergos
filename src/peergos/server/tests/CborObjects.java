@@ -110,7 +110,7 @@ public class CborObjects {
 
     @Test
     public void parseStreamAcrossChunkBoundary() throws Exception {
-        // these sizes make the second object straddle a Chunk.MAX_SIZE read boundary, which used to
+        // these sizes make the second object straddle a Chunk.LEGACY_SIZE read boundary, which used to
         // result in the third object being dropped
         List<CborObject> objects = new ArrayList<>();
         objects.add(new CborObject.CborByteArray(random(2_000_000)));

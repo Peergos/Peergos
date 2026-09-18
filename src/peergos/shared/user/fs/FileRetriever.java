@@ -20,6 +20,7 @@ public interface FileRetriever {
                                            AbsoluteCapability ourCap,
                                            Optional<byte[]> streamSecret,
                                            long fileSize,
+                                           int chunkSize,
                                            MaybeMultihash ourExistingHash,
                                            int nBufferedChunks,
                                            ProgressConsumer<Long> monitor);
@@ -28,6 +29,7 @@ public interface FileRetriever {
                                                                            AbsoluteCapability startCap,
                                                                            Optional<byte[]> streamSecret,
                                                                            long offset,
+                                                                           int chunkSize,
                                                                            Hasher hasher,
                                                                            NetworkAccess network);
 
@@ -36,6 +38,7 @@ public interface FileRetriever {
                                                        Crypto crypto,
                                                        long startIndex,
                                                        long truncateTo,
+                                                       int chunkSize,
                                                        AbsoluteCapability ourCap,
                                                        Optional<byte[]> streamSecret,
                                                        MaybeMultihash ourExistingHash,

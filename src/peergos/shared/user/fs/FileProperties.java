@@ -152,12 +152,20 @@ public class FileProperties implements Cborable {
             throw new IllegalArgumentException("Path too long! Paths must be smaller than " + MAX_PATH_SIZE);
     }
 
+    /**
+     * The label of the chunk containing {@code offset}, found by walking the hash chain.
+     *
+     * The chunk size is a parameter rather than a constant because it belongs to the file: using
+     * the wrong one derives labels that exist, at the wrong spacing, so the read succeeds and
+     * returns the wrong bytes.
+     */
     public static CompletableFuture<Pair<byte[], Optional<Bat>>> calculateMapKey(byte[] streamSecret,
                                                                                  byte[] firstMapKey,
                                                                                  Optional<Bat> firstBat,
                                                                                  long offset,
+                                                                                 int chunkSize,
                                                                                  Hasher h) {
-        long iterations = offset / Chunk.MAX_SIZE;
+        long iterations = offset / chunkSize;
         List<Long> counter = new ArrayList<>();
         for (long i=0; i < iterations; i++)
             counter.add(i);
@@ -213,7 +221,7 @@ public class FileProperties implements Cborable {
     }
 
     public int chunkCount() {
-        return FileWrapper.getNumberOfChunks(size);
+        return FileWrapper.getNumberOfChunks(size, chunkSize);
     }
 
     @JsMethod
@@ -279,6 +287,16 @@ public class FileProperties implements Cborable {
      * Only the sizes actually in use are accepted: a file claiming some other size is a bad file
      * rather than a new code path to support. The encoding leaves room to allow more later.
      */
+    /**
+     * The chunk size a file created right now gets. The single place that decides, so that a
+     * write path can never pick a size for a file that already exists: everything else takes the
+     * size from the file's own properties.
+     */
+    @JsMethod
+    public static int chunkSizeForNewFiles() {
+        return Chunk.LEGACY_SIZE;
+    }
+
     private static int chunkSizeFromLog2(long log2) {
         int size = 1 << log2;
         if (log2 < 0 || log2 > 30 || (size != Chunk.DEFAULT_SIZE && size != Chunk.LEGACY_SIZE))
