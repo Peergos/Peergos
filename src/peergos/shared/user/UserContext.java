@@ -81,6 +81,15 @@ public class UserContext {
      * has to be remembered while it is in hand.
      */
     public Optional<String> linkEntryPath = Optional.empty();
+    /**
+     * Which member of a link an auto-open URL names, keyed by the selector in its fragment.
+     *
+     * The selector is a prefix of the member's map key, so it survives the member being renamed,
+     * moved or reordered - all cases where a URL someone already holds would otherwise open the
+     * wrong file. A selector naming a member that has since been removed simply is not here, and
+     * the link falls back to landing on its first item.
+     */
+    public Map<String, String> linkMemberSelectors = Collections.emptyMap();
 
     // Contact external world
     @JsProperty
@@ -858,6 +867,10 @@ public class UserContext {
                 .thenApply(built -> {
                     context.entrie = built.left;
                     context.linkEntryPath = built.right.stream().findFirst();
+                    Map<String, String> selectors = new LinkedHashMap<>();
+                    for (int i = 0; i < caps.size() && i < built.right.size(); i++)
+                        selectors.put(LinkMember.selectorFor(caps.get(i)), built.right.get(i));
+                    context.linkMemberSelectors = selectors;
                     return context;
                 });
     }
@@ -907,6 +920,18 @@ public class UserContext {
      * A link is recorded under each path it contains, so the same link appears under several
      * files; they are deduplicated by label here, keeping whichever record knows its members.
      */
+    /**
+     * The member of this link that an auto-open selector names, or "" if it names none.
+     *
+     * A selector that matches nothing is not an error: the member it named may have been removed
+     * from the link since the URL was handed out, and opening some other member instead would be
+     * worse than opening nothing.
+     */
+    @JsMethod
+    public String pathForLinkSelector(String selector) {
+        return linkMemberSelectors.getOrDefault(selector, "");
+    }
+
     @JsMethod
     public CompletableFuture<List<SecretLinkSummary>> getAllSecretLinks() {
         return getUserRoot()

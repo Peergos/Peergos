@@ -76,6 +76,12 @@ public class LinkProperties implements Cborable {
         return openSelector.orElse("");
     }
 
+    /** Which member auto-open opens; "" for none. The selector comes from {@link LinkMember}. */
+    @JsMethod
+    public LinkProperties withAutoOpenMember(String selector) {
+        return withOpenSelector(selector.isEmpty() ? Optional.empty() : Optional.of(selector));
+    }
+
     public LinkProperties withOpenSelector(Optional<String> selector) {
         return new LinkProperties(label, linkPassword, userPassword, isLinkWritable, maxRetrievals, expiry,
                 open, existing, members, selector);
