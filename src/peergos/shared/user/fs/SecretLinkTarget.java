@@ -20,7 +20,7 @@ public class SecretLinkTarget implements Cborable {
         this.maxRetrievals = maxRetrievals;
     }
 
-    public CompletableFuture<AbsoluteCapability> decrypt(String label, String password, Crypto c) {
+    public CompletableFuture<List<AbsoluteCapability>> decrypt(String label, String password, Crypto c) {
         return cap.decryptFromPassword(label, password, c);
     }
 

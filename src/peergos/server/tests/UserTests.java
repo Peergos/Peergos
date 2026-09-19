@@ -1222,7 +1222,8 @@ public abstract class UserTests {
         Assert.assertNotEquals(dirWriter, rootWriter);
         SecretLink thelink = SecretLink.fromLink(link.toLinkString(file.owner()));
         AbsoluteCapability linkCap = network.getSecretLink(thelink)
-                .thenCompose(retrieved -> retrieved.decryptFromPassword(thelink.labelString(), link.linkPassword, crypto)).join();
+                .thenCompose(retrieved -> retrieved.decryptFromPassword(thelink.labelString(), link.linkPassword, crypto))
+                .join().get(0);
         Assert.assertEquals(linkCap.writer, rootWriter);
 
         UserContext fromLink = UserContext.fromSecretLinkV2(link.toLinkString(file.owner()), () -> Futures.of(""), network.clear(), crypto).join();

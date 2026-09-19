@@ -1166,7 +1166,9 @@ public class RamUserTests extends UserTests {
             link = linkProps.toLink(userRoot.owner());
 
             EncryptedCapability retrieved = network.getSecretLink(link).join();
-            AbsoluteCapability cap = retrieved.decryptFromPassword(link.labelString(), link.linkPassword + userPassword, crypto).join();
+            List<AbsoluteCapability> caps = retrieved.decryptFromPassword(link.labelString(), link.linkPassword + userPassword, crypto).join();
+            Assert.assertEquals(1, caps.size());
+            AbsoluteCapability cap = caps.get(0);
             FileWrapper resolvedFile = network.getFile(cap, username).join().get();
             Assert.assertTrue(resolvedFile.isWritable() == writable);
         }

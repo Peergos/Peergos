@@ -780,7 +780,7 @@ public class UserContext {
                         .thenCompose(retrieved -> (retrieved.hasUserPassword ? userPasswords.get(i).get() : Futures.of(""))
                                 .thenCompose(upass -> retrieved.decryptFromPassword(links.get(i).labelString(), links.get(i).linkPassword + upass, crypto)))
         ).collect(Collectors.toList()))
-                .thenCompose(caps -> fromSecretLinks(caps, network, crypto));
+                .thenCompose(caps -> fromSecretLinks(caps.stream().flatMap(List::stream).collect(Collectors.toList()), network, crypto));
     }
 
     @JsMethod
@@ -792,7 +792,7 @@ public class UserContext {
         return network.getSecretLink(link)
                 .thenCompose(retrieved -> (retrieved.hasUserPassword ? userPassword.get() : Futures.of(""))
                         .thenCompose(upass -> retrieved.decryptFromPassword(link.labelString(), link.linkPassword + upass, crypto)))
-                .thenCompose(cap -> fromSecretLink(cap, network, crypto));
+                .thenCompose(caps -> fromSecretLinks(caps, network, crypto));
     }
 
     @JsMethod
@@ -956,7 +956,7 @@ public class UserContext {
                     AbsoluteCapability cap = props.isLinkWritable ? file.getLinkPointer().capability : file.getPointer().capability.readOnly();
                     SecretLink res = new SecretLink(id, props.label, props.linkPassword);
                     String fullPassword = props.linkPassword + props.userPassword;
-                    return EncryptedCapability.createFromPassword(cap, res.labelString(), fullPassword, !props.userPassword.isEmpty(), crypto)
+                    return EncryptedCapability.createFromPassword(Collections.singletonList(cap), res.labelString(), fullPassword, !props.userPassword.isEmpty(), crypto)
                             .thenApply(payload -> new SecretLinkTarget(payload, props.expiry, props.maxRetrievals))
                             .thenCompose(value -> IpfsTransaction.call(id,
                                     tid -> v1.withWriter(id, id, network).thenCompose(v2 -> v2.get(id).props.get().addLink(signer, props.label, value,
