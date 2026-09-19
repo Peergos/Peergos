@@ -342,7 +342,8 @@ public class CloudFilesProvider {
             // inside the same chunk hit the local NTFS stream instead of firing more
             // FETCH_DATA callbacks. Turns a sequential read of an N-chunk file from
             // O(N²) chunk fetches into O(N).
-            long chunkBoundary = ((requiredOffset / Chunk.MAX_SIZE) + 1) * (long) Chunk.MAX_SIZE;
+            int peergosChunk = firstFetchFw.getFileProperties().chunkSize;
+            long chunkBoundary = ((requiredOffset / peergosChunk) + 1) * (long) peergosChunk;
             long end = Math.min(Math.max(requiredOffset + requiredLength, chunkBoundary), fileSize);
             java.util.concurrent.atomic.AtomicLong afterDelivLastReported =
                     new java.util.concurrent.atomic.AtomicLong(-1);
@@ -848,7 +849,7 @@ public class CloudFilesProvider {
             }
 
             // case C or D: remote moved since our last sync. Need to hash local to tell apart.
-            peergos.shared.user.fs.HashTree localHash = hashLocalFile(localPath, localSize);
+            peergos.shared.user.fs.HashTree localHash = hashLocalFile(localPath, localSize, chunkSizeOf(existingOpt));
             if (localHash != null && remoteHash != null
                     && localHash.rootHash.equals(remoteHash)) {
                 // case C: local already matches remote, just record state.
@@ -881,7 +882,7 @@ public class CloudFilesProvider {
                                     Optional<FileWrapper> existingOpt,
                                     Optional<FileWrapper> parentOpt) throws Exception {
         setInSyncState(localPath, CfApi.CF_IN_SYNC_STATE_NOT_IN_SYNC);
-        HashTree localHash = hashLocalFile(localPath, localSize);
+        HashTree localHash = hashLocalFile(localPath, localSize, chunkSizeOf(existingOpt));
         LocalDateTime localModified = LocalDateTime.ofInstant(
                 Files.getLastModifiedTime(localPath).toInstant(),
                 java.time.ZoneOffset.UTC);
@@ -1421,7 +1422,7 @@ public class CloudFilesProvider {
         } else {
             // Both diverged. Same conflict flow as the close handler.
             try {
-                peergos.shared.user.fs.HashTree localHash = hashLocalFile(localPath, localSize);
+                peergos.shared.user.fs.HashTree localHash = hashLocalFile(localPath, localSize, chunkSizeOf(Optional.of(remote)));
                 if (localHash != null && localHash.rootHash.equals(
                         remote.getFileProperties().treeHash.map(b -> b.rootHash).orElse(null))) {
                     recordSyncedVersion(relPath, remote);   // already match — just update state
@@ -1487,7 +1488,7 @@ public class CloudFilesProvider {
                         Optional<FileWrapper> remoteOpt = context.getByPath(peergosPath).join();
                         if (remoteOpt.isEmpty() || remoteOpt.get().isDirectory()) return java.nio.file.FileVisitResult.CONTINUE;
                         if (remoteOpt.get().getSize() != size) return java.nio.file.FileVisitResult.CONTINUE;
-                        HashTree localHash = hashLocalFile(file, size);
+                        HashTree localHash = hashLocalFile(file, size, chunkSizeOf(remoteOpt));
                         if (localHash == null) return java.nio.file.FileVisitResult.CONTINUE;
                         peergos.shared.user.fs.RootHash remoteRoot = remoteOpt.get().getFileProperties()
                                 .treeHash.map(b -> b.rootHash).orElse(null);
@@ -1701,11 +1702,18 @@ public class CloudFilesProvider {
     }
 
     /** Stream-hash a local file using a FileAsyncReader (no full-file load). */
-    private peergos.shared.user.fs.HashTree hashLocalFile(Path localPath, long size) {
+    /** The scheme to hash a local file with: the remote file's if there is one, else a new file's. */
+    private static int chunkSizeOf(Optional<FileWrapper> remote) {
+        return remote.filter(f -> ! f.isDirectory())
+                .map(f -> f.getFileProperties().chunkSize)
+                .orElseGet(FileProperties::chunkSizeForNewFiles);
+    }
+
+    private peergos.shared.user.fs.HashTree hashLocalFile(Path localPath, long size, int chunkSize) {
         try (peergos.server.simulation.FileAsyncReader reader =
                      new peergos.server.simulation.FileAsyncReader(localPath.toFile())) {
             return peergos.shared.user.fs.HashTree.build(
-                    reader, (int) (size >>> 32), (int) size, context.crypto.hasher).join();
+                    reader, (int) (size >>> 32), (int) size, chunkSize, context.crypto.hasher).join();
         } catch (Exception e) {
             LOG.log(Level.WARNING, "Local hash failed for " + localPath, e);
             return null;
@@ -1793,7 +1801,7 @@ public class CloudFilesProvider {
                 // shadowed. Hashes match → record so the watcher / pull tick
                 // honours it as a known-clean entry. Hashes diverge → fall
                 // through to the existing upload path.
-                HashTree localHash = hashLocalFile(localPath, localSize);
+                HashTree localHash = hashLocalFile(localPath, localSize, chunkSizeOf(existing));
                 peergos.shared.user.fs.RootHash remoteRoot = existing.get().getFileProperties()
                         .treeHash.map(b -> b.rootHash).orElse(null);
                 if (localHash != null && remoteRoot != null
@@ -1841,7 +1849,8 @@ public class CloudFilesProvider {
             }
 
             FileWrapper uploaded;
-            HashTree localHash = hashLocalFile(localPath, localSize);
+            int chunkSize = chunkSizeOf(existing);
+            HashTree localHash = hashLocalFile(localPath, localSize, chunkSize);
             // Persist a CopyOp BEFORE we touch the network. If the mount is closed (or
             // the JVM dies) mid-upload, the entry stays in syncState's in-progress copy
             // table and CloudFilesMount.mount picks it up next start via
@@ -1854,7 +1863,7 @@ public class CloudFilesProvider {
                     java.time.Instant.ofEpochMilli(localMtime),
                     java.time.ZoneOffset.UTC);
             FileState sourceSt = localHash == null ? null
-                    : new FileState(relative, localMtime, localSize, localHash);
+                    : new FileState(relative, localMtime, localSize, localHash, chunkSize);
             CopyOp pending = sourceSt == null ? null : new CopyOp(false, localPath,
                     java.nio.file.Paths.get(peergosPath),
                     sourceSt, null, 0L, localSize,
@@ -1984,15 +1993,13 @@ public class CloudFilesProvider {
                 if (size == 0) continue;
                 String relPath = syncRoot.relativize(p).toString()
                         .replace(java.io.File.separatorChar, '/');
-                if (syncState != null) {
-                    FileState synced = syncState.byPath(relPath);
-                    if (synced != null && synced.size == size && synced.modificationTime == mtimeMs)
-                        continue;
-                }
+                FileState synced = syncState == null ? null : syncState.byPath(relPath);
+                if (synced != null && synced.size == size && synced.modificationTime == mtimeMs)
+                    continue;
                 sizes.put(p, size);
                 mtimes.put(p, LocalDateTime.ofInstant(
                         java.time.Instant.ofEpochMilli(mtimeMs), java.time.ZoneOffset.UTC));
-                HashTree h = hashLocalFile(p, size);
+                HashTree h = hashLocalFile(p, size, synced != null ? synced.chunkSize : FileProperties.chunkSizeForNewFiles());
                 if (h != null) hashes.put(p, h);
                 toUpload.add(p);
             }
@@ -2675,14 +2682,14 @@ public class CloudFilesProvider {
                     Collections.emptyList(),
                     Collections.emptyList());
         } else if (localPath != null && Files.exists(localPath)) {
-            tree = hashLocalFile(localPath, props.size);
+            tree = hashLocalFile(localPath, props.size, props.chunkSize);
             if (tree == null) return;
         } else {
             return;
         }
         long modTime = props.modified == null ? 0L
                 : props.modified.toInstant(java.time.ZoneOffset.UTC).toEpochMilli() / 1000 * 1000;
-        syncState.add(new FileState(relPath, modTime, props.size, tree));
+        syncState.add(new FileState(relPath, modTime, props.size, tree, props.chunkSize));
 
         // Expand the persisted Snapshot to include this file's writer. The Tier-1 pull check
         // (Snapshot.equals) only catches remote changes for writers in the persisted set, so
@@ -2750,7 +2757,7 @@ public class CloudFilesProvider {
         @Override public void uploadSubtree(java.util.stream.Stream<FileWrapper.FolderUploadProperties> d) { throw new UnsupportedOperationException(); }
         @Override public Optional<peergos.shared.user.fs.Thumbnail> getThumbnail(Path p) { throw new UnsupportedOperationException(); }
         @Override public peergos.shared.user.fs.HashTree hashFile(Path p, Optional<FileWrapper> m, String r,
-                peergos.server.sync.SyncState s, long sz) {
+                peergos.server.sync.SyncState s, long sz, int cs) {
             throw new UnsupportedOperationException();
         }
         @Override public Optional<peergos.shared.crypto.hash.PublicKeyHash> applyToSubtree(

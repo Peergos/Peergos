@@ -6,6 +6,7 @@ import peergos.server.util.Sqlite;
 import peergos.shared.cbor.CborObject;
 import peergos.shared.cbor.Cborable;
 import peergos.shared.user.Snapshot;
+import peergos.shared.user.fs.Chunk;
 import peergos.shared.user.fs.HashTree;
 import peergos.shared.user.fs.ResumeUploadProps;
 import peergos.shared.user.fs.RootHash;
@@ -25,21 +26,21 @@ import java.util.function.Supplier;
 public class JdbcTreeState implements SyncState {
     private static final String INSERT_SNAPSHOT = "INSERT INTO snapshots (path, snapshot) VALUES(?, ?);";
     private static final String UPDATE_SNAPSHOT = "UPDATE snapshots SET snapshot=? WHERE path=?;";
-    private static final String INSERT = "INSERT INTO syncstate (path, roothash, modtime, size, hashtree) VALUES(?, ?, ?, ?, ?);";
+    private static final String INSERT = "INSERT INTO syncstate (path, roothash, modtime, size, hashtree, chunksize) VALUES(?, ?, ?, ?, ?, ?);";
     private static final String INSERT_DIR_SUFFIX = "INTO syncdirs (path) VALUES(?);";
     private static final String SET_DONE_SUFFIX = "INTO syncdone (key, done) VALUES(?, ?);";
     private static final String INSERT_LOCAL_DELETE_SUFFIX = "INTO synclocaldeletes (path) VALUES(?);";
     private static final String INSERT_REMOTE_DELETE_SUFFIX = "INTO syncremotedeletes (path) VALUES(?);";
-    private static final String UPDATE = "UPDATE syncstate SET roothash=?, hashtree=?, modtime=?, size=? WHERE path=?;";
+    private static final String UPDATE = "UPDATE syncstate SET roothash=?, hashtree=?, modtime=?, size=?, chunksize=? WHERE path=?;";
     private static final String DELETE = "DELETE from syncstate WHERE path = ?;";
     private static final String DELETE_DIR = "DELETE from syncdirs WHERE path = ?;";
     private static final String DELETE_LOCAL_DELETE = "DELETE from synclocaldeletes WHERE path = ?;";
     private static final String DELETE_REMOTE_DELETE = "DELETE from syncremotedeletes WHERE path = ?;";
-    private static final String GET_BY_PATH = "SELECT path, modtime, size, hashtree FROM syncstate WHERE path = ?;";
+    private static final String GET_BY_PATH = "SELECT path, modtime, size, hashtree, chunksize FROM syncstate WHERE path = ?;";
     private static final String GET_SNAPSHOT = "SELECT snapshot FROM snapshots WHERE path = ?;";
     private static final String COUNT_FILES = "SELECT COUNT(*) FROM syncstate;";
     private static final String ALL_FILE_PATHS = "SELECT path FROM syncstate;";
-    private static final String GET_BY_HASH = "SELECT path, modtime, size, hashtree FROM syncstate WHERE roothash = ?;";
+    private static final String GET_BY_HASH = "SELECT path, modtime, size, hashtree, chunksize FROM syncstate WHERE roothash = ?;";
     private static final String GET_DIRS = "SELECT path FROM syncdirs;";
     private static final String HAS_DIR = "SELECT path FROM syncdirs WHERE path=?;";
     private static final String DONE_SYNC = "SELECT done FROM syncdone WHERE key=?;";
@@ -91,6 +92,10 @@ public class JdbcTreeState implements SyncState {
             cmds.createTable("CREATE TABLE IF NOT EXISTS syncstate (path text primary key not null, roothash blob, modtime bigint not null, size bigint not null, hashtree blob); " +
                     "CREATE INDEX IF NOT EXISTS sync_hash_index ON syncstate (roothash);" +
                     "CREATE INDEX IF NOT EXISTS sync_path_index ON syncstate (path);", conn);
+            // a row written before the chunk size existed describes a legacy file, which is
+            // what the default says, so there is nothing to migrate beyond the column itself
+            cmds.createTable(cmds.ensureColumnExistsCommand("syncstate", "chunksize",
+                    cmds.sqlInteger() + " DEFAULT " + Chunk.LEGACY_SIZE), conn);
             cmds.createTable("CREATE TABLE IF NOT EXISTS syncdone (key text primary key not null, done bool not null);", conn);
             cmds.createTable("CREATE TABLE IF NOT EXISTS syncdirs (path text primary key not null);", conn);
             cmds.createTable("CREATE TABLE IF NOT EXISTS synclocaldeletes (path text primary key not null);", conn);
@@ -319,7 +324,7 @@ public class JdbcTreeState implements SyncState {
             select.setString(1, path);
             ResultSet rs = select.executeQuery();
             if (rs.next())
-                return new FileState(rs.getString(1), rs.getLong(2), rs.getLong(3), HashTree.fromCbor(CborObject.fromByteArray(rs.getBytes(4))));
+                return new FileState(rs.getString(1), rs.getLong(2), rs.getLong(3), HashTree.fromCbor(CborObject.fromByteArray(rs.getBytes(4))), rs.getInt(5));
 
             return null;
         } catch (SQLException sqe) {
@@ -352,7 +357,8 @@ public class JdbcTreeState implements SyncState {
                 update.setBytes(2, fs.hashTree.serialize());
                 update.setLong(3, fs.modificationTime);
                 update.setLong(4, fs.size);
-                update.setString(5, fs.relPath);
+                update.setInt(5, fs.chunkSize);
+                update.setString(6, fs.relPath);
                 update.executeUpdate();
             } catch (SQLException sqe) {
                 throw new IllegalStateException(sqe);
@@ -365,6 +371,7 @@ public class JdbcTreeState implements SyncState {
                 insert.setLong(3, fs.modificationTime);
                 insert.setLong(4, fs.size);
                 insert.setBytes(5, fs.hashTree.serialize());
+                insert.setInt(6, fs.chunkSize);
                 insert.executeUpdate();
             } catch (SQLException sqe) {
                 throw new IllegalStateException(sqe);
@@ -390,7 +397,7 @@ public class JdbcTreeState implements SyncState {
             ResultSet rs = select.executeQuery();
             List<FileState> res = new ArrayList<>();
             while (rs.next())
-                res.add(new FileState(rs.getString(1), rs.getLong(2), rs.getLong(3), HashTree.fromCbor(CborObject.fromByteArray(rs.getBytes(4)))));
+                res.add(new FileState(rs.getString(1), rs.getLong(2), rs.getLong(3), HashTree.fromCbor(CborObject.fromByteArray(rs.getBytes(4))), rs.getInt(5)));
 
             return res;
         } catch (SQLException sqe) {

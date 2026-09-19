@@ -16,6 +16,14 @@ public class ChunkHashList implements Cborable {
         this.chunkHashes = chunkHashes;
     }
 
+    /** The 32 byte values in this blob, in order. */
+    public List<byte[]> hashes() {
+        List<byte[]> out = new ArrayList<>(nChunks());
+        for (int i = 0; i < nChunks(); i++)
+            out.add(Arrays.copyOfRange(chunkHashes, i * 32, (i + 1) * 32));
+        return out;
+    }
+
     public int nChunks() {
         return chunkHashes.length/32;
     }

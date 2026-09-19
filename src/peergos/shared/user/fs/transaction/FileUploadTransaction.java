@@ -94,7 +94,8 @@ public class FileUploadTransaction implements Transaction {
     }
 
     public CompletableFuture<Snapshot> clear(Snapshot version, Committer committer, NetworkAccess network, Hasher h) {
-        return Futures.reduceAll(LongStream.range(0, (size + Chunk.MAX_SIZE - 1)/Chunk.MAX_SIZE).boxed(),
+        int chunkSize = isLegacy() ? Chunk.LEGACY_SIZE : props.chunkSize;
+        return Futures.reduceAll(LongStream.range(0, (size + chunkSize - 1)/chunkSize).boxed(),
                         new Pair<>(version, firstChunk),
                         (p, i) -> clear(p.left, committer, network, p.right)
                                 .thenCompose(s -> FileProperties.calculateNextMapKey(streamSecret, p.right.getMapKey(), Optional.empty(), h)

@@ -606,7 +606,7 @@ public class FileWrapper {
         return fileAccess.retriever(pointer.capability.rBaseKey, props.streamSecret, getLocation().getMapKey(), pointer.capability.bat, crypto.hasher)
                 .thenCompose(retriever -> retriever
                         .getMapLabelAt(version.get(writer()), writableFilePointer(),
-                                getFileProperties().streamSecret, offset, crypto.hasher, network)
+                                getFileProperties().streamSecret, offset, getFileProperties().chunkSize, crypto.hasher, network)
                         .thenApply(Optional::get));
     }
 
@@ -629,16 +629,16 @@ public class FileWrapper {
         return initialVersion.withWriter(owner(), writer(), network)
                 .thenCompose(snapshot -> getMapKey(newSize, network, crypto).thenCompose(endMapKey ->
                         getInputStream(snapshot.get(writer()), network, crypto, props.size, 1, x -> {}).thenCompose(originalReader -> {
-                            long startOfLastChunk = newSize - (newSize % Chunk.MAX_SIZE);
+                            long startOfLastChunk = newSize - (newSize % props.chunkSize);
                             return originalReader.seek(startOfLastChunk).thenCompose(seekedOriginal -> {
-                                byte[] lastChunk = new byte[(int)(newSize % Chunk.MAX_SIZE)];
+                                byte[] lastChunk = new byte[(int)(newSize % props.chunkSize)];
                                 return seekedOriginal.readIntoArray(lastChunk, 0, lastChunk.length).thenCompose(read -> {
-                                    int currentChunk = (int) (newSize / Chunk.MAX_SIZE);
+                                    int currentChunk = (int) (newSize / props.chunkSize);
                                     if (currentChunk == 0) {
                                         if (props.chunkCount() <= 1)
                                             return CompletableFuture.completedFuture(snapshot);
                                         // chunk 0 is the file's entry point, so start deleting from chunk 1
-                                        return getMapKey(Chunk.MAX_SIZE, network, crypto).thenCompose(secondChunk ->
+                                        return getMapKey(props.chunkSize, network, crypto).thenCompose(secondChunk ->
                                                 IpfsTransaction.call(owner(), tid ->
                                                                 deleteFileChunks(props.streamSecret.get(), props.chunkCount() - 1, writableFilePointer().withMapKey(secondChunk.left, secondChunk.right),
                                                                         signingPair(), tid, crypto.hasher, network, snapshot, committer),
@@ -658,14 +658,14 @@ public class FileWrapper {
                 );
     }
 
-    public static int getNumberOfChunks(long size) {
+    public static int getNumberOfChunks(long size, int chunkSize) {
         if (size == 0)
             return 1;
-        return (int)((size + Chunk.MAX_SIZE - 1)/Chunk.MAX_SIZE);
+        return (int)((size + chunkSize - 1)/chunkSize);
     }
 
-    public List<Location> generateChildLocationsFromSize(long fileSize, SafeRandom random) {
-        return generateChildLocations(getNumberOfChunks(fileSize), random);
+    public List<Location> generateChildLocationsFromSize(long fileSize, int chunkSize, SafeRandom random) {
+        return generateChildLocations(getNumberOfChunks(fileSize, chunkSize), random);
     }
 
     public List<Location> generateChildLocations(int numberOfChunks,
@@ -747,15 +747,15 @@ public class FileWrapper {
         FileProperties props = txn.props;
         CompletableFuture<Optional<HashTree>> txnHash = txn.hash.isPresent() ?
                 Futures.of(txn.hash) :
-                HashTree.buildParallel(p -> data, (int) (txn.size() >>> 32), (int) txn.size(), crypto.hasher, 1)
+                HashTree.buildParallel(p -> data, (int) (txn.size() >>> 32), (int) txn.size(), props.chunkSize, crypto.hasher, 1)
                         .thenApply(Optional::of);
         // first find how many chunks were already uploaded, then seek reader to that offset and continue
-        long totalChunks = (txn.size() + Chunk.MAX_SIZE - 1) / Chunk.MAX_SIZE;
+        long totalChunks = (txn.size() + props.chunkSize - 1) / props.chunkSize;
         return txnHash
                 .thenCompose(hash -> findFirstAbsentChunkIndex(txn.streamSecret(), txn.getFirstLocation(), txn.firstBat, totalChunks, s, network, crypto)
                         .thenCompose(startChunkIndex -> {
-                            monitor.accept(startChunkIndex * Chunk.MAX_SIZE);
-                            FileUploader uploader = new FileUploader(txn.targetFilename(), data, startChunkIndex*Chunk.MAX_SIZE,
+                            monitor.accept(startChunkIndex * props.chunkSize);
+                            FileUploader uploader = new FileUploader(txn.targetFilename(), data, startChunkIndex*(long)props.chunkSize,
                                     txn.size(), txn.baseKey, txn.dataKey, getLocation(), getPointer().capability.bat, getParentKey(),
                                     monitor, props, hash, txn.getFirstLocation().getMapKey(), txn.firstBat, isCancelled);
                             return uploader.uploadFrom(s, c, network, startChunkIndex.intValue(), txn.getFirstLocation().owner,
@@ -790,7 +790,7 @@ public class FileWrapper {
         Function<List<Pair<byte[], Optional<Bat>>>, CompletableFuture<List<Boolean>>> lookup =
                 caps -> network.chunksArePresent(s, firstLoc.owner, firstLoc.writer, caps);
         return binarySearchAbsentChunk(streamSecret, 0L, totalChunks,
-                firstLoc.getMapKey(), firstBat, lookup, crypto.hasher);
+                firstLoc.getMapKey(), firstBat, lookup, getFileProperties().chunkSize, crypto.hasher);
     }
 
     /**
@@ -807,6 +807,7 @@ public class FileWrapper {
                                                                   byte[] loKey,
                                                                   Optional<Bat> loBat,
                                                                   Function<List<Pair<byte[], Optional<Bat>>>, CompletableFuture<List<Boolean>>> lookup,
+                                                                  int chunkSize,
                                                                   Hasher hasher) {
         if (lo >= hi)
             return Futures.of(lo);
@@ -821,7 +822,7 @@ public class FileWrapper {
 
         Pair<byte[], Optional<Bat>>[] probes = new Pair[batchSize];
         probes[0] = new Pair<>(loKey, loBat);  // 0 steps from lo — no derivation needed
-        return deriveProbesForIndices(streamSecret, loKey, loBat, lo, probeIndices, 1, probes, hasher)
+        return deriveProbesForIndices(streamSecret, loKey, loBat, lo, probeIndices, 1, probes, chunkSize, hasher)
                 .thenCompose(ps -> lookup.apply(Arrays.asList(ps))
                         .thenCompose(presentFlags -> {
                             for (int i = 0; i < batchSize; i++) {
@@ -829,14 +830,14 @@ public class FileWrapper {
                                     if (i == 0) return Futures.of(lo);  // chunk lo itself is absent
                                     // probe[i-1] present, probe[i] absent → answer in (probe[i-1], probe[i]]
                                     return binarySearchAbsentChunk(streamSecret,
-                                            probeIndices[i - 1], probeIndices[i], ps[i - 1].left, ps[i - 1].right, lookup, hasher);
+                                            probeIndices[i - 1], probeIndices[i], ps[i - 1].left, ps[i - 1].right, lookup, chunkSize, hasher);
                                 }
                             }
                             // All probes present → advance lo to last probe; guard against rangeSize=1 loop
                             long newLo = probeIndices[batchSize - 1];
                             if (newLo + 1 >= hi) return Futures.of(hi);
                             return binarySearchAbsentChunk(streamSecret,
-                                    newLo, hi, ps[batchSize - 1].left, ps[batchSize - 1].right, lookup, hasher);
+                                    newLo, hi, ps[batchSize - 1].left, ps[batchSize - 1].right, lookup, chunkSize, hasher);
                         }));
     }
 
@@ -849,14 +850,15 @@ public class FileWrapper {
             long[] probeIndices,
             int pos,
             Pair<byte[], Optional<Bat>>[] probes,
+            int chunkSize,
             Hasher hasher) {
         if (pos == probes.length)
             return Futures.of(probes);
         long steps = probeIndices[pos] - prevIndex;
-        return FileProperties.calculateMapKey(streamSecret, prevKey, prevBat, steps * Chunk.MAX_SIZE, hasher)
+        return FileProperties.calculateMapKey(streamSecret, prevKey, prevBat, steps * chunkSize, chunkSize, hasher)
                 .thenCompose(kp -> {
                     probes[pos] = kp;
-                    return deriveProbesForIndices(streamSecret, kp.left, kp.right, probeIndices[pos], probeIndices, pos + 1, probes, hasher);
+                    return deriveProbesForIndices(streamSecret, kp.left, kp.right, probeIndices[pos], probeIndices, pos + 1, probes, chunkSize, hasher);
                 });
     }
 
@@ -1040,7 +1042,8 @@ public class FileWrapper {
                                                                   Crypto crypto,
                                                                   ProgressConsumer<Long> monitor) {
         long existingSize = getSize();
-        int nChunks = newSize == 0 ? 1 : (int) ((newSize + Chunk.MAX_SIZE - 1) / Chunk.MAX_SIZE);
+        int chunkSize = getFileProperties().chunkSize;
+        int nChunks = newSize == 0 ? 1 : (int) ((newSize + chunkSize - 1) / chunkSize);
         Optional<HashBranch> existingBranch = getFileProperties().treeHash;
 
         if (existingBranch.isEmpty() || existingBranch.get().level1.isEmpty() || nChunks > 1024) {
@@ -1056,11 +1059,11 @@ public class FileWrapper {
                                         IntStream.range(0, nChunks).boxed().collect(Collectors.toList()),
                                         cleaned,
                                         (state, chunkIndex) -> {
-                                            long chunkStart = (long) chunkIndex * Chunk.MAX_SIZE;
-                                            int chunkLen = (int) Math.min(Chunk.MAX_SIZE, newSize - chunkStart);
+                                            long chunkStart = (long) chunkIndex * chunkSize;
+                                            int chunkLen = (int) Math.min(chunkSize, newSize - chunkStart);
                                             byte[] chunkBuf = new byte[chunkLen];
                                             return readFully(newData, chunkBuf, 0, chunkLen)
-                                                    .thenCompose(ignored -> crypto.hasher.sha256(chunkBuf))
+                                                    .thenCompose(ignored -> HashTree.chunkHash(chunkBuf, chunkIndex, chunkSize, nChunks == 1, crypto.hasher))
                                                     .thenCompose(chunkHash -> {
                                                         if (chunkIndex < existingChunkHashes.nChunks()) {
                                                             byte[] existing = Arrays.copyOfRange(
@@ -1315,7 +1318,7 @@ public class FileWrapper {
             Crypto crypto,
             Committer c) {
         AsyncReader fileData = f.fileData.get();
-        if (f.length <= Chunk.MAX_SIZE || transactions == null) // small files or writable public links
+        if (f.length <= Chunk.LEGACY_SIZE || transactions == null) // small files or writable public links
             return parent.uploadFileSection(p.left, c, f.filename, fileData, Optional.empty(), false, 0, f.length, f.hash, f.modifiedTime,
                             Optional.empty(), Optional.empty(), Optional.empty(), f.skipExisting,
                             f.overwriteExisting, true, network.disableCommits(), crypto, isCancelled, f.monitor,
@@ -1448,7 +1451,7 @@ public class FileWrapper {
         Optional<Bat> parentBat = getPointer().getParentCap().bat;
         WritableAbsoluteCapability ourCap = writableFilePointer();
         boolean updateTreeHash = inputStartIndex == 0 && endIndex >= props.size;
-        HashTreeBuilder treeHasher = updateTreeHash ? new HashTreeBuilder(endIndex) : null;
+        HashTreeBuilder treeHasher = updateTreeHash ? new HashTreeBuilder(endIndex, props.chunkSize) : null;
         return current.withWriter(owner(), writer(), network)
                 .thenCompose(base -> {
                     FileWrapper us = this;
@@ -1460,17 +1463,17 @@ public class FileWrapper {
 
                         List<Long> startIndexes = new ArrayList<>();
 
-                        for (long startIndex = inputStartIndex; startIndex < endIndex; startIndex = startIndex + Chunk.MAX_SIZE - (startIndex % Chunk.MAX_SIZE))
+                        for (long startIndex = inputStartIndex; startIndex < endIndex; startIndex = startIndex + props.chunkSize - (startIndex % props.chunkSize))
                             startIndexes.add(startIndex);
 
                         BiFunction<Snapshot, Long, CompletableFuture<Snapshot>> composer = (version, startIndex) -> {
                             MaybeMultihash currentHash = us.pointer.fileAccess.committedHash();
                             return retriever.getChunk(version.get(us.writer()), network, crypto, startIndex,
-                                    filesSize.get(), ourCap, props.streamSecret, currentHash, monitor)
+                                    filesSize.get(), props.chunkSize, ourCap, props.streamSecret, currentHash, monitor)
                                     .thenCompose(currentLocation -> {
                                                 CompletableFuture<Optional<Pair<Location, Optional<Bat>>>> locationAt = retriever
                                                         .getMapLabelAt(version.get(us.writer()), ourCap,
-                                                                props.streamSecret, startIndex + Chunk.MAX_SIZE, crypto.hasher, network)
+                                                                props.streamSecret, startIndex + props.chunkSize, props.chunkSize, crypto.hasher, network)
                                                         .thenApply(x -> x.map(mb -> new Pair<>(getLocation().withMapKey(mb.left), mb.right)));
                                                 return locationAt.thenCompose(locationAndBat ->
                                                         CompletableFuture.completedFuture(new Pair<>(currentLocation, locationAndBat)));
@@ -1498,21 +1501,21 @@ public class FileWrapper {
                                             LOG.info("********** Writing to chunk at mapkey: " + ArrayOps.bytesToHex(currentOriginal.location.getMapKey()) + " next: " + nextChunkLocation);
 
                                             // modify chunk, re-encrypt and upload
-                                            int internalStart = (int) (startIndex % Chunk.MAX_SIZE);
-                                            int internalEnd = endIndex - (startIndex - internalStart) > Chunk.MAX_SIZE ?
-                                                    Chunk.MAX_SIZE : (int) (endIndex - (startIndex - internalStart));
+                                            int internalStart = (int) (startIndex % props.chunkSize);
+                                            int internalEnd = endIndex - (startIndex - internalStart) > props.chunkSize ?
+                                                    props.chunkSize : (int) (endIndex - (startIndex - internalStart));
                                             byte[] rawData = currentOriginal.chunk.data();
                                             // extend data array if necessary
                                             if (rawData.length < internalEnd)
                                                 rawData = Arrays.copyOfRange(rawData, 0, internalEnd);
                                             byte[] raw = rawData;
-                                            Optional<SymmetricLinkToSigner> writerLink = startIndex < Chunk.MAX_SIZE ?
+                                            Optional<SymmetricLinkToSigner> writerLink = startIndex < props.chunkSize ?
                                                     us.pointer.fileAccess.getWriterLink(us.pointer.capability.rBaseKey) :
                                                     Optional.empty();
 
                                             return fileData.readIntoArray(raw, internalStart, internalEnd - internalStart)
                                                     .thenCompose(read -> updateTreeHash ?
-                                                            treeHasher.setChunk((int)(startIndex / Chunk.MAX_SIZE), raw, crypto.hasher).thenApply(x -> read) :
+                                                            treeHasher.setChunk((int)(startIndex / props.chunkSize), raw, crypto.hasher).thenApply(x -> read) :
                                                             Futures.of(read))
                                                     .thenCompose(read -> {
 
@@ -1524,7 +1527,7 @@ public class FileWrapper {
                                                         props.isLink, props.mimeType,
                                                         endIndex > currentSize ? endIndex : currentSize,
                                                         modified.orElseGet(() -> LocalDateTime.now(ZoneOffset.UTC)), props.created, props.isHidden,
-                                                        props.thumbnail, props.streamSecret, Optional.empty());
+                                                        props.thumbnail, props.streamSecret, Optional.empty(), props.chunkSize);
 
                                                 Optional<BatId> mirrorBat = mirrorBatId();
                                                 CompletableFuture<Snapshot> chunkUploaded = FileUploader.uploadChunk(version, committer, us.signingPair(),
@@ -1538,7 +1541,7 @@ public class FileWrapper {
                                                     if (updatedLength > filesSize.get()) {
                                                         filesSize.set(updatedLength);
 
-                                                        if (updatedLength > Chunk.MAX_SIZE) {
+                                                        if (updatedLength > props.chunkSize) {
                                                             // update file size and remove treehash in FileProperties of first chunk
                                                             return network.getFile(updatedBase, ourCap, entryWriter, ownername)
                                                                     .thenCompose(updatedUs -> {
@@ -1932,7 +1935,8 @@ public class FileWrapper {
                             if (thumbData.isEmpty() && mimeType.equals(fileOpt.get().getFileProperties().mimeType))
                                 return Futures.of(base);
                             FileProperties fileProps = new FileProperties(fileName, false, props.isLink, mimeType, fileSize,
-                                    updatedDateTime, createdDateTime, isHidden, thumbData, streamSecret, fileOpt.get().props.treeHash);
+                                    updatedDateTime, createdDateTime, isHidden, thumbData, streamSecret, fileOpt.get().props.treeHash,
+                                    fileOpt.get().props.chunkSize);
 
                             return fileOpt.get().updateProperties(base, committer, fileProps, network);
                         });
@@ -1988,7 +1992,8 @@ public class FileWrapper {
                         .map(secret -> FileProperties.calculateMapKey(secret,
                                 child.get().getLocation().getMapKey(),
                                 child.get().pointer.capability.bat,
-                                child.get().getFileProperties().size, crypto.hasher)
+                                child.get().getFileProperties().size,
+                                child.get().getFileProperties().chunkSize, crypto.hasher)
                                 .thenApply(p -> new Triple<>(p.left, p.right, Optional.of(secret))))
                         .orElseGet(() -> Futures.of(new Triple<>(crypto.random.randomBytes(32),
                                 Optional.of(Bat.random(crypto.random)), Optional.empty())))
@@ -2225,7 +2230,7 @@ public class FileWrapper {
                     FileProperties newProps = new FileProperties(newFilename, isDir, isLink,
                             currentProps.mimeType, currentProps.size,
                             currentProps.modified, currentProps.created, currentProps.isHidden,
-                            currentProps.thumbnail, currentProps.streamSecret, currentProps.treeHash);
+                            currentProps.thumbnail, currentProps.streamSecret, currentProps.treeHash, currentProps.chunkSize);
                     SigningPrivateKeyAndPublicHash signer = isLink ? parent.signingPair() : signingPair();
                     return userContext.network.synchronizer.applyComplexUpdate(owner(), signer,
                             (s, committer) -> nodeToUpdate.updateProperties(s, committer, us,
@@ -2249,7 +2254,7 @@ public class FileWrapper {
                                         FileProperties nonLinkProps = new FileProperties(newFilename, isDir, false,
                                                 currentProps.mimeType, currentProps.size,
                                                 currentProps.modified, currentProps.created, currentProps.isHidden,
-                                                currentProps.thumbnail, currentProps.streamSecret, currentProps.treeHash);
+                                                currentProps.thumbnail, currentProps.streamSecret, currentProps.treeHash, currentProps.chunkSize);
                                         return v.withWriter(owner(), nonLinkUs.writer, userContext.network)
                                                 .thenCompose(v2 -> nonLinkNodeToUpdate.updateProperties(v2, committer, nonLinkUs,
                                                         Optional.of(signingPair()), nonLinkProps, userContext.network));
@@ -2328,10 +2333,11 @@ public class FileWrapper {
         if (getFileProperties().streamSecret.isEmpty())
             return Futures.of(Collections.emptyList());
         long fileSize = getSize();
-        long nBranches = fileSize == 0 ? 1 : (fileSize + 1024L * Chunk.MAX_SIZE - 1) / (1024L * Chunk.MAX_SIZE);
+        int chunkSize = getFileProperties().chunkSize;
+        long nBranches = fileSize == 0 ? 1 : (fileSize + 1024L * chunkSize - 1) / (1024L * chunkSize);
         byte[] streamSecret = getFileProperties().streamSecret.get();
         return Futures.combineAllInOrder(LongStream.range(0, nBranches)
-                .mapToObj(b -> FileProperties.calculateMapKey(streamSecret, cap.getMapKey(), cap.bat, b * 1024 * Chunk.MAX_SIZE, hasher)
+                .mapToObj(b -> FileProperties.calculateMapKey(streamSecret, cap.getMapKey(), cap.bat, b * 1024 * chunkSize, chunkSize, hasher)
                         .thenCompose(loc -> {
                             WritableAbsoluteCapability chunkCap = cap.withMapKey(loc.left, loc.right);
                             long chunkIndex = b * 1024;
@@ -2492,16 +2498,17 @@ public CompletableFuture<Boolean> copyTo(FileWrapper target, UserContext context
         Optional<HashBranch> hash = getFileProperties().treeHash;
         if (hash.isEmpty())
             return Futures.of(Optional.empty());
-        if (size < 1024L * Chunk.MAX_SIZE)
+        int chunkSize = getFileProperties().chunkSize;
+        if (size < 1024L * chunkSize)
             return Futures.of(hash.map(t -> new HashTree(t.rootHash, t
                     .level1.stream().collect(Collectors.toList()),
                     t.level2.stream().collect(Collectors.toList()),
                     t.level3.stream().collect(Collectors.toList()))));
-        long nBranches = (size + 1024L * Chunk.MAX_SIZE - 1) / (1024L * Chunk.MAX_SIZE);
+        long nBranches = (size + 1024L * chunkSize - 1) / (1024L * chunkSize);
         return Futures.combineAllInOrder(LongStream.range(0, nBranches).mapToObj(b -> {
             WritableAbsoluteCapability cap = writableFilePointer();
             return FileProperties.calculateMapKey(getFileProperties().streamSecret.get(),
-                    cap.getMapKey(), cap.bat, b * 1024 * Chunk.MAX_SIZE, hasher).thenCompose(loc -> {
+                    cap.getMapKey(), cap.bat, b * 1024 * chunkSize, chunkSize, hasher).thenCompose(loc -> {
                 WritableAbsoluteCapability chunkCap = cap.withMapKey(loc.left, loc.right);
                 return network.getMetadata(version.get(writer()), chunkCap)
                         .thenApply(meta -> meta.get().getProperties(chunkCap.rBaseKey).treeHash.get());
@@ -3239,7 +3246,7 @@ public CompletableFuture<Boolean> copyTo(FileWrapper target, UserContext context
         return fileAccess.retriever(pointer.capability.rBaseKey, props.streamSecret, getLocation().getMapKey(), pointer.capability.bat, crypto.hasher)
                 .thenCompose(retriever ->
                         retriever.getFile(version, network, crypto, pointer.capability, props.streamSecret,
-                                fileSize, fileAccess.committedHash(), nBufferedChunks, monitor));
+                                fileSize, props.chunkSize, fileAccess.committedHash(), nBufferedChunks, monitor));
     }
 
     private CompletableFuture<FileRetriever> getRetriever(Hasher hasher) {

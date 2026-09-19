@@ -109,7 +109,8 @@ public class FileBackedMessageStore implements MessageStore {
                 .thenCompose(p -> p.left.overwriteSection(p.right, committer, AsyncReader.build(raw), p.left.getSize(),
                         p.left.getSize() + raw.length, Optional.empty(), network, crypto, x -> {}).thenCompose(s2 -> {
                     long size = p.left.getSize();
-                    boolean newChunk = (raw.length + size)/Chunk.MAX_SIZE > size/Chunk.MAX_SIZE;
+                    int chunkSize = p.left.getFileProperties().chunkSize;
+                    boolean newChunk = (raw.length + size)/chunkSize > size/chunkSize;
                     if (! newChunk)
                         return Futures.of(s2);
                     ByteArrayOutputStream bout = new ByteArrayOutputStream();
@@ -120,7 +121,7 @@ public class FileBackedMessageStore implements MessageStore {
                     while (count < sizes.size()) {
                         totalSize += sizes.get(count);
                         count++;
-                        if ((totalSize + size)/Chunk.MAX_SIZE > size/Chunk.MAX_SIZE)
+                        if ((totalSize + size)/chunkSize > size/chunkSize)
                             break;
                     }
                     try {

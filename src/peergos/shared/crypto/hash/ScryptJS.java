@@ -5,6 +5,7 @@ import peergos.shared.io.ipfs.Multihash;
 import peergos.shared.user.*;
 import peergos.shared.user.fs.*;
 
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 
 public class ScryptJS implements Hasher {
@@ -44,6 +45,42 @@ public class ScryptJS implements Hasher {
                     (int)(start >> 32), (int)start, (int)(end >> 32), (int)end);
         }
         return Hasher.super.sha256Section(reader, start, end);
+    }
+
+    @Override
+    public CompletableFuture<byte[]> blake3(byte[] input) {
+        return scriptJS.blake3(input);
+    }
+
+    @Override
+    public CompletableFuture<byte[]> blake3ChainingValue(byte[] input, long startChunk) {
+        return scriptJS.blake3ChainingValue(input, (int) (startChunk >> 32), (int) startChunk);
+    }
+
+    @Override
+    public CompletableFuture<byte[]> blake3Section(AsyncReader reader, long start, long end) {
+        return blake3FileSection(reader, start, end, false, 0)
+                .orElseGet(() -> Hasher.super.blake3Section(reader, start, end));
+    }
+
+    @Override
+    public CompletableFuture<byte[]> blake3SectionChainingValue(AsyncReader reader, long start, long end, long startChunk) {
+        return blake3FileSection(reader, start, end, true, startChunk)
+                .orElseGet(() -> Hasher.super.blake3SectionChainingValue(reader, start, end, startChunk));
+    }
+
+    /** Hash a slice of the file in a worker, when the reader is backed by a real file. */
+    private Optional<CompletableFuture<byte[]>> blake3FileSection(AsyncReader reader,
+                                                                  long start,
+                                                                  long end,
+                                                                  boolean asChainingValue,
+                                                                  long startChunk) {
+        if (! (reader instanceof BrowserFileReader))
+            return Optional.empty();
+        JSFileReader jsReader = ((BrowserFileReader) reader).getReader();
+        return Optional.of(scriptJS.blake3FileSection(jsReader,
+                (int) (start >> 32), (int) start, (int) (end >> 32), (int) end,
+                asChainingValue, (int) (startChunk >> 32), (int) startChunk));
     }
 
     @Override

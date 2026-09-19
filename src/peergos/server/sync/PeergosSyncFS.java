@@ -159,11 +159,12 @@ public class PeergosSyncFS implements SyncFilesystem {
         Optional<FileWrapper> parent = context.getByPath(root.resolve(p).getParent()).join();
         FileProperties withHash = f.getFileProperties().withHash(Optional.of(hashTree.branch(0)));
         f.setProperties(withHash, context.crypto.hasher, context.network, parent).join();
-        long nBranches = (fileSize + 1024L * Chunk.MAX_SIZE - 1) / (1024L * Chunk.MAX_SIZE);
+        int chunkSize = withHash.chunkSize;
+        long nBranches = (fileSize + 1024L * chunkSize - 1) / (1024L * chunkSize);
         for (long b = 1; b < nBranches; b++) {
             WritableAbsoluteCapability cap = f.writableFilePointer();
             Pair<byte[], Optional<Bat>> loc = FileProperties.calculateMapKey(withHash.streamSecret.get(),
-                    cap.getMapKey(), cap.bat, b * 1024 * Chunk.MAX_SIZE, context.crypto.hasher).join();
+                    cap.getMapKey(), cap.bat, b * 1024 * chunkSize, chunkSize, context.crypto.hasher).join();
             WritableAbsoluteCapability chunkCap = cap.withMapKey(loc.left, loc.right);
             long chunkIndex = b * 1024;
             context.network.synchronizer.applyComplexUpdate(f.owner(), f.signingPair(),
@@ -269,25 +270,30 @@ public class PeergosSyncFS implements SyncFilesystem {
     }
 
     @Override
-    public HashTree hashFile(Path p, Optional<FileWrapper> meta, String relativePath, SyncState syncedVersions, long fileSize) {
+    public HashTree hashFile(Path p, Optional<FileWrapper> meta, String relativePath, SyncState syncedVersions, long fileSize, int chunkSize) {
         FileWrapper f = meta.orElseGet(() -> context.getByPath(root.resolve(p)).join().get());
         FileProperties props = f.getFileProperties();
+        // the file knows its own scheme; the caller's is only a guess about what it will be
+        // compared against, and this side is the authority
+        int fileChunkSize = props.chunkSize;
         if (props.treeHash.isPresent()) {
             FileState synced = syncedVersions.byPath(relativePath);
             HashBranch branch = props.treeHash.get();
             if (synced != null && synced.hashTree.rootHash.equals(branch.rootHash))
                 return synced.hashTree;
-            if (props.size < 1024L * Chunk.MAX_SIZE)
+            if (props.size < 1024L * fileChunkSize)
                 return new HashTree(branch.rootHash, branch.level1.map(List::of)
                         .orElseThrow(() -> new IllegalStateException("Invalid hash branch")),
                         Collections.emptyList(),
                         Collections.emptyList());
         }
 
-        byte[] buf = new byte[4 * 1024];
-
         long size = f.getSize();
         AsyncReader reader = f.getInputStream(context.network, context.crypto, x -> {}).join();
+        if (Chunk.usesBlake3(fileChunkSize))
+            return blake3Tree(reader, size, fileChunkSize);
+
+        byte[] buf = new byte[4 * 1024];
         int chunkOffset = 0;
         List<byte[]> chunkHashes = new ArrayList<>();
         try {
@@ -296,8 +302,8 @@ public class PeergosSyncFS implements SyncFilesystem {
             for (long i = 0; i < size; ) {
                 int read = reader.readIntoArray(buf, 0, (int) Math.min(buf.length, size - i)).join();
                 chunkOffset += read;
-                if (chunkOffset >= Chunk.MAX_SIZE) {
-                    int thisChunk = read - chunkOffset + Chunk.MAX_SIZE;
+                if (chunkOffset >= fileChunkSize) {
+                    int thisChunk = read - chunkOffset + fileChunkSize;
                     chunkHash.update(buf, 0, thisChunk);
                     chunkHashes.add(chunkHash.digest());
                     chunkHash = MessageDigest.getInstance("SHA-256");
@@ -309,13 +315,29 @@ public class PeergosSyncFS implements SyncFilesystem {
                     chunkHash.update(buf, 0, read);
                 i += read;
             }
-            if (size == 0 || chunkOffset % Chunk.MAX_SIZE != 0)
+            if (size == 0 || chunkOffset % fileChunkSize != 0)
                 chunkHashes.add(chunkHash.digest());
 
-            return HashTree.build(chunkHashes, context.crypto.hasher).join();
+            return HashTree.build(chunkHashes, fileChunkSize, context.crypto.hasher).join();
         } catch (NoSuchAlgorithmException e) {
             throw new RuntimeException(e);
         }
+    }
+
+    /** A BLAKE3 chunk's value needs the whole chunk, not a running digest, so read it whole. */
+    private HashTree blake3Tree(AsyncReader reader, long size, int chunkSize) {
+        List<byte[]> chunkHashes = new ArrayList<>();
+        boolean onlyChunk = size <= chunkSize;
+        long done = 0;
+        do {
+            int want = (int) Math.min(chunkSize, size - done);
+            byte[] chunk = new byte[want];
+            for (int read = 0; read < want; )
+                read += reader.readIntoArray(chunk, read, want - read).join();
+            chunkHashes.add(HashTree.chunkHash(chunk, chunkHashes.size(), chunkSize, onlyChunk, context.crypto.hasher).join());
+            done += want;
+        } while (done < size);
+        return HashTree.build(chunkHashes, chunkSize, context.crypto.hasher).join();
     }
 
     @Override

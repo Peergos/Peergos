@@ -17,8 +17,22 @@ public class FileState implements Cborable {
     public final long modificationTime;
     public final long size;
     public final HashTree hashTree;
+    /**
+     * The chunk size the tree above was built at, and the scheme it was built with.
+     *
+     * Sync has to hash a local file the way the file it is being compared against was hashed:
+     * a 4 MiB BLAKE3 root and a 5 MiB sha256 root for the same bytes are different values, so
+     * hashing with the wrong one makes an unchanged file look changed and re-transfers it.
+     * A local file has no properties of its own to read this from, so the last synced state is
+     * where it is remembered.
+     */
+    public final int chunkSize;
 
     public FileState(String relPath, long modificationTime, long size, HashTree hashTree) {
+        this(relPath, modificationTime, size, hashTree, Chunk.LEGACY_SIZE);
+    }
+
+    public FileState(String relPath, long modificationTime, long size, HashTree hashTree, int chunkSize) {
         if (relPath.contains("..")) {
             if (Arrays.asList(relPath.split("/")).contains(".."))
                 throw new IllegalStateException("Invalid path: " + relPath);
@@ -27,10 +41,11 @@ public class FileState implements Cborable {
         this.modificationTime = modificationTime;
         this.size = size;
         this.hashTree = hashTree;
+        this.chunkSize = chunkSize;
     }
 
     public FileState withModtime(Optional<LocalDateTime> modtime) {
-        return new FileState(relPath, modtime.map(t -> t.toInstant(ZoneOffset.UTC).toEpochMilli() / 1000 * 1000).orElse(modificationTime), size, hashTree);
+        return new FileState(relPath, modtime.map(t -> t.toInstant(ZoneOffset.UTC).toEpochMilli() / 1000 * 1000).orElse(modificationTime), size, hashTree, chunkSize);
     }
 
     public String prettyPrint() {
@@ -42,6 +57,11 @@ public class FileState implements Cborable {
             return List.of(new Pair<>(0L, size));
         if (hashTree.rootHash.equals(other.hashTree.rootHash))
             return Collections.emptyList();
+        // Two trees at different chunk sizes describe different cuts of the file, so their
+        // per-chunk values are not comparable and neither are the byte ranges they imply.
+        // A file never changes chunk size, so this means the two are not the same file.
+        if (chunkSize != other.chunkSize)
+            return List.of(new Pair<>(0L, size));
 
         List<ChunkHashList> a = hashTree.level1;
         List<ChunkHashList> b = other.hashTree.level1;
@@ -64,7 +84,7 @@ public class FileState implements Cborable {
             }
         }
         return diffChunks.stream()
-                .map(c -> new Pair<>(c * Chunk.MAX_SIZE, Math.min((c + 1) * Chunk.MAX_SIZE, size)))
+                .map(c -> new Pair<>(c * chunkSize, Math.min((c + 1) * chunkSize, size)))
                 .collect(Collectors.toList());
     }
 
@@ -75,6 +95,9 @@ public class FileState implements Cborable {
         state.put("m", new CborObject.CborLong(modificationTime));
         state.put("s", new CborObject.CborLong(size));
         state.put("h", hashTree.toCbor());
+        // absent means the legacy size, so every row written before this stays readable
+        if (chunkSize != Chunk.LEGACY_SIZE)
+            state.put("cs", new CborObject.CborLong(FileProperties.chunkSizeLog2(chunkSize)));
 
         return CborObject.CborMap.build(state);
     }
@@ -85,7 +108,8 @@ public class FileState implements Cborable {
         long modTime = map.getLong("m");
         long size = map.getLong("s");
         HashTree hash = map.get("h", HashTree::fromCbor);
-        return new FileState(relPath, modTime, size, hash);
+        int chunkSize = map.getOptionalLong("cs").map(FileProperties::chunkSizeFromLog2).orElse(Chunk.LEGACY_SIZE);
+        return new FileState(relPath, modTime, size, hash, chunkSize);
     }
 
     public boolean equalsIgnoreModtime(FileState other) {

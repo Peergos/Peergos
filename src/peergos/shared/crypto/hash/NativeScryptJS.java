@@ -23,4 +23,11 @@ public class NativeScryptJS {
     public native CompletableFuture<byte[]> streamSha256(AsyncReader stream, int length);
 
     public native CompletableFuture<byte[]> sha256FileSection(JSFileReader reader, int startHi, int startLo, int endHi, int endLo);
+
+    public native CompletableFuture<byte[]> blake3(byte[] input);
+
+    public native CompletableFuture<byte[]> blake3ChainingValue(byte[] input, int startChunkHi, int startChunkLo);
+
+    public native CompletableFuture<byte[]> blake3FileSection(JSFileReader reader, int startHi, int startLo, int endHi, int endLo,
+                                                              boolean asChainingValue, int startChunkHi, int startChunkLo);
 }

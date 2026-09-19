@@ -40,7 +40,7 @@ public class FileChunkBinarySearchTests {
         for (int i = 1; i < n; i++) {
             Pair<byte[], Optional<Bat>> prev = probes.get(i - 1);
             probes.add(FileProperties.calculateMapKey(streamSecret, prev.left, prev.right,
-                    Chunk.MAX_SIZE, hasher).join());
+                    Chunk.LEGACY_SIZE, Chunk.LEGACY_SIZE, hasher).join());
         }
         return probes;
     }
@@ -78,7 +78,7 @@ public class FileChunkBinarySearchTests {
                 buildLookup(allProbes, k, callCount);
 
         long result = FileWrapper.binarySearchAbsentChunk(
-                streamSecret, 0L, n, firstKey, firstBat, lookup, hasher).join();
+                streamSecret, 0L, n, firstKey, firstBat, lookup, Chunk.LEGACY_SIZE, hasher).join();
 
         Assert.assertEquals("N=" + n + " k=" + k + ": wrong first absent chunk", (long) k, result);
 
@@ -96,7 +96,7 @@ public class FileChunkBinarySearchTests {
         Function<List<Pair<byte[], Optional<Bat>>>, CompletableFuture<List<Boolean>>> lookup =
                 buildLookup(Collections.emptyList(), 0, calls);
         long result = FileWrapper.binarySearchAbsentChunk(
-                streamSecret, 0L, 0L, firstKey, Optional.empty(), lookup, hasher).join();
+                streamSecret, 0L, 0L, firstKey, Optional.empty(), lookup, Chunk.LEGACY_SIZE, hasher).join();
         Assert.assertEquals(0L, result);
         Assert.assertEquals("no lookups needed", 0, calls[0]);
     }
@@ -163,7 +163,7 @@ public class FileChunkBinarySearchTests {
             int[] callCount = {0};
             Function<List<Pair<byte[], Optional<Bat>>>, CompletableFuture<List<Boolean>>> lookup =
                     buildLookup(allProbes, k, callCount);
-            FileWrapper.binarySearchAbsentChunk(streamSecret, 0L, n, firstKey, firstBat, lookup, hasher).join();
+            FileWrapper.binarySearchAbsentChunk(streamSecret, 0L, n, firstKey, firstBat, lookup, Chunk.LEGACY_SIZE, hasher).join();
 
             // Each 8x growth in N adds at most 1 more round-trip.
             if (previousCalls[0] > 0)

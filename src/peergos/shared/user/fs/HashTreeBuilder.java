@@ -8,13 +8,15 @@ import java.util.concurrent.CompletableFuture;
 public class HashTreeBuilder {
 
     private final byte[][] chunkHashes;
+    private final int chunkSize;
 
-    public HashTreeBuilder(long filesize) {
-        this.chunkHashes = new byte[filesize == 0 ? 1 : ((int)((filesize + Chunk.MAX_SIZE - 1) / Chunk.MAX_SIZE))][];
+    public HashTreeBuilder(long filesize, int chunkSize) {
+        this.chunkHashes = new byte[filesize == 0 ? 1 : ((int)((filesize + chunkSize - 1) / chunkSize))][];
+        this.chunkSize = chunkSize;
     }
 
     public CompletableFuture<Boolean> setChunk(int chunkIndex, byte[] chunk, Hasher h) {
-        return h.sha256(chunk)
+        return HashTree.chunkHash(chunk, chunkIndex, chunkSize, chunkHashes.length == 1, h)
                 .thenApply(hash -> {
                     chunkHashes[chunkIndex] = hash;
                     return true;
@@ -29,6 +31,6 @@ public class HashTreeBuilder {
         for (int i=0; i < chunkHashes.length; i++)
             if (chunkHashes[i] == null)
                 throw new IllegalStateException("Incomplete tree hash state!");
-        return HashTree.build(Arrays.asList(chunkHashes), h);
+        return HashTree.build(Arrays.asList(chunkHashes), chunkSize, h);
     }
 }

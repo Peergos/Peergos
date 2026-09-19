@@ -500,16 +500,17 @@ public class DirectorySync {
                             return;
                         try {
                             LOG.accept("REMOTE: Uploading " + file.relPath + " " + progress);
-                            HashTree hashTree = localFS.hashFile(p, Optional.empty(), file.relPath, syncedVersions, file.size);
+                            int chunkSize = FileProperties.chunkSizeForNewFiles();
+                            HashTree hashTree = localFS.hashFile(p, Optional.empty(), file.relPath, syncedVersions, file.size, chunkSize);
                             LocalDateTime modified = LocalDateTime.ofInstant(Instant.ofEpochSecond(file.modifiedTime / 1000, 0), ZoneOffset.UTC);
                             CopyOp op = new CopyOp(false, localFS.resolve(file.relPath),
-                                    remoteFS.resolve(file.relPath), new FileState(file.relPath, file.modifiedTime, file.size, hashTree), null,
+                                    remoteFS.resolve(file.relPath), new FileState(file.relPath, file.modifiedTime, file.size, hashTree, chunkSize), null,
                                     0, file.size, ResumeUploadProps.random(crypto));
                             syncedVersions.startCopies(List.of(op));
                             remoteFS.setBytes(p, 0, localFS.getBytes(p, 0), file.size, Optional.of(hashTree),
                                     Optional.of(modified), localFS.getThumbnail(p), op.props, isCancelled, LOG);
                             syncedVersions.finishCopies(List.of(op));
-                            syncedVersions.add(new FileState(file.relPath, file.modifiedTime, file.size, hashTree));
+                            syncedVersions.add(new FileState(file.relPath, file.modifiedTime, file.size, hashTree, chunkSize));
                             progress.doneFile();
                         } catch (IOException e) {
                             throw new RuntimeException(e);
@@ -517,9 +518,9 @@ public class DirectorySync {
                     } else if (remote.size == file.size) {
                         // hashing here is not extra work: recording the entry lets buildDirState
                         // below match it on modtime and size and skip hashing the file again
-                        HashTree localHash = localFS.hashFile(p, Optional.empty(), file.relPath, syncedVersions, file.size);
+                        HashTree localHash = localFS.hashFile(p, Optional.empty(), file.relPath, syncedVersions, file.size, remote.chunkSize);
                         if (localHash.equals(remote.hashTree)) {
-                            syncedVersions.add(new FileState(file.relPath, file.modifiedTime, file.size, localHash));
+                            syncedVersions.add(new FileState(file.relPath, file.modifiedTime, file.size, localHash, remote.chunkSize));
                             progress.doneFile();
                             LOG.accept("Skipping identical remote file in initial sync: " + file.relPath + " " + progress);
                         }
@@ -619,7 +620,7 @@ public class DirectorySync {
                 FileState synced = syncedVersions.byPath(relativePath);
                 FileState local = localState.byPath(relativePath);
                 FileState remote = remoteState.byPath(relativePath);
-                boolean isSmallRemoteCopy = synced == null && remote == null && local.size < Chunk.MAX_SIZE;
+                boolean isSmallRemoteCopy = synced == null && remote == null && local.size < FileProperties.chunkSizeForNewFiles();
                 if (isSmallRemoteCopy) {
                     List<FileState> remoteByHash = remoteState.byHash(local.hashTree.rootHash);
                     List<FileState> localByHash = localState.byHash(local.hashTree.rootHash);
@@ -1266,7 +1267,7 @@ public class DirectorySync {
         Path newFile = getParent(f).resolve(newName);
         fs.moveTo(f, newFile);
         long newModified = fs.getLastModified(newFile);
-        return new FileState(s.relPath.substring(0, s.relPath.length() - name.length()) + newName, newModified, s.size, s.hashTree);
+        return new FileState(s.relPath.substring(0, s.relPath.length() - name.length()) + newName, newModified, s.size, s.hashTree, s.chunkSize);
     }
 
     public static Optional<LocalDateTime> copyFileDiffAndTruncate(SyncFilesystem srcFs,
@@ -1408,6 +1409,16 @@ public class DirectorySync {
         }
     }
 
+    /**
+     * The chunk size to hash a file at: its own if we can see it, otherwise the one it had when
+     * it was last synced, and for a file neither side has seen before, the one a new file gets.
+     */
+    private static int chunkSizeFor(Optional<FileWrapper> meta, FileState synced) {
+        if (meta.isPresent())
+            return meta.get().getFileProperties().chunkSize;
+        return synced != null ? synced.chunkSize : FileProperties.chunkSizeForNewFiles();
+    }
+
     public static Snapshot buildDirState(SyncFilesystem fs, SyncState res, SyncState synced,
                                          Supplier<Boolean> isCancelled) throws IOException {
         SnapshotTracker version = new SnapshotTracker(new Snapshot(new HashMap<>()));
@@ -1429,7 +1440,8 @@ public class DirectorySync {
                 if (props.meta.isPresent())
                     version.update(props.meta.get().version);
             } else {
-                HashTree hashTree = fs.hashFile(PathUtil.get(props.relPath), props.meta, relPath, synced, props.size);
+                int chunkSize = chunkSizeFor(props.meta, atSync);
+                HashTree hashTree = fs.hashFile(PathUtil.get(props.relPath), props.meta, relPath, synced, props.size, chunkSize);
                 if (props.meta.isPresent()) {
                     version.update(props.meta.get().version);
                     Optional<HashBranch> remoteHash = props.meta.get().getFileProperties().treeHash;
@@ -1452,7 +1464,7 @@ public class DirectorySync {
                         }
                     }
                 }
-                FileState fstat = new FileState(relPath, props.modifiedTime, props.size, hashTree);
+                FileState fstat = new FileState(relPath, props.modifiedTime, props.size, hashTree, chunkSize);
                 if (atSync != null && atSync.equalsIgnoreModtime(fstat)) {
                     res.add(atSync);
                 } else

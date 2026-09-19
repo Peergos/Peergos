@@ -635,13 +635,13 @@ public class SyncTests {
         HashTree grown = new HashTree(new RootHash(rootA), grownLevel1, Collections.emptyList(), Collections.emptyList());
         HashTree old = new HashTree(new RootHash(rootB), oldLevel1, Collections.emptyList(), Collections.emptyList());
 
-        FileState grownFs = new FileState("big.bin", 1000, 1025L * Chunk.MAX_SIZE, grown);
-        FileState oldFs = new FileState("big.bin", 1000, 1024L * Chunk.MAX_SIZE, old);
+        FileState grownFs = new FileState("big.bin", 1000, 1025L * Chunk.LEGACY_SIZE, grown);
+        FileState oldFs = new FileState("big.bin", 1000, 1024L * Chunk.LEGACY_SIZE, old);
 
         List<Pair<Long, Long>> diff = grownFs.diffRanges(oldFs);
         Assert.assertEquals(1, diff.size());
-        Assert.assertEquals(1024L * Chunk.MAX_SIZE, (long) diff.get(0).left);
-        Assert.assertEquals(1025L * Chunk.MAX_SIZE, (long) diff.get(0).right);
+        Assert.assertEquals(1024L * Chunk.LEGACY_SIZE, (long) diff.get(0).left);
+        Assert.assertEquals(1025L * Chunk.LEGACY_SIZE, (long) diff.get(0).right);
     }
 
     @Test
@@ -685,7 +685,7 @@ public class SyncTests {
         byte[] data = new byte[1024 * 1024];
         new Random(1).nextBytes(data);
         Files.write(base2.resolve("f.bin"), data, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
-        HashTree hash = srcFs.hashFile(Paths.get("f.bin"), Optional.empty(), "f.bin", syncDb, data.length);
+        HashTree hash = srcFs.hashFile(Paths.get("f.bin"), Optional.empty(), "f.bin", syncDb, data.length, Chunk.LEGACY_SIZE);
         FileState remote = new FileState("f.bin", srcFs.getLastModified(Paths.get("f.bin")), data.length, hash);
         List<CopyOp> ops = List.of(new CopyOp(true, srcFs.resolve("f.bin"), targetFs.resolve("f.bin"), remote, null,
                 0, data.length, peergos.shared.user.fs.ResumeUploadProps.random(crypto)));
@@ -937,7 +937,7 @@ public class SyncTests {
         Assert.assertFalse(synced.hasCompletedSync());
         synced.setCompletedSync(true);
         Assert.assertTrue(synced.hasCompletedSync());
-        HashTree hash = HashTree.build(Arrays.asList(new byte[32]), crypto.hasher).join();
+        HashTree hash = HashTree.build(Arrays.asList(new byte[32]), Chunk.LEGACY_SIZE, crypto.hasher).join();
         String path = "some-path";
         FileState state1 = new FileState(path, 12345000, 12345, hash);
         synced.add(state1);

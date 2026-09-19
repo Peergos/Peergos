@@ -29,7 +29,7 @@ public class FragmentedPaddedCipherTextTests {
         SymmetricKey from = SymmetricKey.random();
         for (int len: List.of(0, 4000, 4093, 4096, 4099,
                 Fragment.MAX_LENGTH - 3, Fragment.MAX_LENGTH, Fragment.MAX_LENGTH + 3,
-                Chunk.MAX_SIZE - 4, Chunk.MAX_SIZE)) {
+                Chunk.LEGACY_SIZE - 4, Chunk.LEGACY_SIZE)) {
             byte[] data = new byte[len];
             int paddingBlockSize = 4096;
             Optional<BatId> mirrorBat = Optional.of(Bat.random(crypto.random).calculateId(crypto.hasher).join());
@@ -38,7 +38,7 @@ public class FragmentedPaddedCipherTextTests {
 
             Assert.assertTrue("block sizes, len: " + len, p.right.stream()
                     .allMatch(f -> Bat.removeRawBlockBatPrefix(f.fragment.data).length % paddingBlockSize == 0));
-            Assert.assertTrue("# blocks, len: " + len, p.right.size() <= Chunk.MAX_SIZE / Fragment.MAX_LENGTH);
+            Assert.assertTrue("# blocks, len: " + len, p.right.size() <= Chunk.LEGACY_SIZE / Fragment.MAX_LENGTH);
             int maxInlineSize = 4096 + 6;
             if (data.length > maxInlineSize)
                 Assert.assertTrue("# blocks exact, len: " + len, p.right.size() == (data.length + Fragment.MAX_LENGTH - 1) / Fragment.MAX_LENGTH);

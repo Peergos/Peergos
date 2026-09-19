@@ -36,6 +36,13 @@ public class FileProperties implements Cborable {
     public final Optional<Thumbnail> thumbnail;
     public final Optional<byte[]> streamSecret;
     public final Optional<HashBranch> treeHash;
+    /**
+     * The size of this file's chunks. Data rather than a constant because it cannot change for a
+     * file once written: every chunk's label comes from walking offset/chunkSize steps of a hash
+     * chain, so reading a file at the wrong chunk size derives the right labels and assembles
+     * them at the wrong spacing - silently wrong bytes rather than an error.
+     */
+    public final int chunkSize;
 
     public FileProperties(String name,
                           boolean isDirectory,
@@ -47,7 +54,8 @@ public class FileProperties implements Cborable {
                           boolean isHidden,
                           Optional<Thumbnail> thumbnail,
                           Optional<byte[]> streamSecret,
-                          Optional<HashBranch> treeHash) {
+                          Optional<HashBranch> treeHash,
+                          int chunkSize) {
         if (name.length() > MAX_FILE_NAME_SIZE)
             throw new IllegalStateException("File and directory names must be less than 256 characters.");
         if (isDirectory && streamSecret.isPresent())
@@ -67,6 +75,24 @@ public class FileProperties implements Cborable {
         this.thumbnail = thumbnail;
         this.streamSecret = streamSecret;
         this.treeHash = treeHash;
+        this.chunkSize = chunkSize;
+    }
+
+    /** Legacy chunk size, for the callers that predate the chunk size being data. */
+    @JsIgnore
+    public FileProperties(String name,
+                          boolean isDirectory,
+                          boolean isLink,
+                          String mimeType,
+                          int sizeHi, int sizeLo,
+                          LocalDateTime modified,
+                          LocalDateTime created,
+                          boolean isHidden,
+                          Optional<Thumbnail> thumbnail,
+                          Optional<byte[]> streamSecret,
+                          Optional<HashBranch> treeHash) {
+        this(name, isDirectory, isLink, mimeType, sizeHi, sizeLo, modified, created, isHidden, thumbnail,
+                streamSecret, treeHash, Chunk.LEGACY_SIZE);
     }
 
     @JsIgnore
@@ -82,7 +108,29 @@ public class FileProperties implements Cborable {
                           Optional<byte[]> streamSecret,
                           Optional<HashBranch> treeHash) {
         this(name, isDirectory, isLink, mimeType, (int)(size >> 32), (int) size, modified, created, isHidden, thumbnail,
-                streamSecret, treeHash);
+                streamSecret, treeHash, Chunk.LEGACY_SIZE);
+    }
+
+    @JsIgnore
+    public FileProperties(String name,
+                          boolean isDirectory,
+                          boolean isLink,
+                          String mimeType,
+                          long size,
+                          LocalDateTime modified,
+                          LocalDateTime created,
+                          boolean isHidden,
+                          Optional<Thumbnail> thumbnail,
+                          Optional<byte[]> streamSecret,
+                          Optional<HashBranch> treeHash,
+                          int chunkSize) {
+        this(name, isDirectory, isLink, mimeType, (int)(size >> 32), (int) size, modified, created, isHidden, thumbnail,
+                streamSecret, treeHash, chunkSize);
+    }
+
+    public FileProperties withChunkSize(int chunkSize) {
+        return new FileProperties(name, isDirectory, isLink, mimeType, size, modified, created, isHidden,
+                thumbnail, streamSecret, treeHash, chunkSize);
     }
 
     /** Override this properties name with the link's name
@@ -91,7 +139,7 @@ public class FileProperties implements Cborable {
      * @return
      */
     public FileProperties withLink(FileProperties link) {
-        return new FileProperties(link.name, isDirectory, false, mimeType, size, modified, created, isHidden, thumbnail, streamSecret, treeHash);
+        return new FileProperties(link.name, isDirectory, false, mimeType, size, modified, created, isHidden, thumbnail, streamSecret, treeHash, chunkSize);
     }
 
     public static void ensureValidParsedPath(Path path) {
@@ -104,12 +152,20 @@ public class FileProperties implements Cborable {
             throw new IllegalArgumentException("Path too long! Paths must be smaller than " + MAX_PATH_SIZE);
     }
 
+    /**
+     * The label of the chunk containing {@code offset}, found by walking the hash chain.
+     *
+     * The chunk size is a parameter rather than a constant because it belongs to the file: using
+     * the wrong one derives labels that exist, at the wrong spacing, so the read succeeds and
+     * returns the wrong bytes.
+     */
     public static CompletableFuture<Pair<byte[], Optional<Bat>>> calculateMapKey(byte[] streamSecret,
                                                                                  byte[] firstMapKey,
                                                                                  Optional<Bat> firstBat,
                                                                                  long offset,
+                                                                                 int chunkSize,
                                                                                  Hasher h) {
-        long iterations = offset / Chunk.MAX_SIZE;
+        long iterations = offset / chunkSize;
         List<Long> counter = new ArrayList<>();
         for (long i=0; i < iterations; i++)
             counter.add(i);
@@ -165,7 +221,7 @@ public class FileProperties implements Cborable {
     }
 
     public int chunkCount() {
-        return FileWrapper.getNumberOfChunks(size);
+        return FileWrapper.getNumberOfChunks(size, chunkSize);
     }
 
     @JsMethod
@@ -191,6 +247,9 @@ public class FileProperties implements Cborable {
         thumbnail.ifPresent(thumb -> state.put("i", new CborObject.CborByteArray(thumb.data)));
         thumbnail.ifPresent(thumb -> state.put("im", new CborObject.CborString(thumb.mimeType)));
         streamSecret.ifPresent(secret -> state.put("p", new CborObject.CborByteArray(secret)));
+        // absent means the legacy size, so the cbor of every existing file is unchanged
+        if (chunkSize != Chunk.LEGACY_SIZE)
+            state.put("cs", new CborObject.CborLong(chunkSizeLog2(chunkSize)));
         return CborObject.CborMap.build(state);
     }
 
@@ -213,39 +272,68 @@ public class FileProperties implements Cborable {
         Optional<Thumbnail> thumbnail = thumbnailData.map(d -> new Thumbnail(m.getString("im", "image/png"), d));
         Optional<byte[]> streamSecret = m.getOptionalByteArray("p");
         Optional<HashBranch> th = m.getOptional("th", HashBranch::fromCbor);
+        int chunkSize = m.getOptionalLong("cs").map(FileProperties::chunkSizeFromLog2).orElse(Chunk.LEGACY_SIZE);
 
         LocalDateTime modified = LocalDateTime.ofEpochSecond(modifiedEpochSeconds, modifiedNano, ZoneOffset.UTC);
         LocalDateTime created = LocalDateTime.ofEpochSecond(createdEpochSeconds, createdNano, ZoneOffset.UTC);
         return new FileProperties(name, isDirectory, isLink, mimeType, size, modified, created, isHidden, thumbnail,
-                streamSecret, th);
+                streamSecret, th, chunkSize);
+    }
+
+    /**
+     * The chunk size is stored as its log2, so any size that can ever be stored is a power of
+     * two - which is what BLAKE3 subtree alignment requires anyway.
+     *
+     * Only the sizes actually in use are accepted: a file claiming some other size is a bad file
+     * rather than a new code path to support. The encoding leaves room to allow more later.
+     */
+    /**
+     * The chunk size a file created right now gets. The single place that decides, so that a
+     * write path can never pick a size for a file that already exists: everything else takes the
+     * size from the file's own properties.
+     */
+    @JsMethod
+    public static int chunkSizeForNewFiles() {
+        return Chunk.LEGACY_SIZE;
+    }
+
+    public static int chunkSizeFromLog2(long log2) {
+        int size = 1 << log2;
+        if (log2 < 0 || log2 > 30 || (size != Chunk.DEFAULT_SIZE && size != Chunk.LEGACY_SIZE))
+            throw new IllegalStateException("Unsupported chunk size in file properties: 2^" + log2);
+        return size;
+    }
+
+    public static long chunkSizeLog2(int size) {
+        return Integer.numberOfTrailingZeros(size);
     }
 
     @JsIgnore
     public FileProperties withSize(long newSize) {
-        return new FileProperties(name, isDirectory, isLink, mimeType, newSize, modified, created, isHidden, thumbnail, streamSecret, Optional.empty());
+        return new FileProperties(name, isDirectory, isLink, mimeType, newSize, modified, created, isHidden, thumbnail, streamSecret, Optional.empty(), chunkSize);
     }
 
     public FileProperties withHash(Optional<HashBranch> treeHash) {
-        return new FileProperties(name, isDirectory, isLink, mimeType, size, modified, created, isHidden, thumbnail, streamSecret, treeHash);
+        return new FileProperties(name, isDirectory, isLink, mimeType, size, modified, created, isHidden, thumbnail, streamSecret, treeHash, chunkSize);
     }
 
     public FileProperties withNoThumbnail() {
-        return new FileProperties(name, isDirectory, isLink, mimeType, size, modified, created, isHidden, Optional.empty(), streamSecret, treeHash);
+        return new FileProperties(name, isDirectory, isLink, mimeType, size, modified, created, isHidden, Optional.empty(), streamSecret, treeHash, chunkSize);
     }
     public FileProperties withThumbnail(Optional<Thumbnail> newThumbnail) {
-        return new FileProperties(name, isDirectory, isLink, mimeType, size, modified, created, isHidden, newThumbnail, streamSecret, treeHash);
+        return new FileProperties(name, isDirectory, isLink, mimeType, size, modified, created, isHidden, newThumbnail, streamSecret, treeHash, chunkSize);
     }
 
     public FileProperties withModified(LocalDateTime modified) {
-        return new FileProperties(name, isDirectory, isLink, mimeType, size, modified, created, isHidden, thumbnail, streamSecret, treeHash);
+        return new FileProperties(name, isDirectory, isLink, mimeType, size, modified, created, isHidden, thumbnail, streamSecret, treeHash, chunkSize);
     }
 
     public FileProperties withNewStreamSecret(byte[] streamSecret) {
-        return new FileProperties(name, isDirectory, isLink, mimeType, size, modified, created, isHidden, thumbnail, Optional.of(streamSecret), treeHash);
+        return new FileProperties(name, isDirectory, isLink, mimeType, size, modified, created, isHidden, thumbnail, Optional.of(streamSecret), treeHash, chunkSize);
     }
 
     public FileProperties asLink() {
-        return new FileProperties(name, isDirectory, true, mimeType, size, modified, created, isHidden, thumbnail, streamSecret, treeHash);
+        return new FileProperties(name, isDirectory, true, mimeType, size, modified, created, isHidden, thumbnail, streamSecret, treeHash, chunkSize);
     }
 
     public String getType() {

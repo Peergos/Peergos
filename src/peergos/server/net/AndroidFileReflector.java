@@ -42,6 +42,9 @@ public class AndroidFileReflector implements HttpHandler {
 
     private static final boolean LOGGING = true;
 
+    /** How much to read at a time when streaming a file through. Not a chunk size. */
+    private static final int READ_BUFFER = 5 * 1024 * 1024;
+
     private final Crypto crypto;
     private final CoreNode core;
     private final MutablePointers mutable;
@@ -83,7 +86,7 @@ public class AndroidFileReflector implements HttpHandler {
                 httpExchange.sendResponseHeaders(200, fileSize);
                 byte[] buf = new byte[5 * 1024 * 1024];
                 for (long offset = 0; offset < fileSize; ) {
-                    int read = reader.readIntoArray(buf, 0, (int) Math.min(Chunk.MAX_SIZE, fileSize - offset)).join();
+                    int read = reader.readIntoArray(buf, 0, (int) Math.min(READ_BUFFER, fileSize - offset)).join();
                     offset += read;
                     resp.write(buf, 0, read);
                     resp.flush();
@@ -141,7 +144,7 @@ public class AndroidFileReflector implements HttpHandler {
                     AsyncReader reader = zip.read(entry.get()).join();
                     OutputStream resp = httpExchange.getResponseBody();
                     httpExchange.sendResponseHeaders(200, size);
-                    byte[] buf = new byte[(int) Math.max(1, Math.min(size, Chunk.MAX_SIZE))];
+                    byte[] buf = new byte[(int) Math.max(1, Math.min(size, READ_BUFFER))];
                     for (long offset = 0; offset < size; ) {
                         int read = reader.readIntoArray(buf, 0, (int) Math.min(buf.length, size - offset)).join();
                         if (read <= 0)
@@ -204,7 +207,7 @@ public class AndroidFileReflector implements HttpHandler {
             long size = entry.size;
             AsyncReader reader = zip.read(entry).join();
             zout.putNextEntry(new ZipEntry(ourZipPath.toString()));
-            byte[] buf = new byte[(int) Math.max(1, Math.min(size, Chunk.MAX_SIZE))];
+            byte[] buf = new byte[(int) Math.max(1, Math.min(size, READ_BUFFER))];
             for (long offset = 0; offset < size; ) {
                 int read = reader.readIntoArray(buf, 0, (int) Math.min(buf.length, size - offset)).join();
                 if (read <= 0)
@@ -247,7 +250,7 @@ public class AndroidFileReflector implements HttpHandler {
         AsyncReader reader = f.getInputStream(network, crypto, x -> {}).join();
         zout.putNextEntry(new ZipEntry(ourZipPath.toString()));
         for (long offset = 0; offset < fileSize; ) {
-            int read = reader.readIntoArray(buf, 0, (int) Math.min(Chunk.MAX_SIZE, fileSize - offset)).join();
+            int read = reader.readIntoArray(buf, 0, (int) Math.min(READ_BUFFER, fileSize - offset)).join();
             offset += read;
             zout.write(buf, 0, read);
             zout.flush();

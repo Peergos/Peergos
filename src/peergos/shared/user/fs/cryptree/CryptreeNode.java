@@ -887,9 +887,10 @@ public class CryptreeNode implements Cborable {
 
                         return retriever(cap.rBaseKey, streamSecret, cap.getMapKey(), cap.bat, crypto.hasher)
                                 .thenCompose(retriever ->
-                                        retriever.getFile(current.get(writer), network, crypto, cap, streamSecret, props.size, committedHash(), 1, x -> {})
+                                        retriever.getFile(current.get(writer), network, crypto, cap, streamSecret, props.size,
+                                                props.chunkSize, committedHash(), 1, x -> {})
                                                 .thenCompose(data -> {
-                                                    int chunkSize = (int) Math.min(props.size, Chunk.MAX_SIZE);
+                                                    int chunkSize = (int) Math.min(props.size, props.chunkSize);
                                                     byte[] chunkData = new byte[chunkSize];
                                                     return data.readIntoArray(chunkData, 0, chunkSize)
                                                             .thenCompose(read -> {
