@@ -1191,6 +1191,139 @@ public abstract class UserTests {
         checkFileContents(data, updatedFile, context);
     }
 
+    /**
+     * A link over several items resolves to all of them, at their own paths, with the writability
+     * each was given. The link string is the same shape as a single item link - the members live
+     * inside the encrypted payload, so nothing about the URL says how many there are.
+     */
+    @Test
+    public void multiItemSecretLink() throws Exception {
+        String username = generateUsername();
+        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, "test", network, crypto);
+        FileWrapper userRoot = context.getUserRoot().get();
+        userRoot.mkdir("one", context.network, false, context.mirrorBatId(), crypto).join();
+        context.getUserRoot().join().mkdir("two", context.network, false, context.mirrorBatId(), crypto).join();
+        context.getUserRoot().join().mkdir("three", context.network, false, context.mirrorBatId(), crypto).join();
+
+        List<String> paths = Arrays.asList(username + "/one", username + "/two", username + "/three");
+        LinkProperties link = context.createSecretLink(paths, Collections.singletonList(username + "/two"),
+                Optional.empty(), Optional.empty(), "", false).join();
+
+        Assert.assertEquals("every member is recorded", 3, link.members.size());
+        Assert.assertTrue("writable if any member is", link.isLinkWritable);
+        Assert.assertEquals(Arrays.asList(false, true, false),
+                link.members.stream().map(m -> m.writable).collect(Collectors.toList()));
+
+        UserContext fromLink = UserContext.fromSecretLinkV2(link.toLinkString(context.signer.publicKeyHash),
+                () -> Futures.of(""), network.clear(), crypto).join();
+        for (String path : paths)
+            Assert.assertTrue(path + " resolves through the link", fromLink.getByPath(path).join().isPresent());
+        Assert.assertFalse(fromLink.getByPath(username + "/one").join().get().isWritable());
+        Assert.assertTrue("exactly the writable member is writable",
+                fromLink.getByPath(username + "/two").join().get().isWritable());
+        Assert.assertFalse(fromLink.getByPath(username + "/three").join().get().isWritable());
+    }
+
+    /**
+     * The point of the feature: a link handed out once can grow afterwards, and the string does
+     * not change. That is also the hazard - whoever holds it gets the new items with no further
+     * action by the sender - so pin it rather than leave it implied.
+     */
+    @Test
+    public void addingAnItemKeepsTheSameLinkString() throws Exception {
+        String username = generateUsername();
+        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, "test", network, crypto);
+        context.getUserRoot().join().mkdir("first", context.network, false, context.mirrorBatId(), crypto).join();
+        context.getUserRoot().join().mkdir("second", context.network, false, context.mirrorBatId(), crypto).join();
+
+        LinkProperties link = context.createSecretLink(username + "/first", false, Optional.empty(),
+                Optional.empty(), "", false).join();
+        String before = link.toLinkString(context.signer.publicKeyHash);
+        Assert.assertEquals(1, link.members.size());
+
+        LinkProperties grown = context.setSecretLinkMembers(
+                Arrays.asList(username + "/first", username + "/second"), Collections.emptyList(), link).join();
+        Assert.assertEquals("the same url, now with more in it",
+                before, grown.toLinkString(context.signer.publicKeyHash));
+        Assert.assertEquals(2, grown.members.size());
+
+        UserContext fromLink = UserContext.fromSecretLinkV2(before, () -> Futures.of(""), network.clear(), crypto).join();
+        Assert.assertTrue(fromLink.getByPath(username + "/first").join().isPresent());
+        Assert.assertTrue("the item added after the link was handed out",
+                fromLink.getByPath(username + "/second").join().isPresent());
+    }
+
+    /**
+     * Removing an item stops new visitors seeing it, and does not take it back from anyone who
+     * already opened the link. Capabilities cannot be recalled; that is what revoking is for, and
+     * conflating the two in the UI would be the dangerous mistake.
+     */
+    @Test
+    public void removingAnItemDoesNotRevokeIt() throws Exception {
+        String username = generateUsername();
+        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, "test", network, crypto);
+        context.getUserRoot().join().mkdir("keep", context.network, false, context.mirrorBatId(), crypto).join();
+        context.getUserRoot().join().mkdir("drop", context.network, false, context.mirrorBatId(), crypto).join();
+
+        LinkProperties link = context.createSecretLink(
+                Arrays.asList(username + "/keep", username + "/drop"), Collections.emptyList(),
+                Optional.empty(), Optional.empty(), "", false).join();
+        String linkString = link.toLinkString(context.signer.publicKeyHash);
+
+        // someone opens the link while both items are in it
+        UserContext early = UserContext.fromSecretLinkV2(linkString, () -> Futures.of(""), network.clear(), crypto).join();
+        AbsoluteCapability captured = early.getByPath(username + "/drop").join().get().getPointer().capability;
+
+        context.setSecretLinkMembers(Collections.singletonList(username + "/keep"), Collections.emptyList(), link).join();
+
+        UserContext later = UserContext.fromSecretLinkV2(linkString, () -> Futures.of(""), network.clear(), crypto).join();
+        Assert.assertTrue(later.getByPath(username + "/keep").join().isPresent());
+        Assert.assertTrue("a removed item no longer resolves through the link",
+                later.getByPath(username + "/drop").join().isEmpty());
+        Assert.assertTrue("but a capability captured beforehand still works - removal is not revocation",
+                network.getFile(captured, username).join().isPresent());
+    }
+
+    /** A link carries one owner, so a member belonging to someone else is refused at creation. */
+    @Test
+    public void aLinkCannotSpanOwners() throws Exception {
+        String a = generateUsername(), b = generateUsername();
+        UserContext ca = PeergosNetworkUtils.ensureSignedUp(a, "test", network, crypto);
+        UserContext cb = PeergosNetworkUtils.ensureSignedUp(b, "test", network, crypto);
+        ca.getUserRoot().join().mkdir("mine", ca.network, false, ca.mirrorBatId(), crypto).join();
+        cb.getUserRoot().join().mkdir("theirs", cb.network, false, cb.mirrorBatId(), crypto).join();
+        PeergosNetworkUtils.friendBetweenGroups(Collections.singletonList(ca), Collections.singletonList(cb));
+        cb.shareReadAccessWith(PathUtil.get(b, "theirs"), Collections.singleton(a)).join();
+        Assert.assertTrue("the other user's folder is readable before we try to link it",
+                ca.getByPath(b + "/theirs").join().isPresent());
+
+        try {
+            ca.createSecretLink(Arrays.asList(a + "/mine", b + "/theirs"), Collections.emptyList(),
+                    Optional.empty(), Optional.empty(), "", false).join();
+            Assert.fail("should have refused a member owned by someone else");
+        } catch (Exception expected) {
+            Assert.assertTrue("the message should say why: " + expected.getMessage(),
+                    expected.getMessage().contains("your own files"));
+        }
+    }
+
+    /** More members than a link may hold is refused before anything is written. */
+    @Test
+    public void tooManyMembersIsRefused() throws Exception {
+        String username = generateUsername();
+        UserContext context = PeergosNetworkUtils.ensureSignedUp(username, "test", network, crypto);
+        context.getUserRoot().join().mkdir("only", context.network, false, context.mirrorBatId(), crypto).join();
+        List<String> tooMany = new ArrayList<>();
+        for (int i = 0; i <= UserContext.MAX_LINK_MEMBERS; i++)
+            tooMany.add(username + "/only");
+        try {
+            context.createSecretLink(tooMany, Collections.emptyList(), Optional.empty(), Optional.empty(), "", false).join();
+            Assert.fail("should have refused " + tooMany.size() + " members");
+        } catch (Exception expected) {
+            Assert.assertTrue(expected.getMessage().contains("at most"));
+        }
+    }
+
     @Test
     public void renameWriteSharedDir() throws Exception {
         String username = generateUsername();

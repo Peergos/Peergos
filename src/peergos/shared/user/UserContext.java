@@ -898,6 +898,9 @@ public class UserContext {
         return network.dhtClient.linkHost(signer.publicKeyHash);
     }
 
+    /** A link can hold this many items. See the note on the byte ceiling below. */
+    public static final int MAX_LINK_MEMBERS = 100;
+
     @JsMethod
     public CompletableFuture<LinkProperties> createSecretLink(String filePath,
                                                               boolean isWritable,
@@ -905,7 +908,26 @@ public class UserContext {
                                                               String maxRetrievals,
                                                               String userPassword,
                                                               boolean open) {
-        return createSecretLink(filePath, isWritable, expiry,
+        return createSecretLink(Collections.singletonList(filePath),
+                isWritable ? Collections.singletonList(filePath) : Collections.emptyList(),
+                expiry, maxRetrievals.isEmpty() ? Optional.empty() : Optional.of(Integer.parseInt(maxRetrievals)),
+                userPassword, open);
+    }
+
+    /**
+     * Create a link over several files and directories, each read-only or writable.
+     *
+     * @param paths         the members, in the order they should be listed
+     * @param writablePaths those of {@code paths} that should be writable; the rest are read-only
+     */
+    @JsMethod
+    public CompletableFuture<LinkProperties> createSecretLinkTo(List<String> paths,
+                                                                List<String> writablePaths,
+                                                                Optional<LocalDateTime> expiry,
+                                                                String maxRetrievals,
+                                                                String userPassword,
+                                                                boolean open) {
+        return createSecretLink(paths, writablePaths, expiry,
                 maxRetrievals.isEmpty() ? Optional.empty() : Optional.of(Integer.parseInt(maxRetrievals)),
                 userPassword, open);
     }
@@ -916,62 +938,186 @@ public class UserContext {
                                                               Optional<Integer> maxRetrievals,
                                                               String userPassword,
                                                               boolean open) {
+        return createSecretLink(Collections.singletonList(filePath),
+                isWritable ? Collections.singletonList(filePath) : Collections.emptyList(),
+                expiry, maxRetrievals, userPassword, open);
+    }
+
+    public CompletableFuture<LinkProperties> createSecretLink(List<String> paths,
+                                                              List<String> writablePaths,
+                                                              Optional<LocalDateTime> expiry,
+                                                              Optional<Integer> maxRetrievals,
+                                                              String userPassword,
+                                                              boolean open) {
         SecretLink res = SecretLink.create(signer.publicKeyHash, crypto.random);
-        LinkProperties props = new LinkProperties(res.label, res.linkPassword, userPassword, isWritable, maxRetrievals, expiry, open, Optional.empty());
-        Path toFile = PathUtil.get(filePath);
-        if (! isWritable)
-            return updateSecretLink(filePath, props);
-        // an interrupted authorisation leaves an owned writer with no pointer, so clear any before adding another
-        return removeOrphanedWriters()
-                .exceptionally(t -> {
-                    LOG.log(Level.WARNING, "Couldn't remove orphaned writers: " + t.getMessage(), t);
-                    return 0;
-                })
-                .thenCompose(removed -> getByPath(toFile.getParent()))
-                .thenCompose(parent -> parent.get().getChild(toFile.getFileName().toString(), crypto.hasher, network)
-                        .thenCompose(fopt -> shareWriteAccessWith(toFile, Collections.emptySet())))
-                .thenCompose(s -> writeSynchronizer.applyComplexComputation(signer.publicKeyHash, signer, (v, c) -> updateSecretLink(filePath, props, v.mergeAndOverwriteWith(s), c)))
-                .thenApply(x -> x.right);
+        LinkProperties props = LinkProperties.build(res.label, res.linkPassword, userPassword, maxRetrievals,
+                expiry, open, Optional.empty(), Collections.emptyList(), Optional.empty());
+        return setSecretLinkMembers(paths, writablePaths, props);
     }
 
     @JsMethod
     public CompletableFuture<LinkProperties> updateSecretLink(String filePath,
                                                               LinkProperties props) {
-        return writeSynchronizer.applyComplexComputation(signer.publicKeyHash, signer, (v, c) -> updateSecretLink(filePath, props, v, c))
-                .thenApply(p -> p.right);
+        // the members this link already has are what it keeps, unless the caller says otherwise
+        List<String> paths = props.members.isEmpty() ?
+                Collections.singletonList(filePath) :
+                props.members.stream().map(m -> m.path).collect(Collectors.toList());
+        List<String> writable = props.members.isEmpty() ?
+                (props.isLinkWritable ? Collections.singletonList(filePath) : Collections.emptyList()) :
+                props.members.stream().filter(m -> m.writable).map(m -> m.path).collect(Collectors.toList());
+        return setSecretLinkMembers(paths, writable, props);
     }
 
-    private CompletableFuture<Pair<Snapshot, LinkProperties>> updateSecretLink(String filePath,
+    /**
+     * Rewrite a link's membership: the label and password do not change, so the link string and
+     * its QR code stay exactly as they were and anyone already holding it gets the new members.
+     *
+     * Writable members are the asymmetric case. A read-only member costs nothing - the capability
+     * is already in hand - but a writable one has first to be moved into its own writing space,
+     * which rewrites keys and can fail. All of that preparation happens before the payload is
+     * touched, so a failure part way through leaves the link exactly as it was rather than
+     * partially grown.
+     */
+    @JsMethod
+    public CompletableFuture<LinkProperties> setSecretLinkMembers(List<String> paths,
+                                                                  List<String> writablePaths,
+                                                                  LinkProperties props) {
+        if (paths.isEmpty())
+            return Futures.errored(new IllegalStateException("A secret link must contain at least one item!"));
+        if (paths.size() > MAX_LINK_MEMBERS)
+            return Futures.errored(new IllegalStateException("A secret link can hold at most "
+                    + MAX_LINK_MEMBERS + " items, not " + paths.size() + ". Share a folder instead."));
+        Set<String> writable = new HashSet<>(writablePaths);
+        List<String> needWritingSpace = paths.stream().filter(writable::contains).collect(Collectors.toList());
+        if (needWritingSpace.isEmpty())
+            return writeSynchronizer.applyComplexComputation(signer.publicKeyHash, signer,
+                            (v, c) -> updateSecretLink(paths, writable, props, v, c))
+                    .thenApply(p -> p.right);
+        // an interrupted authorisation leaves an owned writer with no pointer, so clear any before
+        // adding another. Once for the batch, not once per member.
+        return removeOrphanedWriters()
+                .exceptionally(t -> {
+                    LOG.log(Level.WARNING, "Couldn't remove orphaned writers: " + t.getMessage(), t);
+                    return 0;
+                })
+                .thenCompose(removed -> Futures.reduceAll(needWritingSpace, (Snapshot) null,
+                        (s, path) -> splitIntoOwnWritingSpace(PathUtil.get(path), s), (a, b) -> b))
+                .thenCompose(s -> writeSynchronizer.applyComplexComputation(signer.publicKeyHash, signer,
+                        (v, c) -> updateSecretLink(paths, writable, props,
+                                s == null ? v : v.mergeAndOverwriteWith(s), c)))
+                .thenApply(x -> x.right);
+    }
+
+    private CompletableFuture<Snapshot> splitIntoOwnWritingSpace(Path toFile, Snapshot soFar) {
+        return getByPath(toFile.getParent())
+                .thenCompose(parent -> parent.get().getChild(toFile.getFileName().toString(), crypto.hasher, network)
+                        .thenCompose(fopt -> shareWriteAccessWith(toFile, Collections.emptySet())))
+                .thenApply(s -> soFar == null ? s : soFar.mergeAndOverwriteWith(s));
+    }
+
+    private CompletableFuture<Pair<Snapshot, LinkProperties>> updateSecretLink(List<String> paths,
+                                                                               Set<String> writablePaths,
                                                                                LinkProperties props,
                                                                                Snapshot v1,
                                                                                Committer c) {
         // put encrypted secret link in champ on identity, champ root must have mirror bat to make it private
         PublicKeyHash id = signer.publicKeyHash;
-        return getByPath(filePath, v1)
-                .thenApply(opt -> opt.orElseThrow(() -> new IllegalStateException("Couldn't retrieve " + filePath)))
-                .thenCompose(file -> {
-                    boolean differentWriter = file.getPointer().getParentCap().writer.map(parentWriter -> ! parentWriter.equals(file.writer())).orElse(false);
-                    if (props.isLinkWritable && ! differentWriter)
-                        throw new IllegalStateException("To generate a writable secret link, the target must already be in a different writing space!");
-                    AbsoluteCapability cap = props.isLinkWritable ? file.getLinkPointer().capability : file.getPointer().capability.readOnly();
+        return Futures.combineAllInOrder(paths.stream()
+                        .map(path -> capabilityForLink(path, writablePaths.contains(path), v1))
+                        .collect(Collectors.toList()))
+                .thenCompose(members -> {
+                    List<AbsoluteCapability> caps = members.stream().map(m -> m.left).collect(Collectors.toList());
                     SecretLink res = new SecretLink(id, props.label, props.linkPassword);
                     String fullPassword = props.linkPassword + props.userPassword;
-                    return EncryptedCapability.createFromPassword(Collections.singletonList(cap), res.labelString(), fullPassword, !props.userPassword.isEmpty(), crypto)
+                    LinkProperties withMembers = props.withMembers(members.stream().map(m -> m.right).collect(Collectors.toList()));
+                    return EncryptedCapability.createFromPassword(caps, res.labelString(), fullPassword, !props.userPassword.isEmpty(), crypto)
                             .thenApply(payload -> new SecretLinkTarget(payload, props.expiry, props.maxRetrievals))
+                            .thenApply(UserContext::checkLinkFitsInABlock)
                             .thenCompose(value -> IpfsTransaction.call(id,
                                     tid -> v1.withWriter(id, id, network).thenCompose(v2 -> v2.get(id).props.get().addLink(signer, props.label, value,
                                                     props.existing.map(CborObject.CborMerkleLink::new), mirrorBat, tid, network.dhtClient, network.hasher)
                                             .thenCompose(p -> c.commit(id, signer, p.left, v2.get(id), tid)
-                                                    .thenCompose(v3 -> sharedWithCache.addSecretLink(PathUtil.get(filePath),
-                                                                    props.withExisting(Optional.of(p.right)), v2.mergeAndOverwriteWith(v3), c, network)
-                                                            .thenApply(v4 -> new Pair<>(new Snapshot(id, v3.get(id)), props.withExisting(Optional.of(p.right))))))), network.dhtClient));
+                                                    // the champ is what resolves the link and the cache is owner side display,
+                                                    // so commit the champ first: a crash between them under-reports membership
+                                                    // rather than losing the link
+                                                    .thenCompose(v3 -> recordLinkForEveryMember(withMembers.withExisting(Optional.of(p.right)),
+                                                                    v2.mergeAndOverwriteWith(v3), c)
+                                                            .thenApply(v4 -> new Pair<>(new Snapshot(id, v3.get(id)),
+                                                                    withMembers.withExisting(Optional.of(p.right))))))), network.dhtClient));
                 });
+    }
+
+    /** Re-sign one link of one file, keeping whatever membership it already has. */
+    private CompletableFuture<Snapshot> updateSecretLink(String filePath, LinkProperties props, Snapshot v, Committer c) {
+        List<String> paths = props.members.isEmpty() ?
+                Collections.singletonList(filePath) :
+                props.members.stream().map(m -> m.path).collect(Collectors.toList());
+        Set<String> writable = props.members.isEmpty() ?
+                (props.isLinkWritable ? new HashSet<>(paths) : Collections.emptySet()) :
+                props.members.stream().filter(m -> m.writable).map(m -> m.path).collect(Collectors.toSet());
+        return updateSecretLink(paths, writable, props, v, c).thenApply(x -> x.left);
+    }
+
+    /** The capability a member contributes to a link, and what the owner records about it. */
+    private CompletableFuture<Pair<AbsoluteCapability, LinkMember>> capabilityForLink(String path,
+                                                                                      boolean writable,
+                                                                                      Snapshot v1) {
+        return getByPath(path, v1)
+                .thenApply(opt -> opt.orElseThrow(() -> new IllegalStateException("Couldn't retrieve " + path)))
+                .thenApply(file -> {
+                    boolean differentWriter = file.getPointer().getParentCap().writer
+                            .map(parentWriter -> ! parentWriter.equals(file.writer())).orElse(false);
+                    if (writable && ! differentWriter)
+                        throw new IllegalStateException("To generate a writable secret link, the target must already be in a different writing space!");
+                    AbsoluteCapability cap = writable ?
+                            file.getLinkPointer().capability :
+                            file.getPointer().capability.readOnly();
+                    // A link carries one owner, and expiry, retrieval limits and revocation are all
+                    // enforced against that owner's record. Someone else's file would resolve, since
+                    // capabilities are self contained, but the wrong party would control it.
+                    if (! cap.owner.equals(signer.publicKeyHash))
+                        throw new IllegalStateException("A secret link can only contain your own files. "
+                                + path + " belongs to someone else - ask them for a link to it.");
+                    return new Pair<>(cap, LinkMember.build(path, cap));
+                });
+    }
+
+    /**
+     * The serialized link has to fit in one block, and a member is not a fixed size - a writable
+     * capability with a BAT is 76 bytes larger than a bare read-only one. The count limit is what
+     * the UI can explain; this is what actually protects the block.
+     */
+    private static SecretLinkTarget checkLinkFitsInABlock(SecretLinkTarget target) {
+        int size = target.serialize().length;
+        if (size > ContentAddressedStorage.MAX_BLOCK_SIZE)
+            throw new IllegalStateException("This link is too large at " + size + " bytes (limit "
+                    + ContentAddressedStorage.MAX_BLOCK_SIZE + "). Remove some items, or share a folder instead.");
+        return target;
+    }
+
+    private CompletableFuture<Snapshot> recordLinkForEveryMember(LinkProperties props, Snapshot v, Committer c) {
+        return Futures.reduceAll(props.members, v,
+                (s, m) -> sharedWithCache.addSecretLink(PathUtil.get(m.path), props, s, c, network),
+                (a, b) -> b);
     }
     @JsMethod
     public CompletableFuture<Snapshot> deleteSecretLink(long label, Path toFile, boolean isWritable) {
+        return deleteSecretLinkFrom(label, Collections.singletonList(toFile.toString()));
+    }
+
+    /**
+     * Delete a link and clear it from every path it contained.
+     *
+     * Deleting the champ entry is what stops the link resolving; the per path records are the
+     * owner's own listing, and leaving one behind would show a link that no longer exists.
+     */
+    @JsMethod
+    public CompletableFuture<Snapshot> deleteSecretLinkFrom(long label, List<String> memberPaths) {
         PublicKeyHash id = signer.publicKeyHash;
-        return writeSynchronizer.applyComplexUpdate(id, signer, (v, c) -> deleteSecretLink(label, toFile, v, c)
-                .thenCompose(s -> sharedWithCache.removeSecretLink(toFile, label, s, c, network)));
+        return writeSynchronizer.applyComplexUpdate(id, signer, (v, c) -> deleteSecretLink(label, PathUtil.get(memberPaths.get(0)), v, c)
+                .thenCompose(s -> Futures.reduceAll(memberPaths, s,
+                        (snapshot, path) -> sharedWithCache.removeSecretLink(PathUtil.get(path), label, snapshot, c, network),
+                        (x, y) -> y)));
     }
 
     public CompletableFuture<Snapshot> deleteSecretLink(long label, Path toFile, Snapshot in, Committer c) {
@@ -2363,7 +2509,7 @@ public class UserContext {
                 .thenCompose(s3 -> Futures.reduceAll(file.links().entrySet(), s3,
                         (s, e) -> Futures.reduceAll(e.getValue(),
                                 s,
-                                (v, p) -> updateSecretLink(start.resolve(e.getKey()).toString(), p, v, c).thenApply(x -> x.left),
+                                (v, p) -> updateSecretLink(start.resolve(e.getKey()).toString(), p, v, c),
                                 (a, b) -> b),
                         (a, b) -> b));
     }
